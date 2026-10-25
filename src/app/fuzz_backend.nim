@@ -158,7 +158,7 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
     if not backend.executing:
       var bytes = newSeq[byte](backend.seedHeader.headerInfo.value.consumed)
       assert backend.seedHeader.encodeOwnedHeader(bytes).error == HeaderError.None
-      let captured = captureBlockSnapshot(bytes, backend.seedState, config.parameters)
+      let captured = captureFuzzSeedSnapshot(bytes, backend.seedState, config.parameters)
       if captured.error != GenesisError.None: return refused[FuzzMessage](
           FuzzBackendError.SeedContextFailure)
       let initialized = initApplicationChain(fuzzSeedView(captured))

@@ -13,9 +13,11 @@ for any structurally owned bounded seed. Actual import uses the existing current
 candidate pipeline with explicit host Parameters and resource policies, and installs
 only a genuine prepared current update. If the seed cannot satisfy that pipeline's
 existing application context requirements, import reports a local SeedContextFailure;
-it never repairs the seed or returns a fabricated consensus rejection. Supporting
-arbitrary genesis-like header/time pairing in actual imports remains a separate
-state admission change.
+it never repairs the seed or returns a fabricated consensus rejection. Explicit genesis-like seed header/time pairing now has a fuzz-only capture marker.
+Ordinary genesis views and child insertion refuse marked seeds. Only the initial
+fuzz-domain candidate uses independent header/state clocks; it still checks the
+child against both slots and every GP commitment. Successful successors use
+ordinary posterior capture and strict pairing.
 
 Complete maps are available for the seed and bounded retained chain history.
 Initial membership and actual full headers generated within this session are

@@ -6,9 +6,10 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, accumulation_current_chain_context, fuzz_guest_replay_context]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[fuzz_backend, fuzz_rejection, candidate]
-import ../../src/chain/[genesis, parameters]
+import ../../src/chain/[genesis, parameters, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
-import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors]
+import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
+    block_transition, block_admission]
 
 proc observe(backend: var FuzzBackend, header: OwnedHeader): StateStoreSnapshot =
   ## Query exact full-header identity; no state observed from the native backend calculates an expected answer.
@@ -20,8 +21,11 @@ proc main() {.raises.} =
   let raw = readFile(paramStr(1))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
-  let initialHeader = currentChainFixture(decodeOwnedReport(bytes, 2).value, ticket = true,
+  let defaultHeader = currentChainFixture(decodeOwnedReport(bytes, 2).value, ticket = true,
     completeState = true).parent.value.header
+  var initialHeader = defaultHeader
+  var pendingHeader = default(OwnedHeader)
+  var hasHeader = false
   var config = fuzzGuestReplayConfig()
   var backend = default(FuzzBackend)
   var seeded = false
@@ -37,6 +41,16 @@ proc main() {.raises.} =
     if line.len == 0: continue # Only the final transport newline is empty.
     let fields = line.splitWhitespace()
     assert fields.len in [2, 3]
+    if fields[0] == "H":
+      assert fields.len == 2 and not hasHeader
+      let decoded = decodeHeader(epoch.unhex(fields[1]),
+          config.candidate.reporting.reports.ancestors.header)
+      assert decoded.error == HeaderError.None
+      assert decoded.value.consumed == epoch.unhex(fields[1]).len
+      pendingHeader = decoded.value.owner
+      hasHeader = true
+      echo line # Exact independently supplied bytes retain their own immutable header owner.
+      continue
     if fields[0] in ["C", "A"]:
       assert not anchorChecks or not mirrorActive
       anchorChecks = fields[0] == "A"
@@ -44,6 +58,8 @@ proc main() {.raises.} =
       retainedSibling = false # Reset retires all previous chain and sibling owners.
       if seeded:
         assert epoch.checkpointHex(backend.observe(initialHeader)) == original
+      initialHeader = if hasHeader: pendingHeader else: defaultHeader
+      hasHeader = false
       config = fuzzGuestReplayConfig()
       if fields.len == 3:
         let parameters = decodeParameters(epoch.unhex(fields[2]))
@@ -51,6 +67,19 @@ proc main() {.raises.} =
         config.parameters = parameters.value # Trusted test-host configuration is separate from fuzz-v1 Initialize bytes.
       let captured = decodeFullCheckpoint(epoch.unhex(fields[1]), config.wire.state, ByteLimit(1000000))
       assert captured.error == CheckpointError.None
+      var headerBytes = newSeq[byte](initialHeader.headerInfo.value.consumed)
+      assert initialHeader.encodeOwnedHeader(headerBytes).error == HeaderError.None
+      let marked = captureFuzzSeedSnapshot(headerBytes, captured.value.snapshot.value,
+          config.parameters)
+      assert marked.error == GenesisError.None and marked.value.fuzzSeedOnly
+      assert genesisView(marked).bestBlock.error == GenesisError.Unavailable
+      assert fuzzSeedView(marked).fuzzOnly
+      var ordinaryHeader = newSeq[byte](defaultHeader.headerInfo.value.consumed)
+      assert defaultHeader.encodeOwnedHeader(ordinaryHeader).error == HeaderError.None
+      let ordinary = captureBlockSnapshot(ordinaryHeader, captured.value.snapshot.value,
+          config.parameters)
+      if ordinary.error == GenesisError.None:
+        assert genesisView(ordinary).advanceView(marked).error == ViewAdvanceError.InvalidSnapshot
       if anchorChecks:
         config.candidate.reporting.reports.anchors.lookupAge = LookupAge(0)
       backend = initFuzzBackend(config).value
@@ -83,6 +112,37 @@ proc main() {.raises.} =
       assert decoded.value.consumed == wire.len
       let beforeHeader = backend.fuzzBackendHeader.value
       let before = epoch.checkpointHex(backend.observe(beforeHeader))
+      if beforeHeader.headerInfo.value.unsigned.slot == HeaderSlot(0):
+        let state = backend.observe(beforeHeader)
+        var headerBytes = newSeq[byte](beforeHeader.headerInfo.value.consumed)
+        assert beforeHeader.encodeOwnedHeader(headerBytes).error == HeaderError.None
+        assert captureBlockSnapshot(headerBytes, state, config.parameters).error ==
+            GenesisError.Invalid
+        for slot in [0'u32, 1'u32]:
+          var invalid = wire
+          for index in 0..<4: invalid[96+index] = byte((slot shr (index*8)) and 255)
+          let bad = backend.executeFuzz(fuzzImport(decodeBlock(invalid,
+              config.wire.frame).value.owner))
+          assert bad.error == FuzzBackendError.CandidateFailure
+          assert bad.candidateFailure.error == CurrentCandidateError.PrefixFailure
+          let prefix = bad.candidateFailure.prefixFailure
+          assert prefix.error == ApplicationCandidateError.BlockFailure
+          let failure = prefix.blockFailure
+          assert failure.error == BlockTransitionError.AdmissionFailure
+          assert failure.admissionError == BlockAdmissionError.InvalidSlot
+          assert epoch.checkpointHex(backend.observe(beforeHeader)) == before
+          assert consensusFuzzRejection(bad.candidateFailure) # Both supplied header and state clocks remain lower bounds.
+        headerBytes[96] = 4
+        let ahead = decodeHeader(headerBytes, config.candidate.reporting.reports.ancestors.header).value.owner
+        var future = initFuzzBackend(config).value
+        assert future.executeFuzz(fuzzInitialize(ahead, state)).error == FuzzBackendError.None
+        let denied = future.executeFuzz(fuzzImport(decoded.value.owner))
+        assert denied.error == FuzzBackendError.CandidateFailure
+        assert denied.candidateFailure.prefixFailure.blockFailure.admissionError ==
+            BlockAdmissionError.InvalidSlot
+        assert epoch.checkpointHex(future.observe(ahead)) ==
+            before # Advancing state time alone cannot pass a later supplied header.
+
       var damaged = wire
       damaged[32] = damaged[32] xor 1 # A genuine invalid prior-root attempt cannot publish a partial guest result.
       let negative = backend.executeFuzz(fuzzImport(decodeBlock(damaged,
@@ -139,6 +199,7 @@ proc main() {.raises.} =
       echo fields[0], " ", epoch.hex(encoded)
       echo "O ", epoch.checkpointHex(state)
   assert not anchorChecks or not mirrorActive
+  assert not hasHeader
   assert seeded and not sibling and epoch.checkpointHex(backend.observe(initialHeader)) == original
 try:
   main() # Missing inputs, invalid signatures, failed guests or unequal maps fail the complete registered corpus.

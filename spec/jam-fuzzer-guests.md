@@ -119,3 +119,21 @@ header evidence; releases at19201 and19203 test exact equality versus strict
 expiry of a removal recorded at1. Restoration, live requests, panic and checkpoint
 selection compare all namespaces, footprints and statistics. Historical zero-age
 fixtures remain unchanged and are not promoted as GP-valid report-admission cases.
+
+Genesis-like header/state clocks are now supported at the explicit fuzz seed
+boundary (pinned fuzz-proto README Initialize note). A private immutable snapshot
+marker prevents marked seeds entering ordinary genesis views or child insertion;
+exact-view comparison retains that marker. The existing fuzz-only origin remains
+in force for every report certificate and chain update. Only a marked seed in a
+fuzz view selects independent clock pairing. The shared transition still requires
+child.slot > seed.header.slot and child.slot > state.C11, exact parent hash,
+prior-state and extrinsic roots, signatures, Safrole and all later GP checks.
+Ordinary capture and every successful successor retain strict clock equality.
+
+Five independently authored slot0/header and slot1/state pairs contribute ten
+whole-map imports and20 guest invocations, including nonempty preimage extrinsics,
+storage and checkpoint/panic selection. Seed maps and headers are supplied exactly
+as authored; no input is rewritten during Initialize. Native controls reject
+children at either lower bound and a child earlier than an independently supplied
+later header, preserving complete state. Missing/malformed required application
+chapters still report local SeedContextFailure.

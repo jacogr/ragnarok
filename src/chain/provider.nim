@@ -58,14 +58,15 @@ func value*(outcome: ViewAdvanceResult): ChainView {.requires: outcome.status ==
 
 proc genesisView*(source: GenesisResult): ChainView =
   ## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
-  if source.error == GenesisError.None:
+  if source.error == GenesisError.None and not source.value.fuzzSeedOnly:
     return ChainView(snapshot: @[source]) # Private container retains the structurally checked owner.
   default(ChainView) # Failed inputs expose no payload.
 
 proc fuzzSeedView*(source: GenesisResult): ChainView =
   ## Explicitly seed a test-only domain; matching map/header owners cannot erase its origin.
-  result = genesisView(source)
-  result.fuzzOrigin = true
+  result = default(ChainView)
+  if source.error == GenesisError.None:
+    result = ChainView(snapshot: @[source], fuzzOrigin: true) # Explicit test origin cannot be erased through genesisView.
 func fuzzOnly*(view: ChainView): bool =
   ## Expose only the immutable domain, never a public retagging operation.
   view.fuzzOrigin
@@ -118,7 +119,8 @@ func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
 
 ## Compare exact retained block state and complete parameters, without hashing or copying map payloads.
 func sameRetainedBlock(left, right: BlockSnapshot): bool =
-  array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
+  left.fuzzSeedOnly == right.fuzzSeedOnly and
+    array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
     sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right)
 
 func sameChainView*(left, right: ChainView): bool =
@@ -145,6 +147,8 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
   if child.error != GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # Never inspect failure payloads.
   let next = child.value
+  if next.fuzzSeedOnly:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # Marked seeds can only initialize an explicit fuzz view.
   if view.blockAt(next.blockHash).error == GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.Duplicate) # A header identity cannot overwrite retained state.
   if array[32, byte](next.parentHash) != array[32, byte](head.value.blockHash):
