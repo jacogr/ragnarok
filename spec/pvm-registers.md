@@ -245,3 +245,42 @@ dependent chains, charged execution/cache/ARC, memory/control and nested host/mi
 policy checks remain required. The parent planned Pinky profile attributes119,775,747
 instructions to the removed membership expression; actual timing still requires
 isolated paired CI. Implemented M1 scope and the open full-JAM gap remain unchanged.
+
+
+### Paired CI and deterministic confirmation
+
+CI40143376095 attempts1/2 retain all54 real/synthetic cells, both process orders,
+2808 paired and2808 same-source control invocations per attempt, complete state/gas/
+page validation and the pinned interpreted reference pack. Planned Pinky changes
+-3.00/-2.06% initially (controls-1.52/-0.58%) and-1.96/-3.14% in the repeat
+(controls-0.97/-0.80%). Planned long memset improves1.01% in both initial orders
+and1.20/1.42% on repeat. Dynamic Pinky is near-neutral initially and-2.13/-1.03%
+on repeat; memo Pinky is mixed, with no stable improvement claimed.
+
+Tradeoffs remain explicit. Short dynamic memset changes+2.37/+2.64% initially and
++5.14/+3.64% on repeat, roughly2–7us; its controls are+3.25/-0.75% and+2.60/-8.87%.
+Initial memo aligned/crossing synthetic memory regresses4.61/4.86% and3.60/4.70%;
+these regressions do not repeat. Initial planned crossing hosts change+8.11/+3.02%
+against-0.26/-3.90% controls; repeat-8.60/-0.86% does not confirm that regression.
+Other smaller cells are mixed and their raw observations remain retained. This is a
+modest planned-guest gain, not a universal policy or microbenchmark improvement.
+
+Profile40146598603 changes only shared arithmetic source and its frozen copy versus
+parent profile40140452445; build, fixtures, driver, scope and all other source hashes
+are identical. All five full-state profiles, generated-source hashes, selected/absent
+scope and checked-assertion controls pass. Native instruction counts decrease:
+dynamic Pinky5,420,915,910 (-2.463%), planned Pinky5,048,924,258 (-2.640%),
+sieve165,556,450 (-3.228%), minimal421,594,943 (-1.126%), memset194,622,517
+(-1.618%). The extra planned machine trace matches the source-profile Ir exactly.
+These counters support the independent timing comparison; they are not timing predictions.
+
+The repeat's same-job reference comparison is planned Pinky196.902ms versus pinned
+PolkaVM interpreted97.965ms (2.01x slower). Beating that interpreter remains open;
+CPU families differ between jobs, so no cross-job ratio or percentage is compounded.
+Eight selected checked native suites pass, including the unchanged38977 arithmetic
+reference rows, out-of-scope output sentinels, dependent chains, memory/control and
+nested host/mixed policies, with declared1000 balanced ARC lifetimes. Publication
+adds only this evidence to the measured runtime; no production or build change occurs.
+Raw evidence and the exact equation/profile identity proofs remain under
+`build/pvm12/ci-40143376095/`, `build/pvm12/ci-40143376095-attempt2/`,
+`build/pvm12/ci-40146598603/` and `build/pvm12/arithmetic-scope-profile-proof.json`.
