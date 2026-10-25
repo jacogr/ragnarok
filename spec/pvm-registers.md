@@ -225,3 +225,78 @@ arithmetic calls, so this is a measured workload tradeoff, not a code-size win.
 Publication only adds documentation to the qualified runtime; native restacking
 verifies complete runtime/tool tree equality. Ragnarök still trails PolkaVM on
 these inputs. M1 framing completion and full-JAM parity gates remain unchanged.
+
+
+## Arithmetic scope selected once, 2026-10-25
+
+The shared evaluator retains its successful-decode guard and every payload/index
+contract, then lets the existing opcode switch decide support. Its default already
+returns false without publishing either output. Genuine instruction coordinates
+are saturated and bounded for every operand shape, including ordinary zero for
+non-arithmetic destinations; therefore selecting those original register values
+before default refusal is safe and pure. Failed/default results still refuse before
+any payload or register selection. The preliminary opcode-set lookup is removed;
+no new scope field, tag, API, representation or unchecked path is introduced.
+
+All arithmetic equations and the sole guarded output-publication block are identical
+apart from indentation. The standalone public opcode predicate is retained. The
+unchanged38977-row reference corpus, all valid out-of-scope output sentinels,
+dependent chains, charged execution/cache/ARC, memory/control and nested host/mixed
+policy checks remain required. The parent planned Pinky profile attributes119,775,747
+instructions to the removed membership expression; actual timing still requires
+isolated paired CI. Implemented M1 scope and the open full-JAM gap remain unchanged.
+
+
+### Canonical timing qualification
+
+The earlier paired runs below used source-equal controls whose build paths could
+produce different native images. The corrected harness in PR1557 compiles each role
+at the same canonical source path with the same output basename, then requires all
+three independently built same-source control images to be byte-identical before timing.
+Historical source-only timings remain observations, not canonical speedup evidence.
+
+Canonical CI40151164898 attempts1/2 pass all54 cells,2808 paired and2808 control
+invocations per attempt, complete state/gas/page checks and the interpreted reference
+pack. All three control-image pairs are byte-identical in each attempt. On EPYC9V45,
+planned Pinky changes+2.46/+4.21% (controls+2.58/-0.41%); on EPYC7763 it changes
+-2.04/-3.93% (controls+0.09/-0.87%). The effect depends on workload and hardware;
+this change does not establish a general runtime speedup. The deterministic native
+instruction reductions below remain valid, and do not predict execution time.
+
+### Historical source-only paired CI and deterministic confirmation
+
+CI40143376095 attempts1/2 retain all54 real/synthetic cells, both process orders,
+2808 paired and2808 same-source control invocations per attempt, complete state/gas/
+page validation and the pinned interpreted reference pack. Planned Pinky changes
+-3.00/-2.06% initially (controls-1.52/-0.58%) and-1.96/-3.14% in the repeat
+(controls-0.97/-0.80%). Planned long memset improves1.01% in both initial orders
+and1.20/1.42% on repeat. Dynamic Pinky is near-neutral initially and-2.13/-1.03%
+on repeat; memo Pinky is mixed, with no stable improvement claimed.
+
+Tradeoffs remain explicit. Short dynamic memset changes+2.37/+2.64% initially and
++5.14/+3.64% on repeat, roughly2–7us; its controls are+3.25/-0.75% and+2.60/-8.87%.
+Initial memo aligned/crossing synthetic memory regresses4.61/4.86% and3.60/4.70%;
+these regressions do not repeat. Initial planned crossing hosts change+8.11/+3.02%
+against-0.26/-3.90% controls; repeat-8.60/-0.86% does not confirm that regression.
+Other smaller cells are mixed and their raw observations remain retained. This is a
+source-only timing observation, superseded for qualification by the canonical results above.
+
+Profile40146598603 changes only shared arithmetic source and its frozen copy versus
+parent profile40140452445; build, fixtures, driver, scope and all other source hashes
+are identical. All five full-state profiles, generated-source hashes, selected/absent
+scope and checked-assertion controls pass. Native instruction counts decrease:
+dynamic Pinky5,420,915,910 (-2.463%), planned Pinky5,048,924,258 (-2.640%),
+sieve165,556,450 (-3.228%), minimal421,594,943 (-1.126%), memset194,622,517
+(-1.618%). The extra planned machine trace matches the source-profile Ir exactly.
+These counters establish less native instruction work; they are not timing predictions.
+
+The repeat's same-job reference comparison is planned Pinky196.902ms versus pinned
+PolkaVM interpreted97.965ms (2.01x slower). Beating that interpreter remains open;
+CPU families differ between jobs, so no cross-job ratio or percentage is compounded.
+Eight selected checked native suites pass, including the unchanged38977 arithmetic
+reference rows, out-of-scope output sentinels, dependent chains, memory/control and
+nested host/mixed policies, with declared1000 balanced ARC lifetimes. Publication
+adds only this evidence to the measured runtime; no production or build change occurs.
+Raw evidence and the exact equation/profile identity proofs remain under
+`build/pvm12/ci-40143376095/`, `build/pvm12/ci-40143376095-attempt2/`,
+`build/pvm12/ci-40146598603/` and `build/pvm12/arithmetic-scope-profile-proof.json`.
