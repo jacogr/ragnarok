@@ -216,3 +216,16 @@ This diagnostic changes no interpreter, guest driver, timing workloads, pins or
 compiler flags. Linux qualification must pass five controls, seven state/source
 profiles, every retained part and the native trace. Comparing the exact guest binary
 and all five original Ir totals checks that existing collected work remains unchanged.
+
+[CI40164470290](https://github.com/jacogr/ragnarok/actions/runs/40164470290)
+qualifies complete-return collection: all five controls, seven full-state/source
+profiles, every one of the26 memo parts and the extra planned native trace pass.
+Each selected memo part records one incoming execution call; both termination
+dumps are empty. The guest binary is byte-identical to CI40155772971, and all five
+original Ir totals match exactly. This extension changes collection only.
+
+The final warmed memo calls execute201,641,178 native instructions for memory
+fill100000 and5,378,259,239 for Pinky. These are actual complete final-call dumps,
+not averages or corrected entry-reset counts. The call graph exposes repeated
+ownership traffic in secondary-price lookup and motivates further investigation;
+instruction differences remain diagnostic rather than CPU-speed claims.
