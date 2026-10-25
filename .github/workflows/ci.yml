@@ -203,12 +203,13 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 17
+      max-parallel: 18
       matrix:
         os: *ci-os
-        family: ${{ fromJSON('[{"name":"Shard (1/16)","shard":"1/16","group":"suites"},{"name":"Shard (2/16)","shard":"2/16","group":"suites"},{"name":"Shard (3/16)","shard":"3/16","group":"suites"},{"name":"Shard (4/16)","shard":"4/16","group":"suites"},{"name":"Shard (5/16)","shard":"5/16","group":"suites"},{"name":"Shard (6/16)","shard":"6/16","group":"suites"},{"name":"Shard (7/16)","shard":"7/16","group":"suites"},{"name":"Shard (8/16)","shard":"8/16","group":"suites"},{"name":"Shard (9/16)","shard":"9/16","group":"suites"},{"name":"Shard (10/16)","shard":"10/16","group":"suites"},{"name":"Shard (11/16)","shard":"11/16","group":"suites"},{"name":"Shard (12/16)","shard":"12/16","group":"suites"},{"name":"Shard (13/16)","shard":"13/16","group":"suites"},{"name":"Shard (14/16)","shard":"14/16","group":"suites"},{"name":"Shard (15/16)","shard":"15/16","group":"suites"},{"name":"Shard (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus","shard":"","group":"corpus"}]') }}
+        family: ${{ fromJSON('[{"name":"Shard (1/16)","shard":"1/16","group":"suites"},{"name":"Shard (2/16)","shard":"2/16","group":"suites"},{"name":"Shard (3/16)","shard":"3/16","group":"suites"},{"name":"Shard (4/16)","shard":"4/16","group":"suites"},{"name":"Shard (5/16)","shard":"5/16","group":"suites"},{"name":"Shard (6/16)","shard":"6/16","group":"suites"},{"name":"Shard (7/16)","shard":"7/16","group":"suites"},{"name":"Shard (8/16)","shard":"8/16","group":"suites"},{"name":"Shard (9/16)","shard":"9/16","group":"suites"},{"name":"Shard (10/16)","shard":"10/16","group":"suites"},{"name":"Shard (11/16)","shard":"11/16","group":"suites"},{"name":"Shard (12/16)","shard":"12/16","group":"suites"},{"name":"Shard (13/16)","shard":"13/16","group":"suites"},{"name":"Shard (14/16)","shard":"14/16","group":"suites"},{"name":"Shard (15/16)","shard":"15/16","group":"suites"},{"name":"Shard (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/2)","shard":"","group":"corpus","corpus_shard":"1/2"},{"name":"Corpus (2/2)","shard":"","group":"corpus","corpus_shard":"2/2"}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
+      CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
       UNIT_SCOPE: ${{ matrix.family.group }}
       CI_SHARD_SEED: ${{ github.run_id }}
     runs-on: ${{ matrix.os }}
@@ -236,6 +237,8 @@ jobs:
             build/tests/runtime/results.json
             build/tests/corpus/*.log
             build/tests/corpus/results.json
+            build/tests/corpus/*/*.log
+            build/tests/corpus/*/results.json
             build/crypto/build.log
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log

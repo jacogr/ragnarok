@@ -72,7 +72,11 @@ appropriate `tools/corpus_*.py` module; preserve request hashes, build profiles,
 comparison and explicit scheduling. Register a named `<feature>_corpus` callable with the owning
 module's `@CORPORA.case`; return its verdict instead of separately assigning a report key. The
 registration supplies both scheduling and completeness expectations. Preserve shared-build
-dependencies in the feature/task order. New `corpus_*.py` modules are discovered automatically;
+dependencies in the feature/task order. A case that reads a preceding corpus result must declare
+that producer with `@CORPORA.case(requires=('producer_corpus',))`; dependencies may cross feature
+groups but must precede the consumer. Randomized corpus sharding keeps each connected dependency
+bundle together; shared helpers that read the report carry the same dependency requirement.
+Independent cases need no shard assignment or timing declaration. New `corpus_*.py` modules are discovered automatically;
 declare `CorpusGroup(order=<unique rank>)` locally, with `resources` for generated fixture inputs.
 Leave gaps between dependency ranks to allow insertion without renumbering other features.
 

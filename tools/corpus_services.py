@@ -138,7 +138,7 @@ def composition_corpus(compiler, report, checks, libraries):
 
 
 # Run this independently declared corpus with its original checks and dependencies.
-@CORPORA.case
+@CORPORA.case(requires=('trie_corpus',))
 def state_roots_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
@@ -222,13 +222,13 @@ def state_witness(family, compiler, report, checks, libraries):
 
 
 # Retain this witness family as a separately required, independently checked result.
-@CORPORA.case
+@CORPORA.case(requires=('composition_corpus',))
 def state_widths_corpus(compiler, report, checks, libraries):
     return state_witness('state_widths', compiler, report, checks, libraries)
 
 
 # Retain this witness family as a separately required, independently checked result.
-@CORPORA.case
+@CORPORA.case(requires=('composition_corpus',))
 def request_namespace_corpus(compiler, report, checks, libraries):
     return state_witness('request_namespace', compiler, report, checks, libraries)
 

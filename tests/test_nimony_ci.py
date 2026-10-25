@@ -265,9 +265,10 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'unit', event_context())
-        self.assertEqual(len(families), 17)
+        self.assertEqual(len(families), 18)
         corpus = [row for row in families if row['group'] == 'corpus']
-        self.assertEqual(corpus, [dict(name='Corpus', shard='', group='corpus')])
+        self.assertEqual(corpus, [dict(name=f'Corpus ({index}/2)', shard='', group='corpus',
+                                     corpus_shard=f'{index}/2') for index in (1, 2)])
         values = [row['shard'] for row in families if row['group'] == 'suites']
         partitions = [parse_unit_shard(value) for value in values]
         count = partitions[0][1]
@@ -275,7 +276,9 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
-        self.assertIn('max-parallel: 17', unit)
+        self.assertIn('max-parallel: 18', unit)
+        self.assertIn('CORPUS_SHARD: ${{ matrix.family.corpus_shard }}', unit)
+        self.assertIn('build/tests/corpus/*/results.json', unit)
         self.assertIn('name: Unit / ${{ matrix.family.name }}', unit)
         self.assertIn('UNIT_SCOPE: ${{ matrix.family.group }}', unit)
         self.assertIn('UNIT_SHARD: ${{ matrix.family.shard }}', unit)
