@@ -17,7 +17,7 @@ def exchanges(job):
               (b'\x04'+digest(job['header']), b'\x05'+job['state'][32:])]
     sibling = None
     for step in job['steps']:
-        header = step['block'][:297]
+        header = step['header']
         result.extend(((b'\x03'+step['block'], b'\x02'+step['state'][:32]),
                        (b'\x04'+digest(header), b'\x05'+step['state'][32:])))
         if step['kind'] == 'V':

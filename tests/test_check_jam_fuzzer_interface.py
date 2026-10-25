@@ -24,7 +24,10 @@ class JamInterfaceCI(unittest.TestCase):
                         completed_imports=3, retained_siblings=1, complete_state_queries=11,
                         consensus_rejections=3, isolated_reconnects=1)),
                     minifuzz=dict(passed=True, false_success_control=True, planned_sessions=2,
-                        completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3))
+                        completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3,
+                        planned_host_profiles=2, completed_host_profiles=2, host_profiles=[
+                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, completed_sessions=1, completed_exchanges=4),
+                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, completed_sessions=1, completed_exchanges=5)]))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -106,3 +109,17 @@ class JamInterfaceCI(unittest.TestCase):
         self.assertNotIn('continue-on-error', job)
         make = (interface.ROOT/'Makefile').read_text()
         self.assertIn('check-jam-fuzzer-interface: setup check-inventory', make)
+
+    def test_minifuzz_profile_completeness(self):
+        """A dropped, duplicated, partial or unverified target profile cannot pass aggregate CI evidence."""
+        import copy
+        good = self.complete()['minifuzz']
+        self.assertTrue(interface.minifuzz_verified(good))
+        for mutation in ('missing', 'duplicate', 'control', 'partial', 'count'):
+            row = copy.deepcopy(good)
+            if mutation == 'missing': row['host_profiles'].pop()
+            elif mutation == 'duplicate': row['host_profiles'][1]['parameters_sha256'] = 'a'*64
+            elif mutation == 'control': row['host_profiles'][0]['false_success_control'] = False
+            elif mutation == 'partial': row['host_profiles'][0]['completed_exchanges'] -= 1
+            else: row['completed_host_profiles'] -= 1
+            self.assertFalse(interface.minifuzz_verified(row))

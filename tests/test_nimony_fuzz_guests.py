@@ -29,3 +29,34 @@ class GuestSocketEvidence(unittest.TestCase):
         for parameters in (host_parameters(code_limit=4096), host_parameters(deposits=(7, 1, 100)), b''):
             with self.assertRaises(AssertionError):
                 prepare_sessions(parameters)
+
+    def test_marker_headers_and_explicit_profiles(self):
+        """A present epoch marker retains its complete sealed identity; undeclared profile cardinality refuses locally."""
+        import hashlib
+        from pathlib import Path
+        import tempfile
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from header_oracle import example, wire as header_wire
+        from current_stf_oracle import checkpoint
+        from state_layout_oracle import chapter_key
+        from nimony_fuzz_guests import reference_sessions
+        from native_fixture_contracts import FIXTURE_CONTRACTS
+        from jam_minifuzz_trace import exchanges
+        header = header_wire('H', example('H'))
+        self.assertGreater(len(header), 297)
+        state = checkpoint([(chapter_key(1), b'\0')]).hex()
+        lines = ['P '+state, 'B '+(header+bytes(7)).hex(), 'O '+state]
+        with tempfile.TemporaryDirectory() as folder:
+            fixture = Path(folder)/'reference.json'
+            fixture.write_text('{}\n')
+            reference = SimpleNamespace(FIXTURE=fixture, expected_observations=lambda: ([], lines, {}))
+            contract = ('TEST_REFERENCE', fixture, [(fixture, hashlib.sha256(fixture.read_bytes()).hexdigest())])
+            with patch.dict(FIXTURE_CONTRACTS, test_reference=contract):
+                profile = host_parameters(code_limit=4096, deposits=(7, 1, 100))
+                jobs, _ = reference_sessions(reference, 'test_reference', [profile])
+                self.assertEqual(jobs[0]['parameters'], profile)
+                self.assertEqual(jobs[0]['steps'][0]['header'], header)
+                self.assertIn(b'\x04'+digest(header), [request for request, _ in exchanges(jobs[0])])
+                with self.assertRaises(AssertionError): reference_sessions(reference, 'test_reference', [])
+                with self.assertRaises(AssertionError): reference_sessions(reference, 'test_reference', [b''])
