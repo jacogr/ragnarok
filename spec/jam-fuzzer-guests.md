@@ -42,3 +42,11 @@ and immediate delivery, recipient thresholds, gas costs, memo-selected storage,
 checkpoint/panic selection, service balances, statistics and outputs are compared
 through the actual fuzz backend. Each invalid prior-root attempt must leave the
 entire selected state untouched before the genuine transfer-bearing block runs.
+
+Account lifecycle coverage groups creation, code upgrades, incarnation-bound
+supervision, retirement/refunds and manager handoff. Five independent references
+contribute150 complete-map imports through the fuzz backend. Selected and rolled
+back account/request namespaces, balances, newly derived IDs, privilege state,
+code availability, statistics and outputs remain part of the exact returned map.
+Repeated report releases exercise the selected code and authority in subsequent
+blocks rather than checking an isolated host-call result.
