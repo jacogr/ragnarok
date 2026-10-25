@@ -20,16 +20,19 @@ const
   Values = ["--trace-observations", "--telemetry", "--chain", "--management-socket", "--rpc-port",
       "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
-      "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
+      "--state-checkpoint-bytes", "--node-mode", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
       "--state-compact-bytes", "--download-ancestor", "--download-blocks",
       "--download-remote-ancestors", "--download-discover-ancestors",
       "--download-logical-source", "--download-logical-policy", "--download-namespace-policy"]
 
-type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
+type NodeMode* {.pure.} = enum ## Trusted partial light state remains distinct from complete full-state execution.
+  Full, Light
+
+type StateStorage* {.pure.} = enum ## Backend choice is independent of full/light node mode.
   Memory, Disk
 
-type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memory/disk and future full/light selection.
+type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memory/disk and full/light selection.
   Journal, Managed, Paged
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
@@ -40,6 +43,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
+  mode: NodeMode
   backend: StateStorage
   layout: StateDiskLayout
   pagedResume: bool
@@ -52,6 +56,19 @@ type Options* = object ## Validated service controls; command handlers validate 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
   options.parsed
+
+func nodeMode*(options: Options): NodeMode =
+  ## Mode observation grants no startup authority when parsing failed.
+  options.mode
+func lightMode*(options: Options): bool =
+  ## Only successfully parsed explicit light activation selects partial-state ownership.
+  options.parsed and options.mode == NodeMode.Light
+func lightTrustPath*(options: Options): string {.requires: options.lightMode.} =
+  ## Independent current identity is an operator input, never inferred from a native directory.
+  options.recoveryIdentity
+func lightHeaderPath*(options: Options): string {.requires: options.lightMode.} =
+  ## Exact independently selected sealed-header bytes anchor light restart metadata.
+  options.recoveryHeader
 
 proc argumentCount*(options: Options): int =
   ## Count only positional command arguments, excluding all trailing service controls.
@@ -267,6 +284,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
           if ord(character) < 32 or ord(character) ==
               127: return false # Keep the later fixed filename addition bounded and native path identity exact.
         candidate.observations = value
+      of "--node-mode":
+        case value
+        of "full": candidate.mode = NodeMode.Full
+        of "light": candidate.mode = NodeMode.Light
+        else: return false # Mode is explicit and cannot be inferred from backend files.
       of "--state-layout":
         case value
         of "journal": candidate.layout = StateDiskLayout.Journal
@@ -353,7 +375,23 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   var recoveryCount = 0
   for control in recoveryControls:
     if control in seen: inc recoveryCount # Seen uniqueness bounds this count to the fixed four controls.
-  if recoveryCount > 0:
+  if candidate.mode == NodeMode.Light:
+    # Partial mode has independent current trust and never accepts complete-state recovery/migration or execution-only controls.
+    if not candidate.state or candidate.chain.len == 0 or recoveryCount != 2 or
+        candidate.recoveryIdentity.len == 0 or candidate.recoveryHeader.len == 0:
+      return false # A light owner cannot start with missing/partial current authority.
+    if "--state-checkpoint" in seen or "--state-checkpoint-bytes" in seen or
+        hasWrites or hasBytes or candidate.pagedResume or candidate.migrateFrom.len > 0:
+      return false # No complete map, unsupported implicit replay or ignored mutation policy enters light startup.
+    if candidate.backend == StateStorage.Disk and candidate.layout != StateDiskLayout.Paged:
+      return false # Journal/managed schemas do not represent the light proof database.
+    if candidate.positional.len > 0 and candidate.positional[0] in ["download", "download-current"]:
+      return false # Complete execution/download commands cannot masquerade as partial light operation.
+    for path in [candidate.recoveryIdentity, candidate.recoveryHeader]:
+      for character in path:
+        if ord(character) < 32 or ord(character) ==
+            127: return false # Native trust paths cannot truncate or carry controls.
+  elif recoveryCount > 0:
     if candidate.migrateFrom.len > 0: return false # Imported external authority and local migration are separate startup intentions.
     if not candidate.state or recoveryCount != recoveryControls.len:
       return false # Partial/disabled external imports cannot activate or reuse an earlier successful parse.

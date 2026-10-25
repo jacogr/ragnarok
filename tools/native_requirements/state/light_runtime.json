@@ -1,0 +1,35 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "application_checkpoint"
+  ],
+  "includes": [
+    "crypto",
+    "bandersnatch",
+    "quic",
+    "storage_io"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch",
+    "observer",
+    "quic",
+    "storage_io"
+  ],
+  "observers": [
+    "verify",
+    "setup_new",
+    "setup_free",
+    "commit",
+    "ring_verify",
+    "io_read",
+    "io_renameat",
+    "io_write",
+    "io_fsync",
+    "io_flock",
+    "io_close",
+    "io_unlinkat"
+  ],
+  "prepared": false
+}
