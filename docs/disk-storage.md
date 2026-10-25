@@ -102,3 +102,9 @@ canonical/RPC adoption. Native uncertainty quarantines new owner reads until clo
 already retained immutable snapshots remain readable. Paged artifact retirement and interrupted
 candidate cleanup use their explicit native receipt/replay contracts; directory contents never
 authorize inferred deletion.
+
+Full paged application publication now automatically retires the exact authenticated predecessor
+through the existing disk worker before another artifact can be authored. Foreign old-reader pins
+produce bounded retry/backpressure; cleanup uncertainty stops later writes while preserving the
+already confirmed canonical head. Restart retries the same descriptor, including synchronized
+already-absent retirement. Cleanup receipts remain separate from publication receipts.

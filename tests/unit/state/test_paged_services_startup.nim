@@ -2,7 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual full Services startup selects a paged directory explicitly and binds only its intact V2 local state/context.
-import std/[assertions, syncio, envvars]
+import std/[assertions, syncio, envvars, monotimes, times]
+import std/posix/posix
+import ../../support/storage_io
+import ../../../src/app/[disk_chain, disk_worker, disk_history, paged_policy]
+import ../../../src/state/disk_store
+import ../../../src/storage/[file_repository, node_repository, node_records, record_codec,
+    full_paged_store, database_identity]
+import ../../../src/codec/state_trie
+import ../../../src/crypto/primitives
+import ../../../src/chain/parameters
 import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
@@ -49,6 +58,100 @@ proc imported() {.raises.} =
   assert owner.start(selected, "preserved imported head")
   assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
   owner.close()
+proc waitRetirement(owner: var Services) =
+  ## Scalar polling waits for worker completion before tick resumes any graph-bearing canonical/RPC access.
+  let started = getMonoTime()
+  while owner.diskPublicationPhase != DiskWorkerPhase.Done:
+    assert (getMonoTime()-started).inSeconds < 20
+    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requested, remaining) # Yield under an independent monotonic harness deadline.
+  owner.tick(0)
+proc retirement(mode: int) {.raises.} =
+  ## Startup reconstructs one exact pending predecessor; cleanup preserves canonical identity and core publication receipts.
+  let path = "paged-services-retirement-" & $appPid() & "-" & $mode
+  let selected = configured(path, "paged")
+  var owner = default(Services)
+  var disk = default(DiskStateStore)
+  var reader = default(FullPagedReader)
+  defer:
+    owner.close() # Join first, then release any independent old reader and test-only writer lease.
+    resetIo()
+    if reader.opened: discard reader.close
+    if disk.opened: discard disk.close
+  assert owner.start(selected, "paged retirement seed")
+  let seed = initApplicationChain(owner.chainView).value
+  let trusted = captureApplicationCheckpointIdentity(seed).value
+  owner.close()
+  var policy = genesisStoreLimits()
+  policy.writes = selected.stateWrites
+  policy.writeValueBytes = selected.stateWriteBytes
+  var identity: seq[byte] = @[]
+  for character in "RAGNAROK-CHAIN-V1\n": identity.add(byte(
+      character)) # Independent fixture chain identity uses configured genesis authority.
+  for octet in array[32, byte](seed.chainView.bestBlock.value.blockHash): identity.add(octet)
+  for octet in array[32, byte](seed.stateSnapshot.value.commitment.root): identity.add(octet)
+  for octet in seed.chainView.bestBlock.value.chainParameters.encodeParameters: identity.add(octet)
+  let chain = StorageChainId(array[32, byte](blake2b256(identity).value))
+  let journal = JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: policy.trie,
+    records: TrieExportLimits(records: TrieNodeLimit(1048576), valueBytes: ByteLimit(4194304)),
+    encoded: ByteLimit(67108864)), records: ElementLimit(4194304), valueBytes: ByteLimit(
+        134217728)),
+    bytes: ByteLimit(268435456), contextBytes: ByteLimit(4194304))
+  let bounded = pagedApplicationPolicy(chain, seed.stateSnapshot.value.commitment.root, journal)
+  assert openLocalPagedDiskStateStore(disk, path, chain, policy, bounded.native,
+      bounded.transport).error == DiskStoreError.None
+  if mode == 1:
+    # This independent physical pin survives publication and startup; resident application snapshots hold no such pins.
+    assert openFullPagedReader(reader, path, bounded.native).error == FullPagedNativeError.None
+  let before = disk.snapshot.value
+  let context = encodeDiskHistory(seed, chain, RepositoryGeneration(2), bounded.contextBytes).value
+  assert disk.commit(before, before, context).error == DiskStoreError.None
+  assert disk.close == FileError.None
+  assert owner.start(selected, "pending paged retirement restart")
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, trusted)
+  let current = readFile(path & "/CURRENT")
+  resetIo()
+  if mode == 2: armIo(readIo, 0, 1, failedIo) # Only the worker's actual retirement source fence consumes this failure.
+  if mode == 3:
+    assert owner.beginDiskRetirement()
+    owner.stopDiskPublication() # Joined shutdown retains actual retirement or queued NotExecuted; no fabricated core publication.
+    assert owner.diskRetirementCompletion.kind in {DiskCompletionKind.Retired,
+        DiskCompletionKind.NotExecuted}
+  else:
+    owner.tick(0) # Automatic retirement has priority before staging any new paged publication.
+    assert owner.diskPublicationActive
+    waitRetirement(owner)
+    let completion = owner.diskRetirementCompletion
+    assert completion.kind == DiskCompletionKind.Retired
+    let outcome = completion.retirementValue
+    if mode == 0:
+      assert outcome.error == DiskStoreError.None
+      assert not owner.beginDiskRetirement() # No second unlink attempt is scheduled after confirmed retirement.
+    elif mode == 1:
+      assert outcome.error == DiskStoreError.FileFailure and outcome.fileError == FileError.Busy
+      owner.tick(0)
+      assert not owner.diskPublicationActive # Immediate ticks respect the one-second retry delay instead of spinning on the pin.
+      assert reader.close == FileError.None
+      assert owner.beginDiskRetirement() # Explicit retry uses the same slot and exact authenticated target.
+      waitRetirement(owner)
+      assert owner.diskRetirementCompletion.retirementValue.error == DiskStoreError.None
+    else:
+      assert outcome.error == DiskStoreError.FileFailure and outcome.fileError ==
+          FileError.IoFailure
+      assert pendingIo() == 0 and not owner.beginDiskRetirement() # Cleanup uncertainty stops further writes until fresh startup.
+  resetIo()
+  assert not owner.diskPublicationActive
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, trusted)
+  assert owner.diskPublicationOutcome.error == DiskChainError.Uninitialized
+  assert readFile(path & "/CURRENT") == current # Cleanup never changes the already confirmed canonical selection.
+  owner.close()
+  assert owner.start(selected, "retirement restart retry")
+  owner.tick(0)
+  assert owner.diskPublicationActive # The durable descriptor survives; exact old absence is resolved with a real barrier.
+  waitRetirement(owner)
+  assert owner.diskRetirementCompletion.retirementValue.error == DiskStoreError.None
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, trusted)
 proc main() {.raises.} =
   ## Exclusive locking and wrong-layout/corrupt-CURRENT refusals never replace an existing selected epoch.
   let path = "paged-services-startup-" & $appPid()
@@ -89,6 +192,7 @@ proc main() {.raises.} =
   assert owner.start(selected, "validator")
   owner.close()
   imported()
+  for mode in 0..3: retirement(mode) # Genuine startup and the shared excluded worker cover all cleanup outcomes.
   # Exact native directories remain under the ignored runner working path for inspection.
 try:
   main()

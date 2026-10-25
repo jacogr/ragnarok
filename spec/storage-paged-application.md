@@ -284,3 +284,53 @@ pvm_current_disk_worker and managed_layout_options. Linux allocation evidence is
 sha256:49fe620c081b9d0fc090f70b27bc54758c7cc3bd6a34268d36167b4e5bc525f4;
 its source hashes and native evidence are recorded under build/storage-db5-app-full-linux.json.
 These are process/filesystem checks, not physical power-loss qualification.
+
+## Bounded application predecessor retirement
+
+The full paged facade reconstructs one pending predecessor from the authenticated application
+envelope on local startup. A prepared retirement job contains private passive current/previous
+manifest metadata and an incarnation identity; it owns no native pin or writer lease. Default,
+foreign, stale-generation and reopened-incarnation jobs cannot authorize IO. Reusing an old job
+after a newer publication refuses passively without quarantining that valid newer source.
+
+After confirmed publication the facade admits no further artifact authoring until that predecessor
+is retired. The selected root union still contains every retained complete historical map.
+Normal authored storage therefore has at most the current artifact and its one pending predecessor;
+failed forensic candidates require the separate explicit recovery contract. Unrelated foreign
+namespace contents are never swept or included in an authored-file bound.
+
+Retirement uses the existing capacity-one excluded disk worker, with an explicit fourth operation
+and guarded `Retired` completion carrying the actual DiskStoreResult[FullPagedReclamation].
+Collection and joined Done shutdown move that exact result; only queued shutdown may report
+NotExecuted. Every new borrowed pointer and result participates in start/reset/collect/close/move/
+destruction ownership. Native and canonical/RPC graph aliases remain excluded until collection
+or joined shutdown, and retirement never grants an ordinary publication or adoption receipt.
+
+Services gives pending retirement priority before staging another paged publication. Busy from a
+foreign old reader retains the descriptor and backpressures authoring, with automatic retries at
+most once per monotonic second. Explicit retry uses the same slot. Resident application snapshots
+hold no old native pin. Other cleanup uncertainty stops future writes until a fresh startup, while
+the confirmed canonical identity and independent memory snapshots remain available after the
+lease ends. Cleanup receipts remain separate from completed core publication receipts.
+
+Checked native tests cover passive backpressure/stale jobs, collect/join/immediate close across
+success/Busy/IO failure, continued historical reconstruction after actual predecessor removal,
+and real Services restart/automatic cleanup/foreign-pin retry/IO refusal/joined shutdown without
+changing CURRENT or canonical identity. Both genuine legacy and current publication worker
+regressions remain required. The facade's 1,000-cycle ARC evidence remains 12,816 -> 12,816
+occupied bytes after predecessor deletion. Two compiler guards reject access to job incarnation
+and raw retirement completion payloads.
+
+The existing seven-variable disk lease/join model remains unchanged: its base explores 25 safe
+states, all three guard mutants fail, and the uncertain joined-receipt witness is reachable, with
+serial/four-worker agreement. It abstracts IO payloads and does not prove format/deletion safety.
+The new deterministic completion routing is checked by native tests rather than a larger model.
+No new concurrency defect is claimed from this review.
+
+The final application retirement facade/worker suite and actual Services startup/retirement
+suite pass checked Linux amd64 under Docker emulation, including the same 1,000-cycle
+12,816 -> 12,816 ARC result. Qualified image:
+sha256:567bff7089e2ed900cee527b898f2a4172b7518c32934bf18af5ee7ed42be5ff.
+Frozen source hashes and native evidence: build/storage-db5-app-retirement-linux.json.
+Both genuine publication worker regressions and all 420 production modules plus the peer
+semantic entry point pass locally; separate stable formatting and both privacy guards pass.

@@ -7,20 +7,23 @@
   "includes": [
     "crypto",
     "bandersnatch",
-    "quic"
+    "quic",
+    "storage_io"
   ],
   "libraries": [
     "bandersnatch_observer",
     "bandersnatch",
     "observer",
-    "quic"
+    "quic",
+    "storage_io"
   ],
   "observers": [
     "verify",
     "setup_new",
     "setup_free",
     "commit",
-    "ring_verify"
+    "ring_verify",
+    "io_read"
   ],
   "prepared": false
 }
