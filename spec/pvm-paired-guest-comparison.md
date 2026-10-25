@@ -174,7 +174,7 @@ the report. Binaries, sources and compiler caches remain excluded from artifacts
 Focused Python guards cover canonical role activation, stale/deleted members, source
 changes, every image profile, malformed identities, legacy report rendering and a
 same-source image mismatch stopping real orchestration before timing. Exact-head
-Linux validation remains pending before publication.
+Linux validation is recorded below.
 
 Local qualification passes38 focused guest-comparison/input Python tests, workflow
 YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass
@@ -194,3 +194,35 @@ small Pinky timing gain, so the arithmetic change is under separate requalificat
 This harness PR makes no new interpreter speed claim. Compiler/driver/runtime source
 and flags remain identical to qualified08ac0d5b; subsequent edits only add evidence
 and remove unused JSON artifact globs. Real role build logs remain retained.
+
+## Canonical aggregate stack comparison
+
+[CI40154575071](https://github.com/jacogr/ragnarok/actions/runs/40154575071)
+compares the published six-layer stack at4dd6626171711d0fec621a84a2510f5c0ecc3347
+against merged base386e4229da48e6e3a059c4ec7219f3358d743886, on one EPYC7763
+runner with the same checked ARC/native-allocator/Clang ThinLTO profile. Later
+arithmetic timing-caveat documentation changes no runtime, compiler, driver or
+harness sources. Both process orders, all54 cells,2808 paired and2808 control
+invocations, complete state/gas/page/assertion checks and the interpreted reference
+pack pass. All three same-source control image pairs are whole-file byte-identical.
+
+The following CPU median changes retain both orders; negative values are faster.
+These are direct aggregate observations, not sums of earlier per-layer percentages.
+
+| Long guest | Dynamic | Immutable plan | Lazy memo |
+| --- | --- | --- | --- |
+| Pinky frame | -5.30/-5.18% | -7.38/-7.24% | -5.04/-4.74% |
+| Sieve100000 | -7.94/-9.35% | -15.68/-16.95% | -12.88/-15.68% |
+| Minimal100000 | -10.31/-9.93% | -13.40/-15.16% | -11.40/-11.95% |
+| Fill100000 | -11.58/-11.62% | -18.05/-17.64% | -16.73/-16.58% |
+
+Pinky identical-image controls change+0.53/-0.82% dynamic,-1.27/+3.23% planned,
+and+1.02/+1.53% memo. Long sieve/minimal/fill controls remain within1.31% in both
+orders. Memo crossing-host synthetic work changes+2.84/+3.73%, with corresponding
+controls-0.50/+11.37%; small host cells do not establish a universal host gain.
+All cold observations, dispersion and regressions remain retained in raw reports.
+
+In the same job, warmed planned Pinky is411.125ms against pinned PolkaVM interpreted
+183.604ms, or2.24x slower. This comparison does not establish parity or a win over
+the other interpreter. Do not compare absolute times or compound ratios across
+CPU families. Raw reports remain under`build/pvm12/ci-40154575071/`.
