@@ -157,8 +157,11 @@ Activation must reproduce the exact captured bytes and membership before compila
 post-build checks detect source changes before the path is reused. Deletions retire
 stale members. Original baseline/candidate snapshots remain separate provenance
 owners, and the final candidate compilation snapshot is sealed through all measured
-processes. Each role keeps independent compiler caches and output directories while
-using the same native/synthetic output basenames. Compiler, flags, driver, fixtures,
+processes. Each role now starts with a fully cleared private compilation directory at
+the same cache/object/output paths. Its executable, permissions and build log are
+retained under the separate role directory before that staging directory is retired.
+This isolates compiler state while also fixing ThinLTO object-module identity.
+Compiler, flags, driver, fixtures,
 pricing policies, matrix ordering, cold rows and full-state/assertion checks remain
 unchanged; every build still finishes before timing.
 
@@ -175,6 +178,34 @@ Focused Python guards cover canonical role activation, stale/deleted members, so
 changes, every image profile, malformed identities, legacy report rendering and a
 same-source image mismatch stopping real orchestration before timing. Exact-head
 Linux validation is recorded below.
+
+### Object-path identity follow-up
+
+The byte specialization stress case exposed another path-sensitive identity effect on
+Linux. [CI40171424010](https://github.com/jacogr/ragnarok/actions/runs/40171424010)
+reproduces unequal whole ELF hashes for all three independent-cache pairs despite
+identical generated C and identical `.text` hashes. ELF details identify a promoted
+`writerScalar...llvm.<suffix>` symbol, its string-table entry and the GNU build ID as
+differences. No executable-code difference or timing penalty is inferred from that
+metadata-only mismatch, and the whole-file SHA-256 guard is retained.
+
+Fresh canonical cache/object/output paths produce byte-identical whole images for
+all three profiles in that same build-only stress diagnostic. The source is fixed
+rejected prototype `11f79d97`, built but never executed by this diagnostic; its
+performance experiment remains rejected. A collector fix binds generated-C comparison
+to the active build cache, excluding earlier profiles. Canonical retention preserves
+executable mode and distinct role logs. Python guards exercise cache retirement,
+unchanged compiler paths, retained old bytes/logs/modes and refusal of unstable output
+or symlinked staging. Full same-image execution validation follows before attribution.
+
+[CI40171834535](https://github.com/jacogr/ragnarok/actions/runs/40171834535)
+completes that validation at `8f1974e6`: all three old-path stress pairs reproduce
+the metadata-only mismatch, all three fresh canonical-path pairs are whole-file
+identical, and the complete same-source comparison passes all54 cells and2808
+full-state invocations. The downstream six-profile memory/execution attribution
+also passes. See [the diagnosis](pvm-interpreter-diagnosis.md#deeper-memory-and-execution-attribution)
+for the results and the instruction-count versus timing limits. No runtime
+optimization is qualified by this control run.
 
 Local qualification passes38 focused guest-comparison/input Python tests, workflow
 YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass
@@ -226,3 +257,14 @@ In the same job, warmed planned Pinky is411.125ms against pinned PolkaVM interpr
 183.604ms, or2.24x slower. This comparison does not establish parity or a win over
 the other interpreter. Do not compare absolute times or compound ratios across
 CPU families. Raw reports remain under`build/pvm12/ci-40154575071/`.
+
+
+### Historical stress object availability
+
+The counter follow-up initially stopped before profiling because the historical
+stress branch had been deleted and full branch checkout no longer contained
+`11f79d979ad63a86fe3f3cdecc4559ec6d00da2f`. Make now checks for that exact
+commit object and fetches it from origin only when absent; the diagnostic records
+and uses the full immutable SHA. A fresh empty-repository control proves absence,
+successful exact-SHA retrieval and commit availability. Runtime sources, flags and
+image controls are unchanged; this repairs source provisioning only.

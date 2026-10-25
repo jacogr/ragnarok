@@ -240,6 +240,27 @@ profile-pvm-guests: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_instruction_profile.py
 
+# Opt-in comparative diagnosis keeps both release interpreters and all full-state fixtures unchanged.
+.PHONY: diagnose-pvm-interpreters
+diagnose-pvm-interpreters: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_interpreter_diagnosis.py
+
+# Verify Linux ELF identity before deeper attribution; no benchmark timings are collected.
+.PHONY: diagnose-pvm-build-identity
+diagnose-pvm-build-identity: setup
+	# The rejected stress commit can outlive its remote branch; fetch its exact object only when absent.
+	git cat-file -e 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f^{commit} 2>/dev/null || \
+	  git fetch --no-tags origin 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f
+	$(PYTHON) tools/pvm_build_identity.py
+
+# Own the full prerequisite chain: strict stress identity, complete same-image control, then source attribution.
+.PHONY: attribute-pvm-execution
+attribute-pvm-execution: setup
+	$(MAKE) diagnose-pvm-build-identity
+	$(MAKE) compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_SYNTHETIC=1
+	$(PYTHON) tools/pvm_execution_attribution.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py

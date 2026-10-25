@@ -5,7 +5,7 @@
 """Compare a resolved PVM revision and working sources using one checked driver and paired guests.
 
 Make owns provisioning. Only library sources vary; fixtures, driver, compiler, flags and pricing
-policies stay fixed. Canonical compiler paths and independent role caches preserve reproducible
+policies stay fixed. Fresh canonical compiler paths and retained role images preserve reproducible
 images; same-source controls require byte-identical executables before any timing. Successful
 reports require complete state checks and unchanged byte identities.
 """
@@ -120,6 +120,35 @@ def activate_endpoint(folder, variant, baseline, driver, endpoints):
     return canonical
 
 
+def compile_image(folder, variant, compiler, source, name, **options):
+    """Build fresh through identical cache/object/output paths, then retain the immutable role image."""
+    if variant not in ('baseline', 'candidate') or name not in ('native', 'synthetic-legacy', 'synthetic-memo'):
+        raise ValueError('unknown canonical build role/profile')
+    staging = folder/'compilation'
+    if staging.is_symlink():
+        raise ValueError('canonical build directory is a symlink')
+    if staging.exists():
+        # Retire this comparison's whole private cache: roles cannot reuse stale compiler state.
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    row, binary = build(NativeChecks(staging, reuse_builds=True), compiler, source, name, **options)
+    retained = folder/'builds'/variant/name
+    retained.parent.mkdir(parents=True, exist_ok=True)
+    if retained.is_symlink():
+        raise ValueError('retained comparison image is a symlink')
+    shutil.copy2(binary, retained)
+    if digest(binary) != digest(retained):
+        raise ValueError('canonical build image changed during retention')
+    log = staging/(name+'-build.log')
+    if log.is_file():
+        # The next clean build retires staging; keep each role's original diagnostics with its image.
+        saved = retained.parent/log.name
+        shutil.copyfile(log, saved)
+        row['log'] = str(saved.relative_to(ROOT))
+    row['retained_binary'] = str(retained)
+    return row, retained
+
+
 def identical_image_controls(endpoints, hashes, synthetic):
     """Equal source endpoints must produce equal native images for every measured build profile."""
     if type(synthetic) is not bool:
@@ -197,12 +226,11 @@ def prepare_synthetic(checks, compiler, folder, report, binaries, identities, ba
         endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
         build_folder = folder/'builds'/variant
         build_folder.mkdir(parents=True, exist_ok=True)
-        variant_checks = NativeChecks(build_folder, reuse_builds=True)
         for profile, defines in (('legacy', ()), ('memo', ('pvmBenchmarkMemo',))):
             name = 'synthetic-'+variant+'-'+profile
-            # Both roles use the same source path and output basename, while their writable compiler caches remain independent.
-            row, binary = build(variant_checks, compiler, endpoint/DRIVER[2],
-                                'synthetic-'+profile, defines=defines)
+            # Each role starts fresh at the same source/cache/object/output paths before its image is retained.
+            row, binary = compile_image(folder, variant, compiler, endpoint/DRIVER[2],
+                                        'synthetic-'+profile, defines=defines)
             unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
             row.update(variant=variant, profile=profile)
             report['builds'].append(row)
@@ -324,7 +352,7 @@ def summarize(report):
         if report['identical_sources']:
             lines.append('Identical source endpoints and native images: timing differences are control variation.')
         else:
-            lines.append('Both endpoints use one canonical compiler source path, fixed output basenames and independent caches.')
+            lines.append('Both endpoints use fresh canonical source/cache/object/output paths and retained role images.')
     elif report.get('identical_sources', False):
         # Historical source-only controls remain readable without acquiring the stronger new claim.
         lines.append('Identical source endpoints: source-only control variation; this historical report does not establish native image identity.')
@@ -384,10 +412,9 @@ def run(base_ref, scope='all', folder=None, synthetic=False):
             endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
             build_folder = folder/'builds'/variant
             build_folder.mkdir(parents=True, exist_ok=True)
-            variant_checks = NativeChecks(build_folder, reuse_builds=True)
-            # Output basenames also affect native image identity; roles differ only in their independent cache/output directories.
-            row, binary = build(variant_checks, compiler, endpoint/DRIVER[0], 'native',
-                              cflags=('-I'+str(endpoint/'tests/performance'),))
+            # Object paths affect ThinLTO symbols too; fresh canonical builds isolate roles without changing paths.
+            row, binary = compile_image(folder, variant, compiler, endpoint/DRIVER[0], 'native',
+                                        cflags=('-I'+str(endpoint/'tests/performance'),))
             unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
             row.update(variant=variant)
             report['builds'].append(row)
