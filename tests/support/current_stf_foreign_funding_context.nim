@@ -26,3 +26,13 @@ proc foreignCreationCode*(mode: int, hash: array[32, byte], length: uint32): seq
   instructions.add(if mode in [181, 182]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc foreignDirectTransferCode*(mode: int): seq[byte] =
+  ## Explicit zero memo pointer selects direct transfer from supervised42 into invoking99, including protected pool choices.
+  let pool = uint64(if mode <= 186: mode-183 else: 0)
+  var instructions = @[registerImmediate(7, 42), registerImmediate(8, 99), registerImmediate(9, pool),
+    registerImmediate(10, 7), registerImmediate(11, 0), registerImmediate(12, 0), @[10'u8, 22]]
+  if mode == 189: instructions.add(@[10'u8, 19]) # Retain both endpoint balances before panic.
+  instructions.add(if mode in [188, 189]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, @[]): result.add(octet)

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_FOREIGN_TRANSFERS",
+  "files": {
+    "current-stf-foreign-transfers.json": "81e65c8a1ed23a239dcb24ac83ee1b2cfcc40ecd53ff5fe672be1b994dfcfaa2"
+  },
+  "target": "current-stf-foreign-transfers.json"
+}
