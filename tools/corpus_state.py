@@ -1615,5 +1615,21 @@ def current_stf_trace_observations_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def jam_fuzzer_wire_corpus(compiler, report, checks, libraries):
+    """Compare pinned known JAM session bytes and independent complete opaque maps under explicit current structural domains."""
+    from jam_fuzzer_wire_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for path, digest in FIXTURE_CONTRACTS['jam_fuzzer_wire'][2]:
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Freeze the exact expected observations before native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'jam-fuzzer-wire-requests.txt'
+    return run_corpus(checks.build,checks.command,compiler,
+        ROOT/'tests/native/jam_fuzzer_wire_driver.nim','jam-fuzzer-wire',source,requests,expected,
+        'jam-fuzzer-wire-corpus',metadata=dict(**evidence,
+            reference='pinned known JAM historical message bytes; independent current structural framing and complete opaque maps; no STF campaign execution'),
+        crypto_library=libraries['crypto'])
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
