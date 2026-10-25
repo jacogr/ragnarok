@@ -82,3 +82,26 @@ Unchanged upstream minifuzz passed four sessions, 26 imports and 68 exact exchan
 with its real mismatch control. All 56 focused Python tests and fresh inventory
 passed. Native/Rust source trees retain layer2's formatting/semantic evidence;
 GP checks, primitive cap and all original fixture answers remain unchanged.
+
+## Full-population offender evidence
+
+The next complete checkpoint supplies already-classified good/bad report hashes
+and an existing offender. Authentic culprit/fault evidence uses distinct full-roster
+Ed25519 identities, including index 1022. One new key occurs in both sections:
+the header preserves both occurrences in section order while persistent Phi
+inserts it only once and retains the old offender. A later valid evidence block
+adds another key. No new verdict admission is claimed by this evidence family.
+
+Independently sealed invalid-marker, invalid-signature, invalid-key and
+invalid-classification cases must return the exact guarded dispute cause and leave
+all state unchanged. Prior eligibility is used for the entire evidence batch;
+only subsequent blocks reject a key that became an offender in this block.
+Every exact Error/prior-map pair is replayed through unchanged upstream minifuzz.
+Delayed roster nulling and resized populations follow in the next review unit.
+
+Observed offender validation: eight new complete-map steps (three accepted and
+five exact typed refusals) and six unchanged ticket-admission steps passed checked
+native replay. Unchanged upstream minifuzz passed one session, eight imports and
+20 exact exchanges with its real mismatch control. All 61 focused Python tests
+and fresh inventory passed; unchanged native sources retain prior formatting and
+semantic evidence. Every original fixture answer and GP check remains unchanged.

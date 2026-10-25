@@ -1,0 +1,33 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "chains": 1,
+  "transitions": 8,
+  "accepted": 3,
+  "refused": 5,
+  "full_guests_sha256": "2ff662f514ce4f26f9d7576ca72ce40ec691d1f676acf806b429f11eb54e3610",
+  "successor_roots": [
+    [
+      "1a20dbce1a3927ab7feeb340ab23db6a5256f561eecf9d13a4f18399c957e1d9",
+      "1a20dbce1a3927ab7feeb340ab23db6a5256f561eecf9d13a4f18399c957e1d9",
+      "1a20dbce1a3927ab7feeb340ab23db6a5256f561eecf9d13a4f18399c957e1d9",
+      "1a20dbce1a3927ab7feeb340ab23db6a5256f561eecf9d13a4f18399c957e1d9",
+      "d0e52e8f11216646859ab76fe80400d6ad1ca524cb6b69d47ede8720909ab1a8",
+      "d0e52e8f11216646859ab76fe80400d6ad1ca524cb6b69d47ede8720909ab1a8",
+      "c19f799dd2fafb0fe7be15cbb517fe7ec828e2722560c5d5c0f298915551778a",
+      "10a5de0ea734eb96ee6b39db41dd2f871f8c5352e4c3b04c6d56edd6c9ce5636"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "04142f4441914e71e39b56d0ad2110edae0a2c4e4fbd976a4e756a443be9bded",
+      "04142f4441914e71e39b56d0ad2110edae0a2c4e4fbd976a4e756a443be9bded",
+      "04142f4441914e71e39b56d0ad2110edae0a2c4e4fbd976a4e756a443be9bded",
+      "04142f4441914e71e39b56d0ad2110edae0a2c4e4fbd976a4e756a443be9bded",
+      "6ea131138c53f32fd61ec6169a3183f3ddd4daaaed7d2c3dbfe17d8645f043ad",
+      "6ea131138c53f32fd61ec6169a3183f3ddd4daaaed7d2c3dbfe17d8645f043ad",
+      "be34386b451084ff4c26ab3c664647fcd0195f8b7a9265f31d4da79ebc6b1cca",
+      "27cd4e4bdc5be3eb7465da527e184b3c23087afc0bf26b6b0506007bcd89ae77"
+    ]
+  ],
+  "expected_sha256": "8778570290cf8703828d0ffec5ce9607de67a81f908066352809a31fa872fe40"
+}
