@@ -5,6 +5,7 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[header, assurances, state_trie]
 import ../../src/pvm/[initialize, machine]
+import ../support/current_stf_guest_limits
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
@@ -378,29 +379,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     echo "A HeaderMismatch"
     echo "A StateMismatch"
     echo "A InvalidParameters" # Every rejected bootstrap retains no newly initialized chain or selected-parent prefix.
-  var limits = currentConsecutiveLimits()
-  limits.completion.composition.validators.projection.assurances = ElementLimit(6)
-  limits.completion.composition.validators.projection.reporters = ElementLimit(6)
-  limits.completion.composition.validators.projection.comparisons = ElementLimit(36)
-  limits.completion.composition.activity.available = ElementLimit(2)
-  limits.completion.composition.activity.assurances = ElementLimit(6)
-  # Two real report operands carry five-byte authorization traces and two-byte successful outputs.
-  limits.completion.execution.initial.guests.fetch.items = ElementLimit(2)
-  limits.completion.execution.initial.guests.fetch.bytes = ByteLimit(1024)
-  limits.completion.execution.initial.guests.fetch.operand.outputBytes = ByteLimit(2)
-  limits.completion.execution.initial.guests.fetch.operand.authBytes = ByteLimit(5)
-  limits.completion.execution.initial.guests.fetch.operand.totalBlobBytes = ByteLimit(7)
-  # Continuation dispatch captures the same bounded report payloads after the first affordable prefix.
-  limits.completion.execution.execution.round.guests.fetch = limits.completion.execution.initial.guests.fetch
-  # One release resolves five authored reports across two batches, all retained in one processed row.
-  limits.completion.composition.statistics.operands = ElementLimit(5)
-  limits.completion.composition.finalization.history.reports = ElementLimit(5)
-  limits.completion.composition.finalization.history.queues.perSlot = ElementLimit(5)
-  # Whole guest-code preimages retain explicit byte limits independent of operand payload bounds.
-  limits.completion.composition.validators.preimageBytes = ByteLimit(512)
-  limits.completion.composition.activity.preimages.perBlob = ByteLimit(512)
-  limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(512)
-  limits.completion.composition.preimages.bytes = ByteLimit(512)
+  var limits = currentStfGuestLimits()
   if mode in 57..61 or mode in 131..135:
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)

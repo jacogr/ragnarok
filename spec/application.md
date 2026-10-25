@@ -8,6 +8,13 @@ application organization change; existing JAMNP-S, JIP-2/JIP-3 and HTTP contract
 
 ## Commands and configuration
 
+The offline [published trace checker](current-stf-trace-command.md) accepts explicit
+state configuration, candidate policy, independently anchored Genesis and consecutive
+TraceStep files. It validates the full signed transitions on a private ephemeral chain
+and reports exact-map agreement; listener, disk, recovery and download controls are
+refused for this command.
+
+
 Existing `server`, `client`, `mesh`, bounded fixture modes and no-socket selftest flags retain
 arguments, exit codes, lifecycle markers and cleanup. `build/ragnarok --help` lists the command
 shapes and service flags. These commands are development workloads, not a complete node loop.
@@ -17,8 +24,9 @@ cleared on any failure; ports are bounded before narrowing and all trailing cont
 `--with-telemetry` requires explicit `--telemetry HOST:PORT --chain FILE`; `--with-rpc` enables
 RPC; `--with-ui` enables UI and RPC together. Existing default ports remain 19800/8888, with
 `--rpc-port`, `--ui-port` and `--dev-ui-dir` configuring enabled services. Configuration alone
-never enables a listener/exporter. UI/RPC port collisions, malformed controls and service flags
-on nonnetwork commands fail before startup. No service module re-reads process arguments.
+never enables a listener/exporter. UI/RPC port collisions and malformed controls fail before startup. Listener flags
+remain restricted to network commands; offline trace checking accepts only its explicit
+state/trust controls. No service module re-reads process arguments.
 
 `app/services.nim` centralizes listener startup, bounded chain capture, RPC validation and actual
 certificate/socket-based telemetry setup. Its composite owner forbids copying. Both session

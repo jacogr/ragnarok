@@ -8,6 +8,7 @@ Exposes run_state to execute state serialization/composition corpora and record 
 from functools import partial
 from pathlib import Path
 import hashlib
+import json
 from corpus_checks import run_corpus, compare_corpus, CorpusGroup
 from native_checks import announce
 
@@ -1529,6 +1530,45 @@ def current_stf_trace_genesis_corpus(compiler, report, checks, libraries):
     announce('independent anchored Genesis whole STF maps', corpus['passed'])
     return corpus
 
+
+
+@CORPORA.case
+def current_stf_trace_command_corpus(compiler, report, checks, libraries):
+    """Compare the public offline command against independent full-profile Genesis/trace files and typed refusals."""
+    from current_stf_trace_command_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for path, digest in FIXTURE_CONTRACTS['current_stf_trace_command'][2]:
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Freeze exact independent input/configuration/output evidence before native policy-input generation.
+    jobs, expected, evidence = expected_observations()
+    invoke = []
+    manifest = []
+    for ordinal, job in enumerate(jobs):
+        folder = checks.folder/'operator bundles'/('case-'+str(ordinal).zfill(4))
+        folder.mkdir(parents=True, exist_ok=True)
+        chain = folder/'chain.json'
+        genesis = folder/'genesis.bin'
+        chain.write_text(job['config'])
+        genesis.write_bytes(job['genesis'])
+        paths = [chain, genesis]
+        for index, wire in enumerate(job['steps']):
+            path = folder/('step-'+str(index).zfill(4)+'.bin')
+            path.write_bytes(wire)
+            paths.append(path) # Only independent authored bytes are materialized; filenames carry no profile or expected-success authority.
+        invoke.append(' '.join(str(path.resolve()).encode().hex() for path in paths))
+        manifest.append(dict(chain=str(chain.resolve()),genesis=str(genesis.resolve()),
+            traces=[str(path.resolve()) for path in paths[2:]],expected=expected[ordinal]))
+    policy = checks.folder/'current-stf-command-policy.txt'
+    (checks.folder/'operator-manifest.json').write_text(json.dumps(
+        dict(policy=str(policy.resolve()),cases=manifest),indent=2)+'\n')
+    source = checks.folder/'current-stf-trace-command-requests.txt'
+    source.write_text('\n'.join(invoke)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_trace_command_driver.nim',
+        'current-stf-trace-command',crypto_library=libraries['crypto'],native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
+    corpus = dict(build=compiled,passed=False,**evidence,
+        reference='independent explicit full parameter tuples/configured Genesis maps, signed complete trace files and exact command refusals')
+    compare_corpus(corpus,checks.command,[binary,source,policy],'current-stf-trace-command-corpus',expected)
+    announce('independent offline operator whole-map trace command',corpus['passed'])
+    return corpus
 
 
 # Existing callers use the same entry point; the declared tasks own its complete plan.

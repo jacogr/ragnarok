@@ -4,13 +4,13 @@
 ## Consolidated application entry point for networking, telemetry, RPC and the embedded UI.
 ## Every run returns through native/ARC cleanup before exit.
 ##
-## Parses one explicit configuration and selects peer/mesh workloads or bounded selftests.
+## Parses one explicit configuration and selects peer/mesh workloads, bounded selftests or offline trace checking.
 ## This is the production build and E2E entry point; full node execution remains future work.
 
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, download_command, current_download_command]
+import ./app/[options, download_command, current_download_command, trace_check_command]
 import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
@@ -32,6 +32,7 @@ proc main(): int =
       stdout.writeLine("       ragnarok download PORT CERT KEY PEER ALPN TIMEOUT POLICY [PORT PEER ...] [OPTIONS]")
       stdout.writeLine("       ragnarok download-current PORT CERT KEY PEER ALPN TIMEOUT CURRENT_POLICY [PORT PEER ...] [OPTIONS]")
       stdout.writeLine("         download-current requires ragnarok-current-download-policy-v1; discovery permission must match the requested mode.")
+      stdout.writeLine("       ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] --with-state --chain FILE [STATE_BUDGETS]")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
@@ -51,6 +52,17 @@ proc main(): int =
       stdout.writeLine("         --download-blocks COUNT (download commands only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
+    if options.argumentCount() >= 1 and options.argument(1) == "check-traces":
+      let outcome = runTraceChecks(options)
+      if outcome.error == TraceCheckCommandError.None:
+        var root = ""
+        for octet in array[32, byte](outcome.finalRoot):
+          root.add(toHex(int(octet), 2).toLowerAscii) # Emit the actual verified final commitment after full-map agreement.
+        stdout.writeLine("TRACE_CHECK_OK checked=" & $outcome.checkedBlocks & " root=" & root)
+        return 0
+      stderr.writeLine("TRACE_CHECK_FAILED " & $outcome.error & " checked=" &
+          $outcome.checkedBlocks & " " & outcome.detail)
+      return 2 # The private ephemeral chain and every owned file/candidate retire before command exit.
     if options.argumentCount() >= 1 and options.argument(1) == "download":
       let outcome = runDownloads(options)
       if outcome.requestedBlocks > 1:
