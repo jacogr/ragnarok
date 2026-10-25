@@ -288,3 +288,18 @@ steps passed checked native replay. Upstream minifuzz passed three sessions,33
 imports and78 exact exchanges plus its real mismatch control. All17 focused
 Python tests and inventory passed; the pinned Nim/Rust formatting tree is
 unchanged from the preceding passing check.
+
+## Epoch-divergent guest forks
+
+Each independently produced guest checkpoint admits a real slot600 sibling and
+then the original-last slot599 child from the same parent. The sibling rotates
+entropy, consensus and statistics; the original child retains the earlier epoch.
+The later canonical slot600 child derives from slot599 and has a different full
+map from the direct sibling. Exact retained sibling queries and original-last
+continuation cover all three guest outcomes without altering GP validation.
+
+Observed epoch-fork validation: all nine whole-map steps passed checked native
+replay. Upstream minifuzz passed three sessions, nine imports and33 exact
+exchanges including sibling queries, plus its real mismatch control. All14
+focused Python tests and inventory passed; the previously formatted Nim/Rust
+source tree remains identical.

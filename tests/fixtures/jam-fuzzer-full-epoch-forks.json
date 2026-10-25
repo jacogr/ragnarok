@@ -1,0 +1,42 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "chains": 3,
+  "transitions": 9,
+  "sibling_imports": 3,
+  "epoch_guests_sha256": "f9978f7e6b7c3bd9ab5650ae2e54d5d04491c6cf911b8fdab0ce144bbd302f99",
+  "successor_roots": [
+    [
+      "3dc664867f29f9a30a1017ca69ca2c1c5f1357ccf2bd5728f2f00eb268ae1499",
+      "ed76e864ad5b8cc04a096f9856b71f42e707bfec52b7b16fa33a887eb173fef9",
+      "5c02c85ba29ca1822985874f81b5ed03ad5a0e4bbca0fb72c9a2d9d2246902cf"
+    ],
+    [
+      "b63971cc82b4e587c91fa369f20c9378f4657afc4a2807d374c9889907fe016f",
+      "e93393c9e9ed924dcd849867df2979c4fc70553ce5a1058f1cdca98110fbe1fd",
+      "832a005171cbe09b5927ee38a8f12cbc3d5c35943a3eeb20ac7e7c0adbb23e84"
+    ],
+    [
+      "14eebbf85f8fbe3942fbd7e41a9a15213733959bde4f885cd23e18cdd2a5e62d",
+      "e8995082fd7cb645fd869cfb92585144ec4481b6947a7eb2d50913d631cc7961",
+      "6aa3adf6045af8151e59971274c5ecdca9696c606b5607609bb44fe124039cd0"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "265cf2f2a45df19353334d96bdef46c02d39a0bf51e306e6c974253f6117ac82",
+      "620096cc1d33bc4061d650d3b6c4a833b3b03b611b5de5fc9dcf7db109c3b8c3",
+      "d9efe5bf31a7d8faedd67abab6cf2ce74af7661d56aa1d8b55a6eb8552e991d8"
+    ],
+    [
+      "561b2812c0c8c5c5cb0383e09e426ed5a7cdd8d1bbd1985ad4be0a9d4a08f460",
+      "454304ac7e76bbbba66a1837b5fa02d78633517e2aa2b1fe58576e123df0d10a",
+      "33827b34036133975e4f82882681a936b21a7854da7d162c3f5d987e17e5a7b1"
+    ],
+    [
+      "cde97f200201429e6b95d911263ce7a73cc2ed1593bb7337305e2d71530a572a",
+      "cbc3bb7d4e5e7a903fe639e1d07c9722cdd3dc83bb30bb6bb4ad6c8cc2102262",
+      "e52e9324450edae8e88f13a22549aaa5759514c9b8ef8d5a45dab5f8060deeff"
+    ]
+  ],
+  "expected_sha256": "6195e82fa745f4cb39454ba958913729686583ffbea496835b2cdc0ebfc91495"
+}

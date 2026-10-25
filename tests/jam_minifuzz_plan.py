@@ -172,6 +172,14 @@ def jam_fuzzer_full_epochs(identity):
 
 
 @reference()
+def jam_fuzzer_full_epoch_forks(identity):
+    """Require different consensus epoch outcomes from the same genuine guest checkpoint."""
+    import jam_fuzzer_full_epoch_forks_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.MODES),spec='full')
+
+
+@reference()
 def jam_fuzzer_full_epoch_guests(identity):
     """Require genuine guest effects through offender filtering and physical population rotation."""
     import jam_fuzzer_full_epoch_guests_oracle as source
