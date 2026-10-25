@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_COMMAND",
+  "files": {
+    "current-stf-rotation-command.json": "50838731e3bd93064622dc59847f8c8c281517d69ec4b542c143a32cb4d4d473"
+  },
+  "target": "current-stf-rotation-command.json"
+}

@@ -30,6 +30,7 @@ erasure shards remain tied to the current population.
 | Recreated supervisor bindings and exact queued old-report identity |100|[Supervisor incarnations](current-stf-rotation-incarnations.md)|
 | Further offender-filtered promotions, surviving authors and fixed quorum |34|[Extended histories](current-stf-rotation-histories.md)|
 | Host/lifecycle checkpoint restarts and complete authenticated traces |85 each|[Host-history replay](current-stf-rotation-replay.md)|
+| Portable host-history bundles and actual public offline commands |85|[Host-history operator](current-stf-rotation-command.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
@@ -54,9 +55,8 @@ Remaining scope includes arbitrary population/offender histories, all host-opera
 combinations under resizing, full JAM/STF and live client/network/finality conformance.
 No external-client execution or physical power-loss qualification is inferred.
 
-The final operator qualification also replays the repaired authenticated trace
-driver on checked Linux. Its complete outputs and all8,038 frozen source/native
-inputs match the macOS qualification; the retained final image identity and exact
-workload counts are recorded in the operator contract. All15 native stacked PRs
-were observed open/ready with exact published heads and green exact-head Smoke
-checks before this evidence-only documentation update.
+The earlier operator qualification retains its original8,038-input Linux evidence
+in its feature contract. The current host-history checkpoint/trace and operator
+contracts record the extended independent workloads and their source identities.
+PR publication and exact-head CI observations remain separate from these local
+checked replay results.
