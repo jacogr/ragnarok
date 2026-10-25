@@ -1,0 +1,82 @@
+{
+  "bad_prior_root_sha256": "074f2b6f241432707e6b76509ee69fc3cc01e225b5bcc030f505a94709a0b440",
+  "cases": [
+    {
+      "bytes": 0,
+      "name": "prefix-0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1,
+      "name": "prefix-1",
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "bytes": 2,
+      "name": "prefix-2",
+      "sha256": "d371ae6ccb3e0a84b99ac70ad17c70e477cdee7fc2d442a275f1c9b0a85af3f1"
+    },
+    {
+      "bytes": 3,
+      "name": "prefix-3",
+      "sha256": "71592b6b9909eaee2573889fb098ec34ae7936342fac7e4d97c6fd615f0e026d"
+    },
+    {
+      "bytes": 4,
+      "name": "body-0",
+      "sha256": "ab3ac27c3338025c2befb04c595d09705c7f98a74cc5265c79042a304fcf8473"
+    },
+    {
+      "bytes": 5,
+      "name": "body-1",
+      "sha256": "0d7b4a28c1230099c911a3de912786e5ec3aba04315e5510c36029c08391f0c3"
+    },
+    {
+      "bytes": 37,
+      "name": "body-33",
+      "sha256": "9e97334090e4b4511987f80aa0f297975d1010096a85b82dd09aa231e2d2dfbc"
+    },
+    {
+      "bytes": 101,
+      "name": "body-97",
+      "sha256": "1aba72d850e741a5b0fc3021d801990b1d0e7e7f066755c8e7e6f3e0f8c9b446"
+    },
+    {
+      "bytes": 301,
+      "name": "body-297",
+      "sha256": "1321a3dea36721f743b7fd451ae0a15299956f884552373104d854094253f312"
+    },
+    {
+      "bytes": 308,
+      "name": "body-304",
+      "sha256": "ed58e1d8077067c96c71c276ec6806198008bbe06eb9c52b3184d615b93653c4"
+    },
+    {
+      "bytes": 4,
+      "name": "empty-frame",
+      "sha256": "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119"
+    },
+    {
+      "bytes": 4,
+      "name": "oversized-frame",
+      "sha256": "afa7518106309c22d325df6d2663249d158d2f36f1976269d6d4104d9198a108"
+    },
+    {
+      "bytes": 5,
+      "name": "unknown-tag",
+      "sha256": "26f6d6c47d6585bf6f0f28f02221e23ff36bf5e41c960f8ea439f98a4d191494"
+    },
+    {
+      "bytes": 5,
+      "name": "truncated-import",
+      "sha256": "4e36f68d37c6e981c7299780de2efe2b3cef526ce317fae6a64c256328ba9905"
+    }
+  ],
+  "continuation_state_sha256": "7e68344e2976cb62379ecf62bda6c0ef774d666ed058f3b70cde08aa6518ef25",
+  "control_count": 15,
+  "initialize_sha256": "db23dfbcd64303a3288f34ca64bfa9859e14cc7ee324d3b9575468779aa416dd",
+  "prefix_state_sha256": [
+    "4dc8533b3dd0654e0ffa2e991027c171738dc09f725a528e50669c1a50597535",
+    "dcf1f0f8814134efe75760801a703e473ec90a2d2af49433c1247a761739c849"
+  ]
+}

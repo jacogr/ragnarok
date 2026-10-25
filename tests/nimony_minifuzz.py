@@ -35,6 +35,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
     assert spec in ('tiny', 'full') and all(job.get('spec', 'tiny') == spec for job, _ in planned)
     results = []
     local_controls = 0
+    stream_recoveries = 0
     run.mkdir(parents=True)
     log_path = run/'target.log'
     with tempfile.TemporaryDirectory(prefix='jam-minifuzz-target-') as selected:
@@ -64,6 +65,11 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     for case in job.get('local_missing_evidence', ()):
                         local_missing_evidence(endpoint, case)
                         local_controls += 1
+                # Source-owned recovery cases retain their independent packet/map plan and exact observed count.
+                for job, _ in planned:
+                    if 'stream_recovery' in job:
+                        from jam_fuzzer_stream_recovery import exercise as recover_stream
+                        stream_recoveries += recover_stream(endpoint, job['stream_recovery'])
                 for index, (_, pairs) in enumerate(planned):
                     result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs, spec=spec)
                     results.append(result)
@@ -81,7 +87,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10) # Failure/deadline cleanup targets only the process owned by this profile.
-    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls,
+    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls, stream_recoveries=stream_recoveries,
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
                 parameters_sha256=hashlib.sha256(parameters).hexdigest(), spec=spec, false_success_control=True,
                 log=str(log_path))
@@ -99,6 +105,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
     assert evidence['signed_imports'] == sum(len(job['steps']) for job in jobs)
     local_controls = sum(len(job.get('local_missing_evidence', ())) for job in jobs)
     assert evidence['expected_local_missing_evidence'] == local_controls
+    stream_controls = sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job)
+    assert evidence['expected_stream_recoveries'] == stream_controls
     planned = [(job, exchanges(job)) for job in jobs]
     profiles = tuple(dict.fromkeys(job['parameters'] for job in jobs))
     folder = Path(folder)
@@ -110,6 +118,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
         results.append(exercise_profile(binary, policy_binary, script, environment,
                                        run/f'profile-{index:02d}', selected, parameters))
     return dict(passed=True, planned_sessions=len(planned),
+                planned_stream_recoveries=stream_controls,
+                completed_stream_recoveries=sum(row['stream_recoveries'] for row in results),
                 planned_local_missing_evidence=local_controls,
                 completed_local_missing_evidence=sum(row['local_missing_evidence'] for row in results),
                 completed_sessions=sum(result['completed_sessions'] for result in results),

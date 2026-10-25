@@ -70,13 +70,15 @@ def minifuzz_verified(result):
             or result['planned_host_profiles'] != len(profiles)
             or result['completed_host_profiles'] != len(profiles)):
         return False
-    local_counts = ('planned_local_missing_evidence', 'completed_local_missing_evidence')
-    if any(type(result.get(key)) is not int or result[key] < 0 for key in local_counts):
-        return False
-    if any(not isinstance(profile, dict) or type(profile.get('local_missing_evidence')) is not int or profile['local_missing_evidence'] < 0 for profile in profiles):
-        return False
-    if result[local_counts[0]] != result[local_counts[1]] or result[local_counts[1]] != sum(profile['local_missing_evidence'] for profile in profiles):
-        return False
+    # Every independently declared local control requires exact nonnegative per-profile and aggregate completion.
+    for planned,completed,field in (('planned_local_missing_evidence','completed_local_missing_evidence','local_missing_evidence'),
+                                    ('planned_stream_recoveries','completed_stream_recoveries','stream_recoveries')):
+        if any(type(result.get(key)) is not int or result[key] < 0 for key in (planned,completed)):
+            return False
+        if any(not isinstance(profile,dict) or type(profile.get(field)) is not int or profile[field] < 0 for profile in profiles):
+            return False
+        if result[planned] != result[completed] or result[completed] != sum(profile[field] for profile in profiles):
+            return False
     identities = []
     for profile in profiles:
         if (not isinstance(profile, dict) or profile.get('passed') is not True
