@@ -44,6 +44,15 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_transfer_waves_corpus(compiler, report, checks, libraries):
+    """Qualify forwarded reentry and held duplicate credits across actual-gas continuation and changing populations."""
+    import current_stf_rotation_transfer_waves_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_forwarded_transfers',
+         'current_stf_supervised_transfers', 'current_stf_rotation_transfer_waves', 'state_report'), defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_preimages_corpus(compiler, report, checks, libraries):
     """Qualify pending/provided request lifecycle and exact strict age/restore boundaries after rotation."""
     import current_stf_rotation_preimages_oracle as oracle
