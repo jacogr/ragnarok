@@ -173,3 +173,47 @@ of follow-up variants is authorized by this diagnosis.
 Even success would address one contributor, not establish parity with the reference.
 This experiment is proposed only; no runtime prototype or new performance claim has
 been implemented as part of the investigation.
+
+## Byte specialization experiment: rejected
+
+The maintainer authorized the single proposed experiment with the existing gates and
+an explicit stop on failure. Prototype `11f79d97` is preserved on
+`codex/pvm-byte-scalar-access`, against baseline `496b987a`. It specializes the complete
+checked byte scalar path behind existing load/store APIs without changing public types,
+opcode classification, wider-access semantics, pins or flags. Sparse snapshot ownership,
+permission/final-address checks, preflight and first-write chunk cloning remain intact.
+
+Eleven affected local native suites pass, including scalar-writer epochs, memory access
+and final-address references, mixed-program execution, host reentry and declared ARC
+cycles. A new byte boundary witness covers final-page absence/inaccessibility/read-only/
+writable states, cyclic addresses and preserved earlier writes. Checked local ThinLTO
+code generation confirms constant-byte preflight, byte payload access and retained
+chunk cloning, without the generic width-membership mask in the byte load. This is
+code-generation evidence, not a timing claim.
+
+[CI40169755533](https://github.com/jacogr/ragnarok/actions/runs/40169755533)
+ran on EPYC 9V74. The baseline/candidate comparison completed all 54 cells and 2808
+full-state invocations. Its subsequent identical-source control refused success because
+all three same-source image pairs differed in SHA-256. It stopped before control
+timings, the reference comparison and post-timing disassembly. This refusal was
+preserved; no source-only control or relaxed identity check was substituted.
+
+The completed paired observations were:
+
+| Planned workload | Candidate CPU change, order 0 | Order 1 | Agreed gate |
+| --- | ---: | ---: | --- |
+| Long memory fill | -6.71% | -7.70% | At least 10% improvement in both orders |
+| Pinky | +2.47% | -5.79% | Repeatable gain beyond valid identical-image variation |
+| Long indirect calls | +8.68% | +8.22% | No reproducible regression above 2% |
+
+Negative denotes lower observed candidate CPU time. These percentages are provisional:
+the failed image control prevents a qualified timing claim. Even the observations fall
+short of the primary memory-fill target, Pinky has opposite directions, and indirect
+calls show a substantial regression. Dynamic indirect calls similarly change
++8.72/+8.74%; memo changes +7.98/+5.89%. All raw cells remain in the artifact.
+
+**Rejected; experiment stopped.** No qualification rerun, alternative implementation,
+optimization PR or merge was made. The prototype and raw evidence remain available,
+and the active checkout returned to the diagnostic branch with the unchanged merged
+runtime. The new same-source build-identity refusal is recorded as an unresolved
+measurement issue, not repaired or used to restart optimization within this experiment.
