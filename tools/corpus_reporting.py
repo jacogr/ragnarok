@@ -81,6 +81,15 @@ def current_stf_late_incarnations_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_offenders_corpus(compiler, report, checks, libraries):
+    """Qualify late code around genuine report cancellation, offender exclusion and filtered population promotion."""
+    import current_stf_late_offenders_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_offenders','current_stf_late_rotation',
+         'current_stf_offender_reporting','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_reactivation_corpus(compiler, report, checks, libraries):
     """Qualify strict code expunge, recreated reservations and later actual code reactivation across population histories."""
     import current_stf_late_reactivation_oracle as oracle
