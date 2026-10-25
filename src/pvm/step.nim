@@ -184,6 +184,10 @@ func value*(r: StepResult): StepOutcome {.requires: r.status == StepError.None.}
   ## Select successful evaluation before inspecting either guest outcome and its machine snapshot.
   r.completed
 
+func terminalExit(kind: StepExit): bool {.inline.} =
+  ## Final panic/halt alone normalize PC; direct comparisons avoid a runtime enum-set shift on every transition.
+  kind == StepExit.Panic or kind == StepExit.Halt
+
 func exit*(outcome: StepOutcome): StepExit =
   ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
   outcome.kind
@@ -738,7 +742,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
     outcome = controlMutation(program, decoded, info, cache)
-  if outcome notin {StepExit.Panic, StepExit.Halt}:
+  if not terminalExit(outcome):
     if category != 'c':
       # The existing class byte marks exactly T; unlikely remains a separate nonterminating control class.
       # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
@@ -774,7 +778,7 @@ proc memoEvaluateInstruction(program: Program, info: var MachineInfo,
 proc publishInstruction(program: Program, memory: Memory, info: MachineInfo,
     effect: InstructionEffect, terminal: bool): StepResult =
   ## Materialize an immutable observable snapshot only after evaluation/normalization succeeds; local capture refusals expose no prefix.
-  let updated = (if terminal or effect.kind in {StepExit.Panic, StepExit.Halt}:
+  let updated = (if terminal or terminalExit(effect.kind):
     captureTerminalMachine(program, memory, info)
     else: captureMachine(program, memory, info))
   if updated.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
@@ -985,7 +989,7 @@ template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: 
       return StepResult(status: evaluated.status) # The whole private cursor retires; local failures never publish earlier progress.
     let effect = evaluated.effect
     if effect.kind != StepExit.Continued:
-      if effect.kind in {StepExit.Panic, StepExit.Halt}:
+      if terminalExit(effect.kind):
         info.pc = CodeAddress(0) # Final exits preserve posterior registers/memory, including load-and-jump mutations.
       else:
         # OutOfGas exits before mutation, failed memory preflight writes nothing, and Host changes only PC.
