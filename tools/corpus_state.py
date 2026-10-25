@@ -848,6 +848,15 @@ def jam_fuzzer_epoch_effect_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
+    """Execute full341-core/1023-validator/600-slot complete maps under every pinned GP parameter."""
+    import jam_fuzzer_full_profile_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('current_stf_transfers', 'jam_full_ring_input', 'jam_fuzzer_full_profile'),
+        profiles=[reference.parameters()]*2)
+
+
+@CORPORA.case
 def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
     """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
     import jam_fuzzer_transfer_forks_oracle as reference

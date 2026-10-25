@@ -39,8 +39,10 @@ def send(peer, data):
     peer.sendall(struct.pack('<I', len(data))+data)
 
 
-def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False):
+def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, spec='tiny'):
     """Require every actual exchange and process completion; upstream exit0 alone never proves success."""
+    if spec not in ('tiny', 'full'):
+        raise ValueError('Unknown minifuzz profile')
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     trace = folder/'trace'
@@ -57,7 +59,7 @@ def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False):
             listener.listen(1)
             listener.settimeout(30)
             try:
-                process = subprocess.Popen([sys.executable, '-S', str(script), '--spec', 'tiny',
+                process = subprocess.Popen([sys.executable, '-S', str(script), '--spec', spec,
                     '--trace-dir', str(trace.resolve()), '--target-sock', str(proxy), '--stop-after', str(len(pairs))],
                     env=environment, stdout=log, stderr=log)
                 client, _ = listener.accept()

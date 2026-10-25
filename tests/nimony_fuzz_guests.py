@@ -16,9 +16,11 @@ from state_layout_oracle import digest
 from state_trace_wire_oracle import wire
 
 
-def reference_sessions(reference, identity, parameters=None):
+def reference_sessions(reference, identity, parameters=None, *, spec='tiny'):
     """Freeze exact independent headers/maps under one explicitly declared host profile per source chain."""
-    from header_oracle import decode as decode_header, TINY
+    from header_oracle import decode as decode_header, TINY, FULL
+    assert spec in ('tiny', 'full')
+    geometry = TINY if spec == 'tiny' else FULL
     for path, expected in FIXTURE_CONTRACTS[identity][2]:
         assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
     _, lines, _ = reference.expected_observations()
@@ -41,12 +43,12 @@ def reference_sessions(reference, identity, parameters=None):
             assert len(ancestors) <= 1
             membership = b''.join(slot.to_bytes(4, 'little')+identity for slot, identity in ancestors)
             jobs.append(dict(initialize=b'\x01'+header+state[32:]+bytes([len(ancestors)])+membership,
-                             header=header, state=state, steps=[], parameters=next(profiles)))
+                             header=header, state=state, steps=[], parameters=next(profiles), spec=spec))
             header, ancestors = initial_header(), [] # Later seeds retain only their own explicit header/evidence.
         elif tag in ('B', 'V'):
             assert jobs and pending is None
             block = bytes.fromhex(data)
-            parsed = decode_header('H', block, TINY)
+            parsed = decode_header('H', block, geometry)
             assert parsed.split()[0].isdigit(), 'Invalid independently framed guest header'
             extent = int(parsed.split()[0])
             pending = dict(kind=tag, block=block, header=block[:extent])
@@ -93,6 +95,9 @@ def prepare_effect_sessions():
         jobs.extend(selected); evidence.append(proof)
     import jam_fuzzer_epoch_effect_forks_oracle as epoch
     selected, proof = reference_sessions(epoch, 'jam_fuzzer_epoch_effect_forks', epoch.host_profiles())
+    jobs.extend(selected); evidence.append(proof)
+    import jam_fuzzer_full_profile_oracle as full
+    selected, proof = reference_sessions(full, 'jam_fuzzer_full_profile', [full.parameters()]*2, spec='full')
     jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 

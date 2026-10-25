@@ -1,0 +1,8 @@
+{
+  "source": "pinned ark-vrf bs_commit input witness; no STF observation",
+  "capacity": 1023,
+  "bandersnatch_pins_sha256": "edbc7bcb336a5adfc14a6e5c70d9792d2e70ae058ee75116a01408e1e6902854",
+  "ordered_public_keys_sha256": "e6743689bb401130f59811936de2903a071f06af009e67c511868c92b46e4640",
+  "public_key": "664197ccb667315e6064e4ee81ad8c3586d5dcba508b7d150f3e12da9e666c2a",
+  "commitment": "b40f8b6679e6ccc4fc16abcce0ff29bddc973cebc9f8eb9985cfe18370126e76857f09e127bf2f165c548d8b5133dbac8a06c72db3108c3ce52db5c0bea26e1b460823c6beb342a4ce098c8d6e6ccbad700f03d0e94ae0619ea62b0e23cf301996c1b168e2dcc743f9eadda76c041db42d39f27a58418f88c0ea67656a224934e12b5dfc8f0f460a95c2d467fa41907b"
+}
