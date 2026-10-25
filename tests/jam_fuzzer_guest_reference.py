@@ -17,7 +17,7 @@ def host_parameters(*, code_limit=512, lookup_age=2**32-1, deposits=(0, 0, 0)):
     return bytes(wire)
 
 
-def replay(reference, *, input_requests=True, profiles=None, forks=False):
+def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor_checks=False):
     """Take only the reference's independently authored seed/child stream; retain every expected complete map."""
     if input_requests:
         _, expected, evidence = reference.expected_observations()
@@ -35,7 +35,7 @@ def replay(reference, *, input_requests=True, profiles=None, forks=False):
             assert not waiting and not sibling and (not initialized or blocks > 0)
             blocks = 0
             profile = '' if profiles is None else ' '+profiles[ordinal].hex()
-            requests.append('C '+data+profile)
+            requests.append(('A ' if anchor_checks else 'C ')+data+profile)
             ordinal += 1
             initialized = True
         elif tag == 'B' or forks and tag == 'V':

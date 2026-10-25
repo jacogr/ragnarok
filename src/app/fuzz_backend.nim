@@ -7,7 +7,7 @@ import ./[chain, candidate]
 import ../chain/[genesis, parameters, provider]
 import ../codec/[bounded, header, block_codec]
 import ../crypto/primitives
-import ../state/[fuzz_ancestry, fuzz_protocol, store, accumulation_current_update]
+import ../state/[fuzz_ancestry, fuzz_protocol, store, accumulation_current_update, report_anchors]
 
 type
   FuzzBackendConfig* = object ## Parameters and every execution/codec ceiling are explicit trusted host configuration.
@@ -79,8 +79,11 @@ proc initFuzzBackend*(config: FuzzBackendConfig): FuzzBackendResult[FuzzBackend]
   let headers = uint64(config.candidate.reporting.reports.ancestors.headers)
   if not sameCores or not sameValidators or not sameEpoch or headers == 0:
     return refused[FuzzBackend](FuzzBackendError.InvalidConfiguration)
+  var selected = config
+  selected.candidate.reporting.reports.anchors.lookupAge = LookupAge(
+      config.parameters.get(maxLookupAnchorAge)) # GP reporting_assurance limitlookupanchorage uses the host protocol tuple.
   FuzzBackendResult[FuzzBackend](status: FuzzBackendError.None,
-      completed: FuzzBackend(configured: true, config: config))
+      completed: FuzzBackend(configured: true, config: selected))
 proc fuzzBackendHeader*(backend: FuzzBackend): FuzzBackendResult[OwnedHeader] =
   ## Expose only an immutable selected header; this is no prepared update or production trust receipt.
   if not backend.seeded: return refused[OwnedHeader](FuzzBackendError.MissingSeed)
