@@ -42,6 +42,7 @@ erasure shards remain tied to the current population.
 | Delayed recreated supervisor code and exact incarnation-bound authority |130|[Delayed recreated supervisor code and exact incarnation-bound authority](current-stf-late-incarnations.md)|
 | Empty-operand allowances and actual unavailable-recipient transfer credits |132|[Empty-operand allowances and actual unavailable-recipient transfer credits](current-stf-late-allowances.md)|
 | Actual report cancellation, offender exclusion and late code |198|[Actual report cancellation, offender exclusion and late code](current-stf-late-offenders.md)|
+| Longer mixed code/cancellation and allowance/transfer histories |136|[Longer mixed code/cancellation and allowance/transfer histories](current-stf-late-histories.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
