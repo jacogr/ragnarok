@@ -217,3 +217,162 @@ optimization PR or merge was made. The prototype and raw evidence remain availab
 and the active checkout returned to the diagnostic branch with the unchanged merged
 runtime. The new same-source build-identity refusal is recorded as an unresolved
 measurement issue, not repaired or used to restart optimization within this experiment.
+
+## Deeper memory and execution attribution
+
+The subsequent authorized investigation resolves that measurement issue and profiles
+both engines without changing the runtime or reviving the byte experiment.
+[CI40171834535](https://github.com/jacogr/ragnarok/actions/runs/40171834535)
+passes at `8f1974e6bbbdf7407a67975114843f885f7ae8ee`. Runtime sources, maintained
+drivers and pins still equal the merged baseline. The source profiles add native
+Clang `-g`; their native instruction totals are **exactly equal** to the earlier
+normal-image totals for all three guests. This validates instruction-count continuity,
+not binary equality between diagnostic and normal images or equivalent timing.
+
+`make attribute-pvm-execution` first runs the build-identity stress diagnostic, then
+the full identical-source guest/synthetic comparison, then the deep profiles. Select
+`pvm_deep_attribution` on the opt-in `profile-pvm` workflow. All instrumented clocks
+are discarded. The successful chain retains:
+
+* All three old-path stress pairs have unequal whole-image hashes but equal generated
+  C and `.text` hashes. Fresh canonical cache/object/output paths, cleared before
+  each build, produce three byte-identical whole-image pairs. Linux ThinLTO promoted
+  symbol suffixes/string tables and GNU build IDs explain the metadata mismatch.
+  Executable permissions and separate role logs survive staging retirement. The
+  whole-image SHA guard remains strict.
+* The complete same-image comparison passes all54 cells and2808 full-state
+  invocations, both process orders, and every native assertion control. All three
+  whole-image pairs match. This is a control qualification, not a speedup claim.
+* Six selected execution profiles pass the calibrated scope/return controls and
+  full-state checks. The Pinky reference initializer is retained separately.
+  Every selected part has one incoming execution entry, matching header/footer
+  totals and an empty termination dump. Exclusive costs reconcile exactly; inclusive
+  call-edge costs are recorded separately.
+* Artifacts retain raw instruction/source positions, native disassembly, generated
+  C and pinned reference Rust sources with hashes. Offline replay independently
+  verifies all six raw hashes/parser outputs, all captured source hashes and the
+  complete comparison summary. Local focused qualification passes24 comparison,
+  15 scope/profile and2 deep-parser guards, inventory/YAML checks and an actual
+  retained-image assertion-refusal control.
+
+### Memory operations: repeated access work dominates copying
+
+Call-edge counts establish the **same guest memory-operation counts** in both
+engines. The native boundary is `memoryMutation`, including scalar load/store and
+all descendants; the reference boundary includes all executed raw scalar memory
+handlers, including immediate stores and their descendants. Neither contains
+whole-process setup. Both include register/address/result work belonging to their
+memory handlers; these are comparable operations, not identical internal APIs.
+
+| Guest | Memory operations, each engine | Native inclusive instructions | Reference inclusive instructions | Instructions per operation, native / reference |
+| --- | ---: | ---: | ---: | ---: |
+| Pinky | 8,066,877 | 1,890,787,923 | 267,346,564 | 234.39 / 33.14 |
+| Memory fill | 300,101 | 61,749,123 | 9,927,666 | 205.76 / 33.08 |
+| Indirect calls | 1,000,015 | 233,107,178 | 33,809,576 | 233.10 / 33.81 |
+
+The native/reference memory-path difference accounts for40.0% of the complete
+Pinky instruction gap,33.4% for memory fill and58.4% for indirect calls. These are
+instruction differences, **not attributable CPU-time percentages** or promised
+speedups. Even eliminating this difference leaves substantial execution work.
+
+Pinky issues4,934,271 scalar loads and3,132,603 scalar stores. Their inclusive
+costs average162.69 and169.85 instructions respectively. The enclosing
+`memoryMutation` has555,941,885 exclusive instructions, approximately68.92 per
+memory operation, already more than the reference's entire33.14-instruction
+average. Representation changes alone therefore cannot remove all of the handler
+overhead. Generated C exposes decoded-result guards, opcode/width classification,
+register/address selection, result propagation and PC advancement in that wrapper.
+
+| Guest | `cloneWriterChunk` calls | Inclusive instructions, including allocation/copy descendants | Share of complete native instructions |
+| --- | ---: | ---: | ---: |
+| Pinky | 729 | 242,868 | 0.00481% |
+| Memory fill | 200 | 66,635 | 0.03424% |
+| Indirect calls | 2 | 814 | 0.00019% |
+
+The existing writer already retains private chunks across repeated stores and seals
+them only at publication boundaries. It does not copy an immutable memory image
+for every instruction. Making these first-write clones cheaper cannot explain or
+close the measured gap. Conversely every successful access still traverses the
+generic scalar machinery: owner/width/range checks, two bounded recent-slot hints
+or binary search, page presence/permissions, span construction, recent-slot updates,
+active-writer selection, chunk selection and tagged-result handling. Stores also
+check dirty chunks, even when no cloning is needed.
+
+Generated-C source positions identify583,753,519 Pinky instructions (11.56% of
+all native work) in `scalarSpan`, `scalarSlot`, `lowerBound`, `rememberScalarSpan`
+and `prepareWriterSpan` combined. Corresponding shares are8.80% for fill and
+15.94% for indirect calls. These are exclusive costs attributed to those source
+declarations after inlining, rather than extra costs added to the inclusive table.
+The payload-source declarations `pageScalar`/`setPageScalar` receive1.71%,0.72%
+and3.04%; these declarations also contain width/chunk logic and are not a precise
+count of machine load/store instructions.
+
+Source attribution has an explicit limit:26.03% of Pinky's work has no mapped
+generated-C declaration, almost entirely DWARF line zero. Every line-zero instruction
+address resolves in the retained native disassembly. Of its1,314,062,050
+instructions,751,369,394 are `mov`,110,874,407 `lea` and100,840,744 `jmp`.
+Line zero is not silently assigned to the nearest source line, copying, bounds
+checks or dispatch. The runtime-symbol attribution still includes these costs
+completely, so the inclusive memory comparison and cloning result do not depend
+on a guessed source mapping.
+
+The reference's pinned `StandardMemory::load_impl`/`store_impl` select a contiguous
+resident region, check the typed access range and access the selected slice.
+Our execution reaches payloads through sorted sparse page owners and eight512-byte
+chunk owners per page. The implementations have different snapshot, sparse-memory
+and fault-order obligations; copying the reference model wholesale would not
+establish JAM correctness. The actionable difference is the amount of metadata
+and general result handling between each decoded memory operation and its bytes.
+
+### Execution work beyond memory
+
+Pinky executes32,055,270 decoded instructions. Generated-C attribution separates
+389,036,857 instructions in `cachedInstruction` (7.71% of total native work) from
+the5,421,429 runtime self instructions in actual `decodeInstructionMiss` (0.11%).
+Cache-hit lookup is expensive even when decoding is rare; more decoded caching
+is not automatically the solution. The hit path probes status/address and computes
+the cached-entry location before evaluating the instruction.
+
+`evaluateInstruction` source receives1,405,895,606 instructions (27.85%), including
+208,253,136 at the register-category branch,160,276,350 at an outcome branch,
+119,775,747 at the opcode switch, and64,110,540 each at gas-deficit and decoded
+status guards. Those line costs include compiler instructions attributed to each
+line, not just the branch itself, and the group contains useful guest arithmetic.
+The category-byte lookup itself receives64,110,540 (1.27% of all native work);
+replacing that lookup alone cannot plausibly close the gap.
+
+Disassembly also exposes per-instruction decoded-field movement and stack traffic
+that line tables do not name. For example `0x1c239..0x1c24a` contains five executed
+instructions loading/storing decoded fields; each executes32,055,270 times.
+Together these account for160,276,350 instructions,3.17% of the total. They are
+already included in the line-zero budget, not added to it. This is observed
+machine work, not a claim that these values can all be removed.
+
+### Cache evidence and next bounded direction
+
+The fixed cache simulation uses32-KiB8-way L1 instruction/data caches and an8-MiB
+16-way last level, all64-byte lines. Pinky native/reference data-read events are
+1,270,607,798 /413,414,588, and data writes480,842,253 /86,862,109. Simulated
+L1 data read misses are49,534,205 /5,490,692; last-level data read misses are
+19 /0. Thus this simulation points to extra instructions, metadata traffic and
+L1 locality costs; it does not demonstrate DRAM bandwidth pressure. Cachegrind
+does not model real CPU prefetch, TLBs or out-of-order execution. These are
+diagnostic counters, not hardware measurements or timing predictions.
+
+The proposed next experiment is an **execution-owned resolved memory view**,
+separate from immutable snapshot storage. Keep the sparse address space and
+public snapshot contract, but investigate lazily materialized contiguous private
+page buffers with cached resolved page/permission information. Ordinary successful
+accesses should reach checked bytes through that view; mapping changes, host exits
+and publication must invalidate or seal it explicitly. Preserve protected-prefix,
+overflow, cross-page fault precedence, atomic stores and all ownership checks.
+This is a change to working representation and access boundaries, rather than
+another hint-slot tweak or byte helper. First measure conversion/publication cost
+as well as hot access work; sparse or snapshot-heavy cases may lose.
+
+No runtime implementation or performance claim accompanies this diagnosis. A future
+prototype needs unchanged full-state fixtures, the existing ownership/fault-order
+suites, deterministic counters and paired CI timings across the full matrix.
+The previous byte experiment remains rejected. Memory is the first supported
+architectural target; execution admission/cache/outcome work remains a separate
+large target after that measurement.

@@ -198,6 +198,15 @@ executable mode and distinct role logs. Python guards exercise cache retirement,
 unchanged compiler paths, retained old bytes/logs/modes and refusal of unstable output
 or symlinked staging. Full same-image execution validation follows before attribution.
 
+[CI40171834535](https://github.com/jacogr/ragnarok/actions/runs/40171834535)
+completes that validation at `8f1974e6`: all three old-path stress pairs reproduce
+the metadata-only mismatch, all three fresh canonical-path pairs are whole-file
+identical, and the complete same-source comparison passes all54 cells and2808
+full-state invocations. The downstream six-profile memory/execution attribution
+also passes. See [the diagnosis](pvm-interpreter-diagnosis.md#deeper-memory-and-execution-attribution)
+for the results and the instruction-count versus timing limits. No runtime
+optimization is qualified by this control run.
+
 Local qualification passes38 focused guest-comparison/input Python tests, workflow
 YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass
 all native assertion controls; the guest, synthetic legacy and synthetic memo pairs
