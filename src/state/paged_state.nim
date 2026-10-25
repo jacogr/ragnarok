@@ -220,21 +220,21 @@ proc producer*(prepared: PreparedPagedState): FullPagedProducer {.requires: prep
     FullPagedProducerStep.Item
   next
 proc initializePagedStateStore*(writer: var FullPagedWriter, path: string,
-    config: FullPagedNativeConfig, prepared: PreparedPagedState): PagedStateResult[
-        FullPagedPublication] =
+    config: FullPagedNativeConfig, prepared: PreparedPagedState, context: openArray[byte] = [
+        ]): PagedStateResult[FullPagedPublication] =
   ## The caller retains the native close obligation, including acquired failed bootstrap owners and retirement diagnostics.
   let data = prepared.data
   if data == nil: return refused[FullPagedPublication](PagedStateError.Uninitialized)
   if array[32, byte](config.root) != array[32, byte](data.root):
     return refused[FullPagedPublication](PagedStateError.RootMismatch)
   let initialized = initializeFullPagedWriter(writer, path, config, data.roots,
-    prepared.producer, uint64(data.records.len), data.payload)
+    prepared.producer, uint64(data.records.len), data.payload, context)
   if initialized.error != FullPagedNativeError.None:
     return nativeFailed[FullPagedPublication, FullPagedPublication](initialized)
   PagedStateResult[FullPagedPublication](status: PagedStateError.None, completed: initialized.value)
 proc preparePagedStateReplacement*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
-    expected: FullPagedManifest, prepared: PreparedPagedState): PagedStateResult[
-        StorageDurability] =
+    expected: FullPagedManifest, prepared: PreparedPagedState, context: openArray[byte] = [
+        ]): PagedStateResult[StorageDurability] =
   ## Full snapshots publish only over the exact independently expected source; caller adopts memory only after confirmed native publish.
   let data = prepared.data
   if data == nil: return refused[StorageDurability](PagedStateError.Uninitialized)
@@ -252,7 +252,7 @@ proc preparePagedStateReplacement*(writer: var FullPagedWriter, candidate: var F
         codecCause: b.error)
   if a.value != b.value: return refused[StorageDurability](PagedStateError.StaleView)
   let preparedNative = prepareFullPagedReplacement(writer, candidate, data.root, data.roots,
-    prepared.producer, uint64(data.records.len), data.payload)
+    prepared.producer, uint64(data.records.len), data.payload, context)
   if preparedNative.error != FullPagedNativeError.None:
     return nativeFailed[StorageDurability, StorageDurability](preparedNative)
   PagedStateResult[StorageDurability](status: PagedStateError.None, completed: preparedNative.value)
@@ -275,20 +275,19 @@ proc restoreVisitor(stage: RestoreStage): FullPagedEntryVisitor =
     stage.bytes += size
     true
   visit
-proc restorePagedStateStore*(reader: var FullPagedReader, expected: StateRoot,
-    limits: StateStoreLimits): PagedStateResult[StateStore] =
-  ## Complete native graph plus independent complete-map recomputation precede any ordinary resident StateStore result.
-  let info = reader.rootInfo(expected)
-  if info.error != FullPagedNativeError.None: return nativeFailed[StateStore, FullPagedRoot](info)
-  let claim = info.value
+proc restoreStage(claim: FullPagedRoot, limits: StateStoreLimits): PagedStateResult[RestoreStage] =
+  ## Native complete-root claims preflight bounded private staging before any value callback or allocation.
   if claim.entries > uint64(limits.trie.items) or claim.nodes > uint64(limits.trie.nodes) or
       claim.valueBytes > uint64(limits.trie.totalValueBytes):
-    return refused[StateStore](PagedStateError.LimitExceeded)
+    return refused[RestoreStage](PagedStateError.LimitExceeded)
   if claim.entries > uint64(high(int) div sizeof(StateEntry)):
-    return refused[StateStore](PagedStateError.LengthOverflow)
-  let stage = RestoreStage(entries: newSeq[StateEntry](int(claim.entries)), limits: limits,
-    reason: StateStoreError.None)
-  let streamed = reader.visitEntries(expected, restoreVisitor(stage))
+    return refused[RestoreStage](PagedStateError.LengthOverflow)
+  PagedStateResult[RestoreStage](status: PagedStateError.None,
+    completed: RestoreStage(entries: newSeq[StateEntry](int(claim.entries)), limits: limits,
+      reason: StateStoreError.None))
+proc finishRestore(stage: RestoreStage, expected: StateRoot, limits: StateStoreLimits,
+    streamed: FullPagedNativeResult[FullPagedCounts]): PagedStateResult[StateStore] =
+  ## A complete successful traversal and independently recomputed full-map root precede publication of any ordinary store.
   if streamed.error != FullPagedNativeError.None:
     if stage.reason != StateStoreError.None:
       return PagedStateResult[StateStore](status: PagedStateError.StateFailure,
@@ -302,3 +301,23 @@ proc restorePagedStateStore*(reader: var FullPagedReader, expected: StateRoot,
   if array[32, byte](restored.value.snapshot.value.commitment.root) != array[32, byte](expected):
     return refused[StateStore](PagedStateError.RootMismatch)
   PagedStateResult[StateStore](status: PagedStateError.None, completed: restored.value)
+
+proc restorePagedStateStore*(reader: FullPagedReader, expected: StateRoot,
+    limits: StateStoreLimits): PagedStateResult[StateStore] =
+  ## An immutable reader reconstructs only its independently selected fully admitted complete root.
+  let info = reader.rootInfo(expected)
+  if info.error != FullPagedNativeError.None: return nativeFailed[StateStore, FullPagedRoot](info)
+  let staged = restoreStage(info.value, limits)
+  if staged.error != PagedStateError.None: return refused[StateStore](staged.error)
+  let stage = staged.value
+  finishRestore(stage, expected, limits, reader.visitEntries(expected, restoreVisitor(stage)))
+
+proc restorePagedStateStore*(reader: FullPagedWriter, expected: StateRoot,
+    limits: StateStoreLimits): PagedStateResult[StateStore] =
+  ## Local startup reconstructs a complete map under its existing exclusive writer lease before context adoption.
+  let info = reader.rootInfo(expected)
+  if info.error != FullPagedNativeError.None: return nativeFailed[StateStore, FullPagedRoot](info)
+  let staged = restoreStage(info.value, limits)
+  if staged.error != PagedStateError.None: return refused[StateStore](staged.error)
+  let stage = staged.value
+  finishRestore(stage, expected, limits, reader.visitEntries(expected, restoreVisitor(stage)))

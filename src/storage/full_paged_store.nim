@@ -351,9 +351,9 @@ proc selected*(writer: FullPagedWriter): FullPagedNativeResult[FullPagedManifest
   if held != FileError.None: return fileFailed[FullPagedManifest](held)
   FullPagedNativeResult[FullPagedManifest](status: FullPagedNativeError.None,
       completed: data.checked.manifest)
-proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
-    config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
-  ## Existing full CURRENT must match independently expected chain/root after acquiring the stable writer lease.
+proc acquireWriter(writer: var FullPagedWriter, path: string,
+    config: FullPagedNativeConfig, local: bool): FullPagedNativeResult[bool] =
+  ## One lease guards exact CURRENT/header/complete-graph admission; local context and independent imports remain explicit separate entry points.
   if writer.opened: return fileFailed[bool](FileError.Busy)
   let data = WriterData(config: config)
   defer:
@@ -367,13 +367,25 @@ proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
   if opened != FileError.None: return fileFailed[bool](opened)
   let current = data.directory.readFullCurrent
   if current.error != FileError.None: return fileFailed[bool](current.error)
-  let selected = decodeFullPagedSelection(current.value, config.chain, config.root,
-      config.limits.dataset, uint64(config.limits.contextBytes) > 0)
+  var expected = config
+  if local:
+    # Contextual local recovery may discover its posterior root only under the acquired stable lease.
+    # This metadata remains untrusted until complete selection/header/graph and application context checks succeed.
+    if uint64(config.limits.contextBytes) == 0:
+      return FullPagedNativeResult[bool](status: FullPagedNativeError.GraphFailure,
+          graphCause: FullPagedStreamError.UnsupportedPolicy)
+    if current.value.len != FullPagedManifestBytes: return codecFailed[bool](
+        FullPagedError.InvalidFormat)
+    var root = default(array[32, byte])
+    for index in 0..<32: root[index] = current.value[64+index] # Exact fixed extent was checked before access.
+    expected.root = StateRoot(root)
+  let selected = decodeFullPagedSelection(current.value, expected.chain, expected.root,
+      expected.limits.dataset, uint64(expected.limits.contextBytes) > 0)
   if selected.error != FullPagedError.None: return codecFailed[bool](selected.error)
   let pinned = openEpoch(data.head, data.directory, selected.value.epoch,
     PagedPin.Shared, config.limits.dataset.bytes)
   if pinned != FileError.None: return fileFailed[bool](pinned)
-  let header = data.head.readFullHeader(config.chain, config.root, config.limits.dataset,
+  let header = data.head.readFullHeader(expected.chain, expected.root, config.limits.dataset,
       config.limits.contextBytes)
   if header.error != FileError.None: return fileFailed[bool](header.error)
   if header.value.error != FullPagedError.None: return codecFailed[bool](header.value.error)
@@ -386,11 +398,22 @@ proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
   let again = data.directory.readFullCurrent
   if again.error != FileError.None: return fileFailed[bool](again.error)
   if current.value != again.value: return fileFailed[bool](FileError.StaleView)
+  data.config = expected
   data.checked = admitted.value.value
   data.active = true
   data.selected = true
   writer.data = data
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
+    config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
+  ## Independent root selection remains mandatory for external import or explicitly expected storage opens.
+  acquireWriter(writer, path, config, false)
+proc openLocalFullPagedWriter*(writer: var FullPagedWriter, path: string, chain: StorageChainId,
+    limits: FullPagedStreamLimits, construction: FullPagedConstructionLimits,
+    replayBytes: ByteLimit): FullPagedNativeResult[bool] =
+  ## Recover one V2 local complete graph under its exclusive lease; callers must still bind context/profile/history before adoption.
+  acquireWriter(writer, path, FullPagedNativeConfig(chain: chain, limits: limits,
+    construction: construction, replayBytes: replayBytes), true)
 func buildLimits(config: FullPagedNativeConfig): FullPagedBuildLimits =
   ## Inherited admission policy cannot be substituted by a separate construction-budget object.
   let work = config.construction
@@ -960,7 +983,7 @@ proc rootInfo*(reader: FullPagedReader, root: StateRoot): FullPagedNativeResult[
           completed: claim)
   FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.GraphFailure,
     graphCause: FullPagedStreamError.UnknownRoot, graphCodec: FullPagedError.Uninitialized)
-proc visitEntries*(reader: var FullPagedReader, root: StateRoot, visitor: nil FullPagedEntryVisitor,
+proc visitEntries*(reader: FullPagedReader, root: StateRoot, visitor: nil FullPagedEntryVisitor,
     budget: FullPagedWorkLimits): FullPagedNativeResult[FullPagedCounts] =
   ## Borrow sorted complete-root values synchronously under this reader's immutable pin; caller stages output until full success.
   let data = reader.data
@@ -971,7 +994,7 @@ proc visitEntries*(reader: var FullPagedReader, root: StateRoot, visitor: nil Fu
     return graphFailed[FullPagedCounts, FullPagedCounts](streamed)
   FullPagedNativeResult[FullPagedCounts](status: FullPagedNativeError.None,
       completed: streamed.value)
-proc visitEntries*(reader: var FullPagedReader, root: StateRoot,
+proc visitEntries*(reader: FullPagedReader, root: StateRoot,
     visitor: nil FullPagedEntryVisitor): FullPagedNativeResult[FullPagedCounts] =
   ## Default traversal retains the originally admitted finite work policy, never an unbounded producer allowance.
   let data = reader.data
@@ -1007,3 +1030,40 @@ proc readContext*(writer: FullPagedWriter, budget: FullPagedWorkLimits): FullPag
       FullPagedContext](captured)
   FullPagedNativeResult[FullPagedContext](status: FullPagedNativeError.None,
       completed: captured.value)
+
+proc rootInfo*(writer: FullPagedWriter, root: StateRoot): FullPagedNativeResult[FullPagedRoot] =
+  ## Inspect completely admitted retained-root claims while holding the writer lease, without a second reader admission.
+  let data = writer.data
+  if data == nil or not data.active or not data.selected: return refused[FullPagedRoot](
+      FullPagedNativeError.Uninitialized)
+  if data.poisoned: return refused[FullPagedRoot](FullPagedNativeError.RecoveryRequired)
+  let held = data.head.check
+  if held != FileError.None: return fileFailed[FullPagedRoot](held)
+  let header = data.checked.header
+  for index in 0..<header.len:
+    # Exact full-root metadata grants counts only; complete-map reconstruction independently recomputes the JAM root.
+    let claim = header.retainedRoot(index)
+    if array[32, byte](claim.root) == array[32, byte](root):
+      return FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.None,
+          completed: claim)
+  FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.GraphFailure,
+    graphCause: FullPagedStreamError.UnknownRoot, graphCodec: FullPagedError.Uninitialized)
+proc visitEntries*(writer: FullPagedWriter, root: StateRoot, visitor: nil FullPagedEntryVisitor,
+    budget: FullPagedWorkLimits): FullPagedNativeResult[FullPagedCounts] =
+  ## Synchronously borrow the immutable selected head; callers stage every value privately until traversal completes.
+  let data = writer.data
+  if data == nil or not data.active or not data.selected: return refused[FullPagedCounts](
+      FullPagedNativeError.Uninitialized)
+  if data.poisoned: return refused[FullPagedCounts](FullPagedNativeError.RecoveryRequired)
+  let streamed = data.head.streamFullEntries(data.checked, root, visitor, budget)
+  if streamed.error != FullPagedStreamError.None: return graphFailed[FullPagedCounts,
+      FullPagedCounts](streamed)
+  FullPagedNativeResult[FullPagedCounts](status: FullPagedNativeError.None,
+      completed: streamed.value)
+proc visitEntries*(writer: FullPagedWriter, root: StateRoot,
+    visitor: nil FullPagedEntryVisitor): FullPagedNativeResult[FullPagedCounts] =
+  ## Omitted traversal budgets preserve every originally admitted finite work ceiling.
+  let data = writer.data
+  if data == nil or not data.active or not data.selected: return refused[FullPagedCounts](
+      FullPagedNativeError.Uninitialized)
+  writer.visitEntries(root, visitor, data.checked.limits.work)
