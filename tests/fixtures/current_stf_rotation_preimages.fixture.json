@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_PREIMAGES",
+  "files": {
+    "current-stf-rotation-preimages.json": "f08e2d1465328ada7474f94525a1b3e22dc3b6514fadfba5fa940e4e98fe52bc"
+  },
+  "target": "current-stf-rotation-preimages.json"
+}

@@ -44,6 +44,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_preimages_corpus(compiler, report, checks, libraries):
+    """Qualify pending/provided request lifecycle and exact strict age/restore boundaries after rotation."""
+    import current_stf_rotation_preimages_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_request_lifecycle',
+         'current_stf_preimage_provision', 'current_stf_preimage_aging', 'current_stf_rotation_preimages', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_authority_corpus(compiler, report, checks, libraries):
     """Qualify supervisor handoff, protected-source authority and later foreign-code execution across rotation."""
     import current_stf_rotation_authority_oracle as oracle

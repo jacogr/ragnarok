@@ -25,6 +25,7 @@ erasure shards remain tied to the current population.
 | Foreign funding, direct pools and concurrent junior-write annulment |140|[Foreign funding](current-stf-rotation-funding.md)|
 | Supervised storage/requests, annulled yields and retained provisions |150|[Supervised effects](current-stf-rotation-supervision.md)|
 | Immediate supervisor handoff, protected authority and foreign upgrades |150|[Authority transitions](current-stf-rotation-authority.md)|
+| Request/provision ordering, strict expiry equality and restored histories |190|[Preimage lifecycle](current-stf-rotation-preimages.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
