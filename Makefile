@@ -249,6 +249,13 @@ diagnose-pvm-interpreters: setup
 diagnose-pvm-build-identity: setup
 	$(PYTHON) tools/pvm_build_identity.py
 
+# Own the full prerequisite chain: strict stress identity, complete same-image control, then source attribution.
+.PHONY: attribute-pvm-execution
+attribute-pvm-execution: setup
+	$(MAKE) diagnose-pvm-build-identity
+	$(MAKE) compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_SYNTHETIC=1
+	$(PYTHON) tools/pvm_execution_attribution.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py

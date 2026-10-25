@@ -24,9 +24,12 @@ BUILD = ROOT/'build/tests/pvm-build-identity'
 SOURCE = '11f79d97'
 
 
-def generated(folder):
+def generated(row):
     """Bind generated C basenames to bytes before the next clean staging build retires its cache."""
-    paths = sorted(folder.glob('compiler-*/profile-*-cache/c/**/*.c'))
+    cache = Path(next(arg.split(':', 1)[1] for arg in row['command'] if arg.startswith('--nimcache:')))
+    if not cache.resolve().is_relative_to(BUILD.resolve()):
+        raise ValueError('compiler cache escapes identity diagnostic')
+    paths = sorted((cache/'c').rglob('*.c'))
     if not paths or len({p.name for p in paths}) != len(paths):
         raise ValueError('incomplete or ambiguous generated C manifest')
     return {p.name: p.read_text() for p in paths}
@@ -42,6 +45,7 @@ def run():
         if platform.system() != 'Linux':
             raise RuntimeError('ELF build identity diagnosis requires Linux CI')
         compiler, _ = installed()
+        report['head'] = NativeChecks(BUILD).command(['git', 'rev-parse', 'HEAD'], 'head')['output'].strip()
         source = BUILD/'source'
         manifest = snapshot(source, SOURCE, {p: (ROOT/p).read_bytes() for p in DRIVER})
         report['source_sha256'] = manifest
@@ -65,11 +69,17 @@ def run():
                         row, image = compile_image(folder, role, compiler, source/main, profile, **options)
                         path = folder/'compilation'
                     name = policy+'-'+profile+'-'+role
-                    c_sources[role] = generated(path)
+                    c_sources[role] = generated(row)
                     images[role] = dict(sha256=digest(image), build=row,
                         generated_c_sha256={n: hashlib.sha256(t.encode()).hexdigest()
                                             for n, t in c_sources[role].items()})
                     checks = NativeChecks(BUILD)
+                    section = BUILD/(name+'-text.bin')
+                    extracted = checks.command(['objcopy', '--dump-section', '.text='+str(section),
+                                                image, BUILD/(name+'-copy.bin')], name+'-text')
+                    if extracted['exit_code'] or not section.is_file():
+                        raise RuntimeError('native code section unavailable')
+                    images[role]['text_sha256'] = digest(section)
                     for suffix, command in [('elf', ['readelf', '-W', '-a', image]),
                                             ('assembly', ['objdump', '-d', '--no-show-raw-insn', image])]:
                         result = checks.command(command, name+'-'+suffix, timeout=60)
