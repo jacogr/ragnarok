@@ -17,7 +17,7 @@ def host_parameters(*, code_limit=512, lookup_age=2**32-1, deposits=(0, 0, 0)):
     return bytes(wire)
 
 
-def replay(reference, *, input_requests=True, profiles=None):
+def replay(reference, *, input_requests=True, profiles=None, forks=False):
     """Take only the reference's independently authored seed/child stream; retain every expected complete map."""
     if input_requests:
         _, expected, evidence = reference.expected_observations()
@@ -28,24 +28,30 @@ def replay(reference, *, input_requests=True, profiles=None):
         assert all(isinstance(profile, bytes) and len(profile) == 122 for profile in profiles)
     ordinal = 0
     requests, initialized, waiting, blocks = [], False, False, 0
+    sibling = False
     for line in expected:
         tag, data = line.split(' ', 1)
         if tag == 'P':
-            assert not waiting and (not initialized or blocks > 0)
+            assert not waiting and not sibling and (not initialized or blocks > 0)
             blocks = 0
             profile = '' if profiles is None else ' '+profiles[ordinal].hex()
             requests.append('C '+data+profile)
             ordinal += 1
             initialized = True
-        elif tag == 'B':
+        elif tag == 'B' or forks and tag == 'V':
             assert initialized and not waiting
+            if tag == 'V':
+                assert not sibling
+                sibling = True # A depth-one mutation must be followed by its original-last child.
+            else:
+                sibling = False
             requests.append(line)
             waiting = True
             blocks += 1
         else:
             assert tag == 'O' and waiting, 'Unsupported reference observation: '+tag
             waiting = False
-    assert initialized and not waiting and blocks > 0
+    assert initialized and not waiting and not sibling and blocks > 0
     return requests, expected, dict(reference=evidence,
         requests_sha256=hashlib.sha256(('\n'.join(requests)+'\n').encode()).hexdigest(),
         expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())

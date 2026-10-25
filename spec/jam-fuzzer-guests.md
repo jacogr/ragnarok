@@ -96,3 +96,12 @@ account effects. Independent signed boundary markers, entropy, validator rosters
 ready/history rings and statistics are checked together with guest namespaces and
 outputs. Authorization code limits and funded deposit profiles remain explicit
 per-chain Parameters; the512-byte oversized-code control remains intact.
+
+Guest fork isolation adds15 genuine guest-bearing siblings across all five
+storage/yield/checkpoint/panic modes, alongside35 original-last imports. Each
+alternative quorum executes against the exact original parent's map and ancestry;
+its50 full-map expectations are calculated independently and frozen before native
+execution. After an invalid prior-root attempt, both selected and sibling maps
+remain intact. Original-last imports preserve queryable sibling maps, and later
+direct extension retires the old sibling group. No observed variant calculates
+the expected original continuation.
