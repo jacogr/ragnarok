@@ -791,8 +791,9 @@ jobs:
     name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
+      fail-fast: false
       matrix:
-        family: [{name: PVM}]
+        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM","group":"jam-interface"}]') }}
     runs-on: ubuntu-latest
     env:
       FUZZ_RUNS: "10000"
@@ -802,9 +803,10 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge
+        if: matrix.family.group == 'pvm'
         run: make fuzz-pvm-upstream
       - name: Show fuzz coverage and bridge accounting
-        if: always()
+        if: always() && matrix.family.group == 'pvm'
         run: |
           if test -f build/pvm-upstream-fuzz/summary.md; then
             cat build/pvm-upstream-fuzz/summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -812,7 +814,7 @@ jobs:
             echo 'PVM fuzz campaign did not complete; inspect results.json and logs.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Retain fuzz evidence and failing inputs
-        if: always()
+        if: always() && matrix.family.group == 'pvm'
         uses: *upload-artifact
         with:
           name: pvm-fuzz-${{ github.run_attempt }}
@@ -823,6 +825,30 @@ jobs:
             build/pvm-upstream-fuzz/results.json
             build/pvm-upstream-fuzz/summary.md
             build/pvm-upstream-fuzz/artifacts/
+
+      - name: Verify current JAM engine interface and whole-map STF cases
+        if: matrix.family.group == 'jam-interface'
+        run: make check-jam-fuzzer-interface
+      - name: Show JAM interface verdict and pending engine validation
+        if: always() && matrix.family.group == 'jam-interface'
+        run: |
+          if test -f build/tests/jam-fuzzer-interface/summary.md; then
+            cat build/tests/jam-fuzzer-interface/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'JAM interface verification did not complete; live engine validation remains pending.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain JAM interface evidence
+        if: always() && matrix.family.group == 'jam-interface'
+        uses: *upload-artifact
+        with:
+          name: jam-fuzzer-interface-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/ci/*.log
+            build/tests/jam-fuzzer-interface/**/*.log
+            build/tests/jam-fuzzer-interface/results.json
+            build/tests/jam-fuzzer-interface/summary.md
 
   # Future subsystem campaigns join this aggregate so one green child cannot conceal another failure.
   fuzz-status:
