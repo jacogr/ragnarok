@@ -282,14 +282,17 @@ proc captureStateChapter*(chapter: StateChapterId, input: openArray[byte], profi
           decoded.error)) # Child failure publishes no data.
     consumed = decoded.value.consumed # Each ordered roster uses its existing bounded population rules.
   of StateChapterId.Availability:
+    # A retained guarantee may use previous-rotation indices after shrinkage; signature admission selects the exact roster.
+    let credentialPopulation = if uint64(profile.current) >= uint64(profile.previous):
+      profile.current else: profile.previous
     let decoded = decodeAvailabilityState(input, AvailabilityConfig(guarantee: GuaranteeConfig(
-        cores: profile.cores, validators: profile.current, maxBytes: policy.maxBytes),
+        cores: profile.cores, validators: credentialPopulation, maxBytes: policy.maxBytes),
         maxPresent: policy.items,
         maxBytes: policy.maxBytes))
     if decoded.error != AvailabilityError.None:
       return StateCompositionResult[StateChapterSnapshot](status: reason(
           decoded.error)) # Child failure publishes no data.
-    consumed = decoded.value.consumed # Full optional guarantees use the shared core/current-validator profile.
+    consumed = decoded.value.consumed # Full optional guarantees retain current/previous credential-index bounds without granting signature validity.
   of StateChapterId.Time:
     let decoded = decodeStateTime(input)
     if decoded.error != StateComponentError.None:

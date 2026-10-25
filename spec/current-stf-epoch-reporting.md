@@ -72,3 +72,7 @@ the replay used900 seconds for compilation alone and retained the ordinary180-se
 corpus runtime limit. Compilation took255/218 seconds and both runtime verdicts
 passed. No expectation, protocol resource limit or runtime assertion was weakened.
 This remains local covered-source Linux evidence, distinct from exact-head CI.
+
+The [population/reporting extension](current-stf-population-reporting.md) adds
+six→nine→six growth/shrink, prior-population quorum and resize clearing, a newly
+active/inactive third core, current erasure counts and previous-roster index domains.
