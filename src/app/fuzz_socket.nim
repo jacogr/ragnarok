@@ -118,6 +118,9 @@ func hasRequest*(server: FuzzSocket): bool =
 func request*(server: FuzzSocket): FuzzRequest {.inline, requires: server.hasRequest.} =
   ## Borrow immutable request authority for execution outside the transport tick.
   server.ticket
+func negotiatedFeatures*(server: FuzzSocket): uint32 =
+  ## The host activates optional backend behavior only after the actual handshake intersection.
+  if server.connected: server.session.negotiatedFeatures else: 0'u32
 proc nonblocking(fd: cint): bool =
   ## Install nonblocking IO, close-on-exec and signal safety before exposing a descriptor.
   let flags = fcntl(fd, F_GETFL, 0)

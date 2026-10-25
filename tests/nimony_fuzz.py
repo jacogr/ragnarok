@@ -34,14 +34,14 @@ def exchange(peer, payload):
     return exact(peer, size)
 
 
-def connect(path):
+def connect(path, features=0):
     """A fresh real client always performs protocol1/current-profile handshake first."""
     peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     peer.settimeout(10)
     try:
         peer.connect(str(path))
-        response = exchange(peer, bytes([0, 1])+bytes(4)+bytes([0, 8, 0])+bytes(3)+b'\x04test')
-        assert response[0:2] == bytes([0, 1]) and response[2:6] == bytes(4)
+        response = exchange(peer, bytes([0, 1])+features.to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x04test')
+        assert response[0:2] == bytes([0, 1]) and response[2:6] == (2).to_bytes(4, 'little')
         assert response[6:9] == bytes([0, 8, 0])
         return peer
     except BaseException:
@@ -73,6 +73,11 @@ def exercise(binary, policy_binary, folder):
     initialize = b'\x01'+genesis[:297]+genesis[329:]+b'\x00'
     original_state = b'\x05'+raw.wire(before)[32:]
     successor_state = b'\x05'+raw.wire(after)[32:]
+    from jam_fuzzer_forks_oracle import sibling
+    fork_cases = [sibling(dict(before), author) for author in (1, 2)]
+    final_original, calculated_original = sibling(dict(before), 0)
+    assert final_original == body and calculated_original == dict(after)
+    continuation, continuation_state = sibling(dict(after), 0)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     log_path = folder/'jam-fuzzer-target-process.log'
@@ -121,6 +126,20 @@ def exercise(binary, policy_binary, folder):
                     payload = b'\x04'+digest(body[:297])
                     peer.sendall(struct.pack('<I', len(payload))+payload)
                     assert peer.recv(1) == b''
+                with connect(endpoint, features=2) as peer:
+                    # Valid mutants share one immutable parent; the original arrives last and alone is extended.
+                    assert exchange(peer, initialize) == b'\x02'+genesis[297:329]
+                    for variant, successor in fork_cases:
+                        expected = raw.wire(sorted(successor.items()))
+                        assert exchange(peer, b'\x03'+variant) == b'\x02'+expected[:32]
+                        assert exchange(peer, b'\x04'+digest(variant[:297])) == b'\x05'+expected[32:]
+                    first_variant, first_map = fork_cases[0]
+                    assert exchange(peer, b'\x04'+digest(first_variant[:297])) == b'\x05'+raw.wire(sorted(first_map.items()))[32:]
+                    assert exchange(peer, b'\x03'+body) == b'\x02'+raw.wire(after)[:32]
+                    assert exchange(peer, b'\x04'+digest(body[:297])) == successor_state
+                    next_wire = raw.wire(sorted(continuation_state.items()))
+                    assert exchange(peer, b'\x03'+continuation) == b'\x02'+next_wire[:32]
+                    assert exchange(peer, b'\x04'+digest(continuation[:297])) == b'\x05'+next_wire[32:]
                 process.send_signal(signal.SIGTERM)
                 assert process.wait(timeout=30) == 0
                 assert not endpoint.exists(), 'normal shutdown must remove its owned socket'
@@ -130,6 +149,6 @@ def exercise(binary, policy_binary, folder):
                     process.kill()
                     process.wait(timeout=10)
         assert parameters.read_text() == job['config']
-    return dict(passed=True, missing_environment=missing, signed_imports=1,
-                consensus_rejections=1, complete_state_queries=3, reconnects=1,
+    return dict(passed=True, missing_environment=missing, signed_imports=5,
+                consensus_rejections=1, complete_state_queries=8, reconnects=2,
                 log=str(log_path), scope='fixed independent current-profile socket adapter checks; no generated campaign')

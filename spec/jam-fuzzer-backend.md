@@ -6,8 +6,9 @@ seed, not independently authenticated production genesis. The complete supplied
 map is retained and committed exactly as received, independently of the header's
 prior-state field. Production bootstrap and durable state are not modified.
 
-The first backend increment supports a linear session without advertised fork or
-initial ancestry features. Initialization and exact-hash state queries are supported
+The initial backend path supports a linear session. Explicit fork-state policy
+now also supports the pinned depth-one sibling workflow; initial ancestry remains
+a separate extension. Initialization and exact-hash state queries are supported
 for any structurally owned bounded seed. Actual import uses the existing current
 candidate pipeline with explicit host Parameters and resource policies, and installs
 only a genuine prepared current update. If the seed cannot satisfy that pipeline's

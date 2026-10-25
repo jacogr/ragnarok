@@ -4,8 +4,9 @@
 ## Explicit startup policies and real candidate failures distinguish consensus Error replies from local faults.
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
+import ../../support/fuzz_fork_context
 import ../../../src/app/[fuzz_target, fuzz_backend, fuzz_rejection, candidate]
-import ../../../src/codec/[bounded, report_owned, block_codec]
+import ../../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../../src/state/fuzz_protocol
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
@@ -17,7 +18,7 @@ proc main() {.raises.} =
   let prepared = prepareFuzzTarget(environment, supplied.parameters, supplied.candidate,
       ElementLimit(1000), ByteLimit(1000000))
   assert prepared.error == FuzzTargetError.None
-  assert prepared.value.socket.peer.features == 0
+  assert prepared.value.socket.peer.features == 2
   assert prepared.value.socket.peer.jam.minor == 8
   var changed = environment
   changed.enabled = false
@@ -72,6 +73,13 @@ proc main() {.raises.} =
     let failure = backend.executeFuzz(fuzzImport(invalid.value.owner))
     assert failure.error == FuzzBackendError.CandidateFailure
     assert consensusFuzzRejection(failure.candidateFailure)
+  var linear = initFuzzBackend(supplied).value
+  assert linear.executeFuzz(initialize).error == FuzzBackendError.None
+  assert linear.executeFuzz(fuzzImport(child)).error == FuzzBackendError.None
+  let sibling = fuzzSiblingChild(context.parent.value, AuthorIndex(1))
+  let disabled = linear.executeFuzz(fuzzImport(sibling))
+  assert disabled.error == FuzzBackendError.CandidateFailure
+  assert consensusFuzzRejection(disabled.candidateFailure) # A zero fork window cannot admit siblings in a non-negotiated session.
   var limited = supplied
   limited.candidate.reporting.admission.maxParentHeaderBytes = ByteLimit(1)
   var backend = initFuzzBackend(limited).value
