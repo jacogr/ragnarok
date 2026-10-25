@@ -54,7 +54,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """Selected request presence determines exactly two reserved items and81+length bytes; no preimage is invented."""
     request = request_key(42, digest(PAYLOAD), 1); before = request in parent
     present = profile in ('solicit', 'checkpoint-panic')
@@ -72,7 +72,7 @@ def effects(result, parent, profile, slot, budget):
     instructions, _, operations = program(profile)
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+sum({25: 2193, 26: 3250, 19: 103}[operation] for operation in operations)
     assert gas <= budget
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))

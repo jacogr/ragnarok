@@ -54,7 +54,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """N preserves junior gas/provisions, discards its selected yield/writes; M uses the surviving supervisor account."""
     own = profile in ('supervisor-panic', 'stale-supervisor'); storage = value_key('S',42,b'\7')
     value = bytes([42 if own else 99]); result[storage] = value
@@ -73,7 +73,7 @@ def effects(result, parent, profile, slot, budget):
     gas42=simulate(junior,gas_definitions(),prefix=[b'\0']*5)[0]+write+98+3983
     gas99=simulate(supervisor,gas_definitions(),prefix=[b'\0']*5)[0]+write+103*int(profile=='supervisor-checkpoint-panic')
     assert max(gas42,gas99)<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services}
     for sid,gas in ((42,gas42),(99,gas99)):
         row=activity.setdefault(sid,[sid]+[0]*11);row[9]+=1;row[11]+=gas # Annulled junior still contributes actual work/gas.
