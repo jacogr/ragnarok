@@ -89,3 +89,10 @@ references contribute464 complete-map imports. Retained ready rows, processed
 prefixes, selected checkpoints, gas/statistics and delayed preimage visibility
 are compared through ordinary ImportBlock/GetState; no execution retry or
 retroactive code availability changes the expected phase ordering.
+
+Epoch composition adds418 full-map imports across retained report draining,
+skipped-slot ready expiry, preimage lifecycle and supervised/privileged/funded
+account effects. Independent signed boundary markers, entropy, validator rosters,
+ready/history rings and statistics are checked together with guest namespaces and
+outputs. Authorization code limits and funded deposit profiles remain explicit
+per-chain Parameters; the512-byte oversized-code control remains intact.

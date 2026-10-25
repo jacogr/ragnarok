@@ -728,6 +728,42 @@ def jam_fuzzer_late_code_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_epoch_drain_corpus(compiler, report, checks, libraries):
+    """Execute epoch drain through fuzz requests against independent complete STF maps."""
+    import current_stf_epoch_drain_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_epoch_drain', 'current_stf_dependency_waves'))
+
+
+@CORPORA.case
+def jam_fuzzer_ready_expiry_corpus(compiler, report, checks, libraries):
+    """Execute ready expiry through fuzz requests against independent complete STF maps."""
+    import current_stf_ready_expiry_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_ready_expiry', 'current_stf_epoch_drain'))
+
+
+@CORPORA.case
+def jam_fuzzer_epoch_lifecycle_corpus(compiler, report, checks, libraries):
+    """Execute epoch lifecycle through fuzz requests against independent complete STF maps."""
+    import current_stf_epoch_lifecycle_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_epoch_lifecycle', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_epoch_composition_corpus(compiler, report, checks, libraries):
+    """Execute epoch composition through fuzz requests against independent complete STF maps."""
+    import current_stf_epoch_composition_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    profiles = [host_parameters(code_limit=4096 if 107 <= mode <= 122 and mode != 112 else 512,
+                                deposits=(7, 1, 100) if mode in range(123, 131) or mode in range(141, 155) else (0, 0, 0))
+                for _, _, mode in reference.CASES]
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_epoch_composition', 'current_stf_transfers'), profiles=profiles)
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
