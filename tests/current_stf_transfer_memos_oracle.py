@@ -73,18 +73,19 @@ def foundation(parent, outputs):
     return advance
 
 
-def effects(result, profile, slot):
+def effects(result, profile, slot, *, statistics_config=DEFAULT):
     """Compute transfer credit, selected storage footprint and N/T/G from literal instructions and host prices."""
-    transfers.effects(result, 'halt', slot)
+    transfers.effects(result, 'halt', slot, statistics_config=statistics_config)
     instructions, _ = program(profile); retained = profile != 'panic'
     fetch = 366 if profile == 'single-item' else 300 # GP fetch15=355+ceil(344*32/1024); fetch14=287+ceil(400*32/1024).
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+fetch+2453+98+(103 if profile == 'checkpoint-panic' else 0)
     if retained:
-        value = fetched(profile); result[value_key('S', 42, b'\7')] = value
+        value = fetched(profile); storage = value_key('S', 42, b'\7'); fresh = storage not in result
+        result[storage] = value
         key = chapter_service(255, 42); code, wide, narrow = account_parse(result[key], 105)
-        wide, narrow = list(wide), list(narrow); wide[4] += 67; narrow[0] += 1
+        wide, narrow = list(wide), list(narrow); wide[4] += 67*int(fresh); narrow[0] += int(fresh)
         result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     services = [tuple(list(row[:11])+[gas]) if row[0] == 42 else row for row in services]
     result[chapter_key(13)] = statistics_wire((current, previous, cores, services))
     return dict(receiver_gas=gas, retained=retained, fetched=fetched(profile).hex())

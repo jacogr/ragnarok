@@ -51,14 +51,14 @@ def original(mode):
     return parent
 
 
-def effects(result, mode, slot):
+def effects(result, mode, slot, *, statistics_config=DEFAULT):
     """Apply paper debit/credit selection, prepaid outgoing gas and recipient-only invocation statistics."""
     instructions, _, amount, offer = program(mode)
     accepted = mode != 'low-offer'
     retained = accepted and mode != 'panic'
     block = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]
     source_gas = block+575+(offer if accepted else 0)+(103 if mode == 'checkpoint-panic' else 0)
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     source = activity.setdefault(99, [99]+[0]*11)
     source[9] += 1; source[11] += source_gas

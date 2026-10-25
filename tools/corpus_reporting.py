@@ -41,6 +41,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_transfers_corpus(compiler, report, checks, libraries):
+    """Qualify direct/deferred balance pools, literal memo delivery and refusal/gas boundaries across rotation."""
+    import current_stf_rotation_transfers_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_transfers',
+         'current_stf_transfer_pools', 'current_stf_transfer_admission', 'current_stf_transfer_memos',
+         'current_stf_rotation_transfers', 'state_report'), defines=('rotationHosts',))
+
+
+@CORPORA.case
 def current_stf_rotation_designation_corpus(compiler, report, checks, libraries):
     """Qualify real designation, simultaneous delegation handoff and delayed promotion through four epochs."""
     import current_stf_rotation_designation_oracle as oracle

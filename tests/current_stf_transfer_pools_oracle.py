@@ -45,7 +45,7 @@ def original(direct, selection):
     return parent
 
 
-def effects(result, direct, selection, slot):
+def effects(result, direct, selection, slot, *, statistics_config=DEFAULT):
     """Debit only the selected source pool; deferred input alone invokes and stamps the recipient."""
     instructions, _ = program(direct, selection)
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+575+(0 if direct else 10000)
@@ -60,7 +60,7 @@ def effects(result, direct, selection, slot):
             if not direct:
                 narrow[2] = slot # Immediate account modification alone does not create a C13 participant.
         result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     if not direct:

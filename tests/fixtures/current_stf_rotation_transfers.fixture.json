@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_TRANSFERS",
+  "files": {
+    "current-stf-rotation-transfers.json": "2672b238b4ea415baf714b0d356bd06356cfd9dbdee0bb32c17dadbea86fc519"
+  },
+  "target": "current-stf-rotation-transfers.json"
+}
