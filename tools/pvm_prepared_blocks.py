@@ -23,6 +23,7 @@ from pvm_instruction_profile import (SCOPE, VERSION, calibrate_scope, collect,
                                      execution_entry_count, profile_counts,
                                      capture_generated_sources, verify_generated_sources)
 from pvm_guest_compare import DRIVER, revision, snapshot
+from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-prepared-blocks'
@@ -247,7 +248,7 @@ def run(timings=False, counts=False, baseline=None):
         report.update(revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                       sources={str(path.relative_to(ROOT)): value for path, value in identities.items()},
                       compiler=json.loads((ROOT/'build/toolchain/environment.json').read_text()),
-                      platform=platform.platform(), provenance=ready['provenance'], preparations=ready['preparations'])
+                      platform=platform.platform(), cpu_model=cpu_model(), provenance=ready['provenance'], preparations=ready['preparations'])
         command([binary], 'assert-native', dict(os.environ, RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1'), 'pvm sieve native assertion control')
         if baseline_binary is not None:
             # A baseline success cannot hide disabled native assertions in either image.
