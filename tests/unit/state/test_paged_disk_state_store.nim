@@ -191,12 +191,113 @@ proc lateBarrier() =
   assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
   assert disk.snapshotContext.value == @[9'u8] and uint64(disk.generation.value) == 2
   assert disk.close == FileError.None
+proc cachedMetadata() =
+  ## Dispatcher metadata never consumes a native read fault; the excluded commit must still fence the actual disk source.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  let limits = transport(config)
+  let directory = path("cached-metadata")
+  var disk = default(DiskStateStore)
+  assert initializePagedDiskStateStore(disk, directory, source, config, limits, [7'u8]).error ==
+      DiskStoreError.None
+  resetIo() # Observe only passive getters and the following actual worker fence.
+  armIo(readIo, 0, 1, failedIo)
+  assert sameStateSnapshot(disk.snapshot.value, source)
+  assert uint64(disk.generation.value) == 1
+  var detached = disk.snapshotContext.value
+  detached[0] = 99
+  assert disk.snapshotContext.value == @[7'u8]
+  assert pendingIo() == 1 and ioCalls(readIo) == 0 # Passive captures perform no stat, read or source-repair operation.
+  let refused = disk.commit(source, target, [9'u8], [source])
+  assert refused.error == DiskStoreError.FileFailure and refused.fileError == FileError.IoFailure
+  assert pendingIo() == 0
+  resetIo()
+  assert disk.snapshot.fileError == FileError.RecoveryRequired
+  assert disk.generation.fileError == FileError.RecoveryRequired
+  assert disk.snapshotContext.error == FileError.RecoveryRequired
+  assert ioCalls(readIo) == 0
+  assert source.lookup(key(0)).value.bytes == @[5'u8]
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      limits).error == DiskStoreError.None
+  assert disk.snapshotContext.value == @[7'u8] and uint64(disk.generation.value) == 1
+  assert disk.close == FileError.None
+proc contextEnvelope(context: seq[byte], previous: string): seq[byte] =
+  ## Independent application-envelope bytes use only literal framing and captured actual old CURRENT bytes.
+  result = @[]
+  for character in "RAGNAROK-STATE-PAGED-CONTEXT-V1\n": result.add(byte(character))
+  result.add(if previous.len == 0: 0'u8 else: 1'u8)
+  for index in 0..<8: result.add(byte((uint64(context.len) shr (8*index)) and 255)) # Exact E8 inner extent.
+  for character in previous: result.add(byte(character)) # Every old manifest octet must remain bound, including its tree digest.
+  for octet in context: result.add(octet) # Unwrapped public context remains caller-owned metadata.
+proc envelopeWitness() {.raises.} =
+  ## Actual native V2 context contains the exact authenticated previous descriptor, while facade callers receive detached inner bytes.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  let limits = transport(config)
+  let directory = path("envelope")
+  var disk = default(DiskStateStore)
+  var reader = default(FullPagedReader)
+  defer:
+    if reader.opened: discard reader.close # Native source observations never prolong the facade's retirement lease.
+    if disk.opened: discard disk.close
+  assert initializePagedDiskStateStore(disk, directory, source, config, limits, [7'u8]).error ==
+      DiskStoreError.None
+  let previous = readFile(directory & "/CURRENT")
+  assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
+  assert reader.readContext(config.limits.work).value.bytes == contextEnvelope(@[7'u8], "")
+  assert reader.close == FileError.None
+  assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+  var selected = config
+  selected.root = target.commitment.root
+  assert openFullPagedReader(reader, directory, selected).error == FullPagedNativeError.None
+  assert reader.readContext(selected.limits.work).value.bytes == contextEnvelope(@[9'u8], previous)
+  assert disk.snapshotContext.value == @[9'u8]
+  assert reader.close == FileError.None
+  assert disk.close == FileError.None
+proc malformedEnvelope() {.raises.} =
+  ## Fully valid storage-only V2 artifacts cannot bypass the explicit application schema, tagged source identity or bounded inner length.
+  let source = state(5)
+  let config = configuration(source, statePolicy())
+  let limits = transport(config)
+  let prepared = preparePagedState(source, [], limits).value
+  let correct = contextEnvelope(@[7'u8], "")
+  for kind in 0..<6:
+    # Each mutation is authenticated by the unchanged native backend, so refusal belongs to the application envelope decoder.
+    var raw = clone(correct)
+    case kind
+    of 0: raw[0] = raw[0] xor 1
+    of 1: raw["RAGNAROK-STATE-PAGED-CONTEXT-V1\n".len] = 2
+    of 2:
+      for index in 0..<8: raw["RAGNAROK-STATE-PAGED-CONTEXT-V1\n".len+1+index] = 255 # Huge E8 cannot cause allocation or narrowing.
+    of 3: raw.add(0) # Exact framing rejects unaccounted trailing transport.
+    of 4: raw = @[7'u8] # An opaque storage-only V2 context is not an application envelope.
+    else:
+      raw["RAGNAROK-STATE-PAGED-CONTEXT-V1\n".len] = 1 # A predecessor tag requires a complete fixed manifest and a successor generation.
+      for index in 0..<192: raw.add(0)
+    let directory = path("bad-envelope-" & $kind)
+    var native = default(FullPagedWriter)
+    var disk = default(DiskStateStore)
+    let initialized = initializePagedStateStore(native, directory, config, prepared, raw)
+    assert initialized.error == PagedStateError.None
+    assert native.close == FileError.None
+    let before = readFile(directory & "/CURRENT")
+    let rejected = openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(),
+        config, limits)
+    assert rejected.error == DiskStoreError.FileFailure and rejected.fileError ==
+        FileError.WrongIdentity
+    assert not disk.opened and readFile(directory & "/CURRENT") == before
 proc main() {.raises.} =
   ## Native facade behavior and complete application context restoration share one supported runner and exact fixture contract.
   normal()
   history()
   faults()
   lateBarrier()
+  cachedMetadata()
+  envelopeWitness()
+  malformedEnvelope()
   echo "paged disk state store PASS"
 try:
   main()

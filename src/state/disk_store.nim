@@ -8,7 +8,7 @@ import std/assertions
 import ./[store, paged_state]
 import ../storage/[file_repository, node_repository, node_records, full_state_trie,
   database_identity, durability, managed_repository, file_migration, managed_manifest,
-  full_paged_store, full_paged_codec]
+  full_paged_store, full_paged_codec, full_paged_stream]
 import ../codec/[state_trie, bounded]
 
 type
@@ -29,15 +29,28 @@ type
     case status: FileError
     of None: completed: T
     else: discard # Failed metadata/durability operations grant no transport or receipt.
+  PagedDiskContext = object ## One private authenticated envelope binds application metadata to the exact previous durable selection.
+    previous: FullPagedManifest
+    context: seq[byte]
+  PagedDiskCache = ref object ## Last confirmed metadata is owned and passive; the existing worker lease excludes every shared alias during IO.
+    healthy: bool
+    selected, previous: FullPagedManifest
+    context: seq[byte]
   DiskStateStore* = object ## One noncopyable selected backend publishes ordinary immutable complete-state views.
     journal: FileRepository
     paged: FullPagedWriter
     pagedMode: bool
+    pagedCache: nil PagedDiskCache
     pagedConfig: FullPagedNativeConfig
     pagedTransport: PagedStateLimits
     state: StateStore
     limits: JournalLimits
     schema: StorageSchema
+
+const
+  PagedContextMagic = "RAGNAROK-STATE-PAGED-CONTEXT-V1\n"
+  PagedContextPrefix = PagedContextMagic.len+9 # Exact magic, one predecessor tag and E8 inner-context length.
+  PagedDiskContextOverhead* = PagedContextPrefix+FullPagedManifestBytes ## Reserve the largest fixed envelope before application context encoding.
 
 proc `=copy`*(destination: var DiskStateStore, source: DiskStateStore) {.error.}
   ## The composite owner may never duplicate either native backend or its retirement obligation.
@@ -47,6 +60,7 @@ proc `=destroy`*(store: DiskStateStore) =
   ## Both native backends enforce explicit retirement before resident state owners are released.
   `=destroy`(store.journal)
   `=destroy`(store.paged)
+  `=destroy`(store.pagedCache)
   `=destroy`(store.state)
 
 func error*[T](outcome: DiskStoreResult[T]): DiskStoreError =
@@ -98,9 +112,112 @@ func pagedFailed[T, U](outcome: PagedStateResult[U]): DiskStoreResult[T] {.requi
   ## Native failures preserve the facade's exact IO uncertainty domain; private staging grants no prefix.
   if outcome.error == PagedStateError.NativeFailure: nativeFailed[T, bool](outcome.nativeFailure)
   else: DiskStoreResult[T](status: DiskStoreError.PagedFailure, pagedReason: outcome.failure)
+proc failPaged(store: DiskStateStore) =
+  ## Only the excluded IO owner or startup mutates this private uncertainty latch; host getters perform no disk operations.
+  let cache = store.pagedCache
+  if cache != nil: cache.healthy = false # Already retained complete snapshots remain independently readable.
+proc copyContext(bytes: openArray[byte]): seq[byte] =
+  ## Callers prove configured context and host extents before allocating detached immutable-cache transport.
+  result = newSeq[byte](bytes.len)
+  for index in 0..<bytes.len: result[index] = bytes[index] # No caller-owned mutable backing enters the cache.
+func contextFits(size: uint64, config: FullPagedNativeConfig, previous = false): bool =
+  ## Bound the complete opaque envelope and its additional resident metadata copies before allocation.
+  let overhead = uint64(PagedContextPrefix)+(if previous: uint64(
+      FullPagedManifestBytes) else: 0'u64)
+  let cap = uint64(config.limits.contextBytes)
+  let physical = uint64(config.limits.dataset.bytes)
+  size > 0 and overhead <= cap and size <= cap-overhead and overhead <= physical and size <=
+      physical-overhead
+proc encodePagedContext(context: openArray[byte], previous: FullPagedManifest,
+    config: FullPagedNativeConfig): DiskStoreResult[seq[byte]] =
+  ## Only a completely selected prior manifest may identify an old artifact; no directory-derived cleanup target is inferred.
+  let predecessor = previous.initialized
+  if not contextFits(uint64(context.len), config, predecessor):
+    return DiskStoreResult[seq[byte]](status: DiskStoreError.FileFailure,
+        fileReason: FileError.LimitExceeded)
+  let prefix = PagedContextPrefix+(if predecessor: FullPagedManifestBytes else: 0)
+  if context.len > high(int)-prefix:
+    return DiskStoreResult[seq[byte]](status: DiskStoreError.FileFailure,
+        fileReason: FileError.LimitExceeded)
+  var bytes = newSeq[byte](prefix+context.len)
+  for index, character in PagedContextMagic: bytes[index] = byte(
+      character) # One explicit application schema inside native V2 opaque context.
+  bytes[PagedContextMagic.len] = if predecessor: 1'u8 else: 0'u8
+  for index in 0..<8: bytes[PagedContextMagic.len+1+index] = byte((uint64(context.len) shr (
+      8*index)) and 255) # Exact E8 length.
+  if predecessor:
+    let encoded = previous.bytes # Its complete digest, root, counters and physical extent remain bound to the new artifact.
+    if encoded.error != FullPagedError.None:
+      return DiskStoreResult[seq[byte]](status: DiskStoreError.FileFailure,
+          fileReason: FileError.BackendFailure)
+    for index in 0..<FullPagedManifestBytes: bytes[PagedContextPrefix+index] = encoded.value[index]
+  for index in 0..<context.len: bytes[prefix+index] = context[
+      index] # Stable input is copied; no caller backing escapes.
+  DiskStoreResult[seq[byte]](status: DiskStoreError.None, completed: bytes)
+proc decodePagedContext(bytes: openArray[byte], selected: FullPagedManifest,
+    config: FullPagedNativeConfig): DiskStoreResult[PagedDiskContext] =
+  ## Complete native authentication precedes strict envelope decoding; metadata alone grants no old-file deletion authority.
+  if uint64(bytes.len) > uint64(config.limits.contextBytes):
+    return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+        fileReason: FileError.LimitExceeded)
+  if bytes.len <= PagedContextPrefix:
+    return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+        fileReason: FileError.WrongIdentity)
+  for index, character in PagedContextMagic:
+    if bytes[index] != byte(character):
+      return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+          fileReason: FileError.WrongIdentity) # No raw-context fallback.
+  let tag = bytes[PagedContextMagic.len]
+  if tag > 1: return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+      fileReason: FileError.WrongIdentity)
+  let prefix = PagedContextPrefix+(if tag == 1: FullPagedManifestBytes else: 0)
+  if prefix >= bytes.len:
+    return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+        fileReason: FileError.WrongIdentity)
+  var length = 0'u64
+  for index in 0..<8: length = length or (uint64(bytes[PagedContextMagic.len+1+index]) shl (
+      8*index)) # All E8 bytes lie in the proved fixed prefix.
+  if length != uint64(bytes.len-prefix):
+    return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+        fileReason: FileError.WrongIdentity)
+  var previous = default(FullPagedManifest)
+  if tag == 0:
+    if uint64(selected.generation) != 0:
+      return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+          fileReason: FileError.WrongIdentity) # Ordinary successors must retain their exact source descriptor.
+  else:
+    var root = default(array[32, byte])
+    for index in 0..<32: root[index] = bytes[PagedContextPrefix+64+index] # The entire fixed manifest was bounded before access.
+    let decoded = decodeFullPagedSelection(bytes.toOpenArray(PagedContextPrefix, prefix-1),
+      config.chain, StateRoot(root), config.limits.dataset, true)
+    if decoded.error != FullPagedError.None:
+      let reason = if decoded.error == FullPagedError.BackendFailure: FileError.BackendFailure else: FileError.WrongIdentity
+      return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+          fileReason: reason)
+    previous = decoded.value
+    let oldEpoch = uint64(previous.epoch)
+    let oldGeneration = uint64(previous.generation)
+    if oldEpoch >= uint64(selected.epoch) or oldGeneration == high(uint64):
+      return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+          fileReason: FileError.WrongIdentity) # Bound physical age and addition before comparing ordinary succession.
+    if oldGeneration+1 != uint64(selected.generation):
+      return DiskStoreResult[PagedDiskContext](status: DiskStoreError.FileFailure,
+          fileReason: FileError.WrongIdentity) # Ordinary source succession is independent of physical epoch age.
+  DiskStoreResult[PagedDiskContext](status: DiskStoreError.None,
+    completed: PagedDiskContext(previous: previous, context: copyContext(bytes.toOpenArray(prefix, bytes.high))))
+
 func opened*(store: DiskStateStore): bool =
   ## Poisoned owners remain opened until the caller explicitly retires their native resources.
   store.journal.opened or store.paged.opened
+func pagedStorage*(store: DiskStateStore): bool =
+  ## Only an acquired explicitly selected paged owner enables mode-specific retained-root publication.
+  store.pagedMode and store.paged.opened
+func applicationContextLimit*(store: DiskStateStore): ByteLimit =
+  ## Host encoding reserves predecessor metadata before constructing a bounded application history payload.
+  if not store.pagedMode: return store.limits.contextBytes # Legacy callers retain their existing exact frame limit.
+  let cap = uint64(store.pagedConfig.limits.contextBytes)
+  if cap <= uint64(PagedDiskContextOverhead): return ByteLimit(0)
+  ByteLimit(cap-uint64(PagedDiskContextOverhead))
 proc close*(store: var DiskStateStore): FileError =
   ## Retire the exclusive lock exactly once; independently held memory snapshots remain readable.
   if not store.opened: return FileError.Uninitialized # Preserve the existing closed-owner refusal.
@@ -110,6 +227,7 @@ proc close*(store: var DiskStateStore): FileError =
     let paged = store.paged.close # Always retire the acquired paged owner, even after an independent failure.
     if reason == FileError.None: reason = paged
   store.pagedMode = false
+  store.pagedCache = nil
   store.pagedConfig = default(FullPagedNativeConfig)
   store.pagedTransport = default(PagedStateLimits)
   store.state = default(StateStore)
@@ -119,10 +237,11 @@ proc snapshot*(store: DiskStateStore): DiskStoreResult[StateStoreSnapshot] =
   ## Refuse fresh reads after uncertain IO while already retained views keep their immutable bytes.
   if not store.opened: return default(DiskStoreResult[StateStoreSnapshot])
   if store.pagedMode:
-    # Native selected metadata checks the exact CURRENT, immutable inode, lease and uncertainty latch.
-    let selected = store.paged.selected
-    if selected.error != FullPagedNativeError.None: return nativeFailed[StateStoreSnapshot,
-        FullPagedManifest](selected)
+    # The last confirmed immutable complete map is passive; native source identity is rechecked on the excluded IO owner.
+    let cache = store.pagedCache
+    if cache == nil or not cache.healthy:
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+          fileReason: FileError.RecoveryRequired)
   else:
     let physical = store.journal.snapshot # Existing journal and managed owners keep their complete read contract.
     if physical.error != FileError.None:
@@ -137,11 +256,12 @@ proc generation*(store: DiskStateStore): DiskStoreResult[RepositoryGeneration] =
   ## Return a local ordinal only after the journal confirms a usable published owner.
   if not store.opened: return default(DiskStoreResult[RepositoryGeneration])
   if store.pagedMode:
-    # Native ordinary generation starts at zero; the contextual application facade starts at one.
-    let selected = store.paged.selected
-    if selected.error != FullPagedNativeError.None: return nativeFailed[RepositoryGeneration,
-        FullPagedManifest](selected)
-    let number = uint64(selected.value.generation)
+    # Cached ordinary generation shares the exact confirmed context/state selection, without dispatcher reads.
+    let cache = store.pagedCache
+    if cache == nil or not cache.healthy:
+      return DiskStoreResult[RepositoryGeneration](status: DiskStoreError.FileFailure,
+          fileReason: FileError.RecoveryRequired)
+    let number = uint64(cache.selected.generation)
     if number == high(uint64): return DiskStoreResult[RepositoryGeneration](
         status: DiskStoreError.GenerationOverflow)
     return DiskStoreResult[RepositoryGeneration](status: DiskStoreError.None,
@@ -255,12 +375,11 @@ proc openLocalDiskStateStore*(store: var DiskStateStore, path: string, chain: St
 proc snapshotContext*(store: DiskStateStore): DiskIoResult[seq[byte]] =
   ## Return detached opaque metadata selected by the exact same durable generation as the complete map.
   if store.pagedMode:
-    let captured = store.paged.readContext(store.pagedConfig.limits.work)
-    if captured.error == FullPagedNativeError.FileFailure:
-      return DiskIoResult[seq[byte]](status: captured.fileError) # Preserve native IO uncertainty exactly.
-    if captured.error != FullPagedNativeError.None: return DiskIoResult[seq[byte]](
-        status: FileError.BackendFailure)
-    return DiskIoResult[seq[byte]](status: FileError.None, completed: captured.value.bytes)
+    # Context was authenticated and privately captured at startup or confirmed publication; host staging copies memory only.
+    let cache = store.pagedCache
+    if cache == nil or not cache.healthy: return DiskIoResult[seq[byte]](
+        status: FileError.RecoveryRequired)
+    return DiskIoResult[seq[byte]](status: FileError.None, completed: copyContext(cache.context))
   let captured = store.journal.snapshotContext
   if captured.error != FileError.None: return DiskIoResult[seq[byte]](status: captured.error)
   DiskIoResult[seq[byte]](status: FileError.None, completed: captured.value)
@@ -277,12 +396,28 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
   if store.schema == StorageSchema.FullStateV1 and context.len == 0:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
   if store.pagedMode:
-    # Keep the exact already prepared immutable memory owner private until both native barriers and retirement succeed.
+    # Actual native selection, authoring, barriers and uncertainty detection occur only under the caller's excluded IO lease.
+    let cache = store.pagedCache
+    assert cache != nil # Successful cached snapshot admission above proves the private active-cache invariant.
+    if not contextFits(uint64(context.len), store.pagedConfig, true):
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+          fileReason: FileError.LimitExceeded)
+    let ownedContext = copyContext(context)
     let selected = store.paged.selected
-    if selected.error != FullPagedNativeError.None: return nativeFailed[StateStoreSnapshot,
-        FullPagedManifest](selected)
+    if selected.error != FullPagedNativeError.None:
+      store.failPaged()
+      return nativeFailed[StateStoreSnapshot, FullPagedManifest](selected)
+    if uint64(selected.value.epoch) != uint64(cache.selected.epoch) or
+        uint64(selected.value.generation) != uint64(cache.selected.generation) or
+        array[32, byte](selected.value.root) != array[32, byte](before.value.commitment.root):
+      store.failPaged() # A native/cached source mismatch cannot authorize adopting prepared memory.
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
     if uint64(selected.value.generation) >= high(uint64)-1:
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.GenerationOverflow)
+    let envelope = encodePagedContext(ownedContext, selected.value, store.pagedConfig)
+    if envelope.error != DiskStoreError.None:
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+          fileReason: envelope.fileError)
     let transport = preparePagedState(target, history, store.pagedTransport)
     if transport.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
         PreparedPagedState](transport)
@@ -290,22 +425,32 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     var candidate = default(FullPagedCandidate)
     defer:
       if candidate.opened:
-        let retired = candidate.close # Failed authoring leaves forensic bytes but never a leaked descriptor.
-        if retired != FileError.None: result = DiskStoreResult[StateStoreSnapshot](
-            status: DiskStoreError.FileFailure, fileReason: retired)
+        let retired = candidate.close # Failed authoring preserves forensic bytes and retires its descriptor.
+        if retired != FileError.None:
+          store.failPaged()
+          result = DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+              fileReason: retired)
     let authored = preparePagedStateReplacement(store.paged, candidate, selected.value,
-        transport.value, context)
-    if authored.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
-        StorageDurability](authored)
+        transport.value, envelope.value)
+    if authored.error != PagedStateError.None:
+      store.failPaged() # A failed native candidate needs explicit recovery before another facade operation.
+      return pagedFailed[StateStoreSnapshot, StorageDurability](authored)
     let published = store.paged.publish(candidate)
-    if published.error != FullPagedNativeError.None: return nativeFailed[StateStoreSnapshot,
-        FullPagedPublication](published)
+    if published.error != FullPagedNativeError.None:
+      store.failPaged()
+      return nativeFailed[StateStoreSnapshot, FullPagedPublication](published)
     if published.value.retirementError != FileError.None:
+      store.failPaged()
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
           fileReason: published.value.retirementError)
-    if not published.value.writerUsable: return DiskStoreResult[StateStoreSnapshot](
-        status: DiskStoreError.FileFailure, fileReason: FileError.RecoveryRequired)
-    store.state = retained
+    if not published.value.writerUsable:
+      store.failPaged()
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+          fileReason: FileError.RecoveryRequired)
+    cache.previous = selected.value
+    cache.context = ownedContext
+    cache.selected = published.value.manifest
+    store.state = retained # Confirmed native success precedes the exact target map and metadata cache adoption.
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: target)
   let candidate = forkStateStore(target).value
   let batch = exportStateChanges(expected, target, store.limits.repository.codec.records)
@@ -336,10 +481,11 @@ proc synchronize*(store: var DiskStateStore): DiskIoResult[StorageDurability] =
   ## Confirm fresh file/directory barriers without granting any additional canonical block authority.
   if store.pagedMode:
     let synced = store.paged.synchronize
-    if synced.error == FullPagedNativeError.FileFailure: return DiskIoResult[StorageDurability](
-        status: synced.fileError)
-    if synced.error != FullPagedNativeError.None: return DiskIoResult[StorageDurability](
-        status: FileError.RecoveryRequired)
+    if synced.error != FullPagedNativeError.None:
+      store.failPaged() # Fresh barrier failure quarantines every new facade getter, including cached context.
+      if synced.error == FullPagedNativeError.FileFailure: return DiskIoResult[StorageDurability](
+          status: synced.fileError)
+      return DiskIoResult[StorageDurability](status: FileError.RecoveryRequired)
     return DiskIoResult[StorageDurability](status: FileError.None, completed: synced.value)
   let synced = store.journal.synchronize
   if synced.error != FileError.None: return DiskIoResult[StorageDurability](status: synced.error)
@@ -350,12 +496,32 @@ proc restoreDiskSnapshot*(store: DiskStateStore, expected: StateRoot,
   ## Reconstruct an explicitly bound historical complete map without changing live selection or generation.
   if not store.opened: return default(DiskStoreResult[StateStoreSnapshot])
   if store.pagedMode:
-    # Exact live selection must remain usable before historical complete-map reconstruction begins.
+    # Historical graph reads run only at startup or on an excluded IO owner; cached dispatcher metadata remains passive.
     let before = store.snapshot
     if before.error != DiskStoreError.None: return before
-    # Complete native traversal and independent map recomputation preserve historical full-state provenance.
+    let selected = store.paged.selected
+    if selected.error != FullPagedNativeError.None:
+      store.failPaged()
+      return nativeFailed[StateStoreSnapshot, FullPagedManifest](selected)
     let restored = restorePagedStateStore(store.paged, expected, policy)
-    if restored.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot, StateStore](restored)
+    if restored.error != PagedStateError.None:
+      if restored.error == PagedStateError.RootMismatch: store.failPaged() # Independent complete-root disagreement invalidates the execution owner.
+      if restored.error == PagedStateError.NativeFailure:
+        let reason = restored.nativeFailure
+        if reason.error == FullPagedNativeError.FileFailure or reason.error ==
+            FullPagedNativeError.RecoveryRequired:
+          store.failPaged() # Preserve native identity and IO uncertainty across passive host getters.
+        elif reason.error == FullPagedNativeError.GraphFailure:
+          let graph = reason.graphError
+          let pure = graph == FullPagedStreamError.UnknownRoot or graph ==
+              FullPagedStreamError.LimitExceeded or
+            graph == FullPagedStreamError.UnsupportedPolicy or graph ==
+                FullPagedStreamError.VisitorRefused or
+            (graph == FullPagedStreamError.CodecFailure and reason.graphCodecError ==
+                FullPagedError.BackendFailure)
+          if not pure:
+            store.failPaged() # Missing requested roots and pure budgets/provider refusal do not invalidate cached state.
+      return pagedFailed[StateStoreSnapshot, StateStore](restored)
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None,
         completed: restored.value.snapshot.value)
   let physical = store.journal.snapshot
@@ -520,6 +686,10 @@ proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
   if context.len == 0 or uint64(config.limits.contextBytes) == 0:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
+  if not contextFits(uint64(context.len), config):
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: FileError.LimitExceeded)
+  let ownedContext = copyContext(context)
   let prepared = preparePagedState(source, history, transport)
   if prepared.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
       PreparedPagedState](prepared)
@@ -533,7 +703,12 @@ proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
       let retired = store.paged.close # No failed bootstrap returns a hidden lease or descriptor obligation.
       if retired != FileError.None: result = DiskStoreResult[StateStoreSnapshot](
           status: DiskStoreError.FileFailure, fileReason: retired)
-  let initialized = initializePagedStateStore(store.paged, path, config, prepared.value, context)
+  let envelope = encodePagedContext(ownedContext, default(FullPagedManifest), config)
+  if envelope.error != DiskStoreError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: envelope.fileError)
+  let initialized = initializePagedStateStore(store.paged, path, config, prepared.value,
+      envelope.value)
   if initialized.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
       FullPagedPublication](initialized)
   if initialized.value.retirementError != FileError.None:
@@ -542,6 +717,8 @@ proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
   if not initialized.value.writerUsable:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: FileError.RecoveryRequired)
+  store.pagedCache = PagedDiskCache(healthy: true, selected: initialized.value.manifest,
+      context: ownedContext)
   store.state = retained.value
   store.pagedConfig = config
   store.pagedTransport = transport
@@ -572,6 +749,15 @@ proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.GenerationOverflow)
   let restored = restorePagedStateStore(store.paged, selected.value.root, policy)
   if restored.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot, StateStore](restored)
+  let captured = store.paged.readContext(config.limits.work)
+  if captured.error != FullPagedNativeError.None: return nativeFailed[StateStoreSnapshot,
+      FullPagedContext](captured)
+  let envelope = decodePagedContext(captured.value.bytes, selected.value, config)
+  if envelope.error != DiskStoreError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: envelope.fileError)
+  store.pagedCache = PagedDiskCache(healthy: true, selected: selected.value,
+    previous: envelope.value.previous, context: envelope.value.context)
   store.state = restored.value
   store.pagedConfig = config
   store.pagedConfig.root = selected.value.root

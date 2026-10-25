@@ -224,3 +224,63 @@ The full paged disk facade suite also passes on Linux amd64 under Docker emulati
 nine-root history/finality and early/late durability failures. Its 1,000 ARC cycles retain
 12480 -> 12480 occupied bytes. Private compiler guards, source inventory, stable pinned formatting and
 419 production modules plus the peer entry point pass local semantic Smoke.
+
+## Full application startup and publication
+
+--state-layout paged is an explicit disk-only full-state layout, independent of memory/disk and
+node-mode selection. It retains default journal behavior and rejects managed migration/maintenance
+controls. Its finite policy tightens existing dataset/export/context ceilings, permits at most nine
+complete roots, and adds independent fixed workspace/scratch and operation ceilings. There is no
+implicit migration, format inference or corrupt-selection fallback.
+
+Paged application bootstrap captures the exact current and retained complete snapshots plus the
+existing full header/profile/history/finality context, and publishes all of them in one V2 artifact
+at application generation one. Ordinary local restart uses exclusive native V2 admission, independent
+complete-map reconstruction for each context-selected root, and the existing application history
+restoration. Imported checkpoint startup keeps its independent trusted identity/header recovery path
+and exclusive destination creation; subsequent local startup restores that imported header rather
+than substituting configured genesis. Persistence never infers finality.
+
+Both legacy and current prepared application publication objects carry the exact target view's
+retained complete snapshots, excluding its separately supplied current snapshot. The existing
+one-slot joined native worker performs actual root-union authoring/publication. The host adopts the
+canonical/RPC candidate only after its confirmed usable receipt, with unchanged graph exclusion and
+shutdown ownership. No new worker lifecycle or thread-per-operation path is introduced.
+
+A private owned metadata cache keeps dispatcher snapshot, generation and context reads passive.
+Context copies are bounded before allocation and detached from caller transport. Startup authenticates
+and captures context; confirmed publication updates cache and state together. Actual commit,
+historical reconstruction and fresh synchronization remain excluded IO operations with native
+source checks. Failed native authoring/publication/barriers quarantine the facade's cache; retained
+external immutable snapshots survive. Pure pre-native policy/staging refusal does not adopt a prefix.
+
+Checked macOS native tests pass full paged bootstrap with eight rolling roots and older finality,
+profile/chain refusal, actual Services locking/restart/wrong-layout/corrupt-selection refusal,
+independently trusted checkpoint import/local restart/no overwrite, and both genuine application
+update families through collect/join/immediate-shutdown worker modes. The cache fault control leaves
+a native read failure pending through passive metadata reads, then consumes it at the actual commit
+fence and exposes RecoveryRequired afterward. The facade's updated 1,000-cycle allocation result
+is 12,816 -> 12,816 occupied bytes. Separate stable formatting and all 420 production modules plus
+the peer entry point pass semantic Smoke. This evidence does not turn the separately reproduced
+macOS PVM preparation-worker stack-guard baseline failure into a passing check.
+
+The full disk facade's native opaque context has an explicit application envelope:
+`RAGNAROK-STATE-PAGED-CONTEXT-V1\n`, E1 predecessor tag (zero/one), E8 exact nonempty inner
+context length, optional exact 192-byte full V2 predecessor manifest, then the unchanged
+application history bytes. Its maximum fixed overhead is 233 bytes, reserved before application
+encoding or copying. Generation zero requires no predecessor; each ordinary successor requires
+an older physical epoch and exactly the preceding ordinary generation. Source chain, manifest
+checksum and geometry are checked before retaining that descriptor. There is no raw opaque-context
+fallback. The descriptor identifies an independently expected retirement target; actual deletion
+still requires complete old-artifact admission, identity/pin checks and the current writer lease.
+Independent tests compare native envelope bytes against literal framing plus captured old CURRENT,
+and reject authenticated-but-malformed magic, tags, huge lengths, trailing bytes and storage-only
+opaque context without mutating the selected namespace.
+
+The same final-envelope tree passes all six scoped Linux amd64 suites under Docker emulation:
+paged_disk_state_store, paged_disk_chain, paged_services_startup, disk_worker,
+pvm_current_disk_worker and managed_layout_options. Linux allocation evidence is also
+1,000 cycles at 12,816 -> 12,816 occupied bytes. The preserved qualified image is
+sha256:49fe620c081b9d0fc090f70b27bc54758c7cc3bd6a34268d36167b4e5bc525f4;
+its source hashes and native evidence are recorded under build/storage-db5-app-full-linux.json.
+These are process/filesystem checks, not physical power-loss qualification.

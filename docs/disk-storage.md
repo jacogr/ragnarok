@@ -78,3 +78,27 @@ Startup currently reconstructs the configured genesis and bounded historical map
 [storage measurements](../spec/disk-state-store.md) cover sparse publication, exact counters and
 strict reopen, with explicit noise and workload limits. Production-scale layout, reclamation and
 restart tuning need further measurements. Light-state proofs and databases remain separate work.
+
+## Full paged layout
+
+Select the full paged backend explicitly by appending:
+
+```text
+--with-state --chain chain.json --state-storage disk --state-layout paged --state-db ./full-paged
+```
+
+The selected directory contains a V2 immutable complete-state artifact and one atomic `CURRENT`.
+Its authenticated context carries the same complete header/profile/history/finality bindings as
+the other application backends, plus the exact previous selected manifest for explicit retirement. Startup restores every retained complete root before exposing the
+canonical view. External checkpoint import keeps its independent trust/header checks and creates
+exclusively; ordinary local restart preserves that imported head without requiring import files.
+A different physical layout, chain, profile or corrupt selection fails without conversion or repair.
+Managed migration and compaction flags are rejected for this layout.
+
+Both application update families use the existing joined publication worker. The dispatcher reads
+only the last confirmed owned state/context metadata; the excluded worker rechecks native selection,
+authors the exact retained complete-root union, and confirms file/directory barriers before host
+canonical/RPC adoption. Native uncertainty quarantines new owner reads until close/recovery while
+already retained immutable snapshots remain readable. Paged artifact retirement and interrupted
+candidate cleanup use their explicit native receipt/replay contracts; directory contents never
+authorize inferred deletion.
