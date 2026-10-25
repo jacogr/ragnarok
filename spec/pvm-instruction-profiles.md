@@ -188,35 +188,31 @@ These are diagnostic counters and native text, not new performance timings.
 
 ## Warmed memo collection, 2026-10-25
 
-The seven-cell matrix keeps the original five guest commands unchanged and adds
-Pinky and memory fill100000 under memo pricing. Each memo cell executes thirteen times
-through the existing maintained driver; all complete states must pass. Callgrind
-`--zero-before` receives each exact native execution symbol discovered by `nm`,
-while collection retains its existing wildcard scope. Entry reset means the final dump
-retains only the thirteenth invocation. Public execution validation and publication
-remain inside scope; fixture preparation and full-state checks remain outside.
+The seven-cell matrix preserves the original five guest commands and adds memory
+fill100000 and Pinky under memo pricing. Each memo cell uses the unchanged driver's
+thirteen executions; all complete states must pass. Callgrind `--dump-after`
+receives each exact public execution symbol discovered by `nm`. It creates one
+complete numbered dump on function return. The profiler requires exactly thirteen
+complete positive parts, an empty final termination dump, and exactly one incoming
+execution call in the selected thirteenth part. Raw files are retained unchanged.
 See the [Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
 
-The compiled calibration now checks single, repeated and reset execution. Two
-identical selected calls must collect exactly twice the single-call instructions;
-entry reset must retain exactly the single-call total. Every run still requires
-successful classified process output, a complete positive profile and the selected
-function without excluded work. Missing reset support, partial counters or any
-ratio mismatch refuse a completed report. Every raw guest call graph must independently contain exactly one incoming selected
-execution call; retaining thirteen calls refuses the report even if calibration passes.
-Each guest cell records its warmup, observed entry and collected-execution counts; memo output parsing requires all thirteen full-state results.
+Calibration covers selected/absent scopes, unpartitioned repeated work and complete
+function-return parts, including real nested native calls. Two selected calls must
+collect exactly twice the single-call Ir; the final return part must match the
+single-call total. Every raw part requires matching summary/footer counts, and
+missing, extra, partial or leftover selected work refuses the aggregate. Ordinary
+collection commands and the native planned Pinky trace remain unchanged.
 
-This extends the existing diagnostic owner without changing interpreter source,
-guest driver, toolchain flags or timing workloads. Linux qualification must pass
-all five controls, seven state/source profiles and the existing native trace.
-Instrumented clocks remain discarded, and instruction changes alone are not speed
-claims. Comparing the original five counts and guest binary identity against the
-previous profile checks that this collection change leaves their work unchanged.
+Earlier extension run40162051126 preserved the guest binary and all five original
+Ir totals, but wildcard entry reset retained thirteen memo entries. Exact-name
+entry reset in40162959420 removed warmup work but exposed disagreeing guest
+header/footer counts and erased incoming-call accounting. Both memo diagnostics
+are refused. The profiler uses complete function-return dumps instead of relaxing
+counter validation or estimating away either discrepancy. Instrumented clocks
+remain discarded; no memo per-invocation or timing claim comes from those runs.
 
-
-The first Linux extension run40162051126 preserved the exact guest binary and all
-five original Ir totals, but its wildcard reset retained thirteen memo entries.
-Those memo aggregates are refused as final-only evidence. Calibration now combines
-wildcard collection with exact-name reset, and actual guest entry counts independently
-require one. This observed failure is a regression guard; no memo per-invocation
-counts or speed claims are derived from that run.
+This diagnostic changes no interpreter, guest driver, timing workloads, pins or
+compiler flags. Linux qualification must pass five controls, seven state/source
+profiles, every retained part and the native trace. Comparing the exact guest binary
+and all five original Ir totals checks that existing collected work remains unchanged.

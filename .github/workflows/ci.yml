@@ -708,7 +708,7 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
           path: |
-            build/tests/pvm-instruction-profile/*.callgrind
+            build/tests/pvm-instruction-profile/*.callgrind*
             build/tests/pvm-instruction-profile/*.log
             build/tests/pvm-instruction-profile/*.json
             build/tests/pvm-instruction-profile/summary.md

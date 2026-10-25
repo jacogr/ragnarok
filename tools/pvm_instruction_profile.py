@@ -26,7 +26,7 @@ BUILD = ROOT/'build/tests/pvm-instruction-profile'
 # Fixed bounded long loops expose call/return and memory costs alongside the real initialized frame.
 CASES = (('pinky', 1, 'dynamic'), ('pinky', 1, 'planned'), ('sieve', 100000, 'planned'),
          ('minimal', 100000, 'planned'), ('memset', 100000, 'planned'),
-         ('pinky', 1, 'memo'), ('memset', 100000, 'memo'))
+         ('memset', 100000, 'memo'), ('pinky', 1, 'memo'))
 VERSION = 'valgrind-3.22.0'
 SCOPE = 'execute_?_*'
 
@@ -71,7 +71,7 @@ def calibration_passed(result, text, selected):
 
 
 def last_call_calibration_passed(single, repeated, final):
-    """Two selected calls double Ir; calibrated entry reset retains exactly the last selected call."""
+    """Two selected calls double Ir; calibrated complete return dumps retain exactly the last selected call."""
     counts = []
     for text in (single, repeated, final):
         # Require actual selected function records, not caller references or a partial/empty dump.
@@ -86,7 +86,7 @@ def last_call_calibration_passed(single, repeated, final):
 
 
 def execution_entry_count(text):
-    """Count actual incoming selected execution calls; reset collection must retain exactly one."""
+    """Count actual incoming selected execution calls; each complete selected dump must retain exactly one."""
     callee = None
     total = 0
     for line in text.splitlines():
@@ -195,25 +195,47 @@ def disassembly_passed(result):
             and re.search(r'^\s*[0-9a-f]+:\s+[a-z][a-z0-9]*\b', text, re.M) is not None)
 
 
+def final_return_dump(output, executions):
+    """Require every complete bounded function-return part and an empty final dump; retain the last raw part unchanged."""
+    if type(executions) is not int or not 1 <= executions <= 13:
+        raise ValueError('invalid bounded execution dump count')
+    parts = {path.name: path for path in output.parent.glob(output.name+'.*')}
+    expected = {output.name+'.'+str(index) for index in range(1, executions+1)}
+    if set(parts) != expected:
+        raise ValueError('missing or unexpected function-return dumps')
+    if profile_counts(output.read_text(), allow_empty=True)['Ir'] != 0:
+        raise ValueError('execution costs remain after final function-return dump')
+    for part in parts.values():
+        # A partial warmup dump also refuses the report, even when the final selected part is complete.
+        profile_counts(part.read_text())
+    return parts[output.name+'.'+str(executions)]
+
+
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            reset_symbols=(), arguments=()):
-    """Collect only the named native execution function; a new private output file cannot reuse stale counters."""
+            dump_symbols=(), executions=1, arguments=()):
+    """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
+    for part in output.parent.glob(output.name+'.*'):
+        # Retire every private old part before collection, never reuse counters from another invocation.
+        part.unlink()
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
         '--toggle-collect='+scope, '--cache-sim=no', '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
-        *('--zero-before='+symbol for symbol in reset_symbols),
+        *('--dump-after='+symbol for symbol in dump_symbols),
         '--callgrind-out-file='+str(output),
         '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary, *arguments], name,
         environment=environment, timeout=timeout)
     if not output.is_file():
         raise RuntimeError('Callgrind did not produce a profile: '+name)
+    if dump_symbols:
+        # Returning raw numbered output preserves Callgrind bytes and its original dump identity.
+        output = final_return_dump(output, executions)
     return result, output
 
 
 def calibrate_scope(checks, report):
-    """Share classified selected/absent/repeated/reset controls without rebuilding a guest image."""
+    """Share classified selected/absent/repeated/return-dump controls without rebuilding a guest image."""
     control = ROOT/'tests/support/pvm_profile_control.c'
     compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), control], 'control-build')
     report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
@@ -235,15 +257,15 @@ def calibrate_scope(checks, report):
         if not passed:
             raise RuntimeError('profile scope calibration failed: '+name)
     repeated_text = None
-    for reset in (False, True):
-        # Identical selected work runs twice; entry reset must retain exactly one invocation.
-        name = 'control-last-only' if reset else 'control-repeated'
+    for dumped in (False, True):
+        # Identical selected work runs twice; complete return dumps must retain exactly one invocation.
+        name = 'control-last-only' if dumped else 'control-repeated'
         result, output = collect(checks, checks.folder/'control', name, 'pvm_profile_?elected',
-            dict(os.environ), 30, reset_symbols=('pvm_profile_selected',) if reset else (),
+            dict(os.environ), 30, dump_symbols=('pvm_profile_selected',) if dumped else (), executions=2,
             arguments=('twice',))
         text = output.read_text()
         passed = calibration_passed(result, text, True)
-        if reset:
+        if dumped:
             # Process success alone cannot certify that warmup costs were actually removed.
             passed = passed and last_call_calibration_passed(selected_text, repeated_text, text)
         else:
@@ -325,7 +347,7 @@ def run():
                 RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_SAMPLES=str(samples))
             name = guest+'-'+str(limit)+'-'+mode
             result, output = collect(checks, binary, name, SCOPE, environment, 900,
-                reset_symbols=execution_symbols if warmups else ())
+                dump_symbols=execution_symbols if warmups else (), executions=samples)
             if result['exit_code']:
                 raise RuntimeError('profile guest failed: '+name)
             engine = dict(dynamic='ragnarok', planned='ragnarok_planned', memo='ragnarok_memo')[mode]
@@ -348,7 +370,7 @@ def run():
             if not source_annotation_passed(source_annotation, source_files):
                 raise RuntimeError('selected source annotation failed: '+name)
             report['profiles'].append(dict(guest=guest, limit=limit, mode=mode, counts=counts,
-                run=result, profile_sha256=digest(output), state_checked=True,
+                run=result, profile_sha256=digest(output), profile_file=output.name, state_checked=True,
                 warmup_executions=warmups, collected_executions=1,
                 execution_entry_count=execution_entry_count(text),
                 source_files=source_files, source_annotation_log=source_annotation['log']))
@@ -388,7 +410,7 @@ def run():
                  '| Guest | Limit | Pricing | Warmups | Instructions |', '| --- | ---: | --- | ---: | ---: |']
         for item in report['profiles']:
             lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['warmup_executions']} | {item['counts']['Ir']} |")
-        lines += ['', 'One collected invocation per cell; memo executes twelve checked warmups and resets counters on every execute entry. All thirteen states are checked. Preparation and state comparison are outside collection.',
+        lines += ['', 'One collected invocation per cell; memo executes twelve checked warmups and retains the thirteenth complete function-return dump. All thirteen states are checked. Preparation and state comparison are outside collection.',
                   'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.',
                   'Generated C, its checksums and source annotations retain executable line attribution.',
                   'An additional state-checked planned Pinky trace retains native instruction positions and disassembly; its Ir must match the source-level invocation.']
