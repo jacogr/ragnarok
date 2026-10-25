@@ -1313,5 +1313,27 @@ def current_stf_allowance_eligibility_corpus(compiler, report, checks, libraries
 
 
 
+@CORPORA.case
+def current_stf_incarnation_authority_corpus(compiler, report, checks, libraries):
+    """Compare actual supervisor retirement/recreation, common-prior authority refusal and later explicit incarnation rebinding."""
+    from current_stf_incarnation_authority_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_incarnation_authority', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-incarnation-authority-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-incarnation-authority', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent old/new supervisor incarnations, original-context N/M selection, real provision and exact foreign writes')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-incarnation-authority-corpus', expected)
+    announce('independent recreated supervisor authority whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
