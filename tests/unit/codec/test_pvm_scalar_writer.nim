@@ -122,19 +122,19 @@ proc scalarWriteMatrix() =
 proc lookupPressureCycle() =
   ## Writer-local slot hints survive collisions/epochs while every physical tag and permission remains checked.
   var images: seq[PageImage] = @[]
-  for ordinal in [16'u32, 17, 20, 64, 0xfffff]:
+  for ordinal in [16'u32, 17, 20, 64, 96, 128, 0xfffff]:
     let access = if ordinal == 17 or ordinal == 0xfffff: PageAccess.ReadOnly else: PageAccess.ReadWrite
     var image = PageImage(index: PageIndex(ordinal), access: access,
       bytes: default(array[4096, byte]))
     for index in 0..<4096: image.bytes[index] = byte((uint64(ordinal)+uint64(index)) mod 251)
     images.add(image)
-  let source = captureMemory(images, PageLimit(5)).value
+  let source = captureMemory(images, PageLimit(7)).value
   let writer = newScalarMemoryWriter(source).value
   let alias = writer
   var first = default(Memory)
   var tick = 0'u64
-  for ordinal in [16'u32, 20, 64, 16, 64, 20, 16, 20, 64]:
-    # Three sparse pages exceed the two retained slots; each lookup must resolve its exact physical tag.
+  for ordinal in [16'u32, 20, 64, 96, 16, 128, 64, 20, 96, 128, 16]:
+    # Five sparse pages exceed the retained slots; hits and evictions must resolve exact physical tags.
     let base = uint64(ordinal)*4096
     assert uint64(load(alias, MemoryAddress(base+1), AccessWidth(1)).value) == uint64((
         ordinal+1) mod 251)
