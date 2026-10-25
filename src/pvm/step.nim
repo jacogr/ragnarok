@@ -397,23 +397,27 @@ func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
   ## No mutable builder or vector allocates before enough successful stores justify a private epoch.
   WorkingMemory(current: memory, writer: nil, stores: 0, buffered: buffered)
 
-proc loadWorking(memory: WorkingMemory, address: MemoryAddress, width: AccessWidth): MachineResult[
-    RegisterValue] {.inline.} =
+proc loadWorking[selectedWidth: static[int]](memory: WorkingMemory, address: MemoryAddress,
+    width: AccessWidth): MachineResult[RegisterValue] {.inline.} =
   ## Loads observe the latest staged bytes when active, otherwise the current immutable snapshot.
-  if memory.writer != nil: load(memory.writer, address, width)
+  if memory.writer != nil:
+    when selectedWidth > 0: load[selectedWidth](memory.writer, address)
+    else: load(memory.writer, address, width)
   else: load(memory.current, address, width)
 
-proc storeWorking(memory: var WorkingMemory, address: MemoryAddress, width: AccessWidth,
-    value: RegisterValue, failedPage: var PageAddress): MachineError =
+proc storeWorking[selectedWidth: static[int]](memory: var WorkingMemory, address: MemoryAddress,
+    width: AccessWidth, value: RegisterValue, failedPage: var PageAddress): MachineError =
   ## Retain the direct path for the first three stores; staging begins on the fourth successful write in this segment.
   if memory.writer != nil:
-    let written = store(memory.writer, address, width, value)
+    let written = when selectedWidth > 0: store[selectedWidth](memory.writer, address, value)
+      else: store(memory.writer, address, width, value)
     if written.error == MachineError.Fault: failedPage = written.faultPage
     return written.error
   if memory.buffered and memory.stores == 3:
     let created = newScalarMemoryWriter(memory.current)
     if created.error != MachineError.None: return created.error
-    let written = store(created.value, address, width, value)
+    let written = when selectedWidth > 0: store[selectedWidth](created.value, address, value)
+      else: store(created.value, address, width, value)
     if written.error == MachineError.Fault: failedPage = written.faultPage
     if written.error == MachineError.None:
       memory.writer = created.value # A refused activation keeps the last immutable successful prefix untouched.
@@ -464,7 +468,7 @@ proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
   let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
   if loading:
     # Preflight includes all bytes before a value or destination-register mutation becomes visible.
-    let read = loadWorking(memory, address, AccessWidth(byte(width)))
+    let read = loadWorking[0](memory, address, AccessWidth(byte(width)))
     if read.error == MachineError.Fault:
       # Propagate the physical page reason without selecting a failed value.
       failedPage = read.faultPage
@@ -479,7 +483,7 @@ proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
     info.registers[indices.aIndex] = RegisterValue(value)
   else:
     # Scalar stores preflight the complete access before changing direct snapshots or private staged bytes.
-    let written = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
+    let written = storeWorking[0](memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
     if written != MachineError.None: return written # Complete scalar preflight preserves prior staged writes on every refusal.
   # All memory instructions are nonterminating; validated blobs guarantee a following instruction.
   info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
@@ -1450,7 +1454,7 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   var reason = MachineError.None
   when Loading:
     # Read the original aliased base before publishing a destination register.
-    let loaded = loadWorking(frame.memory, address, AccessWidth(byte(Width)))
+    let loaded = loadWorking[Width](frame.memory, address, AccessWidth(byte(Width)))
     reason = loaded.error
     if reason == MachineError.Fault: failedPage = loaded.faultPage
     if reason == MachineError.None:
@@ -1464,7 +1468,8 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   else:
     # Store source selection is fixed while register contents remain invocation-local.
     let value = when ImmediateStore: operation.y else: uint64(frame.info.registers[slots.aIndex])
-    reason = storeWorking(frame.memory, address, AccessWidth(byte(Width)), RegisterValue(value), failedPage)
+    reason = storeWorking[Width](frame.memory, address, AccessWidth(byte(Width)), RegisterValue(
+        value), failedPage)
   case reason
   of MachineError.None:
     # Successful nonterminators require their validated physical successor.

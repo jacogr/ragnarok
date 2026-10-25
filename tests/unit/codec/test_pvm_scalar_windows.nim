@@ -136,6 +136,68 @@ proc workingSetCycle() =
       assert actual.access == wanted.access
       for offset in 0..<4096: assert actual.bytes[offset] == wanted.bytes[offset]
 
+proc fixedWidthCycle[Width: static[int]]() =
+  ## Fixed-width entry points preserve immutable/runtime results, endpoint precedence, COW epochs and nil refusal.
+  let invalid: nil ScalarMemoryWriter = nil
+  assert load[Width](invalid, MemoryAddress(0)).error == MachineError.InvalidOwner
+  assert store[Width](invalid, MemoryAddress(0), RegisterValue(0)).error ==
+      MachineError.InvalidOwner
+  var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte])),
+    PageImage(index: PageIndex(17), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte])),
+    PageImage(index: PageIndex(1048575), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))]
+  for page in 0..<images.len:
+    # Nonuniform source patterns expose extension, address wrapping and adjacent-byte clobbering.
+    for offset in 0..<4096: images[page].bytes[offset] = byte((offset*29+page*41) and 255)
+  let source = captureMemory(images, PageLimit(3)).value
+  let writer = newScalarMemoryWriter(source).value
+  let alias = writer
+  var expected = source
+  var frozen: seq[Memory] = @[]
+  var oracle: seq[Memory] = @[]
+  for epoch in 0..<3:
+    for address in [0'u64, 65535, 65536, 65537, 66040, 66041, 66043, 66046, 66047,
+        66048, 69624, 69625, 69628, 69631, 69632, 73727, 73728, 0xfffffff7'u64,
+        0xfffffff8'u64, 0xfffffffb'u64, 0xfffffffe'u64, 0xffffffff'u64,
+        0x100010000'u64, high(uint64)]:
+      # Complete checked preflight still precedes mutation at chunk/page/physical endpoints and protected addresses.
+      let at = MemoryAddress(address)
+      let width = AccessWidth(byte(Width))
+      let before = load(expected, at, width)
+      let actual = load[Width](alias, at)
+      assert actual.error == before.error
+      if before.error == MachineError.None: assert uint64(actual.value) == uint64(before.value)
+      elif before.error == MachineError.Fault: assert uint32(actual.faultPage) == uint32(
+          before.faultPage)
+      let value = RegisterValue(address xor (uint64(epoch+1)*0x1122334455667788'u64))
+      let changed = store(expected, at, width, value)
+      let done = store[Width](writer, at, value)
+      assert done.error == changed.error
+      if changed.error == MachineError.None: expected = changed.value
+      elif changed.error == MachineError.Fault: assert uint32(done.faultPage) == uint32(
+          changed.faultPage)
+      let after = load(expected, at, width)
+      let observed = load[Width](alias, at)
+      assert observed.error == after.error
+      if after.error == MachineError.None: assert uint64(observed.value) == uint64(after.value)
+      elif after.error == MachineError.Fault: assert uint32(observed.faultPage) == uint32(
+          after.faultPage)
+    frozen.add(snapshotMemory(alias).value)
+    oracle.add(expected)
+  for epoch in 0..<frozen.len:
+    # Every byte and permission remains stable in historical epochs after later writes through an alias.
+    sameMemory(frozen[epoch], oracle[epoch])
+  for page in 0..<images.len:
+    let original = pageImage(source, images[page].index).value
+    assert original.access == images[page].access and original.bytes == images[page].bytes
+
+fixedWidthCycle[1]()
+fixedWidthCycle[2]()
+fixedWidthCycle[4]()
+fixedWidthCycle[8]()
+
 # Differential sweeps exercise all widths, chunk/page edges, protected/wrapped addresses and failed writes.
 for mode in 0..<4: cycle(mode)
 for repeat in 0..<20:
