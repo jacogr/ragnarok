@@ -385,3 +385,115 @@ passes full-state and image controls but misses the planned fill/Pinky gates and
 regresses crossing memory by roughly24–35%. It is rejected and stopped, with its
 prototype preserved separately and the active runtime restored. These results do
 not qualify the proposed view as a solution to the interpreter gap.
+
+### Memory wrapper instruction breakdown and proposed experiment
+
+The next bounded investigation isolates `memoryMutation`'s exclusive cost, with
+no runtime change. It reuses the checked Linux x86-64 deep-profile artifacts from
+[CI40171834535](https://github.com/jacogr/ragnarok/actions/runs/40171834535)
+at `8f1974e6`, rather than comparing new timings. The runtime is the original
+merged baseline, not the rejected contiguous-page prototype. The later prototype
+profile confirms that this wrapper remained effectively unchanged. Local analysis
+of retained counters and disassembly is permitted; all future timing runs remain
+on CI.
+
+Join each exclusive Callgrind instruction address to the same image's retained
+`native-assembly.log`, including DWARF line-zero addresses. Exclude the cost row
+following each `calls=` edge, which is inclusive descendant work, while retaining
+the wrapper's own call instruction. Verify the raw SHA and replay the existing
+attribution parser before grouping. Every address in `memoryMutation_0_stekif2of1`
+resolves inside that symbol, and the grouped costs exactly match its existing
+function self total. This is executed native instruction cost per guest memory
+instruction, averaged over the observed opcode mix; it is neither a static
+instruction count nor a timing estimate.
+
+| Wrapper work | Pinky exclusive instructions | Instructions/access |
+| --- | ---: | ---: |
+| Opcode classification, width and mode selection | 184,677,954 | 22.893364 |
+| Frame setup/teardown and saved state | 137,136,909 | 17.000000 |
+| Memory dispatch, call setup/call and result/fault checks | 65,865,929 | 8.164985 |
+| Decoded payload and register-slot extraction | 48,401,262 | 6.000000 |
+| PC advance and successful result | 48,401,262 | 6.000000 |
+| Signed-load extension and its branch | 19,980,102 | 2.476808 |
+| Successful-decode guard | 16,133,754 | 2.000000 |
+| Register/immediate source reads | 14,276,543 | 1.769773 |
+| Effective-address calculation | 11,199,483 | 1.388329 |
+| Load destination write and success join | 9,868,542 | 1.223341 |
+| Cold writer activation, immutable stores and fault paths | 145 | 0.000018 |
+| **Total over8,066,877 accesses** | **555,941,885** | **68.916619** |
+
+The boundaries are semantic groups in this exact disassembly, not guessed costs
+from generated-C line labels. Frame/saved state covers `0x18380..0x1838d`,
+`0x18397..0x1839c` and `0x1851a..0x18528`; the success guard is
+`0x1838e..0x18396`, and payload/slot extraction is `0x1839d..0x183b5`.
+Classification/width/mode covers `0x183b6..0x18432` and
+`0x184aa..0x184da`, excluding source reads at `0x18403`/`0x18409`/
+`0x184ce` and address addition at `0x18430`. The remaining source read is
+`0x184a5`. Dispatch/status covers `0x18433..0x1846e` and
+`0x184e0..0x18506`; signed extension covers `0x1846f..0x1849d`,
+and the destination/join `0x1849e..0x184a4`. The address group also includes
+`0x184db`/`0x184dd`; PC/success is `0x18507..0x18519`.
+All remaining executed wrapper addresses, from `0x18529` onward, are cold paths.
+These ranges partition the wrapper's executed addresses without double counting.
+
+The same partition reconciles the fill wrapper's19,806,946 instructions over
+300,101 accesses (66.000933/access) and the indirect-call wrapper's69,401,119
+over1,000,015 accesses (69.400078/access). Classification/width/mode costs
+20.667172 and23.599961/access respectively; frame/saved state is exactly17
+in both. The Pinky mix is4,934,271 loads and3,132,606 stores, including the
+three initial immutable stores before writer activation.
+
+The largest supported avoidable work is repeated interpretation of an already
+known opcode. Load membership uses an eight-instruction bitset sequence at
+`0x183b6..0x183d2` on every access. Loads then select the opcode family in four
+instructions and compute the width exponent through six instructions implementing
+signed division by two (`0x183e4..0x183f1`), despite the admitted index being
+nonnegative. Those six instructions alone contribute29,605,626 instructions,
+3.670023/access across the mixed workload. Further branches select absolute or
+indirect addressing and store families; shifts rebuild the width at runtime.
+These observations identify redundant decoding work, not23 instructions that can
+all disappear: the replacement must still select width, signedness and operands.
+
+Two tempting alternatives are outside the proposed experiment. The compiler
+already sinks the source-register read into the store path, so moving the
+unconditional `stored` initializer in Nim would not remove a load-path read.
+Conversely the emitted immediate-Y read at `0x18409` still runs for all stores,
+although ordinary register stores overwrite it; this costs0.381444/access on
+Pinky's3,077,060 register stores. That is real but small. The17-instruction frame
+budget is also real, but inlining is a separate hypothesis with caller-size and
+register-pressure costs; it is not counted as a guaranteed saving here.
+
+**One proposed experiment: a compile-time opcode descriptor for memory operands.**
+Use one immutable256-entry `uint16` table, indexed by the byte opcode after the
+existing successful-decode and execution-category admission. Each entry encodes
+the byte width, load/signed flags, address-base choice and immediate/register store
+source. Decode those fields in the existing private wrapper instead of testing
+opcode sets/ranges and recomputing widths. This is fixed opcode metadata, not a
+new per-program decoded cache or intermediate representation. Keep the public API,
+result guard, register-slot ownership, actual address arithmetic, signed extension,
+PC update, writer selection and every lower-level memory check unchanged. No
+unchecked indexing, assumptions, compiler/check switches or changes to the memory
+representation belong in the experiment.
+
+Before measuring, verify all256 descriptor entries against an independent explicit
+expected mapping, with exact coverage of all30 admitted memory opcodes and an
+invalid descriptor elsewhere. Exercise every width and signed/unsigned load,
+absolute/indirect forms, immediate/register stores, saturated register coordinates,
+protected/final/cross-page addresses, fault precedence and failure atomicity.
+Reuse existing full-state and ownership fixtures rather than duplicating their
+implementation. Inspect the final checked ThinLTO assembly to establish that the
+bitset and signed-division sequences were actually removed.
+
+The proposed counter gate is at least eight fewer wrapper instructions/access on
+Pinky, with lower total execution instructions on all three diagnostic guests.
+Eight/access would remove64,535,016 instructions, only1.28% of Pinky's complete
+baseline work; even the entire22.89 classification budget is just3.66% of that
+work before replacement costs. This cannot close the baseline7.1-times memory-path gap by
+itself. Do not infer a timing gain from that ceiling or stack this change onto the
+rejected memory view. Only after checked parity, strict image controls and the
+counter gate pass should the maintained full paired CI matrix run in both process
+orders, with its identical-image control. Qualification requires a repeatable Pinky
+timing improvement exceeding that control's variation and no reproducible
+regression above2% on fill, indirect calls or host/cross-page controls. Otherwise
+stop and report the result. No implementation or new performance claim accompanies
+this proposal.
