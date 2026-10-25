@@ -207,6 +207,12 @@ def run(check_only=False, warmup=0, counts_only=False):
         report['inputs']={p.name:digest(p) for p in sorted(prepared.iterdir())}
         report['binaries']={name:digest(path) for name,path in images.items()}
         if not check_only:
+            # Validate source archival before expensive profiles; a missing root cannot waste a full run.
+            _,report['generated_sources']=capture_generated_sources(BUILD,ROOT)
+            report['reference_sources']={}
+            for p in [*sorted((upstream/'crates').rglob('*.rs')),*sorted((CRATE/'src').glob('*.rs'))]:
+                report['reference_sources'][str(p.relative_to(ROOT))]=digest(p)
+                dest=BUILD/'reference-source'/p.relative_to(ROOT);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
             # Shared positive/absent/repeated-scope controls reject accidental whole-process collection.
             version=command(['valgrind','--version'],'version')['output'].strip()
             if version!=VERSION:raise ValueError('unexpected Callgrind version')
@@ -227,11 +233,6 @@ def run(check_only=False, warmup=0, counts_only=False):
                     row=dict(engine=engine,phase=phase,scope=scope,entries=entries,counts=counts,raw=raw.name,raw_sha256=digest(raw),run=result)
                     report['profiles'].append(row)
                     command(['callgrind_annotate','--auto=yes','--inclusive=no','--threshold=95','--show=Ir','--sort=Ir',raw],engine+'-'+phase+'-annotation',timeout=120)
-            _,report['generated_sources']=capture_generated_sources(BUILD)
-            report['reference_sources']={}
-            for p in [*sorted((upstream/'crates').rglob('*.rs')),*sorted((CRATE/'src').glob('*.rs'))]:
-                report['reference_sources'][str(p.relative_to(ROOT))]=digest(p)
-                dest=BUILD/'reference-source'/p.relative_to(ROOT);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
         if not check_only and not counts_only:
             # Real timings run only on the isolated CI runner, after all correctness/profiling gates.
             if os.environ.get('GITHUB_ACTIONS')!='true':

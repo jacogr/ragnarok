@@ -70,3 +70,12 @@ The event byte format is unchanged: callback payload ownership is retained once,
 and serialization/hash comparison follows after collection/timing. Warmup output
 is read/validated and discarded, because DOOM's transition can emit many frames
 within one tick. Measured output remains fully retained and bounded.
+
+
+The first Linux run40186627565 passes full-state/output controls and collects
+all four instruction profiles, but fails before timings because source archival
+omitted the helper's required repository argument. Its status remains failed;
+no CPU ratio is claimed. Correct the call and move archival before collection,
+verify the real local archive (24 generated C files), then rerun the complete
+same workload to retain qualified source evidence and paired timings. No runtime,
+guest, driver or compiler option changes in that repair.
