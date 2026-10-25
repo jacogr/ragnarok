@@ -431,6 +431,29 @@ def current_stf_epoch_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_epoch_forks_corpus(compiler, report, checks, libraries):
+    """Execute epoch rotation, cutoff markers and real RingVRF admission against independent complete maps."""
+    from jam_fuzzer_epoch_forks_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'jam_fuzzer_epoch_forks', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Frozen Ring/KZG witnesses are input data; every score, Thin credential and successor map is independently calculated.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'jam-fuzzer-epoch-forks-proofs.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_epoch_forks_driver.nim',
+        'jam-fuzzer-epoch-forks', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'jam-fuzzer-epoch-forks-corpus', expected)
+    announce('independent epoch/ticket whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def current_stf_population_corpus(compiler, report, checks, libraries):
     """Compare real culprit evidence, independently sized validator rosters and every complete successor byte."""
     from current_stf_population_oracle import expected_observations

@@ -35,3 +35,12 @@ ancestry. The corpus compares24 successful imports, retains mutant maps after
 the original succeeds, and checks that a failed attempt after a valid mutant
 changes neither the selected mutant head nor its complete map. Existing local
 missing-evidence and consensus wrong-root report probes remain active.
+
+The epoch-fork corpus replays14 pinned Ring proof inputs through actual fuzzer
+imports. Sixteen valid ticket-subset mutants and22 original-last transitions
+produce38 independently calculated complete maps. Three paths cover a saturated
+contest and cutoff, a skipped cutoff and an incomplete contest, plus staging and
+active roster rotation, ticket/fallback schedules and a multi-epoch gap. Each
+mutant starts from its original parent; winner/entropy/roster state for subsequent
+blocks comes only from the original-last result. Mutant map queries remain exact
+while retained, and the complete initial seed remains queryable after eviction.
