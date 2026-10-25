@@ -443,3 +443,53 @@ passes with 1,000 cycles at 3,488 -> 3,488 bytes. Two private owner/result guard
 stable formatting and all 421 production modules plus peer semantic Smoke pass locally.
 Qualified image: sha256:30e6e2f121c6f9a1f3089f2ae608e6b4b7504b746f121dd1c7dbbb4dc903090c.
 Frozen inputs and native evidence: build/storage-db5-light-head-linux.json.
+
+## Light restart lifecycle
+
+Light restart can enumerate the **stored proof-query keys**, rather than guessing keys from a
+complete map. `readPagedQueries` authenticates the captured header and every index descriptor
+against the admitted manifest with one cumulative, inherited-and-requested minimum work budget.
+It checks both initial and final extents. Its opaque `PagedQueryInventory` owns detached keys;
+no callback, mutable backing buffer, file descriptor, complete-state root computation or successful
+prefix escapes. Before dispatch or allocation, the operation reserves the fixed stream workspace,
+256 bytes of metadata, and four key transports (`4 * 31 * queryCount`), checks host/address
+arithmetic, and enforces the caller's separate maximum-key limit. Empty valid inventories remain
+distinct from default values. Failed native IO poisons its reader; a pure quota refusal does not.
+
+`readAllPagedProofView` requires an independently expected root and separate inventory work limits.
+After complete enumeration it uses the existing per-query native extraction and state-layer proof
+verification/capture path under independent proof, batch and view limits. Inventory does not imply
+complete-map coverage: present-empty, proven absence and an unrecorded missing witness remain
+three distinct outcomes. Its output is an ordinary immutable partial `ProofView`.
+
+Light `reclaimExpectedEpoch` accepts independently retained exact previous/current manifests after
+restart. It requires the configured chain/schema/caps, an older physical epoch and a non-newer
+ordinary sequence. Different-root advancement preserves the ordinary light delta sequence; it
+must not inherit the full store's generation-increment rule. Under the writer lease, deletion
+checks the exact current selection and pending-candidate absence, acquires an exclusive old pin,
+fully validates old proof content/context, fences the current source and inode/name again, then
+unlinks and synchronizes the directory. Already-absent expected content still receives a fresh
+source fence and directory barrier. The existing captured receipt additionally requires its original
+inode, namespace and policy; equal-byte inode replacement remains a refusal for that API. A busy
+old reader prevents deletion. Final close uncertainty remains separate from successful unlink
+and directory durability. `synchronize` performs actual selected-file and directory barriers;
+uncertainty quarantines the writer until explicit close/reopen.
+
+The `storage_paged_restart` suite qualifies cache-disabled/enabled 130-query capture against a
+two-entry complete-map oracle, detached key ownership, every observed logical callback failure,
+exact and one-short cumulative budgets, pre-dispatch allocation/quota refusal, authenticated page
+corruption, strict expected-root materialization, missing witnesses, V1/V2 restart retirement,
+foreign pins, equal-byte inode replacement, corrupt old content preservation, every reached native
+retirement read/lock/close/sync/unlink failure, and both fresh synchronization barriers. Repeated
+inventory and state proof-view capture must release all activation-owned allocations over 1,000
+checked ARC cycles. Native evidence is recorded separately for each qualified platform.
+
+Qualification for this increment: the final restart, light context, native lifecycle, compaction,
+cleanup and paged proof-view suites pass on checked macOS arm64 and checked Linux amd64 under
+Docker emulation. Restart capture/release is stable at 3,552 -> 3,552 occupied bytes over 1,000
+cycles on each platform. The inventory privacy rejection, stable pinned formatting and semantic
+Smoke for 421 production modules plus the peer entry point pass locally. Linux image:
+`sha256:42f20f9303986c59cb0117b3b6ae675b29639667a9eb995f4d35a1ff312b258c`.
+Frozen inputs and exact native verdicts: `build/storage-db5-light-restart-linux.json`; local record:
+`build/storage-db5-light-restart-local.json`. These are process/IO fault controls, not physical
+power-loss qualification.

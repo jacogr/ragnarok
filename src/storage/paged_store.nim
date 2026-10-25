@@ -535,23 +535,33 @@ func policy(limits: PagedStreamLimits): array[15, uint64] =
     uint64(limits.work.ioCalls), uint64(limits.work.producerCalls), uint64(limits.work.pageHashes),
     uint64(limits.work.proofs), uint64(limits.work.nodes), uint64(limits.work.readBytes),
     uint64(limits.work.writeBytes), uint64(limits.work.valueBytes), uint64(limits.contextBytes)]
-proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
-    expected: PagedManifest): PagedNativeResult[PagedReclamation] =
-  ## Remove only one captured older inode after source validation and an independent exclusive nonblocking pin.
+proc reclaimEpoch(writer: var PagedWriter, previous, expected: PagedManifest,
+    receipt: PagedEpochReceipt, capturedIdentity: bool): PagedNativeResult[PagedReclamation] =
+  ## Exact expected content is mandatory; captured receipts additionally bind the original inode and policy.
   let data = writer.data
-  if data == nil or not data.active: return refused[PagedReclamation](
+  if data == nil or not data.active or not data.selected: return refused[PagedReclamation](
       PagedNativeError.Uninitialized)
   if data.poisoned: return refused[PagedReclamation](PagedNativeError.RecoveryRequired)
-  if not receipt.ready or not expected.initialized: return refused[PagedReclamation](
+  if not previous.initialized or not expected.initialized: return refused[PagedReclamation](
       PagedNativeError.InvalidCandidate)
   if expected.bytes != data.checked.manifest.bytes: return refused[PagedReclamation](
       PagedNativeError.StaleView)
-  if uint64(receipt.selected.epoch) >= uint64(expected.epoch): return refused[PagedReclamation](
-      PagedNativeError.InvalidCandidate)
-  if array[32, byte](receipt.config.chain) != array[32, byte](data.config.chain) or
-      policy(receipt.config.limits) != policy(data.config.limits) or
-          not data.directory.matchesDirectory(receipt.identity):
-    return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
+  let decoded = decodePagedManifest(previous.bytes, data.config.chain, previous.root,
+    data.config.limits.dataset, ByteLimit(PagedManifestBytes), uint64(
+        data.config.limits.contextBytes) > 0)
+  if decoded.error != PagedCodecError.None: return fileFailed[PagedReclamation](
+      FileError.WrongIdentity) # Even already-absent content must match the explicit chain/schema/caps.
+  if uint64(previous.epoch) >= uint64(expected.epoch): return refused[PagedReclamation](
+      PagedNativeError.InvalidCandidate) # Current and future epochs cannot be retired.
+  if uint64(previous.sequence) > uint64(expected.sequence): return refused[PagedReclamation](
+      PagedNativeError.InvalidCandidate) # Root advance and compaction preserve ordinary sequence.
+  if capturedIdentity:
+    # Original receipt authority retains its stronger namespace, captured inode and exact inherited policy binding.
+    if not receipt.ready: return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
+    let chain = array[32, byte](receipt.config.chain) == array[32, byte](data.config.chain)
+    let limits = policy(receipt.config.limits) == policy(data.config.limits)
+    if not chain or not limits or not data.directory.matchesDirectory(receipt.identity):
+      return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
   let source = validateHead(data)
   if source.error != PagedNativeError.None:
     if source.error == PagedNativeError.FileFailure: return fileFailed[PagedReclamation](
@@ -561,9 +571,12 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
           PagedStreamError.ProofFailure: source.proofError else: StateProofError.Uninitialized))
   let pending = data.directory.pendingAbsent
   if pending != FileError.None: return fileFailed[PagedReclamation](pending)
-  let exists = data.directory.epochExists(receipt.selected.epoch)
+  let exists = data.directory.epochExists(previous.epoch)
   if exists.error != FileError.None: return fileFailed[PagedReclamation](exists.error)
   if not exists.value:
+    let held = current(data)
+    if held != FileError.None: return fileFailed[PagedReclamation](
+        held) # Idempotent absence still fences the exact current source.
     let confirmed = data.directory.synchronize
     if confirmed != FileError.None:
       data.poisoned = true
@@ -575,14 +588,16 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
     if file.opened:
       let retired = file.close
       if retired != FileError.None: result = fileFailed[PagedReclamation](retired)
-  let pinned = openEpoch(file, data.directory, receipt.selected.epoch, PagedPin.Exclusive,
-      receipt.config.limits.dataset.bytes)
+  let pinned = openEpoch(file, data.directory, previous.epoch, PagedPin.Exclusive,
+      data.config.limits.dataset.bytes)
   if pinned != FileError.None: return fileFailed[PagedReclamation](pinned)
-  let actual = file.fileIdentity
-  if actual.error != FileError.None: return fileFailed[PagedReclamation](actual.error)
-  if not receipt.identity.matches(actual.value): return fileFailed[PagedReclamation](
-      FileError.RecoveryMismatch)
-  let verified = validateFile(file, receipt.selected, receipt.config.limits)
+  if capturedIdentity:
+    # Equal bytes in a substituted inode cannot satisfy a previously captured physical receipt.
+    let actual = file.fileIdentity
+    if actual.error != FileError.None: return fileFailed[PagedReclamation](actual.error)
+    if not receipt.identity.matches(actual.value): return fileFailed[PagedReclamation](
+        FileError.RecoveryMismatch)
+  let verified = validateFile(file, previous, data.config.limits)
   if verified.error != PagedStreamError.None: return streamFailed[PagedReclamation,
       CheckedPagedArtifact](verified)
   let current = current(data)
@@ -594,6 +609,15 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
   let retired = file.close
   PagedNativeResult[PagedReclamation](status: PagedNativeError.None,
     completed: PagedReclamation(ready: true, absentBefore: false, retirement: retired))
+
+proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
+    expected: PagedManifest): PagedNativeResult[PagedReclamation] =
+  ## Existing captured-inode retirement remains stricter than independently expected content authority after restart.
+  reclaimEpoch(writer, receipt.selected, expected, receipt, true)
+proc reclaimExpectedEpoch*(writer: var PagedWriter, previous,
+    expected: PagedManifest): PagedNativeResult[PagedReclamation] =
+  ## Independently authenticated previous metadata identifies exact old content, never a directory-derived cleanup wildcard.
+  reclaimEpoch(writer, previous, expected, default(PagedEpochReceipt), false)
 
 proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
     expectedSource: PagedManifest, expectedTarget: PagedHeader,
@@ -883,3 +907,35 @@ proc readContext*(writer: var PagedWriter, budget: PagedWorkLimits): PagedNative
     if data.head.check != FileError.None: data.poisoned = true # Preserve native failure quarantine before subsequent operations.
     return streamFailed[PagedContext, PagedContext](captured)
   PagedNativeResult[PagedContext](status: PagedNativeError.None, completed: captured.value)
+
+proc queryInventory*(reader: var PagedReader, maximum: ElementLimit,
+    budget: PagedWorkLimits): PagedNativeResult[PagedQueryInventory] =
+  ## Detached keys outlive the reader; root trust remains independently supplied and no native resource escapes.
+  let data = reader.data
+  if data == nil or not data.active: return refused[PagedQueryInventory](
+      PagedNativeError.Uninitialized) # Default/closed owners grant no readable source.
+  if data.poisoned: return refused[PagedQueryInventory](
+      PagedNativeError.RecoveryRequired) # Failed native identity/IO cannot revive a source.
+  let captured = queryInventoryFile(data.file, data.checked, maximum, budget)
+  if captured.error != PagedStreamError.None:
+    if data.file.check != FileError.None: data.poisoned = true # Pure quota refusal is separate from native uncertainty.
+    return streamFailed[PagedQueryInventory, PagedQueryInventory](captured)
+  PagedNativeResult[PagedQueryInventory](status: PagedNativeError.None, completed: captured.value)
+proc synchronize*(writer: var PagedWriter): PagedNativeResult[StorageDurability] =
+  ## Confirm actual selected-file and directory barriers under the held exact current source and writer lease.
+  let data = writer.data
+  if data == nil or not data.active: return refused[StorageDurability](
+      PagedNativeError.Uninitialized) # No remembered receipt can stand in for an open owner.
+  let selected = current(data)
+  if selected != FileError.None: return fileFailed[StorageDurability](
+      selected) # Fresh fencing precedes both barriers.
+  let file = data.head.synchronize
+  if file != FileError.None:
+    data.poisoned = true # Failed fresh durability requires explicit reopen before another mutation.
+    return fileFailed[StorageDurability](file)
+  let directory = data.directory.synchronize
+  if directory != FileError.None:
+    data.poisoned = true # A file barrier alone does not grant the complete durability receipt.
+    return fileFailed[StorageDurability](directory)
+  PagedNativeResult[StorageDurability](status: PagedNativeError.None,
+      completed: StorageDurability.FileAndDirectorySynced)

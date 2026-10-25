@@ -126,3 +126,17 @@ proc readPagedProofView*(reader: var PagedReader, expected: StateRoot,
     return PagedProofViewResult[ProofView](status: PagedProofViewError.ViewFailure,
         viewCause: view.error)
   PagedProofViewResult[ProofView](status: PagedProofViewError.None, completed: view.value)
+
+proc readAllPagedProofView*(reader: var PagedReader, expected: StateRoot,
+    limits: PagedProofViewLimits, inventoryWork: PagedWorkLimits): PagedProofViewResult[ProofView] =
+  ## Explicit whole-index work is independent of per-query extraction budgets; all stored facts remain partial state.
+  let selected = reader.selected
+  if selected.error != PagedNativeError.None: return nativeFailed[ProofView, PagedManifest](
+      selected) # A closed/uncertain source grants no inventory.
+  if array[32, byte](selected.value.root) != array[32, byte](expected): return refused[ProofView](
+      PagedProofViewError.WrongRoot) # Disk cannot replace independently selected root authority.
+  let maximum = ElementLimit(min(uint64(limits.batch.items), uint64(limits.view.items)))
+  let inventory = reader.queryInventory(maximum, inventoryWork)
+  if inventory.error != PagedNativeError.None: return nativeFailed[ProofView, PagedQueryInventory](
+      inventory) # No key prefix or partial proof view escapes.
+  readPagedProofView(reader, expected, inventory.value.keys, limits)

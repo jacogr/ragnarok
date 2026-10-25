@@ -945,3 +945,14 @@ proc contextFullFile*(file: var PagedFile, checked: CheckedFullPagedArtifact,
   if captured.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
     if not identity(data): data.poisoned = true # Preserve native lifetime uncertainty exactly as ordinary full lookups.
   captured
+
+proc queryInventoryFile*(file: var PagedFile, checked: CheckedPagedArtifact,
+    maximum: ElementLimit, budget: PagedWorkLimits): PagedStreamResult[PagedQueryInventory] =
+  ## Private callback borrowing ends before detached inventory returns; native corruption/IO latches remain unchanged.
+  let data = file.data
+  if data == nil or not data.active:
+    return readPagedQueries(default(PagedInput), checked, maximum,
+        budget) # Closed handles grant no readable source.
+  let captured = readPagedQueries(input(data), checked, maximum, budget)
+  latch(data, captured.error)
+  captured
