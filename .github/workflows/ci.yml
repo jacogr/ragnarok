@@ -708,10 +708,11 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
           path: |
-            build/tests/pvm-instruction-profile/*.callgrind
+            build/tests/pvm-instruction-profile/*.callgrind*
             build/tests/pvm-instruction-profile/*.log
             build/tests/pvm-instruction-profile/*.json
             build/tests/pvm-instruction-profile/summary.md
+            build/tests/pvm-instruction-profile/generated-source/**/*.c
 
   compare-pvm:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-pvm') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action == 'labeled' && github.event.label.name == 'ci:pvm-compare') }}

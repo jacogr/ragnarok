@@ -1,13 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Require complete instruction counters, calibrated scope exclusion and stale-report retirement."""
+"""Require complete counters, calibrated scope, stable captured C and real source attribution."""
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from pvm_instruction_profile import profile_counts, calibration_passed, run
+from pvm_instruction_profile import (profile_counts, calibration_passed, last_call_calibration_passed, execution_entry_count, final_return_dump, collect, run,
+    capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed, machine_profile_counts, disassembly_passed)
 
 
 def profile(total=42, function='pvm_profile_selected'):
@@ -55,11 +56,194 @@ class InstructionProfileTests(unittest.TestCase):
             # Generic crashes, wrong scopes and whole-process collection are never a calibration fallback.
             self.assertFalse(calibration_passed(result, text, selected))
 
+    def test_last_call_requires_exact_selected_work_and_complete_counts(self):
+        """Reset calibration rejects missing work, retained warmup, partial data and wrong scope."""
+        self.assertTrue(last_call_calibration_passed(profile(), profile(84), profile()))
+        for single, repeated, final in [
+                (profile(), profile(), profile()), (profile(), profile(84), profile(84)),
+                (profile(), profile(84), profile(41)), (profile(0), profile(0), profile(0)),
+                (profile(), profile(84).replace('totals:', 'partial:'), profile()),
+                (profile(), profile(84), profile(function='other')),
+                (profile(function='pvm_profile_selected_suffix'), profile(84), profile()),
+                (profile(), profile(84), profile()+'fn=pvm_profile_outside\n')]:
+            # Independent failures preserve all unrelated calibration fields.
+            with self.subTest(single=single, repeated=repeated, final=final):
+                self.assertFalse(last_call_calibration_passed(single, repeated, final))
+
+    def test_selected_entry_count_refuses_warmup_or_missing_execution(self):
+        """A calibrated control cannot certify a guest dump that still contains thirteen selected calls."""
+        raw = 'cfn=execute_2_guest\ncalls=1 20\n20 42\n'
+        self.assertEqual(execution_entry_count(raw), 1)
+        self.assertEqual(execution_entry_count(raw.replace('calls=1 ', 'calls=13 ')), 13)
+        self.assertEqual(execution_entry_count(raw.replace('execute_2_guest', 'other')), 0)
+        self.assertEqual(execution_entry_count(raw.replace('calls=1 20', 'fn=other\ncalls=1 20')), 0)
+        self.assertEqual(execution_entry_count(raw+raw), 2)
+        with self.assertRaises(ValueError):
+            execution_entry_count(raw.replace('calls=1 ', 'calls=-1 '))
+
+    def test_collection_controls_return_dumps_and_argument_placement(self):
+        """Existing calls stay unchanged; explicit return dumping isolates only its selected scope."""
+        class Checks:
+            """A command recorder produces a fresh raw file without provisioning native tools."""
+            def __init__(self, folder):
+                self.folder = folder
+                self.calls = []
+
+            def command(self, command, name, **options):
+                self.calls.append((command, name, options))
+                output = Path(next(item.split('=', 1)[1] for item in command
+                                   if str(item).startswith('--callgrind-out-file=')))
+                if '--dump-after=selected' in command:
+                    output.write_text(profile(0))
+                    for index in (1, 2):
+                        Path(str(output)+'.'+str(index)).write_text(profile())
+                else:
+                    output.write_text(profile())
+                return dict(exit_code=0, output='selected')
+
+        with tempfile.TemporaryDirectory() as directory:
+            checks = Checks(Path(directory))
+            for dumped in (False, True):
+                # A private output is retired on both normal and reset collections.
+                (checks.folder/'sample.callgrind').write_text('stale')
+                _, output = collect(checks, 'binary', 'sample', 'selected', {}, 30,
+                    instructions=True, dump_symbols=('selected',) if dumped else (), executions=2, arguments=('twice',))
+                command = checks.calls[-1][0]
+                self.assertEqual(command[-2:], ['binary', 'twice'])
+                self.assertEqual('--dump-after=selected' in command, dumped)
+                self.assertIn('--dump-instr=yes', command)
+                self.assertEqual(output.read_text(), profile())
+            with patch.object(checks, 'command', return_value=dict(exit_code=0, output='')):
+                # A successful command without fresh counters cannot reuse an earlier file.
+                with self.assertRaises(RuntimeError):
+                    collect(checks, 'binary', 'sample', 'selected', {}, 30)
+            self.assertFalse((checks.folder/'sample.callgrind').exists())
+
+    def test_complete_return_parts_and_empty_final_dump_are_required(self):
+        """Missing/extra/partial parts, invalid counts and leftover selected work cannot pass last-call selection."""
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)/'raw.callgrind'
+            first, last = Path(str(output)+'.1'), Path(str(output)+'.2')
+            output.write_text(profile(0))
+            first.write_text(profile())
+            last.write_text(profile())
+            self.assertEqual(final_return_dump(output, 2), last)
+            for invalid in (True, 0, 14):
+                with self.assertRaises(ValueError):
+                    final_return_dump(output, invalid)
+            for path, changed in ((output, profile()), (first, 'partial'), (last, 'partial')):
+                original = path.read_text()
+                path.write_text(changed)
+                with self.assertRaises(ValueError):
+                    final_return_dump(output, 2)
+                path.write_text(original)
+            last.unlink()
+            with self.assertRaises(ValueError):
+                final_return_dump(output, 2)
+            last.write_text(profile())
+            Path(str(output)+'.3').write_text(profile())
+            with self.assertRaises(ValueError):
+                final_return_dump(output, 2)
+
+    def test_generated_sources_preserve_recorded_paths_and_identity(self):
+        """Copied source reproduces relative DWARF paths; missing/changed copies or originals fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root/'build/profile'
+            source = folder/'compiler-pin/guest-cache/c/pkg/step.c'
+            source.parent.mkdir(parents=True)
+            source.write_text('void execute_1_test(void) {}\n')
+            stale = folder/'generated-source/stale.c'
+            stale.parent.mkdir()
+            stale.write_text('old source')
+            archive, manifest = capture_generated_sources(folder, root)
+            key = source.relative_to(root).as_posix()
+            copied = archive/key
+            self.assertEqual(copied.read_bytes(), source.read_bytes())
+            self.assertFalse(stale.exists())
+            verify_generated_sources(manifest, root, archive)
+            for path in [copied, source]:
+                # A valid capture cannot certify later byte changes on either side of the archive.
+                original = path.read_bytes()
+                path.write_bytes(original.replace(b'void', b'VOID'))
+                with self.assertRaises(ValueError):
+                    verify_generated_sources(manifest, root, archive)
+                path.write_bytes(original)
+            copied.unlink()
+            with self.assertRaises(ValueError):
+                verify_generated_sources(manifest, root, archive)
+
+    def test_empty_and_escaping_generated_sources_are_refused(self):
+        """An unrelated cache or an external symlink cannot stand in for guest-generated C."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root/'build/profile'
+            folder.mkdir(parents=True)
+            with self.assertRaises(ValueError):
+                capture_generated_sources(folder, root)
+            outside = root/'outside.c'
+            outside.write_text('external source')
+            source = folder/'compiler-pin/guest-cache/c/pkg/step.c'
+            source.parent.mkdir(parents=True)
+            try:
+                # Platforms without symlink support retain the positive/mutation controls above.
+                source.symlink_to(outside)
+            except OSError:
+                self.skipTest('symlinks unavailable')
+            with self.assertRaises(ValueError):
+                capture_generated_sources(folder, root)
+
+    def test_selected_sources_require_exact_captured_file_bindings(self):
+        """Only uncompressed selected functions mapped to captured generated paths grant attribution."""
+        key = 'build/profile/compiler-pin/guest-cache/c/pkg/step.c'
+        raw = 'fl='+key+'\nfn=execute_1_test\n1 42\n'
+        self.assertEqual(execution_source_files(raw, {key: {}}), [key])
+        for text in [raw.replace(key, '../outside.c'), raw.replace('fl=', 'cfl='),
+                raw.replace('fl='+key, 'fl=(1) '+key), raw.replace('fn=execute_1_test', 'fn=other')]:
+            # Caller-only metadata, aliases and foreign files never cause fallback path reads.
+            with self.assertRaises(ValueError):
+                execution_source_files(text, {key: {}})
+
+    def test_source_sections_are_required_beyond_function_summary(self):
+        """Missing source, a wrong file, failed annotation or a summary header cannot pass."""
+        key = 'build/profile/compiler-pin/guest-cache/c/pkg/step.c'
+        good = dict(exit_code=0, output='PROGRAM TOTALS\n-- User-annotated source: '+key+'\n42 1 code\n')
+        self.assertTrue(source_annotation_passed(good, [key]))
+        for result in [dict(good, exit_code=1), dict(good, output='PROGRAM TOTALS\n'),
+                dict(good, output='PROGRAM TOTALS\nUser annotated: '+key),
+                dict(good, output=good['output'].replace(key, key+'.other'))]:
+            self.assertFalse(source_annotation_passed(result, [key]))
+        self.assertFalse(source_annotation_passed(good, []))
+
+    def test_machine_trace_requires_positions_scope_and_equal_work(self):
+        """An instruction trace cannot substitute a different function, workload or source-only dump."""
+        raw = profile(function='execute_1_test').replace('version: 1', 'version: 1\npositions: instr line')
+        self.assertEqual(machine_profile_counts(raw, {'Ir': 42})['Ir'], 42)
+        for text, reference in [(raw, {'Ir': 43}), (raw.replace('instr line', 'line'), {'Ir': 42}),
+                (raw.replace('instr line', 'instr instr line'), {'Ir': 42}),
+                (raw.replace('execute_1_test', 'other'), {'Ir': 42}),
+                (raw.replace('positions: instr line', 'positions: instr line\npositions: instr line'), {'Ir': 42})]:
+            # Each independent mismatch retains valid footer counts, preventing generic-format fallback.
+            with self.subTest(text=text, reference=reference):
+                with self.assertRaises(ValueError):
+                    machine_profile_counts(text, reference)
+
+    def test_disassembly_requires_native_code_and_execution_symbol(self):
+        """A successful tool header, foreign architecture or symbol table alone is not disassembled execution."""
+        output = 'guest: file format elf64-x86-64\n00001000 <execute_1_test>:\n    1000: ret\n'
+        good = dict(exit_code=0, output=output)
+        self.assertTrue(disassembly_passed(good))
+        for result in [dict(good, exit_code=1), dict(good, output=output.replace('elf64-x86-64', 'elf64-aarch64')),
+                dict(good, output=output.replace('execute_1_test', 'other')),
+                dict(good, output=output.replace('    1000: ret\n', ''))]:
+            self.assertFalse(disassembly_passed(result))
+
     def test_refusal_retires_completed_reports(self):
         """An unsupported local host cannot leave an old successful aggregate available."""
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            for name in ('results.json', 'summary.md'):
+            for name in ('results.json', 'summary.md', 'generated-source-manifest.json',
+                         'native-disassembly.log', 'pinky-1-planned-instructions.callgrind'):
                 (folder/name).write_text('stale success')
             with patch('pvm_instruction_profile.BUILD', folder), patch(
                     'pvm_instruction_profile.platform.system', return_value='unsupported'):
@@ -67,4 +251,7 @@ class InstructionProfileTests(unittest.TestCase):
                     run()
             self.assertFalse((folder/'results.json').exists())
             self.assertFalse((folder/'summary.md').exists())
+            self.assertFalse((folder/'generated-source-manifest.json').exists())
+            self.assertFalse((folder/'native-disassembly.log').exists())
+            self.assertFalse((folder/'pinky-1-planned-instructions.callgrind').exists())
             self.assertIn('failed', (folder/'partial.json').read_text())
