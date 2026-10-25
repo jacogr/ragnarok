@@ -204,17 +204,23 @@ proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Build): 
     return
   result = FullPagedDigest(array[32, byte](hashed.value))
 proc buildFullPaged*(output: PagedOutput, scratch: FullPagedScratch,
-    producer: nil FullPagedProducer,
-
-header: FullPagedHeader, limits: FullPagedBuildLimits): FullPagedBuildResult =
+    producer: nil FullPagedProducer, header: FullPagedHeader,
+    limits: FullPagedBuildLimits, context: openArray[byte] = []): FullPagedBuildResult =
   ## Two identical bounded passes construct immutable bytes, followed by complete graph admission.
   var work = Build(status: FullPagedBuildError.None, limits: limits)
   let callback = producer
   if callback == nil or not header.initialized:
     return FullPagedBuildResult(status: FullPagedBuildError.Uninitialized)
   let shape = header.geometry
-  if shape.contextBytes != 0:
-    return FullPagedBuildResult(status: FullPagedBuildError.UnsupportedPolicy) # Native V2 authoring requires the next explicit context implementation.
+  let contextPolicy = validateFullPagedContextSize(shape.contextBytes,
+      limits.admission.contextBytes)
+  if contextPolicy == FullPagedStreamError.UnsupportedPolicy:
+    return FullPagedBuildResult(status: FullPagedBuildError.UnsupportedPolicy) # Physical context mode is explicit.
+  if contextPolicy != FullPagedStreamError.None:
+    return FullPagedBuildResult(status: FullPagedBuildError.LimitExceeded) # Independent opaque byte cap.
+  if uint64(context.len) != shape.contextBytes:
+    return FullPagedBuildResult(status: FullPagedBuildError.CodecFailure,
+        codecCause: FullPagedError.InvalidFormat) # Exact borrowed stable context is mandatory before source dispatch.
   let available = uint64(limits.admission.workingBytes)
   if available < FullPagedFixedBytes or
       uint64(limits.admission.trie.perValue) > (available-FullPagedFixedBytes) div 4:
@@ -278,6 +284,11 @@ header: FullPagedHeader, limits: FullPagedBuildLimits): FullPagedBuildResult =
       # Equal JAM roots do not authorize changed physical child identities on the second pass.
       work.fail(FullPagedBuildError.ChangedInput)
       return work.refused
+  if shape.contextBytes > 0:
+    # Only V2 writes a separate context section; V1 retains its exact previous IO schedule.
+    if not output.source.checkExtent(uint64(shape.contextOffset), work): return work.refused
+    if not output.appendPaged(context, work): return work.refused
+    if not output.flush(work): return work.refused
   if not output.source.checkExtent(uint64(shape.treeOffset), work): return work.refused
   let root = output.emitTree(shape, 0, shape.treeLeaves, work)
   if work.status != FullPagedBuildError.None: return work.refused

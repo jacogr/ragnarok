@@ -186,12 +186,13 @@ proc openReader(reader: var FullPagedReader, path: string, config: FullPagedNati
     if current.error != FileError.None: return fileFailed[bool](current.error)
     selection = current.value
   let selected = decodeFullPagedSelection(selection, config.chain, config.root,
-      config.limits.dataset)
+      config.limits.dataset, uint64(config.limits.contextBytes) > 0)
   if selected.error != FullPagedError.None: return codecFailed[bool](selected.error)
   let pinned = openEpoch(file, directory, selected.value.epoch, PagedPin.Shared,
       config.limits.dataset.bytes)
   if pinned != FileError.None: return fileFailed[bool](pinned)
-  let header = file.readFullHeader(config.chain, config.root, config.limits.dataset)
+  let header = file.readFullHeader(config.chain, config.root, config.limits.dataset,
+      config.limits.contextBytes)
   if header.error != FileError.None: return fileFailed[bool](header.error)
   if header.value.error != FullPagedError.None: return codecFailed[bool](header.value.error)
   let binding = decodeFullPagedManifest(selection, header.value.value)
@@ -367,12 +368,13 @@ proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
   let current = data.directory.readFullCurrent
   if current.error != FileError.None: return fileFailed[bool](current.error)
   let selected = decodeFullPagedSelection(current.value, config.chain, config.root,
-      config.limits.dataset)
+      config.limits.dataset, uint64(config.limits.contextBytes) > 0)
   if selected.error != FullPagedError.None: return codecFailed[bool](selected.error)
   let pinned = openEpoch(data.head, data.directory, selected.value.epoch,
     PagedPin.Shared, config.limits.dataset.bytes)
   if pinned != FileError.None: return fileFailed[bool](pinned)
-  let header = data.head.readFullHeader(config.chain, config.root, config.limits.dataset)
+  let header = data.head.readFullHeader(config.chain, config.root, config.limits.dataset,
+      config.limits.contextBytes)
   if header.error != FileError.None: return fileFailed[bool](header.error)
   if header.value.error != FullPagedError.None: return codecFailed[bool](header.value.error)
   let binding = decodeFullPagedManifest(current.value, header.value.value)
@@ -397,7 +399,8 @@ func buildLimits(config: FullPagedNativeConfig): FullPagedBuildLimits =
     writeBytes: work.writeBytes)
 proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoot,
     roots: openArray[FullPagedRoot], producer: nil FullPagedProducer, count, payload: uint64,
-    initial: bool, compaction = false): FullPagedNativeResult[StorageDurability] =
+    initial: bool, compaction = false, context: openArray[byte] = []): FullPagedNativeResult[
+        StorageDurability] =
   ## Exact predecessor and writer incarnation bind each sealed complete target to one live publication authority.
   if candidate.opened: return fileFailed[StorageDurability](FileError.Busy)
   if not data.active or (producer == nil and not compaction): return refused[StorageDurability](
@@ -419,8 +422,13 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
     let checked = validateHead(data)
     if checked.error != FullPagedNativeError.None: return rejected[StorageDurability, bool](checked)
     source = data.checked.manifest
+  let contextSize = if compaction: data.checked.header.geometry.contextBytes else: uint64(context.len)
+  let contextPolicy = validateFullPagedContextSize(contextSize, data.config.limits.contextBytes)
+  if contextPolicy != FullPagedStreamError.None:
+    return FullPagedNativeResult[StorageDurability](status: FullPagedNativeError.GraphFailure,
+      graphCause: contextPolicy, graphCodec: FullPagedError.Uninitialized) # Refuse before acquiring any candidate file.
   let header = initFullPagedHeader(data.config.chain, root, ManagedEpoch(epoch),
-    RepositoryGeneration(generation), count, payload, roots, data.config.limits.dataset)
+    RepositoryGeneration(generation), count, payload, roots, data.config.limits.dataset, contextSize)
   if header.error != FullPagedError.None: return codecFailed[StorageDurability](header.error)
   let policy = validateFullPagedPolicy(data.config.limits)
   if policy != FullPagedStreamError.None:
@@ -450,7 +458,7 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
       FullPagedCompactionLimits(ioCalls: limits.ioCalls, hashes: limits.hashes,
         readBytes: limits.readBytes, writeBytes: limits.writeBytes))
   else:
-    buildFullFile(artifact.file, data.directory, producer, header.value, limits)
+    buildFullFile(artifact.file, data.directory, producer, header.value, limits, context)
   if authored.error != FileError.None: return fileFailed[StorageDurability](authored.error)
   if authored.value.error != FullPagedBuildError.None: return buildFailed[StorageDurability](authored.value)
   let synced = artifact.file.synchronize
@@ -463,11 +471,12 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
     completed: StorageDurability.FileAndDirectorySynced)
 proc prepareFullPagedReplacement*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     root: StateRoot, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
-    count, payload: uint64): FullPagedNativeResult[StorageDurability] =
+    count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
+        StorageDurability] =
   ## Explicit complete replacement chooses an independently expected target root and retained inventory.
   let data = writer.data
   if data == nil: return refused[StorageDurability](FullPagedNativeError.Uninitialized)
-  prepare(data, candidate, root, roots, producer, count, payload, false)
+  prepare(data, candidate, root, roots, producer, count, payload, false, context = context)
 proc prepareFullPagedCompaction*(writer: var FullPagedWriter,
     candidate: var FullPagedCandidate): FullPagedNativeResult[StorageDurability] =
   ## Full root union, ordinary generation and physical bytes derive only from the held checked source.
@@ -559,12 +568,17 @@ proc publish*(writer: var FullPagedWriter, candidate: var FullPagedCandidate): F
       retirement: retirement, usable: not data.poisoned))
 proc initializeFullPagedWriter*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
-    count, payload: uint64): FullPagedNativeResult[FullPagedPublication] =
+    count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
+        FullPagedPublication] =
   ## Epoch-one/generation-zero bootstrap never scans, guesses or overwrites an existing database selection.
   if writer.opened: return fileFailed[FullPagedPublication](FileError.Busy)
   if producer == nil: return refused[FullPagedPublication](FullPagedNativeError.Uninitialized)
+  let contextPolicy = validateFullPagedContextSize(uint64(context.len), config.limits.contextBytes)
+  if contextPolicy != FullPagedStreamError.None:
+    return FullPagedNativeResult[FullPagedPublication](status: FullPagedNativeError.GraphFailure,
+      graphCause: contextPolicy, graphCodec: FullPagedError.Uninitialized) # No unsupported-format bootstrap creates forensic files.
   let header = initFullPagedHeader(config.chain, config.root, ManagedEpoch(1),
-    RepositoryGeneration(0), count, payload, roots, config.limits.dataset)
+    RepositoryGeneration(0), count, payload, roots, config.limits.dataset, uint64(context.len))
   if header.error != FullPagedError.None: return codecFailed[FullPagedPublication](header.error)
   let data = WriterData(config: config, poisoned: true)
   let acquired = openDirectory(data.directory, path, true, true)
@@ -580,7 +594,8 @@ proc initializeFullPagedWriter*(writer: var FullPagedWriter, path: string,
     # Acquired failed bootstrap leaves its writer lease visible for explicit caller close.
     if candidate.opened and candidate.close != FileError.None:
       result = fileFailed[FullPagedPublication](FileError.IoFailure)
-  let prepared = prepare(data, candidate, config.root, roots, producer, count, payload, true)
+  let prepared = prepare(data, candidate, config.root, roots, producer, count, payload, true,
+      context = context)
   if prepared.error != FullPagedNativeError.None: return rejected[FullPagedPublication,
       StorageDurability](prepared)
   writer.publish(candidate)
@@ -604,13 +619,14 @@ func retirementError*(receipt: FullPagedReclamation): FileError {.requires: rece
 func durability*(receipt: FullPagedReclamation): StorageDurability {.requires: receipt.ready.} =
   ## Successful already-absent retries also perform an actual directory synchronization.
   StorageDurability.FileAndDirectorySynced
-func policy(limits: FullPagedStreamLimits): array[15, uint64] =
+func policy(limits: FullPagedStreamLimits): array[16, uint64] =
   ## Bind every dataset/trie/history/cache/workspace/scratch/work scalar exactly, including zero allowances.
   [uint64(limits.dataset.entries), uint64(limits.dataset.bytes), uint64(limits.trie.items),
     uint64(limits.trie.nodes), uint64(limits.trie.perValue), uint64(limits.trie.totalValueBytes),
     uint64(limits.roots), uint64(limits.cachePages), uint64(limits.workingBytes),
     uint64(limits.scratchBytes), uint64(limits.work.ioCalls), uint64(limits.work.hashes),
-    uint64(limits.work.visits), uint64(limits.work.readBytes), uint64(limits.work.writeBytes)]
+    uint64(limits.work.visits), uint64(limits.work.readBytes), uint64(limits.work.writeBytes),
+    uint64(limits.contextBytes)]
 proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
     expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
   ## Delete only an exact captured older physical epoch after full source/old-graph checks and exclusive pinning.
@@ -686,7 +702,7 @@ func comparisonLimits(config: FullPagedNativeConfig): PagedWorkLimits =
   PagedWorkLimits(ioCalls: config.construction.ioCalls, readBytes: config.construction.readBytes)
 proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest, target: FullPagedHeader,
-    producer: nil FullPagedProducer, initial: bool): FullPagedNativeResult[bool] =
+    producer: nil FullPagedProducer, initial: bool, context: openArray[byte] = []): FullPagedNativeResult[bool] =
   ## Reproduce and fully admit exact target bytes in bounded anonymous disk scratch before granting cleanup authority.
   if not data.active: return refused[bool](FullPagedNativeError.Uninitialized)
   if data.poisoned and not initial: return refused[bool](FullPagedNativeError.RecoveryRequired)
@@ -725,7 +741,16 @@ proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
     if head.error != FullPagedNativeError.None: return rejected[bool, bool](head)
   if not compaction and producer == nil: return refused[bool](FullPagedNativeError.InvalidCandidate)
   let shape = target.geometry
-  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset)
+  let contextPolicy = validateFullPagedContextSize(shape.contextBytes,
+      data.config.limits.contextBytes)
+  if contextPolicy != FullPagedStreamError.None:
+    return FullPagedNativeResult[bool](status: FullPagedNativeError.GraphFailure,
+      graphCause: contextPolicy, graphCodec: FullPagedError.Uninitialized) # Replay must match the inherited physical format and quota.
+  if (compaction and context.len != 0) or (not compaction and uint64(context.len) !=
+      shape.contextBytes):
+    return refused[bool](FullPagedNativeError.InvalidCandidate) # Compaction derives bytes; replacement requires the exact independent replay input.
+  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset,
+      shape.contextBytes)
   if bounded.error != PagedCodecError.None: return fileFailed[bool](FileError.LimitExceeded)
   if shape.byteLength > uint64(data.config.replayBytes): return fileFailed[bool](
       FileError.LimitExceeded)
@@ -742,7 +767,7 @@ proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
       FullPagedCompactionLimits(ioCalls: limits.ioCalls, hashes: limits.hashes,
         readBytes: limits.readBytes, writeBytes: limits.writeBytes))
   else:
-    buildFullFile(scratch, data.directory, producer, target, limits)
+    buildFullFile(scratch, data.directory, producer, target, limits, context)
   if authored.error != FileError.None: return fileFailed[bool](authored.error)
   if authored.value.error != FullPagedBuildError.None: return buildFailed[bool](authored.value)
   let built = authored.value.value.checked
@@ -781,11 +806,11 @@ proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
 proc prepareFullPagedCleanup*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest, target: FullPagedHeader,
-    producer: nil FullPagedProducer): FullPagedNativeResult[bool] =
+    producer: nil FullPagedProducer, context: openArray[byte] = []): FullPagedNativeResult[bool] =
   ## Explicit independently expected replacement or source-derived compaction never scans for cleanup targets.
   let data = writer.data
   if data == nil: return refused[bool](FullPagedNativeError.Uninitialized)
-  prepareCleanup(data, candidate, expectedSource, target, producer, false)
+  prepareCleanup(data, candidate, expectedSource, target, producer, false, context)
 proc discardFullPagedCandidate*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
   ## Every source, epoch and staging preflight must pass before unlink; uncertainty poisons the writer.
@@ -872,12 +897,17 @@ proc discardFullPagedCandidate*(writer: var FullPagedWriter, candidate: var Full
     completed: FullPagedReclamation(ready: true, absentBefore: absent, retirement: retired))
 proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
-    count, payload: uint64): FullPagedNativeResult[FullPagedPublication] =
+    count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
+        FullPagedPublication] =
   ## Existing LOCK and absent CURRENT permit exact replay cleanup then independently bound fresh bootstrap.
   if writer.opened: return fileFailed[FullPagedPublication](FileError.Busy)
   if producer == nil: return refused[FullPagedPublication](FullPagedNativeError.Uninitialized)
+  let contextPolicy = validateFullPagedContextSize(uint64(context.len), config.limits.contextBytes)
+  if contextPolicy != FullPagedStreamError.None:
+    return FullPagedNativeResult[FullPagedPublication](status: FullPagedNativeError.GraphFailure,
+      graphCause: contextPolicy, graphCodec: FullPagedError.Uninitialized) # No unsupported-format bootstrap creates forensic files.
   let header = initFullPagedHeader(config.chain, config.root, ManagedEpoch(1),
-    RepositoryGeneration(0), count, payload, roots, config.limits.dataset)
+    RepositoryGeneration(0), count, payload, roots, config.limits.dataset, uint64(context.len))
   if header.error != FullPagedError.None: return codecFailed[FullPagedPublication](header.error)
   let data = WriterData(config: config, poisoned: true)
   let acquired = openDirectory(data.directory, path, false, true)
@@ -893,7 +923,8 @@ proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
     # Acquired failures keep the writer visible but always retire local candidate descriptors.
     if candidate.opened and candidate.close != FileError.None:
       result = fileFailed[FullPagedPublication](FileError.IoFailure)
-  let replayed = prepareCleanup(data, candidate, default(FullPagedManifest), header.value, producer, true)
+  let replayed = prepareCleanup(data, candidate, default(FullPagedManifest), header.value, producer,
+      true, context)
   if replayed.error != FullPagedNativeError.None: return rejected[FullPagedPublication, bool](replayed)
   let cleanup = candidate.data
   assert cleanup != nil
@@ -903,7 +934,8 @@ proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
     return rejected[FullPagedPublication, FullPagedReclamation](removed)
   if removed.value.retirementError != FileError.None:
     return fileFailed[FullPagedPublication](removed.value.retirementError)
-  let prepared = prepare(data, candidate, config.root, roots, producer, count, payload, true)
+  let prepared = prepare(data, candidate, config.root, roots, producer, count, payload, true,
+      context = context)
   if prepared.error != FullPagedNativeError.None:
     return rejected[FullPagedPublication, StorageDurability](prepared)
   let authored = candidate.data
@@ -951,3 +983,27 @@ func failure*[T](outcome: FullPagedNativeResult[T]): FullPagedNativeResult[bool]
     outcome.status != FullPagedNativeError.None.} =
   ## Composite consumers retain an exact selected failure without carrying any successful operation payload.
   rejected[bool, T](outcome)
+
+proc readContext*(reader: FullPagedReader, budget: FullPagedWorkLimits): FullPagedNativeResult[
+    FullPagedContext] =
+  ## Return independently owned opaque context only from a fully admitted immutable epoch reader.
+  let data = reader.data
+  if data == nil or not data.active: return refused[FullPagedContext](
+      FullPagedNativeError.Uninitialized)
+  let captured = data.file.contextFullFile(data.checked, budget)
+  if captured.error != FullPagedStreamError.None: return graphFailed[FullPagedContext,
+      FullPagedContext](captured)
+  FullPagedNativeResult[FullPagedContext](status: FullPagedNativeError.None,
+      completed: captured.value)
+proc readContext*(writer: FullPagedWriter, budget: FullPagedWorkLimits): FullPagedNativeResult[
+    FullPagedContext] =
+  ## Startup may inspect the already admitted selected immutable head while holding the exclusive writer lease.
+  let data = writer.data
+  if data == nil or not data.active or not data.selected: return refused[FullPagedContext](
+      FullPagedNativeError.Uninitialized)
+  if data.poisoned: return refused[FullPagedContext](FullPagedNativeError.RecoveryRequired)
+  let captured = data.head.contextFullFile(data.checked, budget)
+  if captured.error != FullPagedStreamError.None: return graphFailed[FullPagedContext,
+      FullPagedContext](captured)
+  FullPagedNativeResult[FullPagedContext](status: FullPagedNativeError.None,
+      completed: captured.value)

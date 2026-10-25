@@ -26,6 +26,7 @@ type
     trie*: StateTrieLimits
     roots*, cachePages*: ElementLimit
     workingBytes*, scratchBytes*: ByteLimit
+    contextBytes*: ByteLimit ## Zero selects V1; a positive finite cap requires authenticated V2 context.
     work*: FullPagedWorkLimits
   FullPagedStreamError* {.pure.} = enum ## Missing physical nodes never become protocol-level absence.
     Uninitialized, None, CodecFailure, LimitExceeded, UnsupportedPolicy, IOFailure,
@@ -48,6 +49,11 @@ type
   FullPagedLookup* = object ## An owned value is distinct from checked protocol absence.
     present: bool
     payload: seq[byte]
+  FullPagedContext* = object ## Owned immutable opaque V2 context retains neither native pins nor source callbacks.
+    ready: bool
+    selected: FullPagedManifest
+    payload: seq[byte]
+    used: FullPagedCounts
   Work = object ## Sticky first-error state; no callbacks or allocations live in this owner.
     status: FullPagedStreamError
     cause: FullPagedError
@@ -153,6 +159,12 @@ func initWork(limits: FullPagedStreamLimits): Work =
     result.status = FullPagedStreamError.LimitExceeded
   elif uint64(limits.cachePages) > 1:
     result.status = FullPagedStreamError.UnsupportedPolicy
+func validateFullPagedContextSize*(size: uint64, limit: ByteLimit): FullPagedStreamError =
+  ## Physical context presence selects V1/V2 explicitly, independently of total dataset and working quotas.
+  if (size == 0) != (uint64(limit) == 0):
+    return FullPagedStreamError.UnsupportedPolicy # No implicit format fallback or migration.
+  if size > uint64(limit): return FullPagedStreamError.LimitExceeded # Subtraction-free independent size admission.
+  FullPagedStreamError.None
 func validateFullPagedPolicy*(limits: FullPagedStreamLimits): FullPagedStreamError =
   ## Native callers can reject unsupported resident/cache policies before allocating disk workspace.
   initWork(limits).status
@@ -426,8 +438,9 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
     work.fail(FullPagedStreamError.Uninitialized)
     return refused[CheckedFullPagedArtifact](work)
   let shape = header.geometry
-  if shape.contextBytes != 0:
-    work.fail(FullPagedStreamError.UnsupportedPolicy) # Codec capability alone does not enable native V2 graph admission.
+  let contextPolicy = validateFullPagedContextSize(shape.contextBytes, limits.contextBytes)
+  if contextPolicy != FullPagedStreamError.None:
+    work.fail(contextPolicy) # Context mode and byte budget are independent of full graph membership.
     return refused[CheckedFullPagedArtifact](work)
   if uint64(header.len) > uint64(limits.roots) or shape.entries > uint64(limits.dataset.entries) or
       shape.byteLength > uint64(limits.dataset.bytes) or shape.entries > uint64(
@@ -469,6 +482,8 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
   if not io.padding(header, selected, 4096+shape.entries*64, uint64(shape.payloadOffset),
       cache, work): return refused[CheckedFullPagedArtifact](work)
   if not io.padding(header, selected, uint64(shape.payloadOffset)+shape.payloadBytes,
+      uint64(shape.contextOffset), cache, work): return refused[CheckedFullPagedArtifact](work)
+  if not io.padding(header, selected, uint64(shape.contextOffset)+shape.contextBytes,
       uint64(shape.treeOffset), cache, work): return refused[CheckedFullPagedArtifact](work)
   if not scratch.zero(0, shape.entries*2, work): return refused[CheckedFullPagedArtifact](work)
   for index in 0..<header.len:
@@ -653,3 +668,50 @@ proc streamFullPagedEntries*(io: PagedInput, checked: CheckedFullPagedArtifact,
     return refused[FullPagedCounts](work)
   if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedCounts](work)
   FullPagedStreamResult[FullPagedCounts](status: FullPagedStreamError.None, completed: work.used)
+
+func initialized*(context: FullPagedContext): bool =
+  ## A default capture confers no authenticated opaque context authority.
+  context.ready
+func manifest*(context: FullPagedContext): FullPagedManifest {.requires: context.ready.} =
+  ## Bind detached context to its exact captured header/page-tree selection rather than a root-only match.
+  context.selected
+proc bytes*(context: FullPagedContext): seq[byte] {.requires: context.ready.} =
+  ## Return a detached mutable transport copy; private captured bytes remain immutable after native close.
+  result = newSeq[byte](context.payload.len)
+  for index in 0..<result.len: result[index] = context.payload[index] # Copy every octet without exposing backing.
+func byteLength*(context: FullPagedContext): int {.requires: context.ready.} =
+  ## Exact successful retained bytes permit consumer preflight without transport allocation.
+  context.payload.len
+func counts*(context: FullPagedContext): FullPagedCounts {.requires: context.ready.} =
+  ## Report only complete successful source IO and authentication work.
+  context.used
+proc readFullPagedContext*(io: PagedInput, checked: CheckedFullPagedArtifact,
+    budget: FullPagedWorkLimits): FullPagedStreamResult[FullPagedContext] =
+  ## Capture opaque V2 bytes privately after bounded authenticated reads; application interpretation/trust stays separate.
+  if not checked.ready:
+    return FullPagedStreamResult[FullPagedContext](status: FullPagedStreamError.Uninitialized)
+  var policy = checked.policy
+  policy.work = streamBudget(policy.work, budget)
+  var work = initWork(policy)
+  let shape = checked.header.geometry
+  if shape.contextBytes == 0:
+    work.fail(FullPagedStreamError.UnsupportedPolicy) # V1 has no context; never fabricate an empty application head.
+    return refused[FullPagedContext](work)
+  let size = shape.contextBytes
+  let available = uint64(policy.workingBytes)
+  if available < FullPagedFixedBytes or size > (available-FullPagedFixedBytes) div 4 or size >
+      uint64(high(int)):
+    work.fail(FullPagedStreamError.LimitExceeded) # Reserve four context transports, matching the conservative full-value copy contract.
+  if size > uint64(policy.work.readBytes) or uint64(policy.work.ioCalls) < 2 or uint64(
+      policy.work.hashes) == 0:
+    work.fail(FullPagedStreamError.LimitExceeded) # Obvious per-call refusal precedes source dispatch and owned allocation.
+  if work.status != FullPagedStreamError.None: return refused[FullPagedContext](work)
+  if not io.checkExtent(shape.byteLength, work): return refused[FullPagedContext](work)
+  var payload = newSeq[byte](int(size))
+  var cache = default(PageCache)
+  if not io.range(checked.header, checked.selected, uint64(shape.contextOffset), payload, cache, work):
+    return refused[FullPagedContext](work) # No successfully copied prefix escapes a later authentication/IO refusal.
+  if not io.checkExtent(shape.byteLength, work): return refused[FullPagedContext](work)
+  FullPagedStreamResult[FullPagedContext](status: FullPagedStreamError.None,
+    completed: FullPagedContext(ready: true, selected: checked.selected, payload: payload,
+        used: work.used))
