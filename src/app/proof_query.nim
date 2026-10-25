@@ -4,6 +4,7 @@
 ## A bounded proof request retains one explicitly selected posterior state and detached semantic plan.
 ## Capturing is host-side admission only; generation and authentication belong outside callbacks.
 import std/assertions
+import ./[light_head, checkpoint_identity]
 import ../chain/[genesis, state_proof]
 import ../state/[proof_service, proof_view, trie_proof, store, proof_plan, planned_proof]
 import ../codec/[bounded, state_layout, state_trie]
@@ -19,12 +20,16 @@ type
     hashes*: ProofHashLimit
   ProofQueryError* {.pure.} = enum ## Failed/default requests expose no selected graph or partially generated response.
     Uninitialized, None, InvalidSelection, InvalidPlan, LimitExceeded, ProofFailure, ServiceFailure, ViewFailure
-  QueryData = ref object ## Immutable acyclic request; worker use requires exclusive access to all selected-state aliases.
-    selected: BlockSnapshotResult
+  QuerySourceKind {.pure.} = enum ## Complete-map generation and retained partial evidence have distinct private sources.
+    Full, Light
+  QueryData = ref object ## Immutable acyclic request; worker use requires exclusive access to every selected-state alias.
     plan: StateProofPlan
     serviceCompatibility: bool
     limits: ProofQueryLimits
     hashes: ProofHashLimit
+    case source: QuerySourceKind
+    of Full: selected: BlockSnapshotResult
+    of Light: partial: LightApplicationHead
   ProofQuery* = object ## Root authority comes only from the explicit retained selection, never from response bytes.
     data: nil QueryData
   ProofQueryResult*[T] = object ## Only complete success owns its typed request/response payload.
@@ -66,12 +71,16 @@ proc blockHash*(query: ProofQuery): BlockHash {.requires: query.data != nil.} =
   ## Retain exact selected block identity independently of transport framing.
   let data = query.data
   assert data != nil
-  data.selected.value.blockHash
+  case data.source
+  of QuerySourceKind.Full: data.selected.value.blockHash
+  of QuerySourceKind.Light: data.partial.current.value.identity.blockHash # Trusted metadata is independent of partial fact coverage.
 proc stateRoot*(query: ProofQuery): StateRoot {.requires: query.data != nil.} =
   ## The selected posterior commitment never substitutes its header's prior-state root.
   let data = query.data
   assert data != nil
-  data.selected.value.stateRoot
+  case data.source
+  of QuerySourceKind.Full: data.selected.value.stateRoot
+  of QuerySourceKind.Light: data.partial.stateRoot # A partial mapping never recomputes the complete JAM state root.
 proc estimatedHashes*(query: ProofQuery): ProofHashLimit {.requires: query.data != nil.} =
   ## Expose the conservative admission bound, not a measured backend counter.
   let data = query.data
@@ -108,7 +117,8 @@ proc captureProofQueryImpl(selected: BlockSnapshotResult, plan: StateProofPlan,
   if detached.error != ProofPlanError.None:
     return ProofQueryResult[ProofQuery](status: ProofQueryError.LimitExceeded)
   ProofQueryResult[ProofQuery](status: ProofQueryError.None,
-    completed: ProofQuery(data: QueryData(selected: selected, plan: detached.value,
+    completed: ProofQuery(data: QueryData(source: QuerySourceKind.Full, selected: selected,
+      plan: detached.value,
       limits: limits, hashes: ProofHashLimit(count*perQuery),
           serviceCompatibility: serviceCompatibility)))
 
@@ -120,6 +130,36 @@ proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
     limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
   ## Preserve legacy service-result spelling while using the same detached generic plan owner.
   captureProofQueryImpl(selected, plan.toStateProofPlan, limits, true)
+
+proc captureLightQuery(head: LightApplicationHead, plan: StateProofPlan,
+    limits: ProofQueryLimits, serviceCompatibility: bool): ProofQueryResult[ProofQuery] =
+  ## Admit fixed metadata and a detached bounded plan; no complete-map source or hashing work is required.
+  if not head.valid: return ProofQueryResult[ProofQuery](
+      status: ProofQueryError.InvalidSelection) # Defaults grant no root/header authority.
+  if not plan.valid: return ProofQueryResult[ProofQuery](
+      status: ProofQueryError.InvalidPlan) # A default plan cannot become an empty response.
+  let count = uint64(plan.len)
+  if count > uint64(limits.aggregate.items) or count > uint64(
+      limits.view.items): return ProofQueryResult[ProofQuery](
+      status: ProofQueryError.LimitExceeded) # Query retention is independent of source coverage.
+  if uint64(limits.wireBytes) < 8 or count > (uint64(
+      limits.wireBytes)-8) div 45: return ProofQueryResult[ProofQuery](
+      status: ProofQueryError.LimitExceeded) # Prove the minimum canonical response extent before plan copying.
+  let detached = mergeStateProofPlans(plan, plan, limits.aggregate.items)
+  if detached.error != ProofPlanError.None: return ProofQueryResult[ProofQuery](
+      status: ProofQueryError.LimitExceeded) # No partially copied plan escapes.
+  ProofQueryResult[ProofQuery](status: ProofQueryError.None,
+    completed: ProofQuery(data: QueryData(source: QuerySourceKind.Light, partial: head,
+      plan: detached.value, limits: limits, hashes: ProofHashLimit(0),
+          serviceCompatibility: serviceCompatibility)))
+proc captureProofQuery*(head: LightApplicationHead, plan: StateProofPlan,
+    limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
+  ## Project only already verified retained facts under independently trusted current metadata.
+  captureLightQuery(head, plan, limits, false)
+proc captureProofQuery*(head: LightApplicationHead, plan: ServiceProofPlan,
+    limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
+  ## Preserve the established service error spelling while retaining a distinct partial source.
+  captureLightQuery(head, plan.toStateProofPlan, limits, true)
 
 type
   ResponseData = ref object ## Detached output shares no canonical snapshot, plan or raw proof graph.
@@ -162,15 +202,48 @@ proc viewFailure(data: QueryData, reason: ProofViewError): ProofQueryResult[Proo
   let translated = case reason
     of ProofViewError.LimitExceeded, ProofViewError.LengthOverflow: ServiceProofError.LimitExceeded
     of ProofViewError.Uninitialized: ServiceProofError.Uninitialized
+    of ProofViewError.MissingWitness: ServiceProofError.MissingWitness
     of ProofViewError.NonCanonical: ServiceProofError.InvalidInput
     else: ServiceProofError.InvalidValue # Authenticated generation never fabricates a service value or response prefix.
   ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure, serviceReason: translated)
 
+proc executeLightQuery(data: QueryData): ProofQueryResult[ProofResponse] {.requires: data.source ==
+    QuerySourceKind.Light.} =
+  ## Project immutable verified witnesses without complete-map generation or cryptographic work; all requested facts must exist.
+  let limits = data.limits
+  let projected = projectPlannedProofs(data.partial.proofView, data.plan, limits.view)
+  if projected.error != ProofViewError.None: return viewFailure(data,
+      projected.error) # Missing witnesses never become authenticated absence.
+  let view = projected.value
+  var nodes = 0'u64
+  var values = 0'u64
+  for index in 0..<view.len:
+    # Retained immutable witness metadata suffices to recheck every independent aggregate channel before encoding.
+    let proof = view.lookupAt(index).value.witness
+    let count = uint64(proof.len)
+    let size = uint64(proof.suppliedByteLength.value)
+    if count > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes) or count >
+        uint64(limits.aggregate.nodes)-nodes or size > uint64(
+        limits.aggregate.valueBytes)-values: return ProofQueryResult[ProofResponse](
+        status: ProofQueryError.ProofFailure,
+        proofReason: StateProofError.LimitExceeded) # Previous totals prove subtraction and addition safe.
+    nodes += count
+    values += size
+  let encoded = encodePlannedProofs(view, data.plan, limits.view, limits.proof, limits.wireBytes)
+  if encoded.error == ProofViewError.ProofFailure: return ProofQueryResult[ProofResponse](
+      status: ProofQueryError.ProofFailure, proofReason: encoded.proofError) # No successful wire prefix escapes.
+  if encoded.error != ProofViewError.None: return viewFailure(data,
+      encoded.error) # Preserve canonical scope and retention refusal.
+  ProofQueryResult[ProofResponse](status: ProofQueryError.None,
+    completed: ProofResponse(data: ResponseData(identity: data.partial.current.value.identity.blockHash,
+      root: data.partial.stateRoot, wire: encoded.value)))
 proc executeProofQuery*(query: ProofQuery): ProofQueryResult[ProofResponse] =
-  ## Run bounded complete-map generation, exact-root authentication and encoding outside dispatcher callbacks.
+  ## Run bounded complete-map generation/authentication or verified partial projection, then encode outside dispatcher callbacks.
   let data = query.data
   if data == nil:
     return ProofQueryResult[ProofResponse](status: ProofQueryError.Uninitialized)
+  if data.source == QuerySourceKind.Light: return executeLightQuery(
+      data) # Explicit partial evidence never enters complete-map generation.
   let limits = data.limits
   let generated = generateBlockPlannedProofs(data.selected, data.plan, limits.map,
     limits.proof, limits.aggregate)

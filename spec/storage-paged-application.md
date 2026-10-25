@@ -603,3 +603,51 @@ peer pass locally. Qualified Linux image:
 `sha256:07f8124401f2025adcf4776729e786760a1e360b02cf75b92f0fd262c782f322`.
 Frozen source, exact native verdicts, model controls and platform records:
 `build/storage-db5-light-worker-verification.json`.
+
+## Light proof requests and bounded ingestion
+
+`ProofQuery` has distinct private complete-map and trusted light-head source alternatives.
+Light admission retains independently trusted current metadata and partial `ProofView` evidence,
+plus a detached finite plan. Its complete-map and primitive-hash allowances may be zero: execution
+projects already verified immutable witnesses and encodes the unchanged canonical RPV1 transport,
+without computing a complete-map root or performing cryptographic work. Proof/node/value/batch/
+view/wire limits remain independently enforced. Missing requested evidence refuses the whole
+response; generic queries retain MissingWitness, and service compatibility now preserves the
+existing service MissingWitness reason. Proven absence remains a successful authenticated fact.
+Full query generation and exact-root verification keep their existing source and work accounting.
+
+`LightProofImport` copies bounded untrusted RPV1 bytes and fixed checkpoint identity metadata from
+an independently trusted current light head. It retains no canonical head/proof graph or native
+resource. Capture checks only the fixed eight-byte magic/count prefix, count/wire/host extents,
+minimum record widths and a conservative hash-call budget before allocation. No cryptography or
+proof parsing runs in the dispatcher admission path. The estimate bounds both verification passes
+by `2 * (min(perProofNodes, 249) + 2) * queryCount`, with division proving multiplication safety;
+wire/value/node limits separately bound input work and retention.
+
+Execution strictly decodes and authenticates every proof against the selected trusted posterior
+root, exports bounded immutable witness handles and performs the final ordinary state-layer batch
+verification. Only complete success returns `ImportedLightProofs`, containing a genuinely verified
+batch and the exact selected checkpoint identity. Untrusted bytes supply no new root/header trust.
+The host must compare that identity with its current head before enrichment, even when successive
+headers have equal posterior roots. Caller wire mutation, trailing/noncanonical bytes, malformed
+proofs and foreign-root evidence never expose a successful prefix or fabricated absence.
+
+The existing `StateProofWorker` owns either query production or ingestion in its one bounded CPU
+slot. Imported completion has its own guarded result, separate from ordinary query response and
+Cancelled. Capacity refusal precedes all request-graph inspection. Both payload families participate
+in initialization, ARC ownership hooks, move admission, cancellation, collection and joined close.
+Done retains the exclusive request lease until collection; cancellation may discard CPU-only
+results but never releases aliases while execution remains active. The host applies verified
+facts or submits a prepared disk publication only after that lease ends. No new per-request thread,
+network authority or implicit storage mutation is introduced.
+
+Final CPU qualification: light proof requests, existing full query capture/execution and existing
+proof-worker suites pass on checked macOS arm64 and checked Linux amd64 under Docker emulation.
+The 1,000 direct main-thread query/import execution cycles remain stable at 23,296 -> 23,296
+occupied bytes on macOS and 17,888 -> 17,888 on Linux. Worker-wide memory is not inferred from
+these thread-local counters. Six new/existing private backing checks, both scoped lifecycle/reuse
+models and all ten serial/4-worker controls, pinned formatting and semantic Smoke for 423
+production modules plus peer pass locally. Qualified Linux image:
+`sha256:c7c373808aff033447441e68b069b415ddb164183d4dfd52052d1c01c0b35fab`.
+Frozen source, exact native verdicts, model controls and platform records:
+`build/storage-db5-light-proof-verification.json`.
