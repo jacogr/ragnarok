@@ -29,14 +29,14 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under a monotonic bounded test deadline.
 proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
-    paged = false) {.raises.} =
+    paged = false, replay = false) {.raises.} =
   ## Modes collect normally, join a completed operation, or race joined shutdown against native entry.
   var owner = seed
   var disk = default(DiskStateStore)
   var worker = default(DiskPublicationWorker)
   var path = "disk-worker.db"
   if paged: path = path & "-paged-" & $workerPid() & "-" &
-      $mode # Separate explicitly owned paged namespaces survive fixture retirement.
+      $mode & "-replay-" & $replay # Separate explicitly owned paged namespaces survive fixture retirement.
   let limits = journalLimits()
   let chain = default(StorageChainId)
   defer:
@@ -50,7 +50,8 @@ proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
         limits).value # Existing journal worker behavior remains qualified.
   defer:
     if not paged: discard posix.unlink(path.toCString()) # Paged directory artifacts remain in the ignored runner namespace for inspection.
-  var publication = prepareDiskPublication(disk, owner, prepared, chain, limits.contextBytes).value
+  var publication = prepareDiskPublication(disk, owner, prepared, chain, limits.contextBytes,
+      replay = replay).value
   assert worker.submit(disk, publication).error == DiskWorkerError.Closed, "start native worker"
   assert worker.start(), "live worker cannot restart"
   assert not worker.start(), "live worker cannot restart"
@@ -103,6 +104,8 @@ proc main() {.raises.} =
   let prepared = seed.prepareAccumulation(fixture.source, completionLimits().composition).value
   for mode in 0..2: cycle(seed, prepared, mode)
   for mode in 0..2: cycle(seed, prepared, mode, true) # Both update families use the same excluded native worker for paged commits.
+  for mode in 0..2: cycle(seed, prepared, mode, true,
+      true) # Explicit replay uses independently prepared genuine updates on the same worker.
   for index in 0..<24: cycle(seed, prepared, index mod 3)
 try:
   main()

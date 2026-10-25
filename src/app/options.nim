@@ -16,7 +16,7 @@ const
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
-      "--download-local-ancestors", "--download-update-logical-source"]
+      "--download-local-ancestors", "--download-update-logical-source", "--state-paged-resume"]
   Values = ["--trace-observations", "--telemetry", "--chain", "--management-socket", "--rpc-port",
       "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
@@ -42,6 +42,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   logicalSource, logicalPolicy, namespacePolicy, observations: string
   backend: StateStorage
   layout: StateDiskLayout
+  pagedResume: bool
   compactBytes: ByteLimit
   database, migrateFrom: string
   rpcNumber, uiNumber: uint16
@@ -122,6 +123,9 @@ func managedStorage*(options: Options): bool =
 func pagedStorage*(options: Options): bool =
   ## Explicit physical selection requires the disk backend; it never infers mode, migration or an existing directory schema.
   options.diskStorage and options.layout == StateDiskLayout.Paged
+func resumePagedStorage*(options: Options): bool =
+  ## Only explicit paged disk startup can replay an independently prepared genesis/import or future publication target.
+  options.pagedStorage and options.pagedResume
 func stateCompactionBytes*(options: Options): ByteLimit {.requires: options.managedStorage.} =
   ## Return the managed soft journal threshold; explicit zero disables automatic maintenance.
   options.compactBytes
@@ -231,6 +235,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--with-management": candidate.management = true
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
+      of "--state-paged-resume": candidate.pagedResume = true
       of "--download-local-ancestors": candidate.localAncestors = true
       of "--download-update-logical-source": candidate.updateLogicalSource = true
       else: return false # Switch classification above makes this branch unreachable.
@@ -335,6 +340,9 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   elif hasDatabase:
     return false # A memory run cannot silently ignore a requested physical database.
   if "--state-layout" in seen and candidate.backend != StateStorage.Disk: return false
+  if candidate.pagedResume and not (candidate.state and candidate.backend == StateStorage.Disk and
+      candidate.layout == StateDiskLayout.Paged):
+    return false # Explicit replay is never accepted for memory, journal, managed or disabled-state operation.
   if "--state-compact-bytes" in seen and not (candidate.backend == StateStorage.Disk and
       candidate.layout == StateDiskLayout.Managed): return false # Never silently ignore maintenance controls.
   if "--state-migrate-from" in seen:

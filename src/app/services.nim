@@ -134,7 +134,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   diskCommitOutcome: DiskChainResult[RepositoryGeneration]
   diskId: StorageChainId
   diskLimits: JournalLimits
-  diskEnabled, publishing, diskFaulted, diskManaged, diskPaged: bool
+  diskEnabled, publishing, diskFaulted, diskManaged, diskPaged, diskResume: bool
   compactBytes: ByteLimit
 
 func error*(admission: StateProofAdmission): StateProofAdmissionError =
@@ -485,8 +485,15 @@ proc initializeSelectedDisk(services: var Services, path: string): DiskChainResu
     RepositoryGeneration] =
   ## Explicit layout dispatch never resets an existing path or infers migration from its shape.
   if services.diskPaged:
-    initializePagedDiskChain(services.disk, path, services.diskId, services.canonical,
+    let created = initializePagedDiskChain(services.disk, path, services.diskId, services.canonical,
         services.diskLimits)
+    if created.error != DiskChainError.StoreFailure: return created
+    let failed = created.storeFailure
+    if not services.diskResume or failed.error != DiskStoreError.FileFailure: return created
+    if failed.fileError != FileError.AlreadyExists: return created
+    # Only explicit independently configured genesis/import authority can retry an existing failed bootstrap; CURRENT is never overwritten.
+    initializePagedDiskChain(services.disk, path, services.diskId, services.canonical,
+        services.diskLimits, replay = true)
   elif services.diskManaged:
     initializeManagedDiskChain(services.disk, path, services.diskId, services.canonical,
         managedPolicy(services.diskLimits))
@@ -519,6 +526,7 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   services.diskLimits = diskJournalLimits(limits)
   services.diskManaged = options.managedStorage
   services.diskPaged = options.pagedStorage
+  services.diskResume = options.resumePagedStorage
   services.compactBytes = if services.diskManaged: options.stateCompactionBytes else: ByteLimit(0)
   if options.stateMigration:
     if imported: return false # Independently imported authority cannot be mixed with a local legacy source.
@@ -1081,7 +1089,7 @@ proc stageDiskPublication(services: var Services): bool =
     services.adoption.completePublication(durabilityFailure())
     return false
   let staged = prepareDiskPublication(services.disk, services.canonical, prepared.value,
-    services.diskId, services.diskLimits.contextBytes)
+    services.diskId, services.diskLimits.contextBytes, replay = services.diskResume)
   if staged.error != DiskChainError.None:
     services.diskStageOutcome = staged
     discard services.rpc.resumeChain(services.rpcLease)
@@ -1115,7 +1123,7 @@ proc stageCurrentDiskPublication(services: var Services): bool =
     services.currentAdoption.refusePublication(CurrentHandoffError.RpcRefused)
     return false # A foreign pause or refused enabled listener grants no disk operation or canonical fallback.
   let staged = prepareDiskPublication(services.disk, services.canonical, prepared,
-    services.diskId, services.diskLimits.contextBytes)
+    services.diskId, services.diskLimits.contextBytes, replay = services.diskResume)
   if staged.error != DiskChainError.None:
     services.currentDiskStageOutcome = staged
     discard services.rpc.resumeChain(services.rpcLease)
@@ -1298,7 +1306,8 @@ proc tick*(services: var Services, peers: uint32) =
       return # Poll only scalar worker state while RPC/canonical graphs remain borrowed.
     services.finishDiskPublication(services.diskWorker.collect(services.diskTicket))
   if services.diskEnabled:
-    if services.diskPaged and not services.diskFaulted and services.disk.pagedRetirementPending:
+    if services.diskPaged and not services.diskResume and not services.diskFaulted and
+        services.disk.pagedRetirementPending:
       # Retire the authenticated predecessor before staging the next candidate; pending handoffs retain their bounded slot.
       if services.retirementDue(): discard services.beginDiskRetirement()
       services.ui.tick()

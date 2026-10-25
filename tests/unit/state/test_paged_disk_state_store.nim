@@ -6,13 +6,14 @@
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/disk_worker
+import ../../support/storage_crash
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture,
   disk_history_context]
 import ../../../src/state/[store, paged_state, disk_store]
 import ../../../src/app/[chain, disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/storage/[full_paged_codec, full_paged_store, full_paged_stream,
-  full_paged_build,
+  full_paged_build, paged_io,
   node_records, node_repository, paged_codec, managed_manifest, file_errors, durability,
   database_identity]
 import ../../../src/codec/[bounded, state_trie]
@@ -406,6 +407,297 @@ proc retirementWorker(mode, failure: int) {.raises.} =
       transport(config)).error == DiskStoreError.None
   assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
   assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
+proc presentNative(name: cstring, mode: cint): cint {.importc: "access", cdecl,
+    header: "<unistd.h>".}
+  ## Independent fixture metadata never scans a directory or supplies production cleanup authority.
+proc present(path: string): bool =
+  ## Distinguish an absent forensic path from an existing zero-byte prefix.
+  var owned = path
+  presentNative(owned.toCString(), 0) == 0
+proc forensic(path: string): string {.raises.} =
+  ## Preserve independently observed bytes when a known fixture path exists; absence has a separate metadata assertion.
+  if present(path): readFile(path) else: ""
+proc replayAttempt(operation: cint, skip: int) {.raises.} =
+  ## Reopen resolves a late successful selection or explicitly replays the independently chosen old-source target once.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  let directory = path("replay-" & $operation & "-" & $skip)
+  var disk = default(DiskStateStore)
+  defer:
+    resetIo()
+    if disk.opened: discard disk.close # Every failed and successful replay retires acquired native resources explicitly.
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  resetIo()
+  armIo(operation, cint(skip), 1, failedIo)
+  assert disk.commit(source, target, [9'u8], [source]).error != DiskStoreError.None
+  assert pendingIo() == 0
+  resetIo()
+  assert disk.close == FileError.None
+  let current = readFile(directory & "/CURRENT")
+  let candidate = directory & "/" & epochName(ManagedEpoch(2)).value
+  let staging = directory & "/CURRENT.next"
+  let hadCandidate = present(candidate)
+  let hadStaging = present(staging)
+  let candidateBytes = forensic(candidate)
+  let stagingBytes = forensic(staging)
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  assert readFile(directory & "/CURRENT") == current
+  assert present(candidate) == hadCandidate and forensic(candidate) == candidateBytes
+  assert present(staging) == hadStaging and forensic(staging) == stagingBytes
+  if uint64(disk.generation.value) == 1:
+    # Strict local startup kept the old pair; only this explicit independent target authorizes forensic cleanup.
+    assert disk.snapshotContext.value == @[7'u8]
+    let expected = disk.snapshot.value
+    assert expected.lookup(key(0)).value.bytes == @[5'u8]
+    assert disk.retryPagedCommit(expected, target, [9'u8], [source]).error == DiskStoreError.None
+  else:
+    # A late publication failure can leave the complete new pair selected; startup resolves it without a second commit.
+    assert uint64(disk.generation.value) == 2
+    assert disk.snapshotContext.value == @[9'u8]
+  assert uint64(disk.generation.value) == 2
+  assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
+  assert disk.snapshotContext.value == @[9'u8]
+  assert not present(staging)
+  assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+  assert disk.restoreDiskSnapshot(source.commitment.root, statePolicy()).value.lookup(key(
+      0)).value.bytes == @[5'u8]
+proc replayFaults() {.raises.} =
+  ## All observed write, file/directory barrier and rename ordinals include absent, partial and full forensic candidates.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  var disk = default(DiskStateStore)
+  assert initializePagedDiskStateStore(disk, path("replay-count"), source, config, transport(
+      config), [7'u8]).error == DiskStoreError.None
+  resetIo()
+  assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+  let operations = [writeIo, syncIo, renameIo]
+  let counts = [ioCalls(writeIo), ioCalls(syncIo), ioCalls(renameIo)]
+  resetIo()
+  assert disk.close == FileError.None
+  for index in 0..<operations.len:
+    # Every armed ordinal must be consumed by real native publication, not by fixture reads or setup.
+    assert counts[index] > 0 and counts[index] < 1000
+    for skip in 0..<int(counts[index]): replayAttempt(operations[index], skip)
+proc replayAuthority(mode: int) {.raises.} =
+  ## Wrong target/root history/context or denied replay budget preserve both forensic children before correct retry.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  let directory = path("replay-authority-" & $mode)
+  var disk = default(DiskStateStore)
+  defer:
+    resetIo()
+    if disk.opened: discard disk.close # Explicit retry never leaks its writer after a refused comparison.
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  resetIo()
+  armIo(renameIo, 0, 1, failedIo)
+  assert disk.commit(source, target, [9'u8], [source]).error != DiskStoreError.None
+  assert pendingIo() == 0
+  resetIo()
+  assert disk.close == FileError.None
+  let candidate = directory & "/" & epochName(ManagedEpoch(2)).value
+  let staging = directory & "/CURRENT.next"
+  let candidateBytes = readFile(candidate)
+  let stagingBytes = readFile(staging)
+  let current = readFile(directory & "/CURRENT")
+  var selected = config
+  if mode == 3: selected.replayBytes = ByteLimit(0) # Explicit caller policy cannot be widened by recovery.
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), selected,
+      transport(config)).error == DiskStoreError.None
+  let expected = disk.snapshot.value
+  let failed = case mode
+    of 0: disk.retryPagedCommit(expected, state(11), [9'u8], [
+        source]) # A different complete target cannot match this full candidate.
+    of 1: disk.retryPagedCommit(expected, target, [10'u8], [
+        source]) # Equal-sized context still participates in exact replay.
+    of 2: disk.retryPagedCommit(expected, target, [9'u8], [source, state(
+        11)])    # Extra retained-root knowledge is part of the physical binding.
+    else: disk.retryPagedCommit(expected, target, [9'u8], [
+        source]) # Zero inherited replay disk allowance must refuse.
+  assert failed.error != DiskStoreError.None
+  assert readFile(candidate) == candidateBytes and readFile(staging) == stagingBytes
+  assert readFile(directory & "/CURRENT") == current
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  assert disk.retryPagedCommit(disk.snapshot.value, target, [9'u8], [source]).error ==
+      DiskStoreError.None
+proc replayAfterRetirement() {.raises.} =
+  ## After restart, an already removed predecessor must not block explicit cleanup of a matching CURRENT.next candidate.
+  let source = state(5)
+  let target = state(9)
+  let successor = state(11)
+  let config = configuration(source, statePolicy())
+  let directory = path("replay-retired-predecessor")
+  var disk = default(DiskStateStore)
+  defer:
+    resetIo()
+    if disk.opened: discard disk.close # Failed publication and replay both retain explicit ownership obligations.
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+  assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+  resetIo()
+  armIo(renameIo, 0, 1, failedIo)
+  assert disk.commit(target, successor, [11'u8], [target]).error != DiskStoreError.None
+  assert pendingIo() == 0
+  resetIo()
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  assert disk.pagedRetirementPending and uint64(disk.generation.value) == 2
+  assert disk.retryPagedCommit(disk.snapshot.value, successor, [11'u8], [target]).error ==
+      DiskStoreError.None
+  assert uint64(disk.generation.value) == 3 and disk.snapshotContext.value == @[11'u8]
+  assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+proc bootstrapReplay() {.raises.} =
+  ## An explicit independently supplied complete genesis can resume a full failed bootstrap; normal initialization cannot overwrite it.
+  let source = state(5)
+  let config = configuration(source, statePolicy())
+  let directory = path("replay-bootstrap")
+  var disk = default(DiskStateStore)
+  defer:
+    resetIo()
+    if disk.opened: discard disk.close # Facade bootstrap failure itself closes any acquired incomplete native owner.
+  resetIo()
+  armIo(renameIo, 0, 1, failedIo)
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error != DiskStoreError.None
+  assert pendingIo() == 0 and not disk.opened
+  resetIo()
+  assert not present(directory & "/CURRENT")
+  let candidate = directory & "/" & epochName(ManagedEpoch(1)).value
+  let staging = directory & "/CURRENT.next"
+  let bytes = readFile(candidate)
+  let next = readFile(staging)
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error != DiskStoreError.None
+  assert resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      8'u8]).error != DiskStoreError.None
+  assert not disk.opened and readFile(candidate) == bytes and readFile(staging) == next
+  assert resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  assert uint64(disk.generation.value) == 1 and disk.snapshotContext.value == @[7'u8]
+  assert sameStateSnapshot(disk.snapshot.value, source)
+  assert disk.close == FileError.None
+  assert resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error != DiskStoreError.None
+  assert not disk.opened # Existing CURRENT can only be opened strictly, never replaced through bootstrap recovery.
+proc crashCapture(directory: string): seq[string] {.raises.} =
+  ## Strict startup preserves every independently named forensic child; no namespace scan supplies recovery authority.
+  result = @[]
+  for name in ["CURRENT", "CURRENT.next", "paged-0000000000000001.bin",
+      "paged-0000000000000002.bin", "paged-0000000000000003.bin", "KEEP"]:
+    let child = directory & "/" & name
+    result.add(if present(child): "present:" & readFile(child) else: "absent")
+proc replayCrash(mode: int, operation: cint, skip: int): uint64 {.raises.} =
+  ## One exact child stops only after a witnessed successful native syscall; parent verifies SIGKILL and the matching selected pair.
+  let source = state(5)
+  let target = state(9)
+  let successor = state(11)
+  let config = configuration(source, statePolicy())
+  let directory = path("replay-crash-" & $mode & "-" & $operation & "-" & $skip)
+  var disk = default(DiskStateStore)
+  defer:
+    abortCrash() # Abort/reap only this supervisor's still-owned child before any parent resource retires.
+    resetIo()
+    if disk.opened: discard disk.close
+  if mode == 2:
+    # Independently chosen bootstrap state leaves complete replayable files after a real rename refusal.
+    resetIo()
+    armIo(renameIo, 0, 1, failedIo)
+    assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+        7'u8]).error != DiskStoreError.None
+    assert pendingIo() == 0 and not disk.opened
+    resetIo()
+  else:
+    assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+        7'u8]).error == DiskStoreError.None
+    if mode == 1:
+      # The durable context still names an already retired old artifact before the interrupted next publication.
+      assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+      assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error ==
+          DiskStoreError.None
+      resetIo()
+      armIo(renameIo, 0, 1, failedIo)
+      assert disk.commit(target, successor, [11'u8], [target]).error != DiskStoreError.None
+      assert pendingIo() == 0
+      resetIo()
+    assert disk.close == FileError.None # The parent holds no writer lease or active thread across fork.
+  writeFile(directory & "/KEEP", "unrelated replay sibling")
+  resetIo()
+  let child = forkCrash(operation, cint(skip))
+  assert child >= 0
+  if child == 0:
+    # Child setup is outside the observed IO schedule; exitCrash intentionally bypasses ARC on process death.
+    if mode != 2:
+      if openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+          transport(config)).error != DiskStoreError.None: exitCrash(91)
+    if startCrash() != 0: exitCrash(92)
+    if mode == 2:
+      if resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
+          7'u8]).error != DiskStoreError.None: exitCrash(93)
+    elif mode == 1:
+      if disk.retryPagedCommit(disk.snapshot.value, successor, [11'u8], [target]).error !=
+          DiskStoreError.None: exitCrash(94)
+    else:
+      if disk.commit(disk.snapshot.value, target, [9'u8], [source]).error !=
+          DiskStoreError.None: exitCrash(95)
+    exitCrash(0)
+  let outcome = finishCrash(20000)
+  result = crashCount()
+  if skip == 4096:
+    assert outcome == crashCompleted and result > 0 and result <
+        1000 # A measured genuine completion constrains every later kill ordinal.
+  else:
+    assert outcome == crashKilled and result == uint64(
+        skip)+1 # Normal exit, failed IO or timeout never counts as a process-crash pass.
+  let captured = crashCapture(directory)
+  let opened = openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config))
+  assert crashCapture(directory) == captured
+  if mode == 2:
+    if opened.error != DiskStoreError.None:
+      assert not disk.opened
+      assert resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
+          7'u8]).error == DiskStoreError.None
+    assert uint64(disk.generation.value) == 1 and disk.snapshotContext.value == @[7'u8]
+    assert disk.snapshot.value.lookup(key(0)).value.bytes == @[5'u8]
+  else:
+    assert opened.error == DiskStoreError.None
+    let oldGeneration = if mode == 1: 2'u64 else: 1'u64
+    if uint64(disk.generation.value) == oldGeneration:
+      # The old complete state/context pair remains selected; independently supplied target authority permits exact replay.
+      let oldValue = if mode == 1: 9'u8 else: 5'u8
+      let oldContext = if mode == 1: 9'u8 else: 7'u8
+      assert disk.snapshot.value.lookup(key(0)).value.bytes == @[oldValue]
+      assert disk.snapshotContext.value == @[oldContext]
+      if mode == 1:
+        assert disk.retryPagedCommit(disk.snapshot.value, successor, [11'u8], [target]).error ==
+            DiskStoreError.None
+      else:
+        assert disk.retryPagedCommit(disk.snapshot.value, target, [9'u8], [source]).error ==
+            DiskStoreError.None
+    let value = if mode == 1: 11'u8 else: 9'u8
+    assert uint64(disk.generation.value) == oldGeneration+1
+    assert disk.snapshot.value.lookup(key(0)).value.bytes == @[value]
+    assert disk.snapshotContext.value == @[value] # Every accepted new root retains its exact paired context, never a prefix or mixed generation.
+    assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error ==
+        DiskStoreError.None
+  assert readFile(directory & "/KEEP") == "unrelated replay sibling"
+proc replayCrashes() {.raises.} =
+  ## Measured successful write/barrier/rename/unlink boundaries cover ordinary publication, replay and bootstrap resume.
+  for mode in 0..2:
+    let operations = if mode == 0: @[writeIo, syncIo, renameIo] else: @[writeIo, syncIo, renameIo, unlinkIo]
+    for operation in operations:
+      # Positive completion controls and witnessed exact-child kills are distinct verdicts at every actual ordinal.
+      let count = replayCrash(mode, operation, 4096)
+      for skip in 0..<int(count): discard replayCrash(mode, operation, skip)
 proc main() {.raises.} =
   ## Native facade behavior and complete application context restoration share one supported runner and exact fixture contract.
   normal()
@@ -416,6 +708,11 @@ proc main() {.raises.} =
   envelopeWitness()
   malformedEnvelope()
   retirementBackpressure()
+  replayFaults()
+  for mode in 0..3: replayAuthority(mode) # Exact target authority includes history, context and inherited replay policy.
+  replayAfterRetirement()
+  bootstrapReplay()
+  replayCrashes()
   for mode in 0..2:
     # Every receipt path has success, genuine foreign-pin backpressure and actual IO refusal controls.
     for failure in 0..2: retirementWorker(mode, failure)
