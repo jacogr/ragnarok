@@ -211,8 +211,9 @@ return to baseline. Compiler probes keep mutation helpers and page storage priva
 
 ## Checked chunk-aware scalar reads, 2026-10-23
 
-Immutable and staged scalar loads still complete the existing full-width preflight
-before reading either page. They now gather each admitted page span with one private
+Immutable scalar loads retain the existing full-width preflight before reading
+either page. Staged loads may reuse page permissions under the invocation-local
+window contract below. They now gather each admitted page span with one private
 helper, selecting the active writer page once per span. Within one512-byte chunk,
 a little-endian host copies exactly the admitted1–8 bytes into an initialized private
 uint64. This uses the pinned stdlib's unaligned-safe `copyMem`; source and destination
@@ -238,3 +239,84 @@ cycles. Existing full fault/permission/overflow ordering and public-step referen
 remain controls. A separate checked-release AddressSanitizer run of this source-owned
 suite passes; it is additional local evidence, not a substitute for ownership proofs.
 No public mutable backing, resource default, protocol byte or runtime check changes.
+
+
+## Invocation-local scalar page windows, 2026-10-25
+
+The independent scalar writer retains one readable page and two current-epoch
+writable page headers. A successful original scalar preflight admits an exact
+physical page tag; page permissions and sorted slots remain fixed for that writer.
+Only valid widths 1/2/4/8 wholly within that page, outside the protected prefix and
+below the existing exclusive-end overflow boundary can use a window. Width,
+protection, overflow, cross-page and permission misses retain the original complete
+preflight and Fault/Panic ordering. No page/chunk storage or mutation capability is
+exported. The public API, protocol interpretation and default execution policy do
+not change; all interpreters using the scalar writer share this implementation.
+
+Writable headers enter a window only after successful first-write preparation.
+Every cached store still runs the existing dirty-bit checks and prepares every
+touched 512-byte chunk before mutation, including stores crossing a chunk boundary.
+A retained writable header is already private, so this preparation cannot replace
+that header during a borrowed cached access. Hits do not shuffle retained owners;
+only successful single-page write misses rotate the two writable windows. Cloning
+invalidates the readable owner before replacing storage. `snapshotMemory` clears
+all three windows before publishing an immutable epoch, including calls through a
+writer alias and unchanged epochs. Future writes therefore repeat COW preparation.
+Window storage is fixed: three page-owner references and scalar tags/slots, with no
+new retained chunk payloads or unbounded cache. Existing checked byte helpers stay
+unchanged; assertions and bounds checks remain enabled.
+
+`pvm_scalar_windows` compares the writer with immutable-memory operations across
+valid/invalid widths, chunk/page crossings, low32 wrapping, protected and final-page
+addresses, read-only/missing pages, failed-store atomicity, source aliases and saved
+epochs. A second witness alternates writable state/stack pages and a read-only
+table, forces writable-window eviction, and checks every saved page byte and
+permission. One thousand complete working-set ownership cycles return to baseline.
+Run `make unit SUITE=pvm_scalar_windows`; existing scalar-writer, chunk, machine,
+prepared/step and host-memory/reference suites remain controls. A compiler privacy
+witness rejects direct extraction of a writable window from the public writer.
+
+### Local measured design evidence
+
+Before promotion, three isolated local trials compared the accepted runtime with
+this independent implementation on an Apple M1 Max arm64, pinned Nimony 4724f66c,
+checked ARC/Clang 21 release/speed with ThinLTO. Pinned Rust PolkaVM 69e5b87c used
+the public-API reused-instance adapter. Each trial ran all seven maintained
+guest/size cases in both process orders, thirteen calls per process: three warmups
+and ten measured calls. The final trial rebuilt both endpoints through identical
+compiler source/cache/output paths using fresh private caches, and a repeated
+candidate build produced a byte-identical image. All registers, gas, terminal
+state, page bytes/permissions and source snapshots passed; deliberately wrong
+expected gas was rejected before a successful timing row. Earlier single-readable/
+single-writable chunk and page trials regressed minimal and were discarded.
+
+CPU milliseconds below are forward / reverse process-order reused medians.
+Ragnarök reuses the prepared-program owner but constructs fresh invocation memory
+staging inside each execution. Rust input reset stays outside its execution clock;
+these are execution comparisons, not total lifecycle parity or Linux CI evidence.
+
+| Guest | Accepted prepared | Three-window prepared | Rust interpreted, reused |
+| --- | ---: | ---: | ---: |
+| Pinky | 202.114 / 199.658 | 178.950 / 176.601 | 94.798 / 94.744 |
+| Sieve 100,000 | 6.059 / 6.077 | 5.759 / 5.831 | 3.560 / 3.626 |
+| Minimal 100,000 | 13.802 / 13.822 | 11.552 / 11.645 | 6.020 / 6.128 |
+| Memory fill 100,000 | 6.494 / 6.491 | 6.395 / 6.395 | 3.971 / 3.968 |
+
+The paired CPU reductions are 11.46–11.55% Pinky, 15.75–16.30% minimal and 4.05–4.95%
+sieve. Fill's 1.48–1.52% change remains unproven. No hardware instruction/branch/cache
+counters were collected. Separate clock-disabled diagnostic copies show minimal's
+software-window read misses falling from 400,000 to 1 and write misses from 200,004
+to 2 per call; the original loop alternates table, writable state and stack pages.
+These software counts describe window behavior, not hardware cache/branch misses.
+Every prepared-cache observation matches the baseline, including eviction churn.
+The retained interpreter remains about 1.6–1.9 times reused Rust CPU time here.
+
+The measured source SHA-256 is `9bad399ed8745671ae3f1fafa80034c52de8da634097b30a2a7d91631a7ec916`
+for `src/pvm/machine.nim`; promotion changes only formatter padding before one
+field comment, preserving all tokens and line positions. Its promoted source
+SHA-256 is `fb2208667897b137a828c82f4822f04b8b425e8902b3424c3ddd2406bffc7e62`. The local
+record `build/pvm-port-lab/SCALAR-WINDOW-REPORT.md` retains constructor/cold timings,
+all policy comparisons and sample ranges. Adjacent trial JSON/logs, immutable
+source snapshots, generated C and `scalar-window-evidence-manifest.json` retain
+exact source/binary identities. Those ignored artifacts and the translated
+learning experiment are not shipped with this feature.
