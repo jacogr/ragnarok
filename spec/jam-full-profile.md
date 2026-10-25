@@ -48,3 +48,31 @@ baseline imports passed with checked ARC/Clang LTO. Actual upstream minifuzz
 passed3 sessions,12 imports and39 exact exchanges, including the real mismatch
 control. Focused Python and inventory checks passed. Runtime/native sources
 remain identical to the preceding verified full-profile layer.
+
+## Full epoch and population transitions
+
+The next corpus applies the same nonempty report/guest execution before two
+full600-slot boundaries. Ordinary and skipped-tail paths retain their guest
+storage while independently rotating entropy, fallback selection, complete
+validator records and statistics. A deliberately reversed1020-member staging
+population makes delayed activation and index changes observable: at the first
+crossing it becomes pending, and at the second it becomes active. The previous
+active1023-member population and its statistics remain complete.
+
+The pinned crypto backend supplies only an attributed seed KZG commitment for
+the staged ring. Expected signatures, variable epoch-marker bytes, per-block package-ring
+advancement, history/MMR and every posterior map are independently calculated under
+the unchanged GP pin before native or upstream replay. The existing baseline
+and nonempty full-profile fixture hashes must continue to match exactly.
+
+Full epoch replay exposed the former65536-byte adapter input cap: a valid
+1020-member epoch requires65547 unsigned bytes. The primitive budget is now
+131072 bytes, covering the combined full marker envelope; protocol signatures,
+canonical encodings, dependencies and GP validation remain unchanged. ABI tests
+cover exact-limit success, changed AD and over-limit output preservation.
+
+Observed full-epoch validation:15 new complete-map transitions and the30 existing
+full-profile guest/baseline imports passed with checked ARC/Clang LTO. Actual
+upstream minifuzz passed2 sessions,15 imports and38 exact exchanges, including
+its real mismatch control. Four production-profile Rust adapter tests,41 focused
+Python tests, fresh formatting, replay-driver semantics and inventory passed.

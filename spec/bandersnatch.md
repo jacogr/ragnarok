@@ -25,8 +25,11 @@ it was selected against vectors, not its version number.
 Nim owns raw context, separate additional data, protocol signing domains, exact
 encodings, invalid-member substitution and retained ARC ownership. Rust owns only
 primitive key/setup allocations and equations. Buffers are synchronously borrowed;
-outputs are published only after complete success. The 65536-byte input/AD cap is
-an adapter resource budget, not a JAM wire rule. Reason codes and owner ABI are
+outputs are published only after complete success. The 131072-byte input/AD cap is
+an adapter resource budget, not a JAM wire rule. It covers full epoch/ticket/offender
+header envelopes, including the reproduced65547/65739-byte unsigned epoch headers.
+Exact-limit success, changed-AD refusal and over-limit untouched outputs are tested
+through the maintained ABI. Reason codes and owner ABI are
 unchanged. All decoded composites undergo validity checks and canonical
 re-serialization comparison; suffixes, off-curve/subgroup points and invalid scalars
 fail. Verification exposes no output on failure.
