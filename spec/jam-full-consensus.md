@@ -324,3 +324,19 @@ missing-evidence controls, and its real mismatch control. All14 focused Python
 tests and inventory passed; the pinned Nim/Rust formatting tree remains identical.
 The pending-report reference now preserves existing accumulated guest history
 through the foundation shift, retaining its empty deferred-queue precondition.
+
+## Epoch fork retention boundary
+
+Nine real epoch-crossing siblings from each guest checkpoint overflow the actual
+eight-state retention window. Each independently calculated map includes the
+filtered pending population and complete retained guest state. Original-last
+publication retains seven siblings; the next canonical child retires that group.
+The existing real-socket retention observer is shared by fixture identity,
+preserving its old default budgets. All three guest modes require both oldest
+eviction and later-retirement local closures, independently of generated jobs.
+
+Observed epoch-capacity validation: all33 new and33 unchanged fork-capacity
+whole-map steps passed checked native replay. Upstream minifuzz passed three
+sessions,33 imports and99 exact exchanges, all six mandatory local eviction/
+retirement observations and the real mismatch control. All14 focused Python
+tests and inventory passed; the formatted Nim/Rust source tree remains identical.

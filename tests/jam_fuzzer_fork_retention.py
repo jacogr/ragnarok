@@ -35,12 +35,12 @@ def exercise(endpoint,plan):
     return 2
 
 
-def required_controls():
+def required_controls(identity='jam_fuzzer_fork_capacity'):
     """Every pinned guest chain requires both oldest eviction and later group-retirement observations."""
     import hashlib
     import json
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    _,target,members = FIXTURE_CONTRACTS['jam_fuzzer_fork_capacity']
+    _,target,members = FIXTURE_CONTRACTS[identity]
     for path,expected in members: assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
     frozen = json.loads(target.read_text())
     assert frozen['fork_capacity'] == 8 and frozen['sibling_imports'] == frozen['chains']*9
