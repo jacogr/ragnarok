@@ -17,7 +17,7 @@ def host_parameters(*, code_limit=512, lookup_age=2**32-1, deposits=(0, 0, 0)):
     return bytes(wire)
 
 
-def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor_checks=False):
+def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor_checks=False, headers=False):
     """Take only the reference's independently authored seed/child stream; retain every expected complete map."""
     if input_requests:
         _, expected, evidence = reference.expected_observations()
@@ -29,17 +29,23 @@ def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor
     ordinal = 0
     requests, initialized, waiting, blocks = [], False, False, 0
     sibling = False
+    header_pending = False
     for line in expected:
         tag, data = line.split(' ', 1)
-        if tag == 'P':
+        if tag == 'H':
+            assert headers and not waiting and not sibling and not header_pending
+            header_pending = True
+            requests.append(line) # Explicit independent seed headers are never reconstructed from observed state.
+        elif tag == 'P':
             assert not waiting and not sibling and (not initialized or blocks > 0)
+            header_pending = False
             blocks = 0
             profile = '' if profiles is None else ' '+profiles[ordinal].hex()
             requests.append(('A ' if anchor_checks else 'C ')+data+profile)
             ordinal += 1
             initialized = True
         elif tag == 'B' or forks and tag == 'V':
-            assert initialized and not waiting
+            assert initialized and not waiting and not header_pending
             if tag == 'V':
                 assert not sibling
                 sibling = True # A depth-one mutation must be followed by its original-last child.
@@ -51,7 +57,7 @@ def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor
         else:
             assert tag == 'O' and waiting, 'Unsupported reference observation: '+tag
             waiting = False
-    assert initialized and not waiting and not sibling and blocks > 0
+    assert initialized and not waiting and not sibling and not header_pending and blocks > 0
     return requests, expected, dict(reference=evidence,
         requests_sha256=hashlib.sha256(('\n'.join(requests)+'\n').encode()).hexdigest(),
         expected_sha256=hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest())

@@ -1,0 +1,32 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_sha256": "64a644ca5c77dcfd33c7c5f84486f4c4db7e5468b32fbac64a92324073c8aed6",
+  "transitions": 10,
+  "chains": 5,
+  "guest_executions": 20,
+  "header_slot": 0,
+  "state_slot": 1,
+  "roots": [
+    [
+      "f52d570f8fd7cc9b52f5aa5b03d486434d3afb85e8541b574039fea689aa051a",
+      "534fe03cc0265967ed8d9c0a18e6cdd0fa326934ae3c83fe3a44b0dfd4d01dad"
+    ],
+    [
+      "3d02c1b2ad9ab092ad74b3a7c98375375e9c0f6c1b8fec8a23d206d19e368f2e",
+      "3c110a0ebac1acdad6b94957e568c6faa2217c52430e9a37f86f957b9976c1ff"
+    ],
+    [
+      "ab117f495614ba6bdb9af863a3a52c18dfae0281fe0c7d1e5d17dadd47468f9a",
+      "8ee0e6522ba5bfbeed93e518dc6f0bcbf6de5ab0d1b852d51dbdc48ceae98650"
+    ],
+    [
+      "5dba88acd645988032add34f8fc832e4f44dc5f282db4350b2440cf516c17013",
+      "ed01f03f06c8fb08bbde93ef5ffb6fd0deebae2d4634c4a29e92e8d9e0c3d772"
+    ],
+    [
+      "c570a9f8f15b80b5d74e30c764f48197c28f2ce671f6b91faf415be86b029605",
+      "be42f642716f3c05f87ae132d732f4ceb4a7548cb6ba16e499d5ad0a32a83f7b"
+    ]
+  ],
+  "expected_sha256": "8fdbfda2f161f0786494674e2f50c6425c3b36e6dcbc193c77872d565778f51c"
+}

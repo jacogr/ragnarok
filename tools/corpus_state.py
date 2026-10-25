@@ -386,14 +386,14 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
 
 
 def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, identities,
-                               *, input_requests=True, profiles=None, forks=False, anchor_checks=False):
+                               *, input_requests=True, profiles=None, forks=False, anchor_checks=False, headers=False):
     """Share exact-input replay builds while each source-owned corpus retains its own frozen reference and verdict."""
     from jam_fuzzer_guest_reference import replay
     from native_fixture_contracts import FIXTURE_CONTRACTS
     for identity in (*identities, 'state_report'):
         for path, digest in FIXTURE_CONTRACTS[identity][2]:
             assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
-    requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles, forks=forks, anchor_checks=anchor_checks)
+    requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles, forks=forks, anchor_checks=anchor_checks, headers=headers)
     label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
     source = checks.folder/(label+'.txt')
     source.write_text('\n'.join(requests)+'\n')
@@ -780,6 +780,14 @@ def jam_fuzzer_parameter_aging_corpus(compiler, report, checks, libraries):
         ('current_stf_preimage_aging', 'jam_fuzzer_parameter_aging'),
         profiles=[host_parameters(lookup_age=reference.LOOKUP_AGE)] * len(reference.source.PROFILES),
         anchor_checks=True)
+
+
+@CORPORA.case
+def jam_fuzzer_seed_guests_corpus(compiler, report, checks, libraries):
+    """Execute exact genesis-like seed pairs while retaining both GP chronology checks and production isolation."""
+    import jam_fuzzer_seed_guests_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('current_stf_effects', 'jam_fuzzer_seed_guests'), headers=True)
 
 
 @CORPORA.case

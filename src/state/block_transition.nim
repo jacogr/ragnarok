@@ -68,9 +68,10 @@ func availabilityError*(outcome: BlockTransitionResult): AvailabilityTransitionR
 
 requires: outcome.status == BlockTransitionError.AvailabilityFailure.} = outcome.availabilityReason
 
-proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
+proc advanceState(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     admission: BlockAdmissionConfig, policy: DisputesConfig,
-    safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
+    safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig,
+        fuzzSeed: bool): BlockTransitionResult =
   ## Derive all offenders from this block and the parent C(5), never from a separately supplied projection.
   ## Work on a private store handle and replace the caller's handle once, after complete success.
   if uint64(availability.assignments.guarantee.cores) != uint64(policy.rosters.cores) or
@@ -90,7 +91,8 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
   if retained.error != StateStoreError.None:
     return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
       admissionReason: BlockAdmissionError.Uninitialized) # No synthesized empty parent.
-  let admitted = validateBlockCommitments(candidate, parent, retained.value, admission)
+  let admitted = if fuzzSeed: validateFuzzSeedCommitments(candidate, parent, retained.value, admission)
+    else: validateBlockCommitments(candidate, parent, retained.value, admission)
   if admitted.error != BlockAdmissionError.None:
     return BlockTransitionResult(status: BlockTransitionError.AdmissionFailure,
       admissionReason: admitted.error) # No disputes or Safrole work after invalid commitments.
@@ -147,3 +149,14 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
     completed: BlockTransition(profile: admission.frame, admitted: exact, disputes: plan.value,
       safrole: advanced.value,
       availability: available.value.plan, snapshot: available.value.snapshot))
+
+proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
+    admission: BlockAdmissionConfig, policy: DisputesConfig,
+    safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
+  ## Canonical callers retain strict parent/state pairing through the shared complete transition.
+  advanceState(state, candidate, parent, admission, policy, safrole, availability, false)
+proc advanceFuzzSeedState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
+    admission: BlockAdmissionConfig, policy: DisputesConfig,
+    safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
+  ## Only the application fuzz-domain seed branch selects genesis-like pairing; every later stage and atomic publication is shared.
+  advanceState(state, candidate, parent, admission, policy, safrole, availability, true)

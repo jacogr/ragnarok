@@ -178,8 +178,12 @@ proc prepareCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
         status: ApplicationCandidateError.StateFailure, stateReason: forked.error))
   var working = forked.value
   let config = limits.reporting
-  let staged = advanceBlockState(working, candidate, head.header, config.admission,
-    config.disputes, config.safrole, config.availability)
+  let staged = if chain.chainView.fuzzOnly and head.fuzzSeedOnly:
+    advanceFuzzSeedState(working, candidate, head.header, config.admission,
+      config.disputes, config.safrole, config.availability)
+  else:
+    advanceBlockState(working, candidate, head.header, config.admission,
+      config.disputes, config.safrole, config.availability) # Only the immutable marked fuzz seed grants genesis-like pairing.
   if staged.error != BlockTransitionError.None:
     return refusedReportPreparation(ApplicationCandidateResult(
       status: ApplicationCandidateError.BlockFailure,

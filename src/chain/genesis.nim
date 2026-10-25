@@ -32,6 +32,7 @@ type
     validators*: ValidatorCount
   BlockSnapshot* = object ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
     ready: bool
+    fuzzSeed: bool                   # Only explicit fuzzer capture may retain unrelated seed header/state clocks.
     state: StateStoreSnapshot
     sealedHeader: OwnedHeader        # Retain the codec owner of the exact hashed wire bytes.
     identity: BlockHash
@@ -257,8 +258,8 @@ proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
   # The 4096-slot ceiling proves multiplication and ceiling-division addition cannot overflow.
   RpcTicketAttempts((2 * slots + pending - 1) div pending)
 
-proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
-    parameters: Parameters): BlockSnapshotResult =
+proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
+    parameters: Parameters, fuzzSeed: bool): BlockSnapshotResult =
   ## Capture a structurally checked header and supplied posterior map, using its active roster and time.
   ## Retain the exact immutable map without Merklization; borrowed header bytes become an owned codec value.
   ## This checks framing and local bounds, not signatures, execution, completeness or finality.
@@ -303,12 +304,13 @@ proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
   if decoded.error != HeaderError.None: return invalidGenesis() # Canonical header framing and author range.
   let info = headerInfo(decoded.value.owner)
   if info.error != HeaderError.None: return invalidGenesis() # Bind metadata to its validated owner.
-  if info.value.consumed != wire.len or uint32(info.value.unsigned.slot) != uint32(
-      clock.value.value):
+  if info.value.consumed != wire.len or (not fuzzSeed and uint32(info.value.unsigned.slot) !=
+      uint32(clock.value.value)):
     return invalidGenesis() # Header and state describe one exact configured genesis slot.
   let hashed = blake2b256(wire)
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
-  GenesisResult(status: GenesisError.None, completed: BlockSnapshot(ready: true, state: state,
+  GenesisResult(status: GenesisError.None, completed: BlockSnapshot(ready: true, fuzzSeed: fuzzSeed,
+    state: state,
     pieceLength: capturePieceLength(ValidatorCount(count.value)),
     ticketLimit: captureTicketAttempts(state, CoreCount(cores), EpochSlots(parameters.get(
         epochPeriod))),
@@ -319,6 +321,18 @@ proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     configuration: parameters, epochLength: EpochSlots(parameters.get(
         epochPeriod)), corePopulation: CoreCount(cores), timeslot: uint32(info.value.unsigned.slot),
             keys: captureKeys(state), services: discoverServices(state)))
+
+func fuzzSeedOnly*(value: BlockSnapshot): bool =
+  ## A marked seed can initialize only a fuzz-domain view, never an ordinary genesis view.
+  value.ready and value.fuzzSeed
+proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
+    parameters: Parameters): BlockSnapshotResult =
+  ## Ordinary snapshots require exact equality between header slot and posterior state clock.
+  captureSnapshot(wire, state, parameters, false)
+proc captureFuzzSeedSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
+    parameters: Parameters): BlockSnapshotResult =
+  ## Preserve the explicit fuzz-v1 genesis-like pair exactly, retaining all structural bounds and a permanent seed marker.
+  captureSnapshot(wire, state, parameters, true)
 
 func genesisStoreLimits*(): StateStoreLimits =
   ## Preserve the legacy read-only complete-map capture policy; callers must explicitly choose any write budget.
