@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_CYCLES",
+  "files": {
+    "current-stf-late-cycles.json": "c206fb2f3889266b39e0b4e81c29a25dc6be192372bb01d43bfbbe8f0fa885b4"
+  },
+  "target": "current-stf-late-cycles.json"
+}
