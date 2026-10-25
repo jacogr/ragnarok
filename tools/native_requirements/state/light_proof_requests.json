@@ -1,0 +1,25 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "application_checkpoint"
+  ],
+  "includes": [
+    "crypto",
+    "storage_io"
+  ],
+  "libraries": [
+    "observer",
+    "storage_io"
+  ],
+  "observers": [
+    "io_close",
+    "io_flock",
+    "io_fsync",
+    "io_read",
+    "io_renameat",
+    "io_unlinkat",
+    "io_write"
+  ],
+  "prepared": false
+}
