@@ -16,6 +16,7 @@ proc main() {.raises.} =
         # Byte conversion is test framing only; the production decoder receives the original JAM wire bytes.
         data[index] = byte(text[index])
       assert exerciseUpstreamFrame(data)
+      assert exerciseUpstreamFrame(data, true) # Prepared execution must satisfy the same independent complete reference frame.
       for count in [0, 8, 248, data.len-1]:
         # Truncation cannot become a silently successful replay comparison.
         var truncated = newSeq[byte](count)

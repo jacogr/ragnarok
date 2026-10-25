@@ -221,6 +221,14 @@ bench-pvm-pricing: setup
 check-pvm-asan: setup
 	$(PYTHON) tools/pvm_sanitizers.py
 
+# Prepared execution stays optional; local qualification disables clocks and CI owns calibrated measurements.
+.PHONY: check-pvm-prepared profile-pvm-prepared
+check-pvm-prepared: setup check-inventory
+	$(PYTHON) tools/pvm_prepared_blocks.py
+
+profile-pvm-prepared: setup check-inventory
+	$(PYTHON) tools/pvm_prepared_blocks.py --counts --timings
+
 # Diagnostic opcode/pair counts use ignored snapshots and discard all instrumented timings.
 .PHONY: census-pvm
 census-pvm: setup

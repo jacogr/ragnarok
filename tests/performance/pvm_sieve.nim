@@ -122,7 +122,9 @@ assert captured.error == MachineError.None
 let memory = captured.value
 let source = captureMachine(owner, memory, info).value
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
-assert pricing in ["", "dynamic", "planned", "memo"]
+assert pricing in ["", "dynamic", "planned", "memo", "prepared"]
+let preparedMode = pricing == "prepared"
+let clocked = getEnv("RAGNAROK_PVM_SIEVE_CLOCK") != "0"
 let plannedMode = pricing == "planned"
 let memoMode = pricing == "memo"
 if guest != GuestKind.Sieve:
@@ -132,12 +134,12 @@ var plan = default(GasPlan)
 var memo = default(GasMemo)
 if plannedMode:
   # Only additional immutable-price preparation is bracketed here; common program/memory capture stays outside execution.
-  let prepareWall = getMonoTime().ticks
-  let prepareCpu = cpuNanoseconds()
+  let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
+  let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
   let created = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(100000),
     bytes: GasPlanByteLimit(8*1024*1024), cycles: GasCycleLimit(1000000)))
-  let prepareCpuNs = cpuNanoseconds()-prepareCpu
-  let prepareWallNs = getMonoTime().ticks-prepareWall
+  let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
+  let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == GasPlanError.None
   plan = created.value
   let info = gasPlanInfo(plan).value
@@ -145,35 +147,59 @@ if plannedMode:
     info.blockCount, ",", info.payloadBytes, ",", uint64(info.cycleLimit)
 if memoMode:
   # Initialization allocates only bounded empty facts; sample zero retains the actual first-cold pricing work.
-  let prepareWall = getMonoTime().ticks
-  let prepareCpu = cpuNanoseconds()
+  let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
+  let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
   let created = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(8*1024*1024),
       cycles: GasCycleLimit(1000000)))
-  let prepareCpuNs = cpuNanoseconds()-prepareCpu
-  let prepareWallNs = getMonoTime().ticks-prepareWall
+  let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
+  let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == GasMemoError.None
   memo = created.value
   let info = gasMemoInfo(memo).value
   assert info.pricedBlocks == 0
   echo "GAS_MEMO,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",", info.payloadBytes,
       ",", uint64(info.cycleLimit)
-let engine = if memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
+var prepared = default(reference.PreparedProgram)
+if preparedMode:
+  # Construction reserves only a bounded empty index; sample zero includes actual lazy operation/price preparation.
+  let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
+  let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
+  let created = reference.newPreparedProgram(owner, reference.PreparedLimits(
+      bytes: reference.PreparedByteLimit(64*1024*1024), blocks: reference.PreparedBlockLimit(16384),
+      cycles: GasCycleLimit(1000000)))
+  let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
+  let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
+  assert created.error == reference.PreparationError.None
+  prepared = created.value
+  let observed = reference.preparedInfo(prepared).value
+  assert observed.preparedOperations == 0
+  echo "PREPARED_PROGRAM,", prepareCpuNs, ",", prepareWallNs, ",", observed.codeBytes, ",",
+      observed.residentBytes
+let engine = if preparedMode: "ragnarok_prepared" elif memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
 let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
 assert requestedSamples in ["1", "13"]
 let samples = if requestedSamples == "1": 1 else: 13
 for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
-  let wallStart = getMonoTime().ticks
-  let cpuStart = cpuNanoseconds()
-  let done = if memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
+  let wallStart = if clocked: getMonoTime().ticks else: 0'i64
+  let cpuStart = if clocked: cpuNanoseconds() else: 0'i64
+  let done = if preparedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
+    elif memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
     elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
     else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
-  let cpuElapsed = cpuNanoseconds() - cpuStart
-  let elapsed = getMonoTime().ticks - wallStart
+  let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
+  let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
   assert done.error == reference.StepError.None, "current sieve execution"
   assert done.value.exit == reference.StepExit.Halt
   check(done.value.machine, indices, access, expected, limit, guest)
   echo "SIEVE,", engine, ",", limit, ",", sample, ",", elapsed, ",", cpuElapsed
+  if preparedMode:
+    # Cache occupancy and preparation progress remain explicit for cold and reused executions.
+    let observed = reference.preparedInfo(prepared).value
+    assert observed.residentBytes <= uint64(observed.byteLimit) and observed.preparedOperations > 0
+    echo "PREPARED_CACHE,", sample, ",", observed.residentBytes, ",", observed.residentBlocks, ",",
+        observed.residentOperations, ",", observed.preparedBlocks, ",", observed.preparedOperations,
+        ",", observed.hits, ",", observed.evictions, ",", observed.peakBytes
   checkMemory(memory, indices, access, originalBytes, 0)
   let original = machineInfo(source).value
   assert uint64(original.pc) == entry and uint64(original.gas) == uint64(info.gas)
