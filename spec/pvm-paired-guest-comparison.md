@@ -257,3 +257,14 @@ In the same job, warmed planned Pinky is411.125ms against pinned PolkaVM interpr
 183.604ms, or2.24x slower. This comparison does not establish parity or a win over
 the other interpreter. Do not compare absolute times or compound ratios across
 CPU families. Raw reports remain under`build/pvm12/ci-40154575071/`.
+
+
+### Historical stress object availability
+
+The counter follow-up initially stopped before profiling because the historical
+stress branch had been deleted and full branch checkout no longer contained
+`11f79d979ad63a86fe3f3cdecc4559ec6d00da2f`. Make now checks for that exact
+commit object and fetches it from origin only when absent; the diagnostic records
+and uses the full immutable SHA. A fresh empty-repository control proves absence,
+successful exact-SHA retrieval and commit availability. Runtime sources, flags and
+image controls are unchanged; this repairs source provisioning only.
