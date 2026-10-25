@@ -4,7 +4,7 @@
 
 """Attribute checked Linux guest execution with calibrated Callgrind; instrumented clocks are never timings.
 
-Make owns setup. The maintained full-state guest driver runs once per selected workload/policy.
+Make owns setup. The maintained full-state guest driver checks every selected execution, including memo warmup.
 Function-scoped collection excludes input preparation and result validation without runtime hooks.
 """
 import json
@@ -25,7 +25,8 @@ from setup_nimony import installed
 BUILD = ROOT/'build/tests/pvm-instruction-profile'
 # Fixed bounded long loops expose call/return and memory costs alongside the real initialized frame.
 CASES = (('pinky', 1, 'dynamic'), ('pinky', 1, 'planned'), ('sieve', 100000, 'planned'),
-         ('minimal', 100000, 'planned'), ('memset', 100000, 'planned'))
+         ('minimal', 100000, 'planned'), ('memset', 100000, 'planned'),
+         ('pinky', 1, 'memo'), ('memset', 100000, 'memo'))
 VERSION = 'valgrind-3.22.0'
 SCOPE = 'execute_?_*'
 
@@ -69,6 +70,19 @@ def calibration_passed(result, text, selected):
              and 'fn=pvm_profile_outside' not in text) if selected else counts['Ir'] == 0)
 
 
+def last_call_calibration_passed(single, repeated, final):
+    """Two selected calls double Ir; calibrated entry reset retains exactly the last selected call."""
+    counts = []
+    for text in (single, repeated, final):
+        # Require actual selected function records, not caller references or a partial/empty dump.
+        if (re.search(r'^fn=pvm_profile_selected$', text, re.M) is None
+                or re.search(r'^fn=pvm_profile_outside$', text, re.M) is not None):
+            return False
+        try:
+            counts.append(profile_counts(text)['Ir'])
+        except ValueError:
+            return False
+    return counts[1] == 2*counts[0] and counts[2] == counts[0]
 
 def capture_generated_sources(folder, repository):
     """Retain exact generated C at its recorded relative paths for offline source annotation."""
@@ -159,15 +173,17 @@ def disassembly_passed(result):
             and re.search(r'^\s*[0-9a-f]+:\s+[a-z][a-z0-9]*\b', text, re.M) is not None)
 
 
-def collect(checks, binary, name, scope, environment, timeout, instructions=False):
+def collect(checks, binary, name, scope, environment, timeout, instructions=False,
+            reset_each_call=False, arguments=()):
     """Collect only the named native execution function; a new private output file cannot reuse stale counters."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
         '--toggle-collect='+scope, '--cache-sim=no', '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
+        *(['--zero-before='+scope] if reset_each_call else []),
         '--callgrind-out-file='+str(output),
-        '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary], name,
+        '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary, *arguments], name,
         environment=environment, timeout=timeout)
     if not output.is_file():
         raise RuntimeError('Callgrind did not produce a profile: '+name)
@@ -203,16 +219,40 @@ def run():
         report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
         if compiled['exit_code']:
             raise RuntimeError('profile calibration build failed')
+        selected_text = None
         for selected in (True, False):
             # The unmatched scope proves whole-process counts cannot silently substitute for selected execution.
             name = 'control-selected' if selected else 'control-absent'
             result, output = collect(checks, BUILD/'control', name,
                 'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30)
-            passed = calibration_passed(result, output.read_text(), selected)
+            text = output.read_text()
+            if selected:
+                # Preserve the single-call reference for independently repeated/reset controls.
+                selected_text = text
+            passed = calibration_passed(result, text, selected)
             result.pop('output')
             report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
             if not passed:
                 raise RuntimeError('profile scope calibration failed: '+name)
+        repeated_text = None
+        for reset in (False, True):
+            # Identical selected work runs twice; entry reset must retain exactly one invocation.
+            name = 'control-last-only' if reset else 'control-repeated'
+            result, output = collect(checks, BUILD/'control', name, 'pvm_profile_selected',
+                dict(os.environ), 30, reset_each_call=reset, arguments=('twice',))
+            text = output.read_text()
+            passed = calibration_passed(result, text, True)
+            if reset:
+                # Process success alone cannot certify that warmup costs were actually removed.
+                passed = passed and last_call_calibration_passed(selected_text, repeated_text, text)
+            else:
+                # The unreset control proves the second invocation was present and collected.
+                repeated_text = text
+                passed = passed and profile_counts(text)['Ir'] == 2*profile_counts(selected_text)['Ir']
+            result.pop('output')
+            report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
+            if not passed:
+                raise RuntimeError('profile last-call calibration failed: '+name)
         prepared = prepare_inputs(checks, BUILD) # The shared preparer admits only its maintained complete matrix.
         identities.update(prepared['identities'])
         report['provenance'] = prepared['provenance']
@@ -245,15 +285,18 @@ def run():
         for guest, limit, mode in CASES:
             # Existing input/reference preparation and strict native full-state checks remain authoritative.
             data, expected = inputs[guest, limit]
+            warmups = 1 if mode == 'memo' else 0
+            samples = warmups+1
             environment = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING=mode,
                 RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
-                RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_SAMPLES='1')
+                RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_SAMPLES=str(samples))
             name = guest+'-'+str(limit)+'-'+mode
-            result, output = collect(checks, binary, name, SCOPE, environment, 900)
+            result, output = collect(checks, binary, name, SCOPE, environment, 900,
+                reset_each_call=bool(warmups))
             if result['exit_code']:
                 raise RuntimeError('profile guest failed: '+name)
-            parse_process_output(result['output'], 'ragnarok_planned' if mode == 'planned' else 'ragnarok',
-                                 limit, guest, samples=1)
+            engine = dict(dynamic='ragnarok', planned='ragnarok_planned', memo='ragnarok_memo')[mode]
+            parse_process_output(result['output'], engine, limit, guest, samples=samples)
             text = output.read_text()
             counts = profile_counts(text)
             if re.search(r'^fn=execute_[0-9]+_\w+', text, re.M) is None:
@@ -271,8 +314,9 @@ def run():
                 raise RuntimeError('selected source annotation failed: '+name)
             report['profiles'].append(dict(guest=guest, limit=limit, mode=mode, counts=counts,
                 run=result, profile_sha256=digest(output), state_checked=True,
+                warmup_executions=warmups, collected_executions=1,
                 source_files=source_files, source_annotation_log=source_annotation['log']))
-        # A separate trace preserves the five ordinary source annotations and adds positions for otherwise unattributed line-zero costs.
+        # A separate trace preserves the ordinary source annotations and adds positions for otherwise unattributed line-zero costs.
         guest, limit, mode = 'pinky', 1, 'planned'
         data, expected = inputs[guest, limit]
         environment = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING=mode,
@@ -305,10 +349,10 @@ def run():
             raise RuntimeError('profile binary or source membership changed')
         report.update(status='checks-passed', source_sha256={str(p.relative_to(ROOT)): v for p, v in identities.items()})
         lines = ['Checked PVM execution instruction profiles', '', report['clock_policy'], '',
-                 '| Guest | Limit | Pricing | Instructions |', '| --- | ---: | --- | ---: |']
+                 '| Guest | Limit | Pricing | Warmups | Instructions |', '| --- | ---: | --- | ---: | ---: |']
         for item in report['profiles']:
-            lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['counts']['Ir']} |")
-        lines += ['', 'One full-state-checked invocation per cell; fixture preparation and full-state comparison are outside collection.',
+            lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['warmup_executions']} | {item['counts']['Ir']} |")
+        lines += ['', 'One collected invocation per cell; memo executes one checked warmup then resets counters at the next execute entry. Both states are checked. Preparation and state comparison are outside collection.',
                   'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.',
                   'Generated C, its checksums and source annotations retain executable line attribution.',
                   'An additional state-checked planned Pinky trace retains native instruction positions and disassembly; its Ir must match the source-level invocation.']
