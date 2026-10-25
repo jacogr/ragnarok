@@ -19,6 +19,9 @@
 [submodule "vendor/wycheproof"]
 	path = vendor/wycheproof
 	url = https://github.com/C2SP/wycheproof.git
+[submodule "vendor/jam-conformance"]
+	path = vendor/jam-conformance
+	url = https://github.com/davxy/jam-conformance.git
 [submodule "vendor/jam-np"]
 	path = vendor/jam-np
 	url = https://github.com/zdave-parity/jam-np.git

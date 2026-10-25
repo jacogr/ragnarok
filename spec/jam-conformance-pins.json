@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/davxy/jam-conformance.git",
+  "path": "vendor/jam-conformance",
+  "commit": "acd4b2da310ff25226c4d41b918712578483fd2c",
+  "selected_from": "main",
+  "selected_on": "2026-10-25",
+  "fuzzer_protocol_version": 1,
+  "role": "test-only JAM conformance protocol and known upstream campaign tooling; not protocol authority or a successful campaign verdict",
+  "source_sha256": {
+    ".gitmodules": "c8a789485ce59b6885df8ecf5fb84814f65371d8f185f65a98e77c03822bb415",
+    "NEWS.md": "1e89684d556e383264134cb4adee52f9b01cd291391bee2a394418a72b60b20c",
+    "README.md": "266fa7e88207faaa9770a6c4781586afce370acf497be90f9d7df7b7dfcc70be",
+    "fuzz-proto/README.md": "adbbc1a6024b3f89afa3e5712424dd471fce23fe7ae0dd3de0d29a06f2ac3c7b",
+    "fuzz-proto/examples/README.md": "26240b4c8598d248623d8f414d7da60e95736f80b7974527d1af7c4ba9b41e5f",
+    "fuzz-proto/fuzz-v1.asn": "69ff54b9f1a4c86275dfffebcdb1ccbc61da5a0e522003cd8f6e763a148ac099",
+    "fuzz-proto/minifuzz/minifuzz.py": "ce327aacbc31672e126f03fdac719d159d01b4931413d8ca172c79b360e1d044",
+    "scripts/README.md": "601c0a79e66dbb2e48cbc664b91b8b63a13926a26c7148c8448b4e25b5a3dc0c",
+    "scripts/fuzz-workflow.py": "66ec40534090c34ec4e6021243e0ca03635aeadf39edf544d5466ee4a45bc02a",
+    "scripts/target.py": "de6b824feb490e8c2e124ed5dce2b03051634ae3f5a6cdad34d6a658646e8edb",
+    "scripts/targets.json": "2f77e265f95eebb79b356f26d8fc246cbea28288a6f5bb55470ced29eb6fd5b1"
+  }
+}
