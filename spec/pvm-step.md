@@ -206,6 +206,47 @@ value access on a local simulation-limit refusal. ARC release cycles include sou
 success graphs. Inputs are original native witnesses; no upstream implementation,
 licence or binary fixture is copied into the project.
 
+## Scalar load classification
+
+The private memory mutation selects the two contiguous load families using range
+comparisons. Within those families, the normalized opcode index is0–6; halving
+that nonnegative index with a shift selects the same1/2/4/8-byte widths, and its
+low bit selects exactly the signed8/16/32-bit loads. The final index6 remains the
+unsigned64-bit load. Stores, original operand reads, scalar preflight, range checks,
+gas ordering, faults and state publication retain their existing paths. This adds
+no decoded metadata or prepared representation. All256 byte classifications and
+14 load width/sign choices are equivalent; eleven selected native suites and ARC
+evidence pass.
+
+Canonical CI40154400885 attempts1/2 on EPYC9V74/7763 retain all54 cells, both
+process orders,2808 paired and2808 control invocations per job, complete guest
+state/gas/page/assertion checks and the pinned interpreted reference pack. Each
+job's three same-source control images are whole-file byte-identical. Long minimal
+changes-2.56/-3.39% dynamic,-2.98/-3.21% planned,-4.19/-4.11% memo initially;
+repeat changes-5.60/-4.78%,-2.76/-2.07%,-3.41/-3.34% respectively. Pinky changes
+are smaller and variable; no robust planned-frame timing gain is claimed.
+
+Tradeoffs remain explicit. Dynamic arithmetic synthetic work changes+8.93/+7.47%
+initially and+61.57/+2.53% on repeat; mixed bits change+5.65/+5.00% and
++71.84/+2.80%, alternating blocks+9.44/+9.29% and+55.62/+5.39%. The repeat's
+first-order regressions are much larger than its second-order observations and
+are retained without subtracting controls. Repeat dynamic aligned/crossing hosts
+change+3.59/+5.13% and+4.32/+10.53%. These targeted real-memory gains do not
+establish an across-workload speedup; all cold observations and mixed cells remain
+in the raw reports.
+
+Profile40155772971 changes only step source and its frozen copy versus parent
+profile40146598603; scope, cases, build/driver/fixture provenance and other source
+hashes are identical. All five state-checked profiles, source attribution, selected/
+absent/native assertion controls and the matching planned machine trace pass.
+Native Ir changes: dynamic Pinky5,351,836,115(-1.2743%), planned Pinky4,979,844,463
+(-1.3682%), sieve164,269,353(-0.7774%), minimal411,794,858(-2.3245%), and
+fill193,221,762(-0.7197%). Counts measure native work, not predicted CPU time.
+The final source patch is identical to the qualified experiment; later parent
+changes only record timing evidence in feature documents. Raw evidence remains
+under`build/pvm12/ci-40154400885/`,`build/pvm12/ci-40154400885-attempt2/`,
+`build/pvm12/ci-40155772971/` and`build/pvm12/scalar-load-profile-proof.json`.
+
 ## Remaining execution work
 
 Host suspension and bounded recursive `Psi` are implemented in the

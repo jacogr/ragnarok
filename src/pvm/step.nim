@@ -437,7 +437,8 @@ proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
   let item = decoded.value
   let indices = instructionRegisters(decoded)
   let op = item.opcode
-  let loading = op in {52'u8..58'u8, 124'u8..130'u8}
+  # Two contiguous load families need only bounded comparisons, not a runtime byte-set lookup.
+  let loading = op in 52'u8..58'u8 or op in 124'u8..130'u8
   var width = 1
   var signedLoad = false
   var base = 0'u64
@@ -446,8 +447,9 @@ proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
   if loading:
     # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by an unsigned 64-bit load.
     let index = (if op <= 58: int(op) - 52 else: int(op) - 124)
-    width = 1 shl (index div 2)
-    signedLoad = index in [1, 3, 5]
+    # A selected load has index0..6: nonnegative halving selects exactly widths1/2/4/8.
+    width = 1 shl (index shr 1)
+    signedLoad = (index and 1) != 0 # Exactly odd indices1/3/5 extend the sign; index6 is unsigned.
     if op >= 124:
       # Indirect loads read the original B even when it aliases destination A.
       base = uint64(info.registers[indices.bIndex])
