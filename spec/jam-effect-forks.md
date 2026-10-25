@@ -39,3 +39,7 @@ answer, including deleted/recreated account identities and queued report effects
 The privileged group covers authorization_assign, role_precedence, validator_designation, bless_allowances, allowance_revocation, allowance_eligibility: 234 complete-map imports including 32 siblings.
 Explicit source code/deposit profiles and exact original-last namespaces are
 retained; no observed map or invented consensus evidence supplies an answer.
+
+The supervised group covers supervised_storage, supervised_requests, supervised_upgrades, supervised_conflicts, supervised_handoff: 185 complete-map imports including 25 siblings.
+Explicit source code/deposit profiles and exact original-last namespaces are
+retained; no observed map or invented consensus evidence supplies an answer.
