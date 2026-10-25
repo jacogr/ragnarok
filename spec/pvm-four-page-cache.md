@@ -1,4 +1,4 @@
-# Four-page scalar-cache experiment
+# Four-page scalar-cache experiment: rejected
 
 ## Scope and hypothesis
 
@@ -30,9 +30,10 @@ identical-source controls. Require repeatable gameplay improvement beyond contro
 variation and no reproducible regression above 2% on fill, indirect, host/cross-page
 or memo controls. Stop and record rejection on failure. Local runs remain untimed.
 
-## Status
+## Status: rejected
 
-Candidate implementation is ready for the instruction gate; no win claimed.
+The instruction gate passed, but paired CI CPU timings failed. The four-slot runtime
+change is reverted; no additional cache variant or broader timing matrix is run.
 Local checked suites pass: scalar writer (including five-page pressure), memory
 chunks, machine, memory step, metered cross-page retry and host-memory re-entry.
 All 67 focused tooling/profile/workflow tests, pinned formatting and verification
@@ -80,3 +81,42 @@ Local paired admission passes four fresh builds, complete initializer/gameplay
 validation and four assertion refusals. Candidate and both control binaries match
 byte for byte. The paired parser/workflow/snapshot/local-clock safeguards and
 existing comparison tests pass (95 focused tests); no local guest timing samples.
+
+## Paired CPU gate: rejected
+
+[CI40191775253](https://github.com/jacogr/ragnarok/actions/runs/40191775253)
+measures frozen candidate `5fff97ce1060bb63e046ed9e17071317a0eddaff` against
+baseline `6cdda51bc57abe5496409354c0d53265432ee02e` on Intel Xeon Platinum 8573C.
+Runtime source is byte-identical to instruction-gate candidate `edb6d8c1`.
+All 20 ordered processes / 260 complete calls pass validation. Both independently
+rebuilt candidate controls are byte-identical to the measured candidate. Raw logs,
+source commit identities, fixed input/output/golden hashes and recomputed CPU
+medians/ratios independently replay successfully.
+
+| Phase | Order | Baseline CPU ms | Candidate CPU ms | Change | Same-image control change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initialization | 0 | 1301.720 | 1433.937 | +10.157% | -0.097% |
+| Initialization | 1 | 1301.946 | 1436.868 | +10.363% | +0.146% |
+| Gameplay | 0 | 95.974 | 100.048 | +4.245% | -0.261% |
+| Gameplay | 1 | 95.316 | 99.851 | +4.757% | +2.722% |
+
+On this same runner, baseline/reference gameplay CPU ratios are 3.882× / 3.870×;
+candidate/reference ratios are 4.046× / 4.054×. Initialization ratios are
+2.171× / 2.180× baseline versus 2.392× / 2.406× candidate. Ratios from different
+CPU models must not be compared as optimization deltas.
+
+Fewer instructions do not establish fewer cycles. The mapped binary-search saving
+is real, but added four-slot probing/recency work and resulting generated-code
+changes fail the CPU gate. These measurements do not isolate the hardware cause
+among calls, dependency chains, branches or cache behavior; no such claim is made.
+The gameplay slowdown appears in both orders, and initializer regression greatly
+exceeds its controls. Reject and stop; the maintained full matrix is not needed to
+rescue an already failing target workload. The existing two-slot runtime is restored
+exactly, while reusable counts-only and paired-DOOM tooling plus stronger sparse-page
+pressure coverage remain available for future investigations.
+
+Final runtime tree matches baseline `6cdda51b` exactly (`src/pvm` has no diff).
+The retained five-page pressure test also passes after restoration, including
+1,000 ARC ownership cycles with unchanged occupied memory. No measured improvement
+is claimed or retained for four-slot caching. The diagnostic tooling is the final
+reviewable change.

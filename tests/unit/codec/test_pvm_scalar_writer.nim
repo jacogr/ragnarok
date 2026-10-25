@@ -134,7 +134,7 @@ proc lookupPressureCycle() =
   var first = default(Memory)
   var tick = 0'u64
   for ordinal in [16'u32, 20, 64, 96, 16, 128, 64, 20, 96, 128, 16]:
-    # Five sparse pages exceed the four retained slots; hits, promotions and evictions must resolve exact physical tags.
+    # Five sparse pages exceed the retained slots; hits and evictions must resolve exact physical tags.
     let base = uint64(ordinal)*4096
     assert uint64(load(alias, MemoryAddress(base+1), AccessWidth(1)).value) == uint64((
         ordinal+1) mod 251)

@@ -65,7 +65,7 @@ type
     pages: seq[PageData]
     dirty: seq[byte]
     active: bool
-    recent: array[4, int] # Fixed page slots retain no page/chunk owner and never imply permissions.
+    recent: array[2, int] # Fixed page slots retain no page/chunk owner and never imply permissions.
   MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
@@ -404,7 +404,7 @@ type ScalarSpan = object
   first, last, offset, firstCount, count: int
 
 func scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
-    recent: array[4, int]): int {.inline.} =
+    recent: array[2, int]): int {.inline.} =
   ## Immutable calls compile without hint probes; writer calls accept only exact bounded physical-page matches.
   when Cached:
     for slot in recent:
@@ -413,7 +413,7 @@ func scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
   lowerBound(data, page)
 
 proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAddress,
-    width: AccessWidth, recent: array[4, int] = [-1, -1, -1, -1]): MachineResult[ScalarSpan] =
+    width: AccessWidth, recent: array[2, int] = [-1, -1]): MachineResult[ScalarSpan] =
   ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
   if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
@@ -635,7 +635,7 @@ proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
   if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
   MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
-    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1, -1, -1]))
+    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1]))
 
 proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) {.noinline.} =
   ## Keep allocator/TLS work on the first-write path; callers prove this chunk is not yet private.
@@ -659,25 +659,13 @@ func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
   if writer.active: pageScalar(writer.pages[slot], offset, count)
   else: pageScalar(source.pages[slot], offset, count)
 
-proc rememberScalarPage(writer: ScalarMemoryWriter, slot: int) =
-  ## Promote one validated slot without duplicates; a miss evicts only the oldest remembered page.
-  if writer.recent[0] == slot: return
-  var at = 1
-  while at < writer.recent.len-1 and writer.recent[at] != slot:
-    # The final position is either the matching slot or the bounded eviction destination.
-    inc at
-  while at > 0:
-    # Move the bounded prefix back before publishing its new most-recent entry.
-    writer.recent[at] = writer.recent[at-1]
-    dec at
-  writer.recent[0] = slot
-
 proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
   ## Only complete successful preflight supplies slots; epoch sealing retains their exact sorted page positions.
   if span.first != span.last:
-    # Remember both validated pages while keeping the first page most recent, as before.
-    rememberScalarPage(writer, span.last)
-  rememberScalarPage(writer, span.first)
+    writer.recent = [span.first, span.last]
+  elif writer.recent[0] != span.first:
+    writer.recent[1] = writer.recent[0]
+    writer.recent[0] = span.first
 
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
