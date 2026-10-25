@@ -386,6 +386,28 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_report_guests_corpus(compiler, report, checks, libraries):
+    """Compare actual fuzzer report-to-guest execution with independent complete-map STF calculations."""
+    import current_stf_report_guests_oracle as reference
+    from jam_fuzzer_guest_reference import replay
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = replay(reference)
+    source = checks.folder/'jam-fuzzer-report-guests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_guest_replay.nim',
+        'jam-fuzzer-report-guests', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'jam-fuzzer-report-guests-corpus', expected)
+    announce('independent nonempty fuzzer guest STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
