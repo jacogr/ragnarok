@@ -146,3 +146,14 @@ and prior-state fields. Subsequent reports use that recent anchor; no full child
 header or root is reconstructed from a membership fact. Removing the membership
 in an otherwise identical native control reports local MissingLookupAnchor,
 preserves the complete seed and never becomes a consensus Error.
+
+Real-entry socket verification now executes the independent report-driven guest,
+guest-fork, mismatched-clock seed and checkpoint-continuation references through
+`src/ragnarok.nim serve-fuzz`:130 signed imports,15 guest siblings and35 fresh
+negotiated sessions. Every import follows a protocol Error for an invalid prior
+root and an exact selected-map rollback query. Every returned root and full State
+frame is compared with the independently calculated map; original-last sibling
+maps and retained seeds are queried. A reconnect seeded identically cannot query
+the prior session's executed guest child. Expected frames and explicit host profile
+are frozen before process startup. The owning E2E workload and Fuzz / JAM group
+both require these assertions; no engine campaign is claimed.
