@@ -386,14 +386,14 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
 
 
 def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, identities,
-                               *, input_requests=True):
+                               *, input_requests=True, profiles=None):
     """Share exact-input replay builds while each source-owned corpus retains its own frozen reference and verdict."""
     from jam_fuzzer_guest_reference import replay
     from native_fixture_contracts import FIXTURE_CONTRACTS
     for identity in (*identities, 'state_report'):
         for path, digest in FIXTURE_CONTRACTS[identity][2]:
             assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
-    requests, expected, evidence = replay(reference, input_requests=input_requests)
+    requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles)
     label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
     source = checks.folder/(label+'.txt')
     source.write_text('\n'.join(requests)+'\n')
@@ -525,6 +525,60 @@ def jam_fuzzer_manager_handoff_corpus(compiler, report, checks, libraries):
     import current_stf_manager_handoff_oracle as reference
     return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
                                      ('current_stf_manager_handoff', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_authorization_assign_corpus(compiler, report, checks, libraries):
+    """Execute authorization assign through fuzz requests against independent complete STF maps."""
+    import current_stf_authorization_assign_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    profiles = [host_parameters(code_limit=size) for size in json.loads(reference.FIXTURE.read_text())['max_service_code_sizes']]
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_authorization_assign', 'current_stf_transfers'), profiles=profiles)
+
+
+@CORPORA.case
+def jam_fuzzer_role_precedence_corpus(compiler, report, checks, libraries):
+    """Execute role precedence through fuzz requests against independent complete STF maps."""
+    import current_stf_role_precedence_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    profiles = [host_parameters(code_limit=size) for size in [json.loads(reference.FIXTURE.read_text())['max_service_code_size']]*len(reference.PROFILES)]
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_role_precedence', 'current_stf_transfers'), profiles=profiles)
+
+
+@CORPORA.case
+def jam_fuzzer_validator_designation_corpus(compiler, report, checks, libraries):
+    """Execute validator designation through fuzz requests against independent complete STF maps."""
+    import current_stf_validator_designation_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    profiles = [host_parameters(code_limit=size) for size in [json.loads(reference.FIXTURE.read_text())['max_service_code_size']]*len(reference.PROFILES)]
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_validator_designation', 'current_stf_transfers'), profiles=profiles)
+
+
+@CORPORA.case
+def jam_fuzzer_bless_allowances_corpus(compiler, report, checks, libraries):
+    """Execute bless allowances through fuzz requests against independent complete STF maps."""
+    import current_stf_bless_allowances_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_bless_allowances', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_allowance_revocation_corpus(compiler, report, checks, libraries):
+    """Execute allowance revocation through fuzz requests against independent complete STF maps."""
+    import current_stf_allowance_revocation_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_allowance_revocation', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_allowance_eligibility_corpus(compiler, report, checks, libraries):
+    """Execute allowance eligibility through fuzz requests against independent complete STF maps."""
+    import current_stf_allowance_eligibility_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_allowance_eligibility', 'current_stf_transfers'))
 
 
 @CORPORA.case

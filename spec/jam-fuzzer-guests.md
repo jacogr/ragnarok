@@ -50,3 +50,19 @@ back account/request namespaces, balances, newly derived IDs, privilege state,
 code availability, statistics and outputs remain part of the exact returned map.
 Repeated report releases exercise the selected code and authority in subsequent
 blocks rather than checking an isolated host-call result.
+
+Privileged role coverage groups full authorization queues, assigner/manager
+precedence, validator designation and rotation, nonempty bless allowances,
+revocation and incarnation eligibility. Six frozen references contribute202
+complete-map imports. Local test-host ceilings explicitly admit4096-byte code
+preimages and2560-byte queue copies. The protocol code-size gate remains separate:
+authored4096-byte eligible-code profiles and the512-byte oversized-code control
+retain their exact independently configured Parameters.
+
+Replay may carry a full canonical122-byte host Parameters tuple alongside each
+seed in its local test input. These trusted host settings never enter fuzz-v1
+Initialize bytes and are never inferred from state contents or roots. Profile
+counts and widths are checked before native execution, and each new chain resets
+to its declared host configuration. This keeps code eligibility, resource policy
+and actual GP validation distinct while comparing all posterior privilege,
+authorization, roster, account, gas/statistics and output bytes.

@@ -4,7 +4,7 @@
 """Independent complete-map STF answers become exact fuzz inputs without native-output feedback."""
 from types import SimpleNamespace
 import unittest
-from jam_fuzzer_guest_reference import replay
+from jam_fuzzer_guest_reference import replay, host_parameters
 import current_stf_report_guests_oracle as guests
 import current_stf_effects_oracle as effects
 
@@ -30,6 +30,18 @@ class FuzzerGuestReference(unittest.TestCase):
         self.assertEqual(evidence['reference']['nonempty_extrinsics'], 5)
         self.assertEqual(sum(line.startswith('B ') for line in requests), 10)
         self.assertEqual(sum(line.startswith('O ') for line in expected), 10)
+
+    def test_explicit_host_profiles(self):
+        """The4096-byte eligible-code profile and512-byte oversized-code control remain distinct host inputs."""
+        profiles = [host_parameters(code_limit=size) for size in (4096, 512)]
+        source = SimpleNamespace(expected_observations=lambda: ([], ['P aa', 'B bb', 'O cc', 'P dd', 'B ee', 'O ff'], {}))
+        requests, _, _ = replay(source, profiles=profiles)
+        self.assertEqual(requests[0], 'C aa '+profiles[0].hex())
+        self.assertEqual(requests[2], 'C dd '+profiles[1].hex())
+        self.assertEqual(int.from_bytes(profiles[0][98:102], 'little'), 4096)
+        self.assertEqual(int.from_bytes(profiles[1][98:102], 'little'), 512)
+        for invalid in ([], profiles[:1], [bytes(121)]*2):
+            with self.assertRaises(AssertionError): replay(source, profiles=invalid)
 
     def test_partial_or_substituted_stream_is_refused(self):
         """An incomplete or disconnected map cannot silently become a successful replay request."""
