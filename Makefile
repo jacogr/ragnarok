@@ -32,6 +32,8 @@ export PAGED_STORAGE_IMAGE ?= ragnarok:paged-probe
 export SUITE ?=
 # Complete local units remain the default; CI separates native suites and independent corpora.
 export UNIT_SCOPE ?= all
+# Empty selects the complete corpus; CI supplies one reproducible dependency-preserving partition.
+export CORPUS_SHARD ?=
 # Select one independent E2E family; an empty value retains complete local verification.
 export E2E_GROUP ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md

@@ -169,49 +169,97 @@ class VerificationUnit(unittest.TestCase):
         from summarize_tests import summarize
         self.assertIn('corpus only', summarize({**report, 'status': 'checks-passed'}, 'runtime'))
 
+    def test_corpus_shard_verdicts(self):
+        """Neither omitted, failed nor sibling-owned cases can stand in for a complete recorded corpus partition."""
+        from corpus_catalog import corpus_partition
+        from summarize_tests import summarize
+        for index in (1, 2):
+            names = corpus_partition((index, 2), 'seed')
+            report = dict(unit_scope='corpus', corpus_shard=[index, 2], shard_seed='seed', suites=[],
+                          **{name: dict(passed=True) for name in names})
+            self.assertTrue(test_runtime.unit_passed(report))
+            for name in names:
+                missing = dict(report)
+                del missing[name]
+                self.assertFalse(test_runtime.unit_passed(missing))
+                self.assertFalse(test_runtime.unit_passed({**report, name: dict(passed=False)}))
+            sibling = next(name for name in test_runtime.CORPUS_NAMES if name not in names)
+            for changed in ({sibling: dict(passed=True)}, {'corpus_shard': [3-index, 2]},
+                            {'corpus_shard': [1, 3]}, {'shard_seed': 'other'},
+                            {'unit_scope': 'suites'}, {'unit_scope': 'all'}):
+                self.assertFalse(test_runtime.unit_passed({**report, **changed}))
+            self.assertIn(f'shard {index}/2 (seed seed)', summarize({**report, 'status': 'checks-passed'}, 'runtime'))
+
     def test_corpus_cli_preparation_and_execution(self):
-        """The real corpus-only CLI prepares libraries/integration once, avoids suite fixtures and writes its private report."""
-        with temporary_folder() as folder, ExitStack() as stack:
-            for name in ('ROOT', 'BUILD', 'checks', 'command', 'build'):
-                # Restore runner globals after main selects the temporary scope workspace.
-                stack.enter_context(patch.object(test_runtime, name, folder if name == 'ROOT' else getattr(test_runtime, name)))
-            stack.enter_context(patch.dict(os.environ, {'UNIT_SCOPE': 'corpus', 'UNIT_SHARD': ''}, clear=True))
-            stack.enter_context(patch.object(sys, 'argv', ['test_runtime.py', '--compiler', '/fixture/nimony']))
-            stack.enter_context(patch('sys.stdout', new_callable=io.StringIO))
-            checks = stack.enter_context(patch.object(test_runtime, 'NativeChecks')).return_value
-            checks.command.return_value = dict(output='fixture', exit_code=0, elapsed_seconds=0)
-            stack.enter_context(patch('runtime_provenance.runtime_sources', return_value=[]))
-            libraries = stack.enter_context(patch.object(test_runtime, 'prepare_libraries',
-                                           return_value=({}, 'quic', {})))
-            integration = stack.enter_context(patch.object(test_runtime, 'prepare_integration',
-                                             return_value=('original', 'reload', {})))
-            suite_fixtures = stack.enter_context(patch.object(test_runtime, 'prepare_unit_fixtures'))
-            partition_fixtures = stack.enter_context(patch.object(test_runtime, 'prepare_partition_fixtures'))
-            lock = stack.enter_context(patch.object(test_runtime, 'unit_cache_lock'))
-            def corpora(compiler, report, *arguments):
-                # Only the corpus execution callback supplies the predeclared independent verdicts.
-                report.update({name: dict(passed=True) for name in test_runtime.CORPUS_NAMES})
-            run = stack.enter_context(patch.object(test_runtime, 'run_corpora', side_effect=corpora))
-            with self.assertRaises(SystemExit) as stopped:
-                test_runtime.main()
-            self.assertEqual(stopped.exception.code, 0)
-            self.assertEqual(libraries.call_args.kwargs, {'required': None})
-            integration.assert_called_once()
-            suite_fixtures.assert_not_called()
-            partition_fixtures.assert_not_called()
-            lock.assert_not_called()
-            run.assert_called_once()
-            report = json.loads((folder/'build/tests/corpus/results.json').read_text())
-            self.assertEqual(report['unit_scope'], 'corpus')
-            self.assertEqual(report['suites'], [])
-            self.assertEqual(report['status'], 'checks-passed')
-            self.assertFalse((folder/'build/tests/runtime/results.json').exists())
+        """Full and sharded CLI runs prepare only corpus inputs and render their own exact private report."""
+        from corpus_catalog import corpus_directory
+        import summarize_tests
+        for shard in (None, (1, 2), (2, 2)):
+            with self.subTest(shard=shard), temporary_folder() as folder, ExitStack() as stack:
+                for name in ('ROOT', 'BUILD', 'checks', 'command', 'build'):
+                    # Restore runner globals after main selects this temporary scope workspace.
+                    stack.enter_context(patch.object(test_runtime, name, folder if name == 'ROOT' else getattr(test_runtime, name)))
+                environment = dict(UNIT_SCOPE='corpus', UNIT_SHARD='', CI_SHARD_SEED='seed',
+                                   CORPUS_SHARD='' if shard is None else f'{shard[0]}/{shard[1]}')
+                stack.enter_context(patch.dict(os.environ, environment, clear=True))
+                stack.enter_context(patch.object(sys, 'argv', ['test_runtime.py', '--compiler', '/fixture/nimony']))
+                stack.enter_context(patch('sys.stdout', new_callable=io.StringIO))
+                checks = stack.enter_context(patch.object(test_runtime, 'NativeChecks')).return_value
+                checks.command.return_value = dict(output='fixture', exit_code=0, elapsed_seconds=0)
+                stack.enter_context(patch('runtime_provenance.runtime_sources', return_value=[]))
+                libraries = stack.enter_context(patch.object(test_runtime, 'prepare_libraries',
+                                               return_value=({}, 'quic', {})))
+                integration = stack.enter_context(patch.object(test_runtime, 'prepare_integration',
+                                                 return_value=('original', 'reload', {})))
+                suite_fixtures = stack.enter_context(patch.object(test_runtime, 'prepare_unit_fixtures'))
+                partition_fixtures = stack.enter_context(patch.object(test_runtime, 'prepare_partition_fixtures'))
+                lock = stack.enter_context(patch.object(test_runtime, 'unit_cache_lock'))
+                def corpora(compiler, report, *arguments, **options):
+                    # Only the execution callback supplies the predeclared independent verdicts.
+                    report.update({name: dict(passed=True) for name in test_runtime.corpus_partition(
+                        options.get('shard'), options.get('seed'))})
+                run = stack.enter_context(patch.object(test_runtime, 'run_corpora', side_effect=corpora))
+                with self.assertRaises(SystemExit) as stopped:
+                    test_runtime.main()
+                self.assertEqual(stopped.exception.code, 0)
+                self.assertEqual(libraries.call_args.kwargs, {'required': None})
+                integration.assert_called_once()
+                suite_fixtures.assert_not_called()
+                partition_fixtures.assert_not_called()
+                lock.assert_not_called()
+                run.assert_called_once()
+                self.assertEqual(run.call_args.kwargs, {} if shard is None else dict(shard=shard, seed='seed'))
+                base = folder/'build/tests/corpus'
+                path = corpus_directory(base, shard)/'results.json'
+                report = json.loads(path.read_text())
+                self.assertEqual(report['unit_scope'], 'corpus')
+                self.assertEqual(report['suites'], [])
+                self.assertEqual(report['status'], 'checks-passed')
+                self.assertEqual(report.get('corpus_shard'), None if shard is None else list(shard))
+                self.assertFalse((folder/'build/tests/runtime/results.json').exists())
+                output = folder/'summary.md'
+                arguments = ['summarize_tests.py', '--kind', 'runtime', '--report',
+                             str(base/'results.json'), '--output', str(output)]
+                with patch.object(sys, 'argv', arguments):
+                    summarize_tests.main()
+                self.assertIn('corpus only', output.read_text())
+                if shard is not None:
+                    # A stale sibling report at the selected path cannot masquerade as the requested shard.
+                    self.assertIn(f'shard {shard[0]}/2 (seed seed)', output.read_text())
+                    report['corpus_shard'] = [3-shard[0], 2]
+                    path.write_text(json.dumps(report))
+                    with patch.object(sys, 'argv', arguments), self.assertRaises(SystemExit) as stopped:
+                        summarize_tests.main()
+                    self.assertEqual(stopped.exception.code, 1)
 
     def test_invalid_corpus_scope_cli(self):
         """Incompatible or malformed selectors fail before setup and cannot silently omit requested suites."""
         for arguments, environment in ((['--unit-scope', 'corpus', '--unit-shard', '1/16'], {}),
                                        (['--unit-scope', 'corpus', '--group', 'failures'], {}),
-                                       ([], {'UNIT_SCOPE': 'unknown'})):
+                                       ([], {'UNIT_SCOPE': 'unknown'}),
+                                       (['--corpus-shard', '1/2'], {}),
+                                       (['--corpus-shard', '1/2', '--group', 'failures'], {}),
+                                       (['--unit-scope', 'corpus', '--corpus-shard', '1/3'], {})):
             with patch.dict(os.environ, environment, clear=True), patch.object(sys, 'argv',
                     ['test_runtime.py', '--compiler', '/fixture/nimony']+arguments), patch(
                     'sys.stderr', new_callable=io.StringIO), patch.object(test_runtime, 'NativeChecks') as checks:

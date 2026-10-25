@@ -101,10 +101,15 @@ Using `CI_SHARD_SEED=${{ github.run_id }}`, the planner randomizes ties, sorts b
 and forms blocks with one item per shard. Each block is independently dealt to random distinct
 shards, including the final partial block, then each shard's execution order is shuffled. The codec
 directory remains one batch, weighted by its members' combined unique dependencies. The corpus
-work runs once in a separate `Unit / Corpus` matrix job alongside all sixteen suite-only shards;
-its shared-driver dependency order stays intact. Shards prepare only their selected native dependencies
-and fixture providers. The Unit aggregate requires every shard and the corpus job to succeed.
-Corpus logs, caches and results live under `build/tests/corpus/`, separately from native shard reports.
+work runs once across two `Unit / Corpus (i/2)` matrix jobs alongside all sixteen suite-only shards.
+Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
+there are no timing weights or maintained assignments. Each shard executes its assigned cases in
+original feature/task order and reuses its own compatible driver builds. Consumers that read a
+previous corpus result declare `requires` on their source-owned decorator and stay with that producer.
+Native suite shards prepare only their selected native dependencies and fixture providers.
+The Unit aggregate requires every native and corpus shard to succeed.
+Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-2/`, separately from
+native shard reports and the other corpus shard. Artifact retention includes each shard's logs/results.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
 the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
@@ -112,7 +117,10 @@ on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SC
 `--shard-seed` on the underlying runner). Unseeded local partitions keep their historical lexical
 assignment; plain `make check-unit` remains complete and keeps its original execution order.
 Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
-other's verdict, and corpus-only runs reject a unit-shard selection.
+other's verdict, and corpus-only runs reject a unit-shard selection. To reproduce a corpus partition,
+use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/2 make check-corpus`, followed by
+`CORPUS_SHARD=1/2 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
+partial reports retain `corpus_shard` and `shard_seed` and cannot borrow sibling-shard results.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
 requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.
 

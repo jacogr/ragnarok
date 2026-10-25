@@ -8,6 +8,7 @@ Exposes summarize and a CLI that renders retained verification evidence into Mar
 """
 import argparse
 import json
+import os
 from pathlib import Path
 
 
@@ -55,6 +56,12 @@ def summarize(report, kind):
     elif kind == 'runtime':
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
         scope = {'corpus': ' — corpus only', 'suites': ' — suites only'}.get(report.get('unit_scope'), '')
+        if report.get('corpus_shard') is not None:
+            # Corpus summaries distinguish their partial coverage and retain the exact reproduction seed.
+            index, count = report['corpus_shard']
+            scope += f' — shard {index}/{count}'
+            if report.get('shard_seed') is not None:
+                scope += ' (seed '+report['shard_seed']+')'
         if report.get('unit_shard') is not None:
             # A successful partition is not a claim that every other partition ran or passed.
             index, count = report['unit_shard']
@@ -184,13 +191,26 @@ def summarize(report, kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--kind', choices=('runtime', 'models', 'modules', 'python', 'guards', 'failures', 'e2e', 'pvm-reference', 'pvm-benchmark', 'storage-benchmark'), required=True)
+    from corpus_catalog import parse_corpus_shard, corpus_directory
+    parser.add_argument('--corpus-shard', type=parse_corpus_shard,
+                        default=os.environ.get('CORPUS_SHARD') or None,
+                        help='Select the private corpus shard below the report directory')
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--artifact', type=Path, help='Also replace one downloadable Markdown report')
     args = parser.parse_args()
+    if args.corpus_shard is not None:
+        # Only native corpus summaries own these private partition directories.
+        if args.kind != 'runtime':
+            parser.error('--corpus-shard applies only to runtime corpus reports')
+        args.report = corpus_directory(args.report.parent, args.corpus_shard)/args.report.name
     try:
         # Do not infer a pass when setup, compilation or the runner failed before writing evidence.
-        text = summarize(json.loads(args.report.read_text()), args.kind)
+        report = json.loads(args.report.read_text())
+        if args.corpus_shard is not None and (report.get('unit_scope') != 'corpus'
+                or report.get('corpus_shard') != list(args.corpus_shard)):
+            raise ValueError('Corpus summary report does not match selected shard')
+        text = summarize(report, args.kind)
     except (OSError, ValueError, KeyError, TypeError) as error:
         # Setup/report failures stay visible even if no normal JSON evidence exists.
         text = '## Verification '+args.kind+'\n\nNo usable verification report: '+str(error)+'\n'

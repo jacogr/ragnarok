@@ -91,7 +91,7 @@ def report_corpus(compiler, report, checks, libraries):
 
 
 # Run this independently declared corpus with its original checks and dependencies.
-@CORPORA.case
+@CORPORA.case(requires=('report_corpus',))
 def report_signature_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command

@@ -72,8 +72,10 @@ shared GitHub run ID, without historical timing weights or maintained assignment
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for
 [local reproduction](testing/infrastructure.md). The dependency-ordered codec and specialized-control
-bundles retain randomized shard ownership. Independent corpora run once in `Unit / Corpus`, alongside
-the unit shards, preserving shared-driver order. The Unit gate requires both scopes to pass.
+bundles retain randomized shard ownership. Independent corpora run once across two randomized
+`Unit / Corpus (i/2)` jobs alongside the unit shards. Producer/consumer bundles stay together and
+retain declaration order, without timing weights. The Unit gate requires every native and corpus
+shard to pass.
 Local `make check-unit` still runs both; `make check-corpus` selects only independent corpora.
 
 New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.

@@ -52,19 +52,35 @@ class CorpusGroup:
         self.order = order
         self.resources = tuple(resources)
         self.tasks = {}
+        self.dependencies = {}
 
-    def case(self, function):
-        """Register one corpus by its function name, refusing repeated or malformed identities."""
+    def case(self, function=None, *, requires=()):
+        """Register a corpus and source-owned predecessor dependencies without executing either."""
+        if function is None:
+            # Parameterized decorators retain the same source-owned identity as ordinary @group.case.
+            return lambda callback: self.case(callback, requires=requires)
         name = function.__name__
         if not name.endswith('_corpus') or name in self.tasks:
             # Duplicate registration could overwrite required coverage before scheduling.
             raise ValueError('Invalid or duplicate corpus task: '+name)
+        if (not isinstance(requires, tuple)
+                or any(not isinstance(value, str) or not value.endswith('_corpus') for value in requires)
+                or len(set(requires)) != len(requires)):
+            # Unknown/forward predecessors are checked after all feature declarations are discovered.
+            raise ValueError('Invalid corpus dependencies: '+name)
         self.tasks[name] = function
+        self.dependencies[name] = requires
         return function
 
-    def run(self, compiler, report, checks, libraries, *fixtures):
+    def run(self, compiler, report, checks, libraries, *fixtures, selected=None):
         """Execute the declared order and publish each returned verdict under its single registered key."""
         for name, function in self.tasks.items():
+            if selected is not None and name not in selected:
+                # Shards retain declaration order while excluding only sibling-owned tasks.
+                continue
+            if not set(self.dependencies[name]) <= report.keys():
+                # A consumer must never execute against an absent predecessor or stale binary.
+                raise ValueError('Missing corpus dependency: '+name)
             # A report key is owned by exactly one task, including across feature groups.
             if name in report:
                 raise ValueError('Duplicate corpus report: '+name)
