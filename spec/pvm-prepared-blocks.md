@@ -117,7 +117,7 @@ beyond these maintained guests remains a separate qualification step.
 The dd75ce74 Linux Pinky profile records 28,448,007 simulated indirect misses at the
 single selected-handler call (32,055,270 calls), over 99.8% of all indirect misses.
 The two most frequent targets are `add_imm_64` (149; 3,152,504 calls) and
-`shlo_l_imm_64` (151; 2,424,254 calls). The first bounded hypothesis is to call those
+`shlo_l_imm_64` (151; 2,424,254 calls). The first bounded hypothesis was to call those
 two existing specialized handlers directly and retain the checked indirect fallback.
 No cache layout, arithmetic, gas, memory or host semantics change. Acceptance requires
 complete native parity, matched baseline/candidate instruction profiles and paired guest
@@ -136,7 +136,7 @@ The two-handler trial passes checked native opcode/cache/host parity, 1,280 mixe
 reference scenarios, all seven guest cases in both orders, and the candidate image
 rebuild control. Native source assertions were reshaped to avoid malformed expressions
 from an earlier formatter invocation; the corrected final formatted suite passes.
-Linux counter/timing qualification remains pending; the trial is not an accepted speedup.
+Linux counter/timing qualification completed at a71f0d20; the measured trial was rejected and its runtime changes reverted, as recorded below.
 
 Dispatch attribution additionally collects an isolated fourth execution after three
 warmups, using the existing calibrated function-return dump controls. Every preceding
@@ -152,3 +152,40 @@ drop from 67,065,579 to 52,795,793 (21.3%). The increased indirect category alon
 not explain the observed CPU regression. Counter reports therefore include both classes
 and combined totals, and reject missing cold/reused profile phases. Hardware predictor,
 call/return, register-pressure and front-end costs remain hypotheses, not established causes.
+
+## Rejected direct-call trial
+
+[Linux run40193794357](https://github.com/jacogr/ragnarok/actions/runs/40193794357)
+qualified a71f0d20077c4cbf4d426d6429334286202e1aa2 against prepared baseline
+`dd75ce743c406a427a4dfc7d600195faf2ac5473`. All70 engine/order/case runs,24 cold/reused
+profiles, native opcode/host checks, reference-state checks, calibrated return dumps,
+independent image controls and retained generated-source/profile hashes passed.
+
+The direct149/151 paths were slower in both process orders. Values below are median CPU
+milliseconds from ten reused samples after three warmups; each pair is forward/reversed
+process order on the same Linux x86_64 runner.
+
+| Guest | Size | Prepared baseline ms | Direct-call trial ms | CPU change |
+| --- | ---: | ---: | ---: | ---: |
+| sieve | 100,000 | 11.343 / 10.782 | 14.028 / 14.273 | +23.67% / +32.37% |
+| minimal | 100,000 | 25.236 / 25.439 | 32.347 / 32.264 | +28.18% / +26.83% |
+| memory fill | 100,000 | 11.034 / 10.921 | 11.502 / 11.538 | +4.24% / +5.65% |
+| Pinky | 1 | 397.303 / 390.540 | 441.032 / 423.749 | +11.01% / +8.50% |
+
+The isolated fourth-call Pinky profile reduced indirect misses from28.479M to23.276M,
+but conditional misses rose from24.067M to27.979M. Combined simulated misses fell2.46%
+and native instructions rose1.09%. Memory fill also reduced native instructions2.37%
+and combined misses12.49%, yet ran slower. These observations reject the two direct
+fast paths; they do not establish the cause of the original prepared execution regression.
+No simulated miss reduction is presented as a speed improvement.
+
+The prepared runtime is restored byte-for-byte to the dd75ce74 source. The strengthened
+paired measurement tools, explicit cold/reused profiles, exact generated-source archives,
+native test formatting fixes and CI parity check remain.
+
+A separate diagnostic probe confirms that the generated32-byte `InstructionEvaluation`
+uses a hidden result pointer on x86_64, in addition to five explicit handler arguments.
+The pinned PolkaVM default interpreter also uses a shared indirect call, with an
+instance/offset ABI returning a32-bit offset; its optional musttail feature is not enabled
+by this benchmark crate. A smaller private handler ABI, register pressure and front-end
+behavior are future hypotheses. No ABI refactor or DOOM qualification is included here.

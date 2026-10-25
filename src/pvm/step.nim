@@ -1814,17 +1814,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       let endsBlock = active.operations[at].endsBlock
       let selected = active.operations[at].handler
       if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
-      # Common immediate arithmetic uses direct calls so its operands do not compete at the shared indirect site.
-      let opcode = active.operations[at].decoded.value.opcode
-      var evaluated = default(InstructionEvaluation)
-      if opcode == 149:
-        evaluated = preparedRegister[149](owner.source, active.operations[at], cursor.info, memory, targets)
-      elif opcode == 151:
-        # A second frequent immediate operation retains the exact shared checked arithmetic.
-        evaluated = preparedRegister[151](owner.source, active.operations[at], cursor.info, memory, targets)
-      else:
-        # Every remaining operation keeps its genuine selected handler and existing failure contract.
-        evaluated = selected(owner.source, active.operations[at], cursor.info, memory, targets)
+      let evaluated = selected(owner.source, active.operations[at], cursor.info, memory, targets)
       if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
       inc at
       let effect = evaluated.effect
