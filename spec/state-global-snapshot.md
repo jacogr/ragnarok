@@ -8,7 +8,8 @@ chapter codecs and accepted compact C13 gas policy. PR542 request-domain adoptio
 is complete; historical namespace and reader “Next” paragraphs are not backlog.
 Selected release-format raw maps are historical compatibility evidence. Draft 35 Thin
 primitive integration is qualified separately; it is not a missing serialization field.
-Full independent current-pin serialization and whole-block/STF parity remain unqualified.
+Independent GP-derived serialization qualification is recorded separately from
+unqualified whole-block/STF parity; each retains its own scope.
 See [current serialization status](jam-serialization-status.md).
 Current-round execution/publication contracts are documented in the owning PVM/state
 feature records; they are separate from this serialization adapter.

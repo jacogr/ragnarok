@@ -5,8 +5,9 @@ Current target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
 from [M1](../docs/m1.md). Source/vector identities remain those in [pins.json](pins.json).
 Upstream pins and toolchains are unchanged. Dictionary widths now follow the supported migration;
 statistics gas follows the [accepted compact policy](state-clarifications.md). Request-domain
-adoption is complete. [Current serialization status](jam-serialization-status.md) records remaining
-independent whole-state parity evidence; there is no pending namespace upgrade.
+adoption is complete. [Current serialization status](jam-serialization-status.md) records
+GP-derived whole-state qualification and remaining full-client parity boundaries;
+there is no pending namespace upgrade.
 
 ## Chapter capture and ownership
 

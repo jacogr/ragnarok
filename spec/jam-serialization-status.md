@@ -36,8 +36,9 @@ of a proposed validator-statistics format merely because a newer proposal exists
 | Merklization | 31-byte keys, canonical node encoding and full-map roots; separate full-state and partial light-proof contracts. See [trie roots](state-trie.md) and [storage](../src/storage/README.md). |
 
 This audit found no further unimplemented byte-layout change in the reviewed
-Appendix C/T delta. This is implementation coverage within those bounded contracts,
-not certification of every current JAM state or every protocol rule.
+Appendix C/T delta. The subsequent [GP-derived qualification](serialization-gp-qualification.md)
+checks those encodings independently within the bounded contracts. This is not
+certification of every current JAM state or every protocol rule.
 
 ## Evidence and what it establishes
 
@@ -60,25 +61,33 @@ The pinned trace tree contains 1,008 JSON paths across eight suites. The source 
 qualifies the seven named trace pairs it actually checks, not all of that tree; do not
 turn a path inventory into a corpus-wide validation claim.
 
-## Remaining qualification and next work
+## Qualification basis and remaining scope
 
-**M1's documented C.1/C.2 framing baseline is complete. The reviewed current state
-serialization layouts are implemented. Full independent current-pin T(state)/JAM parity
-is still unqualified.** This replaces the obsolete request-domain-upgrade backlog.
+**M1's documented C.1/C.2 framing baseline is complete. Current reviewed layouts
+have independent Gray-Paper-derived serialization qualification within their
+implemented schema/resource contracts and the accepted C13 width interpretation.**
+See [the equation-to-check matrix](serialization-gp-qualification.md) for the exact
+families, covered source identities and observed verification.
 
-The next serialization qualification needs independent, unmodified current-schema
-complete source/mapping/root witnesses, particularly nonzero supervisor fields and
-original logical service identities where typed reconstruction is claimed. The
-currently qualified published maps do not supply that evidence. A hashed storage
-key cannot recover its original logical key, and authored or projected data must
-not be relabelled as independent published parity. This is a source-evidence
-requirement, not authorization to invent a schema, loosen a decoder or advance pins.
+The maintainer selected derivation and verification from the pinned Gray Paper on
+2026-10-25, excluding expected vectors emitted by another JAM implementation or
+reverse engineering. This supersedes the earlier requirement to wait for original
+published current-schema complete maps before completing this serialization scope.
+Original gp-next cases are retained where compatible. The newer account/transfer
+fields are checked by independent equations and literal byte/field anchors;
+authored and projected observations are never relabelled as original published data.
 
-When suitable source material is identified, freeze its exact revision/blob hashes,
-compare its declared fields and exact map bytes using current codecs, and reproduce
-its original roots on checked native Linux. Keep incompatible source rejections and
-any independently confirmed discrepancy with focused witnesses. The present audit
-does not declare all upstream paths examined or prove that no suitable source exists.
+The new [typed whole-state suite](state-typed-serialization.md) constructs all sixteen
+chapter inputs from native logical fields before comparing encoder output; it does
+not merely capture expected wire bytes and re-emit them. All 37 existing serialization
+corpus tasks retain their original independent expectations and strict verdicts.
+A finite corpus is scoped qualification, not a universal proof over every state.
+
+Additional independent published complete maps remain useful corroboration. Such
+inputs need exact revision/blob identities and current schema/field/root checks;
+hashed service keys cannot recover original logical keys. Their current absence
+from the qualified source set does not block the chosen spec-derived work. No pin
+migration, alternate decoder or invented network conversion policy is introduced.
 
 Whole-block STF parity, valid-state relationships and protocol-policy decisions remain
 separate work. The current privilege-selection ambiguity is documented in

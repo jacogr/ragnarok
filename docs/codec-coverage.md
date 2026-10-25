@@ -4,7 +4,9 @@ Current implementation status and exact pins are recorded in
 [the serialization status](../spec/jam-serialization-status.md) and [M1 checklist](m1.md).
 C.1/C.2 framing and reviewed current state layouts are implemented. Accounts are
 105 bytes, deferred transfers 154 bytes, and request-domain adoption is complete.
-Full independent current-pin whole-state parity remains separately unqualified.
+Independent [GP-derived serialization qualification](../spec/serialization-gp-qualification.md)
+is covered within the declared contracts. Original published current-schema whole maps
+remain additional corroboration; full JAM/STF parity is separate.
 
 The family-by-family records below preserve earlier qualification evidence and
 historical revisions. Their old chapter/namespace/proof/storage “next” paragraphs
