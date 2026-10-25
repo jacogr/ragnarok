@@ -26,3 +26,12 @@ Completion cases compare independently calculated full sibling maps and roots,
 invalid-mutant rollback, duplicate imports, cache eviction, original-last order,
 and next-height continuation; real socket tests verify negotiated activation.
 Live generated campaign validation remains explicitly pending engine availability.
+
+Nonempty reporting siblings are covered separately by the registered report-fork
+corpus. Four mutations re-author guaranteed packages and their valid credentials;
+each receives an independently calculated complete STF map from the shared
+original parent. The original-last block restores that parent's exact map and
+ancestry. The corpus compares24 successful imports, retains mutant maps after
+the original succeeds, and checks that a failed attempt after a valid mutant
+changes neither the selected mutant head nor its complete map. Existing local
+missing-evidence and consensus wrong-root report probes remain active.
