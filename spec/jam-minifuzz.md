@@ -30,3 +30,17 @@ plus this control; outer success flags or upstream exit status alone cannot pass
 The source-owned E2E workload and Fuzz / JAM entry include this lane. Logs, trace
 pairs, independent hashes and observed frame hashes remain under ignored build/.
 Compatible live-engine generated campaign validation remains pending.
+
+Complex-effect interoperability retains all transfer, funded/incarnation,
+privileged/allowance, supervised namespace and deferred scheduling sibling groups.
+Every chain carries its explicit frozen deposit/code Parameters before startup;
+each distinct profile owns a separate actual target process and immutable config.
+Complete marker-aware header identities select GetState after epoch rotations.
+All raw exchanges, complete maps, sibling queries and original-last continuations
+remain strict upstream comparisons. Each host profile has its own real zero-exit
+false-success control and cleanup evidence; missing, duplicate or partial profile
+results fail the JAM aggregate. The finite test policy admits known4096-byte
+code/queue envelopes while preserving GP code-size and deposit checks.
+
+Observed complex replay:242 sessions,1652 signed imports,4494 exact exchanges
+across three host profiles; each profile passed its own false-success control.

@@ -62,8 +62,29 @@ def minifuzz_verified(result):
     counts = ('planned_sessions', 'completed_sessions', 'planned_exchanges', 'completed_exchanges', 'signed_imports')
     if any(type(result.get(name)) is not int or result[name] <= 0 for name in counts):
         return False
-    return (result['planned_sessions'] == result['completed_sessions']
-            and result['planned_exchanges'] == result['completed_exchanges'])
+    profiles = result.get('host_profiles')
+    if not isinstance(profiles, list) or not profiles:
+        return False
+    if (type(result.get('planned_host_profiles')) is not int
+            or type(result.get('completed_host_profiles')) is not int
+            or result['planned_host_profiles'] != len(profiles)
+            or result['completed_host_profiles'] != len(profiles)):
+        return False
+    identities = []
+    for profile in profiles:
+        if (not isinstance(profile, dict) or profile.get('passed') is not True
+                or profile.get('false_success_control') is not True
+                or any(type(profile.get(key)) is not int or profile[key] <= 0
+                       for key in ('completed_sessions', 'completed_exchanges'))):
+            return False
+        identity = profile.get('parameters_sha256')
+        if not isinstance(identity, str) or len(identity) != 64 or any(c not in '0123456789abcdef' for c in identity):
+            return False
+        identities.append(identity)
+    return (len(set(identities)) == len(identities)
+            and result['planned_sessions'] == result['completed_sessions'] == sum(row['completed_sessions'] for row in profiles)
+            and result['planned_exchanges'] == result['completed_exchanges'] == sum(row['completed_exchanges'] for row in profiles))
+
 
 
 def passed(report):
