@@ -43,3 +43,12 @@ its original parent's immutable evidence; unsuccessful attempts publish neither
 state nor ancestry. Target feature mask3 is negotiated before accepting initial
 membership or siblings. Missing lookup evidence closes locally with its precise
 anchor reason; a known wrong root remains a consensus refusal.
+
+The registered reporting ancestry corpus compares20 actual fuzzer imports across
+independent two-core reporting chains against the frozen mathematical STF maps.
+Initial membership includes an older hash with no actual child. Four re-signed
+reports targeting that hash fail locally as MissingLookupAnchor; four re-signed
+reports naming a known incorrect child-committed root fail as WrongLookupState.
+Both leave the exact complete map and selected head unchanged before the genuine
+block succeeds. Expected bodies, maps and failure classes are calculated before
+native execution and their streams are frozen independently.
