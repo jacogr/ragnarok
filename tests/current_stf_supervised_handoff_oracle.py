@@ -47,7 +47,7 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget):
+def effects(result,parent,profile,slot,budget,*,statistics_config=DEFAULT):
     """M uses prior supervision for publication while host authority uses the immediately changed foreign metadata."""
     target=chapter_service(255,42);code,wide,narrow=account_parse(parent[target],105)
     wide,narrow=list(wide),list(narrow);old=narrow[4]
@@ -69,7 +69,7 @@ def effects(result,parent,profile,slot,budget):
     instructions,_=program(profile)
     gas=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+1000+2442+(3358+1023)//1024+(216*3+1023)//1024+103*int(profile=='checkpoint-panic')
     assert gas<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services};row=activity.setdefault(99,[99]+[0]*11)
     row[9]+=1;row[11]+=gas
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))

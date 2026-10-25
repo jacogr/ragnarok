@@ -53,9 +53,9 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, recipient_slots=(6,), statistics_config=DEFAULT):
     """Only99 can change the selected foreign metadata; later42 invocation resolves its actual prior code namespace."""
-    service = 42 if slot == 6 else 99
+    service = 42 if slot in recipient_slots else 99
     if service == 42:
         code, _, _ = account_parse(parent[chapter_service(255, 42)], 105)
         gas = 22 if value_key('P', 42, code) in parent else 0 # Missing current code is processed with N1/G0.
@@ -69,7 +69,7 @@ def effects(result, parent, profile, slot, budget):
     assert gas <= budget
     key = chapter_service(255, service); code, wide, narrow = account_parse(result[key], 105)
     narrow = list(narrow); narrow[2] = slot; result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(service, [service]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))

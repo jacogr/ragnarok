@@ -44,7 +44,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """Each host sees the current regular metadata; terminal selection can restore the original or checkpoint supervisor."""
     key = chapter_service(255, 99); code, wide, narrow = account_parse(parent[key], 105)
     wide, narrow = list(wide), list(narrow)
@@ -67,7 +67,7 @@ def effects(result, parent, profile, slot, budget):
         result[target] = account_wire((tcode, twide, tnarrow))
     narrow[2] = slot
     result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     if delivered:
