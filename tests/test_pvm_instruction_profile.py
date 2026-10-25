@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from pvm_instruction_profile import (profile_counts, calibration_passed, run,
+from pvm_instruction_profile import (profile_counts, calibration_passed, last_call_calibration_passed, collect, run,
     capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed, machine_profile_counts, disassembly_passed)
 
 
@@ -55,6 +55,53 @@ class InstructionProfileTests(unittest.TestCase):
                 (good, profile(0), True), (good, profile(), False)]:
             # Generic crashes, wrong scopes and whole-process collection are never a calibration fallback.
             self.assertFalse(calibration_passed(result, text, selected))
+
+    def test_last_call_requires_exact_selected_work_and_complete_counts(self):
+        """Reset calibration rejects missing work, retained warmup, partial data and wrong scope."""
+        self.assertTrue(last_call_calibration_passed(profile(), profile(84), profile()))
+        for single, repeated, final in [
+                (profile(), profile(), profile()), (profile(), profile(84), profile(84)),
+                (profile(), profile(84), profile(41)), (profile(0), profile(0), profile(0)),
+                (profile(), profile(84).replace('totals:', 'partial:'), profile()),
+                (profile(), profile(84), profile(function='other')),
+                (profile(function='pvm_profile_selected_suffix'), profile(84), profile()),
+                (profile(), profile(84), profile()+'fn=pvm_profile_outside\n')]:
+            # Independent failures preserve all unrelated calibration fields.
+            with self.subTest(single=single, repeated=repeated, final=final):
+                self.assertFalse(last_call_calibration_passed(single, repeated, final))
+
+    def test_collection_controls_entry_reset_and_argument_placement(self):
+        """Existing calls stay unchanged; explicit last-call collection resets only its selected scope."""
+        class Checks:
+            """A command recorder produces a fresh raw file without provisioning native tools."""
+            def __init__(self, folder):
+                self.folder = folder
+                self.calls = []
+
+            def command(self, command, name, **options):
+                self.calls.append((command, name, options))
+                output = Path(next(item.split('=', 1)[1] for item in command
+                                   if str(item).startswith('--callgrind-out-file=')))
+                output.write_text(profile())
+                return dict(exit_code=0, output='selected')
+
+        with tempfile.TemporaryDirectory() as directory:
+            checks = Checks(Path(directory))
+            for reset in (False, True):
+                # A private output is retired on both normal and reset collections.
+                (checks.folder/'sample.callgrind').write_text('stale')
+                _, output = collect(checks, 'binary', 'sample', 'selected', {}, 30,
+                    instructions=True, reset_each_call=reset, arguments=('twice',))
+                command = checks.calls[-1][0]
+                self.assertEqual(command[-2:], ['binary', 'twice'])
+                self.assertEqual('--zero-before=selected' in command, reset)
+                self.assertIn('--dump-instr=yes', command)
+                self.assertEqual(output.read_text(), profile())
+            with patch.object(checks, 'command', return_value=dict(exit_code=0, output='')):
+                # A successful command without fresh counters cannot reuse an earlier file.
+                with self.assertRaises(RuntimeError):
+                    collect(checks, 'binary', 'sample', 'selected', {}, 30)
+            self.assertFalse((checks.folder/'sample.callgrind').exists())
 
     def test_generated_sources_preserve_recorded_paths_and_identity(self):
         """Copied source reproduces relative DWARF paths; missing/changed copies or originals fail."""

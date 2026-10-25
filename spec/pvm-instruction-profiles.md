@@ -12,7 +12,8 @@ symbol attribution. A native assertion refusal must succeed before collection.
 The pinned interpreted reference prepares the same independently state-checked
 inputs as the paired comparison. Each profile executes one Pinky frame under
 dynamic and complete-plan pricing, plus sieve100000, indirect calls100000 and memory
-fill100000 under complete-plan pricing.
+fill100000 under complete-plan pricing. Warmed memo profiles add Pinky and memory
+fill100000, each with a checked warmup followed by one checked collected execution.
 All complete CPU/gas/page-state checks remain enabled.
 
 Callgrind collection begins and ends at genuine public `execute_?_*` native
@@ -28,8 +29,8 @@ Every raw call graph, Valgrind log and self-cost annotation is retained. `Ir`
 counts executed native instructions. Conditional/indirect branch counts and
 predictor misses are simulation diagnostics. Counts are neither CPU-cycle costs
 nor timing predictions; all instrumented clocks are discarded for conclusions.
-Paired uninstrumented CI remains the authority for speed claims. The profiler
-uses one invocation, so it includes cold invocation-owned caches.
+Paired uninstrumented CI remains the authority for speed claims. The original five cells use one invocation and include cold invocation-owned
+caches. The two memo cells retain only the final invocation after one warmup.
 
 Source membership, frozen snapshot bytes, compiler command, executable, fixture
 and preparation identities accompany successful evidence. Changed bytes, failed
@@ -183,3 +184,29 @@ is`a2d47d17331930a3869329c1fd2b1b10d1732942a1dae2dd51baa297d0db84de`.
 Both traces bind to guest binary SHA-256
 `50e782cf8535289a9f6233398716c2d9c585b2b6af4b3a0a10b3e3d51645e806`.
 These are diagnostic counters and native text, not new performance timings.
+
+
+## Warmed memo collection, 2026-10-25
+
+The seven-cell matrix keeps the original five guest commands unchanged and adds
+Pinky and memory fill100000 under memo pricing. Each memo cell executes twice
+through the existing maintained driver; both complete states must pass. Callgrind
+`--zero-before=execute_?_*` resets counters on execution entry, so the final dump
+retains only the second invocation. Public execution validation and publication
+remain inside scope; fixture preparation and full-state checks remain outside.
+See the [Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
+
+The compiled calibration now checks single, repeated and reset execution. Two
+identical selected calls must collect exactly twice the single-call instructions;
+entry reset must retain exactly the single-call total. Every run still requires
+successful classified process output, a complete positive profile and the selected
+function without excluded work. Missing reset support, partial counters or any
+ratio mismatch refuse a completed report. Each guest cell records its warmup and
+collected-execution counts; memo output parsing requires both full-state results.
+
+This extends the existing diagnostic owner without changing interpreter source,
+guest driver, toolchain flags or timing workloads. Linux qualification must pass
+all five controls, seven state/source profiles and the existing native trace.
+Instrumented clocks remain discarded, and instruction changes alone are not speed
+claims. Comparing the original five counts and guest binary identity against the
+previous profile checks that this collection change leaves their work unchanged.
