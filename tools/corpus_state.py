@@ -304,6 +304,28 @@ def current_stf_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
+    """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
+    from current_stf_oracle import expected_observations, verify_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    # Freeze complete independent pre/block/post expectations before the backend is built or run.
+    expected = expected_observations()
+    evidence = verify_observations(expected)
+    for identity in ('current_stf', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_stf_driver.nim',
+        'jam-fuzzer-stf', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  scope='native fuzzer requests; two linear current-profile chains; whole GetState maps')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1]], 'jam-fuzzer-stf-corpus', expected)
+    announce('independent whole-map JAM fuzzer STF backend', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def current_stf_effects_corpus(compiler, report, checks, libraries):
     """Compare complete preimage/storage/yield/checkpoint successor maps with independent equations."""
     from current_stf_effects_oracle import expected_observations
