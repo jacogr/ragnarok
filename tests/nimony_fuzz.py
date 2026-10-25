@@ -50,6 +50,26 @@ def connect(path, features=0):
         raise
 
 
+def reporting_evidence(seed):
+    """Calculate signed good/bad lookup blocks and complete expected maps before starting the application."""
+    from current_stf_reporting_oracle import original, inputs, advance, body
+    from current_stf_oracle import authored_child, history
+    from jam_fuzzer_ancestry_oracle import changed_lookup, UNKNOWN
+    from state_layout_oracle import chapter_key, digest
+    import state_trace_wire_oracle as raw
+    parent = original()
+    assert history(parent[chapter_key(3)])[0][-1][0][:32] == digest(seed[:297])
+    first, second = advance(parent, 2, [], [])
+    guarantees, assured = inputs(second, 0, 3)
+    good, third = advance(second, 3, guarantees, assured)
+    missing = authored_child(second, *body(changed_lookup(guarantees, True), assured))
+    wrong = authored_child(second, *body(changed_lookup(guarantees, False), assured))
+    initial = raw.wire(sorted(parent.items()))
+    return dict(initialize=b'\x01'+seed[:297]+initial[32:]+b'\x01'+bytes(4)+UNKNOWN,
+                root=initial[:32], first=first, second=raw.wire(sorted(second.items())),
+                good=good, third=raw.wire(sorted(third.items())), missing=missing, wrong=wrong)
+
+
 def exercise(binary, policy_binary, folder):
     """Compare an actual socket successor and complete maps with an existing frozen independent trace."""
     from current_stf_trace_command_oracle import expected_observations
@@ -78,6 +98,7 @@ def exercise(binary, policy_binary, folder):
     final_original, calculated_original = sibling(dict(before), 0)
     assert final_original == body and calculated_original == dict(after)
     continuation, continuation_state = sibling(dict(after), 0)
+    reports = reporting_evidence(genesis)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     log_path = folder/'jam-fuzzer-target-process.log'
@@ -141,6 +162,22 @@ def exercise(binary, policy_binary, folder):
                     next_wire = raw.wire(sorted(continuation_state.items()))
                     assert exchange(peer, b'\x03'+continuation) == b'\x02'+next_wire[:32]
                     assert exchange(peer, b'\x04'+digest(continuation[:297])) == b'\x05'+next_wire[32:]
+                with connect(endpoint, features=3) as peer:
+                    # Missing actual child evidence closes locally, with no forged protocol Error response.
+                    assert exchange(peer, reports['initialize']) == b'\x02'+reports['root']
+                    assert exchange(peer, b'\x03'+reports['first']) == b'\x02'+reports['second'][:32]
+                    assert exchange(peer, b'\x04'+digest(reports['first'][:297])) == b'\x05'+reports['second'][32:]
+                    payload = b'\x03'+reports['missing']
+                    peer.sendall(struct.pack('<I', len(payload))+payload)
+                    assert peer.recv(1) == b''
+                with connect(endpoint, features=3) as peer:
+                    # A known wrong root is a consensus Error; the genuine report block still succeeds afterwards.
+                    assert exchange(peer, reports['initialize']) == b'\x02'+reports['root']
+                    assert exchange(peer, b'\x03'+reports['first']) == b'\x02'+reports['second'][:32]
+                    assert exchange(peer, b'\x03'+reports['wrong'])[0] == 255
+                    assert exchange(peer, b'\x04'+digest(reports['first'][:297])) == b'\x05'+reports['second'][32:]
+                    assert exchange(peer, b'\x03'+reports['good']) == b'\x02'+reports['third'][:32]
+                    assert exchange(peer, b'\x04'+digest(reports['good'][:297])) == b'\x05'+reports['third'][32:]
                 process.send_signal(signal.SIGTERM)
                 assert process.wait(timeout=30) == 0
                 assert not endpoint.exists(), 'normal shutdown must remove its owned socket'
@@ -149,7 +186,8 @@ def exercise(binary, policy_binary, folder):
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10)
+        assert 'FUZZ_SESSION_FAILED CandidateFailure MissingLookupAnchor' in log_path.read_text()
         assert parameters.read_text() == job['config']
-    return dict(passed=True, missing_environment=missing, signed_imports=5,
-                consensus_rejections=1, complete_state_queries=8, reconnects=2,
+    return dict(passed=True, missing_environment=missing, signed_imports=8,
+                consensus_rejections=2, local_missing_evidence=1, complete_state_queries=11, reconnects=4,
                 log=str(log_path), scope='fixed independent current-profile socket adapter checks; no generated campaign')
