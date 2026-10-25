@@ -41,10 +41,12 @@ def effects(mode,plan,reports):
     return rows,yielded
 
 
-def cases():
+def cases(selection=None):
     """All reports enter through genuine guarantees/assurances; only mathematical successors become expected parents."""
+    assert selection is None or (selection and tuple(sorted(set(selection)))==tuple(selection) and all(0<=i<len(CASES) for i in selection))
     result=[]
-    for mode,family,profile in CASES:
+    for ordinal,(mode,family,profile) in enumerate(CASES):
+        if selection is not None and ordinal not in selection: continue # Replay selects complete cases; ordinary corpus execution still runs every case.
         parent=waves.guests.original(mode);initial=dict(parent);steps=[];reports={}
         for slot in waves.SLOTS:
             gs,ass=waves.inputs(parent,slot,True,reports,gas_limits=gas_limits(family,profile))

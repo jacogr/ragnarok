@@ -53,11 +53,14 @@ def projection(parent,mode,slot,assured,reports, *, charge=None):
         previous=len(previous),prior=len(guests.epoch.roster(parent[chapter_key(8)])),charge=charge)
 
 
-def cases():
+def cases(selection=None):
     """Expected parents recurse through mathematical successors only; admitted reports alone populate the wave dictionary."""
+    assert selection is None or (selection and tuple(sorted(set(selection)))==tuple(selection) and all(0<=i<2*len(guests.MODES) for i in selection))
     result=[]
     for mode in guests.MODES:
         for release in (True,False):
+            ordinal=2*guests.MODES.index(mode)+(0 if release else 1)
+            if selection is not None and ordinal not in selection: continue # Defaults preserve the original complete source-owned schedule.
             parent=guests.original(mode);initial=dict(parent);steps=[];reports={}
             for slot in SLOTS:
                 gs,ass=inputs(parent,slot,release,reports)

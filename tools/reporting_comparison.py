@@ -11,20 +11,23 @@ def partition(requests, expected, chains):
     result=[];offset=0
     for request in requests:
         fields=request.split()
-        assert fields and fields[0] in ('C','B','N')
+        assert fields and fields[0] in ('C','B','N','S')
         if fields[0]=='C':
             assert len(fields) in (4,5) and offset<len(expected) and expected[offset]=='P '+fields[3]
             result.append(([],[]));size=1
-        elif fields[0]=='B':
-            assert result and len(fields)==2 and offset+1<len(expected)
+        elif fields[0] in ('B','S'):
+            assert result and len(fields)==(3 if fields[0]=='S' else 2) and offset+1<len(expected)
             assert expected[offset]=='B '+fields[1] and expected[offset+1].startswith('O ')
             size=2
+            if fields[0]=='S':
+                assert expected[offset+2:offset+5]==['K RootMismatch','K LimitExceeded','K Restored']
+                size=5
         else:
             assert result and len(fields)==3 and offset<len(expected) and expected[offset]=='N '+fields[2]
             size=1
         result[-1][0].append(request);result[-1][1].extend(expected[offset:offset+size]);offset+=size
     assert len(result)==chains>0 and offset==len(expected)
-    assert all(any(line.startswith('B ') for line in group[0]) for group in result)
+    assert all(any(line.startswith(('B ','S ')) for line in group[0]) for group in result)
     return result
 
 

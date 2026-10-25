@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_POPULATION_RESTART",
+  "files": {
+    "current-stf-population-restart.json": "35a1aa2c0ebb0bdab088558c85bf6abb860b9d3e24f4678ad521f6bdc98c9bd0"
+  },
+  "target": "current-stf-population-restart.json"
+}
