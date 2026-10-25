@@ -119,3 +119,7 @@ emulated compiler alone has a900-second allowance; corpus execution retains its
 ordinary180-second limit. This is covered-source local Linux evidence, distinct
 from exact-head remote CI. No complete JAM/STF or arbitrary population/offender
 history qualification is inferred.
+
+The [offender/reporting extension](current-stf-offender-reporting.md) composes
+Phi exclusions, prior-roster assurances, dispute cancellation and delayed full
+null-record activation with genuine report release/replacement.

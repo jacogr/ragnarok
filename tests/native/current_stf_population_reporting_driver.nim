@@ -6,6 +6,7 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/current_stf_reporting_context
 import ../support/current_stf_population_context
+import ../support/current_stf_population_reporting_context
 import ../support/[current_consecutive_context, accumulation_current_chain_context,
   current_namespace_context, state_inventory_context]
 import ../../src/app/[chain, candidate]
@@ -14,30 +15,6 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, accumulation_current_update, current_profile, current_globals,
   current_state, global_snapshot, accumulation_current_completion, report_admission,
   guarantee_credentials, block_transition, availability]
-
-proc populationReportingLimits(): CurrentCandidateLimits =
-  ## Nine prior/current assurers, three active cores and key-identity comparisons have explicit finite ceilings.
-  result = populationLimits()
-  result.reporting.reports.credentials.reporters = ElementLimit(9)
-  result.reporting.availability.availableReports = ElementLimit(3)
-  result.reporting.reports.anchors.history.perBlock = ElementLimit(3)
-  result.reporting.reports.anchors.history.totalPackages = ElementLimit(24)
-  result.completion.composition.recent.history.perBlock = ElementLimit(3)
-  result.completion.composition.recent.history.totalPackages = ElementLimit(24)
-  result.completion.composition.activity.incoming = ElementLimit(3)
-  result.completion.composition.activity.digests = ElementLimit(3)
-  result.completion.composition.authorization.guarantees = ElementLimit(3)
-  result.completion.composition.validators.projection.assurances = ElementLimit(9)
-  result.completion.composition.validators.projection.reporters = ElementLimit(9)
-  result.completion.composition.validators.projection.comparisons = ElementLimit(81)
-  result.completion.composition.activity.available = ElementLimit(3)
-  result.completion.composition.activity.assurances = ElementLimit(9)
-
-proc populationReason(outcome: CurrentCandidateResult): string =
-  ## Distinguish a failed completion stage from an admission refusal during scoped corpus diagnosis.
-  if outcome.error == CurrentCandidateError.CompletionFailure:
-    return "completion/" & $outcome.completionFailure.error
-  reportingReason(outcome)
 
 proc main() {.raises.} =
   ## Each chain adds only the declared original recent package, then retains exact ancestral header owners.
