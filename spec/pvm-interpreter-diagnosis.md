@@ -376,3 +376,12 @@ suites, deterministic counters and paired CI timings across the full matrix.
 The previous byte experiment remains rejected. Memory is the first supported
 architectural target; execution admission/cache/outcome work remains a separate
 large target after that measurement.
+
+
+### Follow-up execution-owned view: rejected
+
+The authorized [memory-view experiment](pvm-execution-memory-view.md#ci-outcome-rejected)
+passes full-state and image controls but misses the planned fill/Pinky gates and
+regresses crossing memory by roughly24–35%. It is rejected and stopped, with its
+prototype preserved separately and the active runtime restored. These results do
+not qualify the proposed view as a solution to the interpreter gap.
