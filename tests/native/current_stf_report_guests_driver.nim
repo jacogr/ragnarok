@@ -122,7 +122,11 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
   elif mode in 15..19:
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
+  if mode in 161..165: first = allowanceManagerCode(mode,
+      true) # The scheduled service is a real independently authored manager program.
   case mode
+  of 161..165: second = allowanceManagerCode(mode,
+      false) # Original manager99 grants the future service its authority and allowance.
   of 155..160: second = blessAllowanceCode(mode) # Nonempty manager-selected dictionaries affect subsequent block inputs.
   of 148..154: second = childRecreationCode(mode, replacement,
       codeLength) # Real retirement clears the old incarnation before reserved-ID reuse.
@@ -244,7 +248,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # Actual protected-only funds make the post-reassignment authority check distinguishable from ordinary funding.
     options.secondBalance = 0
     options.secondSupervisorBalance = 1000000
-  if mode in 155..160:
+  if mode in 155..165:
     options.manager = (if mode == 160: 42'u32 else: 99'u32) # Authority is committed before the first signed input.
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
@@ -591,7 +595,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 161
+      assert mode >= 0 and mode < 166
       bodies = @[]
       slots = @[]
     else:
@@ -600,7 +604,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
