@@ -45,3 +45,11 @@ def current_stf_population_guests_corpus(compiler, report, checks, libraries):
     import current_stf_population_guests_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_effects', 'current_stf_population_guests', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_ticket_reporting_corpus(compiler, report, checks, libraries):
+    """Qualify ticket winners/fallback sealing alongside real reports and later population growth."""
+    import current_stf_ticket_reporting_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_ticket_reporting', 'state_report'))

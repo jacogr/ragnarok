@@ -94,7 +94,7 @@ def assurances(parent, count, bits):
                  signature=signed(index+1, b'jam_available', target)[1]) for index in range(count)]
 
 
-def body(guarantees, assurances, preimages=(), *, disputes=bytes(3)):
+def body(guarantees, assurances, preimages=(), *, disputes=bytes(3), tickets=b'\0'):
     """Commit only normative guarantee report hashes and assurance raw tuples, with all other families empty."""
     guarantees_part = guarantees_wire(guarantees)
     assurances_part = natural(len(assurances))+b''.join(item['anchor']+bytes([item['bits']])
@@ -103,8 +103,8 @@ def body(guarantees, assurances, preimages=(), *, disputes=bytes(3)):
         +natural(len(item['credentials']))+b''.join(i.to_bytes(2, 'little')+sig for i, sig in item['credentials']) for item in guarantees)
     supplied = natural(len(preimages))+b''.join(sid.to_bytes(4, 'little')+natural(len(value))+value for sid, value in preimages)
     projection = natural(len(preimages))+b''.join(sid.to_bytes(4, 'little')+digest(value) for sid, value in preimages)
-    raw = b'\0'+supplied+guarantees_part+assurances_part+disputes
-    commitment = digest(digest(b'\0')+digest(projection)+digest(guaranteed_hashes)+digest(assurances_part)+digest(disputes))
+    raw = tickets+supplied+guarantees_part+assurances_part+disputes
+    commitment = digest(digest(tickets)+digest(projection)+digest(guaranteed_hashes)+digest(assurances_part)+digest(disputes))
     return raw, commitment
 
 
@@ -207,6 +207,10 @@ def apply_reporting(parent, result, slot, guarantees, assured, old, released, *,
         # Appendix C puts the prerequisite sequence immediately after the fixed272-byte report header.
         source = Reader(wire[272:])
         prepared.append((wire, source.take(32*source.count())))
+    elapsed = slot-int.from_bytes(parent[chapter_key(11)], 'little')
+    assert elapsed > 0
+    for offset in range(1, min(elapsed, 12)):
+        rows[(slot-offset) % 12] = [] # GP final ready state clears every crossed row, even when no report arrives.
     rows[slot % 12] = prepared
     result[chapter_key(14)] = ready_wire('R', rows)
     assert parent[chapter_key(15)] == result[chapter_key(15)] == bytes(12)

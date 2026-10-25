@@ -168,7 +168,7 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
     body = tickets+bytes(3)+dispute_wire
     commitment = digest(digest(tickets)+3*digest(b'\0')+digest(dispute_wire))
     if body_override is not None:
-        assert not submitted and extrinsic_override is not None
+        assert body_override.startswith(tickets) and extrinsic_override is not None
         body, commitment = body_override, extrinsic_override
     blocks, _ = history(parent[chapter_key(3)])
     source = dict(parent=blocks[-1][0][:32], parent_state_root=tree(list(parent.items()))[0],
