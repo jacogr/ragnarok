@@ -16,7 +16,7 @@ from state_layout_oracle import digest
 from state_trace_wire_oracle import wire
 
 
-def reference_sessions(reference, identity, parameters=None, *, spec='tiny'):
+def reference_sessions(reference, identity, parameters=None, *, spec='tiny', local_cases=None):
     """Freeze exact independent headers/maps under one explicitly declared host profile per source chain."""
     from header_oracle import decode as decode_header, TINY, FULL
     assert spec in ('tiny', 'full')
@@ -58,6 +58,12 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny'):
             jobs[-1]['steps'].append(pending)
             pending = None
     assert pending is None and all(job['steps'] for job in jobs)
+    # Optional locally refused inputs are explicitly bound to each independently authored session.
+    if local_cases is not None:
+        assert len(local_cases) == len(jobs)
+        for job, cases in zip(jobs, local_cases):
+            assert all(set(case) == {'initialize', 'block', 'header', 'state'} and all(isinstance(value, bytes) for value in case.values()) for case in cases)
+            job['local_missing_evidence'] = tuple(cases)
     evidence = dict(reference=identity, fixture_sha256=hashlib.sha256(reference.FIXTURE.read_bytes()).hexdigest(),
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     return jobs, evidence
@@ -66,6 +72,7 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny'):
 def session_evidence(jobs, references):
     """Declare complete workload counts before startup; later observations must match each planned exchange."""
     return dict(references=references, sessions=len(jobs),
+                expected_local_missing_evidence=sum(len(job.get('local_missing_evidence', ())) for job in jobs),
                 signed_imports=sum(len(job['steps']) for job in jobs),
                 guest_siblings=sum(step['kind'] == 'V' for job in jobs for step in job['steps']),
                 expected_state_queries=sum(2+2*len(job['steps'])+sum(step['kind'] == 'V' for step in job['steps']) for job in jobs))
@@ -104,6 +111,9 @@ def prepare_effect_sessions():
     jobs.extend(selected); evidence.append(proof)
     import jam_fuzzer_full_epochs_oracle as full_epochs
     selected, proof = reference_sessions(full_epochs, 'jam_fuzzer_full_epochs', [full.parameters()]*len(full_epochs.SLOTS), spec='full')
+    jobs.extend(selected); evidence.append(proof)
+    import jam_fuzzer_full_ancestry_oracle as full_ancestry
+    selected, proof = reference_sessions(full_ancestry, 'jam_fuzzer_full_ancestry', [full.parameters()], spec='full', local_cases=[full_ancestry.local_evidence_cases()])
     jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 

@@ -848,6 +848,16 @@ def jam_fuzzer_epoch_effect_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_ancestry_corpus(compiler, report, checks, libraries):
+    """Execute actual full-profile checkpoint ancestry and retained seed queries beyond both history ceilings."""
+    import jam_fuzzer_full_ancestry_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_ancestry', 'jam_fuzzer_full_guests'),
+        profiles=[full.parameters()], headers=True)
+
+
+@CORPORA.case
 def jam_fuzzer_full_epochs_corpus(compiler, report, checks, libraries):
     """Compare guest-bearing full epoch markers, skipped tails and1023-to1020 population rotation."""
     import jam_fuzzer_full_epochs_oracle as reference

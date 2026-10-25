@@ -75,10 +75,11 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial):
+def guarantee(parent, initial, *, slot=3, anchor=None):
     """A real high-core report binds the seed anchor/root, full erasure population and two independently signed assigned indices."""
-    slot = 3; fixed = history(initial[chapter_key(3)])[0][-1][0]
-    anchor = fixed[:32]+fixed[96:100]+tree(list(initial.items()))[0]
+    # An explicit earlier anchor binds independently known child-header evidence at a checkpoint seed.
+    fixed,root = (history(initial[chapter_key(3)])[0][-1][0],tree(list(initial.items()))[0]) if anchor is None else anchor
+    anchor = fixed[:32]+fixed[96:100]+root
     source = Reader(parent[chapter_key(1)]); pools = [source.take(32*source.count()) for _ in range(full.CORES)]; source.done()
     package = digest(b'full-profile guest report'+tree(list(initial.items()))[0])
     header = (package+(100+slot+CORE).to_bytes(4,'little')+digest(package+b'segments')
@@ -116,9 +117,9 @@ def body(gs,ass):
     return raw,commitment
 
 
-def advance(parent,initial,mode,slot,gs,ass,stored):
+def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3):
     """Compose independent admission, availability, full statistics and literal guest effects over the full foundation."""
-    released = slot == 4
+    released = slot == admission_slot+1
     assert len(ass) >= 683 if released else not ass
     outputs = ((99,COMMITMENT),) if released and mode != 'panic-rollback' else ()
     raw,commitment = body(gs,ass)
@@ -127,7 +128,7 @@ def advance(parent,initial,mode,slot,gs,ass,stored):
     assert int.from_bytes(wire[96:100],'little') == slot
     old = [None]*full.CORES
     # Only the guarantee-bearing child leaves a pending assignment; the next quorum releases it.
-    if slot == 3: old[CORE] = dict(guarantee={key:gs[0][key] for key in ('report','slot','credentials')},registered=slot)
+    if slot == admission_slot: old[CORE] = dict(guarantee={key:gs[0][key] for key in ('report','slot','credentials')},registered=slot)
     result[chapter_key(10)] = availability_wire(old)
     pools = Reader(parent[chapter_key(1)]); rows = []; queues = parent[chapter_key(2)]
     # Calculate every pool independently, removing incoming authorizers before queue appends.
