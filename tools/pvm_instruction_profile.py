@@ -285,7 +285,7 @@ def run():
         for guest, limit, mode in CASES:
             # Existing input/reference preparation and strict native full-state checks remain authoritative.
             data, expected = inputs[guest, limit]
-            warmups = 1 if mode == 'memo' else 0
+            warmups = 12 if mode == 'memo' else 0
             samples = warmups+1
             environment = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING=mode,
                 RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
@@ -352,7 +352,7 @@ def run():
                  '| Guest | Limit | Pricing | Warmups | Instructions |', '| --- | ---: | --- | ---: | ---: |']
         for item in report['profiles']:
             lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['warmup_executions']} | {item['counts']['Ir']} |")
-        lines += ['', 'One collected invocation per cell; memo executes one checked warmup then resets counters at the next execute entry. Both states are checked. Preparation and state comparison are outside collection.',
+        lines += ['', 'One collected invocation per cell; memo executes twelve checked warmups and resets counters on every execute entry. All thirteen states are checked. Preparation and state comparison are outside collection.',
                   'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.',
                   'Generated C, its checksums and source annotations retain executable line attribution.',
                   'An additional state-checked planned Pinky trace retains native instruction positions and disassembly; its Ir must match the source-level invocation.']
