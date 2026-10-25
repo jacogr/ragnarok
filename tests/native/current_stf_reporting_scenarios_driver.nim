@@ -13,7 +13,9 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
   current_globals, current_state, global_snapshot, trace_step, trace_state]
 
-when defined(rotationCode):
+when defined(rotationRequests):
+  import ../support/current_stf_rotation_requests_context
+elif defined(rotationCode):
   import ../support/current_stf_rotation_code_context
 elif defined(rotationLifecycle):
   import ../support/current_stf_rotation_lifecycle_context
@@ -24,7 +26,9 @@ elif defined(rotationHosts):
 
 proc scenarioLimits(): CurrentCandidateLimits =
   ## Explicit corpus build profiles keep original reporting ceilings unchanged.
-  when defined(rotationCode):
+  when defined(rotationRequests):
+    rotationRequestLimits()
+  elif defined(rotationCode):
     rotationCodeLimits()
   elif defined(rotationLifecycle):
     rotationLifecycleLimits()
@@ -215,6 +219,8 @@ proc main() {.raises.} =
           assert false, "inventory/IncompleteNamespaces" # Rejection cannot publish an otherwise valid candidate.
         assert chain.canInstallPrepared(update)
         chain.installPrepared(update)
+        assert epoch.checkpointHex(before.stateSnapshot) ==
+            saved # Publishing a recreated ID cannot mutate any retained parent.
         var next = @[before.header]
         for ancestor in ancestors: next.add(ancestor) # Only actual accepted headers supply later lookup context.
         ancestors = next

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_RETIREMENT",
+  "files": {
+    "current-stf-rotation-retirement.json": "584949c2777505b0c9124767d2b48a244ff516887081d0095497050516290f04"
+  },
+  "target": "current-stf-rotation-retirement.json"
+}

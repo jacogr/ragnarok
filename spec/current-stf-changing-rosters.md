@@ -21,6 +21,7 @@ erasure shards remain tied to the current population.
 | Direct/deferred transfers, memo execution, balance pools and gas refusals |320|[Transfers](current-stf-rotation-transfers.md)|
 | Public/reserved creation, retirement/refunds and complete dynamic namespaces |180|[Creation and ejection](current-stf-rotation-creation.md)|
 | Child code provision/readiness and pending-report current-code upgrades |100|[Code activation](current-stf-rotation-code.md)|
+| Reservation cleanup, same-slot retirement refusal and fresh incarnations |140|[Retirement and recreation](current-stf-rotation-retirement.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
