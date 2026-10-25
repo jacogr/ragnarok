@@ -4,7 +4,8 @@
 """Source-owned independent reporting scenario qualification through the actual candidate/import pipeline."""
 import hashlib
 from pathlib import Path
-from corpus_checks import CorpusGroup, compare_corpus
+from corpus_checks import CorpusGroup
+from reporting_comparison import compare_chains
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +26,8 @@ def scenarios(compiler, checks, libraries, oracle, fixtures):
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference='GP mathematical Thin, independent Ed25519 signatures and complete-map equations')
-    compare_corpus(result, checks.command, [binary, FIXTURE_CONTRACTS['state_report'][1], source],
-                   oracle.FIXTURE.stem+'-corpus', expected)
+    compare_chains(result, checks.command, binary, FIXTURE_CONTRACTS['state_report'][1], source,
+                   requests, expected, evidence['chains'])
     announce(oracle.FIXTURE.stem+' independent signed complete-map scenarios', result['passed'])
     return result
 
@@ -53,3 +54,11 @@ def current_stf_ticket_reporting_corpus(compiler, report, checks, libraries):
     import current_stf_ticket_reporting_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_ticket_reporting', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_population_waves_corpus(compiler, report, checks, libraries):
+    """Qualify deferred dependency waves and actual-gas continuation across population growth/shrinkage."""
+    import current_stf_population_waves_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_effects', 'current_stf_dependency_waves', 'current_stf_population_waves', 'state_report'))
