@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "state_trace_step"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}

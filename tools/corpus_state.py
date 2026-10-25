@@ -1436,6 +1436,21 @@ def state_trace_wire_corpus(compiler, report, checks, libraries):
         metadata=evidence, crypto_library=libraries['crypto'])
 
 
+@CORPORA.case
+def state_trace_step_corpus(compiler, report, checks, libraries):
+    """Compare complete published TraceStep wires, exact typed failures and independent full pre/post maps."""
+    from state_trace_step_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('state_trace_step', 'state_trace_step_answers'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Independent fixture identities precede all native execution.
+    requests, expected, evidence = expected_observations()
+    return run_corpus(checks.build, checks.command, compiler,
+        ROOT/'tests/native/state_trace_step_driver.nim', 'state-trace-step',
+        checks.folder/'state-trace-step-requests.txt', requests, expected, 'state-trace-step-corpus',
+        metadata=evidence, crypto_library=libraries['crypto'])
+
+
 
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
