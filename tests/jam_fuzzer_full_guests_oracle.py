@@ -100,7 +100,7 @@ def guarantee(parent, initial, *, slot=3, anchor=None):
 
 def assurances(parent,count):
     """Use all43 canonical bit bytes and683 genuinely distinct validator signatures for strict full-population quorum."""
-    assert count in (0,683,684)
+    assert count == 0 or 683 <= count <= 692
     anchor = history(parent[chapter_key(3)])[0][-1][0][:32]
     bits = (1 << CORE).to_bytes(43,'little')
     target = digest(anchor+bits)

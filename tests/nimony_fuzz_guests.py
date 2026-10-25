@@ -16,10 +16,11 @@ from state_layout_oracle import digest
 from state_trace_wire_oracle import wire
 
 
-def reference_sessions(reference, identity, parameters=None, *, spec='tiny', local_cases=None):
+def reference_sessions(reference, identity, parameters=None, *, spec='tiny', local_cases=None, fork_capacity=2):
     """Freeze exact independent headers/maps under one explicitly declared host profile per source chain."""
     from header_oracle import decode as decode_header, TINY, FULL
     assert spec in ('tiny', 'full')
+    assert type(fork_capacity) is int and 1 <= fork_capacity <= 64
     geometry = TINY if spec == 'tiny' else FULL
     for path, expected in FIXTURE_CONTRACTS[identity][2]:
         assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
@@ -43,7 +44,7 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
             assert len(ancestors) <= 1
             membership = b''.join(slot.to_bytes(4, 'little')+identity for slot, identity in ancestors)
             jobs.append(dict(initialize=b'\x01'+header+state[32:]+bytes([len(ancestors)])+membership,
-                             header=header, state=state, steps=[], parameters=next(profiles), spec=spec))
+                             header=header, state=state, steps=[], parameters=next(profiles), spec=spec, fork_capacity=fork_capacity))
             header, ancestors = initial_header(), [] # Later seeds retain only their own explicit header/evidence.
         elif tag in ('B', 'V'):
             assert jobs and pending is None
@@ -71,12 +72,14 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
 
 def session_evidence(jobs, references):
     """Declare complete workload counts before startup; later observations must match each planned exchange."""
+    from jam_minifuzz_trace import retained_sibling_queries
     return dict(references=references, sessions=len(jobs),
                 expected_local_missing_evidence=sum(len(job.get('local_missing_evidence', ())) for job in jobs),
                 expected_stream_recoveries=sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job),
+                expected_fork_evictions=sum(2 for job in jobs if 'fork_retention' in job),
                 signed_imports=sum(len(job['steps']) for job in jobs),
                 guest_siblings=sum(step['kind'] == 'V' for job in jobs for step in job['steps']),
-                expected_state_queries=sum(2+2*len(job['steps'])+sum(step['kind'] == 'V' for step in job['steps']) for job in jobs))
+                expected_state_queries=sum(2+2*len(job['steps'])+retained_sibling_queries(job) for job in jobs))
 
 
 def prepare_sessions(parameters):
@@ -118,6 +121,11 @@ def prepare_effect_sessions():
     from jam_fuzzer_stream_recovery import bind
     assert len(selected) == 1
     bind(selected[0])
+    jobs.extend(selected); evidence.append(proof)
+    import jam_fuzzer_fork_capacity_oracle as capacity
+    selected, proof = reference_sessions(capacity, 'jam_fuzzer_fork_capacity', [full.parameters()]*len(capacity.guests.MODES), spec='full', fork_capacity=capacity.CAPACITY)
+    from jam_fuzzer_fork_retention import bind as bind_forks
+    for job in selected: bind_forks(job)
     jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 

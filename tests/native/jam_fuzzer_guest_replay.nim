@@ -13,6 +13,11 @@ import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, repo
     block_transition, block_admission, safrole_transition, accumulation_current_completion,
     accumulation_current_driver, accumulation_current_round]
 
+type
+  SiblingMap = object ## One immutable header and its observed checkpoint remain paired for bounded retention checks.
+    header: OwnedHeader # Full sealed identity owns its bytes independently of later publications.
+    state: string # Complete exported map bytes verify retained state without borrowing mutable backend storage.
+
 proc checkpointHex(state: StateStoreSnapshot): string =
   ## Full-profile maps exceed the tiny epoch fixture display budget; export every byte under this explicit finite ceiling.
   let encoded = encodeFullCheckpoint(state, ByteLimit(4194304))
@@ -43,9 +48,7 @@ proc main() {.raises.} =
   var seeded = false
   var original = ""
   var sibling = false
-  var retainedSibling = false
-  var siblingHeader = default(OwnedHeader)
-  var siblingState = ""
+  var savedSiblings: seq[SiblingMap] = @[]
   var anchorChecks = false
   var mirrorActive = false
   var mirror = default(FuzzBackend)
@@ -69,7 +72,7 @@ proc main() {.raises.} =
       assert not anchorChecks or not mirrorActive
       anchorChecks = fields[0] == "A"
       assert not sibling
-      retainedSibling = false # Reset retires all previous chain and sibling owners.
+      savedSiblings = @[] # Reset retires all previous chain and sibling owners.
       if seeded:
         assert checkpointHex(backend.observe(initialHeader)) == original
       config = fuzzGuestReplayConfig()
@@ -137,7 +140,6 @@ proc main() {.raises.} =
     else:
       assert fields.len == 2 and fields[0] in ["B", "V"] and
           seeded # Every independently signed child belongs to an explicitly initialized chain.
-      assert fields[0] != "V" or not sibling
       let wire = epoch.unhex(fields[1])
       let decoded = decodeBlock(wire, config.wire.frame)
       assert decoded.error == FrameError.None
@@ -185,8 +187,9 @@ proc main() {.raises.} =
       assert checkpointHex(backend.observe(beforeHeader)) == before
       assert array[32, byte](fuzzGetState(backend.fuzzBackendHeader.value).fuzzRequestedHeader.value) ==
         array[32, byte](fuzzGetState(beforeHeader).fuzzRequestedHeader.value)
-      if retainedSibling:
-        assert checkpointHex(backend.observe(siblingHeader)) == siblingState
+      for saved in savedSiblings:
+        assert checkpointHex(backend.observe(saved.header)) ==
+            saved.state # Failed candidates preserve every retained sibling.
       if mirrorActive:
         let mirrorHeader = mirror.fuzzBackendHeader.value
         let mirrorState = checkpointHex(mirror.observe(mirrorHeader))
@@ -253,18 +256,39 @@ proc main() {.raises.} =
       var encoded = newSeq[byte](wire.len)
       assert decoded.value.owner.encodeOwnedBlock(encoded).error == FrameError.None
       if fields[0] == "V":
-        assert not sibling
+        if not sibling:
+          # A first variant can itself directly extend the previous original-last head and retire its old group.
+          for saved in savedSiblings:
+            assert backend.executeFuzz(fuzzGetState(saved.header)).error ==
+                FuzzBackendError.UnknownState
+          savedSiblings = @[]
         sibling = true
-        siblingHeader = header
-        siblingState = checkpointHex(state)
-        retainedSibling = true # The original-last sibling must not overwrite this independent owner.
+        savedSiblings.add(SiblingMap(header: header, state: checkpointHex(state)))
+        if uint64(savedSiblings.len) > uint64(config.forkStates):
+          let evicted = savedSiblings[0].header
+          var retained: seq[SiblingMap] = @[]
+          # Retain every newer immutable owner while dropping only the oldest pair.
+          for index in 1..<savedSiblings.len: retained.add(savedSiblings[index])
+          savedSiblings = retained
+          assert backend.executeFuzz(fuzzGetState(evicted)).error ==
+              FuzzBackendError.UnknownState # The oldest map alone leaves the full window.
       elif sibling:
-        assert checkpointHex(backend.observe(siblingHeader)) == siblingState
+        if uint64(savedSiblings.len) == uint64(config.forkStates):
+          let evicted = savedSiblings[0].header
+          var retained: seq[SiblingMap] = @[]
+          # Retain every newer immutable owner while dropping only the oldest pair.
+          for index in 1..<savedSiblings.len: retained.add(savedSiblings[index])
+          savedSiblings = retained
+          assert backend.executeFuzz(fuzzGetState(evicted)).error ==
+              FuzzBackendError.UnknownState # Original-last publication consumes its own window position.
+        for saved in savedSiblings:
+          assert checkpointHex(backend.observe(saved.header)) == saved.state
         sibling = false
-      elif retainedSibling:
-        assert backend.executeFuzz(fuzzGetState(siblingHeader)).error ==
-            FuzzBackendError.UnknownState
-        retainedSibling = false # A new successful direct extension retires the old sibling group.
+      elif savedSiblings.len > 0:
+        for saved in savedSiblings:
+          assert backend.executeFuzz(fuzzGetState(saved.header)).error ==
+              FuzzBackendError.UnknownState
+        savedSiblings = @[] # A successful direct extension retires the complete old sibling group.
       echo fields[0], " ", epoch.hex(encoded)
       echo "O ", checkpointHex(state)
   assert not anchorChecks or not mirrorActive

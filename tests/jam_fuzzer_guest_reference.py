@@ -47,8 +47,7 @@ def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor
         elif tag == 'B' or forks and tag == 'V':
             assert initialized and not waiting and not header_pending
             if tag == 'V':
-                assert not sibling
-                sibling = True # A depth-one mutation must be followed by its original-last child.
+                sibling = True # Consecutive depth-one variants still require an eventual original-last child.
             else:
                 sibling = False
             requests.append(line)

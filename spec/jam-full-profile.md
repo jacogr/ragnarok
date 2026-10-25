@@ -125,3 +125,31 @@ Observed stream validation:all15 recovery controls passed on the actual target,
 followed by the honest local missing-evidence control and upstream1-session,
 28-import,60-exchange replay with real mismatch detection. Fifty focused Python
 tests and fresh inventory passed. Native sources retain layer12's verified tree.
+
+## Eight-state sibling retention
+
+Three independently calculated full-profile cases initialize a real pending
+report before guest execution, then publish nine genuinely signed availability
+siblings, original-last replay and its next direct extension. Storage/yield,
+panic rollback and checkpoint retention remain identical across qualified
+siblings; only header history and assurance statistics differ.
+
+The native full test policy now matches the actual target's eight-state sibling
+window; Tiny keeps its existing two-state policy. The generic replay accepts
+consecutive depth-one variants, verifies exact retained maps, checks oldest-only
+eviction when the window fills, and requires all variants to retire after a
+successful direct extension. Every new descendant preserves GP validation.
+
+Upstream trace planning accounts for original-last occupying one cache position,
+so seven variants remain queryable after the original child is published. The
+actual target separately verifies all eight maps before querying the evicted
+oldest identity, then verifies later retirement. Both refusals close locally,
+without fabricated consensus Errors. Six required observations cover the three
+guest outcomes; missing per-profile or aggregate evidence cannot pass CI.
+
+Observed fork validation:33 new capacity maps,50 existing Tiny fork imports and
+12 full guest imports passed with checked ARC/Clang LTO. Actual target checks
+passed all6 eviction/retirement observations, then upstream minifuzz passed
+3 sessions,33 imports and99 exact exchanges with real mismatch detection.
+Fifty-two focused Python tests, final pinned formatting, fresh driver semantics
+and inventory passed. Runtime implementation and existing fixtures are unchanged.

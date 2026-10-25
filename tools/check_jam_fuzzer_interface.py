@@ -72,7 +72,8 @@ def minifuzz_verified(result):
         return False
     # Every independently declared local control requires exact nonnegative per-profile and aggregate completion.
     for planned,completed,field in (('planned_local_missing_evidence','completed_local_missing_evidence','local_missing_evidence'),
-                                    ('planned_stream_recoveries','completed_stream_recoveries','stream_recoveries')):
+                                    ('planned_stream_recoveries','completed_stream_recoveries','stream_recoveries'),
+                                    ('planned_fork_evictions','completed_fork_evictions','fork_evictions')):
         if any(type(result.get(key)) is not int or result[key] < 0 for key in (planned,completed)):
             return False
         if any(not isinstance(profile,dict) or type(profile.get(field)) is not int or profile[field] < 0 for profile in profiles):
