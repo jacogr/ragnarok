@@ -1571,5 +1571,49 @@ def current_stf_trace_command_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_trace_observations_corpus(compiler, report, checks, libraries):
+    """Compare independently authored observed complete maps with golden authenticated execution, including refusals."""
+    from current_stf_trace_observations_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for path, digest in FIXTURE_CONTRACTS['current_stf_trace_observations'][2]:
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Freeze mathematical observations before native execution.
+    jobs, expected, evidence = expected_observations()
+    requests, manifest = [], []
+    for ordinal, job in enumerate(jobs):
+        folder = checks.folder/'observed bundles'/('case-'+str(ordinal).zfill(4))
+        observed = folder/'observations'
+        observed.mkdir(parents=True, exist_ok=True)
+        chain, genesis = folder/'chain.json', folder/'genesis.bin'
+        chain.write_text(job['config'])
+        genesis.write_bytes(job['genesis'])
+        paths = [chain, genesis]
+        for index, wire in enumerate(job['steps']):
+            path = folder/('step-'+str(index).zfill(4)+'.bin')
+            path.write_bytes(wire)
+            paths.append(path) # Expected blocks/maps remain the original independent bytes.
+        for index, wire in enumerate(job['observations']):
+            path = observed/('step-'+str(index).zfill(4)+'.bin')
+            if wire is not None:
+                path.write_bytes(wire) # A missing observation is deliberately absent, never replaced with native output.
+            elif path.exists():
+                path.unlink() # Rerunning a failed missing-file case cannot inherit an old artifact.
+        requests.append('O '+' '.join(str(path.resolve()).encode().hex() for path in [observed,*paths]))
+        manifest.append(dict(chain=str(chain.resolve()),genesis=str(genesis.resolve()),
+            traces=[str(path.resolve()) for path in paths[2:]],observations=str(observed.resolve()),expected=expected[ordinal]))
+    policy = checks.folder/'current-stf-observations-policy.txt'
+    (checks.folder/'observation-manifest.json').write_text(json.dumps(dict(policy=str(policy.resolve()),cases=manifest),indent=2)+'\n')
+    source = checks.folder/'current-stf-trace-observations-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_trace_command_driver.nim',
+        'current-stf-trace-observations',crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
+    corpus = dict(build=compiled,passed=False,**evidence,
+        reference='independent mathematical observation test doubles; no external engine execution')
+    compare_corpus(corpus,checks.command,[binary,source,policy],'current-stf-trace-observations-corpus',expected)
+    announce('independent observed whole-map differential checking',corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

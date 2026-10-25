@@ -21,7 +21,8 @@ overrides remain in force. Exact retained ancestor count/bytes are checked again
 the supplied candidate policy before further private execution.
 
 The command permits only explicit state activation, configured-chain path and
-state mutation budgets. Listener, disk, recovery and download controls are refused
+state mutation budgets, plus the explicit recorded-observation directory described in
+[current-stf-trace-observations.md](current-stf-trace-observations.md). Listener, disk, recovery and download controls are refused
 during atomic option parsing. The command performs independent Genesis trust/profile
 binding, authenticated STF preparation, complete pre/post map comparison and normal
 guarded continuation on a private ephemeral chain. Every descriptor/owner retires

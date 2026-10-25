@@ -26,13 +26,18 @@ proc main() {.raises.} =
   for line in readFile(paramStr(1)).splitLines:
     if line.len == 0: continue # The request-file terminator contains no command.
     let fields = line.splitWhitespace()
-    assert fields.len >= 3
-    var arguments = @["check-traces", paramStr(2), path(fields[1])]
-    for index in 2..<fields.len: arguments.add(path(fields[
+    let observed = fields[0] == "O"
+    let first = if observed: 2 else: 0
+    assert fields.len >= first+3
+    var arguments = @["check-traces", paramStr(2), path(fields[first+1])]
+    for index in first+2..<fields.len: arguments.add(path(fields[
         index])) # Positional paths preserve spaces without shell interpretation.
-    for item in ["--with-state", "--chain", path(fields[0]), "--state-writes", "1000",
+    for item in ["--with-state", "--chain", path(fields[first]), "--state-writes", "1000",
         "--state-write-bytes", "1000000"]:
       arguments.add(item)
+    if observed:
+      arguments.add("--trace-observations")
+      arguments.add(path(fields[1])) # Explicit observation directory is a separate comparison input, never a replacement expected trace.
     var options = default(Options)
     assert parseOptions(arguments, options)
     let checked = runTraceChecks(options)

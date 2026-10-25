@@ -16,7 +16,8 @@ const
 type
   TraceCheckCommandError* {.pure.} = enum ## Process-level refusals describe validation progress and expose no installable update or canonical owner.
     Uninitialized, None, InvalidArguments, InvalidPolicy, FileFailure, InvalidChain,
-      GenesisFailure, TrailingGenesis, BootstrapFailure, TraceFailure, ImportFailure,
+      GenesisFailure, TrailingGenesis, BootstrapFailure, TraceFailure, ObservationFailure,
+        ImportFailure,
       AncestorLimit, StateChanged
   TraceCheckCommandOutcome* = object ## Only complete success has a verified final root; failure diagnostics and scalar progress contain no chain authority.
     requested, checked: int
@@ -50,6 +51,13 @@ proc text(bytes: openArray[byte]): string =
   ## Copy one already bounded strict JSON input without converting or repairing payload bytes.
   result = newString(bytes.len)
   for index in 0..<bytes.len: result[index] = char(bytes[index])
+
+proc observationPath(directory: string, ordinal: int): string =
+  ## Option validation bounds the directory and1..256 file count proves the fixed four-digit nonnegative ordinal.
+  const digits = "0123456789"
+  result = directory & "/step-"
+  for divisor in [1000, 100, 10, 1]: result.add(digits[(ordinal div divisor) mod 10])
+  result.add(".bin")
 
 proc runTraceChecks*(options: Options): TraceCheckCommandOutcome =
   ## Read explicit policy/configuration, anchor the supplied Genesis independently, then check consecutive signed files without changing an external chain or starting services.
@@ -110,7 +118,24 @@ proc runTraceChecks*(options: Options): TraceCheckCommandOutcome =
         state: statePolicy, bytes: ByteLimit(TraceCheckFileBytes)))
     if loaded.error != TraceFileError.None:
       return refused(TraceCheckCommandError.TraceFailure, requested, checked, $loaded.error)
-    let prepared = prepareTraceImport(chain, loaded.value, older, candidate)
+    var observation = default(TraceState)
+    let directory = options.traceObservationsPath
+    if directory.len != 0:
+      let input = readBoundedFile(observationPath(directory, index-4), ByteLimit(TraceCheckFileBytes))
+      if input.error != AtomicFileError.None:
+        return refused(TraceCheckCommandError.ObservationFailure, requested, checked, $input.error)
+      let bytes = input.value
+      let decoded = decodeTraceState(bytes, statePolicy, ByteLimit(TraceCheckFileBytes))
+      if decoded.error != TraceStateError.None:
+        return refused(TraceCheckCommandError.ObservationFailure, requested, checked,
+            $decoded.error)
+      if decoded.value.traceStateInfo.value.consumed != bytes.len:
+        return refused(TraceCheckCommandError.ObservationFailure, requested, checked, "TrailingBytes")
+      observation = decoded.value # Only complete independently rooted regular-file EOF reaches actual external-map comparison.
+    let prepared = if directory.len != 0:
+        prepareTraceObservation(chain, loaded.value, observation, older, candidate)
+      else: prepareTraceImport(chain, loaded.value, older,
+          candidate) # Ordinary golden trace checking preserves its existing path.
     if prepared.error != TraceImportError.None:
       return refused(TraceCheckCommandError.ImportFailure, requested, checked, $prepared.error)
     if not chain.canInstallPrepared(prepared.value):
