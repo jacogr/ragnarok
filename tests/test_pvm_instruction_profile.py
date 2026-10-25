@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from pvm_instruction_profile import (profile_counts, calibration_passed, last_call_calibration_passed, collect, run,
+from pvm_instruction_profile import (profile_counts, calibration_passed, last_call_calibration_passed, execution_entry_count, collect, run,
     capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed, machine_profile_counts, disassembly_passed)
 
 
@@ -70,6 +70,17 @@ class InstructionProfileTests(unittest.TestCase):
             with self.subTest(single=single, repeated=repeated, final=final):
                 self.assertFalse(last_call_calibration_passed(single, repeated, final))
 
+    def test_selected_entry_count_refuses_warmup_or_missing_execution(self):
+        """A calibrated control cannot certify a guest dump that still contains thirteen selected calls."""
+        raw = 'cfn=execute_2_guest\ncalls=1 20\n20 42\n'
+        self.assertEqual(execution_entry_count(raw), 1)
+        self.assertEqual(execution_entry_count(raw.replace('calls=1 ', 'calls=13 ')), 13)
+        self.assertEqual(execution_entry_count(raw.replace('execute_2_guest', 'other')), 0)
+        self.assertEqual(execution_entry_count(raw.replace('calls=1 20', 'fn=other\ncalls=1 20')), 0)
+        self.assertEqual(execution_entry_count(raw+raw), 2)
+        with self.assertRaises(ValueError):
+            execution_entry_count(raw.replace('calls=1 ', 'calls=-1 '))
+
     def test_collection_controls_entry_reset_and_argument_placement(self):
         """Existing calls stay unchanged; explicit last-call collection resets only its selected scope."""
         class Checks:
@@ -91,7 +102,7 @@ class InstructionProfileTests(unittest.TestCase):
                 # A private output is retired on both normal and reset collections.
                 (checks.folder/'sample.callgrind').write_text('stale')
                 _, output = collect(checks, 'binary', 'sample', 'selected', {}, 30,
-                    instructions=True, reset_each_call=reset, arguments=('twice',))
+                    instructions=True, reset_symbols=('selected',) if reset else (), arguments=('twice',))
                 command = checks.calls[-1][0]
                 self.assertEqual(command[-2:], ['binary', 'twice'])
                 self.assertEqual('--zero-before=selected' in command, reset)

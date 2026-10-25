@@ -191,7 +191,8 @@ These are diagnostic counters and native text, not new performance timings.
 The seven-cell matrix keeps the original five guest commands unchanged and adds
 Pinky and memory fill100000 under memo pricing. Each memo cell executes thirteen times
 through the existing maintained driver; all complete states must pass. Callgrind
-`--zero-before=execute_?_*` resets counters on execution entry, so the final dump
+`--zero-before` receives each exact native execution symbol discovered by `nm`,
+while collection retains its existing wildcard scope. Entry reset means the final dump
 retains only the thirteenth invocation. Public execution validation and publication
 remain inside scope; fixture preparation and full-state checks remain outside.
 See the [Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
@@ -201,8 +202,9 @@ identical selected calls must collect exactly twice the single-call instructions
 entry reset must retain exactly the single-call total. Every run still requires
 successful classified process output, a complete positive profile and the selected
 function without excluded work. Missing reset support, partial counters or any
-ratio mismatch refuse a completed report. Each guest cell records its warmup and
-collected-execution counts; memo output parsing requires all thirteen full-state results.
+ratio mismatch refuse a completed report. Every raw guest call graph must independently contain exactly one incoming selected
+execution call; retaining thirteen calls refuses the report even if calibration passes.
+Each guest cell records its warmup, observed entry and collected-execution counts; memo output parsing requires all thirteen full-state results.
 
 This extends the existing diagnostic owner without changing interpreter source,
 guest driver, toolchain flags or timing workloads. Linux qualification must pass
@@ -210,3 +212,11 @@ all five controls, seven state/source profiles and the existing native trace.
 Instrumented clocks remain discarded, and instruction changes alone are not speed
 claims. Comparing the original five counts and guest binary identity against the
 previous profile checks that this collection change leaves their work unchanged.
+
+
+The first Linux extension run40162051126 preserved the exact guest binary and all
+five original Ir totals, but its wildcard reset retained thirteen memo entries.
+Those memo aggregates are refused as final-only evidence. Calibration now combines
+wildcard collection with exact-name reset, and actual guest entry counts independently
+require one. This observed failure is a regression guard; no memo per-invocation
+counts or speed claims are derived from that run.

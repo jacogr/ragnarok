@@ -84,6 +84,28 @@ def last_call_calibration_passed(single, repeated, final):
             return False
     return counts[1] == 2*counts[0] and counts[2] == counts[0]
 
+
+def execution_entry_count(text):
+    """Count actual incoming selected execution calls; reset collection must retain exactly one."""
+    callee = None
+    total = 0
+    for line in text.splitlines():
+        # Uncompressed names bind the next call record; unrelated functions cannot certify entry reset.
+        if line.startswith('cfn='):
+            callee = line[4:]
+        elif line.startswith('fn='):
+            callee = None
+        elif line.startswith('calls=') and callee is not None:
+            if re.fullmatch(r'execute_[0-9]+_\w+', callee):
+                fields = line[6:].split()
+                if not fields or re.fullmatch(r'0|[1-9][0-9]*', fields[0]) is None:
+                    raise ValueError('invalid selected execution call count')
+                total += int(fields[0])
+            callee = None
+    return total
+
+
+
 def capture_generated_sources(folder, repository):
     """Retain exact generated C at its recorded relative paths for offline source annotation."""
     folder, repository = Path(folder).resolve(), Path(repository).resolve()
@@ -174,14 +196,14 @@ def disassembly_passed(result):
 
 
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            reset_each_call=False, arguments=()):
+            reset_symbols=(), arguments=()):
     """Collect only the named native execution function; a new private output file cannot reuse stale counters."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
         '--toggle-collect='+scope, '--cache-sim=no', '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
-        *(['--zero-before='+scope] if reset_each_call else []),
+        *('--zero-before='+symbol for symbol in reset_symbols),
         '--callgrind-out-file='+str(output),
         '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary, *arguments], name,
         environment=environment, timeout=timeout)
@@ -238,8 +260,9 @@ def run():
         for reset in (False, True):
             # Identical selected work runs twice; entry reset must retain exactly one invocation.
             name = 'control-last-only' if reset else 'control-repeated'
-            result, output = collect(checks, BUILD/'control', name, 'pvm_profile_selected',
-                dict(os.environ), 30, reset_each_call=reset, arguments=('twice',))
+            result, output = collect(checks, BUILD/'control', name, 'pvm_profile_?elected',
+                dict(os.environ), 30, reset_symbols=('pvm_profile_selected',) if reset else (),
+                arguments=('twice',))
             text = output.read_text()
             passed = calibration_passed(result, text, True)
             if reset:
@@ -273,6 +296,10 @@ def run():
         symbols = checks.command(['nm', '--defined-only', binary], 'symbols')
         if symbols['exit_code'] or not re.search(r'\bexecute_[0-9]+_\w+', symbols['output']):
             raise RuntimeError('native execution symbol unavailable; no whole-process fallback')
+        execution_symbols = sorted(set(re.findall(
+            r'^[0-9a-f]+\s+[Tt]\s+(execute_[0-9]+_\w+)$', symbols['output'], re.M)))
+        if not execution_symbols:
+            raise RuntimeError('exact native execution symbols unavailable for calibrated entry reset')
         refused = checks.command([binary], 'assertions',
             environment=dict(os.environ, RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1'), timeout=30)
         passed = (refused['exit_code'] != 0 and '[Assertion Failure]' in refused['output']
@@ -292,13 +319,15 @@ def run():
                 RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_SAMPLES=str(samples))
             name = guest+'-'+str(limit)+'-'+mode
             result, output = collect(checks, binary, name, SCOPE, environment, 900,
-                reset_each_call=bool(warmups))
+                reset_symbols=execution_symbols if warmups else ())
             if result['exit_code']:
                 raise RuntimeError('profile guest failed: '+name)
             engine = dict(dynamic='ragnarok', planned='ragnarok_planned', memo='ragnarok_memo')[mode]
             parse_process_output(result['output'], engine, limit, guest, samples=samples)
             text = output.read_text()
             counts = profile_counts(text)
+            if execution_entry_count(text) != 1:
+                raise RuntimeError('profile must retain exactly one execution entry: '+name)
             if re.search(r'^fn=execute_[0-9]+_\w+', text, re.M) is None:
                 raise RuntimeError('profile lacks selected native execution')
             source_files = execution_source_files(text, generated_sources)
@@ -315,6 +344,7 @@ def run():
             report['profiles'].append(dict(guest=guest, limit=limit, mode=mode, counts=counts,
                 run=result, profile_sha256=digest(output), state_checked=True,
                 warmup_executions=warmups, collected_executions=1,
+                execution_entry_count=execution_entry_count(text),
                 source_files=source_files, source_annotation_log=source_annotation['log']))
         # A separate trace preserves the ordinary source annotations and adds positions for otherwise unattributed line-zero costs.
         guest, limit, mode = 'pinky', 1, 'planned'
