@@ -426,6 +426,9 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
     work.fail(FullPagedStreamError.Uninitialized)
     return refused[CheckedFullPagedArtifact](work)
   let shape = header.geometry
+  if shape.contextBytes != 0:
+    work.fail(FullPagedStreamError.UnsupportedPolicy) # Codec capability alone does not enable native V2 graph admission.
+    return refused[CheckedFullPagedArtifact](work)
   if uint64(header.len) > uint64(limits.roots) or shape.entries > uint64(limits.dataset.entries) or
       shape.byteLength > uint64(limits.dataset.bytes) or shape.entries > uint64(
           limits.scratchBytes) div 2:

@@ -693,6 +693,9 @@ proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: P
   var work = initWork(limits)
   if work.status != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
   let shape = header.geometry
+  if shape.contextBytes != 0:
+    return PagedStreamResult[CheckedPagedArtifact](
+        status: PagedStreamError.UnsupportedPolicy) # V2 needs explicit bounded context authoring, never implicit zero fill.
   let permitted = pagedGeometry(shape.entries, shape.payloadBytes, limits.dataset)
   if permitted.error != PagedCodecError.None:
     work.fail(codecReason(permitted.error))

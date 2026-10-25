@@ -22,7 +22,8 @@ type
     ioCalls*, hashes*: ElementLimit
     readBytes*, writeBytes*: ByteLimit
   FullPagedBuildError* {.pure.} = enum ## Failed authoring preserves only forensic bytes and a selected cause.
-    Uninitialized, None, LimitExceeded, IOFailure, ProducerFailure, ChangedInput, CodecFailure, GraphFailure
+    Uninitialized, None, LimitExceeded, IOFailure, ProducerFailure, ChangedInput, CodecFailure,
+      GraphFailure, UnsupportedPolicy
   FullPagedBuildReceipt* = object ## Successful authoring retains only checked scalar metadata and passive work counts.
     checked: CheckedFullPagedArtifact
     calls, io, hashes, read, written: uint64
@@ -212,6 +213,8 @@ header: FullPagedHeader, limits: FullPagedBuildLimits): FullPagedBuildResult =
   if callback == nil or not header.initialized:
     return FullPagedBuildResult(status: FullPagedBuildError.Uninitialized)
   let shape = header.geometry
+  if shape.contextBytes != 0:
+    return FullPagedBuildResult(status: FullPagedBuildError.UnsupportedPolicy) # Native V2 authoring requires the next explicit context implementation.
   let available = uint64(limits.admission.workingBytes)
   if available < FullPagedFixedBytes or
       uint64(limits.admission.trie.perValue) > (available-FullPagedFixedBytes) div 4:

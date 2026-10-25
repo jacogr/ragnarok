@@ -12,7 +12,9 @@ const
   FullPagedMaxRoots* = 64       ## One header page bounds retained roots independently of dataset size.
   FullPagedManifestBytes* = 192 ## Fixed CURRENT body and local checksum; never chain authority.
   HeaderMagic = "RAGNAROK-FULL-PAGED-V1\n"
+  ContextHeaderMagic = "RAGNAROK-FULL-PAGED-V2\n"
   ManifestMagic = "RAGNAROK-FULL-PAGED-HEAD-V1\n"
+  ContextManifestMagic = "RAGNAROK-FULL-PAGED-HEAD-V2\n"
   LeafDomain = "RAGNAROK-FULL-PAGED-LEAF-V1\n"
   PadDomain = "RAGNAROK-FULL-PAGED-PAD-V1\n"
   NodeDomain = "RAGNAROK-FULL-PAGED-NODE-V1\n"
@@ -54,6 +56,7 @@ type
     physical: ManagedEpoch
     ordinary: RepositoryGeneration
     pages, extent: uint64
+    contextual: bool
     tree: FullPagedDigest
 
 func error*[T](outcome: FullPagedResult[T]): FullPagedError =
@@ -73,11 +76,11 @@ func codecReason(reason: PagedCodecError): FullPagedError =
   of PagedCodecError.LimitExceeded: FullPagedError.LimitExceeded
   of PagedCodecError.LengthOverflow: FullPagedError.LengthOverflow
   else: FullPagedError.InvalidFormat
-func fullPagedGeometry*(count, payload: uint64, limits: PagedLimits): FullPagedResult[
-    PagedGeometry] =
+func fullPagedGeometry*(count, payload: uint64, limits: PagedLimits,
+    context = 0'u64): FullPagedResult[PagedGeometry] =
   ## Each canonical full record uses at least 72 bytes; shared geometry owns only page arithmetic.
   if count > payload div 72: return refused[PagedGeometry](FullPagedError.InvalidFormat)
-  let shape = pagedGeometry(count, payload, limits)
+  let shape = pagedGeometry(count, payload, limits, context)
   if shape.error != PagedCodecError.None: return refused[PagedGeometry](codecReason(shape.error))
   FullPagedResult[PagedGeometry](status: FullPagedError.None, completed: shape.value)
 func compareFullHash*(left, right: array[32, byte]): int =
@@ -145,11 +148,11 @@ func retainedRoot*(header: FullPagedHeader, index: int): FullPagedRoot {.require
   header.roots[index]
 func initFullPagedHeader*(chain: StorageChainId, selected: StateRoot, epoch: ManagedEpoch,
     generation: RepositoryGeneration, count, payload: uint64, roots: openArray[FullPagedRoot],
-    limits: PagedLimits): FullPagedResult[FullPagedHeader] =
+    limits: PagedLimits, context = 0'u64): FullPagedResult[FullPagedHeader] =
   ## Validate bounded inventory and all scalar claims before granting format-only metadata.
   if roots.len == 0 or roots.len > FullPagedMaxRoots or uint64(epoch) == 0:
     return refused[FullPagedHeader](FullPagedError.InvalidFormat)
-  let shape = fullPagedGeometry(count, payload, limits)
+  let shape = fullPagedGeometry(count, payload, limits, context)
   if shape.error != FullPagedError.None: return refused[FullPagedHeader](shape.error)
   var found = false
   var header = FullPagedHeader(ready: true, chain: chain, selected: selected, physical: epoch,
@@ -172,7 +175,7 @@ func initFullPagedHeader*(chain: StorageChainId, selected: StateRoot, epoch: Man
 proc bytes*(header: FullPagedHeader): array[PagedPageBytes, byte] {.requires: header.ready.} =
   ## Encode the entire header page with zero padding and a fixed bounded root inventory.
   result = default(array[PagedPageBytes, byte])
-  putMagic(result, HeaderMagic)
+  putMagic(result, if header.shape.contextBytes == 0: HeaderMagic else: ContextHeaderMagic)
   putHash(result, 32, array[32, byte](header.chain))
   put(result, 64, uint64(header.physical))
   put(result, 72, uint64(header.ordinary))
@@ -180,6 +183,7 @@ proc bytes*(header: FullPagedHeader): array[PagedPageBytes, byte] {.requires: he
   put(result, 112, header.shape.entries)
   put(result, 120, header.shape.payloadBytes)
   put(result, 128, uint64(header.count))
+  put(result, 136, header.shape.contextBytes)
   for index in 0..<header.count:
     # At most 64 fixed 56-byte claims fit below the 4096-byte page boundary.
     let offset = 144+index*56
@@ -188,15 +192,22 @@ proc bytes*(header: FullPagedHeader): array[PagedPageBytes, byte] {.requires: he
     put(result, offset+40, header.roots[index].nodes)
     put(result, offset+48, header.roots[index].valueBytes)
 func decodeFullPagedHeader*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
-    limits: PagedLimits): FullPagedResult[FullPagedHeader] =
+    limits: PagedLimits, contextLimit = ByteLimit(0)): FullPagedResult[FullPagedHeader] =
   ## Prove exact extent and root-count bounds before interpreting any root offset.
   if input.len != PagedPageBytes: return refused[FullPagedHeader](FullPagedError.InvalidFormat)
-  if not magic(input, HeaderMagic) or not zeros(input, 136, 144):
+  let contextual = uint64(contextLimit) > 0
+  let label = if contextual: ContextHeaderMagic else: HeaderMagic
+  if not magic(input, label) or (not contextual and not zeros(input, 136, 144)):
     return refused[FullPagedHeader](FullPagedError.InvalidFormat)
   if hashAt(input, 32) != array[32, byte](chain):
     return refused[FullPagedHeader](FullPagedError.WrongChain)
   if hashAt(input, 80) != array[32, byte](root):
     return refused[FullPagedHeader](FullPagedError.WrongRoot)
+  let context = number(input, 136)
+  if contextual and context == 0:
+    return refused[FullPagedHeader](FullPagedError.InvalidFormat) # V2 cannot encode the V1 absence of context.
+  if contextual and context > uint64(contextLimit):
+    return refused[FullPagedHeader](FullPagedError.LimitExceeded) # Context admission is separate from dataset bytes.
   let count = number(input, 128)
   if count == 0 or count > uint64(FullPagedMaxRoots):
     return refused[FullPagedHeader](FullPagedError.InvalidFormat)
@@ -211,7 +222,7 @@ func decodeFullPagedHeader*(input: openArray[byte], chain: StorageChainId, root:
       valueBytes: number(input, offset+48))
   initFullPagedHeader(chain, root, ManagedEpoch(number(input, 64)),
     RepositoryGeneration(number(input, 72)), number(input, 112), number(input, 120),
-    roots.toOpenArray(0, int(count)-1), limits)
+    roots.toOpenArray(0, int(count)-1), limits, context)
 func digest*(row: FullPagedRow): StateNodeHash {.requires: row.ready.} =
   ## A physical address always includes every hash bit.
   row.digest
@@ -311,7 +322,8 @@ proc encodeFullPagedManifest*(header: FullPagedHeader,
   ## Local metadata selects exact full bytes; complete graph authority remains separate.
   if not header.ready: return refused[FullPagedManifest](FullPagedError.Uninitialized)
   FullPagedResult[FullPagedManifest](status: FullPagedError.None,
-    completed: FullPagedManifest(ready: true, chain: header.chain, selected: header.selected,
+    completed: FullPagedManifest(ready: true, contextual: header.shape.contextBytes > 0,
+      chain: header.chain, selected: header.selected,
       physical: header.physical, ordinary: header.ordinary, pages: header.shape.dataPages,
       extent: header.shape.byteLength, tree: tree))
 proc bytes*(manifest: FullPagedManifest): FullPagedResult[array[FullPagedManifestBytes, byte]] =
@@ -319,7 +331,7 @@ proc bytes*(manifest: FullPagedManifest): FullPagedResult[array[FullPagedManifes
   if not manifest.ready: return refused[array[FullPagedManifestBytes, byte]](
       FullPagedError.Uninitialized)
   var output = default(array[FullPagedManifestBytes, byte])
-  putMagic(output, ManifestMagic)
+  putMagic(output, if manifest.contextual: ContextManifestMagic else: ManifestMagic)
   putHash(output, 32, array[32, byte](manifest.chain))
   putHash(output, 64, array[32, byte](manifest.selected))
   put(output, 96, uint64(manifest.physical))
@@ -347,7 +359,8 @@ proc decodeFullPagedManifest*(input: openArray[byte], header: FullPagedHeader): 
   if not header.ready: return refused[FullPagedManifest](FullPagedError.Uninitialized)
   if input.len != FullPagedManifestBytes: return refused[FullPagedManifest](
       FullPagedError.InvalidFormat)
-  if not magic(input, ManifestMagic): return refused[FullPagedManifest](
+  let label = if header.shape.contextBytes > 0: ContextManifestMagic else: ManifestMagic
+  if not magic(input, label): return refused[FullPagedManifest](
       FullPagedError.InvalidFormat)
   if hashAt(input, 32) != array[32, byte](header.chain): return refused[FullPagedManifest](
       FullPagedError.WrongChain)
@@ -447,9 +460,10 @@ proc decodeFullPagedRecord*(input: openArray[byte], expected: StateNodeHash,
   FullPagedResult[TrieRecord](status: FullPagedError.None, completed: record)
 
 proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
-    limits: PagedLimits): FullPagedResult[FullPagedManifest] =
+    limits: PagedLimits, contextRequired = false): FullPagedResult[FullPagedManifest] =
   ## Bound untrusted CURRENT before opening its epoch; full header/graph binding remains mandatory.
-  if input.len != FullPagedManifestBytes or not magic(input, ManifestMagic):
+  let label = if contextRequired: ContextManifestMagic else: ManifestMagic
+  if input.len != FullPagedManifestBytes or not magic(input, label):
     return refused[FullPagedManifest](FullPagedError.InvalidFormat)
   if hashAt(input, 32) != array[32, byte](chain):
     return refused[FullPagedManifest](FullPagedError.WrongChain)
@@ -476,7 +490,8 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
   if array[32, byte](sum.value) != hashAt(input, 160):
     return refused[FullPagedManifest](FullPagedError.ChecksumMismatch)
   FullPagedResult[FullPagedManifest](status: FullPagedError.None,
-    completed: FullPagedManifest(ready: true, chain: chain, selected: root,
+    completed: FullPagedManifest(ready: true, contextual: contextRequired, chain: chain,
+      selected: root,
       physical: ManagedEpoch(epoch), ordinary: RepositoryGeneration(number(input, 104)),
       pages: pages, extent: extent, tree: FullPagedDigest(hashAt(input, 128))))
 func generation*(manifest: FullPagedManifest): RepositoryGeneration {.requires: manifest.ready.} =
