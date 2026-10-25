@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_ROTATION",
+  "files": {
+    "current-stf-late-rotation.json": "ba7229705f717c3be96f78134de11fe1f3b38173f6d4d0fb2b33446682936587"
+  },
+  "target": "current-stf-late-rotation.json"
+}
