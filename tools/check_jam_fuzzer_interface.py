@@ -55,13 +55,25 @@ def guest_socket_verified(result):
             and result['consensus_rejections'] == result['signed_imports'])
 
 
+def minifuzz_verified(result):
+    """Require all upstream exchanges and an observed false-success control, not the upstream process status alone."""
+    if not isinstance(result, dict) or result.get('passed') is not True or result.get('false_success_control') is not True:
+        return False
+    counts = ('planned_sessions', 'completed_sessions', 'planned_exchanges', 'completed_exchanges', 'signed_imports')
+    if any(type(result.get(name)) is not int or result[name] <= 0 for name in counts):
+        return False
+    return (result['planned_sessions'] == result['completed_sessions']
+            and result['planned_exchanges'] == result['completed_exchanges'])
+
+
 def passed(report):
     """Require every declared transcript plus complete real-entry guest execution, never a success flag alone."""
     cases = report.get('cases', {})
     socket = report.get('socket', {})
     return (bool(CASES) and set(cases) == set(CASES)
             and all(corpus_verified(cases[name]) for name in CASES)
-            and socket.get('passed') is True and guest_socket_verified(socket.get('guests')))
+            and socket.get('passed') is True and guest_socket_verified(socket.get('guests'))
+            and minifuzz_verified(report.get('minifuzz')))
 
 
 def summary(report):
@@ -74,6 +86,7 @@ def summary(report):
         result = report.get('cases', {}).get(name)
         lines.append('| '+name+' | '+('passed' if corpus_verified(result) else 'failed or missing')+' |')
     lines.append('| real-entry socket | '+('passed' if report.get('socket', {}).get('passed') else 'failed or missing')+' |')
+    lines.append('| upstream minifuzz whole-map replay | '+('passed' if minifuzz_verified(report.get('minifuzz')) else 'failed or missing')+' |')
     guests = report.get('socket', {}).get('guests')
     if guest_socket_verified(guests):
         lines.extend(['', 'Nonempty guest socket imports: '+str(guests['completed_imports'])+'/'+str(guests['signed_imports'])+'.',
@@ -118,6 +131,8 @@ def main():
         e2e_checks.prepare_peer(context)
         e2e_checks.prepare_fuzzer_policy(context)
         report['socket'] = e2e_checks.application_fuzzer_interface(context)
+        e2e_checks.prepare_minifuzz(context)
+        report['minifuzz'] = e2e_checks.application_minifuzz_interface(context)
         report['status'] = 'checks-passed' if passed(report) else 'failed'
     except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
         # A partial invocation cannot reuse another group's success or an earlier results file.
