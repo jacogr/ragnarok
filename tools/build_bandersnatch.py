@@ -55,7 +55,7 @@ def build_native(fetch):
         assert 'secret-split' in features
         (BUILD / 'cargo-features.log').write_text(features)
         run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
-        # Run our three adapter regressions in the production profile; dependencies share release artifacts.
+        # Run our adapter regressions in the production profile; dependencies share release artifacts.
         run(['cargo','test','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
         run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
     return library

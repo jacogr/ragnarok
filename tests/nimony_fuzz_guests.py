@@ -102,6 +102,9 @@ def prepare_effect_sessions():
     import jam_fuzzer_full_guests_oracle as full_guests
     selected, proof = reference_sessions(full_guests, 'jam_fuzzer_full_guests', [full.parameters()]*len(full_guests.MODES), spec='full')
     jobs.extend(selected); evidence.append(proof)
+    import jam_fuzzer_full_epochs_oracle as full_epochs
+    selected, proof = reference_sessions(full_epochs, 'jam_fuzzer_full_epochs', [full.parameters()]*len(full_epochs.SLOTS), spec='full')
+    jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 
 

@@ -848,6 +848,17 @@ def jam_fuzzer_epoch_effect_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_epochs_corpus(compiler, report, checks, libraries):
+    """Compare guest-bearing full epoch markers, skipped tails and1023-to1020 population rotation."""
+    import jam_fuzzer_full_epochs_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_epoch_ring_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_epochs',
+         'jam_fuzzer_full_guests', 'jam_fuzzer_full_profile'),
+        profiles=[full.parameters()]*len(reference.SLOTS))
+
+
+@CORPORA.case
 def jam_fuzzer_full_guests_corpus(compiler, report, checks, libraries):
     """Execute distinct full-population admission, high-core quorums and nonempty guest sibling maps."""
     import jam_fuzzer_full_guests_oracle as reference

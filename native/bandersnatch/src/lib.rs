@@ -34,6 +34,9 @@ fn guard(body: impl FnOnce() -> Outcome) -> u32 {
         Err(_) => 6,           // An unwind is contained at the Rust boundary.
     }
 }
+/// Finite primitive message budget covers full contextual signatures without interpreting protocol bytes.
+const MAX_INPUT_BYTES: usize = 128 * 1024;
+
 /// Borrow a bounded caller byte range synchronously; C callers must provide genuinely live storage.
 unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], u32> {
     // Empty input has no element address; bound messages before constructing a Rust slice.
@@ -41,7 +44,7 @@ unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], u32> {
         return Ok(&[]);
     }
     // Length is a primitive research resource budget, not a codec/protocol transform.
-    if ptr.is_null() || len > 65536 {
+    if ptr.is_null() || len > MAX_INPUT_BYTES {
         return Err(1);
     }
     Ok(unsafe { slice::from_raw_parts(ptr, len) })
@@ -402,6 +405,99 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(io.output.compressed_size() + first.compressed_size(), 96);
+    }
+
+    /// Large contextual signatures succeed through the exact ABI; excess inputs leave every output untouched.
+    #[test]
+    fn bounded_large_additional_data() {
+        let secret = bs::Secret::from_scalar(bs::ScalarField::from(7u64));
+        let handle = (&secret as *const bs::Secret).cast();
+        let context = b"ragnarok-large-header-regression";
+        let additional = vec![0x5au8; MAX_INPUT_BYTES + 1];
+        let mut public = Vec::new();
+        secret.public().serialize_compressed(&mut public).unwrap();
+        // Exercise the reproduced full epoch sizes, combined marker envelope, and exact primitive ceiling.
+        for length in [65547usize, 65739, 118276, MAX_INPUT_BYTES] {
+            let mut signature = [0xa5u8; 96];
+            let status = unsafe {
+                bs_sign(
+                    handle,
+                    context.as_ptr(),
+                    context.len(),
+                    additional.as_ptr(),
+                    length,
+                    signature.as_mut_ptr(),
+                )
+            };
+            assert_eq!(status, 0);
+            let mut output = [0xa5u8; 32];
+            let status = unsafe {
+                bs_verify(
+                    public.as_ptr(),
+                    signature.as_ptr(),
+                    signature.len(),
+                    context.as_ptr(),
+                    context.len(),
+                    additional.as_ptr(),
+                    length,
+                    output.as_mut_ptr(),
+                )
+            };
+            assert_eq!(status, 0);
+            // A changed AD byte remains bound even at the largest accepted length.
+            let mut changed = additional[..length].to_vec();
+            changed[length - 1] ^= 1;
+            output.fill(0xa5);
+            let status = unsafe {
+                bs_verify(
+                    public.as_ptr(),
+                    signature.as_ptr(),
+                    signature.len(),
+                    context.as_ptr(),
+                    context.len(),
+                    changed.as_ptr(),
+                    changed.len(),
+                    output.as_mut_ptr(),
+                )
+            };
+            assert_eq!(status, 4);
+            assert_eq!(output, [0xa5u8; 32]);
+            // Preserve a canonical proof so oversized-input checks are not masked by malformed proof rejection.
+            let valid_signature = signature;
+            // Both oversize AD and oversize context reject before publishing any signature or output.
+            for (data, ad) in [
+                (&context[..], &additional[..]),
+                (&additional[..], &context[..]),
+            ] {
+                signature.fill(0xa5);
+                let status = unsafe {
+                    bs_sign(
+                        handle,
+                        data.as_ptr(),
+                        data.len(),
+                        ad.as_ptr(),
+                        ad.len(),
+                        signature.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(status, 1);
+                assert_eq!(signature, [0xa5u8; 96]);
+                let status = unsafe {
+                    bs_verify(
+                        public.as_ptr(),
+                        valid_signature.as_ptr(),
+                        valid_signature.len(),
+                        data.as_ptr(),
+                        data.len(),
+                        ad.as_ptr(),
+                        ad.len(),
+                        output.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(status, 1);
+                assert_eq!(output, [0xa5u8; 32]);
+            }
+        }
     }
 
     /// A deliberately panicking primitive path must become an ABI reason, never unwind across C.

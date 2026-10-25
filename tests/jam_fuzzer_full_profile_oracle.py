@@ -12,6 +12,7 @@ from state_layout_oracle import chapter_key, digest
 from state_history_oracle import wire as history_wire
 from state_statistics_oracle import wire as statistics_wire, parse as statistics_parse
 from state_privileges_oracle import wire as privileges_wire
+from state_workqueues_oracle import wire as queue_wire
 from test_codec import reference_encode as natural
 from test_crypto import keccak256
 from history_transition_fixtures import output_root
@@ -90,9 +91,11 @@ def successor(parent, header, entropy_output, *, outputs=(), author=0):
     """Calculate full authorization, entropy, history/MMR, clock, outputs and statistics without a native observation."""
     result = dict(parent)
     slot = int.from_bytes(header[96:100], 'little')
-    assert slot == int.from_bytes(parent[chapter_key(11)], 'little')+1 and slot < EPOCH
+    previous_slot = int.from_bytes(parent[chapter_key(11)], 'little')
+    assert previous_slot < slot < 2**32
+    crossed = slot//EPOCH > previous_slot//EPOCH
     entropy = parent[chapter_key(6)]
-    result[chapter_key(6)] = digest(entropy[:32]+entropy_output)+entropy[32:]
+    result[chapter_key(6)] = digest(entropy[:32]+entropy_output)+(entropy[:96] if crossed else entropy[32:])
     result[chapter_key(11)] = slot.to_bytes(4, 'little')
     source = Reader(parent[chapter_key(1)]); queues = parent[chapter_key(2)]; pools = []
     for core in range(CORES):
@@ -119,11 +122,20 @@ def successor(parent, header, entropy_output, *, outputs=(), author=0):
     for peak in present[1:]: bag = bytes.fromhex(keccak256(b'peak'+bag+peak))
     blocks.append((digest(header)+bag+bytes(32)+slot.to_bytes(4,'little'),b''))
     result[chapter_key(3)] = history_wire((blocks[-8:],peaks))
-    (current, previous, _, _), consumed = statistics_parse(parent[chapter_key(13)],(CORES,VALIDATORS,VALIDATORS,2**64-1,2**64-1))
+    current_count = Reader(parent[chapter_key(8)]).count()
+    previous_count = Reader(parent[chapter_key(9)]).count()
+    active_count = Reader(parent[chapter_key(4)]).count() if crossed else current_count
+    (current, previous, _, _), consumed = statistics_parse(parent[chapter_key(13)],(CORES,current_count,previous_count,2**64-1,2**64-1))
     assert consumed == len(parent[chapter_key(13)])
+    # Crossing rotates old-current statistics and sizes the new zero array from actual pending membership.
+    if crossed: previous, current = current, [(0,)*6]*active_count
     row = list(current[author]); row[0] += 1; current[author] = tuple(row)
     result[chapter_key(13)] = statistics_wire((current,previous,[(0,)*8]*CORES,[]))
     result[chapter_key(16)] = natural(len(leaves))+b''.join(leaves)
+    # GP accumulated history advances once per block, including jumps across many elapsed slots.
+    accumulated = Reader(parent[chapter_key(15)])
+    rows = [accumulated.take(32*accumulated.count()) for _ in range(EPOCH)]; accumulated.done()
+    result[chapter_key(15)] = queue_wire('A', rows[1:]+[b''])
     assert set(result) == set(parent)
     return result
 

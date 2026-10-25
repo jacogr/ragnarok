@@ -220,8 +220,15 @@ proc main() {.raises.} =
           if prefix.error == ApplicationCandidateError.BlockFailure:
             let blockFailure = prefix.blockFailure
             diagnostic.add(":" & $blockFailure.error)
-            if blockFailure.error == BlockTransitionError.SafroleFailure:
-              diagnostic.add(":" & $blockFailure.safroleError.error)
+            if blockFailure.error == BlockTransitionError.AdmissionFailure:
+              diagnostic.add(":" & $blockFailure.admissionError) # Exact commitment/framing refusal stays guarded.
+            elif blockFailure.error == BlockTransitionError.SafroleFailure:
+              let safrole = blockFailure.safroleError
+              diagnostic.add(":" & $safrole.error)
+              if safrole.error == SafroleTransitionError.AuthenticationFailure:
+                diagnostic.add(":" & $safrole.authenticationError) # Distinguish author selection, seal and entropy.
+              elif safrole.error == SafroleTransitionError.MarkerFailure:
+                diagnostic.add(":" & $safrole.markerError) # Variable epoch-marker failures retain their typed cause.
         elif failed.error == CurrentCandidateError.CompletionFailure:
           let completion = failed.completionFailure
           diagnostic.add(":" & $completion.error)
