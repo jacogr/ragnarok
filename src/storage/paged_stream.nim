@@ -62,6 +62,11 @@ type
     selected: PagedManifest
     payload: seq[byte]
     used: PagedStreamCounts
+  PagedQueryInventory* = object ## Detached authenticated query identities describe partial evidence, never a complete mapping or native pin.
+    ready: bool
+    selected: PagedManifest
+    queries: seq[StateKey]
+    used: PagedStreamCounts
   LoadedProof = object ## Private verified/raw pair exists only while one bounded proof is being decoded or selected.
     checked: VerifiedStateLookup
     record: LightStateProof
@@ -907,4 +912,78 @@ proc readPagedContext*(io: PagedInput, checked: CheckedPagedArtifact,
   if not io.checkExtent(checked.selected.byteLength, work): return refused[PagedContext](work)
   PagedStreamResult[PagedContext](status: PagedStreamError.None,
     completed: PagedContext(ready: true, selected: checked.selected, payload: payload,
+        used: work.used))
+
+func initialized*(inventory: PagedQueryInventory): bool =
+  ## A valid empty inventory is distinct from the default owner.
+  inventory.ready
+func len*(inventory: PagedQueryInventory): int =
+  ## Length observation grants no source or deletion authority.
+  inventory.queries.len
+func manifest*(inventory: PagedQueryInventory): PagedManifest {.requires: inventory.ready.} =
+  ## Passive metadata binds every captured key to one exact admitted physical selection.
+  inventory.selected
+func counts*(inventory: PagedQueryInventory): PagedStreamCounts {.requires: inventory.ready.} =
+  ## Complete success alone exposes cumulative inventory work counters.
+  inventory.used
+proc keys*(inventory: PagedQueryInventory): seq[StateKey] {.requires: inventory.ready.} =
+  ## Copy fixed identities into detached caller transport without exposing private storage.
+  result = newSeq[StateKey](inventory.queries.len)
+  for index in 0..<result.len: result[index] = inventory.queries[index] # Each fixed key owns its bytes.
+proc readPagedQueries*(io: PagedInput, checked: CheckedPagedArtifact,
+    maximum: ElementLimit, budget: PagedWorkLimits): PagedStreamResult[PagedQueryInventory] =
+  ## Authenticate every index row under one cumulative budget and return all keys or no prefix.
+  if not checked.ready or io.read == nil or io.extent == nil:
+    return PagedStreamResult[PagedQueryInventory](
+        status: PagedStreamError.Uninitialized) # No callback or source authority is inferred.
+  var policy = checked.policy
+  policy.work = contextBudget(policy.work, budget)
+  var work = initWork(policy)
+  let shape = checked.header.geometry
+  let count = shape.entries
+  let fixed = PagedStreamFixedBytes+256
+  let available = uint64(policy.workingBytes)
+  if count > uint64(maximum): work.fail(PagedStreamError.LimitExceeded) # Caller query retention is independent of physical dataset ceilings.
+  if count > uint64(high(int)) div uint64(sizeof(StateKey)):
+    work.fail(PagedStreamError.LengthOverflow) # Prove host allocation before narrowing or multiplication.
+  if count > (high(uint64)-4096) div 64:
+    work.fail(PagedStreamError.LengthOverflow) # Every fixed descriptor endpoint remains representable.
+  if available < fixed:
+    work.fail(PagedStreamError.LimitExceeded) # Fixed workspace and transport metadata are reserved before dispatch.
+  elif count > (available-fixed) div (4'u64*uint64(sizeof(StateKey))):
+    work.fail(PagedStreamError.LimitExceeded) # Four possible key transports fit before allocating the first one.
+  if uint64(policy.work.ioCalls) < 2 or uint64(policy.work.pageHashes) == 0:
+    work.fail(PagedStreamError.LimitExceeded) # Even an empty inventory requires fresh authenticated source/EOF checks.
+  if work.status != PagedStreamError.None: return refused[PagedQueryInventory](
+      work) # Refusals dispatch no source callbacks or key prefix.
+  let selected = checked.selected
+  if not io.checkExtent(selected.byteLength, work): return refused[PagedQueryInventory](
+      work) # Check actual extent before index access.
+  var cache = default(PageCache)
+  if not io.fetch(shape, selected.pageRoot, 0, cache, work): return refused[PagedQueryInventory](
+      work) # Header authentication shares this operation's budget.
+  let header = decodePagedHeader(cache.bytes, selected.chainId, selected.root, policy.dataset,
+      policy.contextBytes)
+  if header.error != PagedCodecError.None:
+    work.fail(codecReason(header.error)) # Preserve structural or policy refusal without adopting keys.
+    return refused[PagedQueryInventory](work)
+  if header.value.bytes != checked.header.bytes:
+    work.fail(PagedStreamError.ChangedInput) # A previously admitted header cannot be silently substituted.
+    return refused[PagedQueryInventory](work)
+  var queries = newSeq[StateKey](int(count))
+  for ordinal in 0..<queries.len:
+    # Every index page is authenticated against the captured tree; no budget/cache is reset between rows.
+    var raw = default(array[PagedDescriptorBytes, byte])
+    let offset = 4096+uint64(ordinal)*64
+    if not io.authenticated(shape, selected.pageRoot, offset, raw, cache, work): return refused[
+        PagedQueryInventory](work)
+    let row = decodePagedDescriptor(raw, shape)
+    if row.error != PagedCodecError.None:
+      work.fail(codecReason(row.error)) # No malformed row can supply a successful query prefix.
+      return refused[PagedQueryInventory](work)
+    queries[ordinal] = row.value.key
+  if not io.checkExtent(selected.byteLength, work): return refused[PagedQueryInventory](
+      work) # Late shrink/growth still refuses the entire transport.
+  PagedStreamResult[PagedQueryInventory](status: PagedStreamError.None,
+    completed: PagedQueryInventory(ready: true, selected: selected, queries: queries,
         used: work.used))
