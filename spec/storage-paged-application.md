@@ -438,7 +438,7 @@ contract; the light paged owner and usable mode/runtime integration follow in th
 
 The final light_application_head suite passes checked macOS ARM64 and Linux amd64 under
 Docker emulation, with 1,000 capture/enrichment/advancement/context ownership cycles at
-76,160 -> 76,160 occupied bytes on both. The existing state_checkpoint_trusted suite also
+76,160 -> 76,160 occupied bytes on macOS and 70,288 -> 70,288 on Linux. The existing state_checkpoint_trusted suite also
 passes with 1,000 cycles at 3,488 -> 3,488 bytes. Two private owner/result guards, separate
 stable formatting and all 421 production modules plus peer semantic Smoke pass locally.
 Qualified image: sha256:30e6e2f121c6f9a1f3089f2ae608e6b4b7504b746f121dd1c7dbbb4dc903090c.
