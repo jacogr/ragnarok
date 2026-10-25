@@ -198,3 +198,81 @@ On the recorded ARM64 host the three-byte coordinates occupy existing padding:
 `Instruction` remains56 bytes and the scalar write result remains24 bytes.
 No cache capacity, preparation pass, resource default, protocol pin or runtime-check
 flag changes. Timing and full composition coverage are recorded separately.
+
+## Decoded arithmetic destination candidate, 2026-10-24
+
+A genuine RegisterSlots copy now retains its bounded arithmetic destination as
+well as the original A/B/D coordinates. destinationIndex returns that0..12 value;
+non-register instructions and default coordinate copies return zero and never
+authorize a write. instructionRegisters still requires a successful genuine
+instruction result. The register evaluator still checks success and supported
+opcode scope before using the coordinate. Public A/B/D coordinates and operand
+semantics are unchanged, including saturation and source/destination aliases.
+
+Each existing decoder family assigns A or D at its established operand decode,
+removing repeated destination classification from computeRegisterWrite. The private
+writeSlot stays inaccessible to callers. Moving the private targetStartsBlock byte
+into existing instruction padding preserves the supported64-bit host's56-byte
+Instruction and64-byte result/cache stride; RegisterSlots grows from3 to4 bytes.
+No owner, allocation, dispatch representation or mutable program state is added.
+
+Literal witnesses cover all85 arithmetic opcodes with distinct saturated source
+and destination nibbles, unchanged A/B/D coordinates, extracted-copy tampering and
+source retirement. A source-owned compiler rejection protects writeSlot. Existing
+independent arithmetic/dependency references, register mutation, cached execution,
+control and host consumers must pass, followed by paired complete-state CI.
+The profile attributes roughly1.7% of planned Pinky instructions to repeated
+arithmetic destination selection, but this candidate makes no timing claim before
+qualification.
+
+### Arithmetic destination CI qualification
+
+CI40132488022 and its exact-source second attempt compare runtime fb95e370 with
+9b270875 on separate AMD EPYC9V45 runners. Each passes all54 real/synthetic cells,
+2808 complete-state candidate/baseline invocations,2808 identical-source control
+invocations, assertion controls and the pinned interpreted reference pack. Cold
+rows, all samples and opposite process orders remain in both reports.
+
+The repeat measures planned sieve100000 -7.01/-8.22% (initial -7.47/-4.04%), memo
+memory fill100000 -10.36/-10.58% (initial -7.56/-7.27%), and memo Pinky -4.73/-4.31%
+(initial -2.45/-2.11%). Repeat planned Pinky changes -2.01/-1.96%, with controls
++0.08/+0.12%, but the initial -1.44/-1.69% overlaps controls -2.19/-1.04%; this
+small planned gain is not generalized. Repeat dynamic Pinky -0.49/-0.29% remains
+neutral. Dynamic sieve improves -8.39/-4.64% in the repeat, with controls
++8.77/+0.77%; the large first-order control drift stays explicit.
+
+There are tradeoffs. Repeat memo aligned/crossing hosts change +2.91/+3.88% and
++2.28/+2.48%; their second-order controls drift +16.20/+12.21%, and initial host
+second-order regressions +16.07/+12.93% do not repeat. No host gain is claimed.
+Memo arithmetic10000 second order changes +3.28% initially and +4.19% in the
+repeat. Memo alternating-blocks changes +2.31/+3.39% initially and +0.03/+9.96%
+in the repeat; these regressions remain part of the review. Tiny repeat dynamic
+arithmetic1/16 second orders change +125/+115ns (controls -15/-5.5ns); their cold
+cost is retained, not hidden behind larger-workload percentages.
+
+The repeat's same-job reference pack measures planned Pinky196.447ms versus
+PolkaVM interpreted90.033ms (2.18x slower), and planned indirect10000013.290ms
+versus3.846ms (3.46x). Ratios are not combined across runners; beating the reference
+remains open. Seven selected native suites and419 production modules plus the peer
+entry point pass; declared1000 ARC cycles balance. Literal85-opcode coordinates,
+source/extracted-copy retirement,56/64-byte instruction/result sizes and the exact
+private writeSlot rejection pass. Generated C selects one decoded byte instead of
+reclassifying the destination. Publication changes only evidence and the profiler's
+expanded coverage above the timed runtime; the complete feature patch remains
+byte-identical. Raw first/repeat reports live under `build/pvm12/ci-40132488022/`
+and `build/pvm12/ci-40132488022-attempt2/`.
+
+
+### Arithmetic destination instruction-profile confirmation
+
+CI40135301299 passes all five scoped full-state/source profiles and scope/assertion
+controls, with all24 captured C files verified. Inputs, build commands, cases and
+scope match parent profile40133617980; recorded source identities differ only in
+program.nim/register_ops.nim and their frozen snapshots. Native instructions change
+-2.086% dynamic Pinky (5,676,199,554→5,557,802,478), -2.588% planned Pinky
+(5,323,559,981→5,185,810,826), -2.805% planned sieve100000
+(176,015,342→171,078,722), -1.038% planned indirect100000
+(430,868,974→426,395,039), and -1.049% planned memory fill100000
+(199,920,934→197,823,901). Instrumented clocks are discarded. These counter changes
+support the separate paired results without predicting timing or memo-policy gains.
+The full archive and source-binding proof remain under `build/pvm12/ci-40135301299/`.
