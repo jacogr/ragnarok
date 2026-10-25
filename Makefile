@@ -242,6 +242,11 @@ profile-pvm-guests: setup
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
 
+# Fixed current-profile engine-interface checks own their verdict; generated JAM campaigns still need a compatible engine.
+.PHONY: check-jam-fuzzer-interface
+check-jam-fuzzer-interface: setup check-inventory
+	$(PYTHON) tools/check_jam_fuzzer_interface.py
+
 # Upstream owns its separate pinned fuzz nightly; ordinary runtime builds never depend on it.
 .PHONY: fuzz-pvm-upstream upstream-fuzz-tools
 upstream-fuzz-tools: sources
@@ -441,6 +446,7 @@ help:
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
 	  'make fuzz-pvm-program  Run bounded sanitized program fuzzing (FUZZ_RUNS=16..1000000)' \
+	  'make check-jam-fuzzer-interface  Verify current JAM socket/STF interface; live engine validation pending' \
 	  'make fuzz-pvm-upstream  Run pinned upstream campaigns and JAM interpreter comparisons' \
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-storage-growth  Measure sustained storage growth and SDK IO' \
