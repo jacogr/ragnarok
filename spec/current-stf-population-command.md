@@ -38,3 +38,12 @@ consistent policy. The earlier255-transition default command corpus also passed.
 All34 scoped independent/runner tests, source inventory, stable pinned format-check
 and scoped documentation links passed. After the inherited formatter repair,
 all102 authenticated trace imports and their exact controls passed again.
+
+Checked Linux amd64 also passed all70 positive transitions and six rejected
+commands, with identical portable manifests, policy identity and complete output
+hashes. The same final image replayed the repaired102-transition trace driver,
+including306 trace refusals and14 reporting refusals. All8,038 frozen source/native
+inputs matched both the host and retained image `ragnarok:db5-population-operator`
+(`sha256:45d7c586eaddc2575df99cdb9bfdf8fde9edadaf5feffeb34a22a2cff6a0336e`).
+Bounds/assertions remain enabled under checked ARC/Clang non-LTO. This is
+covered-source local evidence, separate from exact-head remote CI.

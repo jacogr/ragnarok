@@ -39,3 +39,10 @@ execution and operator qualification without changing that distinction.
 Remaining scope includes arbitrary population/offender histories, all host-operation
 combinations under resizing, full JAM/STF and live client/network/finality conformance.
 No external-client execution or physical power-loss qualification is inferred.
+
+The final operator qualification also replays the repaired authenticated trace
+driver on checked Linux. Its complete outputs and all8,038 frozen source/native
+inputs match the macOS qualification; the retained final image identity and exact
+workload counts are recorded in the operator contract. All15 native stacked PRs
+were observed open/ready with exact published heads and green exact-head Smoke
+checks before this evidence-only documentation update.
