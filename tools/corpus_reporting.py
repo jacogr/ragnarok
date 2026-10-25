@@ -45,6 +45,36 @@ def current_stf_late_allowances_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_command_corpus(compiler, report, checks, libraries):
+    """Qualify portable configured operator bundles through actual public offline commands and exact refusals."""
+    import json
+    import current_stf_late_command_oracle as oracle
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    from reporting_operator import materialize,compare_jobs
+    from corpus_checks import compare_corpus
+    for identity in ('current_stf_late_command','current_stf_late_trace','current_stf_trace_command'):
+        for path,digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest()==digest
+    jobs,expected,evidence=oracle.expected_observations()
+    folder=checks.folder/'late operator bundles'
+    commands,manifest,paths=materialize(folder,jobs,expected)
+    # Materialization must preserve every independently frozen input before any compiler/native command can observe it.
+    for ordinal,job in enumerate(evidence['jobs']):
+        prefix='case-'+str(ordinal).zfill(4)+'/'
+        assert manifest['files'][prefix+'chain.json']==job['config_sha256']
+        assert manifest['files'][prefix+'genesis.bin']==job['genesis_sha256']
+        assert [manifest['files'][prefix+'step-'+str(i).zfill(4)+'.bin'] for i in range(len(job['steps_sha256']))]==job['steps_sha256']
+    built,binary=checks.build(compiler,ROOT/'tests/native/current_stf_trace_command_driver.nim',
+        'current-stf-trace-command-late',defines=oracle.NATIVE_DEFINES,crypto_library=libraries['crypto'],native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
+    result=dict(build=built,passed=False,**evidence,requests=len(jobs),
+        bundle_manifest_sha256=hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+        reference='independent complete configured Genesis/TraceStep inputs; actual public offline command; no external-client observations')
+    compare_jobs(result,checks.command,binary,checks.folder/'late-operator-policy.txt',commands,expected,paths)
+    announce('late-code history operator bundles and offline commands',result['passed'])
+    return result
+
+
+@CORPORA.case
 def current_stf_late_cycles_corpus(compiler, report, checks, libraries):
     """Qualify unresolved cycles and absent anchors across code arrival, ready-row expiry and changing populations."""
     import current_stf_late_cycles_oracle as oracle

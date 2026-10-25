@@ -5,7 +5,11 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../support/[trace_check_context, current_stf_population_reporting_context]
 import ../../src/app/[options, trace_check_command, current_download_policy]
-when defined(rotationIncarnations):
+when defined(lateHistories):
+  import ../support/current_stf_late_histories_context
+elif defined(lateRetention):
+  import ../support/current_stf_late_retention_context
+elif defined(rotationIncarnations):
   import ../support/current_stf_rotation_incarnations_context
 
 proc path(text: string): string =
@@ -28,7 +32,11 @@ proc main() {.raises.} =
   var resource = traceCheckTestPolicy()
   if paramCount() == 3:
     assert paramStr(3) == "population"
-    when defined(rotationIncarnations):
+    when defined(lateHistories):
+      resource.candidate = lateHistoryLimits() # Explicit longer histories retain all seventeen genuine package identities.
+    elif defined(lateRetention):
+      resource.candidate = lateRetentionLimits() # Explicit late-code serial drains retain all five actual execution facts.
+    elif defined(rotationIncarnations):
       resource.candidate = rotationIncarnationLimits() # Actual host programs and recreated namespaces use their qualified bounded policy.
     else:
       resource.candidate = populationReportingLimits() # Explicit three-core/nine-ceiling policy; default legacy command coverage stays unchanged.
