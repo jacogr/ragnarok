@@ -44,7 +44,7 @@ def credentials(parent, slot, report_slot):
     roster = previous if last_epoch else active
     seed = posterior[2 if last_epoch else 1]
     positions = reporting.permutation(seed, len(roster))
-    return roster, [(position//3+(report_slot % 12)//4) % 2 for position in positions]
+    return roster, [(position//3+(report_slot % 12)//4) % (len(roster)//3) for position in positions]
 
 
 def guarantee(parent, core, stamp, slot, report_slot):

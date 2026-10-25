@@ -51,7 +51,7 @@ def permutation(seed, count=6):
     return result
 
 
-def report(parent, core, stamp):
+def report(parent, core, stamp, *, cores=2, shards=6):
     """Author all report fields, including exact recent/lookup roots and one unresolved known prerequisite."""
     initial = original()
     blocks, _ = history(initial[chapter_key(3)])
@@ -59,11 +59,11 @@ def report(parent, core, stamp):
     root = tree(list(initial.items()))[0]
     code = metadata_parse(parent[chapter_service(255, 42)], 105)[0]
     pool = Reader(parent[chapter_key(1)])
-    pools = [pool.take(32*pool.count()) for _ in range(2)]
+    pools = [pool.take(32*pool.count()) for _ in range(cores)]
     authorizer = pools[core][:32]
     package = digest(f'guaranteed package {stamp} core {core}'.encode())
     header = (package+(100+stamp+core).to_bytes(4, 'little')+digest(package+b'segments')
-              +(6).to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
+              +shards.to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
               +anchor+(1).to_bytes(4, 'little')+root+bytes(32)
               +anchor+(1).to_bytes(4, 'little')+root)
     load = (13+core, 2+core, 3+core, 4+core, 5+core)
@@ -108,28 +108,28 @@ def body(guarantees, assurances, preimages=()):
     return raw, commitment
 
 
-def pending(data):
+def pending(data, cores=2, validators=6):
     """Parse exact C10 records using independent nested report/guarantee framing."""
     source, rows = Reader(data), []
-    for _ in range(2):
+    for _ in range(cores):
         tag = source.take(1)
         assert tag in (b'\0', b'\1')
         if tag == b'\0': rows.append(None)
         else:
-            size, value = single_decode(data[source.at:], 2, 6, len(data))
+            size, value = single_decode(data[source.at:], cores, validators, len(data))
             source.take(size)
             rows.append(dict(guarantee=value, registered=int.from_bytes(source.take(4), 'little')))
     source.done()
     return rows
 
 
-def ready(data):
+def ready(data, cores=2):
     """Retain exact full reports and dependency sets in their original twelve ring positions."""
     source, rows = Reader(data), []
     for _ in range(12):
         row = []
         for _ in range(source.count()):
-            parsed = report_decode(data[source.at:], 2)
+            parsed = report_decode(data[source.at:], cores)
             assert isinstance(parsed, str) and parsed.split()[-1].isdigit(), parsed
             wire = source.take(int(parsed.split()[-1]))
             row.append((wire, source.take(32*source.count())))
@@ -179,17 +179,18 @@ def advance(parent, slot, guarantees, assured):
 
 
 def apply_reporting(parent, result, slot, guarantees, assured, old, released, *,
-                    reporters=None, assurance_previous=False):
+                    reporters=None, assurance_previous=False, cores=2,
+                    current_validators=6, previous_validators=6, population_changed=False):
     """Apply reporting equations to an independently calculated base STF; epoch callers select identity/statistics attribution."""
     available = []
     for core, item in enumerate(old):
         if item is not None and released[core]: available.append(item['guarantee']['report'])
-        if item is not None and (released[core] or slot >= item['registered']+5): old[core] = None
+        if item is not None and (released[core] or population_changed or slot >= item['registered']+5): old[core] = None
     for item in guarantees:
         old[item['layout']['core']] = dict(guarantee={k: item[k] for k in ('report', 'slot', 'credentials')}, registered=slot)
     result[chapter_key(10)] = availability_wire(old)
     pools, rows = Reader(parent[chapter_key(1)]), []
-    for core in range(2):
+    for core in range(cores):
         row = [pools.take(32) for _ in range(pools.count())]
         for item in guarantees:
             if item['layout']['core'] == core: row.remove(item['layout']['authorizer'])
@@ -200,23 +201,29 @@ def apply_reporting(parent, result, slot, guarantees, assured, old, released, *,
     pairs = sorted(item['layout']['header'][:32]+item['layout']['header'][70:102] for item in guarantees)
     blocks[-1] = (blocks[-1][0], b''.join(pairs))
     result[chapter_key(3)] = history_wire((blocks, peaks))
-    rows = ready(parent[chapter_key(14)])
-    rows[slot % 12] = [(wire, DEPENDENCY) for wire in available]
+    rows = ready(parent[chapter_key(14)], cores)
+    prepared = []
+    for wire in available:
+        # Appendix C puts the prerequisite sequence immediately after the fixed272-byte report header.
+        source = Reader(wire[272:])
+        prepared.append((wire, source.take(32*source.count())))
+    rows[slot % 12] = prepared
     result[chapter_key(14)] = ready_wire('R', rows)
     assert parent[chapter_key(15)] == result[chapter_key(15)] == bytes(12)
-    (current, previous, cores, _), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, _, _), _ = statistics_parse(result[chapter_key(13)],
+        (cores, current_validators, previous_validators, *DEFAULT[3:]))
     selected = {index for item in guarantees for index, _ in item['credentials']} if reporters is None else reporters
     for index in selected: current[index] = (*current[index][:4], current[index][4]+1, current[index][5])
     for item in assured:
         target = previous if assurance_previous else current
         row = list(target[item['index']]); row[5] += 1; target[item['index']] = tuple(row)
-    core_rows = [[0]*8 for _ in range(2)]
+    core_rows = [[0]*8 for _ in range(cores)]
     loads = []
     for item in guarantees:
         value = item['layout']; gas, imports, count, size, exports = value['digests'][0][-1]
         core_rows[value['core']][2:] = [imports, count, size, exports, int.from_bytes(value['header'][32:36], 'little'), gas]
         loads.append((gas, imports, count, size, exports))
-    for core in range(2): core_rows[core][1] = sum(bool(item['bits'] & (1 << core)) for item in assured)
+    for core in range(cores): core_rows[core][1] = sum(bool(item['bits'] & (1 << core)) for item in assured)
     for wire in available:
         # All available wires were authored here: core follows the fixed header and one prerequisite.
         core = wire[272+1+32]

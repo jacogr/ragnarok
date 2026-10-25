@@ -29,6 +29,13 @@ ceiling for each child's existing item policies and an independent complete-valu
 It is not an additional serialization discriminator. Captures made with different resource
 ceilings can compose; captures with different profiles cannot.
 
+C(10) guarantee credential indices are structurally bounded by the larger of the
+current and previous validator populations. A previous-rotation guarantee can be
+retained just after shrinkage with indices outside the smaller current roster.
+This does not widen either roster or select signature keys: contextual credential
+admission uses the exact current/previous rotation, and report erasure shards
+still use the current population. An index at or beyond both counts rejects.
+
 Existing typed component encoders feed capture through their complete entry value. Captured
 chapters are validated immutable serialization snapshots; the compositor retains their exact
 bytes rather than extracting/re-encoding every logical field. There is no alternate-width decoder
