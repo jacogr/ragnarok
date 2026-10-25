@@ -157,3 +157,10 @@ maps and retained seeds are queried. A reconnect seeded identically cannot query
 the prior session's executed guest child. Expected frames and explicit host profile
 are frozen before process startup. The owning E2E workload and Fuzz / JAM group
 both require these assertions; no engine campaign is claimed.
+
+The final CI gate requires matched native transcript hashes and complete real-entry
+work counters. The socket plan calculates expected import/session/sibling/query
+counts before launch; observed counters increment only after the corresponding
+successful exchanges. CI rejects missing, partial or inconsistent evidence even
+when a caller supplies a success flag. This preserves the distinction between
+fixed independent interface validation and pending generated engine campaigns.

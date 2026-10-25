@@ -54,13 +54,14 @@ def prepare_sessions(parameters):
         assert pending is None and all(job['steps'] for job in jobs)
     return jobs, dict(references=evidence, sessions=len(jobs),
                      signed_imports=sum(len(job['steps']) for job in jobs),
-                     guest_siblings=sum(step['kind'] == 'V' for job in jobs for step in job['steps']))
+                     guest_siblings=sum(step['kind'] == 'V' for job in jobs for step in job['steps']),
+                     expected_state_queries=sum(2+2*len(job['steps'])+sum(step['kind'] == 'V' for step in job['steps']) for job in jobs))
 
 
 def exercise_sessions(endpoint, jobs, evidence):
     """Use real negotiated sessions; compare exact whole-map frames and atomic rejection before every genuine guest import."""
     from nimony_fuzz import connect, exchange
-    queries = rejections = siblings = 0
+    queries = rejections = siblings = completed_imports = completed_sessions = 0
     for job in jobs:
         with connect(endpoint, features=3) as peer:
             assert exchange(peer, job['initialize']) == b'\x02'+job['state'][:32]
@@ -76,6 +77,7 @@ def exercise_sessions(endpoint, jobs, evidence):
                 rejections += 1
                 queries += 1
                 assert exchange(peer, b'\x03'+step['block']) == b'\x02'+step['state'][:32]
+                completed_imports += 1
                 selected_header, selected_state = step['block'][:297], step['state']
                 assert exchange(peer, b'\x04'+digest(selected_header)) == b'\x05'+selected_state[32:]
                 queries += 1
@@ -88,6 +90,7 @@ def exercise_sessions(endpoint, jobs, evidence):
                     sibling = None
             assert exchange(peer, b'\x04'+digest(job['header'])) == b'\x05'+job['state'][32:]
             queries += 1
+            completed_sessions += 1
     with connect(endpoint, features=3) as peer:
         # A reconnect contains only its explicit seed; previous nonempty guest execution cannot leak into it.
         assert exchange(peer, jobs[-1]['initialize']) == b'\x02'+jobs[-1]['state'][:32]
@@ -95,6 +98,9 @@ def exercise_sessions(endpoint, jobs, evidence):
         peer.sendall(struct.pack('<I', len(payload))+payload)
         assert peer.recv(1) == b''
     assert siblings == evidence['guest_siblings']
+    assert completed_imports == evidence['signed_imports'] and completed_sessions == evidence['sessions']
+    assert queries == evidence['expected_state_queries']
     return dict(passed=True, **evidence, complete_state_queries=queries,
+                completed_imports=completed_imports, completed_sessions=completed_sessions, retained_siblings=siblings,
                 consensus_rejections=rejections, isolated_reconnects=1,
                 scope='fixed independently calculated whole-map guest socket cases; no generated campaign')
