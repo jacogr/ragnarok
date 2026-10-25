@@ -37,7 +37,7 @@ def active_after(parent, slot):
     return epoch.consensus(parent[chapter_key(4)])[0] if crossed else epoch.roster(parent[chapter_key(8)])
 
 
-def guarantee(parent, core, stamp, slot, report_slot):
+def guarantee(parent, core, stamp, slot, report_slot, *, offenders=()):
     """Use current-population erasure shards even when credentials select the smaller/larger previous roster."""
     value = reporting.report(parent, core, stamp, cores=3, shards=len(active_after(parent, slot)))
     blocks, _ = history(parent[chapter_key(3)])
@@ -49,8 +49,9 @@ def guarantee(parent, core, stamp, slot, report_slot):
     value['prerequisites'] = pairs[:32]
     wire = report_wire(value)
     roster, assigned = epoch_reporting.credentials(parent, slot, report_slot)
-    indices = [i for i, selected in enumerate(assigned) if selected == core]
-    assert len(indices) == 3
+    indices = [i for i, selected in enumerate(assigned) if selected == core
+               and roster[i][:32] in epoch.PUBLIC and roster[i][32:64] not in offenders]
+    assert 2 <= len(indices) <= 3
     return dict(report=wire, slot=report_slot, layout=value, credentials=[
         (i, signed(epoch.PUBLIC[roster[i][:32]], b'jam_guarantee', digest(wire))[1]) for i in indices])
 
