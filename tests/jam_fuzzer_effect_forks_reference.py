@@ -147,9 +147,10 @@ def profiles(families):
     result = []
     for family in families:
         module = importlib.import_module('current_stf_'+family+'_oracle')
-        _, source, _ = module.expected_observations()
-        count = sum(line.startswith('P ') for line in source)
         frozen = json.loads(module.FIXTURE.read_text())
+        roots = frozen['successor_roots']
+        assert roots and all(isinstance(chain, list) and chain for chain in roots)
+        count = len(roots) # Frozen source chains declare profile cardinality; group() separately checks every mathematical successor.
         sizes = frozen.get('max_service_code_sizes', [frozen.get('max_service_code_size', 512)]*count)
         assert len(sizes) == count
         deposits = frozen.get('deposits', dict(per_item=0, per_byte=0, per_account=0))
