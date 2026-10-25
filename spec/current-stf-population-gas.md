@@ -32,3 +32,9 @@ scoped independent tests passed, preserving earlier gas/budget/wave answers.
 Source inventory and pinned formatting passed. The low declared budgets select
 a five-report initial prefix with four operands for99; the driver explicitly
 captures that independently counted maximum without relaxing runtime budgets.
+
+Checked Linux amd64 passed all144 transitions across twelve bounded processes
+with identical complete aggregate outputs. Every frozen runtime input matched
+the host and retained image `ragnarok:db5-population-gas`
+(`sha256:af8b333dd7e3d4fcea72d92d1c74145c668724678c2bd15a26922afcc983241a`).
+This is covered-source local evidence, separate from exact-head CI.
