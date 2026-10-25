@@ -799,6 +799,17 @@ def jam_fuzzer_checkpoint_guests_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
+    """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
+    import jam_fuzzer_transfer_forks_oracle as reference
+    from jam_fuzzer_effect_forks_reference import profiles
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('current_stf_transfers', 'current_stf_supervised_transfers', 'current_stf_forwarded_transfers',
+         'current_stf_transfer_pools', 'current_stf_transfer_admission', 'current_stf_transfer_memos',
+         'jam_fuzzer_transfer_forks'), forks=True, profiles=profiles(reference.FAMILIES))
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
