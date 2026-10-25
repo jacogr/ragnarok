@@ -474,3 +474,160 @@ prepared mode. Thus this run does not independently isolate ordinary-path code-l
 effects. The results qualify this optional prepared change on these inputs and this
 runner, not complete JAM parity or performance on every CPU/program. No further
 optimization or default-engine switch is included in this increment.
+
+## Segment position bookkeeping trial (rejected)
+
+This bounded fourth stack layer starts from accepted operand parent
+`7115dfd067c882577230bc3ba3bc6806de8d3a34`. In that parent's fourth-call profiles,
+execution-owner/loop/cache self instruction shares are 31.92% Pinky, 55.00% sieve,
+21.92% minimal and 41.41% memory fill. Checked loads/stores account for 40.58%,
+19.96%, 56.15% and 34.58%, respectively. Generated-C lines writing ordinary next PCs
+account for 2.44%, 2.87%, 1.75% and 1.99%; these attribution counts are not CPU shares.
+
+The existing operation index becomes authoritative within a prepared segment. Each
+immutable segment stops at its first block terminator, so its iteration endpoint can
+be bounded once by the available operation count and remaining attempt budget. The
+inner loop no longer retests a separate ended flag or remaining counter, and ordinary
+handlers do not maintain a parallel byte PC. Segment/budget boundaries materialize
+the physical successor; control transfers retain their selected target. Fault/host
+publication reconstructs the causing byte PC from the selected immutable operation;
+terminal exits retain recursive normalization. No external callback can observe stale
+CPU coordinates. Partial guest exits debit only their attempted prefix before host
+response processing; local failures still carry no published machine state.
+
+Acceptance requires complete opcode/reference/host/fault/ownership parity, independent
+PC witnesses across segment and callback boundaries, exact attempt and host budgets,
+all maintained guests versus the parent, and the same paired Linux cold/reused
+comparison. Pricing, memory checks, sparse cache policy, record layout, public APIs
+and handler ABI remain unchanged. No speed gain is claimed before qualification.
+
+Local validation passes the complete 139-opcode/host/cache/ARC suite, including 30
+host-budget/attempt combinations with independently known callback PCs/registers,
+fault reconstruction and paid repair after a segment split, and exact next-block
+out-of-gas coordinates. Mixed reference and host execution suites pass. All seven
+maintained guest/size cases pass in both process orders against the accepted parent;
+fresh compiler caches and identical candidate rebuild controls pass. Formatting,
+63 affected Python safeguards, and semantic checks for all 441 production modules
+plus the peer entry point pass. Only explanatory comments differ from the tested
+native snapshot; Linux exact-head instruction counts and CPU timings remain pending.
+
+## Rejected segment-position result (2026-10-25)
+
+Reject the combined bounded-prefix/deferred-PC runtime experiment. Sieve improves by
+4.41–5.80%, but minimal regresses by 2.36–4.00% in both process orders. Minimal 1000
+also regresses by 1.13–1.81%. Pinky improves only 1.04–1.29%, with overlapping sample
+ranges; memory fill improves 1.50–2.57%. Those small improvements do not justify the
+minimal regression. Restore the runtime byte-for-byte to accepted operand parent
+`7115dfd067c882577230bc3ba3bc6806de8d3a34`, retaining the independent segment,
+PC, host-attempt, fault/retry and next-block gas boundary witnesses. No narrower
+PC-only or alternate loop variant is accepted or started in this increment.
+
+[Linux run 40208591265](https://github.com/jacogr/ragnarok/actions/runs/40208591265)
+measured rejected trial `e2d7afec7c2099059ecc737be518e0236907da2c` against that
+accepted parent. Runner: AMD EPYC 7763, Linux x86-64, pinned Nimony nightly 4724f66,
+checked ARC/Clang ThinLTO. Timings below belong to the rejected head, not the restored
+runtime. Use the same-runner baseline column for the retained prepared implementation.
+
+Correctness/measurement qualification passed: native complete opcode/host/budget
+suite, all 70 process runs (13 fresh-state calls each), 24 profiles and four collection
+controls. Every execution checked terminal CPU, all registers, gas, all mapped page
+bytes and permissions, and original source immutability. Both assertion probes had
+their expected failures. Fresh compiler-cache and byte-identical independent candidate
+rebuild controls passed. Tracked sources match exact revision hashes; downloaded
+generated-source/profile hashes and single-execution scopes were independently
+verified. All 70 raw process outputs reproduce report sample and cache metadata.
+
+Reused CPU milliseconds are medians of ten calls after three warmups. Order 1 is
+dynamic, planned, trial prepared, baseline prepared, PolkaVM; order 2 reverses it.
+
+| Guest / size | Order | Dynamic | Planned | Retained operands | Rejected position trial | PolkaVM interpreted | Trial CPU change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 497.913 | 413.610 | 355.950 | 351.372 | 188.747 | -1.29% |
+| pinky / 1 | 2 | 471.730 | 410.654 | 345.304 | 341.708 | 189.944 | -1.04% |
+| sieve / 100000 | 1 | 17.383 | 10.701 | 7.303 | 6.880 | 5.549 | -5.80% |
+| sieve / 100000 | 2 | 17.458 | 10.622 | 7.248 | 6.929 | 5.579 | -4.41% |
+| minimal / 100000 | 1 | 28.195 | 26.028 | 17.988 | 18.708 | 7.461 | +4.00% |
+| minimal / 100000 | 2 | 28.168 | 27.850 | 17.965 | 18.389 | 7.494 | +2.36% |
+| memset / 100000 | 1 | 13.498 | 13.447 | 8.307 | 8.094 | 4.190 | -2.57% |
+| memset / 100000 | 2 | 13.526 | 13.399 | 8.444 | 8.318 | 4.186 | -1.50% |
+
+Cold CPU milliseconds below are single sample-0 observations including lazy preparation,
+not repeated cold medians. Construction, state restoration and reference comparisons
+are outside execution timing.
+
+| Guest / size | Order | Cold dynamic | Cold planned | Cold retained operands | Cold rejected trial | Cold PolkaVM |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 482.292 | 405.993 | 348.390 | 353.999 | 193.800 |
+| pinky / 1 | 2 | 465.056 | 408.814 | 348.341 | 334.395 | 189.455 |
+| sieve / 100000 | 1 | 17.925 | 11.407 | 13.234 | 12.778 | 6.212 |
+| sieve / 100000 | 2 | 17.969 | 11.395 | 13.099 | 12.837 | 6.203 |
+| minimal / 100000 | 1 | 29.432 | 27.310 | 18.155 | 18.240 | 7.566 |
+| minimal / 100000 | 2 | 29.532 | 28.842 | 18.126 | 18.624 | 7.658 |
+| memset / 100000 | 1 | 13.827 | 13.542 | 8.474 | 8.265 | 4.344 |
+| memset / 100000 | 2 | 13.562 | 13.350 | 8.464 | 8.376 | 4.327 |
+
+Constructor CPU microseconds are order 1/order 2. Prepared construction creates the
+same empty 131,072-byte index, with no operations; lazy work belongs to cold execution.
+No constructor improvement is established. PolkaVM module/instance construction is
+not measured by this harness.
+
+| Guest | Retained operand constructor | Rejected trial constructor | Existing complete gas plan |
+|---|---:|---:|---:|
+| pinky | 9.638/9.888 | 4.758/9.217 | 2965.154/3007.552 |
+| sieve | 9.338/4.378 | 10.309/4.348 | 14141.005/14282.349 |
+| minimal | 57.788/59.382 | 57.958/60.864 | 34.124/34.795 |
+| memset | 7.114/6.653 | 6.682/6.663 | 255.698/255.709 |
+
+Fourth-call instruction counts isolate one execution after three warmups. Ir means
+executed native instructions, not guest opcodes. Conditional/indirect branch misses
+are simulated, not hardware counters. Data/instruction cache simulation is disabled.
+
+| Guest | Reused native instructions (retained → trial) | Cold Ir change | Reused Ir change | Conditional misses | Indirect misses | Combined miss change |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky | 3288.025M → 3081.311M | -6.23% | -6.29% | 23.154M → 27.098M | 28.450M → 28.450M | +7.64% |
+| sieve | 85.081M → 79.520M | -3.36% | -6.54% | 0.301M → 0.277M | 1.131M → 1.131M | -1.64% |
+| minimal | 291.510M → 277.810M | -4.69% | -4.70% | 2.100M → 2.400M | 1.900M → 1.900M | +7.50% |
+| memset | 120.766M → 115.264M | -4.48% | -4.56% | 0.101M → 0.301M | 1.100M → 1.100M | +16.62% |
+
+Lower instruction counts did not deliver a broad CPU win. Conditional misses rise
+for minimal, memory fill and Pinky while indirect misses stay essentially unchanged.
+This is a diagnostic clue, not proof of the hardware cause. The loop transformation
+and deferred PC writes were measured together; neither sub-change is independently
+qualified by this result.
+
+All prepared-cache observations match exactly between retained and rejected endpoints,
+including resident/peak bytes, hits, preparation totals and evictions, in both orders:
+
+| Guest | Resident blocks / operations | Resident bytes | Peak bytes | Evictions after 13 calls |
+|---|---:|---:|---:|---:|
+| pinky | 792 / 5,911 | 493,768 | 510,608 | 751 |
+| sieve | 991 / 13,226 | 911,368 | 928,320 | 615 |
+| minimal | 9 / 59 | 134,736 | 149,072 | 0 |
+| memset | 63 / 365 | 154,032 | 168,368 | 0 |
+
+Pinky still has 58 evictions per repeated call, sieve 48; minimal and memory fill have
+none. The trial provided no cache occupancy/churn improvement.
+
+Same-runner retained operands take about 1.82–1.89× PolkaVM interpreted CPU for Pinky,
+1.30–1.32× sieve, 2.40–2.41× minimal and 1.98–2.02× memory fill. Existing dynamic
+and planned paths share the trial image; only the prepared path has a separately
+timed matched baseline. This run does not isolate ordinary-path code-layout effects
+or establish performance on other CPUs/programs. The accepted earlier operand/ABI
+improvements remain intact; no default-engine switch or further optimization follows
+from this rejected experiment.
+
+Restoration verification passes the full prepared opcode/host/PC/attempt/fault/cache
+suite with all retained new boundary witnesses and 1000 balanced ARC lifetimes.
+All seven guests pass both zero-clock process orders against the parent. Their matched
+runtime/driver source manifests are identical, and independent fresh builds produce
+byte-identical baseline/candidate images. Final formatting checks pass. No new timing
+claim is made for the restored head; its runtime is the accepted operand baseline.
+
+Fewer checks/writes and lower Ir do not guarantee lower CPU time. This trial also adds
+per-segment endpoint/accounting work and changes the generated loop's branch/layout
+behavior. More simulated conditional misses are a clue; identifying the actual cause
+would require hardware counters and assembly analysis. [Valgrind's documentation](https://valgrind.org/docs/manual/cg-manual.html)
+distinguishes reproducible instruction counts from variable execution time and warns
+that its basic branch/cache simulations do not model modern hardware closely. The
+PC-deferral and bounded-loop changes were tested together; this result does not prove
+that a narrower PC-only change would regress or improve runtime.
