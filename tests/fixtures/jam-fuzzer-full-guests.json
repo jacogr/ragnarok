@@ -1,0 +1,52 @@
+{
+  "chains": 3,
+  "expected_sha256": "371a80e062fa88e9d3499022843327f7bfce19889e65a47fa538c692bf1ca9c7",
+  "full_profile_sha256": "99888aadc3036a0dabc1aa6245a92abaa5a341c7bfd7cdd79f06cda92308e8f4",
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "guest_gas": {
+    "checkpoint-panic": 2754,
+    "create": 2650,
+    "panic-rollback": 2650
+  },
+  "guest_reference_sha256": "f5bbae5747de12c1078e925cd95185f1eaf458270416329bf262c67f1bb631c3",
+  "original_checkpoint_sha256": [
+    [
+      "b5073d9f09743db8c1194fe7951290e22782f9b8db4df157bf38d46ce3f98092",
+      "55024ebfc909a991f60dc0f7c526cb5c37c959f7bc8527e67435f1e0ff2cb326",
+      "6ec94d92c8ae10fb66330222db8ac96084cb861b9b903480788b11926bff4888"
+    ],
+    [
+      "aa30ad11edcfaec386f25aa925300b0c0fa670128a70f031f756643cd20c6895",
+      "1f54ef7cdc45befff252088eeec59c3af11b3883d2d0ebf938cab61523b57f58",
+      "34617f0e743ac3fc7dd8dfa1ac1ac9eb1cd1f30db9be8095f2709dfbfd825d5b"
+    ],
+    [
+      "4efdc07a807acfc94b9be880b526f24e1efc591e4415ea5d633107328e552f0b",
+      "b9564fc01e3b3bd1ac48068a61365614e39d01ddb5cd172c9ff1dc752f052f57",
+      "54eb694241cfb2cbf71e12ac84f2b31acac4164a186444b4fe9e9bb4aa3ff536"
+    ]
+  ],
+  "ring_input_sha256": "dcad125d7fc47906d96a6fc85143005b71e1ddf312dc8fdf8658acc6500575bf",
+  "sibling_imports": 3,
+  "successor_roots": [
+    [
+      "67c772f75c4376f73dbe3491505518fa2ec3556ee2ce217016863d954b0eef77",
+      "324ed1bbbe6843dbd067f8e9101cb025b04bcf92dfc4cf514efac2fd206500f3",
+      "0ff7e2d97453ac0fee1d306df054678d913a0225d55d0941541937f8a9b9d7f0",
+      "4b7d9e8711989b0053958c05d1f839a8910669e16f56de9c0bb4d816c3d74901"
+    ],
+    [
+      "5e165477da6881c63c8c6dc2f34dabc371d2c6d79bad2e730deb452c9fdb0ed5",
+      "4fa2b3101764a143fb35315e3c7028d89495fc13fee040a194b162a5dca26431",
+      "ebfca30ce47f9a048bfbf67691d16254911057ab2c683d8adfb1b2936e203d15",
+      "e119d8c40f2cd070fedfcdfed709a9829912418101a981a79f433769ee8334d2"
+    ],
+    [
+      "1cee6519af996157c4f58f9fffc2a5754ddd8b02b570860022c121b4e04b6a43",
+      "5c8ca4eb01d8e24a015f95c7863ff699f6a4e089ac02e83dc9a304b1dffccee3",
+      "bce4401d596175fcf31dbeb87ed9d531896dc7ff7cb2d5886380bf6b9f1edf8f",
+      "8962a6ba78219d71eb167a9e09e04f75fee4fd6c4219395653bfb3278ce986ed"
+    ]
+  ],
+  "transitions": 12
+}
