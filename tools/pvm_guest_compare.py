@@ -120,6 +120,29 @@ def activate_endpoint(folder, variant, baseline, driver, endpoints):
     return canonical
 
 
+def compile_image(folder, variant, compiler, source, name, **options):
+    """Build fresh through identical cache/object/output paths, then retain the immutable role image."""
+    if variant not in ('baseline', 'candidate') or name not in ('native', 'synthetic-legacy', 'synthetic-memo'):
+        raise ValueError('unknown canonical build role/profile')
+    staging = folder/'compilation'
+    if staging.is_symlink():
+        raise ValueError('canonical build directory is a symlink')
+    if staging.exists():
+        # Retire this comparison's whole private cache: roles cannot reuse stale compiler state.
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    row, binary = build(NativeChecks(staging, reuse_builds=True), compiler, source, name, **options)
+    retained = folder/'builds'/variant/name
+    retained.parent.mkdir(parents=True, exist_ok=True)
+    if retained.is_symlink():
+        raise ValueError('retained comparison image is a symlink')
+    shutil.copyfile(binary, retained)
+    if digest(binary) != digest(retained):
+        raise ValueError('canonical build image changed during retention')
+    row['retained_binary'] = str(retained)
+    return row, retained
+
+
 def identical_image_controls(endpoints, hashes, synthetic):
     """Equal source endpoints must produce equal native images for every measured build profile."""
     if type(synthetic) is not bool:
@@ -197,12 +220,11 @@ def prepare_synthetic(checks, compiler, folder, report, binaries, identities, ba
         endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
         build_folder = folder/'builds'/variant
         build_folder.mkdir(parents=True, exist_ok=True)
-        variant_checks = NativeChecks(build_folder, reuse_builds=True)
         for profile, defines in (('legacy', ()), ('memo', ('pvmBenchmarkMemo',))):
             name = 'synthetic-'+variant+'-'+profile
             # Both roles use the same source path and output basename, while their writable compiler caches remain independent.
-            row, binary = build(variant_checks, compiler, endpoint/DRIVER[2],
-                                'synthetic-'+profile, defines=defines)
+            row, binary = compile_image(folder, variant, compiler, endpoint/DRIVER[2],
+                                        'synthetic-'+profile, defines=defines)
             unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
             row.update(variant=variant, profile=profile)
             report['builds'].append(row)
@@ -384,10 +406,9 @@ def run(base_ref, scope='all', folder=None, synthetic=False):
             endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
             build_folder = folder/'builds'/variant
             build_folder.mkdir(parents=True, exist_ok=True)
-            variant_checks = NativeChecks(build_folder, reuse_builds=True)
             # Output basenames also affect native image identity; roles differ only in their independent cache/output directories.
-            row, binary = build(variant_checks, compiler, endpoint/DRIVER[0], 'native',
-                              cflags=('-I'+str(endpoint/'tests/performance'),))
+            row, binary = compile_image(folder, variant, compiler, endpoint/DRIVER[0], 'native',
+                                        cflags=('-I'+str(endpoint/'tests/performance'),))
             unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
             row.update(variant=variant)
             report['builds'].append(row)

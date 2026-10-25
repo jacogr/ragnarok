@@ -244,6 +244,11 @@ diagnose-pvm-interpreters: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_diagnosis.py
 
+# Verify Linux ELF identity before deeper attribution; no benchmark timings are collected.
+.PHONY: diagnose-pvm-build-identity
+diagnose-pvm-build-identity: setup
+	$(PYTHON) tools/pvm_build_identity.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py

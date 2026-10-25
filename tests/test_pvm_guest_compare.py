@@ -394,13 +394,15 @@ class GuestComparisonTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'driver')
             calls = []
+            builds = []
 
             def fake_build(checks, compiler, source, name, **options):
-                """Independent role directories deliberately produce different images from equal source manifests."""
+                """Deliberately unstable compiler output must still fail despite canonical paths."""
                 self.assertEqual(name, 'native')
                 self.assertEqual(source, folder/'snapshots/compiled'/compare.DRIVER[0])
                 binary = checks.folder/name
-                binary.write_bytes(checks.folder.name.encode())
+                builds.append(checks.folder)
+                binary.write_bytes(str(len(builds)).encode())
                 return {'exit_code': 0}, binary
 
             def command(checks, arguments, name, **options):
@@ -429,12 +431,39 @@ class GuestComparisonTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'identical-source native images differ'):
                     compare.run('HEAD', folder=folder)
             self.assertEqual(len(calls), 2)
+            self.assertEqual(builds, [folder/'compilation']*2)
             self.assertEqual(unchanged.call_count, 2)
             failed = json.loads((folder/'partial.json').read_text())
             self.assertEqual(failed['status'], 'failed')
             self.assertFalse(failed['identical_image_controls'][0]['passed'])
             self.assertFalse((folder/'results.json').exists())
             self.assertFalse((folder/'summary.md').exists())
+
+    def test_fresh_canonical_objects_preserve_retained_roles(self):
+        """Role builds share exact compiler paths but neither stale cache bytes nor mutable output files."""
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            calls = []
+
+            def fake_build(checks, compiler, source, name, **options):
+                """A private marker detects accidental compiler-state reuse between roles."""
+                self.assertFalse((checks.folder/'stale-cache').exists())
+                (checks.folder/'stale-cache').write_text('retire before next build')
+                calls.append(checks.folder)
+                image = checks.folder/name
+                image.write_bytes(str(len(calls)).encode())
+                return {'exit_code': 0}, image
+
+            with patch.object(compare, 'build', side_effect=fake_build):
+                _, first = compare.compile_image(folder, 'baseline', 'compiler', Path('source'), 'native')
+                _, second = compare.compile_image(folder, 'candidate', 'compiler', Path('source'), 'native')
+            self.assertEqual(calls, [folder/'compilation']*2)
+            self.assertEqual(first.read_bytes(), b'1')
+            self.assertEqual(second.read_bytes(), b'2')
+            (folder/'compilation').rename(folder/'other')
+            (folder/'compilation').symlink_to(folder/'other', target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, 'symlink'):
+                compare.compile_image(folder, 'baseline', 'compiler', Path('source'), 'native')
 
     def test_failed_rerun_retires_success(self):
         """Failure before setup cannot expose the previous completed aggregate or summary."""
