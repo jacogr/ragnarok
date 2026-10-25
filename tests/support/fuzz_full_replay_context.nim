@@ -34,7 +34,12 @@ proc fuzzFullReplayConfig*(): FuzzBackendConfig =
     maxHashes: ElementLimit(27280), maxBytes: ByteLimit(1000000))
   result.candidate.reporting.reports.policy.pools = authorization
   result.candidate.reporting.reports.policy.reportGas = ReportGasLimit(10000000)
-  result.candidate.reporting.reports.anchors.history.cores = frame.cores
+  var historyLimits = result.candidate.completion.composition.recent.history
+  historyLimits.cores = frame.cores
+  historyLimits.perBlock = ElementLimit(341) # One reported package per full-profile core can enter a block.
+  historyLimits.totalPackages = ElementLimit(2728) # Eight retained blocks can each carry all341 package/root pairs.
+  historyLimits.maxBytes = ByteLimit(262144) # The complete eight-block dictionary and bounded MMR belt fit below256KiB.
+  result.candidate.reporting.reports.anchors.history = historyLimits
   result.candidate.reporting.reports.ancestors.header.cores = frame.cores
   result.candidate.reporting.reports.ancestors.header.authorValidators = frame.validators
   result.candidate.reporting.reports.ancestors.header.epochSlots = frame.epochSlots
@@ -82,7 +87,7 @@ proc fuzzFullReplayConfig*(): FuzzBackendConfig =
   result.candidate.completion.execution.initial.globals = globals
   result.candidate.completion.execution.execution.round.globals = globals
   result.candidate.completion.composition.ready.queues = queues
-  result.candidate.completion.composition.recent.history.cores = frame.cores
+  result.candidate.completion.composition.recent.history = historyLimits
   result.candidate.completion.composition.finalization.history.queues = queues
   result.candidate.completion.composition.validators.chapterBytes = ByteLimit(400000)
   result.candidate.completion.composition.validators.validators = ElementLimit(1023)
@@ -93,8 +98,14 @@ proc fuzzFullReplayConfig*(): FuzzBackendConfig =
   result.candidate.completion.composition.validators.projection.comparisons = ElementLimit(1046529)
   result.candidate.completion.composition.activity.componentBytes = ByteLimit(200000)
   result.candidate.completion.composition.activity.activityBytes = ByteLimit(100000)
+  result.candidate.completion.composition.activity.incoming = ElementLimit(
+      341) # All full-core guarantees can contribute refinement activity.
+  result.candidate.completion.composition.activity.digests = ElementLimit(
+      5456) # GP allows at most16 work items in each of341 reports.
   result.candidate.completion.composition.activity.available = ElementLimit(341)
   result.candidate.completion.composition.activity.assurances = ElementLimit(1023)
+  result.candidate.completion.composition.authorization.guarantees = ElementLimit(
+      341) # Every full-core guarantee can consume its authorizer.
   result.candidate.completion.composition.authorization.inputHashes = authorization.maxHashes
   result.candidate.completion.composition.authorization.inputBytes = authorization.maxBytes
   result.candidate.completion.composition.authorization.outputHashes = ElementLimit(2728)

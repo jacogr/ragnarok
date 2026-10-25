@@ -11,6 +11,7 @@ import ../../src/chain/[genesis, parameters, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
 import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
     block_transition, block_admission, safrole_transition, accumulation_current_completion,
+    accumulation_current_recent, accumulation_current_activity, accumulation_current_authorization,
     accumulation_current_driver, accumulation_current_round]
 
 type
@@ -274,7 +275,16 @@ proc main() {.raises.} =
         elif failed.error == CurrentCandidateError.CompletionFailure:
           let completion = failed.completionFailure
           diagnostic.add(":" & $completion.error)
-          if completion.error == CurrentAccumulationCompletionError.SequenceFailure:
+          if completion.error == CurrentAccumulationCompletionError.RecentFailure:
+            diagnostic.add(":" & $completion.recentFailure.error) # Preserve the actual history-policy/encoding stage cause.
+          elif completion.error == CurrentAccumulationCompletionError.ActivityFailure:
+            let activity = completion.activityFailure
+            diagnostic.add(":" & $activity.error)
+            if activity.error == CurrentAccumulationActivityError.CoreFailure:
+              diagnostic.add(":" & $activity.coreError) # Guard nested projection causes instead of guessing a resource failure.
+          elif completion.error == CurrentAccumulationCompletionError.AuthorizationFailure:
+            diagnostic.add(":" & $completion.authorizationFailure.error) # Typed publication-policy failures keep their actual cause.
+          elif completion.error == CurrentAccumulationCompletionError.SequenceFailure:
             let sequence = completion.sequenceFailure
             diagnostic.add(":" & $sequence.error)
             if sequence.error == CurrentSequenceDriverError.InitialFailure:

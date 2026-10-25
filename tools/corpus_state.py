@@ -909,6 +909,16 @@ def jam_fuzzer_full_offenders_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_pending_disputes_corpus(compiler, report, checks, libraries):
+    """Compare real low/high-core report cancellation, retained assignments, report-hash identity and late-fault rollback."""
+    import jam_fuzzer_full_pending_disputes_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_pending_disputes', 'jam_fuzzer_full_guests', 'jam_fuzzer_full_verdicts'),
+        profiles=[full.parameters()]*2)
+
+
+@CORPORA.case
 def jam_fuzzer_full_population_corpus(compiler, report, checks, libraries):
     """Compare full offender nulling, delayed1020-member activation, multi-epoch skips and exact marker refusals."""
     import jam_fuzzer_full_population_oracle as reference

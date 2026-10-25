@@ -68,10 +68,12 @@ def original(dense=False):
     return parent
 
 
-def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, secret=1):
-    """Independently sign the next actual full-profile fallback child and its entropy proof under exact GP domains."""
-    slot = int.from_bytes(parent[chapter_key(11)], 'little')+1
-    assert 1 < slot < EPOCH and 0 <= author < VALIDATORS
+def sealed_child(parent, *, body=bytes(7), extrinsic_root=None, author=0, secret=1, slot=None, offenders=()):
+    """Independently seal an exact same-epoch full-profile body without deriving a hypothetical accepted state."""
+    previous = int.from_bytes(parent[chapter_key(11)], 'little')
+    slot = previous+1 if slot is None else slot
+    assert 1 < slot < EPOCH and previous < slot and 0 <= author < VALIDATORS
+    assert body and all(len(key) == 32 for key in offenders)
     entropy = parent[chapter_key(6)]
     context = b'jam_fallback_seal'+entropy[96:128]
     _, selected = sign(secret, context, b'')
@@ -80,11 +82,17 @@ def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, s
         assert body == bytes(7)
         extrinsic_root = digest(4*digest(b'\0')+digest(bytes(3)))
     parent_hash = history(parent[chapter_key(3)])[0][-1][0][:32]
-    unsigned = parent_hash+tree(list(parent.items()))[0]+extrinsic_root+slot.to_bytes(4,'little')+bytes(2)+author.to_bytes(2,'little')+proof+b'\0'
+    unsigned = parent_hash+tree(list(parent.items()))[0]+extrinsic_root+slot.to_bytes(4,'little')+bytes(2)+author.to_bytes(2,'little')+proof+natural(len(offenders))+b''.join(offenders)
     seal, _ = sign(secret, context, unsigned)
     header = unsigned+seal
-    assert len(header) == 297
-    return header+body, successor(parent, header, entropy_output, outputs=outputs, author=author)
+    assert len(header) == 296+len(natural(len(offenders)))+32*len(offenders)
+    return header+body,entropy_output
+
+
+def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, secret=1, slot=None, offenders=()):
+    """Compose independent sealing with the complete full-profile posterior; default callers retain identical bytes."""
+    wire,entropy_output = sealed_child(parent,body=body,extrinsic_root=extrinsic_root,author=author,secret=secret,slot=slot,offenders=offenders)
+    return wire,successor(parent,wire[:-len(body)],entropy_output,outputs=outputs,author=author)
 
 
 def successor(parent, header, entropy_output, *, outputs=(), author=0):
