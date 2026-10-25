@@ -61,9 +61,9 @@ def fault(index,target=GOOD,valid=False):
     return dict(target=target,vote=valid,key=key,signature=signature)
 
 
-def original():
+def original(mode='create'):
     """Seed already-classified good/bad targets and an existing offender; later verdict admission is a separate family."""
-    parent = guests.original('create')
+    parent = guests.original(mode)
     parent[chapter_key(5)] = encoded(([GOOD],[BAD],[],[guests.roster_records()[7][32:64]]))
     return parent
 

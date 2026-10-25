@@ -272,3 +272,19 @@ guest steps passed checked ARC/Clang ThinLTO replay. Unchanged upstream minifuzz
 passed three sessions,15 imports and42 exact exchanges with its real mismatch
 control. All57 focused Python tests, fresh formatting, driver semantics and
 inventory passed. GP checks and previous fixture answers remain unchanged.
+
+## Guest effects through population rotation
+
+Three independent chains admit genuine offender evidence and an eligible two-of-three
+guarantee, then release the report with683 real availability signatures. Storage,
+panic rollback and checkpoint retention survive both epoch boundaries. The first
+rotation filters four offenders from the staged1020 records; the second activates
+that shorter population with four NULL slots while retaining the previous1023
+records. Complete guest namespaces, MMR, accumulated history, entropy and statistics
+are calculated independently for all33 steps; quorum and GP checks remain intact.
+
+Observed epoch/guest validation: all33 new and17 unchanged population whole-map
+steps passed checked native replay. Upstream minifuzz passed three sessions,33
+imports and78 exact exchanges plus its real mismatch control. All17 focused
+Python tests and inventory passed; the pinned Nim/Rust formatting tree is
+unchanged from the preceding passing check.

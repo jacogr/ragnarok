@@ -889,6 +889,16 @@ def jam_fuzzer_full_epochs_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_epoch_guests_corpus(compiler, report, checks, libraries):
+    """Compare guest namespaces, MMR and statistics across offender filtering and two population rotations."""
+    import jam_fuzzer_full_epoch_guests_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_population_ring_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_epoch_guests',
+         'jam_fuzzer_full_population', 'jam_fuzzer_full_guests'), profiles=[full.parameters()]*len(reference.MODES))
+
+
+@CORPORA.case
 def jam_fuzzer_full_guests_corpus(compiler, report, checks, libraries):
     """Execute distinct full-population admission, high-core quorums and nonempty guest sibling maps."""
     import jam_fuzzer_full_guests_oracle as reference
