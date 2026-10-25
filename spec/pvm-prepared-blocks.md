@@ -674,4 +674,111 @@ Arguments occupy 16 bytes, source sites 16 bytes and handler pointers 8 bytes on
 64-bit targets. Each block also retains two synthetic nodes and a larger header;
 these overheads are included in cache accounting. Smaller arguments alone do not
 establish a smaller total cache or a performance gain. Linux paired CPU timings and
-profiles remain pending.
+profiles are recorded below.
+
+### Linux qualification: full JITB model
+
+Run [40212798836](https://github.com/jacogr/ragnarok/actions/runs/40212798836) passed at
+candidate `34d26b5f4e6c186d56be9c9e24c059966b6478f6` against accepted runtime parent
+`58cb51e90eaec06de3c97546573055bb9097e5a3` on an AMD EPYC 7763, Linux x86_64,
+with checked ARC/Clang ThinLTO. Exact source, generated-source and selected-profile
+hashes verified; fresh private compiler caches and the repeated candidate image
+control passed. All 70 processes × 13 fresh-state samples, 24 single-execution
+profiles, four collection controls, both assertion controls and the exact-head
+native prepared suite passed. Complete registers, gas, mapped page bytes, permissions
+and immutable-source checks ran outside the timing regions.
+
+**Verdict: correctness passed; performance qualification failed.** JITB reused
+execution regresses on every large guest in both orders, with nonoverlapping
+baseline/candidate sample ranges. Keep this layer explicitly experimental for
+design/profile review; the accepted prepared parent remains the performance target.
+No default change or merge is justified by this run. The smaller stream ABI alone
+does not establish a faster execution model.
+
+Order 1 is dynamic → planned → JITB → baseline → PolkaVM; order 2 reverses it.
+Reused CPU is the median of ten samples after three warmups, all in milliseconds.
+
+| Guest | Order | Dynamic | Planned | Baseline prepared | JITB | PolkaVM interpreted | JITB change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Pinky | 1 | 459.069 | 431.505 | 343.108 | 388.942 | 181.321 | +13.36% |
+| Pinky | 2 | 456.732 | 395.671 | 346.527 | 389.275 | 183.315 | +12.34% |
+| Sieve | 1 | 17.537 | 11.114 | 7.401 | 8.877 | 5.562 | +19.94% |
+| Sieve | 2 | 17.668 | 11.141 | 7.282 | 8.887 | 5.529 | +22.04% |
+| Minimal | 1 | 27.052 | 27.384 | 17.992 | 20.597 | 7.487 | +14.48% |
+| Minimal | 2 | 27.014 | 26.755 | 17.989 | 20.625 | 7.513 | +14.65% |
+| Memory fill | 1 | 13.073 | 14.704 | 8.325 | 9.606 | 4.408 | +15.39% |
+| Memory fill | 2 | 12.967 | 11.959 | 8.289 | 9.475 | 4.182 | +14.30% |
+
+Cold is one first invocation, including lazy preparation and excluding constructor
+cost. These are observations, not medians or standalone cold-speed claims.
+
+| Guest | Order | Dynamic cold | Planned cold | Baseline cold | JITB cold | PolkaVM cold |
+|---|---:|---:|---:|---:|---:|---:|
+| Pinky | 1 | 450.731 | 435.086 | 337.470 | 379.068 | 183.960 |
+| Pinky | 2 | 453.805 | 393.176 | 344.484 | 387.228 | 183.779 |
+| Sieve | 1 | 18.077 | 11.762 | 13.590 | 15.008 | 6.192 |
+| Sieve | 2 | 18.132 | 11.542 | 13.128 | 15.006 | 6.176 |
+| Minimal | 1 | 28.044 | 27.777 | 18.289 | 21.010 | 7.571 |
+| Minimal | 2 | 28.076 | 27.888 | 18.286 | 20.936 | 7.530 |
+| Memory fill | 1 | 13.088 | 14.731 | 8.585 | 9.738 | 4.347 |
+| Memory fill | 2 | 13.130 | 12.071 | 8.483 | 9.651 | 4.290 |
+
+Constructors are separate single CPU observations in microseconds, order 1 / 2.
+PolkaVM module/instance setup is outside execution timing and is not timed by this
+harness; do not interpret the missing constructor measurement as zero.
+
+| Guest | Planned constructor | Baseline constructor | JITB constructor |
+|---|---:|---:|---:|
+| Pinky | 3050.80 / 3048.89 | 7.17 / 4.58 | 4.79 / 6.43 |
+| Sieve | 14539.54 / 14961.11 | 4.43 / 4.04 | 5.08 / 4.45 |
+| Minimal | 35.52 / 35.35 | 58.32 / 57.85 | 58.92 / 57.26 |
+| Memory fill | 248.67 / 256.41 | 7.19 / 7.16 | 6.19 / 11.36 |
+
+Profiles count executed native instructions (`Ir`) and both simulated branch-miss
+classes. These are not hardware branch-miss measurements; the run does not collect
+hardware cycles, cache misses or prove the CPU cause of any regression. Counts below
+are baseline → JITB, in millions. Cold/reused each select exactly one execution.
+
+| Guest | Phase | Native instructions | Conditional misses | Indirect misses |
+|---|---|---:|---:|---:|
+| Pinky | cold | 3318.299 → 3719.703 | 23.389 → 22.423 | 28.471 → 33.841 |
+| Pinky | reused | 3288.025 → 3699.804 | 23.154 → 22.180 | 28.450 → 33.820 |
+| Sieve | cold | 165.459 → 173.380 | 0.937 → 0.776 | 1.183 → 1.537 |
+| Sieve | reused | 85.081 → 106.058 | 0.301 → 0.121 | 1.131 → 1.485 |
+| Minimal | cold | 291.836 → 316.317 | 2.103 → 2.203 | 1.900 → 2.200 |
+| Minimal | reused | 291.510 → 316.110 | 2.100 → 2.200 | 1.900 → 2.200 |
+| Memory fill | cold | 122.712 → 142.589 | 0.115 → 0.216 | 1.102 → 1.502 |
+| Memory fill | reused | 120.766 → 141.470 | 0.101 → 0.201 | 1.100 → 1.500 |
+
+Cache diagnostics match in both orders. Retained bytes include index, headers,
+all arrays and synthetic nodes; operation counts refer only to guests.
+
+| Guest | Resident blocks / guest ops | Retained bytes baseline → JITB | Extra evictions per reused call |
+|---|---:|---:|---:|
+| Pinky | 792 / 5911 | 493,768 → 494,232 | 58 |
+| Sieve | 991 / 13226 | 911,368 → 818,672 | 49 |
+| Minimal | 9 / 59 | 134,736 → 134,872 | 0 |
+| Memory fill | 63 / 365 | 154,032 → 155,752 | 0 |
+
+The profiles explain where native work moved, rather than proving a hardware stall
+cause. Central dispatch self-instructions fell, but new `preparedEnter` and synthetic
+`preparedCharge` self-work consumes respectively 6.43% / 3.71% of Pinky,
+15.01% / 8.68% of sieve, 4.27% / 2.47% of minimal and 12.73% / 7.35% of memory
+fill. Per-guest handlers also execute more self-instructions while indexing arguments
+and sites. Generated C confirms per-entry ARC retention/release and checked operand
+and site lookups; the profile cannot separately attribute all their optimized costs.
+
+Checked scalar load/store self-instruction totals are exactly unchanged in all four
+guests. Their shares are now 36.07%, 16.01%, 51.79% and 29.53% respectively; shares
+fall because other work grew. Repricing is still a small residual and cache churn
+did not improve. Reducing the main-loop share alone hid displaced work.
+
+Next bounded investigation: keep the lazy block model but inspect block-transition
+ownership and redundant parallel-array lookups together with their generated code.
+Compare passing the already selected immutable node/argument to a handler against
+re-fetching it through the frame; keep compact source sites for observable exits.
+Measure synthetic charge dispatch overhead before deciding whether price handling
+belongs in every cached entry. Preserve checked accesses, exact links, whole-block
+gas, fault retry, callback/attempt boundaries and source ownership throughout.
+A separate later memory-path investigation remains useful; no such optimization is
+mixed into this qualification commit.
