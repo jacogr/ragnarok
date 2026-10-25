@@ -31,3 +31,10 @@ Observed checked macOS ARM64 ARC/Clang non-LTO: all102 imports,306 trace
 refusals and14 inherited reporting refusals passed exact complete output comparison.
 The unchanged102-restart corpus and its checkpoint controls also passed. All41
 scoped independent/runner tests, inventory and pinned formatting passed.
+
+Checked Linux amd64 passed all102 authenticated imports with identical complete
+outputs, including306 trace refusals and14 inherited reporting refusals. Every
+frozen runtime input matched the host and retained image
+`ragnarok:db5-population-trace`
+(`sha256:2c5c191b15216e32385a1eaa60b7a2d4198c20b39c753ac8e2f6be118e31f4cc`).
+This is covered-source local evidence, separate from exact-head CI.
