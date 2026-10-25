@@ -1,5 +1,9 @@
 # Current-schema source qualification
 
+[Current serialization status](jam-serialization-status.md) records the implemented schemas,
+new authored profile coverage and next independent-source requirement. The fourteen observations
+below qualify only the seven named trace pairs, not all 1,008 JSON paths in the pinned trace tree.
+
 Gray Paper target: `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`.
 Current vectors are `23061ae1f9b51171c01387e7dde0f15794c98e24` (gp-next),
 advanced together with the Draft 35 Thin backend. The report/metadata fixture has

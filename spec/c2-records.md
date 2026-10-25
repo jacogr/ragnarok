@@ -1,6 +1,6 @@
 # Availability specifications and accumulation records
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.2
+Current target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Appendix C.2
 `avspec`, `defxfer` and `operandtuple` equations; `reporting_assurance.tex` availability/valcount;
 `accumulation.tex` operand/transfer domains and report-to-operand mapping; and `definitions.tex`
 unsigned balance/gas domains and `Cmemosize = 128`. Complete consumed chapter hashes are in
@@ -19,8 +19,9 @@ complete fixed input precedes shard policy and byte budget. No new segment-count
 protocol constraint is invented beyond their E2/E4 wire domains.
 
 `DeferredTransfer` includes canonical natural tag **one**, E4 source service, E4 destination
-service, E8 balance, the **fixed 128-byte memo with no length prefix**, and E8 gas. Total size is
-**153 bytes**. Balance is nominally distinct from gas, memo from arbitrary arrays, and existing
+service, the strict one-byte destination-supervisor Boolean, E8 balance, the
+**fixed 128-byte memo with no length prefix**, and E8 gas. Total size is
+**154 bytes**. Only 0/1 are Boolean encodings; any other octet returns `NonCanonical`. Balance is nominally distinct from gas, memo from arbitrary arrays, and existing
 service/gas types are reused. Zero amounts/gas or arbitrary service identities/memos are
 structurally representable; account existence, transferable balances, memo interpretation and
 execution eligibility are external. Outer tag canonicality/schema precedes fixed input extent,
@@ -95,6 +96,11 @@ port, status and variant tags/payloads are private; public properties are read-o
 accessors require their matching success/work/union alternative.
 
 ## Verification
+
+Historical release corpus counts below describe their original schemas. Current transfer
+consumers use 154-byte records with the destination-supervisor flag; see
+[the coordinated upgrade](graypaper-unreleased-upgrade.md) for migrated evidence.
+
 
 Run `make check`. Eight literal known answers
 protect independent Python construction/parsing. The historical Nim 2.2.12 ARC/Clang LTO compared

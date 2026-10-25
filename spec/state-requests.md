@@ -1,6 +1,6 @@
 # Service request-history entries
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Current target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/merklization.tex` T's service request mapping, `text/accounts.tex` request domain/history
 semantics and `eq:preimageconstraints`, plus C.1 natural counts/E4/fixed-hash encoding. Source and
 fixture hashes are in [pins.json](pins.json). Dependency/compiler/toolchain revisions do not change.
@@ -18,7 +18,8 @@ value = E(history_count) || E4(timeslot[0]) || ... || E4(timeslot[count - 1])
 
 The hashing preimage is exactly 36 bytes, with no hash-length or natural length prefix. The
 maintained `hashedServiceKey` performs the standard Blake2b/interleaved-service derivation.
-`RequestLength` uses the full stated uint32 domain, distinct from `RequestSlot` and service IDs.
+`RequestLength` has a uint32 representation, distinct from `RequestSlot` and service IDs;
+key/entry construction rejects lengths at or above 2^32−2 as `InvalidLength`.
 `ServicePreimageHash` reuses the preimage lookup identity domain. Service/length/hash identity is
 supplied to entry encoding but absent from history payloads.
 
@@ -63,30 +64,20 @@ enforce chronology/age/expunge rules; validate parent service/account existence;
 hash/content/advertised length correspondence; or update footprint/deposit values. Those are
 contextual lifecycle/import rules, not inferred from a decoded history shape.
 
-## Explicit request-length namespace question
+## Adopted request-length namespace rule
 
-The stated blob-length domain is uint32. T uses E4(length) for requests, E4(2^32-2) for preimages
-and E4(2^32-1) for storage. Consequently, for a common service/hash:
+The current domain is 0..2^32−3. Both reserved E4 prefixes return `InvalidLength`
+before key hashing or entry construction, preserving storage/preimage separation.
+`serviceRequestKey` and `serviceRequestEntry` enforce the same rule. Histories still
+encode only their count and timeslots; the original request identity remains external.
 
-```text
-request_key(length = 2^32 - 2, hash) == preimage_key(hash)
-request_key(length = 2^32 - 1, hash) == storage_key(raw_key = hash[32])
-```
+The [namespace review](request-namespace.md) preserves the old release-domain
+collisions and funded witnesses. Those are historical findings that motivated #542,
+not admissible current requests or an unresolved production encoding question.
+The former skipped policy test was replaced during the coordinated upgrade by
+active maximum-valid/reserved-length boundaries. See [current status](jam-serialization-status.md).
 
-These are reproduced mathematical domain overlaps, not collisions in Blake2b. No narrower
-admissible-length rule is established by the request codec's cited schema. It therefore preserves
-the stated domain instead of inventing restrictions or changing key prefixes. The [admissibility review](request-namespace.md) now supplies two small, funded local-rule
-witnesses satisfying the inspected account/preimage/deposit and fresh-solicit predicates. Those
-predicates do not exclude the combinations; full PVM/genesis reachability is not established.
-The needed exclusion or namespace change still requires normative clarification. A dedicated
-**pending namespace-policy test** is skipped explicitly until that rule can be specified. An
-active literal test and native integration check reproduce both overlaps and show that existing
-trie composition returns DuplicateKey rather than silently overwriting a mapping. This does not
-resolve valid-state admissibility. Whole-state integration must retain duplicate-key rejection,
-and the maintainer has parked normative resolution until Gray Paper 0.8.1/0.8.2 review. Chapter 13
-uses the accepted compact gas and numeric service-key policy without an alternate-width fallback.
-
-## Independent and published evidence
+## Historical independent and published evidence
 
 Run the complete checks; Make prepares native dependencies:
 
