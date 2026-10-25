@@ -322,3 +322,53 @@ The compact tier still takes 1.48× PolkaVM interpreted CPU for sieve, 2.90–2.
 minimal, 2.24× memory fill and 2.08–2.10× Pinky. Construction, cold execution and
 cache churn must remain visible when evaluating larger programs. No further runtime
 optimization or default-engine switch is included in this measured increment.
+
+## Compact operand records: next isolated trial
+
+The next stack layer starts from accepted compact-ABI parent
+`62201bce1b89cc8e8361c27e40ed34e0bbfd2e0b`. It changes only the private prepared
+operand representation and the shared semantic input adapters. No specification,
+fixture, compiler, memory-check, scheduling or cache-policy pin changes are included.
+
+The accepted ABI run's fourth-call profiles motivate this scope. The execution owner
+and inlined loop/cache work account for 31.72% of Pinky's native instructions, 53.61%
+sieve, 21.90% minimal and 41.10% memory fill. Checked scalar load/store functions account
+for 36.44%, 17.66%, 50.64% and 31.31%, respectively. These are self instruction shares,
+not sampled CPU-time shares. Repricing is comparatively small: inclusive blockGas work
+is 0.036% of reused Pinky instructions and 1.041% of reused sieve. Direct-mapped hash
+collisions explain the continuing evictions despite unused slots and ample byte budget;
+changing replacement policy is a separate experiment.
+
+Each prepared operation now retains a selected handler, causing/successor/static-target
+PCs, immediate X/Y bit patterns, copied bounded register coordinates and immutable
+fallthrough/target/block-end facts. Only a genuine successful owner decode constructs
+these private records. The reusable owner retains no machine, memory or callback state.
+Handlers consume these records without repeatedly opening a tagged decoder result or
+recomputing the physical successor. Generated-C layout probes confirm 88 → 56 bytes per
+record on x86-64, a 36.36% reduction; the compact handler call/return ABI is unchanged.
+Sparse-index policy and 256-operation segment ceiling remain fixed; smaller records can
+fit more operations under a deliberately tiny byte budget, preserving the same bound.
+
+Arithmetic still uses one shared opcode table, verified identical after whitespace
+normalization. The ordinary public evaluator still requires a successful decoder result;
+the internal operand adapter does not grant program identity or execution authority.
+Conditional comparisons and dynamic address resolution also share their semantic
+helpers. Dynamic load-and-jump reads the original base before writing an aliased
+register, preserving wrapped 32-bit addition, sentinel precedence and unconditional
+load mutations on panic/halt.
+
+The complete prepared opcode/host/cache/ARC suite passes, including 48 independent new
+aliased dynamic-jump cases across ordinary/saturated coordinates, signed offsets,
+wrapping, empty jump tables and halt sentinel selection. Mixed reference, register and
+register-chain suites pass. All seven maintained guest/size cases pass in both process
+orders against the accepted ABI parent, with fresh compiler-cache and repeated-image
+controls. Formatting and 63 affected Python CI/report checks pass. Exact Linux paired
+counts/timings are required before accepting a speed gain; no runtime benefit is yet
+claimed for this smaller representation.
+
+The ordinary conditional-control reference, execution-cache and stepping suites also
+pass after the shared input adapters were extracted; production semantic smoke checks
+pass all 441 modules and the peer entry point. The local timing invocation correctly
+refuses macOS: the existing harness reserves counts and clocks for Linux x86-64. Its
+passing zero-clock guest comparison remains the local behavior evidence; runtime
+qualification proceeds through the existing manual Linux comparison job.
