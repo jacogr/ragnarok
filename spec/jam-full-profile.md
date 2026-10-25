@@ -153,3 +153,28 @@ passed all6 eviction/retirement observations, then upstream minifuzz passed
 3 sessions,33 imports and99 exact exchanges with real mismatch detection.
 Fifty-two focused Python tests, final pinned formatting, fresh driver semantics
 and inventory passed. Runtime implementation and existing fixtures are unchanged.
+
+## Source-owned CI completeness
+
+Minifuzz reference builders now register under their own fixture identities.
+Metadata discovery validates pinned members and declares session/import/exchange
+budgets before running any oracle or target. Each builder must produce its exact
+independently declared work; local-control requirements come from their owning
+pinned fixtures, separately from generated job bindings.
+
+CI requires the complete declared reference set, exact fixture hashes, individual
+session/import budgets, and frozen aggregate stream hashes where available. The
+legacy immediate-guest family retains its original per-case root/checkpoint pins.
+Missing, duplicate, substituted or internally consistent partial results fail;
+upstream exit status and matching observed counters alone are insufficient.
+Existing per-profile ownership, exact message/map comparison, mismatch controls,
+local refusal counts, GP checks and pending live-engine status remain intact.
+
+Observed complete-group validation:64 registered native cases passed. All15
+independently declared upstream families completed296 sessions,2219 imports
+and5911 exact exchanges across4 explicit host profiles. The actual targets
+completed1 local missing-evidence,15 stream-recovery and6 fork-retention
+observations, every real mismatch control and the original socket workload.
+Fifty-five focused Python tests and fresh inventory passed. Runtime source
+hashes stayed unchanged throughout the complete checked ARC/Clang ThinLTO run.
+Live generated campaigns remain pending a compatible engine.

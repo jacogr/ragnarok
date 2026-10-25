@@ -17,20 +17,33 @@ class JamInterfaceCI(unittest.TestCase):
 
     def complete(self):
         """A complete synthetic verdict includes every source-owned interface case and real-entry workload."""
+        from jam_minifuzz_plan import expectations
+        declared = expectations()
+        sessions = sum(row['sessions'] for row in declared)
+        imports = sum(row['signed_imports'] for row in declared)
+        exchanges = sum(row['exchanges'] for row in declared)
+        controls = {field:sum(row['controls'][field] for row in declared) for field in declared[0]['controls']}
+        references = [dict(reference=row['reference'],fixture_sha256=row['fixture_sha256'],
+                           expected_sha256=row['expected_sha256'] or 'a'*64,
+                           sessions=row['sessions'],signed_imports=row['signed_imports']) for row in declared]
         return dict(cases={name: dict(passed=True, build=dict(exit_code=0), run=dict(exit_code=0),
                                      expected_sha256='a'*64, actual_sha256='a'*64) for name in interface.CASES},
                     socket=dict(passed=True, guests=dict(passed=True, sessions=2, signed_imports=3,
                         guest_siblings=1, expected_state_queries=11, completed_sessions=2,
                         completed_imports=3, retained_siblings=1, complete_state_queries=11,
                         consensus_rejections=3, isolated_reconnects=1)),
-                    minifuzz=dict(passed=True, false_success_control=True, planned_sessions=2,
-                        completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3,
-                        planned_local_missing_evidence=1, completed_local_missing_evidence=1,
-                        planned_stream_recoveries=15, completed_stream_recoveries=15,
-                        planned_fork_evictions=6, completed_fork_evictions=6,
+                    minifuzz=dict(passed=True, false_success_control=True, planned_sessions=sessions,
+                        completed_sessions=sessions, planned_exchanges=exchanges, completed_exchanges=exchanges, signed_imports=imports,
+                        independent_references=references,
+                        planned_local_missing_evidence=controls['local_missing_evidence'], completed_local_missing_evidence=controls['local_missing_evidence'],
+                        planned_stream_recoveries=controls['stream_recoveries'], completed_stream_recoveries=controls['stream_recoveries'],
+                        planned_fork_evictions=controls['fork_evictions'], completed_fork_evictions=controls['fork_evictions'],
                         planned_host_profiles=2, completed_host_profiles=2, host_profiles=[
-                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, local_missing_evidence=1, stream_recoveries=15, fork_evictions=6, completed_sessions=1, completed_exchanges=4),
-                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, local_missing_evidence=0, stream_recoveries=0, fork_evictions=0, completed_sessions=1, completed_exchanges=5)]))
+                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, **controls,
+                                 completed_sessions=sessions-1, completed_exchanges=exchanges-1),
+                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64,
+                                 local_missing_evidence=0, stream_recoveries=0, fork_evictions=0,
+                                 completed_sessions=1, completed_exchanges=1)]))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -142,7 +155,7 @@ class JamInterfaceCI(unittest.TestCase):
         # Profiles with no declared local-evidence cases still require explicit matching zero observations.
         good['planned_local_missing_evidence'] = good['completed_local_missing_evidence'] = 0
         good['host_profiles'][0]['local_missing_evidence'] = 0
-        self.assertTrue(interface.minifuzz_verified(good))
+        self.assertFalse(interface.minifuzz_verified(good)) # The source-owned full plan still requires its local control.
 
     def test_stream_recovery_completeness(self):
         """A skipped or substituted stream recovery cannot be hidden by complete upstream replay counts."""
@@ -165,3 +178,22 @@ class JamInterfaceCI(unittest.TestCase):
             elif mutation == 'negative': row['planned_fork_evictions'] = -1
             else: row['host_profiles'][0]['fork_evictions'] -= 1
             self.assertFalse(interface.minifuzz_verified(row))
+
+    def test_reference_family_and_fixture_completeness(self):
+        """Missing or substituted whole-map families and internally consistent partial reports cannot pass CI."""
+        import copy
+        good = self.complete()['minifuzz']
+        for mutation in ('missing','duplicate','extra','fixture','stream','sessions','imports','consistent-partial'):
+            row = copy.deepcopy(good);reference = row['independent_references'][1]
+            if mutation == 'missing': row['independent_references'].pop()
+            elif mutation == 'duplicate': reference['reference'] = row['independent_references'][0]['reference']
+            elif mutation == 'extra': reference['reference'] = 'undeclared_reference'
+            elif mutation == 'fixture': reference['fixture_sha256'] = '0'*64
+            elif mutation == 'stream': reference['expected_sha256'] = '0'*64
+            elif mutation == 'sessions': reference['sessions'] -= 1
+            elif mutation == 'imports': reference['signed_imports'] -= 1
+            else:
+                # All observed totals still agree with each other, but disagree with the independent fixture budget.
+                row['planned_sessions'] -= 1;row['completed_sessions'] -= 1
+                row['host_profiles'][0]['completed_sessions'] -= 1
+            self.assertFalse(interface.minifuzz_verified(row),mutation)

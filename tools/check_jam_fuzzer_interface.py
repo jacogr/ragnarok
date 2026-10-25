@@ -62,6 +62,39 @@ def minifuzz_verified(result):
     counts = ('planned_sessions', 'completed_sessions', 'planned_exchanges', 'completed_exchanges', 'signed_imports')
     if any(type(result.get(name)) is not int or result[name] <= 0 for name in counts):
         return False
+    from jam_minifuzz_plan import expectations, CONTROL_FIELDS
+    try:
+        declared = expectations()
+    except (AssertionError,OSError,ValueError):
+        return False # Changed fixture pins cannot become a weaker expected CI plan.
+    references = result.get('independent_references')
+    if not isinstance(references,list) or len(references) != len(declared):
+        return False
+    actual = {}
+    for row in references:
+        if not isinstance(row,dict) or not isinstance(row.get('reference'),str) or row['reference'] in actual:
+            return False
+        actual[row['reference']] = row
+    if set(actual) != {row['reference'] for row in declared}:
+        return False
+    for expected in declared:
+        row = actual[expected['reference']]
+        if any(row.get(key) != expected[key] for key in ('fixture_sha256','sessions','signed_imports')):
+            return False
+        if any(type(row.get(key)) is not int for key in ('sessions','signed_imports')):
+            return False
+        stream = row.get('expected_sha256')
+        if not isinstance(stream,str) or len(stream) != 64 or any(char not in '0123456789abcdef' for char in stream):
+            return False
+        if expected['expected_sha256'] is not None and stream != expected['expected_sha256']:
+            return False
+    if (result['planned_sessions'] != sum(row['sessions'] for row in declared)
+            or result['signed_imports'] != sum(row['signed_imports'] for row in declared)
+            or result['planned_exchanges'] != sum(row['exchanges'] for row in declared)):
+        return False
+    for field in CONTROL_FIELDS:
+        if result.get('planned_'+field) != sum(row['controls'][field] for row in declared):
+            return False
     profiles = result.get('host_profiles')
     if not isinstance(profiles, list) or not profiles:
         return False
@@ -118,6 +151,12 @@ def summary(report):
         lines.append('| '+name+' | '+('passed' if corpus_verified(result) else 'failed or missing')+' |')
     lines.append('| real-entry socket | '+('passed' if report.get('socket', {}).get('passed') else 'failed or missing')+' |')
     lines.append('| upstream minifuzz whole-map replay | '+('passed' if minifuzz_verified(report.get('minifuzz')) else 'failed or missing')+' |')
+    upstream = report.get('minifuzz')
+    if minifuzz_verified(upstream):
+        lines.extend(['', 'Declared whole-map references: '+str(len(upstream['independent_references']))+'.',
+                      'Upstream sessions: '+str(upstream['completed_sessions'])+'/'+str(upstream['planned_sessions'])+'.',
+                      'Exact upstream exchanges: '+str(upstream['completed_exchanges'])+'/'+str(upstream['planned_exchanges'])+'.',
+                      'Local missing evidence / stream recovery / fork retention: '+str(upstream['completed_local_missing_evidence'])+' / '+str(upstream['completed_stream_recoveries'])+' / '+str(upstream['completed_fork_evictions'])+'.'])
     guests = report.get('socket', {}).get('guests')
     if guest_socket_verified(guests):
         lines.extend(['', 'Nonempty guest socket imports: '+str(guests['completed_imports'])+'/'+str(guests['signed_imports'])+'.',
