@@ -18,6 +18,8 @@ from current_stf_trace_command_oracle import chain_config
 def exercise_profile(binary, policy_binary, script, environment, run, planned, parameters):
     """Own one target under one declared immutable host profile; every expected pair precedes its startup."""
     assert planned and all(job['parameters'] == parameters for job, _ in planned)
+    spec = planned[0][0].get('spec', 'tiny')
+    assert spec in ('tiny', 'full') and all(job.get('spec', 'tiny') == spec for job, _ in planned)
     results = []
     run.mkdir(parents=True)
     log_path = run/'target.log'
@@ -27,15 +29,15 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
         endpoint = directory/'target.sock'
         policy = directory/'policy.txt'
         configured = directory/'parameters.json'
-        subprocess.run([str(policy_binary), str(policy)], check=True, timeout=30)
+        subprocess.run([str(policy_binary), str(policy)]+(['full'] if spec == 'full' else []), check=True, timeout=30)
         job = planned[0][0]
         config = chain_config(job['header']+job['state'], parameters)
         configured.write_text(config)
         target_env = {key:value for key,value in os.environ.items() if not key.startswith('JAM_FUZZ')}
-        target_env.update(JAM_FUZZ='1', JAM_FUZZ_SPEC='tiny', JAM_FUZZ_DATA_PATH=str(directory),
+        target_env.update(JAM_FUZZ='1', JAM_FUZZ_SPEC=spec, JAM_FUZZ_DATA_PATH=str(directory),
                           JAM_FUZZ_SOCK_PATH=str(endpoint), JAM_FUZZ_LOG_LEVEL='error')
         with log_path.open('wb') as log:
-            process = subprocess.Popen([str(binary), 'serve-fuzz', str(policy), str(configured), '1000', '1000000'],
+            process = subprocess.Popen([str(binary), 'serve-fuzz', str(policy), str(configured), '1000', '4194304' if spec == 'full' else '1000000'],
                                        env=target_env, stdout=log, stderr=log)
             try:
                 deadline = time.monotonic()+30
@@ -44,10 +46,10 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     assert time.monotonic() < deadline, 'Minifuzz target startup deadline'
                     time.sleep(0.01)
                 for index, (_, pairs) in enumerate(planned):
-                    result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs)
+                    result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs, spec=spec)
                     results.append(result)
                     assert result['passed'], result['failure']
-                negative = replay(script, environment, endpoint, run/'false-success', planned[0][1], corrupt_last=True)
+                negative = replay(script, environment, endpoint, run/'false-success', planned[0][1], corrupt_last=True, spec=spec)
                 assert not negative['passed'] and negative['upstream_exit_code'] == 0
                 assert negative['failure'].startswith('Unexpected target response')
                 assert negative['completed_exchanges'] == len(planned[0][1])
@@ -62,7 +64,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     process.wait(timeout=10) # Failure/deadline cleanup targets only the process owned by this profile.
     return dict(passed=True, completed_sessions=len(results),
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
-                parameters_sha256=hashlib.sha256(parameters).hexdigest(), false_success_control=True,
+                parameters_sha256=hashlib.sha256(parameters).hexdigest(), spec=spec, false_success_control=True,
                 log=str(log_path))
 
 

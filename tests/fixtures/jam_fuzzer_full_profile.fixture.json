@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_FULL_PROFILE",
+  "files": {
+    "jam-fuzzer-full-profile.json": "99888aadc3036a0dabc1aa6245a92abaa5a341c7bfd7cdd79f06cda92308e8f4"
+  },
+  "target": "jam-fuzzer-full-profile.json"
+}

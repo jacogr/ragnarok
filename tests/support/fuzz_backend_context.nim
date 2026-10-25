@@ -13,9 +13,8 @@ proc fuzzBackendTestConfig*(): FuzzBackendConfig =
   FuzzBackendConfig(parameters: currentChainSettings(), candidate: currentConsecutiveLimits(),
       wire: fuzzProtocolTestLimits())
 proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot, ancestry: openArray[
-    FuzzAncestor] = []): FuzzMessage =
+    FuzzAncestor] = [], limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## An Initialize contains exact header bytes, a rootless complete map and explicit test membership.
-  let limits = fuzzProtocolTestLimits()
   var wire = @[1'u8]
   var head = newSeq[byte](header.headerInfo.value.consumed)
   assert header.encodeOwnedHeader(head).error == HeaderError.None
@@ -31,16 +30,16 @@ proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot, ancestry: o
   let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
-proc fuzzImport*(body: OwnedBlock): FuzzMessage =
+proc fuzzImport*(body: OwnedBlock, limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## ImportBlock contains the exact current sealed header and extrinsic bytes.
   var bytes = newSeq[byte](body.blockInfo.value.consumed)
   assert body.encodeOwnedBlock(bytes).error == FrameError.None
   var wire = @[3'u8]
   for octet in bytes: wire.add(octet) # No fixture repair or compatibility translation occurs.
-  let decoded = decodeFuzzMessage(wire, fuzzProtocolTestLimits())
+  let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
-proc fuzzGetState*(header: OwnedHeader): FuzzMessage =
+proc fuzzGetState*(header: OwnedHeader, limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## State lookup uses the full sealed header identity, independently of its prior-state field.
   var bytes = newSeq[byte](header.headerInfo.value.consumed)
   assert header.encodeOwnedHeader(bytes).error == HeaderError.None
@@ -48,6 +47,6 @@ proc fuzzGetState*(header: OwnedHeader): FuzzMessage =
   assert hashed.error == CryptoError.None
   var wire = @[4'u8]
   for octet in array[32, byte](hashed.value): wire.add(octet) # Exact request hash remains a header identity.
-  let decoded = decodeFuzzMessage(wire, fuzzProtocolTestLimits())
+  let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
