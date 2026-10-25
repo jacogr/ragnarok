@@ -176,7 +176,7 @@ class GuestComparisonTests(unittest.TestCase):
             with patch.object(compare, 'ROOT', root), patch.object(compare, 'load_fixture_contracts', return_value=contracts):
                 with self.assertRaisesRegex(ValueError, 'changed paired synthetic fixture'):
                     compare.prepare_synthetic(checks, root/'compiler', root/'build',
-                                              dict(builds=[], controls=[]), {}, {})
+                                              dict(builds=[], controls=[]), {}, {}, 'a'*40, {})
             checks.build.assert_not_called()
 
     def test_complete_summary_retains_regressions(self):
@@ -283,6 +283,158 @@ class GuestComparisonTests(unittest.TestCase):
                 source.symlink_to(codec)
                 with self.assertRaises(ValueError):
                     compare.working_paths()
+
+    def test_canonical_activation_binds_captured_endpoints(self):
+        """Both roles compile at one path and changed endpoint bytes refuse before any build."""
+        folder = Path('/owned/build/paired')
+        endpoints = {'baseline': {'module': 'a'*64}, 'candidate': {'module': 'b'*64}}
+        with patch.object(compare, 'snapshot', side_effect=[endpoints['baseline'], endpoints['candidate']]) as freeze:
+            first = compare.activate_endpoint(folder, 'baseline', 'c'*40, {}, endpoints)
+            second = compare.activate_endpoint(folder, 'candidate', 'c'*40, {}, endpoints)
+        self.assertEqual(first, second)
+        self.assertEqual(first, folder/'snapshots/compiled')
+        self.assertEqual([call.args[1] for call in freeze.call_args_list], ['c'*40, None])
+        with patch.object(compare, 'snapshot', return_value={'module': 'changed'}):
+            with self.assertRaisesRegex(ValueError, 'endpoint changed'):
+                compare.activate_endpoint(folder, 'candidate', 'c'*40, {}, endpoints)
+        with self.assertRaisesRegex(ValueError, 'unknown paired compilation variant'):
+            compare.activate_endpoint(folder, '../foreign', 'c'*40, {}, endpoints)
+
+    def test_canonical_activation_retires_deleted_members_and_detects_edits(self):
+        """Real snapshot activation removes stale modules and binds current bytes to the captured manifest."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('src/pvm/a.nim', 'src/codec/natural.nim'):
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('discard\n')
+            driver = {name: b'discard\n' for name in compare.DRIVER}
+            with patch.object(compare, 'ROOT', root):
+                expected = compare.snapshot(root/'build/captured', None, driver)
+                endpoints = {'baseline': expected, 'candidate': expected}
+                active = compare.activate_endpoint(root/'build/paired', 'candidate', 'a'*40, driver, endpoints)
+                stale = active/'src/pvm/deleted.nim'
+                stale.write_text('stale\n')
+                compare.activate_endpoint(root/'build/paired', 'candidate', 'a'*40, driver, endpoints)
+                self.assertFalse(stale.exists())
+                (root/'src/pvm/a.nim').write_text('changed\n')
+                with self.assertRaisesRegex(ValueError, 'endpoint changed'):
+                    compare.activate_endpoint(root/'build/paired', 'candidate', 'a'*40, driver, endpoints)
+
+    def test_identical_images_cover_every_profile(self):
+        """Source-only equality cannot hide a changed guest, legacy or memo executable."""
+        endpoints = {'baseline': {'module': 'a'*64}, 'candidate': {'module': 'a'*64}}
+        hashes = {name: value*64 for name, value in [('baseline', 'b'), ('candidate', 'b'),
+            ('synthetic-baseline-legacy', 'c'), ('synthetic-candidate-legacy', 'c'),
+            ('synthetic-baseline-memo', 'd'), ('synthetic-candidate-memo', 'd')]}
+        controls = compare.identical_image_controls(endpoints, hashes, True)
+        self.assertEqual([row['profile'] for row in controls], ['native', 'synthetic-legacy', 'synthetic-memo'])
+        self.assertTrue(all(row['passed'] for row in controls))
+        report = dict(compilation_identity_version=1, identical_sources=True, synthetic_enabled=True,
+                      endpoints=endpoints, binary_sha256=hashes, identical_image_controls=controls)
+        compare.validate_build_identity(report)
+        for changed_key in ('candidate', 'synthetic-candidate-legacy', 'synthetic-candidate-memo'):
+            # Each real profile independently refuses even when its source manifests remain identical.
+            changed = copy.deepcopy(report)
+            changed['binary_sha256'][changed_key] = 'e'*64
+            changed['identical_image_controls'] = compare.identical_image_controls(endpoints, changed['binary_sha256'], True)
+            with self.subTest(profile=changed_key), self.assertRaisesRegex(ValueError, 'native images differ'):
+                compare.validate_build_identity(changed)
+
+    def test_image_identity_metadata_cannot_be_dropped_or_retyped(self):
+        """Versioned summaries require exact hash/profile coverage and retain bool/int distinctions."""
+        endpoints = {'baseline': {'module': 'a'*64}, 'candidate': {'module': 'a'*64}}
+        hashes = {'baseline': 'b'*64, 'candidate': 'b'*64}
+        report = dict(compilation_identity_version=1, identical_sources=True, synthetic_enabled=False,
+            endpoints=endpoints, binary_sha256=hashes,
+            identical_image_controls=compare.identical_image_controls(endpoints, hashes, False))
+        mutations = [lambda r: r.pop('identical_image_controls'),
+                     lambda r: r['binary_sha256'].pop('candidate'),
+                     lambda r: r['binary_sha256'].update(candidate=True),
+                     lambda r: r.update(compilation_identity_version=True),
+                     lambda r: r.update(identical_sources=False),
+                     lambda r: r.update(synthetic_enabled=1),
+                     lambda r: r['endpoints']['candidate'].update(module=True),
+                     lambda r: r['identical_image_controls'][0].update(passed=1)]
+        for mutate in mutations:
+            changed = copy.deepcopy(report)
+            mutate(changed)
+            with self.assertRaises(ValueError):
+                compare.validate_build_identity(changed)
+        ordinary = copy.deepcopy(report)
+        ordinary['endpoints']['candidate']['module'] = 'c'*64
+        ordinary['binary_sha256']['candidate'] = 'd'*64
+        ordinary.update(identical_sources=False, identical_image_controls=[])
+        compare.validate_build_identity(ordinary)
+
+    def test_versioned_summary_distinguishes_image_controls_from_historical_sources(self):
+        """Historical artifacts remain readable and never gain an unrecorded image-equality claim."""
+        report = complete_report()
+        report['identical_sources'] = True
+        self.assertIn('does not establish native image identity', compare.summarize(report))
+        report.update(compilation_identity_version=1, synthetic_enabled=False,
+            endpoints={'baseline': {'module': 'a'*64}, 'candidate': {'module': 'a'*64}},
+            binary_sha256={'baseline': 'b'*64, 'candidate': 'b'*64})
+        report['identical_image_controls'] = compare.identical_image_controls(report['endpoints'], report['binary_sha256'], False)
+        self.assertIn('Identical source endpoints and native images', compare.summarize(report))
+        report.pop('identical_image_controls')
+        with self.assertRaises(ValueError):
+            compare.summarize(report)
+
+    def test_changed_same_source_image_stops_before_timing(self):
+        """A real orchestration refusal retains failed hashes and retires stale success before any measured process."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            folder = root/'build/paired'
+            folder.mkdir(parents=True)
+            for name in ('results.json', 'summary.md'):
+                (folder/name).write_text('stale')
+            for name in compare.DRIVER:
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'driver')
+            calls = []
+
+            def fake_build(checks, compiler, source, name, **options):
+                """Independent role directories deliberately produce different images from equal source manifests."""
+                self.assertEqual(name, 'native')
+                self.assertEqual(source, folder/'snapshots/compiled'/compare.DRIVER[0])
+                binary = checks.folder/name
+                binary.write_bytes(checks.folder.name.encode())
+                return {'exit_code': 0}, binary
+
+            def command(checks, arguments, name, **options):
+                """Only assertion probes may execute before the image guard; a timed invocation would fail this test."""
+                self.assertTrue(name.endswith('-assertion-control'))
+                calls.append(name)
+                return dict(exit_code=1, output='[Assertion Failure] pvm sieve native assertion control', log=name)
+
+            def digest(path):
+                """Only fake build outputs need real unequal digests; unavailable setup files retain a fixed fixture identity."""
+                if Path(path).is_file():
+                    return inputs.digest(path)
+                return 'a'*64
+
+            prepared = dict(identities={}, provenance={}, preparations={}, builds=[], inputs=[])
+            with patch.object(compare, 'ROOT', root), patch.object(compare, 'revision', return_value='a'*40), \
+                    patch.object(compare, 'cpu_model', return_value='fixture CPU'), \
+                    patch.object(compare, 'installed', return_value=(root/'compiler', None)), \
+                    patch.object(compare, 'working_paths', return_value=[]), \
+                    patch.object(compare, 'snapshot', return_value={'module': 'a'*64}), \
+                    patch.object(compare, 'prepare_inputs', return_value=prepared), \
+                    patch.object(compare, 'build', side_effect=fake_build), \
+                    patch.object(compare, 'digest', side_effect=digest), \
+                    patch.object(compare, 'unchanged') as unchanged, \
+                    patch.object(native_checks.NativeChecks, 'command', autospec=True, side_effect=command):
+                with self.assertRaisesRegex(ValueError, 'identical-source native images differ'):
+                    compare.run('HEAD', folder=folder)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(unchanged.call_count, 2)
+            failed = json.loads((folder/'partial.json').read_text())
+            self.assertEqual(failed['status'], 'failed')
+            self.assertFalse(failed['identical_image_controls'][0]['passed'])
+            self.assertFalse((folder/'results.json').exists())
+            self.assertFalse((folder/'summary.md').exists())
 
     def test_failed_rerun_retires_success(self):
         """Failure before setup cannot expose the previous completed aggregate or summary."""

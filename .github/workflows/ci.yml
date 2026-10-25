@@ -758,9 +758,11 @@ jobs:
           path: |
             build/tests/pvm-guest-compare/*.log
             build/tests/pvm-guest-compare/*.json
+            build/tests/pvm-guest-compare/builds/*/*.log
             build/tests/pvm-guest-compare/summary.md
             build/tests/pvm-guest-control/*.log
             build/tests/pvm-guest-control/*.json
+            build/tests/pvm-guest-control/builds/*/*.log
             build/tests/pvm-guest-control/summary.md
             build/tests/pvm-guests/*.json
             build/tests/pvm-guests/*.csv

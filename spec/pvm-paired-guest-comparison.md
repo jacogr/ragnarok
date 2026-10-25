@@ -139,3 +139,90 @@ witness covers that path. The subsequent synthetic extension passes77 focused
 Python guards and a real checked native integration: four exact assertion controls,
 twelve reversed processes and1,716 validated invocations. Local integration timings
 are discarded; Linux timing qualification remains attached to each exact CI head.
+
+
+## Canonical paired compilation and native image controls
+
+A build-only diagnostic on pinned Nimony found that equal captured sources compiled
+from role-specific snapshot paths produce different native symbol suffixes and code
+bytes. Four checked ARC/Clang ThinLTO builds used the same P5 source tree: separate
+baseline/candidate paths gave different images, while a shared canonical source path,
+fixed output basename and independent compiler caches gave byte-identical binaries.
+No guests or execution clocks were used in that diagnostic; no timing effect is
+assigned to the image difference. Evidence is retained under
+`build/pvm12/build-path-proof/results.json`.
+
+Each role now reactivates its captured source manifest at `snapshots/compiled`.
+Activation must reproduce the exact captured bytes and membership before compilation;
+post-build checks detect source changes before the path is reused. Deletions retire
+stale members. Original baseline/candidate snapshots remain separate provenance
+owners, and the final candidate compilation snapshot is sealed through all measured
+processes. Each role keeps independent compiler caches and output directories while
+using the same native/synthetic output basenames. Compiler, flags, driver, fixtures,
+pricing policies, matrix ordering, cold rows and full-state/assertion checks remain
+unchanged; every build still finishes before timing.
+
+Version1 compilation identities require SHA-256-equal whole native images whenever
+the captured sources are equal: one guest pair and separate legacy/memo synthetic
+pairs. Missing, changed, mismatched or retyped identities refuse before any timed
+process and cannot produce a completed aggregate or summary. Different source
+revisions legitimately produce different images. Historical reports retain their
+source-only evidence without acquiring the new image-equality claim. CI now retains
+the nested role build logs; compiler commands and source/binary identities remain in
+the report. Binaries, sources and compiler caches remain excluded from artifacts.
+
+Focused Python guards cover canonical role activation, stale/deleted members, source
+changes, every image profile, malformed identities, legacy report rendering and a
+same-source image mismatch stopping real orchestration before timing. Exact-head
+Linux validation is recorded below.
+
+Local qualification passes38 focused guest-comparison/input Python tests, workflow
+YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass
+all native assertion controls; the guest, synthetic legacy and synthetic memo pairs
+are each whole-file byte-identical. That integration executes no benchmark samples
+or timing comparisons. Its hashes and compiler/control logs remain under
+`build/pvm12/canonical-paired-integration/`. The Linux paired job will also rerun
+PR1554 against its immediate runtime parent under the canonical build path.
+
+
+Linux CI40151164898 passes all54 real/synthetic cells, both process orders,2808
+paired and2808 same-source control invocations plus the pinned interpreted reference
+pack. The same-source guest, legacy and memo binaries are each byte-identical, and
+all native assertion/full-state/gas/page checks pass. The different-source pair is
+PR1554's runtime versus its immediate parent; that job does not reproduce its earlier
+small Pinky timing gain, so the arithmetic change is under separate requalification.
+This harness PR makes no new interpreter speed claim. Compiler/driver/runtime source
+and flags remain identical to qualified08ac0d5b; subsequent edits only add evidence
+and remove unused JSON artifact globs. Real role build logs remain retained.
+
+## Canonical aggregate stack comparison
+
+[CI40154575071](https://github.com/jacogr/ragnarok/actions/runs/40154575071)
+compares the published six-layer stack at4dd6626171711d0fec621a84a2510f5c0ecc3347
+against merged base386e4229da48e6e3a059c4ec7219f3358d743886, on one EPYC7763
+runner with the same checked ARC/native-allocator/Clang ThinLTO profile. Later
+arithmetic timing-caveat documentation changes no runtime, compiler, driver or
+harness sources. Both process orders, all54 cells,2808 paired and2808 control
+invocations, complete state/gas/page/assertion checks and the interpreted reference
+pack pass. All three same-source control image pairs are whole-file byte-identical.
+
+The following CPU median changes retain both orders; negative values are faster.
+These are direct aggregate observations, not sums of earlier per-layer percentages.
+
+| Long guest | Dynamic | Immutable plan | Lazy memo |
+| --- | --- | --- | --- |
+| Pinky frame | -5.30/-5.18% | -7.38/-7.24% | -5.04/-4.74% |
+| Sieve100000 | -7.94/-9.35% | -15.68/-16.95% | -12.88/-15.68% |
+| Minimal100000 | -10.31/-9.93% | -13.40/-15.16% | -11.40/-11.95% |
+| Fill100000 | -11.58/-11.62% | -18.05/-17.64% | -16.73/-16.58% |
+
+Pinky identical-image controls change+0.53/-0.82% dynamic,-1.27/+3.23% planned,
+and+1.02/+1.53% memo. Long sieve/minimal/fill controls remain within1.31% in both
+orders. Memo crossing-host synthetic work changes+2.84/+3.73%, with corresponding
+controls-0.50/+11.37%; small host cells do not establish a universal host gain.
+All cold observations, dispersion and regressions remain retained in raw reports.
+
+In the same job, warmed planned Pinky is411.125ms against pinned PolkaVM interpreted
+183.604ms, or2.24x slower. This comparison does not establish parity or a win over
+the other interpreter. Do not compare absolute times or compound ratios across
+CPU families. Raw reports remain under`build/pvm12/ci-40154575071/`.
