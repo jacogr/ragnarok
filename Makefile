@@ -488,3 +488,10 @@ profile-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 profile-pvm-doom: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_attribution.py $(if $(filter 1,$(PVM_DOOM_COUNTS_ONLY)),--counts-only,)
+
+# Paired DOOM revisions use shared complete gameplay admission; local checks keep clocks disabled.
+PVM_DOOM_COMPARE_CHECK ?= 0
+.PHONY: compare-pvm-doom
+compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
+compare-pvm-doom: check-pvm-doom
+	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)

@@ -37,3 +37,46 @@ Local checked suites pass: scalar writer (including five-page pressure), memory
 chunks, machine, memory step, metered cross-page retry and host-memory re-entry.
 All 67 focused tooling/profile/workflow tests, pinned formatting and verification
 inventory pass. Untimed DOOM admission is recorded with the candidate revision.
+
+## Instruction gate: passed
+
+[CI40190229469](https://github.com/jacogr/ragnarok/actions/runs/40190229469)
+measures `edb6d8c1f91c30ed3118421fdabc45ada8fae337` on AMD EPYC 7763.
+No timing samples were collected. All raw/source hashes, complete input/output
+identities, reference binary and all reference counters match the qualified baseline;
+all ten correctness/scope controls pass. Guest memory-operation counts are unchanged.
+
+| Phase | Baseline total Ir | Candidate total Ir | Change | Saved Ir/access | Mapped search Ir, baseline → candidate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initialization | 26,741,550,265 | 26,672,752,778 | -0.2573% | 8.446 | 315,638,980 → 149,514,344 |
+| Gameplay | 1,951,800,802 | 1,928,999,129 | -1.1682% | 8.596 | 189,472,721 → 113,459,949 |
+
+All three counter gates pass. Search savings are partly offset by additional cache
+bookkeeping; the total reduction is much smaller than the search-body reduction.
+Proceed to paired CI timings; no CPU-time benefit is established by these counters.
+
+## Paired timing method
+
+`make compare-pvm-doom PVM_COMPARE_BASE=<baseline>` prepares the same complete
+1320-tick gameplay fixture, then compiles both exact library commits using the
+current shared DOOM driver. Four sequential fresh builds use one canonical source,
+output and compiler-cache path; the cache is removed between builds, and the images
+are saved before the next build. Candidate and both independently built candidate
+controls must be byte-identical before any clocks are enabled. Equal library
+endpoints must also produce equal baseline/candidate images. Every image passes
+full initializer/gameplay state and output checks plus an assertion refusal.
+
+The opt-in `compare-doom` job fetches complete Git history and runs 20 ordered
+processes: initializer/gameplay × both process orders × baseline, candidate,
+reference and two identical-image controls. Each process restores/validates thirteen
+complete calls (three warmups, ten retained CPU samples). Reported medians and
+ratios are independently reparsed from raw strict-framed stdout. Input, source,
+compiler and binary hashes remain fixed during execution. Local
+`PVM_DOOM_COMPARE_CHECK=1` performs admission/build/image/refusal checks with no
+clocked calls. The maintained `compare-pvm` job separately provides its full paired
+matrix, identical-image controls and pinned-reference comparison.
+
+Local paired admission passes four fresh builds, complete initializer/gameplay
+validation and four assertion refusals. Candidate and both control binaries match
+byte for byte. The paired parser/workflow/snapshot/local-clock safeguards and
+existing comparison tests pass (95 focused tests); no local guest timing samples.
