@@ -74,3 +74,11 @@ the real-entry registered E2E exchange and the normal-mode peer parser. E2E
 compared all three complete state replies with the existing independent signed
 trace, verified consensus refusal then valid import in the same connection,
 fresh reconnect state and owned socket removal after SIGTERM.
+
+Real-entry evidence checks additionally exercise nonempty reporting through the
+actual Unix socket. A re-signed report with initial membership but no actual
+child evidence closes that session without sending a protocol Error and records
+`FUZZ_SESSION_FAILED CandidateFailure MissingLookupAnchor` locally. A known wrong
+child-committed root receives a consensus Error; GetState still returns the exact
+parent map and the genuine report block succeeds in that same session. Expected
+signed blocks and complete maps come from the independent reporting STF reference.
