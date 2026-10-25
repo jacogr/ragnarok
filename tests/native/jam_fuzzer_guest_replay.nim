@@ -3,10 +3,10 @@
 
 ## Independently authored complete seeds and signed children execute through the actual ephemeral fuzzer backend.
 import std/[assertions, cmdline, strutils, syncio]
-import ../support/[fuzz_backend_context, accumulation_current_chain_context, trace_check_context]
+import ../support/[fuzz_backend_context, accumulation_current_chain_context, fuzz_guest_replay_context]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[fuzz_backend, fuzz_rejection]
-import ../../src/chain/genesis
+import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
 import ../../src/state/[store, checkpoint, fuzz_protocol]
 
@@ -22,20 +22,22 @@ proc main() {.raises.} =
   for index, octet in raw: bytes[index] = byte(octet)
   let initialHeader = currentChainFixture(decodeOwnedReport(bytes, 2).value, ticket = true,
     completeState = true).parent.value.header
-  var config = fuzzBackendTestConfig()
-  config.candidate = traceCheckTestPolicy().candidate
-  config.initialAncestry = true
-  config.forkStates = ElementLimit(2)
+  var config = fuzzGuestReplayConfig()
   var backend = default(FuzzBackend)
   var seeded = false
   var original = ""
   for line in readFile(paramStr(2)).splitLines:
     if line.len == 0: continue # Only the final transport newline is empty.
     let fields = line.splitWhitespace()
-    assert fields.len == 2
+    assert fields.len in [2, 3]
     if fields[0] == "C":
       if seeded:
         assert epoch.checkpointHex(backend.observe(initialHeader)) == original
+      config = fuzzGuestReplayConfig()
+      if fields.len == 3:
+        let parameters = decodeParameters(epoch.unhex(fields[2]))
+        assert parameters.ok
+        config.parameters = parameters.value # Trusted test-host configuration is separate from fuzz-v1 Initialize bytes.
       let captured = decodeFullCheckpoint(epoch.unhex(fields[1]), config.wire.state, ByteLimit(1000000))
       assert captured.error == CheckpointError.None
       backend = initFuzzBackend(config).value
@@ -49,7 +51,8 @@ proc main() {.raises.} =
       seeded = true
       echo "P ", original
     else:
-      assert fields[0] == "B" and seeded # Every independently signed child belongs to an explicitly initialized chain.
+      assert fields.len == 2 and fields[0] == "B" and
+          seeded # Every independently signed child belongs to an explicitly initialized chain.
       let wire = epoch.unhex(fields[1])
       let decoded = decodeBlock(wire, config.wire.frame)
       assert decoded.error == FrameError.None
