@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_STREAM_RECOVERY",
+  "files": {
+    "jam-fuzzer-stream-recovery.json": "ea1a4d869c51596fb048dc40950ea758e95373d188a8e2229c3a368b9bf956e7"
+  },
+  "target": "jam-fuzzer-stream-recovery.json"
+}

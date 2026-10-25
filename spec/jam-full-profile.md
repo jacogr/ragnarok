@@ -104,3 +104,24 @@ Actual upstream minifuzz passed1 session,28 imports and60 exact exchanges, with
 the honest missing-child-evidence local closure and real mismatch control.
 Forty-nine focused Python tests, scoped pinned formatting, fresh replay-driver
 semantics and inventory passed.
+
+## Stream interruption and recovery
+
+The same independently calculated full checkpoint trace now declares15 actual
+socket recovery controls. Each first initializes slot4 and verifies complete
+maps after the genuine report5 and guest-execution6 imports. E4 prefix cuts,
+structured body cuts, empty/oversized frames, an unknown tag and a truncated
+ImportBlock then require local EOF after a write-half close. Every reconnect
+starts from the exact seed and must refuse the former connection's child state.
+
+A complete block with the wrong prior-state root must instead return consensus
+Error, preserve the complete guest map, and allow the original valid block7
+and its independently calculated complete map immediately afterward. Frozen
+packet identities and independent state hashes precede target startup. Valid
+upstream minifuzz replay follows every control on the same owned application;
+per-profile and aggregate evidence require every declared recovery to complete.
+
+Observed stream validation:all15 recovery controls passed on the actual target,
+followed by the honest local missing-evidence control and upstream1-session,
+28-import,60-exchange replay with real mismatch detection. Fifty focused Python
+tests and fresh inventory passed. Native sources retain layer12's verified tree.

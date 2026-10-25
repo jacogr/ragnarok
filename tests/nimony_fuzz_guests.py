@@ -73,6 +73,7 @@ def session_evidence(jobs, references):
     """Declare complete workload counts before startup; later observations must match each planned exchange."""
     return dict(references=references, sessions=len(jobs),
                 expected_local_missing_evidence=sum(len(job.get('local_missing_evidence', ())) for job in jobs),
+                expected_stream_recoveries=sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job),
                 signed_imports=sum(len(job['steps']) for job in jobs),
                 guest_siblings=sum(step['kind'] == 'V' for job in jobs for step in job['steps']),
                 expected_state_queries=sum(2+2*len(job['steps'])+sum(step['kind'] == 'V' for step in job['steps']) for job in jobs))
@@ -114,6 +115,9 @@ def prepare_effect_sessions():
     jobs.extend(selected); evidence.append(proof)
     import jam_fuzzer_full_ancestry_oracle as full_ancestry
     selected, proof = reference_sessions(full_ancestry, 'jam_fuzzer_full_ancestry', [full.parameters()], spec='full', local_cases=[full_ancestry.local_evidence_cases()])
+    from jam_fuzzer_stream_recovery import bind
+    assert len(selected) == 1
+    bind(selected[0])
     jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 
