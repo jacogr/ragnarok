@@ -219,6 +219,14 @@ def jam_fuzzer_full_tickets(identity):
 
 
 @reference()
+def jam_fuzzer_full_verdict_populations(identity):
+    """Require all parent/current/previous quorum and previous-only evidence-lifetime complete maps."""
+    import jam_fuzzer_full_verdict_populations_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()],spec='full')
+
+
+@reference()
 def jam_fuzzer_full_verdicts(identity):
     """Require full good/bad/wonky verdicts and every exact quorum/split/epoch/signature/fault/refusal exchange."""
     import jam_fuzzer_full_verdicts_oracle as source
