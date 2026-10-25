@@ -33,6 +33,7 @@ erasure shards remain tied to the current population.
 | Portable host-history bundles and actual public offline commands |85|[Host-history operator](current-stf-rotation-command.md)|
 | Late code extrinsics at growth/shrinkage and exact non-retroactive execution |200|[Late code ordering](current-stf-late-rotation.md)|
 | Deferred dependency waves with code arrival and resize clearing |360|[Late-code dependencies](current-stf-late-dependencies.md)|
+| Missing-code skips versus genuine pooled gas exhaustion |240|[Late-code gas exits](current-stf-late-gas.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
