@@ -791,6 +791,14 @@ def jam_fuzzer_seed_guests_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_checkpoint_guests_corpus(compiler, report, checks, libraries):
+    """Resume independently authored whole-map guest checkpoints with exact minimal ancestry evidence."""
+    import jam_fuzzer_checkpoint_guests_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('current_stf_report_guests', 'jam_fuzzer_checkpoint_guests'), headers=True)
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
