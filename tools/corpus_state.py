@@ -582,6 +582,46 @@ def jam_fuzzer_allowance_eligibility_corpus(compiler, report, checks, libraries)
 
 
 @CORPORA.case
+def jam_fuzzer_supervised_storage_corpus(compiler, report, checks, libraries):
+    """Execute supervised storage through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_storage_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_storage', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_supervised_requests_corpus(compiler, report, checks, libraries):
+    """Execute supervised requests through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_requests_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_requests', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_supervised_upgrades_corpus(compiler, report, checks, libraries):
+    """Execute supervised upgrades through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_upgrades_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_upgrades', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_supervised_conflicts_corpus(compiler, report, checks, libraries):
+    """Execute supervised conflicts through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_conflicts_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_conflicts', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_supervised_handoff_corpus(compiler, report, checks, libraries):
+    """Execute supervised handoff through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_handoff_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_handoff', 'current_stf_transfers'))
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations

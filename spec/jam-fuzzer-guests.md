@@ -66,3 +66,10 @@ counts and widths are checked before native execution, and each new chain resets
 to its declared host configuration. This keeps code eligibility, resource policy
 and actual GP validation distinct while comparing all posterior privilege,
 authorization, roster, account, gas/statistics and output bytes.
+
+Supervised foreign-effect coverage adds160 full-map imports for foreign storage,
+request/provision changes, code upgrades, conflict selection and supervisor
+handoff. The selected namespace version, checkpoint/panic outcome, foreign versus
+self modified sets, incarnation authority, balances, statistics and output roots
+are all observed through exact-header GetState. Existing independent references
+and fixtures remain unchanged; no special execution or GP-validation path is used.
