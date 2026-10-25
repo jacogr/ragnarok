@@ -13,7 +13,7 @@ The pinned interpreted reference prepares the same independently state-checked
 inputs as the paired comparison. Each profile executes one Pinky frame under
 dynamic and complete-plan pricing, plus sieve100000, indirect calls100000 and memory
 fill100000 under complete-plan pricing. Warmed memo profiles add Pinky and memory
-fill100000, each with a checked warmup followed by one checked collected execution.
+fill100000, each with twelve checked warmups followed by one checked collected execution.
 All complete CPU/gas/page-state checks remain enabled.
 
 Callgrind collection begins and ends at genuine public `execute_?_*` native
@@ -30,7 +30,7 @@ counts executed native instructions. Conditional/indirect branch counts and
 predictor misses are simulation diagnostics. Counts are neither CPU-cycle costs
 nor timing predictions; all instrumented clocks are discarded for conclusions.
 Paired uninstrumented CI remains the authority for speed claims. The original five cells use one invocation and include cold invocation-owned
-caches. The two memo cells retain only the final invocation after one warmup.
+caches. The two memo cells retain only the final invocation after twelve warmups.
 
 Source membership, frozen snapshot bytes, compiler command, executable, fixture
 and preparation identities accompany successful evidence. Changed bytes, failed
@@ -189,10 +189,10 @@ These are diagnostic counters and native text, not new performance timings.
 ## Warmed memo collection, 2026-10-25
 
 The seven-cell matrix keeps the original five guest commands unchanged and adds
-Pinky and memory fill100000 under memo pricing. Each memo cell executes twice
-through the existing maintained driver; both complete states must pass. Callgrind
+Pinky and memory fill100000 under memo pricing. Each memo cell executes thirteen times
+through the existing maintained driver; all complete states must pass. Callgrind
 `--zero-before=execute_?_*` resets counters on execution entry, so the final dump
-retains only the second invocation. Public execution validation and publication
+retains only the thirteenth invocation. Public execution validation and publication
 remain inside scope; fixture preparation and full-state checks remain outside.
 See the [Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
 
@@ -202,7 +202,7 @@ entry reset must retain exactly the single-call total. Every run still requires
 successful classified process output, a complete positive profile and the selected
 function without excluded work. Missing reset support, partial counters or any
 ratio mismatch refuse a completed report. Each guest cell records its warmup and
-collected-execution counts; memo output parsing requires both full-state results.
+collected-execution counts; memo output parsing requires all thirteen full-state results.
 
 This extends the existing diagnostic owner without changing interpreter source,
 guest driver, toolchain flags or timing workloads. Linux qualification must pass
