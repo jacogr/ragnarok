@@ -73,3 +73,11 @@ handoff. The selected namespace version, checkpoint/panic outcome, foreign versu
 self modified sets, incarnation authority, balances, statistics and output roots
 are all observed through exact-header GetState. Existing independent references
 and fixtures remain unchanged; no special execution or GP-validation path is used.
+
+Funding and incarnation coverage groups reserved-ID creation, executable child
+readiness, funded retirement/recreation, foreign creation/transfers, incarnation
+authority and queued old-incarnation reports. Eight frozen independent references
+contribute321 complete-map imports. Funded profiles explicitly retain their
+7/1/100 deposit Parameters; zero-deposit profiles retain their original tuple.
+The full maps include selected source pools, reserved IDs, account footprints,
+refunds, replacement code, stale authority and reports queued before recreation.
