@@ -6,12 +6,12 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,
   accumulation_current_chain_context, reporting_namespace_context, state_inventory_context]
-import ../../src/app/[chain, candidate]
+import ../../src/app/[chain, candidate, trace_import]
 import ../../src/chain/[genesis, provider, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_trie,
   state_composition]
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
-  current_globals, current_state, global_snapshot]
+  current_globals, current_state, global_snapshot, trace_step, trace_state]
 
 proc suppliedRoot(text: string): StateRoot =
   ## Trusted independently authored roots have one complete fixed32-byte representation.
@@ -54,6 +54,48 @@ proc restoreSelected(chain: var ApplicationChain, expected: StateRoot, policy: S
       selected.chainParameters.encodeParameters
   echo "K Restored"
 
+proc prepareScenarioTrace(chain: ApplicationChain, step: TraceStep, ancestors: openArray[
+    OwnedHeader], wire: openArray[byte]): PreparedCurrentChainUpdate =
+  ## Fully recommitted wrong maps and an altered seal must never produce installable authority or change the selected parent.
+  let before = chain.chainView.bestBlock.value
+  let saved = epoch.checkpointHex(before.stateSnapshot)
+  template unchanged() =
+    assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
+    assert array[32, byte](chain.chainView.bestBlock.value.blockHash) == array[32, byte](
+        before.blockHash)
+  let prior = step.tracePreState.value
+  let posterior = step.tracePostState.value
+  let child = step.traceBlock.value
+  let wrongPre = newTraceStep(posterior, child, posterior, ByteLimit(16000000)).value
+  assert prepareTraceImport(chain, wrongPre, ancestors, populationReportingLimits()).error ==
+      TraceImportError.PreStateMismatch
+  unchanged()
+  echo "R PreStateMismatch"
+  let wrongPost = newTraceStep(prior, child, prior, ByteLimit(16000000)).value
+  assert prepareTraceImport(chain, wrongPost, ancestors, populationReportingLimits()).error ==
+      TraceImportError.PostStateMismatch
+  unchanged()
+  echo "R PostStateMismatch"
+  var altered = newSeq[byte](wire.len)
+  for index, octet in wire: altered[index] = octet # Tampering owns a fresh buffer; the supplied signed block stays immutable.
+  let headerBytes = child.blockInfo.value.headerBytes
+  assert headerBytes > 0 and headerBytes <= altered.len
+  altered[headerBytes-1] = altered[headerBytes-1] xor 1
+  let bad = decodeBlock(altered, populationReportingLimits().reporting.admission.frame)
+  assert bad.error == FrameError.None and bad.value.consumed == altered.len
+  let wrongSeal = newTraceStep(prior, bad.value.owner, posterior, ByteLimit(16000000)).value
+  let rejected = prepareTraceImport(chain, wrongSeal, ancestors, populationReportingLimits())
+  assert rejected.error == TraceImportError.CandidateFailure and rejected.candidateFailure.error !=
+      CurrentCandidateError.None
+  unchanged()
+  echo "R CandidateFailure"
+  let prepared = prepareTraceImport(chain, step, ancestors, populationReportingLimits())
+  if prepared.error == TraceImportError.CandidateFailure:
+    assert false, populationReason(prepared.candidateFailure) # Keep actual nested admission/execution diagnostics on unexpected refusal.
+  assert prepared.error == TraceImportError.None
+  unchanged()
+  prepared.value # This certificate retains actual execution; the decoded advertised posterior remains comparison-only.
+
 proc main() {.raises.} =
   ## Only initial inputs decode from the fixture; no expected posterior supplies a production successor.
   let raw = readFile(paramStr(1))
@@ -90,15 +132,24 @@ proc main() {.raises.} =
       ancestors = @[]
       echo "P ", originalWire
     else:
-      assert fields[0] in ["B", "N", "S"]
+      assert fields[0] in ["B", "N", "S", "T"]
       let before = chain.chainView.bestBlock.value
       let saved = epoch.checkpointHex(before.stateSnapshot)
       let supplied = epoch.unhex(fields[1])
-      let decoded = decodeBlock(supplied, populationReportingLimits().reporting.admission.frame)
-      assert decoded.error == FrameError.None and decoded.value.consumed == supplied.len
-      let child = decoded.value.owner
-      let outcome = prepareCurrentCandidate(chain, child, ancestors, populationReportingLimits())
+      var imported = default(TraceStep)
+      var child = default(OwnedBlock)
+      if fields[0] == "T":
+        let decoded = decodeTraceStep(supplied, TraceStepLimits(frame: populationReportingLimits().reporting.admission.frame,
+            state: stores, bytes: ByteLimit(16000000)))
+        assert decoded.error == TraceStepError.None and decoded.value.traceStepBytes.value == supplied.len
+        imported = decoded.value
+        child = imported.traceBlock.value
+      else:
+        let decoded = decodeBlock(supplied, populationReportingLimits().reporting.admission.frame)
+        assert decoded.error == FrameError.None and decoded.value.consumed == supplied.len
+        child = decoded.value.owner
       if fields[0] == "N":
+        let outcome = prepareCurrentCandidate(chain, child, ancestors, populationReportingLimits())
         assert fields.len == 3 and outcome.error != CurrentCandidateError.None
         assert populationReason(outcome) == fields[2], populationReason(outcome)
         assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
@@ -106,27 +157,33 @@ proc main() {.raises.} =
             before.blockHash)
         echo "N ", fields[2]
       else:
-        assert fields.len == (if fields[0] == "S": 3 else: 2) and outcome.error ==
-            CurrentCandidateError.None, populationReason(outcome)
-        var wire = newSeq[byte](supplied.len)
+        assert fields.len == (if fields[0] == "S": 3 else: 2)
+        let info = child.blockInfo
+        assert info.error == FrameError.None
+        var wire = newSeq[byte](info.value.consumed)
         assert child.encodeOwnedBlock(wire).error == FrameError.None
-        assert wire == supplied # Independent signed blocks enter and leave framing without native re-signing.
+        if fields[0] != "T": assert wire == supplied # Independently signed bytes are never re-signed by the native program.
         echo "B ", epoch.hex(wire)
-        let profile = captureCurrentProfile(outcome.value, CurrentProfileLimits(
-            validators: ElementLimit(1024), bytes: ByteLimit(65536))).value
+        var update = default(PreparedCurrentChainUpdate)
+        if fields[0] == "T":
+          update = prepareScenarioTrace(chain, imported, ancestors, wire)
+        else:
+          let outcome = prepareCurrentCandidate(chain, child, ancestors, populationReportingLimits())
+          assert outcome.error == CurrentCandidateError.None, populationReason(outcome)
+          update = outcome.value
+        let profile = captureCurrentProfile(update, CurrentProfileLimits(validators: ElementLimit(
+            1024), bytes: ByteLimit(65536))).value
         let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
             items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
-        assert qualifyCurrentState(globals, reportingServices(
-            outcome.value.currentUpdateState), inventoryCaptureLimits).error ==
-                CurrentStateError.None
-        assert chain.canInstallPrepared(outcome.value)
-        chain.installPrepared(outcome.value)
+        assert qualifyCurrentState(globals, reportingServices(update.currentUpdateState),
+            inventoryCaptureLimits).error == CurrentStateError.None
+        assert chain.canInstallPrepared(update)
+        chain.installPrepared(update)
         var next = @[before.header]
-        for ancestor in ancestors: next.add(ancestor) # Actual accepted ancestors bind later report lookups.
+        for ancestor in ancestors: next.add(ancestor) # Only actual accepted headers supply later lookup context.
         ancestors = next
         echo "O ", epoch.checkpointHex(chain.stateSnapshot.value)
-        if fields[0] == "S": restoreSelected(chain, suppliedRoot(fields[2]),
-            stores) # Actual ancestor owners remain separately retained, never decoded from expected posteriors.
+        if fields[0] == "S": restoreSelected(chain, suppliedRoot(fields[2]), stores)
   assert originalWire.len > 0 and epoch.checkpointHex(original) == originalWire
 
 try:
