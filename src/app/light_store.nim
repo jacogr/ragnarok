@@ -356,7 +356,7 @@ proc initializeLightPagedStore*(store: var LightPagedStore, path: string,
   var adopted = false
   defer:
     # Failed initialization retires every partially acquired native owner without repairing forensic files.
-    if not adopted:
+    if not adopted and store.opened:
       let retired = store.close
       if retired != FileError.None: result = LightStoreResult[LightStorageSnapshot](
           status: LightStoreError.FileFailure,
@@ -399,7 +399,7 @@ limits: LightPagedLimits): LightStoreResult[LightStorageSnapshot] =
       if retired != FileError.None: result = LightStoreResult[LightStorageSnapshot](
           status: LightStoreError.FileFailure,
           fileCause: retired) # Failed startup cannot hide native reader retirement uncertainty.
-    if not adopted:
+    if not adopted and store.opened:
       let retired = store.close
       if retired != FileError.None: result = LightStoreResult[LightStorageSnapshot](
           status: LightStoreError.FileFailure,

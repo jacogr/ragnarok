@@ -158,6 +158,13 @@ proc normal(fixture: DiskHistoryFixture) =
   assert disk.synchronize.value == StorageDurability.FileAndDirectorySynced
   assert disk.close == FileError.None
   check(second, 2)
+  let existing = initializeLightPagedStore(disk, directory, initial.empty, selected)
+  assert existing.error == LightStoreError.NativeFailure
+  assert existing.nativeFailure.error == PagedNativeError.FileFailure and
+    existing.nativeFailure.fileError == FileError.AlreadyExists # An unopened writer owns no close; preserve the exact refusal needed by strict startup selection.
+  let missing = openLightPagedStore(disk, path("missing-open"), initial.trust, selected)
+  assert missing.error == LightStoreError.NativeFailure and
+      not disk.opened # No acquired writer exists to override the original native open refusal.
   let reopened = openLightPagedStore(disk, directory, initial.trust, selected).value
   check(reopened, 2)
   assert disk.retirementPending # The durable descriptor survives successful prior absence confirmation.

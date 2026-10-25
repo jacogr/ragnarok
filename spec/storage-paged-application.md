@@ -553,3 +553,9 @@ prepared-target/result privacy checks, pinned formatting and semantic Smoke for 
 modules plus the peer entry point pass locally. Qualified Linux image:
 `sha256:6b89bc2a069bb4ea4111d40989ad25f15d1c430e2baf8c202281974a6478655f`.
 Frozen inputs and exact native/platform evidence: `build/storage-db5-light-store-verification.json`.
+
+Light facade startup refusal correction: failed initialization/open closes only an actually acquired
+native writer. An already-existing bootstrap namespace preserves NativeFailure/FileFailure/AlreadyExists;
+a missing open preserves its native file failure. Closing a default unopened writer would instead
+return Uninitialized and must never overwrite that original refusal. Repeated initialize followed
+by independently trusted strict reopen is covered by the native facade suite.
