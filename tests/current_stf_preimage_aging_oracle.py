@@ -52,7 +52,7 @@ def original(profile):
     parent[key]=account_wire((hashed,wide,narrow));return parent
 
 
-def effects(result,parent,profile,slot,budget,*,lookup_age=0):
+def effects(result,parent,profile,slot,budget,*,lookup_age=0,statistics_config=DEFAULT):
     """Use widened integer strict age equations; only expired two-slot removal releases the entire82-byte/two-item reservation."""
     key=request_key(99,digest(PAYLOAD),1);before=None if key not in parent else request_parse(parent[key],(3,13))[0]
     after=before;deleted=False
@@ -76,7 +76,7 @@ def effects(result,parent,profile,slot,budget,*,lookup_age=0):
     instructions,_,operations=program(profile)
     gas=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+sum({25:2193,26:3250}[op] for op in operations)+103*int(profile=='checkpoint-panic')
     assert gas<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services};row=activity.setdefault(99,[99]+[0]*11);row[9]+=1;row[11]+=gas
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))
     return dict(slot=slot,gas=gas,before=before,after=after,deleted=deleted,footprint_delta=-82*int(deleted))

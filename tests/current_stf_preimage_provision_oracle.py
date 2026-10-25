@@ -49,7 +49,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """Fulfill still-relevant selected provisions after account changes; VM provision does not count as an extrinsic preimage."""
     request = request_key(99, digest(PAYLOAD), 1); preimage = value_key('P', 99, digest(PAYLOAD))
     deleted = profile in ('forget-provide', 'provide-forget'); present = request in parent
@@ -65,7 +65,7 @@ def effects(result, parent, profile, slot, budget):
     instructions, _, operations = program(profile)
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+sum({28: 3983, 26: 3250, 19: 103}[operation] for operation in operations)
     assert gas <= budget
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))
