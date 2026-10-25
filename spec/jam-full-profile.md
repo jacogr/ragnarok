@@ -76,3 +76,31 @@ full-profile guest/baseline imports passed with checked ARC/Clang LTO. Actual
 upstream minifuzz passed2 sessions,15 imports and38 exact exchanges, including
 its real mismatch control. Four production-profile Rust adapter tests,41 focused
 Python tests, fresh formatting, replay-driver semantics and inventory passed.
+
+## Full checkpoint ancestry and long sessions
+
+A new reference independently executes a guest, resumes its exact slot4
+checkpoint/header with honest slot3 parent membership, admits another report
+whose lookup root is proved by that supplied child header, then imports28
+signed descendants. Every complete map and the initial seed query remain exact
+after both C3 history and the24-record ancestry retention window have elapsed.
+The seed remains separately retained by the existing backend contract.
+
+Explicit test seed headers are decoded only after selecting their trusted host
+profile, preserving high full-profile author indices. All earlier Tiny checkpoint
+cases remain consumers of this shared path.
+
+A separately signed report targets an honest initial slot2 hash/slot record,
+whose child3 header was not supplied. The real target must initialize and expose
+the exact seed map, then close locally when the missing root evidence is needed.
+It must not fabricate a consensus Error. A later fresh upstream minifuzz session
+must still execute every valid descendant. Both aggregate and per-profile
+reports require the independently planned local-refusal count to match actual
+completion; omitted or substituted evidence cannot satisfy CI completeness.
+
+Observed checkpoint validation:28 new full descendants,35 existing Tiny
+checkpoint imports and12 full guest imports passed with checked ARC/Clang LTO.
+Actual upstream minifuzz passed1 session,28 imports and60 exact exchanges, with
+the honest missing-child-evidence local closure and real mismatch control.
+Forty-nine focused Python tests, scoped pinned formatting, fresh replay-driver
+semantics and inventory passed.

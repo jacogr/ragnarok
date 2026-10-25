@@ -25,9 +25,10 @@ class JamInterfaceCI(unittest.TestCase):
                         consensus_rejections=3, isolated_reconnects=1)),
                     minifuzz=dict(passed=True, false_success_control=True, planned_sessions=2,
                         completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3,
+                        planned_local_missing_evidence=1, completed_local_missing_evidence=1,
                         planned_host_profiles=2, completed_host_profiles=2, host_profiles=[
-                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, completed_sessions=1, completed_exchanges=4),
-                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, completed_sessions=1, completed_exchanges=5)]))
+                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, local_missing_evidence=1, completed_sessions=1, completed_exchanges=4),
+                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, local_missing_evidence=0, completed_sessions=1, completed_exchanges=5)]))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -123,3 +124,20 @@ class JamInterfaceCI(unittest.TestCase):
             elif mutation == 'partial': row['host_profiles'][0]['completed_exchanges'] -= 1
             else: row['completed_host_profiles'] -= 1
             self.assertFalse(interface.minifuzz_verified(row))
+
+    def test_local_missing_evidence_completeness(self):
+        """Missing, partial, negative or substituted local-refusal counts cannot satisfy the declared process plan."""
+        import copy
+        good = self.complete()['minifuzz']
+        for mutation in ('missing', 'partial', 'negative', 'substituted', 'invalid-profile'):
+            row = copy.deepcopy(good)
+            if mutation == 'missing': del row['completed_local_missing_evidence']
+            elif mutation == 'partial': row['completed_local_missing_evidence'] = 0
+            elif mutation == 'negative': row['planned_local_missing_evidence'] = -1
+            elif mutation == 'substituted': row['host_profiles'][0]['local_missing_evidence'] = 0
+            else: row['host_profiles'][0] = None
+            self.assertFalse(interface.minifuzz_verified(row))
+        # Profiles with no declared local-evidence cases still require explicit matching zero observations.
+        good['planned_local_missing_evidence'] = good['completed_local_missing_evidence'] = 0
+        good['host_profiles'][0]['local_missing_evidence'] = 0
+        self.assertTrue(interface.minifuzz_verified(good))

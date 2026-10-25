@@ -32,7 +32,8 @@ proc main() {.raises.} =
   let defaultHeader = currentChainFixture(decodeOwnedReport(bytes, 2).value, ticket = true,
     completeState = true).parent.value.header
   var initialHeader = defaultHeader
-  var pendingHeader = default(OwnedHeader)
+  var pendingHeader: seq[byte] = @[]
+  var pendingParentSlot = -1
   var hasHeader = false
   var pendingAncestors: seq[FuzzAncestor] = @[]
   var omitted = default(FuzzBackend)
@@ -54,17 +55,13 @@ proc main() {.raises.} =
     assert fields.len in [2, 3]
     if fields[0] == "H":
       assert fields.len in [2, 3] and not hasHeader
-      let decoded = decodeHeader(epoch.unhex(fields[1]),
-          config.candidate.reporting.reports.ancestors.header)
-      assert decoded.error == HeaderError.None
-      assert decoded.value.consumed == epoch.unhex(fields[1]).len
-      pendingHeader = decoded.value.owner
+      pendingHeader = epoch.unhex(fields[1])
+      pendingParentSlot = -1
       pendingAncestors = @[]
       if fields.len == 3:
         let slot = parseInt(fields[2])
         assert slot >= 0 and uint64(slot) <= uint64(high(uint32))
-        pendingAncestors.add(FuzzAncestor(slot: HeaderSlot(uint32(slot)),
-          hash: FuzzHeaderHash(array[32, byte](pendingHeader.headerInfo.value.unsigned.parent))))
+        pendingParentSlot = slot # Decode only after the following trusted host profile is selected.
       hasHeader = true
       echo line # Exact independently supplied bytes retain their own immutable header owner.
       continue
@@ -75,8 +72,6 @@ proc main() {.raises.} =
       retainedSibling = false # Reset retires all previous chain and sibling owners.
       if seeded:
         assert checkpointHex(backend.observe(initialHeader)) == original
-      initialHeader = if hasHeader: pendingHeader else: defaultHeader
-      hasHeader = false
       config = fuzzGuestReplayConfig()
       if fields.len == 3:
         let parameters = decodeParameters(epoch.unhex(fields[2]))
@@ -87,6 +82,15 @@ proc main() {.raises.} =
         else:
           assert parameters.value.get(coreCount) == 2 and parameters.value.get(epochPeriod) == 12
         config.parameters = parameters.value # Trusted test-host configuration is separate from fuzz-v1 Initialize bytes.
+      initialHeader = defaultHeader
+      if hasHeader:
+        let decoded = decodeHeader(pendingHeader, config.candidate.reporting.reports.ancestors.header)
+        assert decoded.error == HeaderError.None and decoded.value.consumed == pendingHeader.len
+        initialHeader = decoded.value.owner
+        if pendingParentSlot >= 0:
+          pendingAncestors.add(FuzzAncestor(slot: HeaderSlot(uint32(pendingParentSlot)),
+            hash: FuzzHeaderHash(array[32, byte](initialHeader.headerInfo.value.unsigned.parent))))
+      hasHeader = false # Each explicit seed header uses its own trusted geometry, including high author indices.
       let captured = decodeFullCheckpoint(epoch.unhex(fields[1]), config.wire.state, ByteLimit(4194304))
       assert captured.error == CheckpointError.None
       var headerBytes = newSeq[byte](initialHeader.headerInfo.value.consumed)

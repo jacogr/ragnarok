@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 import signal
+import struct
 import subprocess
 import tempfile
 import time
@@ -15,12 +16,25 @@ from nimony_fuzz_guests import prepare_effect_sessions
 from current_stf_trace_command_oracle import chain_config
 
 
+def local_missing_evidence(endpoint, case):
+    """Real metadata without the required child root closes locally after an exact unchanged seed-state query."""
+    from nimony_fuzz import connect, exchange
+    from state_layout_oracle import digest
+    with connect(endpoint, features=3) as peer:
+        assert exchange(peer, case['initialize']) == b'\x02'+case['state'][:32]
+        assert exchange(peer, b'\x04'+digest(case['header'])) == b'\x05'+case['state'][32:]
+        payload = b'\x03'+case['block']
+        peer.sendall(struct.pack('<I', len(payload))+payload)
+        assert peer.recv(1) == b'' # No fabricated consensus Error substitutes for missing local ancestry evidence.
+
+
 def exercise_profile(binary, policy_binary, script, environment, run, planned, parameters):
     """Own one target under one declared immutable host profile; every expected pair precedes its startup."""
     assert planned and all(job['parameters'] == parameters for job, _ in planned)
     spec = planned[0][0].get('spec', 'tiny')
     assert spec in ('tiny', 'full') and all(job.get('spec', 'tiny') == spec for job, _ in planned)
     results = []
+    local_controls = 0
     run.mkdir(parents=True)
     log_path = run/'target.log'
     with tempfile.TemporaryDirectory(prefix='jam-minifuzz-target-') as selected:
@@ -45,6 +59,11 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     assert process.poll() is None, 'Target exited before minifuzz startup'
                     assert time.monotonic() < deadline, 'Minifuzz target startup deadline'
                     time.sleep(0.01)
+                # Each declared local refusal runs against the same owned target before complete valid replays.
+                for job, _ in planned:
+                    for case in job.get('local_missing_evidence', ()):
+                        local_missing_evidence(endpoint, case)
+                        local_controls += 1
                 for index, (_, pairs) in enumerate(planned):
                     result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs, spec=spec)
                     results.append(result)
@@ -62,7 +81,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10) # Failure/deadline cleanup targets only the process owned by this profile.
-    return dict(passed=True, completed_sessions=len(results),
+    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls,
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
                 parameters_sha256=hashlib.sha256(parameters).hexdigest(), spec=spec, false_success_control=True,
                 log=str(log_path))
@@ -78,6 +97,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
     """Execute a complete independently declared plan; scoped callers retain identical strict process/profile checks."""
     assert evidence['sessions'] == len(jobs) and jobs
     assert evidence['signed_imports'] == sum(len(job['steps']) for job in jobs)
+    local_controls = sum(len(job.get('local_missing_evidence', ())) for job in jobs)
+    assert evidence['expected_local_missing_evidence'] == local_controls
     planned = [(job, exchanges(job)) for job in jobs]
     profiles = tuple(dict.fromkeys(job['parameters'] for job in jobs))
     folder = Path(folder)
@@ -89,6 +110,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
         results.append(exercise_profile(binary, policy_binary, script, environment,
                                        run/f'profile-{index:02d}', selected, parameters))
     return dict(passed=True, planned_sessions=len(planned),
+                planned_local_missing_evidence=local_controls,
+                completed_local_missing_evidence=sum(row['local_missing_evidence'] for row in results),
                 completed_sessions=sum(result['completed_sessions'] for result in results),
                 planned_exchanges=sum(len(pairs) for _, pairs in planned),
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
