@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_PRIVILEGES",
+  "files": {
+    "current-stf-rotation-privileges.json": "f72359de401f303db6cb7135ca0c9a23734cc4601902c8b3d27c55d27b774eb5"
+  },
+  "target": "current-stf-rotation-privileges.json"
+}

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CORPORA = CorpusGroup(order=25)
 
 
-def scenarios(compiler, checks, libraries, oracle, fixtures):
+def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=()):
     """Freeze expected answers before building one shared native driver; retain exact request and output hashes."""
     from native_fixture_contracts import FIXTURE_CONTRACTS
     for identity in fixtures:
@@ -22,7 +22,7 @@ def scenarios(compiler, checks, libraries, oracle, fixtures):
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
     built, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_scenarios_driver.nim',
-        'current-stf-reporting-scenarios', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-reporting-scenarios'+('-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference='GP mathematical Thin, independent Ed25519 signatures and complete-map equations')
@@ -38,6 +38,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
     import current_stf_offender_reporting_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_offender_reporting', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_rotation_privileges_corpus(compiler, report, checks, libraries):
+    """Qualify original-role queue/manager selection and delayed allowance scheduling across growth/shrinkage."""
+    import current_stf_rotation_privileges_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_bless_allowances',
+         'current_stf_authorization_assign', 'current_stf_manager_handoff', 'current_stf_role_precedence', 'current_stf_rotation_privileges', 'state_report'),
+        defines=('rotationHosts',))
 
 
 @CORPORA.case

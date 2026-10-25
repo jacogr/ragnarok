@@ -40,7 +40,7 @@ def guarantee(parent, core, slot, sid, *, prerequisite=b''):
     return item
 
 
-def advance(parent, mode, slot, guaranteed, assured, reports, *, processed=None, batches=None, ready=None, effects=None, yielded=None):
+def advance(parent, mode, slot, guaranteed, assured, reports, *, processed=None, batches=None, ready=None, effects=None, yielded=None, authorization_queues=None, foundation_override=None):
     """Separate prior-roster quorum from resize clearing; execute independent batches and literal guest effects."""
     old, released, reporters, changed = population.validate(parent, slot, guaranteed, assured)
     available = [item['guarantee']['report'] for item, yes in zip(old,released) if item is not None and yes]
@@ -61,6 +61,8 @@ def advance(parent, mode, slot, guaranteed, assured, reports, *, processed=None,
     indices = {i for i,row in enumerate(active) if row[32:64] in reporters}
     plan = dict(processed=processed, available=available, batches=batches, foundation=foundation,
                 ready=[[] for _ in range(12)] if ready is None else ready, reports=reports)
+    if authorization_queues is not None: plan['authorization_queues'] = authorization_queues
+    if foundation_override is not None: plan['foundation'] = foundation_override
     if effects is not None: plan['effects'] = effects
     if yielded is not None: plan['yielded'] = yielded
     return guests.advance(parent, parent, mode, slot, guaranteed, assured, plan=plan,
