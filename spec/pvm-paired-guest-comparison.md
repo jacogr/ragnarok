@@ -168,8 +168,8 @@ pairs. Missing, changed, mismatched or retyped identities refuse before any time
 process and cannot produce a completed aggregate or summary. Different source
 revisions legitimately produce different images. Historical reports retain their
 source-only evidence without acquiring the new image-equality claim. CI now retains
-the nested role build logs and manifests, while binaries, sources and compiler caches
-remain excluded from artifacts.
+the nested role build logs; compiler commands and source/binary identities remain in
+the report. Binaries, sources and compiler caches remain excluded from artifacts.
 
 Focused Python guards cover canonical role activation, stale/deleted members, source
 changes, every image profile, malformed identities, legacy report rendering and a
