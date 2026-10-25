@@ -59,7 +59,7 @@ def original(profile):
     return parent
 
 
-def effects(result, profile, slot):
+def effects(result, profile, slot, *, statistics_config=DEFAULT):
     """Account preflight-only refusal, host exhaustion or accepted debit/input without reading a native verdict."""
     fields = parameters(profile); instructions, _ = program(profile)
     block = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]
@@ -78,7 +78,7 @@ def effects(result, profile, slot):
         if sid == 99 or retained:
             narrow[2] = slot # A processed transfer stamps the recipient even when its whole block is unaffordable.
         result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     if retained:

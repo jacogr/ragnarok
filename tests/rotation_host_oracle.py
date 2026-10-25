@@ -25,11 +25,16 @@ def original(services, privileges):
     return result
 
 
-def statistics(state):
+def statistics_config(state):
     """Read exact current/previous dimensions from independently calculated posterior roster membership."""
     current = len(execution.epoch.roster(state[chapter_key(8)]))
     previous = len(execution.epoch.roster(state[chapter_key(9)]))
-    return statistics_parse(state[chapter_key(13)], (3, current, previous, *DEFAULT[3:]))[0]
+    return (3, current, previous, *DEFAULT[3:])
+
+
+def statistics(state):
+    """Read service activity without changing the actual current/previous/core statistics."""
+    return statistics_parse(state[chapter_key(13)], statistics_config(state))[0]
 
 
 def charge(state, sid, slot, gas, operands=0, transfers=0):
