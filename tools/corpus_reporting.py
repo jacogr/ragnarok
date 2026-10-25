@@ -44,6 +44,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_authority_corpus(compiler, report, checks, libraries):
+    """Qualify supervisor handoff, protected-source authority and later foreign-code execution across rotation."""
+    import current_stf_rotation_authority_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_supervised_handoff',
+         'current_stf_supervisor_lifecycle', 'current_stf_supervised_upgrades', 'current_stf_rotation_authority', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_supervision_corpus(compiler, report, checks, libraries):
     """Qualify supervised storage/requests, annulled yields and surviving provisions across growth/shrinkage."""
     import current_stf_rotation_supervision_oracle as oracle
