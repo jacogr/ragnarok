@@ -139,8 +139,9 @@ proc main() {.raises.} =
       var imported = default(TraceStep)
       var child = default(OwnedBlock)
       if fields[0] == "T":
-        let decoded = decodeTraceStep(supplied, TraceStepLimits(frame: populationReportingLimits().reporting.admission.frame,
-            state: stores, bytes: ByteLimit(16000000)))
+        let frame = populationReportingLimits().reporting.admission.frame
+        let policy = TraceStepLimits(frame: frame, state: stores, bytes: ByteLimit(16000000))
+        let decoded = decodeTraceStep(supplied, policy)
         assert decoded.error == TraceStepError.None and decoded.value.traceStepBytes.value == supplied.len
         imported = decoded.value
         child = imported.traceBlock.value

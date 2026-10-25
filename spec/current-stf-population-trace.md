@@ -38,3 +38,8 @@ frozen runtime input matched the host and retained image
 `ragnarok:db5-population-trace`
 (`sha256:2c5c191b15216e32385a1eaa60b7a2d4198c20b39c753ac8e2f6be118e31f4cc`).
 This is covered-source local evidence, separate from exact-head CI.
+
+A follow-up keeps the trace frame policy in a short local binding to stabilize
+the pinned formatter. Its values and transition behavior are unchanged. Scoped
+formatting and trace checks cover the follow-up; the final operator qualification
+records the final covered-source Linux replay separately.
