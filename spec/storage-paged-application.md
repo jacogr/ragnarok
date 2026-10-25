@@ -651,3 +651,85 @@ production modules plus peer pass locally. Qualified Linux image:
 `sha256:c7c373808aff033447441e68b069b415ddb164183d4dfd52052d1c01c0b35fab`.
 Frozen source, exact native verdicts, model controls and platform records:
 `build/storage-db5-light-proof-verification.json`.
+
+## Explicit light application runtime
+
+`--node-mode light` now selects a distinct partial-state Services actor. It requires
+`--with-state --chain <configured-chain> --state-trust <identity> --state-header <sealed-header>`.
+Memory remains the default backend; disk additionally requires explicit
+`--state-storage disk --state-layout paged --state-db <distinct-light-directory>`.
+Full mode remains the default and retains its existing complete checkpoint recovery controls.
+Light mode rejects complete checkpoint imports, full write budgets, full execution/download,
+managed migration and paged replay flags. Current trust is supplied independently on every restart;
+the selected database never creates checkpoint authority. Ordinary startup exclusively initializes
+or strictly opens an existing light V2 database, without candidate repair or schema fallback.
+
+Configured genesis is transient startup validation for fixed network identity, parameter profile
+and independent C/V/E header geometry. The light actor retains neither its full StateStore nor
+its ChainView. Raw configured chain text is released immediately when telemetry is disabled, or
+after telemetry registration. Full/PVM preparation stays unstarted. The selected light actor owns
+one reusable existing proof worker and, for disk, one reusable existing publication worker.
+Query/import CPU work and publication/retirement IO share one exclusive graph gate. Done still
+holds that gate; exact collection or joined shutdown ends it. Staging and completion activations
+retire before another worker submission, including all temporary ARC aliases. Public partial-head
+access refuses Busy before copying any graph handle. External aliases must remain untouched
+through the same collection/join lifetime. Calling unrelated full preparation stop cannot release
+a light lease. Distinct light disk completion exposes actual entered IO outcomes after collection
+or join; an unsubmitted prepared target creates no IO receipt.
+
+RPC holds bounded detached header metadata, never an application head, proof graph or full provider.
+The current trusted header/root and local fact count are available through `ragnarok_lightHead`;
+`bestBlock`, `stateRoot`, bounded retained-header metadata and capability diagnostics remain usable.
+Full state/finality/subscription capabilities stay unavailable. Configured header geometry is labelled
+as configured metadata, not an inferred verified current validator roster. Proof queries select the
+exact current trusted header and existing RPV1 transport. Unrequested facts remain MissingWitness;
+only an explicitly verified absent witness authorizes absence. Historical retained headers do not
+imply retained historical proof views.
+
+`ragnarok_importStateProof` accepts positional `[Base64(current-header-hash), Base64(RPV1)]`.
+It shares each connection's existing capacity-one, nonwrapping read/import request namespace and
+cancellation route. Import requires an ID, canonical Base64 and at most 8,192 raw bytes inside the
+unchanged 16 KiB JSON input budget. Request admission performs bounded framing/copy work only.
+The CPU worker verifies the whole batch against the current independent posterior root; its fixed
+checkpoint identity must still match before enrichment. Memory adopts only the complete verified
+merge. Disk stages the same merge, publishes on the IO worker and adopts only actual usable
+success. The later `ragnarok_stateProofImported` notification reports adopted root and known-fact
+count; initial JSON result reserves intent only. Cancelled, stale or disconnected namespaces cannot
+receive a replacement request's result. A verified duplicate adds no physical generation.
+
+One pending predecessor prevents another disk publication. Cleanup runs separately; foreign old
+reader pins produce Busy with at most one retry per second, while known metadata and proof reads
+remain available between attempts. Other cleanup/publication uncertainty faults future mutations
+until independent reopen and preserves the last established in-memory trusted head. Joined shutdown
+retains actual publication/retirement outcomes, rather than translating entered IO into cancellation.
+Proof-only stop joins first and permits later bounded worker restart.
+
+This runtime enriches an explicitly trusted current head. The separate light storage SDK supports
+independently trusted head advancement; autonomous light synchronization, online operator advancement
+and explicit forensic replay orchestration are subsequent work. Hardware/filesystem power-loss
+qualification and complete JAM serialization remain subsequent ordered items. No SIGKILL or ordinary
+native fault test is labelled physical power-loss evidence.
+
+The existing full-state `stateProofAvailable` preflight continues to gate complete-map/logical
+wrappers. Generic `beginStateProof` delegates selected current-head queries to the distinct light
+actor; actual admission returns Busy before graph access during CPU or IO exclusion.
+
+Final runtime qualification: all fourteen scoped native suites pass on checked macOS arm64 and
+checked Linux amd64 under Docker emulation. They cover real memory/paged Services, WebSocket
+metadata and proof import/query, wrong trust/root refusal, duplicate/no-prefix behavior, physical
+old-reader Busy with reads between retries, independent-trust disk restart, SDK cancellation/Done
+exclusion, joined publication/retirement and entered write failure, plus existing full startup,
+proof-service, RPC and option consumers. Five private-backing guards, two source-mapped actor
+models with six load-bearing mutants and two witnesses (serial/4-worker agreement), pinned
+formatting and local semantic Smoke for all 427 production modules plus peer pass.
+The 1,000 complete RPC session lifetimes retain 35,456 -> 35,456
+occupied bytes on macOS and 30,048 -> 30,048 on Linux.
+These main-thread counters do not measure whole worker heaps. The corrected facade and existing
+full RPC ownership controls also pass their separate 1,000-cycle checks on both platforms.
+Qualified frozen-source Linux image:
+`sha256:a0b7fd2eb36980a42c257651ef3a916a1ba5e266fa91479398d0a4a5ad7056c4`.
+Exact input hashes, native verdicts, model controls and platform evidence:
+`build/storage-db5-light-runtime-verification.json`. The known pre-existing macOS full/PVM
+preparation-worker failure remains separately recorded; this qualification exercises proof-only
+Services and paged startup, not that unrelated execution path. Physical power-loss qualification
+and complete JAM serialization remain subsequent ordered work.

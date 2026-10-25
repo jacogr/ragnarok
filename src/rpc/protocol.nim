@@ -18,6 +18,7 @@ import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
+import ./light_source
 
 const MaxRpcProofBytes* = 32768 ## Independent raw RPV1 response ceiling before Base64 expansion.
 
@@ -63,6 +64,8 @@ type
     headerHash: BlockHash
     stateRoot: StateRoot
   ClientInfo* = object ## Caller supplies only observed runtime information, copied synchronously during dispatch.
+    light*: RpcLightHead # Distinct trusted metadata/partial evidence; never a fake provider snapshot.
+    lightDisk*: bool
     proofs*: bool     # Only a canonical Services binding may advertise managed proof production.
     uptimeMs*: int64
     peers*: uint32
@@ -201,6 +204,32 @@ proc descriptor(value: Genesis): JsonValue =
     ("slot", json(value.slot))])
 
 ## Attach one complete value to a block descriptor without splicing serialized object text.
+proc descriptor(value: RpcLightHeader): JsonValue =
+  ## Trusted light header metadata needs no complete-map provider or state recomputation.
+  if not value.valid: return jsonNull() # An unavailable retained header grants no descriptor.
+  jsonObject([("header_hash", json(base64.encode(array[32, byte](value.identity.blockHash)))),
+    ("slot", json(uint64(value.identity.slot)))])
+proc lightHeader(head: RpcLightHead, hash: string): RpcLightHeader =
+  ## A bounded retained header window contains metadata only, never historical complete state or inferred proofs.
+  if not head.valid: return default(RpcLightHeader) # No implicit configured genesis/current fallback.
+  for index in 0..<head.len:
+    # The fixed maximum eight records proves narrowing this nonnegative ordinal to the nominal index.
+    let selected = head.headerAt(index)
+    if base64.encode(array[32, byte](selected.identity.blockHash)) == hash: return selected
+  default(RpcLightHeader)
+proc lightHeadObject(head: RpcLightHead, disk: bool): JsonValue =
+  ## Describe current independent trust and local fact coverage without claiming complete state or finality.
+  if not head.valid: return jsonNull() # Default metadata never impersonates a zero root.
+  let current = head.current
+  let profile = head.headerProfile
+  jsonObject([("nodeMode", json("light")), ("storage", json(if disk: "disk" else: "memory")),
+    ("header_hash", json(base64.encode(array[32, byte](current.identity.blockHash)))),
+    ("state_root", json(base64.encode(array[32, byte](head.stateRoot)))),
+    ("slot", json(uint64(current.identity.slot))), ("knownFacts", json(head.knownFacts)),
+    ("retainedHeaders", json(head.len)), ("headerProfile", jsonObject([
+      ("cores", json(uint64(profile.cores))), ("authorValidators", json(uint64(
+          profile.authorValidators))),
+      ("epochSlots", json(uint64(profile.epochSlots)))]))])
 proc descriptorValue(value: Genesis, payload: JsonValue): JsonValue =
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
     ("slot", json(value.slot)), ("value", payload)])
@@ -300,6 +329,7 @@ proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root
     wire: openArray[byte], failure = ""): bool =
   ## Queue one terminal notification atomically; stale/cancelled completions are harmless no-ops.
   if not session.proofRequests.matches(request): return true
+  if request.isImport: return false # A verified-import acknowledgement cannot masquerade as produced proof wire.
   var problem = failure
   if wire.len > MaxRpcProofBytes:
     problem = "State proof exceeds RPC output budget" # Never encode or expose an oversized prefix.
@@ -321,6 +351,49 @@ proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root
   discard session.proofRequests.finish(request)
   true
 
+proc completeStateProofImport*(session: var RpcSession, request: RpcProofRequest,
+    root: StateRoot, knownFacts: int, failure = ""): bool =
+  ## Queue one exact terminal import acknowledgement only after actual adoption; stale/cancelled routing has no effect.
+  if not session.proofRequests.matches(request): return true # Connection reset and logical cancellation cannot consume a replacement slot.
+  if not request.isImport: return false # Completion kinds never cross read/import payloads.
+  var fields = JsonObject()
+  fields.add("request", json(request.id))
+  if failure.len > 0:
+    fields.add("error", json(failure)) # Fixed host diagnostics never include untrusted wire contents.
+  else:
+    fields.add("result", jsonObject([
+      ("header_hash", json(base64.encode(array[32, byte](request.blockHash)))),
+      ("state_root", json(base64.encode(array[32, byte](root)))), ("knownFacts", json(knownFacts))]))
+  let message = $jsonObject([("jsonrpc", json("2.0")), ("method", json(
+      "ragnarok_stateProofImported")),
+    ("params", json(fields))])
+  if session.pendingCount == MaxSubscriptionUpdates or message.len >
+      MaxSubscriptionQueueBytes-session.pendingBytes: return false # Slow consumers never roll back known durable publication.
+  session.enqueueUpdate(SubscriptionId(0), message)
+  discard session.proofRequests.finish(request)
+  true
+proc importControl(values: seq[JsonToken], parameters: int, id: string,
+    session: var RpcSession): string =
+  ## Canonical bounded Base64 decoding copies untrusted evidence only; cryptographic authentication belongs to the existing CPU worker.
+  if parameters < 0 or values[parameters].kind != arrayValue: return error(id, -32602, "Expected block hash and RPV1 evidence")
+  let argument = parameters+1
+  if values[parameters].next != argument+2 or values[argument].kind != stringValue or values[
+      argument+1].kind != stringValue: return error(id, -32602,
+      "Expected block hash and RPV1 evidence") # Two scalar positional values only.
+  if session.proofRequests.active: return error(id, 0,
+      "State proof request capacity unavailable") # Busy precedes evidence copying.
+  var hashBytes: seq[byte] = @[]
+  var wire: seq[byte] = @[]
+  if not decodeBlob(values[argument].text, 32, hashBytes) or hashBytes.len != 32: return error(id,
+      -32602, "Expected padded Base64 block hash")
+  if not decodeBlob(values[argument+1].text, MaxRpcProofImportBytes, wire): return error(id, -32602, "Expected bounded padded Base64 RPV1 evidence")
+  var hash = default(array[32, byte])
+  for index in 0..<32: hash[index] = hashBytes[index] # Exact decoded identity extent was proved above.
+  let admitted = session.proofRequests.enqueueImport(BlockHash(hash), wire)
+  if admitted.error == RpcProofError.InvalidEvidence: return error(id, -32602, "Expected bounded RPV1 evidence")
+  if admitted.error != RpcProofError.None: return error(id, 0,
+      "State proof request capacity unavailable") # No partial wire or request identity escapes failed admission.
+  success(id, json(admitted.value.id))
 proc proofControl(values: seq[JsonToken], parameters: int, methodName, id: string,
     session: var RpcSession): string =
   ## Validate complete selectors and cancellation before changing the tentative session.
@@ -647,6 +720,26 @@ proc chainStateInfo(view: ChainView): JsonValue =
 
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
 proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValue =
+  if info.light.valid:
+    # Advertise only implemented light metadata/proof capabilities; complete-map/finality subscriptions are distinct unavailable contracts.
+    var methods = JsonArray()
+    for name in ["ragnarok_clientInfo", "parameters", "ragnarok_lightHead", "bestBlock", "parent",
+        "stateRoot", "ragnarok_header"]: methods.add(json(name)) # Fixed bounded metadata methods.
+    if stateful and info.proofs:
+      for name in ["ragnarok_requestStateProof", "ragnarok_cancelStateProof",
+          "ragnarok_importStateProof"]: methods.add(json(
+          name)) # One connection-local request namespace shares read/import capacity.
+    return jsonObject([("name", json("Ragnarok")), ("version", json(AppVersion)), ("role", json(
+        info.role)),
+      ("nodeMode", json("light")), ("uptimeMs", json(info.uptimeMs)), ("connectedPeers", json(
+          info.peers)),
+      ("lightHead", lightHeadObject(info.light, info.lightDisk)),
+      ("rpc", jsonObject([("transport", json("websocket")), ("address", json("127.0.0.1")),
+        ("port", json(info.port)), ("stateProofs", json(stateful and info.proofs)),
+        ("maxProofKeys", json(MaxRpcProofKeys)), ("maxProofBytes", json(MaxRpcProofBytes)),
+        ("maxProofImportBytes", json(MaxRpcProofImportBytes)), ("methods", json(methods)),
+        ("subscriptions", json(false)), ("maxMessageBytes", json(MaxMessage)), ("maxReplyBytes",
+            json(MaxReplyBytes))]))])
   var methods = JsonArray()
   for name in ["ragnarok_clientInfo", "parameters", "bestBlock", "finalizedBlock", "parent",
       "stateRoot", "serviceData", "serviceValue", "servicePreimage", "serviceRequest",
@@ -723,6 +816,11 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
     else: discard # JSON-RPC permits additional envelope members.
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
+  if methodName == "ragnarok_importStateProof":
+    if not stateful or not info.proofs or not info.light.valid: return if hasId: error(id, -32601,
+        "Method not found") else: "" # Full/unbound listeners cannot acquire partial write authority.
+    if not hasId: return "" # A notification cannot acquire an invisible asynchronous import slot.
+    return importControl(values, parameters, id, session)
   if methodName in ["ragnarok_requestStateProof", "ragnarok_cancelStateProof"]:
     if not stateful or not info.proofs:
       return if hasId: error(id, -32601, "Method not found") else: ""
@@ -740,6 +838,35 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
     return if hasId: response else: "" # Notifications execute but never receive a JSON-RPC reply.
   if not hasId: return "" # All remaining methods are read-only and have no notification side effects.
   if parameters >= 0 and values[parameters].kind != arrayValue: return error(id, -32602, "Expected positional params")
+  if info.light.valid:
+    # Light metadata is served from its distinct trusted header owner; complete-map routes below remain unavailable.
+    if methodName in ["ragnarok_lightHead", "bestBlock"]:
+      if parameters >= 0 and values[parameters].next != parameters+1: return error(id, -32602, "Expected no parameters")
+      if methodName == "bestBlock": return success(id, descriptor(
+          info.light.current)) # No complete provider snapshot is fabricated.
+      return success(id, lightHeadObject(info.light, info.lightDisk))
+    if methodName in ["parent", "stateRoot", "ragnarok_header"]:
+      if parameters < 0 or values[parameters].next != parameters+2 or values[parameters+1].kind !=
+          stringValue: return error(id, -32602, "Expected one header hash")
+      let hash = values[parameters+1].text
+      if not validHash(hash): return error(id, -32602, "Expected padded Base64 hash")
+      var selected = lightHeader(info.light, hash)
+      if not selected.valid: return unavailable(id, 1, "Block unavailable",
+          hash) # Unknown history never resolves through complete state or native IO.
+      if methodName == "parent":
+        selected = lightHeader(info.light, base64.encode(array[32, byte](
+            selected.headerInfo.unsigned.parent)))
+        if not selected.valid: return unavailable(id, 1, "Block unavailable",
+            hash) # Only actually retained parent metadata succeeds.
+        return success(id, descriptor(selected))
+      if methodName == "stateRoot": return success(id, json(base64.encode(array[32, byte](
+          selected.identity.stateRoot)))) # Posterior identity root never substitutes the sealed header's prior state.
+      let budget = min(MaxBlobReplyBytes, max(0, (allowance-id.len-256) div 4*3))
+      if selected.byteLength > budget: return error(id, 0,
+          ReplyBudgetError) # Bound the complete copy and Base64 output before allocation.
+      var bytes = newSeq[byte](selected.byteLength)
+      if not selected.copyHeader(bytes): return error(id, 0, "Unreadable header") # No partial encoding escapes.
+      return success(id, json(base64.encode(bytes)))
   if methodName == "ragnarok_stateKeys":
     if parameters < 0: return error(id, -32602, "Expected hash, cursor and count") # All pagination arguments are explicit.
     let argument = parameters + 1

@@ -9,6 +9,8 @@
 import std/[syncio, strutils, base64, assertions, monotimes, times]
 import ../state/logical_continuation
 import ./options
+import ./light_runtime as light_actor
+import ./[light_head, light_policy]
 import ./[checkpoint_recovery, checkpoint_trust]
 import ./[handoff, current_handoff, current_block_input]
 import ./candidate
@@ -95,6 +97,7 @@ type
     Publication, Maintenance, CurrentPublication, Retirement
 
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
+  light: light_actor.LightRuntime
   rpc*: Server
   ui*: UiServer
   management*: ManagementServer
@@ -155,6 +158,7 @@ func workerError*(admission: StateProofAdmission): ProofWorkerError {.inline,
 
 proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not services.started.} =
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
+  `=wasMoved`(services.light)
   `=wasMoved`(services.proofWorker)
   `=wasMoved`(services.proofInput)
   `=wasMoved`(services.rpcProof)
@@ -190,6 +194,7 @@ proc `=dup`*(source: Services): Services {.error.}
   ## Composite ownership includes the stable worker and all listener lifetimes.
 proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
+  `=destroy`(services.light)
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
   `=destroy`(services.proofInput)
   `=destroy`(services.rpcProof)
@@ -329,6 +334,9 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
   services.rpcLease = nil
 proc stopDiskPublication*(services: var Services) =
   ## Shutdown outside callbacks joins before any input/canonical/RPC alias can retire, preserving actual IO receipts.
+  if services.light.active:
+    services.light.stopDisk()
+    return # Joined light IO retains its distinct actual outcome.
   let completion = services.diskWorker.close()
   services.finishDiskPublication(completion)
   if services.diskEnabled: services.diskFaulted = true # Explicit backend shutdown requires a fresh startup before more writes.
@@ -359,6 +367,9 @@ func diskPreparationOutcome*(services: Services): DiskChainResult[
 
 proc stopStateProofs*(services: var Services) =
   ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
+  if services.light.active:
+    services.light.stopProofs()
+    return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
   if services.proofing:
     services.proofInput = default(ProofQuery)
@@ -372,6 +383,7 @@ proc stopStateProofs*(services: var Services) =
 
 proc stopPreparation*(services: var Services) =
   ## Join and discard private execution before reopening canonical/RPC access; listeners and canonical state remain owned.
+  if services.light.active: return # Distinct light actor owns its own CPU/IO lease and joins.
   if services.proofing or services.publishing: return # A proof/disk borrower owns the same RPC lease until its own joined retirement.
   services.worker.close()
   services.preparing = false
@@ -384,6 +396,7 @@ proc stopCheckpointExport*(services: var Services) =
 
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
+  services.light.close() # Distinct light workers join before the borrowed RPC owner or partial evidence retires.
   services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
@@ -662,6 +675,85 @@ proc startServices(services: var Services, options: Options, role: string,
   services.started = true
   true
 
+type LightStartup = object ## Fixed configured/trusted metadata retains no complete genesis StateStore or ChainView.
+  ready: bool
+  trust: TrustedApplicationCheckpoint
+  policy: LightRuntimePolicy
+  parameters: ParameterResult
+  identity: ChainIdentity
+proc captureLightStartup(text: string, options: Options): LightStartup =
+  ## Complete configured genesis is transient validation input only; every full-state alias retires before listeners/workers become observable.
+  let parameters = configuredParameters(text)
+  if not parameters.ok: return default(LightStartup) # Explicit configuration cannot be guessed from partial proofs.
+  let genesis = configuredGenesis(text, parameters.value)
+  if genesis.error != GenesisError.None: return default(
+      LightStartup) # Header geometry/network identity require complete independently configured genesis.
+  let trust = loadCheckpointTrust(options.lightTrustPath, options.lightHeaderPath,
+    ByteLimit(uint64(MaxRecoveryHeaderBytes+ApplicationCheckpointIdentityBytes)))
+  if trust.error != CheckpointTrustError.None: return default(
+      LightStartup) # Missing/malformed independent current authority never falls back to genesis.
+  if trust.value.identity.parameters.encodeParameters !=
+      parameters.value.encodeParameters: return default(
+      LightStartup) # A current checkpoint must belong to the configured fetch profile.
+  let selected = genesis.value
+  let profile = HeaderConfig(cores: selected.cores, authorValidators: selected.activeValidators,
+    epochSlots: selected.epochSlots, maxBytes: ByteLimit(262144))
+  var domain: seq[byte] = @[]
+  for character in "RAGNAROK-CHAIN-V1\n": domain.add(byte(
+      character)) # Same independently configured network identity domain as full storage.
+  for octet in array[32, byte](selected.blockHash): domain.add(octet)
+  for octet in array[32, byte](selected.stateRoot): domain.add(octet)
+  for octet in selected.chainParameters.encodeParameters: domain.add(octet)
+  let digest = blake2b256(domain)
+  if digest.error != CryptoError.None: return default(
+      LightStartup) # No default chain identity escapes backend failure.
+  let policy = lightRuntimePolicy(StorageChainId(array[32, byte](digest.value)),
+      trust.value.identity.stateRoot, profile)
+  LightStartup(ready: true, trust: trust.value, policy: policy, parameters: parameters,
+    identity: chainIdentity(genesis))
+proc startLightServices(services: var Services, options: Options, role: string): bool {.raises.} =
+  ## Light startup chooses distinct memory/paged ownership with independent current trust before any listener is exposed.
+  if services.started or not options.valid or not options.lightMode: return false # Failed/repeated mode selection cannot disturb an existing lifetime.
+  services.chainText = boundedFile(options.chainPath, MaxChainBytes)
+  let startup = captureLightStartup(services.chainText, options)
+  if not startup.ready:
+    services.close()
+    return false # No complete/partial startup prefix becomes an active service.
+  var ready = false
+  defer:
+    if not ready: services.close() # Join every partial acquisition before rollback or exception propagation.
+  if not services.ui.start(options.uiPort, options.devUiDirectory): return false
+  let path = if options.diskStorage: options.stateDatabase else: ""
+  if not services.light.start(services.rpc, role, options.rpcPort, options.uiPort,
+      options.diskStorage, path, startup.trust, startup.policy, startup.parameters,
+      startup.identity): return false
+  let info = ManagementInfo(role: role, chainPath: options.chainPath, databasePath: path,
+      stateEnabled: true)
+  if not services.management.start(options.managementSocket,
+      info): return false # Static management remains separate from complete-map execution controls.
+  if not options.telemetryEnabled: services.chainText = "" # No raw configured genesis is retained during ordinary light runtime.
+  services.chainRpc = options.rpcPort != 0
+  services.started = true
+  ready = true
+  true
+proc lightHead*(services: Services): light_actor.LightRuntimeResult[LightApplicationHead] =
+  ## Distinct partial-state access is gated before any shared handle copy and never returns a complete StateStore snapshot.
+  services.light.head
+proc lightDiskPhase*(services: var Services): DiskWorkerPhase =
+  ## Synchronized phase polling never copies the still-leased native outcome.
+  services.light.diskPhase
+func lightDiskActive*(services: Services): bool =
+  ## Scalar IO observation remains safe while native publication/retirement borrows partial graphs.
+  services.light.diskActive
+func lightStorageFaulted*(services: Services): bool =
+  ## Uncertain mutation outcomes disable writes without withdrawing immutable known evidence.
+  services.light.storageFaulted
+func lightMode*(services: Services): bool =
+  ## Selected active ownership remains independent of memory/disk backend choice.
+  services.light.active
+proc lightDiskCompletion*(services: Services): DiskPublicationCompletion {.requires: not services.light.busy.} =
+  ## Actual light IO outcomes survive joined shutdown; no full publication generation is fabricated.
+  services.light.diskCompletion
 proc startConfigured(services: var Services, options: Options, role: string,
     withState: bool, limits: StateStoreLimits): bool {.raises.} =
   ## Both public startup policies share one explicit import dispatcher before any listener becomes visible.
@@ -682,6 +774,8 @@ proc startConfigured(services: var Services, options: Options, role: string,
 
 proc start*(services: var Services, options: Options, role: string): bool {.raises.} =
   ## Select canonical startup only from validated explicit CLI policy; legacy commands retain optional genesis behavior.
+  if options.lightMode: return services.startLightServices(options,
+      role) # Complete-state initialization is a separate selected mode.
   var limits = genesisStoreLimits()
   if options.stateEnabled:
     limits.writes = options.stateWrites # Fixed trie ceilings never imply a mutable budget.
@@ -692,12 +786,14 @@ proc start*(services: var Services, options: Options, role: string): bool {.rais
 proc start*(services: var Services, options: Options, role: string,
     limits: StateStoreLimits): bool {.raises.} =
   ## Explicitly enable canonical complete-state ownership, sharing the exact seed with optional RPC.
+  if options.lightMode: return false # Explicit complete-map component policy cannot silently become partial light ownership.
   startConfigured(services, options, role, true, limits)
 
 proc startRecovered*(services: var Services, options: Options, role: string,
     recovered: ApplicationRecoveryResult): bool {.raises.} =
   ## Explicit component recovery preserves its caller-selected map policy, like the existing explicit-limits startup overload.
   ## CLI recovery must restore with its parsed policy before calling this entry point; no map policy is widened here.
+  if options.lightMode: return false # Complete recovered maps never enter a partial light actor.
   if services.started or not options.valid or not options.stateEnabled:
     return false # Failed/repeated admission must not read files or disturb active services.
   if recovered.error != ApplicationRecoveryError.None:
@@ -844,10 +940,11 @@ proc beginBlockInput*(services: Services, input: var CurrentBlockInput, extent: 
 
 func stateProofActive*(services: Services): bool =
   ## Cancelled and Done proof jobs retain exclusion until exact collection or joined stop.
-  services.proofing
+  services.proofing or services.light.proofActive
 
 proc stateProofAvailable*(services: Services): bool =
   ## Reject scalar exclusions before creating any temporary canonical ARC alias.
+  if services.light.active: return false # Complete-map/logical proof entry points cannot borrow partial light state.
   if not services.started or services.proofing or services.preparing or services.publishing:
     return false # A native borrower owns the graph or no stable service owner exists.
   if services.diskFaulted or services.rpc.chainPaused:
@@ -893,6 +990,21 @@ proc finishStateProof(services: var Services, reason: ProofQueryError): StatePro
 proc beginStateProof*(services: var Services, selected: BlockHash, plan: StateProofPlan,
     limits: ProofQueryLimits): StateProofAdmission {.raises.} =
   ## Global/mixed plans use the established exclusive lease and exact native ticket retirement.
+  if services.light.active:
+    let admitted = services.light.beginQuery(selected, plan, limits)
+    case admitted.error
+    of light_actor.LightRuntimeError.None:
+      return StateProofAdmission(status: StateProofAdmissionError.None, ticket: admitted.value)
+    of light_actor.LightRuntimeError.Closed:
+      return StateProofAdmission(status: StateProofAdmissionError.Closed)
+    of light_actor.LightRuntimeError.QueryFailure:
+      return StateProofAdmission(status: StateProofAdmissionError.QueryFailure,
+          queryReason: admitted.queryError)
+    of light_actor.LightRuntimeError.WorkerFailure:
+      return StateProofAdmission(status: StateProofAdmissionError.WorkerFailure,
+          workerReason: admitted.workerError)
+    else:
+      return StateProofAdmission(status: StateProofAdmissionError.Busy) # No refused light admission grants a complete-map source.
   if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
   if not services.stateProofAvailable:
     return StateProofAdmission(status: StateProofAdmissionError.Busy)
@@ -903,6 +1015,21 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: StatePr
 proc beginStateProof*(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
     limits: ProofQueryLimits): StateProofAdmission {.raises.} =
   ## Existing service callers retain guarded admission and completion error alternatives.
+  if services.light.active:
+    let admitted = services.light.beginQuery(selected, plan, limits)
+    case admitted.error
+    of light_actor.LightRuntimeError.None:
+      return StateProofAdmission(status: StateProofAdmissionError.None, ticket: admitted.value)
+    of light_actor.LightRuntimeError.Closed:
+      return StateProofAdmission(status: StateProofAdmissionError.Closed)
+    of light_actor.LightRuntimeError.QueryFailure:
+      return StateProofAdmission(status: StateProofAdmissionError.QueryFailure,
+          queryReason: admitted.queryError)
+    of light_actor.LightRuntimeError.WorkerFailure:
+      return StateProofAdmission(status: StateProofAdmissionError.WorkerFailure,
+          workerReason: admitted.workerError)
+    else:
+      return StateProofAdmission(status: StateProofAdmissionError.Busy) # No refused light admission grants a complete-map source.
   if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
   if not services.stateProofAvailable:
     return StateProofAdmission(status: StateProofAdmissionError.Busy)
@@ -940,12 +1067,14 @@ proc beginLogicalProof*(services: var Services, source: CurrentLogicalState,
 
 proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.
-  services.proofWorker.phase
+  if services.light.active: services.light.proofPhase() else: services.proofWorker.phase
 proc cancelStateProof*(services: var Services, ticket: ProofWorkerTicket): bool =
   ## Cancellation requests discard without releasing graph access or bounded capacity.
-  services.proofWorker.cancel(ticket)
+  if services.light.active: services.light.cancelQuery(ticket) else: services.proofWorker.cancel(ticket)
 proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): ProofWorkerCompletion =
   ## Only matching Done collection retires the query and reopens canonical/RPC access together.
+  if services.light.active: return services.light.collectQuery(
+      ticket) # Only actual matching Done collection ends its own request lease.
   result = services.proofWorker.collect(ticket)
   if result.kind != ProofWorkerCompletionKind.Uninitialized:
     services.proofing = false
@@ -958,6 +1087,7 @@ func preparationActive*(services: Services): bool =
 
 proc preparationAvailable*(services: Services): bool =
   ## Preflight scalar exclusion before reading any canonical handle; no implicit legacy state is permitted.
+  if services.light.active: return false # Partial evidence never authorizes complete execution.
   if not services.started or services.proofing or services.preparing or services.publishing:
     return false # Existing native work owns all shared graph aliases.
   if services.diskFaulted or services.rpc.chainPaused:
@@ -1290,6 +1420,11 @@ proc finishRpcProof(services: var Services, completion: ProofWorkerCompletion) =
 
 proc tick*(services: var Services, peers: uint32) =
   ## Attempt one pending adoption between native callbacks; independent management remains available during leases.
+  if services.light.active:
+    services.management.tick() # Static management observations retain no canonical proof graph.
+    services.light.tick(peers)
+    services.ui.tick() # Independent asset/connection work never touches the light actor source.
+    return
   services.management.tick() # Startup metadata and OS observations never borrow the canonical/database graph.
   if services.rpcProof.valid and services.proofing:
     if services.stateProofPhase != ProofWorkerPhase.Done:
@@ -1358,7 +1493,10 @@ proc tick*(services: var Services, peers: uint32) =
 proc configureTelemetry*(services: var Services, options: Options, certificate: string,
     port: uint16, ipv6: bool): bool {.raises.} =
   ## Register the actual transport identity/address after binding, using the captured chain bytes.
-  setupTelemetry(services.telemetry, options, certificate, port, ipv6, services.chainText)
+  let configured = setupTelemetry(services.telemetry, options, certificate, port, ipv6,
+      services.chainText)
+  if services.light.active and configured: services.chainText = "" # Telemetry registration owns only bounded metadata before the peer loop starts.
+  configured
 
 proc stageCheckpointVerification*(services: var Services, expected: ApplicationCheckpointIdentity,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =

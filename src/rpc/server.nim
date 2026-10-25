@@ -9,6 +9,7 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol, proof_requests]
+import ./light_source
 from ../codec/state_trie import StateRoot
 import ../chain/[parameters, genesis, provider]
 import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization,
@@ -36,6 +37,8 @@ type
     started: int64
     port, uiPort: uint16
     role: string
+    light: RpcLightHead         # Distinct immutable partial source shares no complete provider state.
+    lightDisk: bool
     chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     identity: ChainIdentity     # Fixed configured genesis identity is independent of selected/restarted history.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
@@ -121,8 +124,13 @@ proc `=destroy`*(server: Server) =
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.connections)
   `=destroy`(server.role)
+  `=destroy`(server.light)
   `=destroy`(server.chain) # The retained state map is an ARC owner too.
   `=destroy`(server.lease)
+
+func availableForStart*(server: Server): bool =
+  ## Scalar startup admission never replaces another live listener or graph lease.
+  not server.opened and server.lease == nil
 
 func chainPaused*(server: Server): bool =
   ## Scalar host-only observation does not copy a canonical snapshot.
@@ -158,6 +166,8 @@ proc close*(server: var Server) {.requires: server.lease == nil.} =
   if server.opened:
     discard posix.close(server.fd)
   server.opened = false
+  server.light = default(RpcLightHead)
+  server.lightDisk = false
   server.proofs = false # A restarted listener requires an explicit canonical host binding again.
 
 proc enableStateProofs*(server: var Server): bool =
@@ -180,6 +190,20 @@ proc takeStateProofRequest*(server: var Server): RpcProofDispatch =
         return RpcProofDispatch(index: index, selection: selected)
   default(RpcProofDispatch) # No request retains no routing or selection authority.
 
+proc finishStateProofImport*(server: var Server, dispatch: RpcProofDispatch,
+    root: StateRoot, knownFacts: int, failure = ""): bool =
+  ## Deliver actual adoption/publication outcomes only after native/CPU lease release and to the exact live connection namespace.
+  if not server.opened or server.lease != nil or not dispatch.valid or
+      not dispatch.selection.isImport or dispatch.index < 0 or dispatch.index >=
+      MaxConnections: return false # No unselected or still-borrowed context is read.
+  let index = dispatch.index
+  if not server.connections[index].opened or not server.connections[index].upgraded or
+      server.connections[index].closing: return false # Disconnect cannot resurrect a request.
+  if not server.connections[index].session.completeStateProofImport(dispatch.selection, root,
+      knownFacts, failure):
+    server.connections[index].close() # A slow originating consumer cannot roll back adopted storage.
+    return false
+  true
 proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: StateRoot,
     wire: openArray[byte], failure = ""): bool =
   ## Deliver only after lease release; connection-local namespaces suppress stale/reset completions.
@@ -243,6 +267,8 @@ proc start*(server: var Server, port: uint16, role: string,
   server.role = role
   server.parameters = parameters
   server.identity = identity
+  server.light = default(RpcLightHead)
+  server.lightDisk = false
   server.chain = genesisView(genesis)
   true
 
@@ -472,6 +498,7 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
       port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
+      light: server.light, lightDisk: server.lightDisk,
       identity: server.identity,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
@@ -534,3 +561,24 @@ proc tick*(server: var Server, peers: uint32) =
       let error = osLastError()
       if error notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(EINTR)]:
         slot.close()
+
+proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
+    head: RpcLightHead, disk: bool, uiPort: uint16 = 0,
+    identity = default(ChainIdentity)): bool =
+  ## Bind the existing loopback transport to independent light metadata without retaining a complete ChainView.
+  if not head.valid: return false # A default source never advertises a zero root.
+  if not server.start(port, role, parameters, unavailableGenesis(), uiPort,
+      identity): return false # Existing descriptor/port/lease checks remain authoritative.
+  if port != 0:
+    server.light = head # No dispatcher can observe the listener until this startup activation retires.
+    server.lightDisk = disk
+  true
+proc canInstallLightHead*(server: Server, expected: RpcLightHead): bool =
+  ## Exact immutable source incarnation includes proof knowledge, unlike equal header/root metadata alone.
+  server.opened and server.lease == nil and sameRpcLightHead(server.light, expected)
+proc installLightHead*(server: var Server, expected, target: RpcLightHead): bool =
+  ## A preflighted host installs only after actual worker collection/join; no IO or proof verification runs here.
+  if not target.valid or not server.canInstallLightHead(
+      expected): return false # Refuse stale/foreign/paused source without changing RPC metadata.
+  server.light = target
+  true

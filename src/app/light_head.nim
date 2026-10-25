@@ -411,3 +411,12 @@ proc restoreLightHead*(bytes: openArray[byte], expected: TrustedApplicationCheck
   LightHeadResult[LightApplicationHead](status: LightHeadError.None,
       completed: LightApplicationHead(data: LightHeadData(records: records, profile: limits.header,
       evidence: evidence.value)))
+
+func sameLightHead*(left, right: LightApplicationHead): bool =
+  ## Exact immutable source incarnation includes partial knowledge; matching header/root alone cannot prove matching cached facts.
+  left.data != nil and left.data == right.data
+proc headerProfile*(head: LightApplicationHead): HeaderConfig {.requires: head.data != nil.} =
+  ## Configured geometry is fixed caller metadata, never inferred from partial state or advertised as verified roster contents.
+  let data = head.data
+  assert data != nil
+  data.profile
