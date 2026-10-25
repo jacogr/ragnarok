@@ -28,3 +28,10 @@ including42 siblings. Duplicate debits/credits, queued records, recipient effect
 checkpoint selection or footprint changes cannot hide behind equal guest inputs.
 Explicit source deposit/code profiles remain separate from local resource policy.
 Original references, fixtures and all protocol pins remain unchanged.
+
+Funded account and incarnation coverage groups reserved and supervised foreign
+creation, child readiness, retirement/recreation, incarnation authority, foreign
+transfers and queued incarnation reports: 372 imports including 51 siblings.
+Exact original deposit profiles are supplied explicitly before replay. Complete
+namespace key sets and values must match the original independently calculated
+answer, including deleted/recreated account identities and queued report effects.

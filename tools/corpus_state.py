@@ -799,6 +799,16 @@ def jam_fuzzer_checkpoint_guests_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_account_forks_corpus(compiler, report, checks, libraries):
+    """Compare independently calculated funded-account and incarnation siblings through actual fuzz imports."""
+    import jam_fuzzer_account_forks_oracle as reference
+    from jam_fuzzer_effect_forks_reference import profiles
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        tuple('current_stf_'+family for family in reference.FAMILIES)+('jam_fuzzer_account_forks',),
+        forks=True, profiles=profiles(reference.FAMILIES))
+
+
+@CORPORA.case
 def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
     """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
     import jam_fuzzer_transfer_forks_oracle as reference
