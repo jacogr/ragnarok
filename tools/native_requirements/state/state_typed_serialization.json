@@ -1,0 +1,13 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": true,
+  "provider": "typed_serialization"
+}

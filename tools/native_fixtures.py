@@ -442,6 +442,18 @@ def unit_serialization_profiles_fixture(folder):
                         ((path, evidence['fixture_sha256']),))}, evidence
 
 
+# Derive every typed-global expectation from GP equations without executing another implementation.
+@PROVIDERS.fixture(group='root', order=120,
+                   evidence=('typed_serialization_fixture', 'typed-serialization-preparation'))
+def unit_typed_serialization_fixture(folder):
+    """Bind independently derived current chapter/map bytes to exact generated input identities."""
+    sys.path.insert(0, str(ROOT/'tests'))
+    from state_typed_serialization_oracle import prepare
+    path, evidence = prepare(folder)
+    return {'default': ('RAGNAROK_TYPED_SERIALIZATION', path,
+                        ((path, evidence['fixture_sha256']),))}, evidence
+
+
 # Generate gas inputs under the caller's ignored build directory from pinned submodule witnesses.
 @PROVIDERS.fixture(group='root', order=20, evidence=('pvm_gas_fixture', 'pvm-gas-preparation'))
 def unit_pvm_gas_fixture(folder):
