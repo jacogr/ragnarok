@@ -1843,7 +1843,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
         cursor.info = frame.info
         return publishInstruction(owner.source, frame.memory, frame.info, InstructionEffect(
             kind: StepExit.Panic), true)
-    let active = chunk
+    let active {.cursor.} = chunk # The invocation-owned chunk remains unchanged until this loop iteration ends.
     if active == nil: return StepResult(status: StepError.InvalidPreparedProgram)
     if not frame.info.blockCharged:
       # Cache facts establish a price; affordability and the paid flag remain strictly invocation-local.
