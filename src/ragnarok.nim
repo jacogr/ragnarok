@@ -10,7 +10,7 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, download_command, current_download_command, trace_check_command]
+import ./app/[options, download_command, current_download_command, trace_check_command, fuzz_target]
 import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
@@ -18,6 +18,8 @@ proc main(): int =
   try:
     var arguments: seq[string] = @[]
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
+    if existsEnv("JAM_FUZZ"): return runFuzzTarget(
+        arguments) # Explicit fuzz startup is isolated before normal production option/service selection.
     var options = default(Options)
     if not parseOptions(arguments, options): return 2 # No invalid configuration reaches a service.
     # Version inspection needs no certificates, listeners or service configuration.
