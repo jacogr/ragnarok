@@ -958,7 +958,7 @@ jobs:
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-24.04
     env:
-      PVM_PREPARED_BASELINE: 7115dfd067c882577230bc3ba3bc6806de8d3a34
+      PVM_PREPARED_BASELINE: 58cb51e90eaec06de3c97546573055bb9097e5a3
     steps:
       - name: Checkout exact candidate and baseline history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

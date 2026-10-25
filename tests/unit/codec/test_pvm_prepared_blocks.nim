@@ -425,6 +425,44 @@ let gasPosition = machineInfo(positionedGas.value.machine).value
 assert uint64(gasPosition.pc) == 772 and uint64(gasPosition.gas) == 0
 assert not gasPosition.blockCharged and uint64(gasPosition.registers[7]) == 11
 
+# Every static transfer in this fixture replaces the same sparse slot under the smallest cache policy.
+let linkedProgram = owner([@[51'u8, 7, 3], @[1'u8], @[149'u8, 119, 255],
+  @[82'u8, 7, 253], @[50'u8, 8]])
+var linkedRegisters = default(RegisterFile)
+linkedRegisters[8] = RegisterValue(0xffff0000'u64)
+let linkedSource = captureMachine(linkedProgram, mapped,
+  MachineInfo(gas: MachineGas(100000), registers: linkedRegisters)).value
+let linkedPrice = uint64(blockGas(linkedProgram, CodeAddress(0), GasCycleLimit(100000)).value) +
+  3*uint64(blockGas(linkedProgram, CodeAddress(4), GasCycleLimit(100000)).value) +
+  uint64(blockGas(linkedProgram, CodeAddress(10), GasCycleLimit(100000)).value)
+for slots in [1'u32, 2, 65536]:
+  # The maximum supported sparse index exercises high32-bit stream coordinates without expanding guest code.
+  let linkedCache = cache(linkedProgram, blocks = slots)
+  for steps in [0'u64, 1, 2, 3, 4, 5, 8, 9, 10]:
+    # Synthetic charge/link nodes cannot consume attempts or make an old slot tag authorize a different block.
+    compare(linkedSource, linkedCache, steps, 100000)
+  for repeat in 0..<4:
+    # Repeated fresh calls alternate all three guest block tags while the source snapshot remains unchanged.
+    let answer = execute(linkedSource, ExecutionStepLimit(9), linkedCache)
+    assert answer.error == StepError.None and answer.value.exit == StepExit.Halt
+    let state = machineInfo(answer.value.machine).value
+    assert uint64(state.pc) == 0 and uint64(state.registers[7]) == 0
+    assert uint64(state.registers[8]) == 0xffff0000'u64
+    assert uint64(state.gas) == 100000-linkedPrice
+  if slots == 1:
+    # The fixture must actually replace cached blocks rather than only taking already-present links.
+    assert preparedInfo(linkedCache).value.evictions > 0
+
+# Split immediate words must retain all64 bits even when the compact payload's high word has its sign bit set.
+let wideProgram = owner([@[20'u8, 7, 16, 50, 84, 118, 152, 186, 220, 254], @[50'u8, 8]])
+let wideSource = captureMachine(wideProgram, mapped,
+  MachineInfo(gas: MachineGas(1000), registers: linkedRegisters)).value
+let wideCache = cache(wideProgram, blocks = 1)
+compare(wideSource, wideCache, 2, 100000)
+let wideAnswer = execute(wideSource, ExecutionStepLimit(2), wideCache)
+assert wideAnswer.error == StepError.None and wideAnswer.value.exit == StepExit.Halt
+assert uint64(machineInfo(wideAnswer.value.machine).value.registers[7]) == 0xfedcba9876543210'u64
+
 proc lifecycle(input: Machine) =
   ## Prepared owners release their arrays and program references without retaining invocation snapshots or callbacks.
   let prepared = cache(programOf(input).value, blocks = 2)

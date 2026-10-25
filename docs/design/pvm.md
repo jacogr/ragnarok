@@ -36,10 +36,12 @@ execution keeps CPU, memory staging, attempt budgets and callbacks local to each
 A bounded [lazy memo](../../spec/pvm-gas-memos.md) instead learns successful prices on demand
 under one fixed source/policy, with exclusive worker use and private monotone facts. The dynamic-pricing API remains available. See [the ownership, refusal and measurement contract](../../spec/pvm-gas-plans.md).
 
-An optional [prepared execution owner](../../spec/pvm-prepared-blocks.md) retains a bounded,
-lazily populated representation of visited instructions: selected handlers, decoded operands,
-static targets and whole-block prices. Segments bound preparation storage without introducing
-guest block boundaries. The owner shares immutable program facts across fresh executions; CPU,
+An optional [JITB (Just In Time Blocks) execution owner](../../spec/pvm-prepared-blocks.md)
+prepares visited blocks into bounded parallel handler, compact operand and source-site arrays.
+Handlers return internal stream offsets; pricing and storage bridges are synthetic nodes,
+while only guest operations consume scheduling attempts. Exact guest-PC tags validate cached
+links after replacement. Segments bound preparation storage without introducing guest block
+boundaries. The owner shares immutable program facts across fresh executions; CPU,
 memory staging, paid gas and host callbacks remain invocation-local. This tier reuses private
 semantic helpers in `step.nim` and leaves the existing interpreter as the default.
 

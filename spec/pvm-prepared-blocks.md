@@ -631,3 +631,47 @@ distinguishes reproducible instruction counts from variable execution time and w
 that its basic branch/cache simulations do not model modern hardware closely. The
 PC-deferral and bounded-loop changes were tested together; this result does not prove
 that a narrower PC-only change would regress or improve runtime.
+
+## JITB — Just In Time Blocks
+
+This fifth stack layer starts from `58cb51e90eaec06de3c97546573055bb9097e5a3`;
+its runtime is the accepted operand implementation, with additional boundary tests.
+JITB prepares a block on its first visit and reuses its executable stream until the
+bounded cache evicts it. This is interpreted execution: selected native handler
+functions execute guest operations; no guest-specific native code is generated.
+The goal is a complete independently implemented execution-stream model, inspired by
+the pinned reference's handler/offset dispatch, preserving the existing GP contracts.
+
+A 32-bit private offset identifies a sparse cache slot and a node within its bounded
+block. Blocks are prepared lazily and own parallel handler, 16-byte argument and
+source-site arrays. Pricing and segment bridging are synthetic stream nodes; only
+guest handlers consume scheduling attempts. Every source-site retains its full-width
+guest address, exact span and source-derived validation facts. Static links validate
+the cached destination's exact guest-PC tag before selecting its offset, so cache
+replacement cannot turn an old link into a different instruction. Blocks contain no
+references to other blocks and no mutable machine/callback state; invocation and host
+continuation references keep only their active block alive.
+
+Handlers receive the invocation frame plus offset and return the next offset. Rare
+errors/guest exits are recorded in the invocation, with a reserved stop offset.
+Public prepared owners, source identity, bounds checks, whole-block gas semantics,
+mutable-memory workspace and immutable publication boundaries remain intact. No
+source-pin or compiler change is included. Full opcode, host/fault/retry, budget,
+cache replacement and ARC parity must pass before paired Linux timings and profiles.
+Construction, cold/reused execution, both process orders and PolkaVM interpreted
+remain separate evidence. Performance benefit is unproven until measured.
+
+Local checked ARC/Clang ThinLTO validation passed the full 139-opcode prepared suite,
+mixed-program reference and host-execution suites, plus the seven maintained guest/
+size cases against both current interpreters, the accepted prepared parent and
+PolkaVM interpreted in both process orders. Checks include complete reference state,
+source snapshots, one-slot replacement, high internal offsets, full-width immediate
+bits and 1000 balanced owner lifetimes. The pinned backend required explicit returns
+in the final compile-time control alternative plus a trailing statement-position
+sentinel; neither compiler sources nor pins were changed.
+
+Arguments occupy 16 bytes, source sites 16 bytes and handler pointers 8 bytes on
+64-bit targets. Each block also retains two synthetic nodes and a larger header;
+these overheads are included in cache accounting. Smaller arguments alone do not
+establish a smaller total cache or a performance gain. Linux paired CPU timings and
+profiles remain pending.
