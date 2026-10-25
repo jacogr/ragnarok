@@ -26,11 +26,17 @@ proc main() {.raises.} =
   var backend = default(FuzzBackend)
   var seeded = false
   var original = ""
+  var sibling = false
+  var retainedSibling = false
+  var siblingHeader = default(OwnedHeader)
+  var siblingState = ""
   for line in readFile(paramStr(2)).splitLines:
     if line.len == 0: continue # Only the final transport newline is empty.
     let fields = line.splitWhitespace()
     assert fields.len in [2, 3]
     if fields[0] == "C":
+      assert not sibling
+      retainedSibling = false # Reset retires all previous chain and sibling owners.
       if seeded:
         assert epoch.checkpointHex(backend.observe(initialHeader)) == original
       config = fuzzGuestReplayConfig()
@@ -51,8 +57,9 @@ proc main() {.raises.} =
       seeded = true
       echo "P ", original
     else:
-      assert fields.len == 2 and fields[0] == "B" and
+      assert fields.len == 2 and fields[0] in ["B", "V"] and
           seeded # Every independently signed child belongs to an explicitly initialized chain.
+      assert fields[0] != "V" or not sibling
       let wire = epoch.unhex(fields[1])
       let decoded = decodeBlock(wire, config.wire.frame)
       assert decoded.error == FrameError.None
@@ -68,6 +75,8 @@ proc main() {.raises.} =
       assert epoch.checkpointHex(backend.observe(beforeHeader)) == before
       assert array[32, byte](fuzzGetState(backend.fuzzBackendHeader.value).fuzzRequestedHeader.value) ==
         array[32, byte](fuzzGetState(beforeHeader).fuzzRequestedHeader.value)
+      if retainedSibling:
+        assert epoch.checkpointHex(backend.observe(siblingHeader)) == siblingState
       let imported = backend.executeFuzz(fuzzImport(decoded.value.owner))
       assert imported.error == FuzzBackendError.None, $imported.error
       let header = readHeader(blockHeader(decoded.value.owner).value).value.owner
@@ -78,9 +87,22 @@ proc main() {.raises.} =
         array[32, byte](fuzzGetState(header).fuzzRequestedHeader.value)
       var encoded = newSeq[byte](wire.len)
       assert decoded.value.owner.encodeOwnedBlock(encoded).error == FrameError.None
-      echo "B ", epoch.hex(encoded)
+      if fields[0] == "V":
+        assert not sibling
+        sibling = true
+        siblingHeader = header
+        siblingState = epoch.checkpointHex(state)
+        retainedSibling = true # The original-last sibling must not overwrite this independent owner.
+      elif sibling:
+        assert epoch.checkpointHex(backend.observe(siblingHeader)) == siblingState
+        sibling = false
+      elif retainedSibling:
+        assert backend.executeFuzz(fuzzGetState(siblingHeader)).error ==
+            FuzzBackendError.UnknownState
+        retainedSibling = false # A new successful direct extension retires the old sibling group.
+      echo fields[0], " ", epoch.hex(encoded)
       echo "O ", epoch.checkpointHex(state)
-  assert seeded and epoch.checkpointHex(backend.observe(initialHeader)) == original
+  assert seeded and not sibling and epoch.checkpointHex(backend.observe(initialHeader)) == original
 try:
   main() # Missing inputs, invalid signatures, failed guests or unequal maps fail the complete registered corpus.
 except:

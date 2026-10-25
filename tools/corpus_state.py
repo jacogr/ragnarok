@@ -386,14 +386,14 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
 
 
 def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, identities,
-                               *, input_requests=True, profiles=None):
+                               *, input_requests=True, profiles=None, forks=False):
     """Share exact-input replay builds while each source-owned corpus retains its own frozen reference and verdict."""
     from jam_fuzzer_guest_reference import replay
     from native_fixture_contracts import FIXTURE_CONTRACTS
     for identity in (*identities, 'state_report'):
         for path, digest in FIXTURE_CONTRACTS[identity][2]:
             assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
-    requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles)
+    requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles, forks=forks)
     label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
     source = checks.folder/(label+'.txt')
     source.write_text('\n'.join(requests)+'\n')
@@ -761,6 +761,14 @@ def jam_fuzzer_epoch_composition_corpus(compiler, report, checks, libraries):
                 for _, _, mode in reference.CASES]
     return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
                                      ('current_stf_epoch_composition', 'current_stf_transfers'), profiles=profiles)
+
+
+@CORPORA.case
+def jam_fuzzer_guest_forks_corpus(compiler, report, checks, libraries):
+    """Compare guest-bearing siblings and original-last continuation with independent complete maps."""
+    import jam_fuzzer_guest_forks_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_report_guests', 'jam_fuzzer_guest_forks'), forks=True)
 
 
 @CORPORA.case

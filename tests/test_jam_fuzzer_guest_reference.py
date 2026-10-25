@@ -43,6 +43,18 @@ class FuzzerGuestReference(unittest.TestCase):
         for invalid in ([], profiles[:1], [bytes(121)]*2):
             with self.assertRaises(AssertionError): replay(source, profiles=invalid)
 
+    def test_unfinished_fork_is_refused(self):
+        """A sibling cannot become a continuation or cross a reset without its original-last child."""
+        for lines in (['P aa', 'V bb', 'O cc'],
+                      ['P aa', 'V bb', 'O cc', 'V dd', 'O ee'],
+                      ['P aa', 'V bb', 'O cc', 'P dd', 'B ee', 'O ff']):
+            source = SimpleNamespace(expected_observations=lambda rows=lines: ([], rows, {}))
+            with self.assertRaises(AssertionError):
+                replay(source, forks=True)
+        source = SimpleNamespace(expected_observations=lambda: ([], ['P aa', 'V bb', 'O cc', 'B dd', 'O ee'], {}))
+        with self.assertRaises(AssertionError):
+            replay(source)
+
     def test_partial_or_substituted_stream_is_refused(self):
         """An incomplete or disconnected map cannot silently become a successful replay request."""
         for lines in ([], ['P aa'], ['B aa', 'O bb'], ['P aa', 'B bb'], ['P aa', 'N ignored'], ['P aa', 'O bb']):
