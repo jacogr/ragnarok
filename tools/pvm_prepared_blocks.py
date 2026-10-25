@@ -23,7 +23,7 @@ from pvm_instruction_profile import (SCOPE, VERSION, calibrate_scope, collect,
                                      execution_entry_count, profile_counts,
                                      capture_generated_sources, verify_generated_sources)
 from pvm_guest_compare import DRIVER, revision, snapshot
-from setup_nimony import installed
+from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-prepared-blocks'
 MODES = ('dynamic', 'planned', 'prepared')
@@ -129,6 +129,17 @@ def summary(report):
     return '\n'.join(lines)
 
 
+def build_paired_guest(checks, compiler, source, flags):
+    """Compile each endpoint/control from a fresh private cache while preserving identical compiler paths."""
+    cache = cache_directory(compiler, checks.folder, 'guest-paired')
+    if cache.is_symlink() or not cache.resolve().is_relative_to(checks.folder.resolve()):
+        raise ValueError('paired compiler cache escapes its owned group')
+    if cache.exists():
+        # This fixed group-owned compiler directory contains generated intermediates only.
+        shutil.rmtree(cache)
+    return checks.build(compiler, source, 'guest-paired', cflags=flags)
+
+
 def run(timings=False, counts=False, baseline=None):
     """Build once, validate source controls, and retain incomplete evidence on any refusal or changed input."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -174,7 +185,7 @@ def run(timings=False, counts=False, baseline=None):
             baseline_sources = snapshot(frozen, resolved, driver)
             source = frozen/'tests/performance/pvm_sieve.nim'
             flags = ('-g', '-I'+str(frozen/'tests/performance'))
-            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            row, paired = build_paired_guest(checks, compiler, source, flags)
             output = row.pop('output'); report['checks'].append(row)
             if row['exit_code'] or 'Error:' in output: raise ValueError('baseline guest build failed')
             baseline_binary = BUILD/'guest-baseline'
@@ -186,13 +197,13 @@ def run(timings=False, counts=False, baseline=None):
             if retained_baseline.exists(): shutil.rmtree(retained_baseline)
             baseline_archive.rename(retained_baseline)
             candidate_sources = snapshot(frozen, None, driver)
-            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            row, paired = build_paired_guest(checks, compiler, source, flags)
             output = row.pop('output'); report['checks'].append(row)
             if row['exit_code'] or 'Error:' in output: raise ValueError('candidate paired build failed')
             binary = BUILD/'guest'
             shutil.copy2(paired, binary)
             expected_image = digest(binary)
-            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            row, paired = build_paired_guest(checks, compiler, source, flags)
             output = row.pop('output'); report['checks'].append(row)
             if row['exit_code'] or 'Error:' in output or digest(paired) != expected_image:
                 raise ValueError('candidate rebuild changed native image')
@@ -201,7 +212,7 @@ def run(timings=False, counts=False, baseline=None):
             identities.update({frozen/name: value for name,value in candidate_sources.items()})
             report['baseline'] = dict(revision=resolved, sources=baseline_sources, candidate_sources=candidate_sources,
                                       binary_sha256=digest(baseline_binary), candidate_sha256=expected_image,
-                                      candidate_rebuild_identical=True, generated_sources=baseline_generated,
+                                      candidate_rebuild_identical=True, fresh_compiler_caches=True, generated_sources=baseline_generated,
                                       generated_source_root=str(retained_baseline.relative_to(ROOT)))
         else:
             # Ordinary qualification preserves the existing single-candidate build profile.

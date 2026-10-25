@@ -126,7 +126,8 @@ timings on one runner. Simulated misses are not hardware predictor measurements.
 The measurement tool accepts `PVM_PREPARED_BASELINE=<local-ref>` (or `--baseline`)
 to run both prepared implementations on the same host. It resolves the ref once,
 uses the same current driver, compiles through identical source/cache/output paths,
-and requires a repeated candidate build to reproduce the executable bytes. Every
+and requires a repeated candidate build to reproduce the executable bytes. Each endpoint
+and the repeated control start with a fresh private compiler cache at that same path. Every
 baseline/candidate execution retains the same full-state checks. Baseline and candidate
 generated C are archived separately; cold selected-scope profiles precede both-order
 timings. The manual CI job captures full history and currently compares against dd75ce74.

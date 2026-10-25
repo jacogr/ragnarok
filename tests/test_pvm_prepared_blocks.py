@@ -78,6 +78,23 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertIn('| sieve | 100000 | 1 | 1.000 ms', text)
         self.assertIn('| sieve | 100000 | 2 | 2.000 ms', text)
 
+    def test_paired_build_retires_stale_generated_cache(self):
+        """A repeated candidate image control must rebuild independently rather than reuse old generated bodies."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        from pvm_prepared_blocks import build_paired_guest
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            cache = folder/'compiler'/'guest-paired-cache'
+            cache.mkdir(parents=True)
+            (cache/'stale.c').write_text('old body')
+            checks = Mock(folder=folder)
+            checks.build.side_effect = lambda *args, **kwargs: self.assertFalse(cache.exists())
+            with patch('pvm_prepared_blocks.cache_directory', return_value=cache):
+                build_paired_guest(checks, 'pinned', folder/'driver.nim', ('-g',))
+            checks.build.assert_called_once_with('pinned', folder/'driver.nim', 'guest-paired', cflags=('-g',))
+
     def test_baseline_comparison_requires_complete_paired_samples(self):
         """A baseline adds paired evidence rather than contaminating the existing engine matrix."""
         from pvm_guest_inputs import CASES
@@ -106,6 +123,7 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.suite == 'prepared-pvm'", text)
         self.assertIn('run: make profile-pvm-prepared', text)
         self.assertIn('fetch-depth: 0', text)
+        self.assertIn('run: make unit SUITE=pvm_prepared_blocks', text)
         self.assertIn('PVM_PREPARED_BASELINE: dd75ce743c406a427a4dfc7d600195faf2ac5473', text)
         self.assertIn('generated-source-baseline/', text)
         self.assertIn('valgrind=1:3.22.0-0ubuntu3', text)
