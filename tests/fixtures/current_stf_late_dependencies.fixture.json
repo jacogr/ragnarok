@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_DEPENDENCIES",
+  "files": {
+    "current-stf-late-dependencies.json": "b3607695d3575ac89c4ee3e5d960ca2607e4c621d036ce151526cf9e1257c571"
+  },
+  "target": "current-stf-late-dependencies.json"
+}

@@ -36,6 +36,15 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
 
 
 @CORPORA.case
+def current_stf_late_dependencies_corpus(compiler, report, checks, libraries):
+    """Qualify pending code and actual deferred dependency release across population changes."""
+    import current_stf_late_dependencies_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_dependencies','current_stf_late_rotation',
+         'current_stf_population','current_stf_population_waves','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_rotation_corpus(compiler, report, checks, libraries):
     """Qualify code extrinsic integration after accumulation at growth, intra-epoch and shrinkage boundaries."""
     import current_stf_late_rotation_oracle as oracle
