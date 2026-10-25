@@ -52,7 +52,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """Choose code from the actual prior mathematical account; mutations affect only later invocations."""
     key = chapter_service(255, 99); code, wide, narrow = account_parse(parent[key], 105)
     wide, narrow = list(wide), list(narrow)
@@ -70,7 +70,7 @@ def effects(result, parent, profile, slot, budget):
             code = target_hash; wide[2] = 100; wide[3] = 19
     narrow[2] = slot # N=1 retains the statistics key, even for absent replacement code with G=0.
     result[key] = account_wire((code, wide, narrow))
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))
