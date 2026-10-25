@@ -91,6 +91,9 @@ def prepare_effect_sessions():
         reference = importlib.import_module(identity+'_oracle')
         selected, proof = reference_sessions(reference, identity, profiles(reference.FAMILIES))
         jobs.extend(selected); evidence.append(proof)
+    import jam_fuzzer_epoch_effect_forks_oracle as epoch
+    selected, proof = reference_sessions(epoch, 'jam_fuzzer_epoch_effect_forks', epoch.host_profiles())
+    jobs.extend(selected); evidence.append(proof)
     return jobs, session_evidence(jobs, evidence)
 
 

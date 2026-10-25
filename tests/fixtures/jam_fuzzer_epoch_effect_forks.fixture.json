@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_EPOCH_EFFECT_FORKS",
+  "files": {
+    "jam-fuzzer-epoch-effect-forks.json": "fac4bc1984be76cd91582597c81547fe0d447ccb547b7a4eaaf0d5885e6ae955"
+  },
+  "target": "jam-fuzzer-epoch-effect-forks.json"
+}
