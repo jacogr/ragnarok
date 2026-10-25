@@ -783,7 +783,7 @@ gas, fault retry, callback/attempt boundaries and source ownership throughout.
 A separate later memory-path investigation remains useful; no such optimization is
 mixed into this qualification commit.
 
-## JITB alternative: borrowed records and scalar continuation
+## Rejected JITB alternative: borrowed records and scalar continuation
 
 The full flat-stream trial above is superseded in this PR after its measured
 regression. Its exact implementation and measurements remain in history. This
@@ -819,3 +819,108 @@ balanced across 1000 iterations (prepared: 98912 bytes before/after; host: 1376)
 Generated C confirms `(frame*, operation*) -> NB8`, and an x86_64 Clang static
 size check confirms the unchanged 56-byte operation record. Paired Linux timings
 against the accepted parent remain pending.
+
+### Scalar-continuation qualification and restoration
+
+Run [40215243645](https://github.com/jacogr/ragnarok/actions/runs/40215243645) passed at
+candidate `800b4e032c61c84ce746e9cfc21451295d46d567` against accepted prepared
+parent `58cb51e90eaec06de3c97546573055bb9097e5a3`, on AMD EPYC 7763 / Linux
+x86_64 with checked ARC/Clang ThinLTO. Exact source, generated-source and profile
+hashes verified, as did fresh private compiler caches and identical repeated
+candidate image controls. All 70 processes × 13 fresh-state samples, 24 selected
+single-execution profiles, four collection controls, both native assertion controls
+and the exact-head native prepared suite passed. Complete register, gas, mapped
+page-byte, permission and source-immutability checks are outside timed execution.
+
+**Verdict: reject this runtime change.** Pinky and sieve improve modestly, but
+minimal regresses 6.09% / 8.72% and memory fill 1.91% / 5.52% in the two orders.
+Minimal sample ranges do not overlap in either order. Pinky reverse-order ranges
+overlap; do not present its smaller median difference as a robust isolated win.
+The runtime is restored byte-for-byte from the accepted parent; both rejected
+implementations and exact measured evidence remain in history. Retain the cache
+replacement/full-width operand witnesses and measurements, with no default change.
+
+Order 1 is dynamic → planned → candidate → baseline → PolkaVM; order 2 reverses it.
+Reused CPU is the median of ten fresh-state executions after three warmups, in ms.
+
+| Guest | Order | Dynamic | Planned | Accepted prepared | Trial | PolkaVM interpreted | Trial change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Pinky | 1 | 492.391 | 386.407 | 357.229 | 343.277 | 179.116 | -3.91% |
+| Pinky | 2 | 481.878 | 393.487 | 339.801 | 334.408 | 187.074 | -1.59% |
+| Sieve | 1 | 18.257 | 11.113 | 7.314 | 7.154 | 5.570 | -2.19% |
+| Sieve | 2 | 18.052 | 11.117 | 7.331 | 7.101 | 5.565 | -3.14% |
+| Minimal | 1 | 27.863 | 26.541 | 17.998 | 19.095 | 7.461 | +6.09% |
+| Minimal | 2 | 27.732 | 26.628 | 17.959 | 19.525 | 7.539 | +8.72% |
+| Memory fill | 1 | 13.278 | 12.234 | 8.512 | 8.674 | 4.196 | +1.91% |
+| Memory fill | 2 | 13.180 | 12.196 | 8.288 | 8.746 | 4.190 | +5.52% |
+
+Cold CPU includes lazy preparation, excludes construction, and is a single first
+invocation per process rather than a median or standalone cold-speed claim.
+
+| Guest | Order | Dynamic cold | Planned cold | Accepted cold | Trial cold | PolkaVM cold |
+|---|---:|---:|---:|---:|---:|---:|
+| Pinky | 1 | 484.399 | 384.326 | 355.239 | 336.039 | 180.997 |
+| Pinky | 2 | 459.875 | 394.189 | 338.583 | 329.163 | 187.229 |
+| Sieve | 1 | 18.384 | 11.900 | 13.222 | 13.136 | 6.178 |
+| Sieve | 2 | 18.455 | 11.950 | 13.233 | 13.097 | 6.010 |
+| Minimal | 1 | 28.684 | 27.288 | 18.241 | 18.886 | 7.504 |
+| Minimal | 2 | 28.368 | 27.491 | 18.160 | 18.783 | 7.505 |
+| Memory fill | 1 | 13.202 | 14.958 | 8.420 | 8.922 | 4.365 |
+| Memory fill | 2 | 13.245 | 12.255 | 8.455 | 8.840 | 4.352 |
+
+Constructor CPU observations are separate, in microseconds, order 1 / 2.
+PolkaVM setup is outside execution timing and is not timed by this harness.
+
+| Guest | Planned constructor | Accepted constructor | Trial constructor |
+|---|---:|---:|---:|
+| Pinky | 3060.93 / 3046.69 | 8.80 / 9.66 | 8.52 / 9.65 |
+| Sieve | 14905.58 / 14873.17 | 6.64 / 5.04 | 5.03 / 4.87 |
+| Minimal | 35.12 / 35.72 | 57.46 / 59.04 | 60.89 / 58.04 |
+| Memory fill | 251.62 / 254.71 | 11.49 / 9.71 | 9.92 / 9.78 |
+
+Native instruction counts and conditional/indirect simulated misses below are
+accepted → trial, in millions. Simulated misses are not hardware measurements;
+neither cycles, cache misses nor instruction stalls were measured in this run.
+
+| Guest | Phase | Native instructions | Conditional misses | Indirect misses |
+|---|---|---:|---:|---:|
+| Pinky | cold | 3318.299 → 3176.632 | 23.389 → 21.218 | 28.471 → 28.471 |
+| Pinky | reused | 3288.025 → 3146.356 | 23.154 → 20.982 | 28.450 → 28.450 |
+| Sieve | cold | 165.459 → 160.372 | 0.937 → 0.893 | 1.183 → 1.183 |
+| Sieve | reused | 85.081 → 79.991 | 0.301 → 0.254 | 1.131 → 1.131 |
+| Minimal | cold | 291.836 → 281.736 | 2.103 → 2.103 | 1.900 → 1.900 |
+| Minimal | reused | 291.510 → 281.410 | 2.100 → 2.100 | 1.900 → 1.900 |
+| Memory fill | cold | 122.712 → 116.611 | 0.115 → 0.015 | 1.102 → 1.102 |
+| Memory fill | reused | 120.766 → 114.664 | 0.101 → 0.001 | 1.100 → 1.100 |
+
+Cache occupancy, byte estimates, preparation counts, hit counts and churn are
+identical between endpoints in both orders; 56-byte records and cache policy did
+not change. First retained state and additional evictions per reused call:
+
+| Guest | Resident blocks / guest ops | Retained bytes, both endpoints | Evictions per reused call |
+|---|---:|---:|---:|
+| Pinky | 792 / 5911 | 493,768 | 58 |
+| Sieve | 991 / 13226 | 911,368 | 49 |
+| Minimal | 9 / 59 | 134,736 | 0 |
+| Memory fill | 63 / 365 | 154,032 | 0 |
+
+The deterministic profiles confirm that the scalar outcome removes native work:
+reused `Ir` falls 4.31% Pinky, 5.98% sieve, 3.46% minimal and 5.05% memory fill.
+Indirect branches and simulated indirect misses are exactly unchanged. Central
+loop self-instructions fall (minimal: 63.901M → 57.601M), and memory-handler
+self-instructions also fall. Shared scalar load/store absolute self-instructions
+are unchanged. Their reused shares become 42.41%, 21.23%, 58.17% and 36.42%
+respectively. Instruction counts and miss simulation therefore do not explain
+minimal’s CPU regression; a hardware/code-layout cause remains unproven.
+
+Next work should start from the accepted runtime and inspect optimized machine
+code/cycle evidence or its checked scalar memory paths, rather than adopting
+another handler-return change on the strength of fewer instructions. Preserve
+full state, ownership and exact-head controls in any subsequent experiment.
+
+Restoration verification passed the full prepared and host native suites with
+1000 balanced ARC lifetimes, plus all seven maintained guest/size comparisons
+in both process orders. `src/pvm/step.nim` is byte-identical to `58cb51e9`.
+Fresh local paired builds report equal captured runtime sources and identical
+candidate/baseline binary hashes. Earlier accepted-source smoke evidence remains
+applicable; the retained test witnesses are covered by the fresh native suite.

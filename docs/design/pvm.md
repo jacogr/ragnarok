@@ -38,10 +38,8 @@ under one fixed source/policy, with exclusive worker use and private monotone fa
 
 An optional [JITB (Just In Time Blocks) execution owner](../../spec/pvm-prepared-blocks.md)
 prepares visited instructions into bounded contiguous records holding selected handlers,
-decoded operands, static targets and whole-block prices. Handlers receive the selected
-immutable record and return a continuation bit; rare exits and errors remain invocation-local.
-Pricing stays at block entry. Segments bound preparation storage without introducing guest
-block boundaries. The owner shares immutable program facts across fresh executions; CPU,
+decoded operands, static targets and whole-block prices. Pricing stays at block entry.
+Segments bound preparation storage without introducing guest block boundaries. The owner shares immutable program facts across fresh executions; CPU,
 memory staging, paid gas and host callbacks remain invocation-local. This tier reuses private
 semantic helpers in `step.nim` and leaves the existing interpreter as the default.
 

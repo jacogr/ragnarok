@@ -1332,14 +1332,19 @@ type
     byteLimit*: PreparedByteLimit
     blockLimit*: PreparedBlockLimit
     cycleLimit*: GasCycleLimit
+  PreparedEvaluation = object ## A compact private guarded result returns only status and the selected exit through the handler ABI.
+    case status: StepError
+    of None:
+      exit: StepExit
+    else:
+      discard # Failed/default handlers carry no selectable exit or stale payload.
   PreparedFrame = object ## One invocation owns mutable CPU/memory/targets and rare exit metadata; no reusable cache retains it.
     source: Program
     info: MachineInfo
     memory: WorkingMemory
     cache: ExecutionCache
     exitEffect: InstructionEffect
-    error: StepError # Rare refusal is inspected only after a handler stops; no failed invocation publishes a machine.
-  PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): bool {.nimcall,
+  PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation {.nimcall,
         raises: [].}
   PreparedOperation = object ## A sealed private record retains only handler-ready facts from one genuine source-owned decode.
     handler: nil PreparedHandler
@@ -1411,35 +1416,26 @@ proc preparedIncrement(value: var uint64) =
   ## Diagnostics saturate without changing execution or refusing a long-lived cache.
   if value != high(uint64): inc value
 
-proc preparedFailure(frame: var PreparedFrame, reason: StepError): bool {.inline.} =
-  ## A local refusal stops dispatch with only its reason; any old exit payload stays unselectable.
-  frame.error = reason
-  false
-
-proc preparedSignal(frame: var PreparedFrame, exit: StepExit): bool {.inline.} =
-  ## Return one continuation bit; only stopped guest execution selects invocation-local exit metadata.
-  if exit == StepExit.Continued: return true
-  if exit notin {StepExit.Fault, StepExit.Host}:
-    # Fault/host handlers already installed their genuine payload; scalar exits carry no such metadata.
-    frame.exitEffect = InstructionEffect(kind: exit)
-  false
+func preparedSignal(exit: StepExit): PreparedEvaluation {.inline.} =
+  ## Only successful instruction evaluation selects a scalar guest exit; payloads remain invocation-local.
+  PreparedEvaluation(status: StepError.None, exit: exit)
 
 proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
-    operation: PreparedOperation): bool =
+    operation: PreparedOperation): PreparedEvaluation =
   ## A literal selected opcode specializes the shared arithmetic; the compact return carries no machine or metadata copy.
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(operation.registers, operation.x, byte(Code), frame.info.registers,
       index, value, Code):
-    return preparedFailure(frame, StepError.UnsupportedInstruction)
+    return PreparedEvaluation(status: StepError.UnsupportedInstruction)
   frame.info.registers[index] = value
   frame.info.pc = operation.next
   if not operation.fallthrough:
-    return preparedFailure(frame, StepError.InvalidMachine)
-  preparedSignal(frame, StepExit.Continued)
+    return PreparedEvaluation(status: StepError.InvalidMachine)
+  preparedSignal(StepExit.Continued)
 
 proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
-    frame: var PreparedFrame, operation: PreparedOperation): bool =
+    frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation =
   ## Width/sign/address/source modes stay selected once; every scalar permission/fault check uses current invocation memory.
   let slots = operation.registers
   var base = 0'u64
@@ -1471,35 +1467,37 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   of MachineError.None:
     # Successful nonterminators require their validated physical successor.
     if not operation.fallthrough:
-      return preparedFailure(frame, StepError.InvalidMachine)
+      return PreparedEvaluation(status: StepError.InvalidMachine)
     frame.info.pc = operation.next
-    preparedSignal(frame, StepExit.Continued)
+    preparedSignal(StepExit.Continued)
   of MachineError.Fault:
     # Only the selected fault exit authorizes this invocation-local page payload.
     frame.exitEffect = InstructionEffect(kind: StepExit.Fault, failedPage: failedPage)
-    preparedSignal(frame, StepExit.Fault)
+    preparedSignal(StepExit.Fault)
   of MachineError.Panic:
-    preparedSignal(frame, StepExit.Panic)
+    preparedSignal(StepExit.Panic)
   of MachineError.AmbiguousAccessOrder:
-    preparedFailure(frame, StepError.AmbiguousAccessOrder)
+    PreparedEvaluation(status: StepError.AmbiguousAccessOrder)
   else:
-    preparedFailure(frame, StepError.InvalidMachine)
+    PreparedEvaluation(status: StepError.InvalidMachine)
 
 proc preparedControl[Code: static[int]](frame: var PreparedFrame,
-    operation: PreparedOperation): bool =
+    operation: PreparedOperation): PreparedEvaluation =
   ## Static destinations stay prepared; dynamic ordinals use the same checked source-bound resolver.
   var outcome = StepExit.Continued
   when Code == 10:
     # Host metadata is written only after its valid successor is established; the causing PC remains observable.
-    if not operation.fallthrough: return preparedFailure(frame, StepError.InvalidMachine)
+    if not operation.fallthrough: return PreparedEvaluation(
+        status: StepError.InvalidMachine)
     frame.exitEffect = InstructionEffect(kind: StepExit.Host,
       callNumber: HostCallId(operation.x), callAddress: operation.address)
-    return preparedSignal(frame, StepExit.Host)
+    return preparedSignal(StepExit.Host)
   elif Code == 0:
     outcome = StepExit.Panic
   elif Code == 2:
     # Unlikely stays inside its prepaid block.
-    if not operation.fallthrough: return preparedFailure(frame, StepError.InvalidMachine)
+    if not operation.fallthrough: return PreparedEvaluation(
+        status: StepError.InvalidMachine)
     frame.info.pc = operation.next
   elif Code == 50 or Code == 180:
     # Read the original base before load-and-jump publishes an aliased destination.
@@ -1534,7 +1532,7 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
       frame.info.blockCharged = false
     else:
       outcome = StepExit.Panic
-  preparedSignal(frame, outcome)
+  preparedSignal(outcome)
 
 proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
   ## Select a specialized handler and immutable target facts from a genuine successful decoder result.
@@ -1811,7 +1809,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
   ## Run selected handlers within a prepared segment; no decoder-cache/category/pricing lookup occurs between its ordinary operations.
   var frame = PreparedFrame(source: owner.source, info: cursor.info,
     memory: initWorkingMemory(cursor.memory, true), cache: initExecutionCache(),
-    exitEffect: InstructionEffect(kind: StepExit.Continued), error: StepError.None)
+    exitEffect: InstructionEffect(kind: StepExit.Continued))
   while remaining > 0:
     # A host continuation can reuse its still-live segment if the validated posterior PC matches its next operation.
     var chunk = location.chunk
@@ -1847,13 +1845,14 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       let endsBlock = active.operations[at].endsBlock
       let selected = active.operations[at].handler
       if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
-      let continued = selected(frame, active.operations[at])
+      let evaluated = selected(frame, active.operations[at])
+      if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
       inc at
-      if not continued:
-        # Ordinary progress inspects one continuation bit; refusal reasons and genuine exit payloads are rare-path state.
-        if frame.error != StepError.None: return StepResult(status: frame.error)
-        let effect = frame.exitEffect
-        if effect.kind == StepExit.Continued: return StepResult(status: StepError.InvalidMachine)
+      if evaluated.exit != StepExit.Continued:
+        # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
+        let effect = if evaluated.exit in {StepExit.Fault, StepExit.Host}: frame.exitEffect
+          else: InstructionEffect(kind: evaluated.exit)
+        if effect.kind != evaluated.exit: return StepResult(status: StepError.InvalidMachine)
         # Fault/host/gas preserve the causing PC; panic/halt keep recursive terminal normalization.
         frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: causingPc
         cursor.info = frame.info
