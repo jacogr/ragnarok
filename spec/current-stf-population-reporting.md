@@ -101,3 +101,21 @@ refusal and exclusive9 refusal. Its registered native composition corpus passes
 all original cases plus these anchors. Eleven additional composition/typed
 reference checks preserve original typed fixture expectations; no production
 observation supplies an updated answer.
+
+Checked Linux amd64 under emulation passed the focused availability unit and all20
+new transitions/12 refusals. The generic composition corpus and11 affected
+reference checks also passed. Both corpora have request/expected/actual hashes
+identical to macOS. All7,971 frozen source/test/tool/pin inputs match retained image
+`fb951d0b01ebe297f0d856bf7d97c840cb51bfb5c340fca2be693fdc6dac1ee3`.
+The final image reuses unchanged unit/chain results from its parent layer; only
+the two generic-reference files changed, and their affected reference/composition
+checks ran in the final layer. Source deltas and complete reports remain under
+ignored `build/db5-population-*` evidence.
+
+The application corpus and unit use the ordinary checked ARC/Clang non-LTO profile;
+Linux generic composition additionally uses the preserved checked ThinLTO codec
+profile (macOS composition uses non-LTO). Bounds/assertions remain enabled. The
+emulated compiler alone has a900-second allowance; corpus execution retains its
+ordinary180-second limit. This is covered-source local Linux evidence, distinct
+from exact-head remote CI. No complete JAM/STF or arbitrary population/offender
+history qualification is inferred.
