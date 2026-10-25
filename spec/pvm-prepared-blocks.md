@@ -111,3 +111,28 @@ compares execution models but does not establish binary identity with a separate
 master. Constructor cost and cold execution must be considered alongside reused execution;
 retained payload and cache misses must accompany any speed claim. Larger-program admission
 beyond these maintained guests remains a separate qualification step.
+
+## Handler-call investigation
+
+The dd75ce74 Linux Pinky profile records 28,448,007 simulated indirect misses at the
+single selected-handler call (32,055,270 calls), over 99.8% of all indirect misses.
+The two most frequent targets are `add_imm_64` (149; 3,152,504 calls) and
+`shlo_l_imm_64` (151; 2,424,254 calls). The first bounded hypothesis is to call those
+two existing specialized handlers directly and retain the checked indirect fallback.
+No cache layout, arithmetic, gas, memory or host semantics change. Acceptance requires
+complete native parity, matched baseline/candidate instruction profiles and paired guest
+timings on one runner. Simulated misses are not hardware predictor measurements.
+
+The measurement tool accepts `PVM_PREPARED_BASELINE=<local-ref>` (or `--baseline`)
+to run both prepared implementations on the same host. It resolves the ref once,
+uses the same current driver, compiles through identical source/cache/output paths,
+and requires a repeated candidate build to reproduce the executable bytes. Every
+baseline/candidate execution retains the same full-state checks. Baseline and candidate
+generated C are archived separately; cold selected-scope profiles precede both-order
+timings. The manual CI job captures full history and currently compares against dd75ce74.
+
+The two-handler trial passes checked native opcode/cache/host parity, 1,280 mixed
+reference scenarios, all seven guest cases in both orders, and the candidate image
+rebuild control. Native source assertions were reshaped to avoid malformed expressions
+from an earlier formatter invocation; the corrected final formatted suite passes.
+Linux counter/timing qualification remains pending; the trial is not an accepted speedup.

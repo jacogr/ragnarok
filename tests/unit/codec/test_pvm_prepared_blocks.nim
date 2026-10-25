@@ -162,8 +162,9 @@ let firstCache = cache(first)
 let wrongSource = captureMachine(second, mapped, MachineInfo(gas: MachineGas(100))).value
 assert execute(wrongSource, ExecutionStepLimit(5), firstCache).error ==
     StepError.InvalidPreparedProgram
-assert execute(wrongSource, ExecutionStepLimit(5), default(
-    PreparedProgram)).error ==StepError.InvalidPreparedProgram
+let absentPrepared = execute(wrongSource, ExecutionStepLimit(5), default(
+    PreparedProgram))
+assert absentPrepared.error == StepError.InvalidPreparedProgram
 assert preparedInfo(default(PreparedProgram)).error ==
     PreparationError.InvalidProgram
 assert newPreparedProgram(default(Program), PreparedLimits()).error ==
@@ -236,8 +237,9 @@ proc reply(context: var ReplyContext, stopped: StepOutcome): HostResponse {.rais
   assert stopped.exit == StepExit.Host
   let state = machineInfo(stopped.machine).value
   if context.checkBusy:
-    assert execute(context.source, ExecutionStepLimit(10),
-        context.prepared).error ==StepError.PreparedProgramBusy
+    let nestedBusy = execute(context.source, ExecutionStepLimit(10),
+        context.prepared)
+    assert nestedBusy.error == StepError.PreparedProgramBusy
     assert execute(context.source, ExecutionStepLimit(10),
         context.independent).error == StepError.None
   inc context.calls
@@ -250,9 +252,9 @@ proc reply(context: var ReplyContext, stopped: StepOutcome): HostResponse {.rais
       2: HostAction.Panic
     elif context.mode == 3: HostAction.OutOfGas elif context.mode ==
         4: HostAction.Halt else: HostAction.Continue
-  HostResponse(action: action, gas: state.gas, gasDeficit: GasDeficit(
-      if context.mode ==5: 1'u64 else: 0'u64), registers: regs,
-          memory: changed.value)
+  let deficit = if context.mode == 5: 1'u64 else: 0'u64
+  HostResponse(action: action, gas: state.gas, gasDeficit: GasDeficit(deficit),
+    registers: regs, memory: changed.value)
 
 type ReplyRefusal = enum Refused ## Enum ordinal zero remains a selected callback refusal.
 proc fallibleReply(context: var ReplyContext, stopped: StepOutcome): HostResult[

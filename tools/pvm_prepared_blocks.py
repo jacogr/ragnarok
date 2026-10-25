@@ -14,12 +14,15 @@ from pathlib import Path
 import platform
 import re
 import statistics
+import shutil
 import subprocess
 
 from native_checks import NativeChecks, ROOT
 from pvm_guest_inputs import CASES, digest, prepare_inputs
 from pvm_instruction_profile import (SCOPE, VERSION, calibrate_scope, collect,
-                                     execution_entry_count, profile_counts)
+                                     execution_entry_count, profile_counts,
+                                     capture_generated_sources, verify_generated_sources)
+from pvm_guest_compare import DRIVER, revision, snapshot
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-prepared-blocks'
@@ -86,7 +89,7 @@ def summary(report):
              '|---|---:|---:|---:|---:|---:|---:|---:|'] if report['timings'] else [
              '| Guest | Size | Complete-state checks | Prepared retained bytes |', '|---|---:|---|---:|']
     for guest, limit in CASES:
-        selected = [row for row in report['runs'] if row['guest'] == guest and row['limit'] == limit]
+        selected = [row for row in report['runs'] if row['guest'] == guest and row['limit'] == limit and row['engine'] != 'ragnarok_prepared_baseline']
         engines = ('ragnarok', 'ragnarok_planned', 'ragnarok_prepared', 'polkavm_interpreter') if report['timings'] else ('ragnarok', 'ragnarok_planned', 'ragnarok_prepared')
         if len(selected) != len(engines)*2 or {(row['engine'],row['order']) for row in selected} != {(engine,order) for engine in engines for order in (0,1)}:
             raise ValueError('incomplete or duplicate comparison matrix')
@@ -106,12 +109,27 @@ def summary(report):
         else:
             resident = max(row['caches'][-1][1] for row in prepared)
             lines.append(f'| {guest} | {limit} | passed, both orders | {resident:,} |')
+    if report.get('baseline'):
+        lines += ['', '| Guest | Size | Order | Baseline prepared CPU | Candidate prepared CPU | Change |',
+                  '|---|---:|---:|---:|---:|---:|'] if report['timings'] else ['', 'Baseline prepared complete-state checks: passed, both orders.']
+        for guest, limit in CASES:
+            selected = [row for row in report['runs'] if row['guest'] == guest and row['limit'] == limit and row['engine'] == 'ragnarok_prepared_baseline']
+            if len(selected) != 2 or {row['order'] for row in selected} != {0,1}:
+                raise ValueError('incomplete baseline prepared matrix')
+            for row in selected:
+                if report['timings']:
+                    candidate = next(x for x in report['runs'] if x['guest'] == guest and x['limit'] == limit and x['engine'] == 'ragnarok_prepared' and x['order'] == row['order'])
+                    values = [x['cpu_ns'] for x in row['samples'][3:]]
+                    if len(values) != 10: raise ValueError('incomplete baseline warmed samples')
+                    before = statistics.median(values)
+                    after = statistics.median(x['cpu_ns'] for x in candidate['samples'][3:])
+                    lines.append(f'| {guest} | {limit} | {row["order"]+1} | {before/1e6:.3f} ms | {after/1e6:.3f} ms | {(after/before-1)*100:+.2f}% |')
     lines += ['', 'Cold execution includes lazy preparation. Constructor cost, every raw sample, cache growth and eviction are retained separately.',
               'Existing and prepared paths use the same checked candidate binary; this does not isolate unrelated code-layout effects.', '']
     return '\n'.join(lines)
 
 
-def run(timings=False, counts=False):
+def run(timings=False, counts=False, baseline=None):
     """Build once, validate source controls, and retain incomplete evidence on any refusal or changed input."""
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(status='running', timings=timings, counts=counts, checks=[], builds=[], runs=[], profiles=[], controls=[])
@@ -147,16 +165,62 @@ def run(timings=False, counts=False):
         ready = prepare_inputs(checks, BUILD)
         identities.update(ready['identities'])
         reference = ready['reference']
-        row, binary = checks.build(compiler, ROOT/'tests/performance/pvm_sieve.nim', 'guest',
-                                   cflags=('-g', '-I'+str(ROOT/'tests/performance')))
-        output = row.pop('output'); report['checks'].append(row)
-        if row['exit_code'] or 'Error:' in output: raise ValueError('native guest build failed')
+        baseline_binary = None
+        if baseline is not None:
+            # Both endpoints compile through the same source/cache/output paths; a repeated candidate build controls cache-history effects.
+            resolved = revision(baseline)
+            frozen = BUILD/'snapshot'
+            driver = {name: (ROOT/name).read_bytes() for name in DRIVER}
+            baseline_sources = snapshot(frozen, resolved, driver)
+            source = frozen/'tests/performance/pvm_sieve.nim'
+            flags = ('-g', '-I'+str(frozen/'tests/performance'))
+            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            output = row.pop('output'); report['checks'].append(row)
+            if row['exit_code'] or 'Error:' in output: raise ValueError('baseline guest build failed')
+            baseline_binary = BUILD/'guest-baseline'
+            shutil.copy2(paired, baseline_binary)
+            identities[baseline_binary] = digest(baseline_binary)
+            baseline_archive, baseline_generated = capture_generated_sources(BUILD, ROOT)
+            retained_baseline = BUILD/'generated-source-baseline'
+            if retained_baseline.is_symlink(): raise ValueError('baseline archive is a symlink')
+            if retained_baseline.exists(): shutil.rmtree(retained_baseline)
+            baseline_archive.rename(retained_baseline)
+            candidate_sources = snapshot(frozen, None, driver)
+            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            output = row.pop('output'); report['checks'].append(row)
+            if row['exit_code'] or 'Error:' in output: raise ValueError('candidate paired build failed')
+            binary = BUILD/'guest'
+            shutil.copy2(paired, binary)
+            expected_image = digest(binary)
+            row, paired = checks.build(compiler, source, 'guest-paired', cflags=flags)
+            output = row.pop('output'); report['checks'].append(row)
+            if row['exit_code'] or 'Error:' in output or digest(paired) != expected_image:
+                raise ValueError('candidate rebuild changed native image')
+            if baseline_sources == candidate_sources and digest(baseline_binary) != expected_image:
+                raise ValueError('identical paired sources changed native image')
+            identities.update({frozen/name: value for name,value in candidate_sources.items()})
+            report['baseline'] = dict(revision=resolved, sources=baseline_sources, candidate_sources=candidate_sources,
+                                      binary_sha256=digest(baseline_binary), candidate_sha256=expected_image,
+                                      candidate_rebuild_identical=True, generated_sources=baseline_generated,
+                                      generated_source_root=str(retained_baseline.relative_to(ROOT)))
+        else:
+            # Ordinary qualification preserves the existing single-candidate build profile.
+            row, binary = checks.build(compiler, ROOT/'tests/performance/pvm_sieve.nim', 'guest',
+                                       cflags=('-g', '-I'+str(ROOT/'tests/performance')))
+            output = row.pop('output'); report['checks'].append(row)
+            if row['exit_code'] or 'Error:' in output: raise ValueError('native guest build failed')
+        archive, generated_sources = capture_generated_sources(BUILD, ROOT)
+        report['generated_sources'] = generated_sources
+        report['generated_source_root'] = str(archive.relative_to(ROOT))
         identities[binary] = digest(binary)
         report.update(revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                       sources={str(path.relative_to(ROOT)): value for path, value in identities.items()},
                       compiler=json.loads((ROOT/'build/toolchain/environment.json').read_text()),
                       platform=platform.platform(), provenance=ready['provenance'], preparations=ready['preparations'])
         command([binary], 'assert-native', dict(os.environ, RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1'), 'pvm sieve native assertion control')
+        if baseline_binary is not None:
+            # A baseline success cannot hide disabled native assertions in either image.
+            command([baseline_binary], 'assert-baseline', dict(os.environ, RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1'), 'pvm sieve native assertion control')
         if counts:
             # Reuse the maintained selected/absent/repeated-scope calibration before trusting a new guest profile.
             version = command(['valgrind', '--version'], 'valgrind-version', dict(os.environ))
@@ -167,12 +231,14 @@ def run(timings=False, counts=False):
             base = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_SIEVE_INPUT=str(data),
                         RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
             if counts and (guest, limit) in (('pinky', 1), ('sieve', 100000), ('memset', 100000), ('minimal', 100000)):
-                for mode in ('planned', 'prepared'):
+                profiles = [('planned', binary, 'planned'), ('prepared', binary, 'prepared')]
+                if baseline_binary is not None: profiles.append(('baseline', baseline_binary, 'prepared'))
+                for mode, executable, pricing in profiles:
                     # One complete cold execution includes its own preparation; fixture construction and validation are outside scope.
-                    env = dict(base, RAGNAROK_PVM_PRICING=mode, RAGNAROK_PVM_SIEVE_SAMPLES='1', RAGNAROK_PVM_SIEVE_CLOCK='0')
-                    result, raw = collect(checks, binary, f'profile-{guest}-{mode}', SCOPE, env, 1800)
+                    env = dict(base, RAGNAROK_PVM_PRICING=pricing, RAGNAROK_PVM_SIEVE_SAMPLES='1', RAGNAROK_PVM_SIEVE_CLOCK='0')
+                    result, raw = collect(checks, executable, f'profile-{guest}-{mode}', SCOPE, env, 1800)
                     if result['exit_code']: raise ValueError('prepared profile process failed')
-                    parse_output(result['output'], 'ragnarok_'+mode, limit, 1, guest, False)
+                    parse_output(result['output'], 'ragnarok_'+pricing, limit, 1, guest, False)
                     text = raw.read_text()
                     if execution_entry_count(text) != 1: raise ValueError('profile did not collect exactly one execution')
                     report['profiles'].append(dict(guest=guest, mode=mode, events=profile_counts(text),
@@ -182,22 +248,30 @@ def run(timings=False, counts=False):
             base = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_SIEVE_INPUT=str(data),
                         RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
             artifact = ROOT/'tests/fixtures'/({'sieve':'pvm-sieve','pinky':'pvm-pinky'}.get(guest,'pvm-guests'))/(guest+'.polkavm')
-            modes = (*MODES, 'reference') if timings else MODES
+            modes = (*MODES, *(('baseline',) if baseline_binary is not None else ()), *(('reference',) if timings else ()))
             for order, selected in enumerate((modes, tuple(reversed(modes)))):
                 for mode in selected:
                     # Every endpoint restores exactly the same source and validates all posterior bytes/registers/gas.
                     size = 13 if timings else 1
-                    env = dict(base, RAGNAROK_PVM_PRICING=mode, RAGNAROK_PVM_SIEVE_SAMPLES=str(size),
+                    env = dict(base, RAGNAROK_PVM_PRICING='prepared' if mode == 'baseline' else mode, RAGNAROK_PVM_SIEVE_SAMPLES=str(size),
                                RAGNAROK_PVM_SIEVE_CLOCK='1' if timings else '0')
-                    args = [reference, '--sieve', artifact, data.parent, limit, size] if mode == 'reference' else [binary]
+                    args = [reference, '--sieve', artifact, data.parent, limit, size] if mode == 'reference' else [baseline_binary if mode == 'baseline' else binary]
                     engine = 'polkavm_interpreter' if mode == 'reference' else 'ragnarok_'+mode if mode != 'dynamic' else 'ragnarok'
                     text = command(args, f'pass-{order}-{guest}-{limit}-{mode}', env)
-                    parsed = parse_output(text, engine, limit, size, guest, timings)
+                    parsed = parse_output(text, 'ragnarok_prepared' if mode == 'baseline' else engine, limit, size, guest, timings)
+                    if mode == 'baseline': engine = 'ragnarok_prepared_baseline'
                     report['runs'].append(dict(guest=guest, limit=limit, order=order, engine=engine, **parsed))
                     for path, identity in identities.items():
                         # No child process may mutate captured sources, reference fixtures, binaries or expected state.
                         if digest(path) != identity: raise ValueError('changed execution identity: '+str(path))
                     save()
+        verify_generated_sources(generated_sources, ROOT, archive)
+        if baseline_binary is not None:
+            for name, identity in baseline_generated.items():
+                # Original compiler paths now contain the candidate; retained copies preserve the baseline attribution bytes.
+                copied = retained_baseline/name
+                if copied.stat().st_size != identity['bytes'] or digest(copied) != identity['sha256']:
+                    raise ValueError('changed baseline generated source')
         report['status'] = 'passed'
         text = summary(report)
         (BUILD/'summary.md').write_text(text)
@@ -214,5 +288,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--timings', action='store_true')
     parser.add_argument('--counts', action='store_true')
+    parser.add_argument('--baseline', default=os.environ.get('PVM_PREPARED_BASELINE'), help='Resolved locally captured prepared-execution revision for a same-runner comparison')
     args = parser.parse_args()
-    run(args.timings, args.counts)
+    run(args.timings, args.counts, args.baseline)

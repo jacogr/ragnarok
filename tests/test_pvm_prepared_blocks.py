@@ -78,12 +78,36 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertIn('| sieve | 100000 | 1 | 1.000 ms', text)
         self.assertIn('| sieve | 100000 | 2 | 2.000 ms', text)
 
+    def test_baseline_comparison_requires_complete_paired_samples(self):
+        """A baseline adds paired evidence rather than contaminating the existing engine matrix."""
+        from pvm_guest_inputs import CASES
+        from copy import deepcopy
+        runs = []
+        for guest, limit in CASES:
+            for order in (0, 1):
+                for engine in ('ragnarok', 'ragnarok_planned', 'ragnarok_prepared', 'polkavm_interpreter', 'ragnarok_prepared_baseline'):
+                    runs.append(dict(guest=guest, limit=limit, order=order, engine=engine,
+                                     samples=[dict(cpu_ns=2000000 if engine.endswith('_baseline') else 1000000)]*13))
+        report = dict(status='passed', timings=True, baseline=dict(revision='captured'), runs=runs)
+        text = summary(report)
+        self.assertIn('Baseline prepared CPU', text)
+        self.assertIn('-50.00%', text)
+        broken = deepcopy(report)
+        broken['runs'].pop()
+        with self.assertRaises(ValueError): summary(broken)
+        broken = deepcopy(report)
+        broken['runs'][-1]['samples'].pop()
+        with self.assertRaises(ValueError): summary(broken)
+
     def test_manual_measurement_scope_preserves_existing_gates(self):
         """Heavy architectural measurements are explicit; native property fixtures still run through ordinary unit discovery."""
         from native_checks import ROOT
         text = (ROOT/'.github/workflows/ci.yml').read_text().split('  prepared-pvm:\n')[1]
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.suite == 'prepared-pvm'", text)
         self.assertIn('run: make profile-pvm-prepared', text)
+        self.assertIn('fetch-depth: 0', text)
+        self.assertIn('PVM_PREPARED_BASELINE: dd75ce743c406a427a4dfc7d600195faf2ac5473', text)
+        self.assertIn('generated-source-baseline/', text)
         self.assertIn('valgrind=1:3.22.0-0ubuntu3', text)
         self.assertIn('if: always()', text)
         self.assertNotIn('continue-on-error', text)

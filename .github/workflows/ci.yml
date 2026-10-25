@@ -870,8 +870,15 @@ jobs:
     name: Perf / PVM Prepared
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-24.04
+    env:
+      PVM_PREPARED_BASELINE: dd75ce743c406a427a4dfc7d600195faf2ac5473
     steps:
-      - *checkout
+      - name: Checkout exact candidate and baseline history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - *python
       - name: Validate verification inventory
         run: *inventory-run
@@ -899,3 +906,5 @@ jobs:
             build/tests/pvm-prepared-blocks/*.json
             build/tests/pvm-prepared-blocks/*.callgrind*
             build/tests/pvm-prepared-blocks/summary.md
+            build/tests/pvm-prepared-blocks/generated-source/
+            build/tests/pvm-prepared-blocks/generated-source-baseline/
