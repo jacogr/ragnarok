@@ -55,7 +55,7 @@ class JamInterfaceCI(unittest.TestCase):
         """PVM-only dispatch excludes the interface; both opt-in families keep their own commands and artifacts."""
         text = (interface.ROOT/'.github/workflows/ci.yml').read_text()
         job = job_section(text, 'pvm-fuzz')
-        for value in ("inputs.suite == 'fuzz-pvm'", '"name":"JAM interface"', "matrix.family.group == 'jam-interface'", 'run: make check-jam-fuzzer-interface', 'run: make fuzz-pvm-upstream', 'jam-fuzzer-interface-${{ github.run_attempt }}'):
+        for value in ("inputs.suite == 'fuzz-pvm'", '"name":"JAM"', "matrix.family.group == 'jam-interface'", 'run: make check-jam-fuzzer-interface', 'run: make fuzz-pvm-upstream', 'jam-fuzzer-interface-${{ github.run_attempt }}'):
             self.assertIn(value, job)
         self.assertIn("if: matrix.family.group == 'pvm'", job)
         self.assertIn('fail-fast: false', job)

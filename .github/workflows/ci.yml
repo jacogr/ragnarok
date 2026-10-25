@@ -793,7 +793,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM interface","group":"jam-interface"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM","group":"jam-interface"}]') }}
     runs-on: ubuntu-latest
     env:
       FUZZ_RUNS: "10000"

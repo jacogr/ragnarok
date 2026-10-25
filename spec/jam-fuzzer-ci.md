@@ -1,6 +1,6 @@
 # JAM fuzzer interface in the Fuzz group
 
-The opt-in `Fuzz / JAM interface` matrix entry runs
+The opt-in `Fuzz / JAM` matrix entry runs
 `make check-jam-fuzzer-interface`. It validates the native implementation of the
 pinned davxy/jam-conformance fuzz-v1 interface at
 `acd4b2da310ff25226c4d41b918712578483fd2c` against GP
