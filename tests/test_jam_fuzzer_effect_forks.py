@@ -36,6 +36,22 @@ class EffectForkReference(unittest.TestCase):
                 self.assertEqual(len(body_parts(variant[297:])[1]), 6)
                 self.assertEqual(len(body_parts(original[297:])[1]), 5)
 
+    def test_account_fork_maps(self):
+        """Account namespace identities, deposits, retirement and queued incarnation effects remain exact original-last answers."""
+        from jam_fuzzer_account_forks_oracle import expected_observations, FAMILIES
+        from jam_fuzzer_effect_forks_reference import profiles
+        _, lines, evidence = expected_observations()
+        self.assertEqual(evidence['sibling_imports'], evidence['chains'])
+        self.assertEqual(len(profiles(FAMILIES)), evidence['chains'])
+        self.assertGreater(evidence['transitions'], 300)
+        for index, line in enumerate(lines):
+            if line.startswith('V '):
+                changed = decode_checkpoint(bytes.fromhex(lines[index+1][2:]))
+                original = decode_checkpoint(bytes.fromhex(lines[index+3][2:]))
+                self.assertEqual(set(changed), set(original))
+                self.assertEqual({key for key in changed if changed[key] != original[key]},
+                                 {chapter_key(3), chapter_key(13)})
+
     def test_unknown_body_domains_fail_closed(self):
         """Unknown tickets, oversized assurance counts and truncated records cannot become a valid sibling."""
         for raw in (b'\x01', b'\0\0\0\7', b'\0\0\0\5'):
