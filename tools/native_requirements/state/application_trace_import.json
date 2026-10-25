@@ -1,0 +1,17 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "state_trace_step"
+  ],
+  "includes": [
+    "crypto",
+    "bandersnatch"
+  ],
+  "libraries": [
+    "bandersnatch",
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}
