@@ -86,11 +86,18 @@ within their own contracts. The conflicting-allowance ambiguity is unchanged.
 Observed locally on macOS ARM64, pinned checked ARC/Clang release (the maintained
 non-LTO corpus profile): all20 new transitions and12 exact refusals passed complete
 output comparison. Both existing reporting corpora passed their original38
-transitions and63 refusals with frozen expectations unchanged. All17 independent
-reference tests passed. The focused C(10) regression failed at runtime before the
+transitions and63 refusals with frozen expectations unchanged. All28 scoped independent
+reference checks passed. The focused C(10) regression failed at runtime before the
 production fix and passed afterward, including strict six/six and maximum-exclusive
 controls. `state_current_globals` and `state_typed_serialization` passed; globals
 retained1,950,432 live bytes before/after1,000 ARC cycles. The typed suite retains
 its128 encoder comparisons,8 complete maps and384 refusal checks. Inventory,
 pinned formatting, documentation links and whitespace checks passed. Local
 covered-source Linux verification is recorded separately from remote CI.
+
+The generic composition reference also uses the GP current/previous structural
+index bound, with five literal capture cases for7/8 acceptance, strict six/six
+refusal and exclusive9 refusal. Its registered native composition corpus passes
+all original cases plus these anchors. Eleven additional composition/typed
+reference checks preserve original typed fixture expectations; no production
+observation supplies an updated answer.
