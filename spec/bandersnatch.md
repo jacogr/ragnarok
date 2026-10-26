@@ -14,6 +14,7 @@ it was selected against vectors, not its version number.
 
 | Primitive | Contract |
 | --- | --- |
+| Seed import | Exactly 32 bytes, Draft 35 A.3 under the pinned v1 suite; distinct from scalar import |
 | Scalar import | Exactly 32 canonical little-endian bytes, nonzero scalar, never a seed |
 | Public key | 32-byte compressed Edwards prime-subgroup encoding |
 | Ordinary signature | `output(32) || R(32) || response(32)`, Thin, no serialized challenge |

@@ -28,7 +28,7 @@ def command(arguments, *, timeout=20):
 
 
 def certificates(binary, directory):
-    """Encode public development seeds as PKCS8; native JAMNP identity encoding supplies each SAN."""
+    """Use native JIP-5 development PKCS8 exports; the same native identity supplies each SAN."""
     openssl = shutil.which('openssl')
     if openssl is None:
         raise RuntimeError('OpenSSL is required for local TLS certificates')
@@ -36,9 +36,8 @@ def certificates(binary, directory):
         folder = directory/f'node-{index}'
         folder.mkdir()
         identity = json.loads(command([binary, 'tiny-devnet', 'identity', index]))
-        seed = bytes([index+16])+bytes(31)
         der = folder/'key.der'
-        der.write_bytes(bytes.fromhex('302e020100300506032b657004220420')+seed)
+        der.write_bytes(bytes.fromhex(identity['pkcs8']))
         der.chmod(0o600)
         key = folder/'key.pem'
         command([openssl, 'pkey', '-inform', 'DER', '-in', der, '-out', key])

@@ -51,6 +51,21 @@ def input_point(data):
     return multiply(add(elligator(first), elligator(second)), 4)
 
 
+def secret_from_seed(seed):
+    """Independent Draft 35 A.3 public-fixture key generation with explicit nonzero retry."""
+    if len(seed) != 32:
+        raise ValueError('seed width')
+    reduced = (int.from_bytes(seed,'little') % ORDER).to_bytes(32,'little')
+    for counter in range(256):
+        # Each retry starts a fresh suite transcript and appends a single counter octet.
+        transcript = SUITE+seed+(bytes([counter]) if counter else b'')
+        expanded = squeeze(transcript+b'\x10'+reduced,64)
+        scalar = int.from_bytes(squeeze(transcript+b'\x11'+expanded,48),'little') % ORDER
+        if scalar:
+            return scalar
+    raise ValueError('all secret derivation candidates were zero')
+
+
 def sign(secret, data, ad):
     """Produce one test signature and output from an explicit public fixture scalar, never a seed."""
     if not 0 < secret < ORDER:
