@@ -899,6 +899,16 @@ def jam_fuzzer_full_guests_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_offenders_corpus(compiler, report, checks, libraries):
+    """Execute full-roster culprit/fault evidence, cross-section markers and typed atomic refusals."""
+    import jam_fuzzer_full_offenders_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_offenders', 'jam_fuzzer_full_guests'),
+        profiles=[full.parameters()])
+
+
+@CORPORA.case
 def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
     """Execute full341-core/1023-validator/600-slot complete maps under every pinned GP parameter."""
     import jam_fuzzer_full_profile_oracle as reference

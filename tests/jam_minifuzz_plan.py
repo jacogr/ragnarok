@@ -180,6 +180,14 @@ def jam_fuzzer_full_guests(identity):
 
 
 @reference()
+def jam_fuzzer_full_offenders(identity):
+    """Require independently calculated full-population evidence and all exact signed offender refusals."""
+    import jam_fuzzer_full_offenders_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()],spec='full')
+
+
+@reference()
 def jam_fuzzer_full_profile(identity):
     """Preserve both original full-geometry sparse/saturated baseline chains."""
     import jam_fuzzer_full_profile_oracle as source

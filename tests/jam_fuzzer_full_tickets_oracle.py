@@ -83,7 +83,7 @@ def successor(parent,slot,submitted):
     return wire,result
 
 
-def sealed(parent,slot,submitted):
+def sealed(parent,slot,submitted,*,disputes=bytes(3),offenders=()):
     """Author exact signed body bytes even for a deliberately inadmissible ticket batch, never a hypothetical successor."""
     _,_,kind,schedule,_ = consensus(parent[chapter_key(4)])
     assert kind == 1
@@ -92,11 +92,11 @@ def sealed(parent,slot,submitted):
     author = next(index for index,row in enumerate(active) if row[:32] == selected)
     secret = author+1; context = b'jam_fallback_seal'+entropy[96:128]
     _,output = sign(secret,context,b''); proof,entropy_output = sign(secret,b'jam_entropy'+output,b'')
-    tickets = tickets_wire(submitted); body = tickets+bytes(6)
-    commitment = digest(digest(tickets)+3*digest(b'\0')+digest(bytes(3)))
+    tickets = tickets_wire(submitted); body = tickets+bytes(3)+disputes
+    commitment = digest(digest(tickets)+3*digest(b'\0')+digest(disputes))
     value = dict(parent=history(parent[chapter_key(3)])[0][-1][0][:32],parent_state_root=tree(list(parent.items()))[0],
                  extrinsic_hash=commitment,slot=slot,epoch_mark=None,tickets_mark=None,author_index=author,
-                 entropy_source=proof,offenders_mark=[])
+                 entropy_source=proof,offenders_mark=list(offenders))
     value['seal'],_ = sign(secret,context,header_wire('U',value)); header = header_wire('H',value)
     return header+body,entropy_output,author
 
