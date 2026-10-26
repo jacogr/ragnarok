@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_GAS",
+  "files": {
+    "current-stf-late-gas.json": "16f26e86904a7d985f26f5574a2d15bbd3137d05c82e9741ae99afd51959d515"
+  },
+  "target": "current-stf-late-gas.json"
+}

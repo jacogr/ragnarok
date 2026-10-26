@@ -45,6 +45,15 @@ def current_stf_late_dependencies_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_gas_corpus(compiler, report, checks, libraries):
+    """Qualify missing-code skips separately from actual pooled gas exits across deferred releases and rotation."""
+    import current_stf_late_gas_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_gas','current_stf_late_rotation',
+         'current_stf_population','current_stf_population_gas','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_rotation_corpus(compiler, report, checks, libraries):
     """Qualify code extrinsic integration after accumulation at growth, intra-epoch and shrinkage boundaries."""
     import current_stf_late_rotation_oracle as oracle
