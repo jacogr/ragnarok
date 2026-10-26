@@ -88,11 +88,21 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
   let mem = memoryOf(input).value
   let pages = [pageImage(mem, PageIndex(16)).value, pageImage(mem, PageIndex(17)).value]
   let expected = execute(input, ExecutionStepLimit(steps), GasCycleLimit(cycles))
+  var expectedPrefix = input
+  if expected.error == StepError.StepLimitExceeded:
+    # A local quota failure has no success payload: independently step the entire prefix to check its hidden CPU boundary.
+    for attempted in 0'u64..<steps:
+      let next = stepOnce(expectedPrefix, GasCycleLimit(cycles))
+      assert next.error == StepError.None and next.value.exit == StepExit.Continued
+      expectedPrefix = next.value.machine
   var frame = newFlatFrame(prepared, pages, info)
   for repeat in 0..<2:
     resetFlatFrame(frame, info)
     runFlat(frame, steps)
     same(frame, expected)
+    if expected.error == StepError.StepLimitExceeded:
+      # Budget boundaries retain exact PC, registers, gas and paid state even after combined-handler warmup.
+      sameCpu(frame.info, machineInfo(expectedPrefix).value)
     sameCpu(machineInfo(input).value, info)
 
 proc immediate(bytes: var seq[byte], value: uint64) =
@@ -146,3 +156,32 @@ for noops in [0, 1, 2, 7]:
             inc cases
 assert cases == 10560
 echo "PASS direct entry /", cases, "/ full and partial reservations / leading noops / first host-fault-panic-halt / unsigned gas / paid suffix / failed prices / restored barriers"
+
+
+var branchCases = 0
+for mode in [0, 1, 2]:
+  # Forward, backward-loop and invalid-arm programs keep both taken and untaken branch behavior observable.
+  for descriptor in [0x11'u8, 0x21'u8, 0xff'u8]:
+    let destination = min(12, int(descriptor mod 16))
+    var branch = @[88'u8, byte(16+destination), 3'u8]
+    immediate(branch, if mode == 0: 12'u64 elif mode == 1: 0xfffffffd'u64 else: 1'u64)
+    let source = owner([@[131'u8, descriptor, 1'u8], branch,
+      @[51'u8, 7'u8, 17'u8], @[50'u8, 0'u8], @[51'u8, 7'u8, 34'u8], @[50'u8, 0'u8]])
+    let plan = cache(source)
+    for bits in [0'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64,
+        0x8000000000000000'u64, high(uint64)]:
+      var selected = registers
+      selected[1] = RegisterValue(bits)
+      selected[2] = RegisterValue(bits xor 0xffffffff'u64)
+      selected[12] = RegisterValue(bits)
+      for paid in [false, true]:
+        # Whole-block gas refusal must precede arithmetic; prepaid reentry still respects every source quota.
+        for gas in [0'u64, 1'u64, 2'u64, 1000'u64, high(uint64)]:
+          let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(0),
+            gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+          for budget in [0'u64, 1'u64, 2'u64, 3'u64, 4'u64, 7'u64, 10'u64, 16'u64]:
+            # Fresh/reused pairs exercise cold arm validation, cached branches, signed32 wrap, aliases and quota restoration.
+            compare(input, plan, budget, 100000)
+            inc branchCases
+assert branchCases == 4320
+echo "PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU"

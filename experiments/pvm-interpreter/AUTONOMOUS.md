@@ -157,3 +157,29 @@ Small kernel medians within0.13%; tick +0.35% (range+0.005..+0.79%) remains visi
 200timed/4negative,8native/8ASan and6fresh equal-image pairs pass with stable seals. No
 broad guest-loop speed claim. Next diagnostic: fresh init statistical profile and count-only
 register-first pair trace; all diagnostic clocks excluded.
+
+## Trial7 — observed arithmetic/branch combination
+
+Fresh accepted-image3second/1ms init profile (13fully checked calls) has619collapsed charge
+hits,355dispatch,121register-prefix and multiple branch workers. These are statistical hits,
+not time fractions or hardware counters. Separate count-only full-state init observes
+21,295,001executions of131->88(add_imm_32 then signed immediate branch), vs only small
+remaining register/register combinations. No diagnostic clocks retained.
+
+Try only this pair. Cold first worker executes the original prefix/branch validation and
+self-patches only after observing the genuine cached branch handler. Hot worker uses the
+shared arithmetic/condition equations and cached arms; the second node remains independently
+addressable. Guard its quota boundary before branch reads or paid-flag mutation. Preserve
+PC/gas/source ordering and both-arm refusal. Focused4320cases pass with signed wrap, aliases,
+saturation, forward/backward/invalid arms, gas and all quota boundaries. Existing10560entry
+cases now also compare independently single-stepped CPU for local quota failures.
+
+Trial7 verdict: retain on experimental branch with explicit tradeoff. Reused init all6pairs
+-2.13..-3.94%, median -2.76%(~19ms); small kernels -1.10/-0.46/-0.98/+0.05%. Tick reused
+call -0.38%, life -0.26%. Original2cold tick lifecycle pairs +1.55..+2.56% triggered one fixed
+4pair confirmation; all208timed samples retained. Six cold tick life pairs now +0.98..+2.56%,
+median +1.71%(~0.8ms), call+0.12%. Reset timing explains most of this observed cost; do not
+claim a CPU cause from unchanged source paths. First-use frame/plan costs remain explicit.
+Keep this startup benefit on the local learning branch; no uniform-win or production claim.
+8native/8ASan groups,4320new branch cases plus stronger10560entry quota CPU checks,6fresh
+image pairs,208timed/4negative controls and stable seals all pass.

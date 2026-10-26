@@ -474,6 +474,33 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   f.handlers[int(off)] = patched
   off
 
+proc flatFusedRegisterBranch[First, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
+  ## Combine only a validated cached branch with its preceding arithmetic; both source nodes remain addressable.
+  let a = f.arguments[int(off)]
+  var index: range[0..12] = 0
+  var value = RegisterValue(0)
+  if not computeRegisterOperands(a.slots, a.x, byte(First), f.info.registers, index, value, First):
+    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+  f.info.registers[index] = value
+  let next = off+1
+  # The second source boundary must still stop before reading its operands or clearing the paid flag.
+  if f.barrier == next: return flatBudget(f, next)
+  let b = f.arguments[int(next)]
+  f.info.blockCharged = false
+  if branchConditionOperands[Branch](b.slots, flatSext32(uint32(b.x and 0xffffffff'u64)),
+      byte(Branch), f.info.registers): uint32(b.x shr 32)
+  else: b.y
+
+proc flatRegisterBranchCold[First, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
+  ## Original execution validates both branch arms after arithmetic; only a genuine cached branch enables fusion.
+  let outcome = flatRegisterPair[First](f, off)
+  let cached: FlatHandler = flatBranch[Branch]
+  if f.handlers[int(off+1)] == cached:
+    # Stable stream offsets survive target preparation and future resets; temporary budget handlers never qualify.
+    let combined: FlatHandler = flatFusedRegisterBranch[First, Branch]
+    f.handlers[int(off)] = combined
+  outcome
+
 proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Invalid destinations retain GP load mutations but never permit an unselected invalid conditional arm to escape validation.
   when Code == 80:
@@ -906,6 +933,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             if fact.opcode == 151 and second == 152: selected = flatFusedRegisters[151, 152]
             elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
             elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
+            elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
           pairedPrevious = true
         else: pairedPrevious = false
       else: pairedPrevious = false
