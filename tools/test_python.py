@@ -17,13 +17,13 @@ from native_checks import NativeChecks, ROOT, announce
 BUILD = ROOT/'build/tests/python'
 
 
-# Allow fifteen minutes for the full Python suite on busy CI hosts; native command limits stay unchanged.
+# Allow thirty minutes for growing independent references on CI; native command limits stay unchanged.
 def python_tests():
     arguments = [sys.executable, '-m', 'unittest', 'discover', '-v', '-s', 'tests', '-p', 'test_*.py']
     started = time.monotonic()
     try:
         # Per-test progress identifies the stalled reference if discovery hits its deadline.
-        return NativeChecks(BUILD).command(arguments, 'python-tests', timeout=900)
+        return NativeChecks(BUILD).command(arguments, 'python-tests', timeout=1800)
     except subprocess.TimeoutExpired as error:
         # subprocess.run has killed/reaped discovery; retain its partial output and a failed report.
         fragments = [error.stdout or '', error.stderr or '']
