@@ -53,7 +53,15 @@ class OpcodeCensusTests(unittest.TestCase):
         generated = instrument_step(source)
         self.assertIn('recordCensus(cache, item.opcode)', generated)
         self.assertEqual(path.read_text(), source)
-        for text in [source+source, source.replace('proc cachedSecondaryCharge(', 'proc changed('), generated]:
+        for capacity in (4, 256, 1024):
+            # Production cache tuning must neither remove diagnostic fields nor alter the tuned array.
+            tuned = source.replace('array[256, DynamicTargetEntry]', f'array[{capacity}, DynamicTargetEntry]')
+            instrumented = instrument_step(tuned)
+            self.assertIn(f'targets: array[{capacity}, DynamicTargetEntry]', instrumented)
+            self.assertEqual(instrumented.count('    censusOps: array[256, uint64]'), 1)
+        for text in [source+source,
+                     source.replace('  ExecutionCache = object', '  ChangedCache = object'),
+                     source.replace('proc cachedSecondaryCharge(', 'proc changed('), generated]:
             with self.assertRaises(ValueError):
                 instrument_step(text)
 
