@@ -68,3 +68,20 @@ published benchmark drivers compile. These are fresh builds from the materialize
 they do not establish new performance figures. Source hashes remain unchanged through the final
 sanitizer/build run. Repository inventory, Python syntax, pinned formatting for all 14 experimental
 Nim files and `git diff --check` passed. Full Linux CI and application integration are not claimed.
+
+## Ongoing comparisons
+
+The [autonomous investigation record](AUTONOMOUS.md) owns current scope, hypotheses and verdicts.
+`compare.py` builds an exact committed parent and current overlay at identical source/output
+coordinates with fresh private-cache repeats, then measures both process orders. Inputs and frozen
+master/reference images remain explicit local dependencies. `report.py` commits compact complete
+sample/phase evidence under `findings/`; raw logs and seals stay in the ignored comparison folder.
+Failed measurement cohorts are preserved separately and rerun in full after harness repairs.
+Run the pure Python harness contract checks with:
+
+```sh
+python3 -m unittest discover -s experiments/pvm-interpreter -p 'test_*.py'
+```
+
+The first completed comparison rejects [rare exit outlining](findings/outline-exits-qualified.md);
+the runtime remains exactly the accepted checkpoint after that trial.
