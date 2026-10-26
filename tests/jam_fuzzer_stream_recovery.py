@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Known framed-stream interruptions after independently calculated full guest state, with atomic recovery."""
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -59,6 +60,16 @@ def prime(endpoint, plan):
         raise
 
 
+def interrupted_eof(peer):
+    """Require actual EOF even when a completed malformed frame made the target close before the write-half close."""
+    try:
+        peer.shutdown(socket.SHUT_WR)
+    except OSError as error:
+        # ENOTCONN means the peer won the close race; other shutdown errors remain failures.
+        if error.errno != errno.ENOTCONN: raise
+    return peer.recv(1) == b''
+
+
 def exercise(endpoint, plan):
     """Require immediate local EOF, fresh-session isolation and atomic GP refusal before valid continuation."""
     from nimony_fuzz import connect, exchange
@@ -66,8 +77,8 @@ def exercise(endpoint, plan):
     # Each interruption occurs only after nonempty guest execution and full-state equality in its own connection.
     for name,data in plan['cases']:
         with prime(endpoint,plan) as peer:
-            peer.sendall(data);peer.shutdown(socket.SHUT_WR)
-            assert peer.recv(1) == b'', name
+            peer.sendall(data)
+            assert interrupted_eof(peer), name
         with connect(endpoint,features=3) as peer:
             assert exchange(peer,plan['initialize']) == b'\x02'+plan['state'][:32]
             payload = b'\x04'+digest(current['header'])

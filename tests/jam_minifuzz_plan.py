@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from native_fixture_contracts import FIXTURE_CONTRACTS
+from jam_minifuzz_trace import IMPORT_OUTCOMES
 from jam_fuzzer_stream_recovery import required_controls as recovery_controls
 from jam_fuzzer_fork_retention import required_controls as fork_controls
 
@@ -46,6 +47,11 @@ def expectations():
         sessions = frozen.get('sessions',frozen.get('chains',len(roots)))
         imports = frozen.get('transitions',sum(len(chain) for chain in roots))
         assert type(sessions) is int and sessions > 0 and type(imports) is int and imports > 0
+        refused = frozen.get('refused',0)
+        assert type(refused) is int and refused >= 0
+        accepted = frozen.get('accepted',imports-refused)
+        assert type(accepted) is int and accepted >= 0
+        assert accepted+refused == imports
         siblings = frozen.get('sibling_imports',frozen.get('nonempty_guest_siblings',0))
         assert type(siblings) is int and siblings >= 0
         # Multi-variant original-last publication itself occupies one position in the declared window.
@@ -61,7 +67,7 @@ def expectations():
         assert all(type(value) is int and value >= 0 for value in controls.values())
         rows.append(dict(reference=identity,fixture_sha256=hashlib.sha256(target.read_bytes()).hexdigest(),
                          expected_sha256=frozen.get('expected_sha256'),sessions=sessions,signed_imports=imports,
-                         exchanges=4*sessions+2*imports+siblings,controls=controls))
+                         accepted_imports=accepted,refused_imports=refused,exchanges=4*sessions+2*imports+siblings,controls=controls))
     assert rows
     return rows
 
@@ -81,6 +87,9 @@ def prepare():
         # The legacy immediate-guest fixture retains per-case pins; aggregate-pinned streams compare exactly here.
         if expected['expected_sha256'] is not None: assert proof['expected_sha256'] == expected['expected_sha256']
         observed = session_evidence(selected,[proof])
+        # Exact outcome budgets come from frozen metadata, so replacing a refusal with a success cannot preserve coverage.
+        for field in IMPORT_OUTCOMES:
+            assert type(proof.get(field)) is int and proof[field] == expected[field] == observed[field]
         # Dropping a control binding cannot shrink the independently declared work.
         for field in CONTROL_FIELDS:
             assert observed['expected_'+field] == expected['controls'][field]

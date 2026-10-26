@@ -43,7 +43,7 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
             state = wire(sorted(decode_checkpoint(bytes.fromhex(data)).items()))
             assert len(ancestors) <= 1
             membership = b''.join(slot.to_bytes(4, 'little')+identity for slot, identity in ancestors)
-            jobs.append(dict(initialize=b'\x01'+header+state[32:]+bytes([len(ancestors)])+membership,
+            jobs.append(dict(reference=identity,initialize=b'\x01'+header+state[32:]+bytes([len(ancestors)])+membership,
                              header=header, state=state, steps=[], parameters=next(profiles), spec=spec, fork_capacity=fork_capacity))
             header, ancestors = initial_header(), [] # Later seeds retain only their own explicit header/evidence.
         elif tag in ('B', 'V', 'R'):
@@ -68,14 +68,20 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
             assert all(set(case) == {'initialize', 'block', 'header', 'state'} and all(isinstance(value, bytes) for value in case.values()) for case in cases)
             job['local_missing_evidence'] = tuple(cases)
     evidence = dict(reference=identity, sessions=len(jobs), signed_imports=sum(len(job['steps']) for job in jobs), fixture_sha256=hashlib.sha256(reference.FIXTURE.read_bytes()).hexdigest(),
-                    expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
+                    expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest(),**import_counts(jobs))
     return jobs, evidence
+
+
+def import_counts(jobs):
+    """Count predeclared successful and refused attempts from independent step kinds before opening a target."""
+    return dict(accepted_imports=sum(step['kind'] in ('B','V') for job in jobs for step in job['steps']),
+                refused_imports=sum(step['kind'] == 'R' for job in jobs for step in job['steps']))
 
 
 def session_evidence(jobs, references):
     """Declare complete workload counts before startup; later observations must match each planned exchange."""
     from jam_minifuzz_trace import retained_sibling_queries
-    return dict(references=references, sessions=len(jobs),
+    return dict(references=references, sessions=len(jobs), **import_counts(jobs),
                 expected_local_missing_evidence=sum(len(job.get('local_missing_evidence', ())) for job in jobs),
                 expected_stream_recoveries=sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job),
                 expected_fork_evictions=sum(2 for job in jobs if 'fork_retention' in job),

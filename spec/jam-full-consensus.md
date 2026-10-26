@@ -340,3 +340,37 @@ whole-map steps passed checked native replay. Upstream minifuzz passed three
 sessions,33 imports and99 exact exchanges, all six mandatory local eviction/
 retirement observations and the real mismatch control. All14 focused Python
 tests and inventory passed; the formatted Nim/Rust source tree remains identical.
+
+## Independently required accepted and refused import evidence
+
+Frozen reference metadata separately declares successful and refused attempts.
+Their sum must equal the complete import budget before any target runs, and
+generated step kinds cannot substitute a success for a required refusal. The
+upstream observer counts only exact matching real ImportBlock replies: canonical
+state roots or the exact protocol refusal. False-success controls and extra
+local-control sessions are excluded from positive import observations.
+
+Actual counts are retained per reference, per host profile and globally. CI
+requires every frozen reference identity and both outcome budgets, matching
+per-profile observations and global planned/completed totals. Missing refusals,
+substituted successes, duplicate owners, boolean counts and internally consistent
+partial evidence all fail. This completes interface evidence for the registered
+JAM campaigns; live generated campaigns still await the separate compatible engine.
+
+The stream-recovery observer accepts either ordering of the remote decoder close
+and local write-half close: only ENOTCONN at shutdown is permitted, and an actual
+EOF is still required afterward. Residual replies, receive failures and other
+shutdown errors fail. This removes a platform-dependent test race without
+changing packet fixtures, required recovery counts or client protocol behavior.
+
+Observed final interface validation: all78 registered native corpora and the
+real-entry socket checks passed the Make invocation. That invocation exposed
+the observer-only write-half-close race described above. After its repair,
+all32 focused Python tests and the complete upstream phase passed:29 frozen
+reference families,329 sessions,2417 accepted imports,33 refusals and6529 exact
+exchanges across four host profiles. All four missing-evidence,15 stream-recovery
+and12 fork-retention controls, per-profile mismatch controls and cleanup passed.
+The unchanged native/socket results were retained under an explicit source/binary
+hash audit; the complete upstream phase was independently regenerated and rerun.
+Fresh inventory passed and the previously formatted Nim/Rust tree is identical.
+GP checks and original fixtures remain intact; live engine campaigns stay pending.

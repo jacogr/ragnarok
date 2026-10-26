@@ -23,26 +23,31 @@ class JamInterfaceCI(unittest.TestCase):
         imports = sum(row['signed_imports'] for row in declared)
         exchanges = sum(row['exchanges'] for row in declared)
         controls = {field:sum(row['controls'][field] for row in declared) for field in declared[0]['controls']}
+        outcomes = {field:sum(row[field] for row in declared) for field in ('accepted_imports','refused_imports')}
+        observed = [dict(reference=row['reference'],**{field:row[field] for field in outcomes}) for row in declared]
         references = [dict(reference=row['reference'],fixture_sha256=row['fixture_sha256'],
                            expected_sha256=row['expected_sha256'] or 'a'*64,
-                           sessions=row['sessions'],signed_imports=row['signed_imports']) for row in declared]
+                           sessions=row['sessions'],signed_imports=row['signed_imports'],
+                           **{field:row[field] for field in outcomes}) for row in declared]
         return dict(cases={name: dict(passed=True, build=dict(exit_code=0), run=dict(exit_code=0),
                                      expected_sha256='a'*64, actual_sha256='a'*64) for name in interface.CASES},
                     socket=dict(passed=True, guests=dict(passed=True, sessions=2, signed_imports=3,
                         guest_siblings=1, expected_state_queries=11, completed_sessions=2,
                         completed_imports=3, retained_siblings=1, complete_state_queries=11,
                         consensus_rejections=3, isolated_reconnects=1)),
-                    minifuzz=dict(passed=True, false_success_control=True, planned_sessions=sessions,
+                    minifuzz=dict(passed=True, false_success_control=True,observed_references=observed,
+                        **{prefix+field:count for prefix in ('planned_','completed_') for field,count in outcomes.items()}, planned_sessions=sessions,
                         completed_sessions=sessions, planned_exchanges=exchanges, completed_exchanges=exchanges, signed_imports=imports,
                         independent_references=references,
                         planned_local_missing_evidence=controls['local_missing_evidence'], completed_local_missing_evidence=controls['local_missing_evidence'],
                         planned_stream_recoveries=controls['stream_recoveries'], completed_stream_recoveries=controls['stream_recoveries'],
                         planned_fork_evictions=controls['fork_evictions'], completed_fork_evictions=controls['fork_evictions'],
                         planned_host_profiles=2, completed_host_profiles=2, host_profiles=[
-                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, **controls,
+                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, **controls, **outcomes,observed_references=[dict(row) for row in observed],
                                  completed_sessions=sessions-1, completed_exchanges=exchanges-1),
                             dict(passed=True, false_success_control=True, parameters_sha256='b'*64,
                                  local_missing_evidence=0, stream_recoveries=0, fork_evictions=0,
+                                 accepted_imports=0,refused_imports=0,observed_references=[],
                                  completed_sessions=1, completed_exchanges=1)]))
 
     def test_every_declared_child_is_required(self):
@@ -99,6 +104,33 @@ class JamInterfaceCI(unittest.TestCase):
             report = self.complete()
             report['minifuzz'][field] = value
             self.assertFalse(interface.passed(report))
+
+    def test_observed_refusals_are_required_per_reference_and_profile(self):
+        """Balanced total imports cannot hide absent, substituted or internally consistent partial refusal observations."""
+        import copy
+        good = self.complete()['minifuzz']
+        self.assertGreater(good['completed_refused_imports'],0)
+        for mutation in ('missing','balanced','boolean','reference','profile','duplicate','consistent-partial'):
+            row = copy.deepcopy(good)
+            selected = next(value for value in row['observed_references'] if value['refused_imports'])
+            if mutation == 'missing': del row['completed_refused_imports']
+            elif mutation == 'balanced':
+                row['completed_refused_imports'] -= 1;row['completed_accepted_imports'] += 1
+            elif mutation == 'boolean': row['host_profiles'][1]['refused_imports'] = False
+            elif mutation == 'reference': selected['refused_imports'] -= 1;selected['accepted_imports'] += 1
+            elif mutation == 'profile': row['host_profiles'][0]['refused_imports'] -= 1
+            elif mutation == 'duplicate': row['host_profiles'][0]['observed_references'].append(copy.deepcopy(selected))
+            else:
+                # Adjust every claimed observation and total consistently; frozen source metadata still requires the missing refusal.
+                for prefix in ('planned_','completed_'): row[prefix+'refused_imports'] -= 1
+                row['signed_imports'] -= 1;row['host_profiles'][0]['refused_imports'] -= 1
+                selected['refused_imports'] -= 1
+                profile = next(value for value in row['host_profiles'][0]['observed_references'] if value['reference'] == selected['reference'])
+                profile['refused_imports'] -= 1
+                proof = next(value for value in row['independent_references'] if value['reference'] == selected['reference'])
+                proof['refused_imports'] -= 1;proof['signed_imports'] -= 1
+            self.assertFalse(interface.minifuzz_verified(row),mutation)
+        self.assertIn('Observed accepted / refused imports:',interface.summary(self.complete()))
 
     def test_failed_setup_replaces_old_success(self):
         """An interrupted prerequisite writes a fresh failed report and explicit pending-engine summary."""

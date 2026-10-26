@@ -27,7 +27,7 @@ class ReferencePlanContracts(unittest.TestCase):
                 def example_reference(identity):
                     """Return independent synthetic metadata only; no wire or application assertion is delegated here."""
                     calls.append(identity)
-                    return selected,dict(reference=identity,fixture_sha256=pin,expected_sha256='1'*64,sessions=2,signed_imports=3)
+                    return selected,dict(reference=identity,fixture_sha256=pin,expected_sha256='1'*64,sessions=2,signed_imports=3,accepted_imports=3,refused_imports=0)
                 self.assertEqual(calls,[])
                 self.assertEqual(plan.expectations()[0]['exchanges'],14)
                 self.assertEqual(calls,[])
@@ -41,6 +41,30 @@ class ReferencePlanContracts(unittest.TestCase):
                 with self.assertRaises(AssertionError): plan.prepare()
                 target.write_text('{}')
                 with self.assertRaises(AssertionError): plan.expectations()
+
+    def test_refused_steps_cannot_be_replaced_by_success(self):
+        """Keeping the total step count and a forged proof cannot hide a deleted refusal or invalid frozen budget."""
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder)/'reference.json'
+            selected = [dict(steps=[dict(kind='B'),dict(kind='R')])]
+            def install(accepted=1, refused=1):
+                """Freeze independently declared outcome budgets before installing a synthetic builder."""
+                target.write_text(json.dumps(dict(chains=1,transitions=2,accepted=accepted,refused=refused,expected_sha256='1'*64)))
+                return ('TEST_REFERENCE',target,[(target,hashlib.sha256(target.read_bytes()).hexdigest())])
+            with patch.dict(plan.FIXTURE_CONTRACTS,example_reference=install()), patch.dict(plan._REFERENCES,{},clear=True):
+                @plan.reference()
+                def example_reference(identity):
+                    """Retain the original proof so replacing R with B cannot repair evidence after mutation."""
+                    return selected,dict(reference=identity,fixture_sha256=hashlib.sha256(target.read_bytes()).hexdigest(),
+                                         expected_sha256='1'*64,sessions=1,signed_imports=2,accepted_imports=1,refused_imports=1)
+                jobs,evidence = plan.prepare()
+                self.assertEqual((evidence['accepted_imports'],evidence['refused_imports']),(1,1))
+                selected[0]['steps'][1]['kind'] = 'B'
+                with self.assertRaises(AssertionError): plan.prepare()
+                # Invalid and boolean counts cannot become a smaller independently declared campaign.
+                for accepted,refused in ((2,1),(3,-1),(True,1),(1,False)):
+                    plan.FIXTURE_CONTRACTS['example_reference'] = install(accepted,refused)
+                    with self.assertRaises(AssertionError): plan.expectations()
 
     def test_all_source_owners_have_pinned_metadata(self):
         """Every declared fixture owner supplies positive immutable budgets without running its builder."""
