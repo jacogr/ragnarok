@@ -121,7 +121,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """Actual matrix expressions preserve every automatic, labeled and standalone manual request."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         groups = {'compile': ['smoke', 'modules', 'python', 'guards'],
-                  'interop': ['pvm-reference', 'telemetry-interop'],
+                  'interop': ['pvm-reference', 'runtime-pvm', 'telemetry-interop'],
                   'perf': ['bench-pvm', 'bench-doom', 'bench-storage', 'bench-storage-growth'],
                   'build': ['docker', 'binary', 'binary']}
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
@@ -144,6 +144,7 @@ class NimonyCISafeguards(unittest.TestCase):
                     groups[job] if job in active else [])
         manual = {'smoke': ('compile', ['smoke']), 'unit': ('compile', groups['compile']),
                   'interop': ('interop', groups['interop']), 'ref-pvm': ('interop', ['pvm-reference']),
+                  'runtime-pvm': ('interop', ['runtime-pvm']),
                   'perf': ('perf', groups['perf']), 'bench-pvm': ('perf', ['bench-pvm']),
                   'bench-doom': ('perf', ['bench-doom']),
                   'bench-storage': ('perf', ['bench-storage']),
@@ -177,14 +178,16 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_runtime_pvm_requires_real_native_guest_and_application_checks(self):
         """The explicit supported-host job cannot turn an unavailable native engine into qualification."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        self.assertTrue(expression(job_condition(text, 'pvm-runtime'), event_context('workflow_dispatch', suite='runtime-pvm')))
-        self.assertFalse(expression(job_condition(text, 'pvm-runtime'), event_context('pull_request', 'opened')))
-        section = job_section(text, 'pvm-runtime')
+        self.assertNotIn('\n  pvm-runtime:\n', text)
+        gate = job_condition(text, 'interop-status')
+        self.assertTrue(expression(gate, event_context('workflow_dispatch', suite='runtime-pvm')))
+        self.assertTrue(expression(gate, event_context('pull_request', 'labeled', 'ci:interop')))
+        section = family_section(text, 'interop', 'runtime-pvm')
         for command in ('make unit SUITE=pvm_runtime_backends', 'make unit SUITE=pvm_runtime_polkavm',
                         'make unit SUITE=pvm_runtime_application', 'make check-pvm-runtime-doom',
                         'make bench-pvm-runtime'):
             self.assertIn(command, section)
-        self.assertIn('runs-on: ubuntu-latest', section)
+        self.assertIn('runs-on: ${{ matrix.os }}', section)
         self.assertIn('sudo sysctl -w vm.unprivileged_userfaultfd=1', section)
         self.assertIn('sudo sysctl -w vm.unprivileged_userfaultfd=1', job_section(text, 'unit'))
         self.assertIn('sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0', section)
@@ -461,7 +464,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling', 'Rejection Guards']),
-                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'PVM DOOM', 'Storage', 'Storage Growth']),
+                             ('interop', ['PVM', 'PVM engines', 'Telemetry']), ('perf', ['PVM', 'PVM DOOM', 'Storage', 'Storage Growth']),
                              ('build', ['Docker', 'Linux', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))

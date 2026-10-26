@@ -396,14 +396,14 @@ jobs:
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
   interop:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'runtime-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
     name: Interop / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
         os: *ci-os
-        family: ${{ fromJSON(inputs.suite == 'ref-pvm' && '[{"name":"PVM","group":"pvm-reference"}]' || '[{"name":"PVM","group":"pvm-reference"},{"name":"Telemetry","group":"telemetry-interop"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'ref-pvm' && '[{"name":"PVM","group":"pvm-reference"}]' || inputs.suite == 'runtime-pvm' && '[{"name":"PVM engines","group":"runtime-pvm"}]' || '[{"name":"PVM","group":"pvm-reference"},{"name":"PVM engines","group":"runtime-pvm"},{"name":"Telemetry","group":"telemetry-interop"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -456,12 +456,52 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+      - name: Install pinned-asset decompressor
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Enable the pinned native PVM paging sandbox
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: |
+          sudo sysctl -w vm.unprivileged_userfaultfd=1
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Check independent default and missing optional support
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: make unit SUITE=pvm_runtime_backends
+      - name: Require interpreted and genuinely compiled boundary execution
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: make unit SUITE=pvm_runtime_polkavm
+      - name: Require selected application and nested invocations
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: make unit SUITE=pvm_runtime_application
+      - name: Compare complete real DOOM guest state and output
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: make check-pvm-runtime-doom
+      - name: Retain separate resident and lifecycle measurements
+        if: ${{ matrix.family.group == 'runtime-pvm' }}
+        run: make bench-pvm-runtime
+      - name: Retain runtime qualification evidence
+        if: ${{ always() && matrix.family.group == 'runtime-pvm' }}
+        uses: *upload-artifact
+        with:
+          name: pvm-runtime-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/polkavm/build.log
+            build/tests/native/selected/pvm_runtime*.log
+            build/tests/native/preparation/polkavm-preparation.json
+            build/tests/pvm-runtime-doom/*.log
+            build/tests/pvm-runtime-doom/results.json
+            build/tests/pvm-runtime-measure/results.json
 
   interop-status:
     name: Interop
     timeout-minutes: *ci-job-timeout
     needs: interop
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'runtime-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -825,48 +865,3 @@ jobs:
         env:
           PVM_FUZZ_RESULT: ${{ needs.pvm-fuzz.result }}
         run: test "$PVM_FUZZ_RESULT" = success
-
-  # Experimental execution-tier qualification is manual and independent of production performance gates.
-
-  # Exact attempt/host budgets require genuine compiled execution on an actual supported x86 host.
-  pvm-runtime:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'runtime-pvm' || inputs.suite == 'full')) }}
-    name: PVM runtime engines
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - name: Install pinned-asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
-      - name: Enable the pinned native PVM paging sandbox
-        run: |
-          sudo sysctl -w vm.unprivileged_userfaultfd=1
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Check independent default and missing optional support
-        run: make unit SUITE=pvm_runtime_backends
-      - name: Require interpreted and genuinely compiled boundary execution
-        run: make unit SUITE=pvm_runtime_polkavm
-      - name: Require selected application and nested invocations
-        run: make unit SUITE=pvm_runtime_application
-      - name: Compare complete real DOOM guest state and output
-        run: make check-pvm-runtime-doom
-      - name: Retain separate resident and lifecycle measurements
-        run: make bench-pvm-runtime
-      - name: Retain runtime qualification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-runtime-${{ github.run_attempt }}
-          retention-days: 14
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/polkavm/build.log
-            build/tests/native/selected/pvm_runtime*.log
-            build/tests/native/preparation/polkavm-preparation.json
-            build/tests/pvm-runtime-doom/*.log
-            build/tests/pvm-runtime-doom/results.json
-            build/tests/pvm-runtime-measure/results.json
