@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_FULL_VERDICT_POPULATIONS",
+  "files": {
+    "jam-fuzzer-full-verdict-populations.json": "41f5ae8c39e81b00cc518e1857f5cef32ae61a08f92c82df1266089ecdf955d7"
+  },
+  "target": "jam-fuzzer-full-verdict-populations.json"
+}

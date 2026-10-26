@@ -156,3 +156,29 @@ accepted batch. Unchanged upstream minifuzz passed one session, eight imports an
 20 exact exchanges with its real mismatch control. All 54 focused Python tests
 and fresh inventory passed. No policy, native source, dependency or GP check
 needed alteration; existing formatting/semantic evidence and fixture answers remain valid.
+
+## Current and previous verdict populations
+
+A genuine offender/population prefix reaches the resizing block at 1200. Its
+verdict still selects the original parent epoch and 1023-record population,
+requiring 683 votes including ordinal 1022 before Safrole activates 1020 records.
+Subsequent verdicts use current 1020 with quorum 681 or previous 1023 with quorum
+683 in the same batch. Four NULL positions stay in the population size; reducing
+the quorum to the number of usable fixture secrets is invalid. A separately signed
+previous verdict using a current-roster key at the same ordinal must also refuse.
+
+A new good verdict accepts opposing evidence from a key present only in the
+previous roster. On the next epoch rotation, another unpunished previous-only
+key disappears from both eligible rosters: its genuine signature about a known
+bad report then refuses. Exact Error/prior-map pairs, complete previous statistics,
+all judgments, delayed NULL records and valid continuation are independently
+calculated before any native or upstream replay. The added offender is outside
+the staged1020 set, so the previously attributed filtered ring witness remains
+byte-identical rather than being replaced with an observed native root.
+
+Observed selected-population validation: all 17 new complete-map steps (12 accepted,
+five exact typed refusals) and the 17 unchanged population steps passed checked
+native replay. Unchanged upstream minifuzz passed one session, 17 imports and
+38 exact exchanges with its real mismatch control. All 54 focused Python tests
+and fresh inventory passed. Native-source formatting/semantic coverage, original
+fixtures, GP checks and dependency pins remain unchanged.

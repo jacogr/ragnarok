@@ -38,7 +38,7 @@ def prelude(parent):
     return result
 
 
-def successor(parent,slot,*,unfiltered_marker=False):
+def successor(parent,slot,*,unfiltered_marker=False,disputes=bytes(3),marks=(),posterior_judgments=None):
     """Apply one GP population rotation per imported crossing, retain former active records/statistics and sign real fallback credentials."""
     previous = int.from_bytes(parent[chapter_key(11)],'little');assert previous < slot
     pending,root,kind,schedule,accumulated = tickets.consensus(parent[chapter_key(4)])
@@ -48,7 +48,7 @@ def successor(parent,slot,*,unfiltered_marker=False):
     # Incoming pending keys are nulled from posterior Phi; the old pending sequence alone becomes active.
     if crossed:
         active = pending;staged = offenders.roster(parent[chapter_key(7)])
-        phi = offenders.judgments(parent[chapter_key(5)])[3]
+        phi = offenders.judgments(parent[chapter_key(5)] if posterior_judgments is None else posterior_judgments)[3]
         pending = [NULL_VALIDATOR if row[32:64] in phi else row for row in staged]
         witness = json.loads(RING.read_text())
         assert witness['capacity'] == 1023 and witness['population'] == len(pending) == 1020
@@ -68,15 +68,17 @@ def successor(parent,slot,*,unfiltered_marker=False):
     context = b'jam_fallback_seal'+(entropy[64:96] if crossed else entropy[96:128])
     _,output = sign(secret,context,b'');proof,entropy_output = sign(secret,b'jam_entropy'+output,b'')
     value = dict(parent=history(parent[chapter_key(3)])[0][-1][0][:32],parent_state_root=tree(list(parent.items()))[0],
-                 extrinsic_hash=digest(4*digest(b'\0')+digest(bytes(3))),slot=slot,epoch_mark=epoch,tickets_mark=None,
-                 author_index=author,entropy_source=proof,offenders_mark=[])
+                 extrinsic_hash=digest(4*digest(b'\0')+digest(disputes)),slot=slot,epoch_mark=epoch,tickets_mark=None,
+                 author_index=author,entropy_source=proof,offenders_mark=list(marks))
     value['seal'],_ = sign(secret,context,header_wire('U',value));header = header_wire('H',value)
     result = full.successor(parent,header,entropy_output,author=author)
     result[chapter_key(4)] = consensus_wire((b''.join(pending),root,kind,b''.join(schedule),b''))
     if crossed:
         result[chapter_key(8)] = natural(len(active))+b''.join(active)
         result[chapter_key(9)] = parent[chapter_key(8)]
-    return header+bytes(7),result
+    if posterior_judgments is not None:
+        result[chapter_key(5)] = posterior_judgments # Disputes precede rotation while the header still commits the original complete parent.
+    return header+bytes(4)+disputes,result
 
 
 def expected_observations(check_frozen=True):
