@@ -238,12 +238,16 @@ if (name == 'format.py' and os.environ.get('FAIL_FORMAT')) or (name == 'test_mod
 # A failing model check must retain its status through the independent Make gate.
 if name == 'test_models.py' and os.environ.get('FAIL_MODELS'):
     sys.exit(7)
+# Fuzz prerequisites must stop execution; a failing interface must keep its exit status.
+if (name == 'setup_jam_minifuzz.py' and os.environ.get('FAIL_MINIFUZZ')) or (name == 'check_jam_fuzzer_interface.py' and os.environ.get('FAIL_FUZZ')):
+    print('deliberate fuzz failure')
+    sys.exit(7)
 # A failing runtime must not turn green merely because tee successfully wrote its log.
 if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' in sys.argv and os.environ.get('FAIL_FAILURES'))):
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('setup_jam_minifuzz', 'check_jam_fuzzer_interface', 'setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -264,6 +268,9 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             result = subprocess.run(arguments+['check'], cwd=folder, env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
+            self.assertEqual(calls.count('setup_jam_minifuzz.py'), 1)
+            self.assertEqual(calls.count('check_jam_fuzzer_interface.py'), 1)
+            self.assertLess(calls.index('setup_jam_minifuzz.py'), calls.index('check_jam_fuzzer_interface.py'))
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertEqual(calls.count('setup_tlanif.py'), 1)
             self.assertEqual(calls.count('test_models.py'), 1)
@@ -301,6 +308,18 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                                     env={**environment, 'FAIL_FAILURES': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('deliberate runtime failure', (folder/'build/ci/failures.log').read_text())
+            for failure in ('FAIL_MINIFUZZ', 'FAIL_FUZZ'):
+                # Neither failed reference setup nor a failed interface may become a successful Make gate.
+                (folder/'calls').write_text('')
+                failed_fuzz = subprocess.run(arguments+['check-jam-fuzzer-interface'], cwd=folder,
+                    env={**environment, failure: '1'}, capture_output=True, text=True)
+                self.assertNotEqual(failed_fuzz.returncode, 0, failed_fuzz.stdout+failed_fuzz.stderr)
+                fuzz_calls = (folder/'calls').read_text().splitlines()
+                if failure == 'FAIL_MINIFUZZ':
+                    self.assertNotIn('check_jam_fuzzer_interface.py', fuzz_calls)
+                else:
+                    self.assertEqual(fuzz_calls.count('check_jam_fuzzer_interface.py'), 1)
+                    self.assertIn('deliberate fuzz failure', failed_fuzz.stdout+failed_fuzz.stderr)
             (folder/'calls').write_text('')
             failed = subprocess.run(arguments+['check-unit'], cwd=folder,
                                     env={**environment, 'FAIL_INVENTORY': '1'}, capture_output=True)
