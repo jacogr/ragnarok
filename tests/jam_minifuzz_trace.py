@@ -6,8 +6,10 @@ import hashlib
 import json
 from pathlib import Path
 from state_layout_oracle import digest
+from test_codec import reference_encode as natural
 
 PEER_REQUEST = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x04test'
+IMPORT_REJECTED = b'\xff'+natural(len(b'ImportBlock rejected'))+b'ImportBlock rejected'
 PEER_RESPONSE = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x08Ragnarok'
 
 
@@ -18,7 +20,7 @@ def retained_sibling_queries(job):
     pending = total = 0
     for step in job['steps']:
         if step['kind'] == 'V': pending = min(pending+1,capacity) # Every variant occupies one retained position.
-        elif pending:
+        elif step['kind'] == 'B' and pending:
             total += min(pending,capacity-1);pending = 0 # Original-last itself consumes the newest position.
     assert pending == 0
     return total
@@ -31,8 +33,15 @@ def exchanges(job):
     siblings = []
     capacity = job.get('fork_capacity',2)
     assert type(capacity) is int and 1 <= capacity <= 64
+    selected_header = job['header']
     for step in job['steps']:
         header = step['header']
+        if step['kind'] == 'R':
+            # Consensus Error must be followed by the independently unchanged current complete map.
+            result.extend(((b'\x03'+step['block'],IMPORT_REJECTED),
+                           (b'\x04'+digest(selected_header),b'\x05'+step['state'][32:])))
+            continue
+        selected_header = header
         result.extend(((b'\x03'+step['block'], b'\x02'+step['state'][:32]),
                        (b'\x04'+digest(header), b'\x05'+step['state'][32:])))
         if step['kind'] == 'V':
@@ -53,7 +62,7 @@ def write_trace(folder, pairs):
     folder.mkdir(parents=True, exist_ok=True)
     if list(folder.iterdir()):
         raise ValueError('Minifuzz trace directory must be fresh')
-    kinds = {0: 'peer_info', 1: 'initialize', 2: 'state_root', 3: 'import_block', 4: 'get_state', 5: 'state'}
+    kinds = {0: 'peer_info', 1: 'initialize', 2: 'state_root', 3: 'import_block', 4: 'get_state', 5: 'state', 255: 'error'}
     files = {}
     for index, (request, reply) in enumerate(pairs):
         for side, data in (('fuzzer', request), ('target', reply)):

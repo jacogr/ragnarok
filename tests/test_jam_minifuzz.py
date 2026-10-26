@@ -112,3 +112,34 @@ class MinifuzzBoundaries(unittest.TestCase):
             with self.assertRaises(AssertionError): exchanges(job)
         job['fork_capacity'] = 8;job['steps'] = steps[:9]
         with self.assertRaises(AssertionError): exchanges(job)
+
+
+class RefusedImportTrace(unittest.TestCase):
+    """A signed refused import cannot change the selected header or prematurely retire a sibling group."""
+
+    def test_exact_error_and_prior_map_after_refusal(self):
+        """The imported candidate identity is never used to query a nonexistent posterior state."""
+        from jam_minifuzz_trace import exchanges, IMPORT_REJECTED
+        from state_layout_oracle import digest
+        seed = b'seed';header = b'accepted';rejected = b'rejected'
+        state = bytes(32)+b'seed-map';after = bytes([1])*32+b'posterior-map'
+        job = dict(initialize=b'\x01init',header=seed,state=state,steps=[
+            dict(kind='B',block=b'valid',header=header,state=after),
+            dict(kind='R',block=b'bad',header=rejected,state=after)])
+        pairs = exchanges(job)
+        self.assertEqual(pairs[-3],(b'\x03bad',b'\xff\x14ImportBlock rejected'))
+        self.assertEqual(pairs[-2],(b'\x04'+digest(header),b'\x05posterior-map'))
+        self.assertEqual(IMPORT_REJECTED,b'\xff\x14ImportBlock rejected')
+        with tempfile.TemporaryDirectory() as folder:
+            files = write_trace(folder,pairs)
+            self.assertTrue(any(name.endswith('_target_error.bin') for name in files))
+
+    def test_refusal_does_not_retire_valid_siblings(self):
+        """Only original-last publication retires variants; an intermediate Error keeps the exact sibling query budget."""
+        from jam_minifuzz_trace import exchanges,retained_sibling_queries
+        state = bytes(32)+b'map'
+        steps = [dict(kind=kind,block=bytes([i]),header=bytes([i]),state=state)
+                 for i,kind in enumerate(('V','R','B'))]
+        job = dict(initialize=b'init',header=b'seed',state=state,steps=steps)
+        self.assertEqual(retained_sibling_queries(job),1)
+        self.assertEqual(len(exchanges(job)),11)

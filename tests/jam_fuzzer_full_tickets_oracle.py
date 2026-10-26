@@ -72,6 +72,22 @@ def successor(parent,slot,submitted):
     assert all(a[:32] < b[:32] for a,b in zip(incoming,incoming[1:])), 'ticket order'
     retained = sorted(accumulated+incoming,key=lambda row:row[:32])[:600]
     assert all(row in retained for row in incoming), 'ticket not retained'
+    wire,entropy_output,author = sealed(parent,slot,submitted)
+    header = wire[:-len(tickets_wire(submitted)+bytes(6))]
+    result = full.successor(parent,header,entropy_output,author=author)
+    result[chapter_key(4)] = consensus_wire((b''.join(pending),root,kind,b''.join(schedule),b''.join(retained)))
+    stats,_ = statistics_parse(result[chapter_key(13)],(341,1023,1023,2**64-1,2**64-1))
+    current,previous_stats,cores,services = stats
+    counters = list(current[author]); counters[1] += len(submitted); current[author] = tuple(counters)
+    result[chapter_key(13)] = statistics_wire((current,previous_stats,cores,services))
+    return wire,result
+
+
+def sealed(parent,slot,submitted):
+    """Author exact signed body bytes even for a deliberately inadmissible ticket batch, never a hypothetical successor."""
+    _,_,kind,schedule,_ = consensus(parent[chapter_key(4)])
+    assert kind == 1
+    entropy = parent[chapter_key(6)]
     active = guests.roster_records(); selected = schedule[slot % 600]
     author = next(index for index,row in enumerate(active) if row[:32] == selected)
     secret = author+1; context = b'jam_fallback_seal'+entropy[96:128]
@@ -82,13 +98,7 @@ def successor(parent,slot,submitted):
                  extrinsic_hash=commitment,slot=slot,epoch_mark=None,tickets_mark=None,author_index=author,
                  entropy_source=proof,offenders_mark=[])
     value['seal'],_ = sign(secret,context,header_wire('U',value)); header = header_wire('H',value)
-    result = full.successor(parent,header,entropy_output,author=author)
-    result[chapter_key(4)] = consensus_wire((b''.join(pending),root,kind,b''.join(schedule),b''.join(retained)))
-    stats,_ = statistics_parse(result[chapter_key(13)],(341,1023,1023,2**64-1,2**64-1))
-    current,previous_stats,cores,services = stats
-    counters = list(current[author]); counters[1] += len(submitted); current[author] = tuple(counters)
-    result[chapter_key(13)] = statistics_wire((current,previous_stats,cores,services))
-    return header+body,result
+    return header+body,entropy_output,author
 
 
 def expected_observations(check_frozen=True):

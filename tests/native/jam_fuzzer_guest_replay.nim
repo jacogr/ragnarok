@@ -29,6 +29,25 @@ proc observe(backend: var FuzzBackend, header: OwnedHeader): StateStoreSnapshot 
   let reply = backend.executeFuzz(fuzzGetState(header))
   assert reply.error == FuzzBackendError.None
   reply.value.fuzzState.value
+proc refusalReason(failure: CurrentCandidateResult): string =
+  ## Read only guarded actual consensus-stage causes; a default or unrelated failure cannot match a planned refusal.
+  if failure.error != CurrentCandidateError.PrefixFailure: return "unclassified"
+  let prefix = failure.prefixFailure
+  if prefix.error != ApplicationCandidateError.BlockFailure: return "unclassified"
+  let blockFailure = prefix.blockFailure
+  case blockFailure.error
+  of BlockTransitionError.DisputesFailure:
+    "dispute/" & $blockFailure.disputesError
+  of BlockTransitionError.SafroleFailure:
+    let safrole = blockFailure.safroleError
+    case safrole.error
+    of SafroleTransitionError.AdmissionFailure: "ticket/" & $safrole.admissionError
+    of SafroleTransitionError.MarkerFailure: "marker/" & $safrole.markerError
+    of SafroleTransitionError.AuthenticationFailure: "authentication/" &
+        $safrole.authenticationError
+    else: "unclassified" # Local resource/rotation/context failures never impersonate a protocol rejection.
+  else: "unclassified" # Other stages must add an explicit typed interpretation before being used by a reference.
+
 proc main() {.raises.} =
   ## Seeds deliberately use the established initial header; imports retain genuine GP checks and atomic complete-map publication.
   let raw = readFile(paramStr(1))
@@ -138,8 +157,9 @@ proc main() {.raises.} =
       seeded = true
       echo "P ", original
     else:
-      assert fields.len == 2 and fields[0] in ["B", "V"] and
-          seeded # Every independently signed child belongs to an explicitly initialized chain.
+      assert ((fields.len == 2 and fields[0] in ["B", "V"]) or
+          (fields.len == 3 and fields[0] == "R")) and
+              seeded # Every independently signed child belongs to an explicitly initialized chain.
       let wire = epoch.unhex(fields[1])
       let decoded = decodeBlock(wire, config.wire.frame)
       assert decoded.error == FrameError.None
@@ -178,6 +198,21 @@ proc main() {.raises.} =
         assert checkpointHex(future.observe(ahead)) ==
             before # Advancing state time alone cannot pass a later supplied header.
 
+      if fields[0] == "R":
+        let refused = backend.executeFuzz(fuzzImport(decoded.value.owner, config.wire))
+        assert refused.error == FuzzBackendError.CandidateFailure
+        assert consensusFuzzRejection(refused.candidateFailure)
+        assert refusalReason(refused.candidateFailure) == fields[2], refusalReason(
+            refused.candidateFailure)
+        assert checkpointHex(backend.observe(beforeHeader)) == before
+        assert array[32, byte](fuzzGetState(backend.fuzzBackendHeader.value).fuzzRequestedHeader.value) ==
+          array[32, byte](fuzzGetState(beforeHeader).fuzzRequestedHeader.value)
+        for saved in savedSiblings:
+          assert checkpointHex(backend.observe(saved.header)) ==
+              saved.state # Refused tickets preserve all retained variants too.
+        echo line
+        echo "O ", before
+        continue # A rejected signed input has no posterior header, entropy, statistics or partial accumulator.
       var damaged = wire
       damaged[32] = damaged[32] xor 1 # A genuine invalid prior-root attempt cannot publish a partial guest result.
       let negative = backend.executeFuzz(fuzzImport(decodeBlock(damaged,

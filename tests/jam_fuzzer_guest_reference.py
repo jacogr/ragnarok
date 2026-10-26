@@ -44,12 +44,12 @@ def replay(reference, *, input_requests=True, profiles=None, forks=False, anchor
             requests.append(('A ' if anchor_checks else 'C ')+data+profile)
             ordinal += 1
             initialized = True
-        elif tag == 'B' or forks and tag == 'V':
+        elif tag in ('B','R') or forks and tag == 'V':
             assert initialized and not waiting and not header_pending
             if tag == 'V':
                 sibling = True # Consecutive depth-one variants still require an eventual original-last child.
-            else:
-                sibling = False
+            elif tag == 'B':
+                sibling = False # Refused imports preserve the existing sibling group as well as the current map.
             requests.append(line)
             waiting = True
             blocks += 1

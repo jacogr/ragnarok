@@ -34,3 +34,27 @@ Observed admission validation: six native complete-map transitions passed with
 checked ARC/Clang ThinLTO. Unchanged upstream minifuzz passed two full-profile
 sessions, six imports and 20 exact exchanges, including its real mismatch control.
 All 51 focused Python tests, formatting and verification inventory passed.
+
+## Saturated contest replacement and atomic refusal
+
+A second independent family supplies canonical 599/600-ticket seed contests.
+Every seeded identifier is mathematically derived from a distinct known member
+of the same full ring, under the exact ticket context; no random score stands in
+for a valid ticket. Smaller submitted identifiers replace exactly the old worst
+entries, and an initially 599-entry contest becomes exactly full.
+
+Signed higher-scoring tickets, duplicate identifiers and a mixed batch containing
+one retainable and one non-retained entry must return consensus Error and preserve
+the entire prior checkpoint, current header, statistics and retained siblings.
+The same legal continuation follows each refusal. The native replay checks the
+actual guarded ticket-admission reason; upstream replay compares the exact Error
+message and queries the independently unchanged complete prior map. A rejection
+never creates a candidate state or retires a retained sibling group.
+
+Observed contest validation: nine new native complete-map steps (five accepted,
+four typed refusals), six unchanged admission steps and twelve prior guest/fork
+steps passed under checked ARC/Clang ThinLTO. Actual upstream minifuzz passed two
+sessions, nine imports and 26 exact exchanges, including every exact Error/prior
+map and its real mismatch control. Focused Python checks, fresh driver semantics,
+formatting and inventory passed; a mock Initialize-tag test error was corrected
+and both refusal tests plus their complete changed test module passed on rerun.

@@ -868,6 +868,16 @@ def jam_fuzzer_full_ancestry_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_contest_corpus(compiler, report, checks, libraries):
+    """Require full600-ticket eviction and typed atomic refusals with every complete retained map unchanged."""
+    import jam_fuzzer_full_contest_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_ticket_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_contest'),
+        profiles=[full.parameters()]*2)
+
+
+@CORPORA.case
 def jam_fuzzer_full_epochs_corpus(compiler, report, checks, libraries):
     """Compare guest-bearing full epoch markers, skipped tails and1023-to1020 population rotation."""
     import jam_fuzzer_full_epochs_oracle as reference
