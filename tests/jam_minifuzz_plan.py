@@ -171,6 +171,20 @@ def jam_fuzzer_full_epochs(identity):
     return selected(source,identity,[parameters()]*len(source.SLOTS),spec='full')
 
 
+def epoch_checkpoint_controls():
+    """Read independent frozen restart control budgets without building an oracle or target."""
+    from jam_fuzzer_full_epoch_checkpoints_oracle import required_controls
+    return required_controls()
+
+
+@reference(controls=epoch_checkpoint_controls)
+def jam_fuzzer_full_epoch_checkpoints(identity):
+    """Require genuine checkpoint restarts and locally reported missing ancestry evidence."""
+    import jam_fuzzer_full_epoch_checkpoints_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.MODES),spec='full',local_cases=source.local_evidence_cases())
+
+
 @reference()
 def jam_fuzzer_full_epoch_forks(identity):
     """Require different consensus epoch outcomes from the same genuine guest checkpoint."""
