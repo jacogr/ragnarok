@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_COMMAND",
+  "files": {
+    "current-stf-late-command.json": "bc947c0294843d2dbb23a3e747a0f1037c07e095ae662fcba01ee331f039af0c"
+  },
+  "target": "current-stf-late-command.json"
+}

@@ -45,6 +45,7 @@ erasure shards remain tied to the current population.
 | Longer mixed code/cancellation and allowance/transfer histories |136|[Longer mixed code/cancellation and allowance/transfer histories](current-stf-late-histories.md)|
 | Genuine checkpoint continuation of complete late-code histories |156|[Genuine checkpoint continuation of complete late-code histories](current-stf-late-restart.md)|
 | Authenticated complete late-code traces and wrong-map/seal refusals |156|[Authenticated complete late-code traces and wrong-map/seal refusals](current-stf-late-trace.md)|
+| Portable late-code bundles and actual public offline commands |156|[Late-code operator replay](current-stf-late-command.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
