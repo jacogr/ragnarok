@@ -71,8 +71,7 @@ CMD ["--help"]
 FROM runtime AS fuzz-target
 # Rootful upstream supplies the host UID; rootless Docker maps container root to the host owner.
 USER 0:0
-COPY config/jam-fuzz-policy.conf /usr/share/ragnarok/fuzz/
-CMD ["--fuzz", "--fuzz-policy", "/usr/share/ragnarok/fuzz/jam-fuzz-policy.conf", "--fuzz-writes", "1000", "--fuzz-write-bytes", "4194304"]
+CMD []
 
 # Keep the ordinary peer image as the default build product.
 FROM runtime AS production

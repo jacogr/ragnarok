@@ -29,12 +29,13 @@ The complete new preset tuple and policy-owned consensus constants are checked a
 startup, including lookup age600, rotation5, tail50, ticket cap4 and block gas875000000.
 The bundled candidate policy retains601 header facts under16MiB and the standard
 24-record Initialize wire cap. Existing Tiny/Full startup behavior and fixture pins
-remain unchanged. The `fuzz-target` Docker stage inherits the ordinary binary
-entry point and supplies only configuration/default flags. `ragnarok --fuzz` owns
-argument validation, preset/policy loading, private directory creation and cleanup.
-Complete flag configuration needs no environment marker. Optional upstream env
-values remain compatible and explicit flags override them. Ambient JAM_FUZZ does
-not intercept ordinary commands; published positional Fuzz commands remain supported.
+remain unchanged. The ordinary binary selects conformance mode from the five
+upstream target environment variables, without required arguments, policy files
+or working-directory assumptions. Embedded host policy derives profile-dependent
+fields from the canonical Tiny/Full/Fuzz catalog. The Docker preset inherits the
+ordinary entry point and needs no custom Fuzz arguments or shell adapter.
+Legacy explicit-policy commands remain for internal regression compatibility.
+
 
 Seventeen independently authored sessions contain67 imports:20 epoch/population maps,
 12 nonempty guest/sibling maps and35 expiry/rollback maps. Distinct Bandersnatch/Ed25519 identities, genuine
@@ -51,12 +52,13 @@ retained sibling maps and reconnect isolation. Live engine/campaign status stays
 pending in results and summary. Container build and live engine validation are
 separate from macOS native/entry-point readiness evidence.
 
-Verified direct ordinary-binary replay requires malformed/missing/duplicate flags to fail
-before creating directories, starts from an owned0777 socket directory, creates
-nested data directories natively and verifies all67 imports/171 queries/67 atomic
-refusals with graceful SIGTERM cleanup. Historical Full profile/guest/epoch and
-derived-expiry corpora retain their80-import qualification and unchanged pins.
-Exact published-head Linux CI has its own verdict.
+Environment-only ordinary-binary replay requires missing variables and extra
+arguments to fail before creating directories. It starts from an owned0777 socket
+directory, creates nested data directories natively and verifies all67 imports,
+171 queries and67 atomic refusals with graceful SIGTERM cleanup. Native startup
+checks validate built-in defaults for Tiny, Full and Fuzz. Historical Full
+profile/guest/epoch and derived-expiry corpora retain their80-import qualification
+and unchanged pins. Exact published-head Linux CI has its own verdict.
 
 Remaining campaign work: compatible engine distribution and a fuzz-aware upstream
 launcher, then bounded known campaigns with generated traces and explicit completion

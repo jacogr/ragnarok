@@ -28,25 +28,32 @@ Fuzz group with the existing `ci:fuzz` PR label.
 
 ## Run the normal binary
 
+The upstream target manager configures the ordinary executable through environment
+variables. No Fuzz arguments, external policy files or shell launcher are needed:
+
 ```sh
-build/ragnarok --fuzz --fuzz-policy config/jam-fuzz-policy.conf \
-  --fuzz-spec fuzz --fuzz-data /tmp/ragnarok-fuzz/data \
-  --fuzz-socket /tmp/ragnarok-fuzz/target.sock \
-  --fuzz-log-level info --fuzz-writes 1000 --fuzz-write-bytes 4194304
+JAM_FUZZ=1 \
+JAM_FUZZ_SPEC=fuzz \
+JAM_FUZZ_DATA_PATH=/tmp/ragnarok-fuzz/data \
+JAM_FUZZ_SOCK_PATH=/tmp/ragnarok-fuzz/target.sock \
+JAM_FUZZ_LOG_LEVEL=info \
+./build/ragnarok
 ```
 
-All mode selection, argument validation, directory creation, policy loading and
-socket cleanup happen in `ragnarok`. The replay runs this executable directly.
-Flags override the optional upstream `JAM_FUZZ_SPEC`, `JAM_FUZZ_DATA_PATH`,
-`JAM_FUZZ_SOCK_PATH` and `JAM_FUZZ_LOG_LEVEL` values. No environment variables are
-needed when the flags supply the configuration. An ambient `JAM_FUZZ` variable
-does not change ordinary commands such as `--version`.
+`JAM_FUZZ` selects conformance mode. `JAM_FUZZ_SPEC` selects `tiny`, `full` or the
+experimental `fuzz` preset. The binary creates the selected runtime directories,
+uses its built-in bounded host policy and listens on `JAM_FUZZ_SOCK_PATH`.
+`JAM_FUZZ_LOG_LEVEL` is optional. `--version` remains available for launcher
+introspection. Missing required configuration and extra Fuzz arguments fail locally.
 
-The immutable Tiny/Full/Fuzz catalog is `src/chain/presets.nim`. Fuzz uses explicit
-D900. Policy copies of consensus limits must match that catalog; local resource
-ceilings are configured separately. `--fuzz-parameters FILE` selects an explicit
-custom parameter tuple for existing Tiny/Full host profiles. The positional
-`serve-fuzz` and `serve-fuzz-preset` commands remain compatible.
+The immutable chain catalog is `src/chain/presets.nim`; native host defaults live
+in `src/app/fuzz_policy.nim`. Chain-dependent policy fields come from that catalog;
+resource ceilings remain explicit. Fuzz uses the approved D900 interpretation.
+Legacy explicit-policy commands remain for existing internal regression callers.
+
+The workflow-level `JAM_FUZZ_TARGET_SOCK` is consumed by upstream tooling, which
+passes the target's endpoint as `JAM_FUZZ_SOCK_PATH`. Engine generation controls
+such as `JAM_FUZZ_SEED` belong to the external engine, not the target client.
 
 ## Container defaults
 
@@ -55,23 +62,23 @@ make docker-build-jam-fuzz
 mkdir -p build/jam-network-runtime
 docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
   -v "$PWD/build/jam-network-runtime:/jam" \
-  -e JAM_FUZZ_SPEC=fuzz -e JAM_FUZZ_DATA_PATH=/jam \
-  -e JAM_FUZZ_SOCK_PATH=/jam/target.sock \
-  -e JAM_FUZZ_LOG_LEVEL=info ragnarok:local-jam-fuzz
+  -e JAM_FUZZ=1 -e JAM_FUZZ_SPEC=fuzz -e JAM_FUZZ_DATA_PATH=/jam \
+  -e JAM_FUZZ_SOCK_PATH=/jam/target.sock -e JAM_FUZZ_LOG_LEVEL=info \
+  ragnarok:local-jam-fuzz
 ```
 
-The image inherits the ordinary `/usr/local/bin/ragnarok` entry point. It only
-bundles `config/jam-fuzz-policy.conf` and supplies default `--fuzz` arguments.
-Supplying arguments to `docker run` replaces these defaults exactly as it does for
-the normal image; there is no Fuzz shell launcher or separate executable. The
-ordinary image remains the default build product. The tag follows
-`${DOCKER_IMAGE}-jam-fuzz`. Linked worktrees require a standalone build context.
+The image inherits the ordinary `/usr/local/bin/ragnarok` entry point. It needs no
+custom command arguments or policy assets. The ordinary image remains the default
+build product, and its normal default help argument also permits environment-selected
+Fuzz startup. The preset image only adjusts default user/arguments for upstream
+rootless launch. Its tag follows `${DOCKER_IMAGE}-jam-fuzz`; linked worktrees need
+a standalone build context.
 
-The binary creates missing selected runtime directories with0700 and tightens
-existing runtime-owned directories, including upstream's0777 mount. Rootful Docker
-uses the host UID supplied by the upstream launcher. For rootless Docker, omit
-`--user` so container root maps to the host owner. Some macOS Docker setups
-translate bind-mount ownership; use a Linux-owned volume in those environments.
+The binary creates selected runtime directories with0700 and tightens existing
+runtime-owned directories, including upstream's0777 mount. Rootful Docker uses
+the host UID supplied by the launcher. For rootless Docker, omit `--user` so
+container root maps to the host owner. Some macOS Docker setups translate
+bind-mount ownership; use a Linux-owned volume there.
 
 ## Live campaign prerequisite
 

@@ -33,7 +33,7 @@ class NetworkPreset(unittest.TestCase):
         self.assertEqual(changed,{3:(341,85),4:(19200,900),5:(600,60),8:(5000000000,1250000000),
                                   9:(3500000000,875000000),13:(16,4),14:(14400,600),18:(10,5),28:(500,50)})
         self.assertEqual(len(reference.parameters()),122)
-        self.assertIn('--fuzz',(ROOT/'src/ragnarok.nim').read_text())
+        self.assertIn('existsEnv("JAM_FUZZ")',(ROOT/'src/ragnarok.nim').read_text())
 
     def test_delayed_population_and_complete_maps(self):
         """Both ordinary/skipped crossings activate old pending first, retaining prior population statistics exactly."""
@@ -72,7 +72,12 @@ class NetworkPreset(unittest.TestCase):
 
     def test_policy_binds_consensus_and_lookup_horizon(self):
         """Host policy must not accidentally retain Full consensus constants or the fixture's16-header retention."""
-        values = dict(line.split('=',1) for line in (ROOT/'config/jam-fuzz-policy.conf').read_text().splitlines() if '=' in line and not line.startswith('#'))
+        text = (ROOT/'src/app/fuzz_policy.nim').read_text().split('"""',2)[1]
+        replacements = dict(cores=85,validators=255,epoch=60,tickets=4,tail=50,rotation=5,lookup=600,
+            blockGas=875000000,reportGas=10000000,queueHashes=6800,historyPackages=680,
+            projectionRows=510,comparisons=65025,ancestors=601)
+        for token,value in replacements.items(): text = text.replace('@'+token+'@',str(value))
+        values = dict(line.split('=',1) for line in text.splitlines() if '=' in line)
         expected = {'candidate.reporting.admission.frame.cores':'85',
             'candidate.reporting.admission.frame.validators':'255',
             'candidate.reporting.admission.frame.epochSlots':'60',
@@ -125,7 +130,7 @@ class NetworkReadiness(unittest.TestCase):
         """Policy, parameters and entry point must be attributed just like the executable sources."""
         from runtime_provenance import runtime_sources
         paths = {str(path.relative_to(ROOT)) for path in runtime_sources()}
-        for name in ('config/jam-fuzz-policy.conf','src/app/fuzz_target.nim'):
+        for name in ('src/app/fuzz_policy.nim','src/app/fuzz_target.nim'):
             self.assertIn(name,paths)
 
     def test_matrix_keeps_target_and_testnet_separate(self):
@@ -140,13 +145,16 @@ class NetworkReadiness(unittest.TestCase):
         self.assertIn('jam-network-${{ github.run_attempt }}',workflow)
         self.assertIn('check-jam-network: setup check-inventory',(ROOT/'Makefile').read_text())
 
-    def test_container_uses_ordinary_binary_and_flags(self):
-        """The preset image inherits the normal binary entry point and changes only policy/default arguments."""
+    def test_container_uses_environment_only_ordinary_binary(self):
+        """The preset image inherits the normal binary entry point with no required flags or external policy assets."""
         source = (ROOT/'Dockerfile').read_text()
         self.assertEqual(source.count('ENTRYPOINT '),1)
         self.assertIn('ENTRYPOINT ["/usr/local/bin/ragnarok"]',source)
-        self.assertIn('CMD ["--fuzz", "--fuzz-policy",',source)
+        self.assertIn('FROM runtime AS fuzz-target',source)
+        self.assertIn('CMD []',source)
+        self.assertNotIn('--fuzz-policy',source)
         self.assertFalse((ROOT/'tools/jam_fuzz_entrypoint.sh').exists())
         runner = (ROOT/'tools/check_jam_network.py').read_text()
-        self.assertIn("[str(binary),'--fuzz'",runner)
+        self.assertIn('arguments = [str(binary)]',runner)
+        self.assertIn("JAM_FUZZ='1'",runner)
         self.assertNotIn('jam_fuzz_entrypoint',runner)

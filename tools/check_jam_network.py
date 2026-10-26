@@ -48,18 +48,22 @@ def socket_check(binary, folder):
         directory = Path(selected); endpoint = directory/'target.sock'
         directory.chmod(0o777) # Reproduce the pinned upstream launcher's mount mode; native startup must make it private.
         environment = {key:value for key,value in os.environ.items() if not key.startswith(('JAM_FUZZ','RAGNAROK_FUZZ_'))}
-        arguments = [str(binary),'--fuzz','--fuzz-policy',str(ROOT/'config/jam-fuzz-policy.conf'),
-            '--fuzz-spec','fuzz','--fuzz-data',str(directory/'data/nested'),'--fuzz-socket',str(endpoint),
-            '--fuzz-log-level','error','--fuzz-writes','1000','--fuzz-write-bytes','4194304']
-        for extra in (['--unknown','x'],['--fuzz-spec','fuzz'],['--fuzz-writes','-1'],['--fuzz-socket']):
-            # Parser and budget failures must occur in the actual binary before any listener exists.
+        arguments = [str(binary)]
+        environment.update(JAM_FUZZ='1',JAM_FUZZ_SPEC='fuzz',JAM_FUZZ_DATA_PATH=str(directory/'data/nested'),
+            JAM_FUZZ_SOCK_PATH=str(endpoint),JAM_FUZZ_LOG_LEVEL='error')
+        for variable in ('JAM_FUZZ_SPEC','JAM_FUZZ_DATA_PATH','JAM_FUZZ_SOCK_PATH'):
+            # The upstream launch contract alone configures the actual binary; missing inputs must refuse before IO.
+            missing = dict(environment); del missing[variable]
+            rejected = subprocess.run(arguments,env=missing,capture_output=True,timeout=30)
+            assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
+            assert not endpoint.exists()
+        for extra in (['--fuzz'],['--unknown','x']):
             rejected = subprocess.run(arguments+extra,env=environment,capture_output=True,timeout=30)
             assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
             assert not endpoint.exists()
         assert not (directory/'data').exists()
-        ambient = dict(environment,JAM_FUZZ='1')
-        version = subprocess.run([str(binary),'--version'],env=ambient,capture_output=True,timeout=30)
-        assert version.returncode == 0 and b'Ragnarok' in version.stdout # Ambient compatibility variables never replace explicit binary flags.
+        version = subprocess.run([str(binary),'--version'],env=environment,capture_output=True,timeout=30)
+        assert version.returncode == 0 and b'Ragnarok' in version.stdout # Version inspection remains available to external launchers.
         with (folder/'target.log').open('wb') as log:
             process = subprocess.Popen(arguments,env=environment,stdout=log,stderr=log)
             try:

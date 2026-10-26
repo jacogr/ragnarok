@@ -22,17 +22,16 @@ peer can supply or override this trusted configuration. Both file reads are boun
 The two unsigned write budgets are explicit (at most 1000000 writes and 64 MiB of
 write values); zero deliberately disables that resource. Other ignored production
 service arguments are refused rather than activating RPC, QUIC, UI or persistent state.
-The ordinary binary also accepts `--fuzz --fuzz-policy FILE --fuzz-spec PROFILE
---fuzz-data DIRECTORY --fuzz-socket PATH`, optional `--fuzz-parameters FILE`,
-`--fuzz-log-level LEVEL`, `--fuzz-writes COUNT` and `--fuzz-write-bytes BYTES`.
-Explicit flags override optional standard environment values and require no JAM_FUZZ
-marker. The normal binary prepares selected runtime directories and owns every
-startup/teardown step; the container supplies only default arguments. Duplicate,
-unknown, incomplete and invalid-budget flags refuse before listener creation.
+The public third-party launch contract is the ordinary binary with no arguments
+and the upstream target environment variables: JAM_FUZZ, JAM_FUZZ_SPEC,
+JAM_FUZZ_DATA_PATH, JAM_FUZZ_SOCK_PATH and optional JAM_FUZZ_LOG_LEVEL.
+Built-in native defaults require no external policy files or working directory.
+The binary prepares selected runtime paths and owns all startup and teardown.
+The ordinary image's default help argument also permits environment-selected
+startup. Explicit --version remains available for launcher introspection.
+The positional command above remains available for internal regression callers.
 
-For the legacy positional commands, required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full/fuzz),
-JAM_FUZZ_DATA_PATH and JAM_FUZZ_SOCK_PATH. JAM_FUZZ_LOG_LEVEL accepts the documented
-optional values. Configuration checks exact core/epoch/header-population domains:
+Configuration checks exact core/epoch/header-population domains:
 tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. The experimental `fuzz`
 preset uses85/60/255 and requires its entire issue215 tuple plus matching policy
 consensus constants; see [network fuzz](jam-network-fuzz.md). For Tiny/Full, all other Parameters

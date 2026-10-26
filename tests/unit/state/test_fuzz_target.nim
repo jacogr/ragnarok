@@ -5,7 +5,7 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
 import ../../support/[fuzz_fork_context, fuzz_full_replay_context]
-import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate]
+import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate, fuzz_policy, current_download_policy]
 import ../../../src/codec/[bounded, header, report_owned, block_codec, tickets, work_digest]
 import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission,
   accumulation_queue, report_anchors, guarantors,
@@ -13,11 +13,16 @@ import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission
 import ../../../src/chain/[provider, genesis, parameters, presets]
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
-  for arguments in [@["--fuzz", "--unknown", "x"], @["--fuzz", "--fuzz-policy"],
-      @["--fuzz", "--fuzz-policy", "unused", "--fuzz-writes", "-1"],
-      @["--fuzz", "--fuzz-spec", "fuzz", "--fuzz-spec", "tiny"]]:
-    # Actual native flag parsing refuses unknown, incomplete, negative-budget and duplicated configuration before IO.
-    assert runFuzzTarget(arguments) == 2
+  for preset in [ChainPreset.Tiny, ChainPreset.Full, ChainPreset.Fuzz]:
+    # Every advertised environment-only profile has a complete native default policy derived from the central tuple.
+    let policy = fuzzPresetPolicy(preset)
+    assert policy.error == CurrentDownloadPolicyError.None
+    let name = if preset == ChainPreset.Tiny: "tiny" elif preset ==
+        ChainPreset.Full: "full" else: "fuzz"
+    let environment = FuzzEnvironment(enabled: true, spec: name, dataPath: "/tmp/fuzz-default",
+        socketPath: "/tmp/fuzz-default/target.sock")
+    assert prepareFuzzTarget(environment, presetParameters(preset).value, policy.value.candidate,
+      ElementLimit(1000), ByteLimit(4194304)).error == FuzzTargetError.None
   let supplied = fuzzBackendTestConfig()
   let environment = FuzzEnvironment(enabled: true, spec: "tiny", dataPath: "/tmp/private-fuzz",
       socketPath: "/tmp/private-fuzz/target.sock")
