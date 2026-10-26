@@ -19,7 +19,7 @@ stopped node that replays its journal and catches up over QUIC:
 make check-devnet
 ```
 
-For a short CI-sized run with the same independent checks:
+For a short local smoke with the same independent checks:
 
 ```sh
 make check-devnet-smoke
@@ -29,9 +29,15 @@ This runs two blocks on all six nodes, checks18 complete maps and12 journal reco
 convergence and clean shutdown. It retains GP's six-second slot duration. It does not claim epoch
 crossing or restart coverage; use the full acceptance target for those cases.
 
-All targets provision/build through Make. The E2E / Application CI matrix runs this two-block smoke
-on Linux and macOS and retains per-node logs, observed heads, result metadata and the independent
-plan hashes. PRs request the E2E group with the existing `ci:e2e` label. Native authoring/refusal tests are available with `make unit SUITE=tiny_block_author`.
+All targets provision/build through Make. A dedicated **E2E / Testnet** CI matrix job runs the full
+fourteen-block epoch/restart acceptance on Linux and macOS, separate from Application. It retains
+per-node logs, observed heads, result metadata and the independent plan hashes. PRs request the E2E group with the existing `ci:e2e` label. Native authoring/refusal tests are available with `make unit SUITE=tiny_block_author`.
+
+Run only the standalone Testnet E2E group locally with:
+
+```sh
+E2E_GROUP=testnet make check-e2e
+```
 
 ## Inspect or extend a run
 

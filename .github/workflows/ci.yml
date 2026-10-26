@@ -342,6 +342,7 @@ jobs:
           - {group: current, name: Current Downloads}
           - {group: offload, name: Offload}
           - {group: telemetry, name: Telemetry}
+          - {group: testnet, name: Testnet}
           - {group: transport, name: Transport}
     runs-on: ${{ matrix.os }}
     env:

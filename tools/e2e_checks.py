@@ -166,20 +166,20 @@ def rpc(context):
     return observed
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
-def application_tiny_devnet(context):
-    """Two blocks on six native validators must match independent signatures, journals and complete maps."""
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
+def testnet_tiny_devnet(context):
+    """Fourteen blocks on six native validators must cross an epoch and recover a stopped node with independent maps."""
     compiled, binary = context.peer
     observed = dict(passed=False)
     if compiled['exit_code'] == 0:
-        from tiny_devnet_checks import smoke
+        from tiny_devnet_checks import check
         try:
             import time
-            observed = smoke(binary, context.checks.folder/('tiny-devnet-'+str(time.time_ns())))
+            observed = check(binary, context.checks.folder/('tiny-devnet-'+str(time.time_ns())))
         except (AssertionError, OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError) as error:
             # Independent transcript, process, network, convergence and cleanup failures all fail this workload.
             observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
-    announce('Six-node Tiny two-block conformance', observed['passed'])
+    announce('Six-node Tiny epoch and restart conformance', observed['passed'])
     return observed
 
 

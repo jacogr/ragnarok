@@ -32,9 +32,9 @@ Ticket/work production and fork/finality behavior remain outside this increment.
 ## Implementation boundaries
 
 `make devnet` owns build/launch and `make check-devnet` owns the independent acceptance run.
-The application E2E group requires the two-block `application_tiny_devnet` smoke, retaining
-all independent signatures, journals and whole-map comparisons. Full epoch/restart acceptance
-remains available separately through `make check-devnet`. Native `tiny_block_author`
+The dedicated Testnet E2E group requires `testnet_tiny_devnet`, running the full fourteen-block
+epoch/restart acceptance with independent signatures, journals and whole-map comparisons.
+Application runs separately; `E2E_GROUP=testnet make check-e2e` selects only the Testnet runner. Native `tiny_block_author`
 checks all six keys across fourteen blocks, exactly one eligible author per slot, wrong-key,
 invalid-seal and stale/replayed-block refusals, parent preservation and unset finality.
 
@@ -77,19 +77,20 @@ refuses fuzz-only seeds, mismatched profiles and insufficient frame bounds. Ordi
 and `--version` entry smoke checks passed. These are macOS ARM64 results; Linux CI is separate.
 
 
-## Short CI acceptance
+## CI epoch acceptance
 
-The maintainer requested a couple of blocks on CI with checks. `make check-devnet-smoke` and
-`application_tiny_devnet` run two ordinary six-second slots on all six native processes. They
-freeze independent expected blocks/maps before launch and compare all18 complete maps and12
-journaled block records after clean shutdown. Both eligible authors must be observed and every
-node must remotely adopt blocks. This shorter horizon does not claim an epoch transition or
-restart; the unchanged full target retains14 blocks and injected stop/replay/catch-up.
+The maintainer selected fourteen blocks and a dedicated E2E / Testnet matrix runner. The Testnet
+group runs six native processes through the twelve-slot epoch boundary, then two additional
+slots, and injects a stopped-node replay/catch-up. It freezes independent expected blocks/maps
+before launch and compares all90 complete maps and84 journaled block records after clean
+shutdown. All six identities must author and every node must remotely adopt blocks.
 
-CI's existing E2E / Application matrix runs the smoke on Linux and macOS. Only scoped logs,
-heads, result metadata and independent plan hashes are uploaded; TLS certificate/key directories
-and binaries remain excluded. Default local `make devnet` still runs14 slots. The native host
-accepts2..64 slots; the launcher refuses a restart run with fewer than13.
+CI runs Testnet separately from Application on Linux and macOS. Only scoped logs, heads,
+result metadata and independent plan hashes are uploaded; TLS certificate/key directories and
+binaries remain excluded. The local `make check-devnet-smoke` retains the optional two-block
+18-map/12-record check, without claiming epoch or restart coverage. Default `make devnet` and
+`make check-devnet` retain14 slots. The native host accepts2..64 slots; the launcher refuses a
+restart run with fewer than13. GP's six-second slot duration remains unchanged.
 
 Observed final PR validation: the two-block smoke passed with18 full-map comparisons and12
 journal records; the full14-block epoch/restart acceptance also passed again after adding the
@@ -97,3 +98,7 @@ short horizon.72 focused Python CI/harness/provenance tests, inventory, changed-
 compilation/pinned formatting and workflow YAML parsing passed. Evidence:
 - `build/tiny-devnet/check-20261026-085222/result.json`
 - `build/tiny-devnet/check-20261026-085406/result.json`
+
+The standalone `E2E_GROUP=testnet make check-e2e` runner also passed locally: all six nodes
+converged at slot14 after injected restart, with90 complete-map observations and84 journal
+records checked independently. The full workload completed in84.24 seconds after native build.
