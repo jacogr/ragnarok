@@ -125,6 +125,52 @@ for op in 0..255:
           compare(source, prepared, 16, 100000)
 assert opcodes == 139
 
+proc registerPrefixMatrix() =
+  ## Every literal register opcode precedes every genuine second opcode; budgets distinguish original and paired dispatch.
+  var initial = default(RegisterFile)
+  for index in 0..<13:
+    # Mapped address-like values permit real loads/stores as well as arithmetic-generated faults and aliasing.
+    initial[index] = RegisterValue(65536'u64+uint64(index)*16)
+  var prefixes = 0
+  for firstCode in 0..255:
+    if byte(firstCode) in {20'u8, 51'u8, 100'u8..110'u8, 131'u8..161'u8, 190'u8..230'u8}:
+      inc prefixes
+      for secondCode in 0..255:
+        if validOpcode(byte(secondCode)):
+          # Deliberately aliased register descriptors expose any second-input read moved before the first mutation.
+          var first = @[byte(firstCode)]
+          var second = @[byte(secondCode)]
+          for index in 0..<24:
+            first.add(17'u8)
+            second.add(17'u8)
+          let program = owner([first, second, @[0'u8]])
+          let prepared = cache(program, blocks = 2)
+          let source = captureMachine(program, mapped, MachineInfo(gas: MachineGas(100000),
+            blockCharged: true, registers: initial)).value
+          for steps in [1'u64, 2, 3]:
+            # One attempt must not execute the second instruction; three observes both successful effects at the final trap.
+            compare(source, prepared, steps, 100000)
+  assert prefixes == 85
+
+registerPrefixMatrix()
+
+proc registerPrefixBytePressure() =
+  ## A tight retained-byte policy splits adjacent add/load cells; aliasing and mapped-page endpoints expose premature pairing.
+  let program = owner([@[149'u8, 0x77, 1], @[130'u8, 0x77, 0], @[0'u8]])
+  for bytes in [192'u64, 1048576]:
+    # Both byte-pressure fallback and ordinary two-cell dispatch preserve the same checked memory and attempt semantics.
+    let prepared = cache(program, bytes = bytes, blocks = 2)
+    for address in [65536'u64, 69630, 73726]:
+      var initial = default(RegisterFile)
+      initial[7] = RegisterValue(address)
+      let source = captureMachine(program, mapped, MachineInfo(gas: MachineGas(100000),
+        blockCharged: true, registers: initial)).value
+      for steps in 0'u64..4'u64:
+        # Zero/one attempts cannot perform the second load; crossing the last mapped page must retain its exact fault.
+        compare(source, prepared, steps, 100000)
+
+registerPrefixBytePressure()
+
 # Compact dynamic operands must read an aliased original base before the unconditional load mutation.
 for descriptor in [119'u8, 255'u8]:
   # Both ordinary and saturated encoded register pairs deliberately select the same source/destination.

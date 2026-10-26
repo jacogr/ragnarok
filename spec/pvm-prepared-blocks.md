@@ -961,3 +961,142 @@ Port and Rust constructors are not measured. All translated code stays local.
 Evidence under `build/pvm-port-lab/prepared-loop-views` includes every sample/spread,
 separate constructors/cold calls, source/archive/generated-C identities, unchanged
 component checks, final Make/reference/ASan logs and fresh equal-image controls.
+
+
+## Bounded register prefixes, 2026-10-26
+
+Independent optimization of the existing checked prepared interpreter; no learning-port
+implementation ships. Pinned Gray Paper/JAM semantics and dependency pins are unchanged.
+Immediate parent is #1693 at `6b5141257e92feec06b3418e1bdf375c4c88601d`;
+same-session master is `ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`.
+
+### Execution and ownership contract
+
+Private handlers return one complete `distinct uint32` evaluation word. Typed error
+ordinals occupy the low byte; successful words carry `StepError.None` and the full
+`StepExit` in the next byte. Default zero remains `Uninitialized`. Failure construction
+rejects `None`; status validates the entire encoding before exit selection. A compile-time
+guard rejects enum-domain expansion beyond the reserved byte. The common loop compares
+the exact continuation word; genuine errors/exits remain guarded typed results. Public
+results and frame publication are unchanged; no error side channel or per-handler frame
+writes are introduced.
+
+Each of the 85 genuine register opcodes may prepare a bounded two-instruction prefix
+when its original fallthrough is valid. The first shared register handler cannot produce
+a guest exit; its inputs and fallthrough are sealed genuine facts. The second instruction
+still uses its original checked handler and may fault, suspend, jump or terminate. The
+loop reserves exactly two attempts only with two retained cells and at least two remaining
+attempts. Otherwise it uses the original single-instruction handler. The second record
+supplies the causing PC and continuation index on observable exits. Ordinary PC writes,
+block pricing, gas, checked memory and host scheduling remain unchanged. Local failures
+publish no partial state. There is no cross-segment prefix, recursive chain, raw array
+pointer or borrowed lifetime across a callback.
+
+For add-immediate-64 (opcode149), preparation selects one of 139 literal second-opcode
+specializations. A canonical original-handler table is shared with ordinary preparation;
+all arithmetic, control and memory semantics remain in the existing helpers. Selection
+uses genuine opcode identities, never benchmark addresses/values. Other register prefixes
+use a bounded transfer to the original second handler. Correctness does not require a
+compiler tail-call optimization. Checked M1 native output has 85 bounded tail transfers
+for generic prefixes and 139 literal add-prefix functions with no indirect call/lookup
+inside those functions. These are static code observations, not executed instruction
+counts or hardware-event measurements.
+
+Private records grow from56 to64 bytes on the measured 64-bit target. Admission, segment
+capacity, retained/resident bytes and eviction use actual `sizeof`; policy and byte ceiling
+remain unchanged. The extra256-byte preparation-only opcode scratch is included in peak
+transient accounting. Original full-width immediates/PCs are retained. Immutable records
+remain owned by the invocation's existing segment handle, with the same ARC lifetime.
+
+### Qualification and measured verdict
+
+Keep the composed scalar-result/register-prefix/literal-add model. The aggregate-result
+pair prototype regressed Pinky/fill and was rejected. A unified optional-next ABI kept
+56-byte records but regressed Pinky9–10% and was rejected. Moving fields alone was within
+noise. Separate scalar-only, generic-prefix and identical add-table-without-installation
+controls distinguish the final composition from those unsuccessful alternatives; no claim
+is made that each component independently wins.
+
+The final isolated comparison covers98 processes (seven guests, both orders, seven
+controls). Another96 alternating confirmation processes cover four large guests and
+four variants across six rounds. Every process makes13 calls, with three warmups and ten
+CPU samples. Paired confirmation median changes versus the actual parent are Pinky-3.28%,
+sieve-20.16%, minimal-2.15% and memory fill-11.60%; minimal remains unproven at this scale.
+A fresh cumulative70-process comparison uses canonical identical compiler source/cache/
+output paths, private clean compiler caches and a byte-identical final image after the
+master/parent controls. A preliminary cumulative run overlapped formatting and is retained
+separately; the following table uses the clean repeat, with no concurrent formatter/build.
+
+Apple M1 Max, checked ARC/Clang ThinLTO, pristine pinned Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2` and PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. **Reused CPU milliseconds,
+forward / reverse process order** (100000 workload limit, Pinky one invocation):
+
+| Guest | Master prepared | Parent #1693 | This implementation | Learning port | PolkaVM interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 194.915 / 196.766 | 147.767 / 148.278 | 141.998 / 142.790 | 94.581 / 94.251 | 92.126 / 91.869 |
+| sieve | 5.853 / 5.862 | 4.412 / 4.405 | 3.507 / 3.513 | 3.394 / 3.395 | 3.487 / 3.503 |
+| minimal | 13.514 / 13.531 | 9.212 / 9.223 | 9.010 / 9.018 | 6.221 / 6.209 | 5.982 / 5.977 |
+| memset | 6.232 / 6.228 | 4.315 / 4.319 | 3.832 / 3.825 | 3.625 / 3.639 | 3.837 / 3.833 |
+
+Cold CPU milliseconds are single first-call observations, including lazy preparation,
+not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.822 / 197.547 | 148.575 / 150.168 | 147.167 / 144.038 | 94.219 / 94.342 | 96.536 / 93.422 |
+| sieve | 9.980 / 9.854 | 8.424 / 8.389 | 7.522 / 7.588 | 3.574 / 3.575 | 6.105 / 6.064 |
+| minimal | 13.516 / 13.584 | 9.252 / 9.261 | 9.057 / 9.098 | 6.230 / 6.215 | 6.025 / 6.032 |
+| memset | 6.353 / 6.357 | 4.447 / 4.465 | 4.028 / 4.089 | 3.650 / 3.647 | 4.000 / 3.988 |
+
+Constructor CPU microseconds cover only creation of the empty bounded prepared owner;
+program/initial-memory capture remains outside execution timing. No constructor speed
+improvement is established; port/PolkaVM constructors are not measured:
+
+| Guest | Master constructor | Parent constructor | This implementation constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 5.000 / 4.000 | 6.000 / 5.000 | 5.000 / 4.000 |
+| sieve | 4.000 / 5.000 | 5.000 / 4.000 | 4.000 / 4.000 |
+| minimal | 14.000 / 13.000 | 14.000 / 12.000 | 11.000 / 13.000 |
+| memset | 6.000 / 7.000 | 5.000 / 7.000 | 7.000 / 8.000 |
+
+Sieve and memory fill are within timing noise of PolkaVM interpreted reuse. Pinky and
+minimal still cost about1.5 times the learning port. This is neither full lifecycle parity
+nor the target of outperforming the reference interpreter. Ragnarök stages each fresh
+invocation inside its execution clock; the public Rust reuse adapter restores input
+outside that clock. The partial learning port uses predecoded/priced facts and unbounded
+retention and does not implement the complete public JAM lifecycle.
+
+All prepared block/operation/hit/eviction counts match the parent for every call in this
+comparison. Record growth changes bytes, not churn in these workloads. Final reused cache
+observations (resident bytes / peak transient bytes; resident blocks / operations;
+cumulative evictions after13 calls):
+
+| Guest | Parent bytes resident / peak | This implementation bytes resident / peak | Blocks / operations | Evictions |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 506440 / 523296 | 553728 / 573240 | 792 / 5911 | 751 |
+| sieve | 927224 / 944192 | 1033032 / 1052672 | 991 / 13226 | 615 |
+| minimal | 134880 / 149216 | 135352 / 151992 | 9 / 59 | 0 |
+| memset | 155040 / 169376 | 157960 / 174600 | 63 / 365 | 0 |
+
+These software cache counters are not hardware cache or branch misses. No Linux,
+native executed-instruction-count or hardware-event claim is made.
+
+The prepared suite adds all85 register-first ×139 second-opcode combinations (11815),
+including aliased descriptors and partial/complete attempt budgets1/2/3 against unchanged
+dynamic execution, twice per prepared owner. A focused add/load alias witness covers
+192-byte and ordinary cache policies, zero through four attempts, cross-page reads and
+the final mapped-page fault. Existing139-opcode, gas/fault/host/reentry,
+segment256, byte-pressure, eviction and source-snapshot witnesses remain. Nine native
+suites, four independent complete-state references and AddressSanitizer prepared tests
+passed; ARC1000 remains balanced. Promoted Make prepared and mixed-reference suites pass.
+All timed samples check every register, gas/exit, page byte, permission and retained source
+snapshot; tampered gas references are rejected before a successful timing row.
+
+Local samples, source/generated-source identities, native code inspection, rejected
+controls, constructor/cold/cache rows and check logs remain under
+`build/pvm-port-lab/prepared-register-prefixes`. The qualified runtime source SHA256 is
+`14e2991883d89289dfd6c786e97fde584ea0738ca421d545b9b92252246591b1`.
+The next bounded investigation is broader literal-prefix coverage or a separately proven
+memory-prefix design with exact early-exit attempt accounting; neither is part of this
+change. Checked scalar-memory hot/cold separation remains another independent avenue.
