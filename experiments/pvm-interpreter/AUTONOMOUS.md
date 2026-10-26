@@ -325,3 +325,18 @@ not CPU percentages. Pinned Nimony src/lib/nifcore.nim:948–953 and1319–1323 
 alwaysInline force-splicing, while inline does not force the native frontend inliner.
 Try only flatStore inline->alwaysInline; keep slow fallback out of line, all checks.
 No compiler/toolchain change; prove actual helper-call removal, then paired timings.
+
+## Trial14 — force-splice checked fast stores
+
+Parentea318738. One pragma change on flatStore: inline->alwaysInline, supported by the
+pristine pinned compiler. Existing scalar/address/region/permission/bitmap/write checks
+and slow fallback unchanged. Hypothesis: eliminate the sampled out-of-line fast-store
+leaf and let caller context optimize checks; actual call removal is a native gate.
+Full native/address matrices and both-order lifecycle/call timings required; no flag change.
+
+Trial14verdict: keep forced checked-store splice. Kernel paired medians Pinky-3.95%,
+sieve-1.06%,Minimal-5.89%; init reusedcall-2.00%,tick-2.78%. Memoryfill +0.61%(range
++0.56..+0.92%) is an explicit small tradeoff, no uniform-win claim.200timed/4negative,
+8native/8ASan,6fresh image pairs and stable full-state/source checks pass. Native all3drivers
+removefast-store calls while keepingcheckedslowrefs. Mach-O __text sizes archived separately;
+size/calls alone do not establish CPU cause. Compiler/toolchain pristine.

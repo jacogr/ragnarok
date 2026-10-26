@@ -393,7 +393,7 @@ proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
   flatLoadSlow[W](f, off, address, value)
 
 proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
-    value: uint64): bool {.inline.} =
+    value: uint64): bool {.alwaysInline.} =
   ## Only captured writable/stack regions can satisfy a fast store; RO and fragmented boundaries retain full preflight.
   if address >= 65536'u64 and address <= uint64(high(uint32))-uint64(W):
     if address >= f.stackBase:
