@@ -973,7 +973,12 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
         regions[regions.len-1].first+uint64(regions[regions.len-1].bytes.len) != address:
       regions.add(FlatRegion(first: address, access: image.access, bytes: @[]))
     let region {.cursor.} = regions[regions.len-1]
-    for at in 0..<4096: region.bytes.add(image.bytes[at])
+    let previous = region.bytes.len
+    # Grow one checked complete page before borrowing either source or destination bytes.
+    assert previous <= high(int)-4096
+    region.bytes.setLen(previous+4096)
+    assert region.bytes.len == previous+4096 and previous < region.bytes.len
+    copyMem(addr region.bytes[previous], unsafeAddr image.bytes[0], 4096)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1

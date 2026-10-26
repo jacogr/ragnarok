@@ -84,4 +84,6 @@ python3 -m unittest discover -s experiments/pvm-interpreter -p 'test_*.py'
 ```
 
 The first completed comparison rejects [rare exit outlining](findings/outline-exits-qualified.md);
-the runtime remains exactly the accepted checkpoint after that trial.
+that isolated change was restored to the accepted checkpoint. Later findings retain
+[bulk page construction](findings/bulk-page-construction.md), which improves measured gameplay
+lifecycle while leaving calls essentially flat. See the investigation record for current status.

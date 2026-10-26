@@ -54,3 +54,27 @@ Two dispatch-only simplifications failed. Current phase data show substantial fr
 reset and host snapshot costs. Inspect bulk page construction (currently byte-at-a-time append)
 and a bounded dirty-page working set that avoids scanning every mapped page at every observation.
 These are independent hypotheses and will be measured separately; no runtime change started yet.
+
+## Trial3 — bulk page construction
+
+Replace the per-byte append loop in private contiguous-region construction with one checked
+4096-byte extent growth and bulk page copy. Validate native-int addition and exact grown length
+before taking raw addresses. Same region coalescing, source ownership, mapping, permissions,
+private byte storage and reset/publication contracts. Constructor work is mandatory in the report;
+execution-call timing alone cannot demonstrate this hypothesis. Native checks pass; ASan and
+fresh same-path controls are running. Exact parent: b19262e5.
+
+Trial3 verdict: keep bulk page construction. Reused gameplay lifecycle median -17.10%, every
+pair -16.76..-17.99%; calls +0.09% (flat). Six retained cold-init pairs: call -0.32%, lifecycle
+-1.35%median; one busy pair remains +7.87%/+6.45%. Constructor/reset clearly improve; no broad
+kernel gain claim. All208timed processes +4negative controls pass with stable seals. Eight full
+native and ASan groups pass, six fresh role/driver equal-image controls pass. Eight separate
+RSS probes observe270.22..270.34MiB for both roles; clocks excluded. No sample discarded.
+
+## Next hypothesis — immutable page identity before metadata validation
+
+`changedMemoryPages` already uses immutable page identity in its copy pass. Test using that same
+positive ownership fact in the preceding mapping-validation pass, skipping index/permission
+loads only for identical retained page owners. Keep two passes and complete mapping validation
+before allocating any delta, preserving refusal/atomicity ordering. This targets host resume
+cost without altering guest execution or introducing a new memory representation.

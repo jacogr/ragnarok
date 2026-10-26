@@ -66,7 +66,9 @@ def main():
     summary = dict(experiment=args.name, verdict=args.verdict, baseline=data['baseline'],
                    candidate_overlay_sha256=data['source_sha256']['experiments/pvm-interpreter/overlay/src/pvm/experimental.nim'],
                    raw_report_sha256=hashlib.sha256(raw.read_bytes()).hexdigest(), processes=len(data['runs']),
-                   negative_controls=len(data['controls']), all_inputs_stable=True, groups={}, runs=data['runs'])
+                   negative_controls=len(data['controls']), all_inputs_stable=True, groups={}, runs=data['runs'],
+                   resource_observations=data.get('resource_observations', []),
+                   confirmation_plan=data.get('confirmation_plan'))
     text = ['# '+args.name, '', args.verdict, '',
             'Checked macOS arm64 CPU durations. Baseline commit `'+data['baseline']+'`; candidate overlay',
             '`'+summary['candidate_overlay_sha256']+'`. All declared samples retained.', '',
@@ -119,6 +121,26 @@ def main():
         phases = row['phases'][3:]
         values = row['prepare_ns'][:2]+[statistics.median(p[i] for p in phases) for i in range(1, 6)]
         text.append('| '+row['phase']+'/'+str(row['order'])+'/'+row['role']+' | '+' | '.join(f'{v/1e6:.3f}' for v in values)+' |')
+    text += ['', '## Cold first-use scope', '',
+             'Plan + frame construction + reset + cold call + final publication. Fixture loading,',
+             'decoding/validation and final destruction are outside this explicitly measured scope.', '',
+             '| Phase/order | Parent ms | Candidate ms | Change |',
+             '| --- | ---: | ---: | ---: |']
+    for phase in ('init', 'tick'):
+        rows = [r for r in data['runs'] if r['driver'] == 'doom' and r['phase'] == phase
+                and r['cold'] and r['role'] in ('baseline', 'candidate')]
+        for order, before, after in pairs(rows):
+            a = sum(before['prepare_ns'][:2])+median_lifecycle(before)
+            b = sum(after['prepare_ns'][:2])+median_lifecycle(after)
+            text.append(f'| {phase}/{order} | {a/1e6:.3f} | {b/1e6:.3f} | {percent(a,b):+.2f}% |')
+    if data.get('resource_observations'):
+        text += ['', '## Separate complete-process peak RSS', '',
+                 'All clocks from these resource probes are discarded. RSS includes fixtures, validation',
+                 'and every process owner; these are not engine-only allocation measurements.', '',
+                 '| Phase/order/role | Peak MiB |', '| --- | ---: |']
+        for row in data['resource_observations']:
+            text.append('| '+row['phase']+'/'+str(row['order'])+'/'+row['role']+
+                        f' | {row["peak_rss_bytes"]/1048576:.2f} |')
     text += ['', 'Source-attempt and host-call counts remain exact: DOOM initialization 203,298,231 / 1,621;',
              'gameplay 12,180,040 / 1. Source attempts are not native instructions. Small-driver node,',
              'handler/argument and source-site byte counts are preserved in the accompanying JSON.', '',
