@@ -1,0 +1,43 @@
+{
+  "status": "passed",
+  "image_sha256": "0d8521e9ecb5f7546d6cc404af5f3cd9979ba47442d00244b65fd641e8299c45",
+  "policy": "Static ARM64 code facts only; no executed instruction counts or CPU cause inferred",
+  "rows": [
+    {
+      "symbol": "_flatCharge_0_exptxuppf1",
+      "disassembled_lines": 119,
+      "calls": [
+        "0000000100019ca4\tbr\tx2",
+        "0000000100019ccc\tbl\t_panic_0_sysvq0asl",
+        "0000000100019cd8\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_Ioc1ujr_exptxuppf1",
+      "disassembled_lines": 159,
+      "calls": [
+        "000000010002b6f4\tbr\tx2",
+        "000000010002b71c\tbl\t_panic_0_sysvq0asl",
+        "000000010002b728\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_Iot6dy11_exptxuppf1",
+      "disassembled_lines": 173,
+      "calls": [
+        "000000010002b9a8\tbr\tx2",
+        "000000010002b9d0\tbl\t_panic_0_sysvq0asl",
+        "000000010002b9dc\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_Ivdii8x_exptxuppf1",
+      "disassembled_lines": 166,
+      "calls": [
+        "000000010002bc40\tbr\tx2",
+        "000000010002bc68\tbl\t_panic_0_sysvq0asl",
+        "000000010002bc74\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    }
+  ]
+}

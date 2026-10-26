@@ -206,3 +206,22 @@ worker in2. Static calls do not prove the CPU cause alone. Restore runtime34bf60
 stronger warm-prefix witnesses and block/profile/count evidence. Next bounded variant expands
 the same reservation/compute equations through templates; verify actual call removal before
 repeating timing. No native code generation or semantic shortcut.
+
+## Trial9 — template-expanded charged shapes
+
+Parent6e312d89(runtime34bf60be). Keep trial8shape/cold-capability/partial-fallback algorithm,
+but expand reservation through a statement template with original early exits. Expand the
+shared computeRegisterOperands equation inside charged workers rather than composing large
+register procs. Ordinary register workers unchanged. No new payload or guest semantics.
+Focused entry matrix passes; actual native call removal is a mandatory gate before timing.
+
+Trial9 verdict: keep expanded charged shapes. All6init reused pairs -3.96..-5.35%, median
+-4.96%; cold call -5.29%, reusedlife -4.93%. Small kernel medians within0.35%. Tick call
++0.51%, cold+0.95% remain visible; reset-inclusive tick reused/coldlife -0.07%/+0.11%.
+200timed/4negative,8native/8ASan and6fresh equal-image pairs pass; source seals stable.
+Actual ARM64 hot shapes and ordinary charge omit reserve/register composed calls. No
+executed native instruction/counter claim or uniform-win claim. Public/default untouched.
+
+Next count-only question: do these charged blocks branch directly back to themselves? If so,
+a bounded nonrecursive interpreter loop could retain every charge/quota check while avoiding
+repeat outer dispatch. Count actual destinations before any runtime change; clocks discarded.
