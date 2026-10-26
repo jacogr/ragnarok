@@ -18,7 +18,8 @@ The [grow_heap extension (1)](pvm-accumulation-heap.md) adopts the merged #533/#
 rules with unchanged pins. In the original dispatch increment, calls 16–17 and 19–25 were local
 `UnsupportedHostCall` failures, even when their eventual protocol implementation
 might exhaust gas. Refine-only calls 7–14 and all other identifiers use F's unknown
-branch: charge 1000 and set r7 to WHAT, including on gas exhaustion. IDs are compared
+branch: charge 1000 and set r7 to WHAT, including on gas exhaustion. The explicitly adopted
+[JIP-1 log extension (100)](pvm-host-log.md) instead charges 10 and emits bounded diagnostics. IDs are compared
 at their complete uint64 width.
 
 Capture, copying, provision retention, instruction count, host-call count and

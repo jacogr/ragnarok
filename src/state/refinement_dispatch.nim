@@ -4,7 +4,8 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
-import ../pvm/[machine, program, step, gas, host_gas, host_heap, host_fetch, refinement_exports, inner_machines]
+import ../pvm/[machine, program, step, gas, host_gas, host_log, host_heap, host_fetch,
+    refinement_exports, inner_machines]
 import ../codec/[bounded, composite, state_service_values, work_package, work_digest]
 import ../chain/parameters
 import ./[store, refinement_lookup]
@@ -192,6 +193,9 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   let cpu = stopped.machine.machineInfo.value
   let memory = stopped.machine.memoryOf.value
   case uint64(stopped.hostCall)
+  of 100:
+    # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
+    hostSuccess[RefinementDispatchError](logHostResponse(cpu.gas, cpu.registers, memory))
   of 0:
     hostSuccess[RefinementDispatchError](gasHostResponse(cpu.gas, cpu.registers, memory)) # Shared gas semantics.
   of 1:

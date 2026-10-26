@@ -7,7 +7,7 @@
 import ../codec/[bounded, composite, work_package, work_digest, work_report, state_service_values]
 import ../chain/parameters
 import ../crypto/primitives
-import ../pvm/[machine, program, initialize, step, gas, output, host_gas, host_heap, host_fetch]
+import ../pvm/[machine, program, initialize, step, gas, output, host_gas, host_log, host_heap, host_fetch]
 import ./[store, refinement_lookup]
 
 type
@@ -156,7 +156,7 @@ proc complete(source: AuthorizationSource, kind: WorkKind, used: Gas, trace: seq
     completed: AuthorizationInvocation(data: data))
 proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResult[
     AuthorizationHostError] =
-  ## Allow only Psi_I's three hosts; refinement/accumulation IDs receive ordinary charged WHAT semantics.
+  ## Dispatch Psi_I's general hosts and JIP-1 logging; other IDs retain charged WHAT semantics.
   let info = stopped.machine.machineInfo
   let captured = stopped.machine.memoryOf
   if info.error != MachineError.None: return hostFailure(AuthorizationHostError.InvalidContext)
@@ -176,6 +176,9 @@ proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResu
     if fetched.error == FetchError.None: return hostSuccess[AuthorizationHostError](fetched.value)
     hostFailure(if fetched.error == FetchError.LimitExceeded: AuthorizationHostError.LimitExceeded
       else: AuthorizationHostError.InvalidContext) # No partial fetch response escapes a local refusal.
+  of 100:
+    # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
+    hostSuccess[AuthorizationHostError](logHostResponse(cpu.gas, cpu.registers, memory))
   else:
     hostSuccess[AuthorizationHostError](unknownHostResponse(cpu.gas, cpu.registers, memory))
 
