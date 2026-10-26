@@ -171,6 +171,23 @@ def jam_fuzzer_full_epochs(identity):
     return selected(source,identity,[parameters()]*len(source.SLOTS),spec='full')
 
 
+def epoch_capacity_controls():
+    """Declare epoch-state eviction and retirement from its independently pinned fixture."""
+    return fork_controls('jam_fuzzer_full_epoch_capacity')
+
+
+@reference(controls=epoch_capacity_controls)
+def jam_fuzzer_full_epoch_capacity(identity):
+    """Require all epoch-divergent complete maps and actual oldest-eviction/later-retirement observations."""
+    import jam_fuzzer_full_epoch_capacity_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    from jam_fuzzer_fork_retention import bind
+    jobs,proof = selected(source,identity,[parameters()]*len(source.MODES),spec='full',fork_capacity=source.CAPACITY)
+    # Each independently initialized guest outcome owns both finite-retention controls.
+    for job in jobs: bind(job)
+    return jobs,proof
+
+
 def epoch_checkpoint_controls():
     """Read independent frozen restart control budgets without building an oracle or target."""
     from jam_fuzzer_full_epoch_checkpoints_oracle import required_controls
