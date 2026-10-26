@@ -129,6 +129,18 @@ build/pvm-interpreter-experiment/pending-directory-only.patch AFTER committing t
 copy the old complete pending runtime back, because that would reintroduce the fixed barrier bug.
 
 Correctness interlude verdict: retain active-stream quota fix.200timed processes/4negative
-controls and stable seals pass; init reused paired median +0.15%, tick -0.24% within spread.
+controls and stable seals pass; init reused paired median +0.16%, tick -0.24% within spread.
 No speed gain claimed. Exact-parent failure and all176new prefix epochs are retained with
 the complete eight native/eight ASan witness groups. Production src remains untouched.
+
+Trial5 resumed against correctness parent9e3317d5. Applied directory-only patch; active-stream
+quota fix remains present. Full updated publication witnesses must pass before timing.
+
+Trial5 verdict: reject dirty directory. Complete200timed/4negative controls pass with stable
+seals; all8native/8ASan and fresh image controls pass. Init reused call median -0.70%,
+but Minimal kernel +5.52% and Pinky +1.63%. Exact runtime restored to9e3317d5; quota fix
+and its witnesses remain. No sample removed. The first-dirty helper changes possible hot
+store lowering even when rarely called; timing does not establish a CPU cause.
+
+Next: binary search for sparse checkpoint refresh. This changes only post-host source-image
+lookup, preserving complete preflight, checked copies, sorted changes and commit ordering.
