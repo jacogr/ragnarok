@@ -31,6 +31,7 @@ erasure shards remain tied to the current population.
 | Further offender-filtered promotions, surviving authors and fixed quorum |34|[Extended histories](current-stf-rotation-histories.md)|
 | Host/lifecycle checkpoint restarts and complete authenticated traces |85 each|[Host-history replay](current-stf-rotation-replay.md)|
 | Portable host-history bundles and actual public offline commands |85|[Host-history operator](current-stf-rotation-command.md)|
+| Late code extrinsics at growth/shrinkage and exact non-retroactive execution |200|[Late code ordering](current-stf-late-rotation.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|

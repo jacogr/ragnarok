@@ -36,6 +36,15 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
 
 
 @CORPORA.case
+def current_stf_late_rotation_corpus(compiler, report, checks, libraries):
+    """Qualify code extrinsic integration after accumulation at growth, intra-epoch and shrinkage boundaries."""
+    import current_stf_late_rotation_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_code','current_stf_late_rotation','current_stf_population','state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
     """Qualify assurance-before-rotation, Phi guarantor exclusion, cancellation and delayed nulling together."""
     import current_stf_offender_reporting_oracle as oracle

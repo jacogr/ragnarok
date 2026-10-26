@@ -101,7 +101,7 @@ def submitted_for(slot, bank):
 
 
 def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=bytes(3),
-              new_offenders=(), body_override=None, extrinsic_override=None, outputs=()):
+              new_offenders=(), body_override=None, extrinsic_override=None, outputs=(), preimages=()):
     """Calculate each header, admitted contest, rotated state and entire successor independently."""
     previous = int.from_bytes(parent[chapter_key(11)], 'little')
     assert slot > previous
@@ -177,7 +177,7 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
     source['seal'], _ = sign(secret, transcript, header_wire('U', source))
     header = header_wire('H', source)
     result = advance_chapters(parent, header, slot, author, entropy_output,
-                              ticket_count=len(submitted), cores=cores, outputs=outputs)
+                              ticket_count=len(submitted), cores=cores, outputs=outputs, preimages=preimages)
     result[chapter_key(4)] = consensus_wire((b''.join(post_pending), post_root, post_kind,
                                             b''.join(post_schedule), b''.join(kept)))
     if crossed:
