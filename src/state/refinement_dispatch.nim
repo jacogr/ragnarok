@@ -254,17 +254,20 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
 
 proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: MemoryByteLimit,
     exportLimits: ExportLimits, steps: ExecutionStepLimit, calls: HostCallLimit,
-    cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits)):
+    cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits),
+    backend: PvmBackend = PvmBackend.Ragnarok):
     RefinementDispatchResult[RefinementOutcome] =
   ## Replay the original immutable CPU with fresh exports; refuse atomically without exposing callback progress.
   let data = prepared.data
   if data == nil: return RefinementDispatchResult[RefinementOutcome](
       status: RefinementDispatchError.InvalidContext)
   let empty = captureRefinementExports(data.offset)
+  var nested = inner
+  nested.backend = backend # One outer selection governs all inner invocation segments.
   var context = DispatchContext(source: data, exports: empty, copyLimit: copyLimit,
-      exportLimits: exportLimits, machines: captureInnerMachines(inner),
+      exportLimits: exportLimits, machines: captureInnerMachines(nested),
           programCopyLimit: inner.program, innerFailure: StepError.Uninitialized)
-  let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles)
+  let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles, backend)
   case evaluated.error
   of HostExecutionError.None:
     let selected = evaluated.value

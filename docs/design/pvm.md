@@ -52,3 +52,20 @@ history, complete state and authenticated original block provenance. State's
 state owns history/statistics/authorization/consensus composition and exact-parent
 final publication. Neither side accepts a detached map as a replacement execution
 certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
+
+## Runtime engine selection
+
+The application selects `ragnarok`, `polkavm-interpreted` or `polkavm-native` explicitly,
+with Ragnarök as the default. Invocation-local policies carry this selection through initial
+and later accumulation, authorization, refinement and nested machines; no global mutable
+selector or upstream environment default participates. `step.nim` retains the checked host
+continuation and guest/local error contracts, with optional implementation in
+`internal/backend_execution.nim`. Completed observations report the actual engine.
+
+An optional maintained `native/polkavm` C ABI owns opaque Rust instances using the pinned
+public upstream API. Nim retains unsigned protocol gas, instruction/host budgets, host
+dispatch and state/effects publication. Instruction tracing provides exact attempt boundaries;
+this correctness profile is not a throughput qualification. One instance stays resident across
+host callbacks. Only pages addressed by guest stores are read for publication, changed pages
+are captured together into immutable memory, and only changed host pages are synchronized.
+See [the runtime contract](../../spec/pvm-runtime-backends.md) for capabilities and refusals.

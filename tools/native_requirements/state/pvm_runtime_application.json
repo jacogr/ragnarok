@@ -1,0 +1,8 @@
+{
+  "defines": ["polkavmRuntime"],
+  "directory": "state",
+  "includes": ["crypto", "polkavm"],
+  "libraries": ["observer", "polkavm"],
+  "observers": [],
+  "prepared": false
+}

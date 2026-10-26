@@ -15,7 +15,7 @@ from setup_nimony import ROOT, installed, cache_directory
 
 
 # Keep the shipped peer profile explicit; the same checks/LTO and public headers are used by verification.
-def build_command(compiler, output, crypto, bandersnatch, quic):
+def build_command(compiler, output, crypto, bandersnatch, quic, polkavm=None):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
              '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload']
     if platform.system() == 'Linux':
@@ -27,6 +27,10 @@ def build_command(compiler, output, crypto, bandersnatch, quic):
     for library in (crypto, bandersnatch, quic):
         # Real primitive/transport ABIs are linked without any failure/wipe/ownership observer.
         flags += ['--passL:'+str(library), '--passL:-Wl,-rpath,'+str(library.parent)]
+    if polkavm is not None:
+        # Only the explicit optional build profile links the guest executor.
+        flags += ['-d:polkavmRuntime', '--passC:-I'+str(ROOT/'native/polkavm'), '--passL:'+str(polkavm),
+                  '--passL:-Wl,-rpath,'+str(polkavm.parent)]
     return [str(compiler), 'c', *flags,
             '--nimcache:'+str(cache_directory(compiler, ROOT/'build', 'ragnarok')),
             '--out:'+str(output), str(ROOT/'src/ragnarok.nim')]
@@ -45,7 +49,11 @@ def main():
     bandersnatch = build_bandersnatch(False)
     quic = build_quic(quic_sources(False))
     output = ROOT/'build/ragnarok'
-    arguments = build_command(compiler, output, crypto, bandersnatch, quic)
+    polkavm = None
+    if os.environ.get("PVM_POLKAVM", "0") == "1":
+        from build_polkavm import build_native as build_polkavm
+        polkavm = build_polkavm()
+    arguments = build_command(compiler, output, crypto, bandersnatch, quic, polkavm)
     print('+ '+' '.join(arguments), flush=True)
     # Compiler failure remains authoritative; a stale output is never reported as a successful build.
     subprocess.run(arguments, cwd=ROOT, check=True)

@@ -88,7 +88,7 @@ def unit_command(compiler, name=None, libraries=None):
                 # Fail before Hastur can reuse any prior linked executable.
                 raise FileNotFoundError('Missing native unit library: '+str(library))
             flags.append('--passL:'+str(library))
-            if key in ('crypto', 'bandersnatch', 'bandersnatch_observer') or profile == 'quic':
+            if key in ('crypto', 'bandersnatch', 'bandersnatch_observer', 'polkavm') or profile == 'quic':
                 # Locate maintained shared-library identities on both supported hosts.
                 flags.append('--passL:-Wl,-rpath,'+str(library.parent))
         for include in requirements['includes']:
@@ -342,6 +342,7 @@ def main():
         'crypto_native': 'preparation',
         'bandersnatch_native': 'bandersnatch-preparation',
         'quic_native': 'quic-preparation',
+        'polkavm_native': 'polkavm-preparation',
         'storage_io_native': 'storage-io-preparation',
         **PROVIDERS.evidence_files(),
     }

@@ -1242,7 +1242,8 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
         deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(0),
             accountWriteFacts = ElementLimit(0),
     storageFacts = default(AccumulationStorageFactLimits),
-    requestFacts = ElementLimit(0)): AccumulationDispatchResult =
+    requestFacts = ElementLimit(0),
+    backend: PvmBackend = PvmBackend.Ragnarok): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
   ## accountWriteFacts independently enables bounded physical account/key facts; zero disables their queries.
@@ -1288,7 +1289,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
 effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes,
       transferLimit: transferLimit)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatch,
-    steps, calls, cycles)
+    steps, calls, cycles, backend)
   case evaluated.error
   of HostExecutionError.None:
     # Preserve halt, panic, fault and gas outcomes without inventing a Psi_A transition.

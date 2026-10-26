@@ -29,6 +29,7 @@ export FUZZ_CLANG ?= clang
 export FUZZ_LIBFUZZER ?=
 export FUZZ_REPLAY ?=
 export PAGED_STORAGE_IMAGE ?= ragnarok:paged-probe
+export PVM_POLKAVM ?= 0
 export SUITE ?=
 # Complete local units remain the default; CI separates native suites and independent corpora.
 export UNIT_SCOPE ?= all
@@ -565,3 +566,19 @@ check-devnet: build
 # CI-sized live smoke retains ordinary GP slots and the independent whole-map verifier.
 check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
+
+# Optional runtime bridge stays outside the default independent-engine dependency closure.
+.PHONY: build-pvm-runtime
+build-pvm-runtime: setup
+	$(PYTHON) tools/build_polkavm.py
+
+# Real guest checks use the maintained runtime boundary and complete independent state goldens.
+.PHONY: check-pvm-runtime-doom
+check-pvm-runtime-doom: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_runtime_doom.py
+
+# Synthetic ABI lifecycle measurements keep setup, resident execution, reset and copy costs separate.
+.PHONY: bench-pvm-runtime
+bench-pvm-runtime: setup
+	$(PYTHON) tools/pvm_runtime_measure.py

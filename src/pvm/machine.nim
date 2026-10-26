@@ -279,6 +279,27 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
   MachineResult[PageImage](status: MachineError.None, completed: PageImage(index: index,
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
+proc pageIndices*(memory: Memory): MachineResult[seq[PageIndex]] =
+  ## Copy only retained sorted page identities; sparse holes and snapshot storage remain private.
+  let data = memory.data
+  if data == nil: return MachineResult[seq[PageIndex]](status: MachineError.InvalidOwner)
+  var indices = newSeq[PageIndex](data.pages.len)
+  for index in 0..<data.pages.len:
+    indices[index] = data.pages[index].index # Copying ordinals grants no mutable page access.
+  MachineResult[seq[PageIndex]](status: MachineError.None, completed: indices)
+
+proc samePage*(left, right: Memory, index: PageIndex): bool =
+  ## Identity comparison avoids copying unchanged immutable pages at a foreign continuation boundary.
+  let a = left.data
+  let b = right.data
+  if a == nil or b == nil or uint32(index) >= 0x100000'u32: return false
+  let ai = lowerBound(a, uint32(index))
+  let bi = lowerBound(b, uint32(index))
+  let ap = ai < a.pages.len and uint32(a.pages[ai].index) == uint32(index)
+  let bp = bi < b.pages.len and uint32(b.pages[bi].index) == uint32(index)
+  if not ap or not bp: return not ap and not bp # Two absent pages have the same inaccessible content.
+  a.pages[ai] == b.pages[bi]
+
 proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   ## Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
   ## This is setup/remapping, not a guest write: it may change read-only/inaccessible page contents.
@@ -302,6 +323,38 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
     pages.add(data.pages[i])
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
+proc withPages*(memory: Memory, updates: seq[PageImage]): MachineResult[Memory] =
+  ## Atomically apply sorted unique environment-owned page images with one reference-vector merge.
+  ## Untouched immutable pages remain shared; validation precedes allocation and no input is retained.
+  let data = memory.data
+  if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if updates.len == 0: return MachineResult[Memory](status: MachineError.None, completed: memory)
+  var added = 0
+  for index in 0..<updates.len:
+    if uint32(updates[index].index) >= 0x100000'u32:
+      return MachineResult[Memory](status: MachineError.InvalidPage)
+    if index > 0 and uint32(updates[index-1].index) >= uint32(updates[index].index):
+      return MachineResult[Memory](status: MachineError.UnsortedPages)
+    let slot = lowerBound(data, uint32(updates[index].index))
+    if slot == data.pages.len or uint32(data.pages[slot].index) != uint32(updates[index].index):
+      inc added # Sorted distinct indices bound insertions by the finite physical page domain.
+  if uint64(data.pages.len)+uint64(added) > uint64(uint32(data.limit)):
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
+  var pages = newSeqOfCap[PageData](data.pages.len+added)
+  var original = 0
+  for update in updates:
+    while original < data.pages.len and uint32(data.pages[original].index) < uint32(update.index):
+      pages.add(data.pages[original])
+      inc original # Share each unchanged immutable page once, regardless of changed-page count.
+    pages.add(pageFromImage(update))
+    if original < data.pages.len and uint32(data.pages[original].index) == uint32(update.index):
+      inc original # A replacement retires the old reference only in the new root.
+  while original < data.pages.len:
+    pages.add(data.pages[original])
+    inc original # Preserve the complete trailing sparse memory and its permissions.
+  MachineResult[Memory](status: MachineError.None,
+      completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
 proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
   ## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.

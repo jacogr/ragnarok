@@ -7,6 +7,8 @@
 
 import std/[strutils, assertions]
 import ../codec/bounded
+import ../pvm/backend
+export backend
 
 const
   MaxDownloadBlocks* = 64             ## A command requests a finite number of actual successive adoptions.
@@ -17,8 +19,9 @@ const
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
       "--download-local-ancestors", "--download-update-logical-source", "--state-paged-resume"]
-  Values = ["--trace-observations", "--telemetry", "--chain", "--management-socket", "--rpc-port",
-      "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
+  Values = ["--pvm-backend", "--trace-observations", "--telemetry", "--chain",
+      "--management-socket", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
+      "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--node-mode", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
@@ -43,6 +46,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
+  engine: PvmBackend
   mode: NodeMode
   backend: StateStorage
   layout: StateDiskLayout
@@ -56,6 +60,10 @@ type Options* = object ## Validated service controls; command handlers validate 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
   options.parsed
+
+func pvmBackend*(options: Options): PvmBackend =
+  ## Retain the explicit guest executor choice without process-wide mutable configuration.
+  options.engine
 
 func nodeMode*(options: Options): NodeMode =
   ## Mode observation grants no startup authority when parsing failed.
@@ -262,6 +270,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       let value = arguments[i + 1]
       if value.len == 0 or value.startsWith("--"): return false
       case name
+      of "--pvm-backend":
+        if not parsePvmBackend(value, candidate.engine): return false # Exact spelling, no implicit fallback.
       of "--telemetry": candidate.endpoint = value
       of "--chain": candidate.chain = value
       of "--management-socket":

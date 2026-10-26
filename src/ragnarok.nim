@@ -12,18 +12,34 @@ import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, download_command, current_download_command, trace_check_command, fuzz_target, devnet_command]
 import ./version
+import ./pvm/step
+
+proc reportPvmBackend(selected: PvmBackend): bool =
+  ## Startup reports the effective explicit engine and exact implementation revision before resource creation.
+  let availability = backendAvailability(selected)
+  if availability != StepError.None:
+    stderr.writeLine("PVM_BACKEND_FAILED engine=" & $selected & " reason=" & $availability)
+    return false
+  let revision = if selected == PvmBackend.Ragnarok: AppRevision else: PolkaVmRevision
+  stderr.writeLine("PVM_BACKEND engine=" & $selected & " revision=" & revision)
+  true
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   try:
     var arguments: seq[string] = @[]
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
+    var commandArguments: seq[string] = @[]
+    var selected = PvmBackend.Ragnarok
+    if not extractPvmBackend(arguments, commandArguments, selected): return 2
     let versionRequest = arguments.len == 1 and arguments[0] == "--version"
     if (existsEnv("JAM_FUZZ") and not versionRequest) or
         (arguments.len > 0 and arguments[0] in ["serve-fuzz", "serve-fuzz-preset"]):
-      return runFuzzTarget(arguments) # Standard upstream environment variables activate the ordinary binary with no custom flags.
+      if not reportPvmBackend(selected): return 2
+      return runFuzzTarget(commandArguments, selected) # Standard upstream environment variables activate the ordinary binary with no custom flags.
     if arguments.len > 0 and arguments[0] == "tiny-devnet":
-      return runDevnet(arguments) # Explicit bounded local validators use ordinary GP candidate admission.
+      if not reportPvmBackend(selected): return 2
+      return runDevnet(commandArguments, selected) # Explicit bounded local validators use ordinary GP candidate admission.
     var options = default(Options)
     if not parseOptions(arguments, options): return 2 # No invalid configuration reaches a service.
     # Version inspection needs no certificates, listeners or service configuration.
@@ -44,6 +60,7 @@ proc main(): int =
       stdout.writeLine("       JAM_FUZZ=1 JAM_FUZZ_SPEC=tiny|full|fuzz JAM_FUZZ_DATA_PATH=DIR JAM_FUZZ_SOCK_PATH=PATH ragnarok")
       stdout.writeLine("         Optional JAM_FUZZ_LOG_LEVEL selects conformance logging; no flags or policy files are required.")
       stdout.writeLine("       ragnarok --version | --help")
+      stdout.writeLine("         --pvm-backend ragnarok|polkavm-interpreted|polkavm-native (default ragnarok)")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
       stdout.writeLine("         --with-management --management-socket /PRIVATE_DIRECTORY/admin.sock (local HTTP; disabled by default)")
@@ -66,6 +83,7 @@ proc main(): int =
       stdout.writeLine("         --download-blocks COUNT (download commands only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
+    if not reportPvmBackend(options.pvmBackend): return 2
     if options.argumentCount() >= 1 and options.argument(1) == "check-traces":
       let outcome = runTraceChecks(options)
       if outcome.error == TraceCheckCommandError.None:

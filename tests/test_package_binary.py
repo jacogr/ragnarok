@@ -50,6 +50,7 @@ class BinaryPackaging(unittest.TestCase):
                     calls.append((arguments, options))
                     return 'revision\n' if arguments[0] == 'git' else ''
                 with patch.object(packaging, 'host_pins', return_value=host), patch.object(
+                        packaging.Package, 'dependencies', return_value=[]), patch.object(
                         packaging.Package, 'relocate'), patch.object(packaging.Package, 'verify') as verify, patch.object(
                         packaging.Package, 'command', command), patch.dict(os.environ, LD_LIBRARY_PATH='/foreign'):
                     archive = packaging.package(root)
@@ -72,6 +73,32 @@ class BinaryPackaging(unittest.TestCase):
                 self.assertEqual(set(files), {'bin/ragnarok', 'LICENSE-APACHE', 'LICENSE-MIT',
                     *('lib/ragnarok/'+name+('.so' if system == 'Linux' else '.dylib') for name in packaging.LIBRARIES)})
                 self.assertEqual(manifest['files'], {name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
+
+    def test_optional_guest_abi_and_upstream_licenses_follow_binary_dependencies(self):
+        """A linked optional executor ships with its licenses; default archives retain their smaller closure."""
+        with temporary_folder() as root:
+            host = self.fixture(root, 'Linux')
+            library = root/'build/polkavm/release/libragnarok_polkavm.so'
+            library.parent.mkdir(parents=True)
+            library.write_bytes(b'optional guest executor')
+            upstream = root/'vendor/polkavm'
+            upstream.mkdir(parents=True)
+            for name in ('LICENSE-MIT', 'LICENSE-APACHE'):
+                (upstream/name).write_text('upstream '+name)
+            def command(checks, arguments, **options):
+                """Only loader inspection and smoke execution are mocked; real archive bytes are verified."""
+                return 'revision\n' if arguments[0] == 'git' else ''
+            with patch.object(packaging, 'host_pins', return_value=host), patch.object(
+                    packaging.Package, 'dependencies', return_value=[str(library)]), patch.object(
+                    packaging.Package, 'relocate'), patch.object(packaging.Package, 'verify'), patch.object(
+                    packaging.Package, 'command', command):
+                archive = packaging.package(root)
+            with tarfile.open(archive) as payload:
+                self.assertEqual(payload.extractfile('lib/ragnarok/libragnarok_polkavm.so').read(),
+                                 b'optional guest executor')
+                for name in ('LICENSE-MIT', 'LICENSE-APACHE'):
+                    self.assertEqual(payload.extractfile('licenses/polkavm/'+name).read(),
+                                     ('upstream '+name).encode())
 
     def test_failed_smoke_removes_stale_artifacts(self):
         """A failed rebuilt peer cannot publish an old archive or checksum from a previous successful run."""

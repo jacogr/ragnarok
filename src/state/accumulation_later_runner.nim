@@ -272,7 +272,7 @@ proc runServices(source: LaterSource, round: BlockAccumulationRound,
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts)
+        limits.deletedAccounts, backend = limits.backend)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.DispatchFailure,

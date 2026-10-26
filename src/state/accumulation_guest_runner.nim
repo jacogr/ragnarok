@@ -21,6 +21,7 @@ type
     copyBytes*: MemoryByteLimit              ## Maximum one host memory copy.
     steps*: ExecutionStepLimit               ## Attempted instructions per ready guest.
     calls*: HostCallLimit                    ## Host dispatches per ready guest.
+    backend*: PvmBackend ## Engine selection belongs to this invocation policy, never process state.
     cycles*: GasCycleLimit                   ## Bounded basic-block gas inspection.
     provisions*: AccumulationProvisionLimits ## Retained provide effects per guest.
     transfers*, accountWriteKeys*, createdAccounts*,
@@ -181,7 +182,7 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
       limits.provisions,
       limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
       limits.deletedAccounts, limits.modifiedAccounts, limits.accountWriteFacts,
-      limits.storageFacts, limits.requestFacts)
+      limits.storageFacts, limits.requestFacts, backend = limits.backend)
     if executed.error != AccumulationDispatchError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.DispatchFailure,
           dispatchReason: executed) # Preserve actual step/refusal detail; prior successful guests remain private and release.

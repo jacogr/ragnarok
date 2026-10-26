@@ -12,6 +12,11 @@
 
 import ./[program, machine, registers, gas, gas_plan, gas_memo]
 import ./internal/register_ops
+import ./backend
+export backend
+when defined(polkavmRuntime):
+  import std/algorithm
+  import ./internal/polkavm
 
 type
   BlockChargeEntry = object ## One complete successful pipeline price belongs to this invocation's immutable program and cycle limit.
@@ -52,6 +57,7 @@ type
     Continued, OutOfGas, Panic, Halt, Fault, Host
   StepOutcome* = object ## Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
     machine*: Machine
+    engine: PvmBackend # Actual completed guest executor, preserved through checked host responses.
     case kind: StepExit
     of Fault:
       # Only a fault carries a physical aligned page address; no default page is fabricated.
@@ -78,7 +84,8 @@ type
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
       InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo,
-        InvalidPreparedProgram, PreparedProgramBusy
+        InvalidPreparedProgram, PreparedProgramBusy, BackendNotBuilt, BackendUnavailable,
+        BackendReentryUnsupported, BackendRevisionMismatch, BackendProgramUnsupported, BackendFailure
   StepResult* = object ## Failed/default alternatives carry only their reason; no partial machine or charge escapes.
     case status: StepError
     of None:
@@ -194,6 +201,10 @@ func terminalExit(kind: StepExit): bool {.inline.} =
 func exit*(outcome: StepOutcome): StepExit =
   ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
   outcome.kind
+func backend*(outcome: StepOutcome): PvmBackend =
+  ## Report the engine that produced this completed immutable observation.
+  outcome.engine
+
 func faultPage*(outcome: StepOutcome): PageAddress {.requires: outcome.kind == StepExit.Fault.} =
   ## A page address is available only after selecting the fault alternative.
   outcome.failedPage
@@ -278,7 +289,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     else: captureTerminalMachine(cursor.program, cursor.memory, cursor.info))
   if captured.error != MachineError.None:
     return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
-  StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
+  StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value,
+      engine: suspension.engine))
 
 const executionClasses = # Immutable byte metadata: r registers, m memory, h host, c terminating control, u unlikely, - unsupported.
   "ccu-------h-----" & # Opcodes0..15.
@@ -2396,3 +2408,5 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   let answer = preparedResponseHost(source, prepared, context, handler, stepLimit, hostLimit)
   owner.busy = false
   answer
+
+include ./internal/backend_execution

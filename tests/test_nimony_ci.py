@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, runtime-pvm, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -173,6 +173,21 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('build/tests/pvm-doom/summary.md',section)
         self.assertNotIn('continue-on-error',section)
         self.assertIn('needs: perf',job_section(text,'perf-status'))
+
+    def test_runtime_pvm_requires_real_native_guest_and_application_checks(self):
+        """The explicit supported-host job cannot turn an unavailable native engine into qualification."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        self.assertTrue(expression(job_condition(text, 'pvm-runtime'), event_context('workflow_dispatch', suite='runtime-pvm')))
+        self.assertFalse(expression(job_condition(text, 'pvm-runtime'), event_context('pull_request', 'opened')))
+        section = job_section(text, 'pvm-runtime')
+        for command in ('make unit SUITE=pvm_runtime_backends', 'make unit SUITE=pvm_runtime_polkavm',
+                        'make unit SUITE=pvm_runtime_application', 'make check-pvm-runtime-doom',
+                        'make bench-pvm-runtime'):
+            self.assertIn(command, section)
+        self.assertIn('runs-on: ubuntu-latest', section)
+        self.assertNotIn('continue-on-error', section)
+        self.assertIn('build/tests/pvm-runtime-doom/results.json', section)
+        self.assertIn('build/tests/pvm-runtime-measure/results.json', section)
 
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""

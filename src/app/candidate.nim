@@ -5,6 +5,7 @@
 ## Existing state/PVM stages retain authority; private prefixes never publish until a later handoff tick.
 
 import ./[chain, handoff]
+import ../pvm/backend
 import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
 import ../state/[fuzz_ancestry, store, block_transition, report_transition, report_admission,
@@ -400,3 +401,13 @@ proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
   let prepared = prepareCurrentCandidateReports(chain, candidate, limits)
   if prepared.error != CurrentCandidateError.None: return prepared.failure
   completeCurrentCandidateReports(chain, prepared.value, ancestors)
+
+proc selectPvmBackend*(limits: var ApplicationCandidateLimits, selected: PvmBackend) =
+  ## Initial services and later continuation/reentry rounds share one caller-selected engine.
+  limits.execution.backend = selected
+  limits.driver.execution.backend = selected
+
+proc selectPvmBackend*(limits: var CurrentCandidateLimits, selected: PvmBackend) =
+  ## Current initial and later guest cohorts retain the same explicit engine through completion.
+  limits.completion.execution.initial.guests.backend = selected
+  limits.completion.execution.execution.round.guests.backend = selected

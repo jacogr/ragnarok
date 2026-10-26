@@ -77,7 +77,14 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
 
 proc runDoom(source: Machine, context: var HostContext, plan: GasPlan): StepResult {.noinline.} =
   ## Give calibrated collection one stable boundary around the real host loop and in-memory callbacks.
-  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), plan)
+  var selected = PvmBackend.Ragnarok
+  let name = getEnv("RAGNAROK_PVM_DOOM_BACKEND", "ragnarok")
+  assert parsePvmBackend(name, selected)
+  if selected == PvmBackend.Ragnarok:
+    return executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(
+        4096), plan)
+  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096),
+      GasCycleLimit(1000000), selected)
 
 if getEnv("RAGNAROK_PVM_DOOM_ASSERT") == "1":
   # Refusal controls prove assertions remain present in this optimized driver.
@@ -157,6 +164,9 @@ for sample in 0..<samples:
   let wallElapsed = if timing: getMonoTime().ticks-wallStart else: 0'i64
   let cpuElapsed = if timing: cpuNanoseconds()-cpuStart else: 0'i64
   assert done.error == StepError.None and done.value.exit == StepExit.Halt
+  var effective = PvmBackend.Ragnarok
+  assert parsePvmBackend(getEnv("RAGNAROK_PVM_DOOM_BACKEND", "ragnarok"), effective)
+  assert done.value.backend == effective # A matching golden cannot mask execution by a different engine.
   let cpu = machineInfo(done.value.machine).value
   assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8), "doom terminal gas mismatch"

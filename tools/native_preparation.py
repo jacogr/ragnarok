@@ -21,7 +21,7 @@ def record_evidence(record, name, evidence):
 
 # Prepare pristine pinned libraries once, retaining each provider's original evidence fields.
 def prepare_libraries(folder, record=None, required=None):
-    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'}
+    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io', 'polkavm'}
     requested = available if required is None else set(required)
     if not requested <= available:
         # Refuse unknown providers before any native build or partial evidence is published.
@@ -45,6 +45,11 @@ def prepare_libraries(folder, record=None, required=None):
         from nimony_quic import prepare as prepare_quic
         libraries['quic'], certificates, evidence['quic_native'] = prepare_quic()
         record_evidence(record, 'quic_native', evidence['quic_native'])
+    if 'polkavm' in requested:
+        # Optional guest tests use the same pristine production ABI and checked-in lockfile.
+        from build_polkavm import prepare as prepare_polkavm
+        libraries['polkavm'], evidence['polkavm_native'] = prepare_polkavm(folder)
+        record_evidence(record, 'polkavm_native', evidence['polkavm_native'])
     if 'storage_io' in requested:
         # This test-only object never participates in production crypto, transport or executable builds.
         from storage_io_observer import prepare as prepare_storage_io

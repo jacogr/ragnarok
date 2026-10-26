@@ -6,6 +6,7 @@
 
 import std/[syncio, monotimes, times]
 import std/posix/posix
+import ./candidate
 import ./[options, services, chain, current_handoff, current_download_policy,
     current_block_download, ancestor_inputs, ancestor_response, current_logical_download,
     current_logical_startup, logical_source_export]
@@ -340,6 +341,7 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   let policy = loadCurrentDownloadPolicy(options.argument(8))
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
   var limits = policy.value
+  limits.candidate.selectPvmBackend(options.pvmBackend)
   let qualifyLogical = options.logicalDownloadEnabled
   let namespaceEnabled = options.namespaceDownloadPolicyPath.len > 0
   var namespacePolicy = default(CurrentNamespacePolicy)

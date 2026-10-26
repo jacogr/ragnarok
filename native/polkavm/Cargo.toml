@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Optional guest executor using only the pinned public upstream API.
+[package]
+name = "ragnarok-polkavm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+polkavm = { path = "../../vendor/polkavm/crates/polkavm" }
+polkavm-common = { path = "../../vendor/polkavm/crates/polkavm-common", features = ["alloc"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "unwind"
