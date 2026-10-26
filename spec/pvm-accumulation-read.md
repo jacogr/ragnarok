@@ -61,3 +61,14 @@ Nim/Rust formatting and diff whitespace checks passed. Logs are under
 python-inventory.log, python-native.log and format-check.log. Consumer runs reused
 one prepared library set while retaining fresh per-suite evidence. This is local
 macOS verification; full verification and exact-head Linux CI remain CI work.
+
+
+## Current interaction assessment (2026-10-26)
+
+The [bounded host/population assessment](current-stf-population-qualification.md)
+adds four same-invocation write/read witnesses against the current pinned GP.
+They distinguish the current regular map from both the immutable bootstrap and
+an intermediate exceptional checkpoint, with literal read bytes, replacement
+length, halt/panic controls and retained-source equality. Historical implementation
+boundaries above describe their original increments; current coverage and explicit
+deferrals are recorded in the linked assessment.
