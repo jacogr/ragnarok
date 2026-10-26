@@ -164,9 +164,6 @@ proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResu
   let cpu = info.value
   let memory = captured.value
   case uint64(stopped.hostCall)
-  of 100:
-    # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
-    hostSuccess[AuthorizationHostError](logHostResponse(cpu.gas, cpu.registers, memory))
   of 0:
     hostSuccess[AuthorizationHostError](gasHostResponse(cpu.gas, cpu.registers, memory))
   of 1:
@@ -179,6 +176,9 @@ proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResu
     if fetched.error == FetchError.None: return hostSuccess[AuthorizationHostError](fetched.value)
     hostFailure(if fetched.error == FetchError.LimitExceeded: AuthorizationHostError.LimitExceeded
       else: AuthorizationHostError.InvalidContext) # No partial fetch response escapes a local refusal.
+  of 100:
+    # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
+    hostSuccess[AuthorizationHostError](logHostResponse(cpu.gas, cpu.registers, memory))
   else:
     hostSuccess[AuthorizationHostError](unknownHostResponse(cpu.gas, cpu.registers, memory))
 
