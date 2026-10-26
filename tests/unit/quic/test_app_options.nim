@@ -6,6 +6,7 @@
 
 import std/[assertions, syncio]
 import ../../../src/app/options
+import ../../../src/lib/logging
 import ../../../src/codec/bounded
 
 # An absent enable flag leaves all services disabled, regardless of endpoint/directory configuration.
@@ -129,5 +130,28 @@ for arguments in [@["server", "--with-management"],
         "/private/admin.sock"],
     @["--version", "--with-management", "--management-socket", "/private/admin.sock"]]:
   assert not parseOptions(arguments, management) and management.managementSocket == ""
+
+# Logging policies are copied/validated before services start; duplicates and partial overrides refuse atomically.
+var logs = default(Options)
+assert parseOptions(@["--help"], logs)
+assert logs.loggingPolicy.threshold(LogTarget.Pvm) == LogLevel.Info
+assert parseOptions(@["--help", "--log-level", "warn,pvm=trace,network=off"], logs)
+assert logs.loggingPolicy.threshold(LogTarget.Pvm) == LogLevel.Trace
+assert logs.loggingPolicy.threshold(LogTarget.Network) == LogLevel.Off
+assert logs.loggingPolicy.threshold(LogTarget.Rpc) == LogLevel.Warn
+for arguments in [@["--help", "--log-level"], @["--help", "--log-level", ""],
+    @["--help", "--log-level", "BAD"], @["--help", "--log-level", "pvm=debug,pvm=info"],
+    @["--help", "--log-level", "info", "--log-level", "trace"]]:
+  assert not parseOptions(arguments, logs) and not logs.valid
+# Offline trace commands admit the shared diagnostic filter without weakening their service whitelist.
+assert parseOptions(@["check-traces", "policy", "genesis", "trace", "--with-state", "--chain",
+  "chain.json", "--log-level", "off"], logs)
+assert logs.loggingPolicy.threshold(LogTarget.Pvm) == LogLevel.Off
+var stripped: seq[string] = @[]
+var filter = default(LogPolicy)
+assert extractLoggingOptions(@["tiny-devnet", "identity", "0", "--log-level", "off"], stripped, filter)
+assert stripped == @["tiny-devnet", "identity", "0"]
+assert filter.threshold(LogTarget.Startup) == LogLevel.Off
+assert not extractLoggingOptions(@["--log-level", "off", "--log-level", "info"], stripped, filter)
 
 echo "Application options tests passed"

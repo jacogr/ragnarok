@@ -1,0 +1,45 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+Hypothesis: closing while sink IO owns a batch must not retire queued records or lose an idle wakeup.
+Source: src/lib/logging.nim submitLog/run/close. Each action is one locked region or unlocked sink call.
+Real queue capacity256 and batch16 retained. Payload/FIFO correctness is checked in native tests.
+Caller retires producer threads before joining close; sink may block forever, so no sink-liveness claim.
+Mut1 removes queue bound, Mut2 exits before draining, Mut3/4 forget close/submit wakeup.#
+  (variables :q.0. :busy.0. :waiting.0. :woken.0. :stop.0. :exited.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (assign Cap.0. 256)
+  (def :Init.0. (and (prime q.0. 0) (prime busy.0. (false))
+    (prime waiting.0. (false)) (prime woken.0. (false))
+    (prime stop.0. (false)) (prime exited.0. (false))))
+  (def :Submit.0.#submitLog under lock: busy/full refusals stutter; accepted bytes precede signal.#
+    (and (not stop.0.) (not exited.0.)
+      (or (lt q.0. Cap.0.) (and (eq Mut.0. 1) (eq q.0. Cap.0.)))
+      (prime q.0. (plus q.0. 1)) (prime woken.0. (if (eq Mut.0. 4) woken.0. (true)))))
+  (def :Take.0.#run under lock: take a bounded batch, releasing the lock before sink IO.#
+    (and (not exited.0.) (not busy.0.) (gt q.0. 0)
+      (or (not waiting.0.) woken.0.)
+      (prime q.0. (if (lt q.0. 16) 0 (minus q.0. 16)))
+      (prime busy.0. (true)) (prime waiting.0. (false)) (prime woken.0. (false))))
+  (def :Sink.0.#Unlocked sink callback returns; borrowed batch/context still live.#
+    (and busy.0. (not exited.0.) (prime busy.0. (false))))
+  (def :Wait.0.#run waits only on the locked empty/open predicate.#
+    (and (not exited.0.) (not busy.0.) (not stop.0.) (eq q.0. 0)
+      (not waiting.0.) (prime waiting.0. (true)) (prime woken.0. (false))))
+  (def :Close.0.#close under lock: stop admissions and signal before joining.#
+    (and (not stop.0.) (prime stop.0. (true))
+      (prime woken.0. (if (eq Mut.0. 3) woken.0. (true)))))
+  (def :Exit.0.#run can retire only after the current sink and entire accepted queue finish.#
+    (and stop.0. (not exited.0.) (not busy.0.)
+      (or (not waiting.0.) woken.0.)
+      (or (eq q.0. 0) (eq Mut.0. 2))
+      (prime waiting.0. (false)) (prime exited.0. (true))))
+  (def :Next.0. (or Submit.0. Take.0. Sink.0. Wait.0. Close.0. Exit.0.))
+  (def :Safe.0.
+    (and (le q.0. Cap.0.)
+      (implies exited.0. (and stop.0. (eq q.0. 0) (not busy.0.)))
+      (implies (and stop.0. waiting.0.) woken.0.)
+      (implies (and waiting.0. (gt q.0. 0)) woken.0.)))
+  (def :Reached.0. (and stop.0. busy.0. (gt q.0. 0)))
+  (spec (always-stutter Init.0. Next.0. (tuple q.0. busy.0. waiting.0. woken.0. stop.0. exited.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))

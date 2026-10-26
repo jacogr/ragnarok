@@ -3,7 +3,8 @@
 
 ## JIP-1 witnesses bind gas, atomic diagnostic output, full-width memory and real guest continuation.
 
-import std/[assertions, syncio]
+import std/[assertions, syncio, os]
+import ../../../src/lib/logging
 import ../../../src/pvm/[machine, program, step, gas, host_log]
 
 proc collect(lines: var seq[string], line: string) {.raises: [].} =
@@ -134,5 +135,44 @@ for credit in [9'u64, 10, 11]:
   assert lines.len == (if credit < 10: 0 else: 1)
   assert uint64(done.machine.machineInfo.value.registers[7]) == high(uint64)-1
   assert uint64(source.machineInfo.value.gas) == credit
+
+proc sharedSink(raw: nil pointer, batch: string) {.raises: [].} =
+  ## Only the writer accesses this ARC sequence until joined close; no guest memory crosses threads.
+  let received = cast[ptr seq[string]](raw)
+  received[].add(batch)
+var logger = default(Logger)
+var received: seq[string] = @[]
+assert logger.start(initLogPolicy(LogLevel.Off), sharedSink, addr received)
+for credit in [0'u64, 9'u64, 10'u64, 11'u64, high(uint64)]:
+  let response = logHostResponse(MachineGas(credit), regs, mem, logger.writer)
+  assert response.action == (if credit < 10: HostAction.OutOfGas else: HostAction.Continue)
+  assert uint64(response.gas) == (if credit < 10: 0'u64 else: credit-10)
+  for index in 0..<13:
+    let expected = if index == 7: high(uint64)-1 else: uint64(regs[index])
+    assert uint64(response.registers[index]) == expected
+  for page in [PageIndex(16), PageIndex(17), PageIndex(19), PageIndex(1048575)]:
+    assert response.memory.pageImage(page).value.bytes == mem.pageImage(page).value.bytes
+    assert response.memory.pageImage(page).value.access == mem.pageImage(page).value.access
+assert logger.stats.accepted == 0
+logger.close()
+assert received.len == 0
+var warningsOnly = default(LogPolicy)
+assert parseLogPolicy("warn,startup=off", warningsOnly)
+assert logger.start(warningsOnly, sharedSink, addr received)
+# Info records are filtered while the exact gas/register/memory contract remains identical.
+let filtered = logHostResponse(MachineGas(10), regs, mem, logger.writer)
+assert uint64(filtered.gas) == 0 and logger.stats.accepted == 0
+var warning = regs
+warning[7] = RegisterValue(1)
+for attempt in 0..<1000:
+  discard logHostResponse(MachineGas(10), warning, mem, logger.writer)
+  if logger.stats.accepted > 0: break
+  sleep(1)
+logger.close()
+assert logger.stats.accepted == 1 and received.len == 1
+assert received[0] == "[warn][pvm] JIP1 level=1 target=\"t\" message=\"ab\"\n"
+assert guestLogLevel(0) == LogLevel.Fatal and guestLogLevel(1) == LogLevel.Warn
+assert guestLogLevel(2) == LogLevel.Info and guestLogLevel(3) == LogLevel.Debug
+assert guestLogLevel(4) == LogLevel.Trace and guestLogLevel(high(uint64)) == LogLevel.Trace
 
 echo "PVM host log passed"

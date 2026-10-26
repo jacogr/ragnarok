@@ -4,6 +4,8 @@
 ## JIP-1 host 100: fixed ten-gas response and bounded, escaped operator diagnostics.
 ## Logging policy and IO never change guest results; see spec/pvm-host-log.md.
 
+import ../lib/logging
+
 import std/syncio
 import ./[machine, step]
 
@@ -24,7 +26,8 @@ proc quoted(bytes: openArray[byte]): string =
 
 proc logHostResponse*[Context](gas: MachineGas, registers: RegisterFile, memory: Memory,
     context: var Context,
-    emit: proc(context: var Context, line: string) {.nimcall, raises: [].}): HostResponse =
+    emit: proc(context: var Context, line: string) {.nimcall, raises: [].},
+        recording = true): HostResponse =
   ## Consume 10 gas and always return WHAT; emit exactly once only after both reads succeed.
   ## The trusted synchronous sink borrows one complete escaped line and cannot replace the response.
   result = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
@@ -35,6 +38,7 @@ proc logHostResponse*[Context](gas: MachineGas, registers: RegisterFile, memory:
     result.action = HostAction.OutOfGas # Saturate before unsigned subtraction; never read or log.
     return
   result.gas = MachineGas(available-10)
+  if not recording: return # Filter before guest memory reads, allocation and escaping.
   let targetLength = uint64(registers[9])
   let messageLength = uint64(registers[11])
   if targetLength > LogFieldBytes or messageLength > LogFieldBytes:
@@ -58,3 +62,26 @@ proc logHostResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory):
   ## Production adapter uses stderr without global mutable sink configuration or retained guest bytes.
   var unused = false
   logHostResponse(gas, registers, memory, unused, consoleLog)
+
+func guestLogLevel*(value: uint64): LogLevel =
+  ## JIP-1 levels preserve their suggested meaning; unrecognized numeric levels are trace-only.
+  case value
+  of 0: LogLevel.Fatal
+  of 1: LogLevel.Warn
+  of 2: LogLevel.Info
+  of 3: LogLevel.Debug
+  else: LogLevel.Trace
+
+type GuestLogContext = object ## Stack-local adapter retains only the application-owned producer borrow.
+  writer: LogWriter
+  level: LogLevel
+proc sharedLog(context: var GuestLogContext, line: string) {.raises: [].} =
+  ## The same bounded shared queue serves guest and ordinary application diagnostics.
+  discard submitLog(context.writer, LogTarget.Pvm, context.level, line)
+proc logHostResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
+    writer: LogWriter): HostResponse =
+  ## Explicit application policy controls logging, never the guest response or ten-gas price.
+  if not writer.configured: return logHostResponse(gas, registers, memory)
+  let level = guestLogLevel(uint64(registers[7]))
+  var context = GuestLogContext(writer: writer, level: level)
+  logHostResponse(gas, registers, memory, context, sharedLog, writer.enabled(LogTarget.Pvm, level))

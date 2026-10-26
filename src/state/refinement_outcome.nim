@@ -4,6 +4,8 @@
 ## Execute an opaque refinement bootstrap and publish only its normalized result, capped gas and exports.
 ## Source binding is internal; local preparation/host/engine refusals never become protocol work errors.
 
+import ../lib/logging
+
 import ../pvm/[machine, step, gas, output, refinement_exports, host_fetch, inner_machines]
 import ../codec/[composite, work_digest, work_report]
 import ./[refinement_bootstrap, refinement_dispatch]
@@ -16,6 +18,7 @@ type
     capture*: RefinementCaptureLimits
     copy*: MemoryByteLimit
     exports*: ExportLimits
+    logging*: LogWriter
     steps*: ExecutionStepLimit
     calls*: HostCallLimit
     cycles*: GasCycleLimit
@@ -147,7 +150,7 @@ proc runRefinementInvocation*(bootstrap: PreparedRefinementBootstrap, trace: ope
       status: RefinementInvocationError.BootstrapFailure,
       bootstrapReason: captured.error) # Preserve local capture/input policy details without a protocol result.
   let evaluated = executeRefinement(captured.value, limits.copy, limits.exports,
-    limits.steps, limits.calls, limits.cycles, limits.inner)
+    limits.steps, limits.calls, limits.cycles, limits.inner, limits.logging)
   case evaluated.error
   of RefinementDispatchError.None:
     discard # Only a completed guest exit has terminal gas and an export selection to normalize.

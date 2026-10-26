@@ -6,6 +6,8 @@
 ## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
 ## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
 
+import ../lib/logging
+
 import std/[syncio, strutils, base64, assertions, monotimes, times]
 import ../state/logical_continuation
 import ./options
@@ -662,6 +664,9 @@ proc startServices(services: var Services, options: Options, role: string,
     stderr.writeLine("Invalid RPC listener or --chain parameters")
     services.close() # RPC failures retire both the UI listener and the canonical owner.
     return false
+  if options.rpcPort() != 0:
+    log(options.logWriter, LogTarget.Rpc, LogLevel.Info, "RPC listener started port=" &
+        $options.rpcPort())
   services.chainRpc = withState and options.rpcPort() != 0
   if services.chainRpc and options.argument(1) in ["server", "client", "mesh"]:
     discard services.rpc.enableStateProofs() # These dispatcher shapes retain no external canonical aliases across turns.
@@ -1496,6 +1501,8 @@ proc configureTelemetry*(services: var Services, options: Options, certificate: 
   let configured = setupTelemetry(services.telemetry, options, certificate, port, ipv6,
       services.chainText)
   if services.light.active and configured: services.chainText = "" # Telemetry registration owns only bounded metadata before the peer loop starts.
+  if options.telemetryEnabled:
+    log(options.logWriter, LogTarget.Telemetry, LogLevel.Info, "Telemetry configured=" & $configured)
   configured
 
 proc stageCheckpointVerification*(services: var Services, expected: ApplicationCheckpointIdentity,

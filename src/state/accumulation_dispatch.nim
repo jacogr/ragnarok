@@ -6,6 +6,8 @@
 ## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
+import ../lib/logging
+
 import ../chain/parameters
 import ../pvm/[machine, step, gas, host_gas, host_log, host_fetch, host_heap]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
@@ -30,6 +32,7 @@ type
       discard                               # Other failures contain only the outer reason.
   ## Callback-local immutable fetch ownership cannot be substituted by the guest or caller.
   DispatchContext = object
+    logger: LogWriter
     parameters: Parameters
     staging: ValidatorStateConfig
     queues: AuthorizationConfig
@@ -1180,7 +1183,8 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   case uint64(stopped.hostCall)
   of 100:
     # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
-    hostSuccess[AccumulationDispatchError](logHostResponse(cpu.gas, cpu.registers, memory))
+    hostSuccess[AccumulationDispatchError](logHostResponse(cpu.gas, cpu.registers, memory,
+        context.logger))
   of 0:
     # GP general gas call reports the credit after its own charge.
     hostSuccess[AccumulationDispatchError](gasHostResponse(cpu.gas, cpu.registers, memory))
@@ -1245,7 +1249,8 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
         deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(0),
             accountWriteFacts = ElementLimit(0),
     storageFacts = default(AccumulationStorageFactLimits),
-    requestFacts = ElementLimit(0)): AccumulationDispatchResult =
+    requestFacts = ElementLimit(0), logging: LogWriter = default(
+        LogWriter)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
   ## accountWriteFacts independently enables bounded physical account/key facts; zero disables their queries.
@@ -1283,8 +1288,10 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
       deletedAccounts, modifiedAccounts, accountWriteFacts, storageFacts, requestFacts)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
-  var context = DispatchContext(parameters: parameters, staging: contextConfig.staging,
-      queues: contextConfig.queues, privileges: contextConfig.privileges, fetch: captured.value,
+  var context = DispatchContext(logger: logging, parameters: parameters,
+      staging: contextConfig.staging, queues: contextConfig.queues,
+      privileges: contextConfig.privileges,
+      fetch: captured.value,
       heap: prepared.machineHeapBounds.value,
           copyLimit: copyLimit,
 

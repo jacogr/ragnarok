@@ -3,6 +3,8 @@
 
 ## Run current explicit-input accumulation guests under one parameter/profile configuration, retaining exact provider coverage.
 ## Ready code executes; unavailable code and absent accounts keep distinct genuine no-execution proofs. No caller state is published.
+import ../lib/logging
+
 import ../chain/parameters
 import ../codec/[bounded, composite, header, state_safrole]
 import ../pvm/[initialize, machine, step, gas, host_fetch]
@@ -19,6 +21,7 @@ type
     contexts*: AccumulationContextConfig ## Explicit caller-authoritative chain shape plus bounded initial chapter copies.
     fetch*: FetchAccumulationLimits          ## Input capture independent of guest payload copies.
     copyBytes*: MemoryByteLimit              ## Maximum one host memory copy.
+    logging*: LogWriter
     steps*: ExecutionStepLimit               ## Attempted instructions per ready guest.
     calls*: HostCallLimit                    ## Host dispatches per ready guest.
     cycles*: GasCycleLimit                   ## Bounded basic-block gas inspection.
@@ -181,7 +184,7 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
       limits.provisions,
       limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
       limits.deletedAccounts, limits.modifiedAccounts, limits.accountWriteFacts,
-      limits.storageFacts, limits.requestFacts)
+      limits.storageFacts, limits.requestFacts, logging = limits.logging)
     if executed.error != AccumulationDispatchError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.DispatchFailure,
           dispatchReason: executed) # Preserve actual step/refusal detail; prior successful guests remain private and release.

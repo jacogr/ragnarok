@@ -7,6 +7,7 @@ Callers retain their own domain validation, scheduling and resource policy.
 
 | Module | Contents |
 | --- | --- |
+| [`logging.nim`](logging.nim) | Explicit bounded background diagnostics, lazy level/target filters and counted overload drops |
 | [`json_writer.nim`](json_writer.nim) | Owned structured JSON values, escaping, object/array separators and full-width integer output |
 | [`atomic_file.nim`](atomic_file.nim) | Bounded regular-file reads and atomic whole-file byte publication with explicit durability outcomes |
 | [`atomic_file_writer.nim`](atomic_file_writer.nim) | Exclusive publication ownership, stable advisory lock files and explicit retirement |

@@ -16,6 +16,12 @@ alone does not enable services, and UI implies RPC. Canonical state requires `--
 a chain file. Mutation budgets default to 1,000 writes and 100,000 value bytes, with independent
 overrides. State activation does not enable listeners. Repeated parses have independent ownership.
 
+The entry point also owns one fixed-address shared diagnostic writer. Immutable level/target
+filters and borrowed producer handles travel through options and execution policy rather than
+process globals. Its bounded queue drops on contention/overload, and all service/worker producers
+retire before joined draining shutdown. Command responses remain on their existing output paths.
+See [shared logging](../../spec/logging.md) for loss, lifetime and shutdown contracts.
+
 `app/services.nim` owns one non-copyable aggregate of RPC, UI, telemetry and an optional canonical application chain. It captures one
 bounded chain-file snapshot for RPC parameter/genesis setup and telemetry registration, starts
 the listeners, then configures telemetry from the actual bound transport/certificate. Both peer
