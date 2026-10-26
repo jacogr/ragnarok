@@ -340,3 +340,16 @@ sieve-1.06%,Minimal-5.89%; init reusedcall-2.00%,tick-2.78%. Memoryfill +0.61%(r
 8native/8ASan,6fresh image pairs and stable full-state/source checks pass. Native all3drivers
 removefast-store calls while keepingcheckedslowrefs. Mach-O __text sizes archived separately;
 size/calls alone do not establish CPU cause. Compiler/toolchain pristine.
+
+## Trial15 — early checked-load expansion
+
+Parent80350f56. Change only flatLoad inline->alwaysInline. Baseline may already inline
+loads in final C; test whether earlier frontend expansion helps caller optimization.
+Do not claim call removal if none existed: record both role counts and complete image
+hashes. If all3role images are byte-identical, omit the redundant attribute without a
+timing claim; otherwise full paired cohort. All checks/fallback and store pragma unchanged.
+
+Trial15verdict: reject load-only force-splice. Pinky+0.002%/init-0.029% effectivelyflat;
+fill+0.68%(retained+5.43%pair),Minimal+0.22%,tick+0.33%.200timed/4negative,8native/8ASan,
+fresh images and complete state/source allpass. Restore runtimeexact80350f56; no extra
+validation on unchanged accepted code. Keep store pragma; only load hint restored.

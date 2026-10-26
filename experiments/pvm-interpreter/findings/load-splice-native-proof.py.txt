@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Record both role load-call facts and image equality; static facts do not establish CPU cause."""
+from pathlib import Path
+import hashlib,json,re,subprocess
+B=Path('build/pvm-interpreter-experiment/comparisons/load-splice');rows=[];same=True
+for driver in ['kernel','lifecycle','doom']:
+ hashes={}
+ for role in ['baseline','candidate']:
+  exe=B/(role+'-'+driver);text=subprocess.check_output(['otool','-tvV',str(exe)],text=True);(B/(role+'-'+driver+'-native-disassembly.txt')).write_text(text)
+  fast=[line.strip() for line in text.splitlines() if re.search(r'\b(?:bl|b)\s+_flatLoad_\w+',line)]
+  slow=[line.strip() for line in text.splitlines() if re.search(r'\b(?:bl|b)\s+_flatLoadSlow_\w+',line)]
+  if role=='candidate':assert not fast,(driver,fast[:8])
+  hashes[role]=hashlib.sha256(exe.read_bytes()).hexdigest();rows.append(dict(driver=driver,role=role,image_sha256=hashes[role],fast_load_direct_calls=len(fast),checked_slow_load_call_sites=len(slow)))
+ same=same and hashes['baseline']==hashes['candidate']
+(B/'native-load-proof.json').write_text(json.dumps(dict(status='passed',all_role_images_identical=same,policy='Static code/image facts only; no hardware or CPU cause inferred',rows=rows),indent=2)+'\n');print('PASS load code facts; identical images:',same,flush=True)
