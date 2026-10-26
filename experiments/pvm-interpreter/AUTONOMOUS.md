@@ -37,3 +37,20 @@ Initial invocation/reentry may instead be prepaid. Test separating those paths o
 start, rather than loading/testing the flag at every ordinary block entry. Preserve price failure,
 zero budget, barrier restoration, gas and exact source-attempt contracts. This is distinct from
 rejected per-opcode entry-worker specialization and rejected exit-derived budget accounting.
+
+Trial2 is now the unpaid-entry split. Eight native groups pass, including paid/unpaid and failed
+pricing-policy entry witnesses. All subsequent trials use six reused DOOM initialization pairs
+as well as six gameplay pairs, with both cold orders retained. An assertion-instrumented copy
+will independently check the internal unpaid-entry invariant; its clocks are excluded.
+
+Trial2 verdict: reject and restore. Six reused init pairs median +0.40%, six gameplay pairs
++0.12%; sieve kernel +1.48%, fill kernel +2.11%. The ordinary-entry invariant is confirmed in
+native/ASan instrumented images (70,220,477unpaid and1,621paid entries), but reduced static work
+again fails to improve CPU time. Findings and the exact patch are retained.
+
+## Next focus — construction and host publication algorithms
+
+Two dispatch-only simplifications failed. Current phase data show substantial frame construction,
+reset and host snapshot costs. Inspect bulk page construction (currently byte-at-a-time append)
+and a bounded dirty-page working set that avoids scanning every mapped page at every observation.
+These are independent hypotheses and will be measured separately; no runtime change started yet.

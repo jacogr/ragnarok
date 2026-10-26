@@ -289,7 +289,7 @@ class Comparison:
             print('PASS six kernel/lifecycle pairs '+guest, flush=True)
         for phase in ('init', 'tick'):
             for cold in (True, False):
-                for order in range(2 if cold or phase == 'init' else 6):
+                for order in range(2 if cold else 6):
                     roles = ['baseline', 'candidate', 'master', 'reference'] if order < 2 else ['baseline', 'candidate']
                     for role in roles if order % 2 == 0 else reversed(roles):
                         self.record(self.doom(role, phase, order, cold))

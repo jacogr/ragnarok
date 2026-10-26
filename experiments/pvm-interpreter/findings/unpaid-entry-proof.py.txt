@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Assert private paid-entry invariants in an instrumented image; discard every printed clock."""
+from pathlib import Path
+import shutil,sys,json,os
+R=Path.cwd();S=R/'experiments/pvm-interpreter';B=R/'build/pvm-interpreter-experiment/unpaid-proof';B.mkdir(exist_ok=True)
+sys.path.insert(0,str(R/'tools'));from native_checks import NativeChecks;from setup_nimony import installed
+shutil.copytree(R/'src',B/'src',dirs_exist_ok=True);shutil.copytree(S/'checks',B/'checks',dirs_exist_ok=True)
+shutil.copy2(S/'overlay/src/pvm/machine.nim',B/'src/pvm/machine.nim')
+s=(S/'overlay/src/pvm/experimental.nim').read_text().replace('    savedHandler: nil FlatHandler','    proofUnpaid, proofPaid: uint64\n    savedHandler: nil FlatHandler')
+for name,check,counter in [('flatCharge','f.info.blockCharged','proofPaid'),('flatChargeUnpaid','not f.info.blockCharged','proofUnpaid')]:
+ needle='proc '+name+'(f: var FlatFrame, off: uint32): uint32 =\n';assert s.count(needle)==1
+ s=s.replace(needle,needle+'  assert '+check+'\n  inc f.'+counter+'\n')
+s+='\nfunc flatEntryProof*(f: FlatFrame): array[2,uint64] =\n  [f.proofUnpaid,f.proofPaid]\n';(B/'src/pvm/experimental.nim').write_text(s)
+(B/'benchmarks').mkdir(exist_ok=True)
+s=(S/'benchmarks/doom.nim').read_text().replace('  let stats = flatHostStats(frame)','  let entries = flatEntryProof(frame)\n  echo "ENTRY_PROOF,",entries[0],",",entries[1]\n  let stats = flatHostStats(frame)');(B/'benchmarks/doom.nim').write_text(s)
+checks=NativeChecks(B);compiler=installed()[0];records=[]
+for source,name,args in [(B/'checks/entry-boundary.nim','entry',{}),(B/'benchmarks/doom.nim','doom',dict(environment=dict(os.environ,RAGNAROK_PVM_DOOM_INPUT=str(R/'build/pvm-port-lab/large-app-qualification/prepared'),RAGNAROK_PVM_DOOM_ROM=str(R/'vendor/polkavm/examples/doom/roms/doom1.wad'),RAGNAROK_PVM_DOOM_PHASE='init',RAGNAROK_PVM_DOOM_TIMING='0')))]:
+ for asan in [False,True]:
+  item=name+('-asan'if asan else'-native');flags=['-I'+str(R/'tests/performance')]+(['-fsanitize=address','-fno-omit-frame-pointer']if asan else[])
+  build,exe=checks.build(compiler,source,item,cflags=flags,link_flags=['-fsanitize=address']if asan else[]);assert build['exit_code']==0,build['output'][-1600:]
+  run=checks.command([exe],item+'-run',**args);assert run['exit_code']==0,run['output'][-1800:]
+  if name=='doom':
+   entries=[line for line in run['output'].splitlines()if line.startswith('ENTRY_PROOF,')];assert len(entries)==1;print(entries[0],flush=True)
+  records.append(dict(name=item,build=build,run=run));(B/'results.json').write_text(json.dumps(dict(status='passed-so-far',records=records,clock_policy='All instrumented clocks discarded'),indent=2)+'\n');print('PASS',item,flush=True)
+(B/'results.json').write_text(json.dumps(dict(status='passed',records=records,clock_policy='All instrumented clocks discarded'),indent=2)+'\n')
