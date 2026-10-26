@@ -227,31 +227,9 @@ assert shapeCases == 3888
 echo "PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU"
 
 
-var cycleCases = 0
-for order in @[@[0, 2, 1], @[1, 0, 2], @[2, 1, 0], @[0, 1, 2], @[0, 2]]:
-  # Rotated cycles, wrong-order exits and two-block prefixes exercise every positive and refused handoff.
-  var parts: seq[seq[byte]] = @[]
-  var position = 0
-  for at in 0..<order.len:
-    let kind = order[at]
-    if kind == 0: parts.add(@[131'u8, 0x11, 1])
-    elif kind == 1:
-      parts.add(@[200'u8, 0x21, 3])
-      parts.add(@[139'u8, 0x33, 1])
-    else:
-      parts.add(@[151'u8, 0x11, 1])
-      parts.add(@[152'u8, 0x11, 1])
-    let prefix = if kind == 0: 3 else: 6
-    let branchBytes = if kind == 2: 6 else: 7
-    var branch = if kind == 0: @[88'u8, 0x11, 3] elif kind == 1: @[82'u8, 0x13, 3] else: @[173'u8, 0x21]
-    # Intermediate arms coincide at the actual next block; the final taken arm returns to the genuine entry boundary.
-    let displacement = if at+1 < order.len: uint64(branchBytes)
-      else: (0x100000000'u64-uint64(position+prefix)) and 0xffffffff'u64
-    immediate(branch, displacement)
-    parts.add(branch)
-    position+=prefix+branchBytes
-  parts.add(@[50'u8, 0])
-  let source = owner(parts)
+proc compareCycle(source: Program, mapped: Memory, registers: RegisterFile): int =
+  ## Every concrete cycle graph sees the same gas/quota cross-check, including a warm stream before short prefixes.
+  result = 0
   let plan = cache(source)
   for bits in [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64, high(uint64)]:
     var selected = registers
@@ -266,6 +244,73 @@ for order in @[@[0, 2, 1], @[1, 0, 2], @[2, 1, 0], @[0, 1, 2], @[0, 2]]:
           # Cold and fully warmed streams must match independent stepping at every block/cycle edge and exhausted allowance.
           compare(input, plan, budget, 100000)
           compare(input, plan, budget, 100000, true)
-          inc cycleCases
-assert cycleCases == 8640
-echo "PASS charged cycles /8640cases / rotations-wrong edges-two-block exits / every gas and quota boundary"
+          inc result
+
+var cycleCases = 0
+for order in @[@[0, 2, 1], @[1, 0, 2], @[2, 1, 0], @[0, 1, 2], @[0, 2], @[0, 2, 1, 0, 2, 1]]:
+  # Rotated cycles, wrong-order exits and two-block prefixes exercise every positive and refused handoff.
+  var parts: seq[seq[byte]] = @[]
+  var position = 0
+  for at in 0..<order.len:
+    let kind = order[at]
+    if kind == 0: parts.add(@[131'u8, 0x11, byte(if at >= 3: 2 else: 1)])
+    elif kind == 1:
+      parts.add(@[200'u8, 0x21, 3])
+      parts.add(@[139'u8, 0x33, byte(if at >= 3: 2 else: 1)])
+    else:
+      parts.add(@[151'u8, 0x11, 1])
+      parts.add(@[152'u8, 0x11, 1])
+    let prefix = if kind == 0: 3 else: 6
+    let branchBytes = if kind == 2: 6 else: 7
+    var branch = if kind == 0: @[88'u8, 0x11, 3] elif kind == 1: @[82'u8, 0x13, 3] else: @[173'u8, 0x21]
+    # Intermediate arms coincide at the actual next block; the final taken arm returns to the genuine entry boundary.
+    let displacement = if at+1 < order.len: uint64(branchBytes)
+      else: (0x100000000'u64-uint64(position+prefix)) and 0xffffffff'u64
+    immediate(branch, displacement)
+    parts.add(branch)
+    position+=prefix+branchBytes
+  parts.add(@[50'u8, 0])
+  cycleCases+=compareCycle(owner(parts), mapped, registers)
+
+# A branch may choose another record of the same shape after a closed round; stable coordinates must exit before that record is skipped.
+var diamondA = @[88'u8, 0x11, 3]
+immediate(diamondA, 34)
+var diamondFalse = @[173'u8, 0x21]
+immediate(diamondFalse, 6)
+var diamondB = @[82'u8, 0x13, 3]
+immediate(diamondB, 0xffffffe4'u64)
+var diamondTrue = @[173'u8, 0x21]
+immediate(diamondTrue, 0xffffffeb'u64)
+let diamond = owner([@[131'u8, 0x11, 1], diamondA, @[151'u8, 0x11, 1], @[152'u8, 0x11, 1],
+  diamondFalse, @[200'u8, 0x21, 3], @[139'u8, 0x33, 1], diamondB, @[50'u8, 0],
+  @[151'u8, 0x11, 2], @[152'u8, 0x11, 1], diamondTrue, @[50'u8, 0]])
+cycleCases+=compareCycle(diamond, mapped, registers)
+assert cycleCases == 12096
+echo "PASS charged cycles /12096cases / concrete rotations-wrong edges-two-block exits / different records-same shape / every gas and quota boundary"
+
+
+var predicateCases = 0
+let branchBits = [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64,
+  0x100000000'u64, 0x7fffffffffffffff'u64, 0x8000000000000000'u64, high(uint64)]
+for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175]:
+  # Every conditional opcode has genuine distinct taken/fallthrough blocks; immediate forms retain their four-byte sign extension.
+  for right in branchBits:
+    var branch = if opcode <= 90: @[opcode, 0x41'u8] else: @[opcode, 0x21'u8]
+    if opcode <= 90: immediate(branch, right)
+    immediate(branch, if opcode <= 90: 15'u64 else: 11'u64)
+    let source = owner([branch, @[51'u8, 7, 17], @[50'u8, 0], @[51'u8, 7, 34], @[50'u8, 0]])
+    let plan = cache(source)
+    for left in branchBits:
+      var selected = registers
+      selected[1] = RegisterValue(left)
+      selected[2] = RegisterValue(right)
+      for paid in [false, true]:
+        for gas in [0'u64, 1'u64, 1000'u64, high(uint64)]:
+          let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(0),
+            gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+          for budget in 0'u64..4'u64:
+            # The independent interpreter selects each arm and exposes its exact prefix/gas/paid state before and after cache warmup.
+            compare(input, plan, budget, 100000)
+            inc predicateCases
+assert predicateCases == 51840
+echo "PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas"

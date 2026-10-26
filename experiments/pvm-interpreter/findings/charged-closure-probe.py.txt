@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Count concrete closed cycles separately from timing; retain complete reference-state checks."""
+from pathlib import Path
+import hashlib,json,os,shutil,sys
+R=Path.cwd();S=R/'experiments/pvm-interpreter';B=R/'build/pvm-interpreter-experiment/charged-closure-probe';B.mkdir(exist_ok=True);sys.path.insert(0,str(R/'tools'))
+from native_checks import NativeChecks
+from setup_nimony import installed
+shutil.copytree(R/'src',B/'src',dirs_exist_ok=True);shutil.copy2(S/'overlay/src/pvm/machine.nim',B/'src/pvm/machine.nim')
+s=(S/'overlay/src/pvm/experimental.nim').read_text();original=hashlib.sha256(s.encode()).hexdigest()
+n='    dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.';assert s.count(n)==1;s=s.replace(n,n+'\n    probeEntries, probeRounds, probeClosed: uint64 # Diagnostic-only counters.')
+a=s.index('  var current = off',s.index('proc flatChargedShape['));s=s[:a]+'  inc f.probeEntries\n'+s[a:]
+n='    # Matching the next native handler is a capability check';a=s.index(n);s=s[:a]+'    inc f.probeRounds\n    if destination == off: inc f.probeClosed\n'+s[a:]
+s+='\nfunc flatClosureProbe*(f:FlatFrame):array[3,uint64] =\n  [f.probeEntries,f.probeRounds,f.probeClosed]\n';(B/'src/pvm/experimental.nim').write_text(s);(B/'benchmarks').mkdir(exist_ok=True)
+s=(S/'benchmarks/doom.nim').read_text();n='  let stats = flatHostStats(frame)';assert s.count(n)==1;s=s.replace(n,'''  let probe = flatClosureProbe(frame)
+  echo "CHARGED_CLOSURE,",phase,",",probe[0],",",probe[1],",",probe[2]
+'''+n);(B/'benchmarks/doom.nim').write_text(s)
+checks=NativeChecks(B);build,exe=checks.build(installed()[0],B/'benchmarks/doom.nim','closure-probe',cflags=['-I'+str(R/'tests/performance')]);assert build['exit_code']==0,build['output'][-1600:]
+rows=[]
+for phase in ['init','tick']:
+ env=dict(os.environ,RAGNAROK_PVM_DOOM_INPUT=str(R/'build/pvm-port-lab/large-app-qualification/prepared'),RAGNAROK_PVM_DOOM_ROM=str(R/'vendor/polkavm/examples/doom/roms/doom1.wad'),RAGNAROK_PVM_DOOM_PHASE=phase,RAGNAROK_PVM_DOOM_TIMING='0',RAGNAROK_PVM_LOCAL_ONECALL='1')
+ run=checks.command([exe],phase+'-run',environment=env);assert run['exit_code']==0 and 'DOOM_OK,' in run['output'],run['output'][-1800:]
+ lines=[l for l in run['output'].splitlines() if l.startswith('CHARGED_CLOSURE,')];assert len(lines)==1
+ counts=list(map(int,lines[0].split(',')[2:]));print(phase,counts,flush=True);rows.append(dict(phase=phase,counts=counts,run=run))
+(B/'results.json').write_text(json.dumps(dict(status='passed',core_sha256=original,build=build,rows=rows,clock_policy='All diagnostic clocks discarded'),indent=2)+'\n')

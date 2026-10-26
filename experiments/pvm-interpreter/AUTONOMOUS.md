@@ -249,3 +249,42 @@ and6fresh image pairs pass with stable source seals. Actual ARM64 has no compose
 reserve/register/branch calls in the3hot workers; loops are native-stack bounded.
 Next diagnose exact closure of the3actual records, not just their opcode-shape identity;
 run the prepared kernel block counter separately before choosing a next runtime change.
+
+## Trial11 — stable concrete cycle coordinates
+
+Exact258df174count-only closure:9033hot worker invocations,21,294,999complete rounds,
+all21,294,999return to their original record. Original block trace confirms1source site
+per hot shape. Kernel trace separately completed all4full-state guests (no clocks used);
+Pinky/memoryfill mostly have memory-containing shapes, sieve has short register branches.
+
+Learn actual middle/last coordinates through the existing positive checked first round.
+Only if it returns to this exact entry record, loop over immutable coordinate locals;
+every actual edge must equal its remembered coordinate, otherwise return to ordinary
+dispatch. All per-block reservations, node layout, operands, branch equations and memory
+checks unchanged. This trial does not yet copy operands or assume compiler alias behavior.
+
+Focused entry matrix passes. Cycle matrix expands to12096cases with6record graphs whose
+identical shapes have different operands, and a diamond that changes the middle record
+after a closed warm round. Full gas/quota and independently stepped CPU/remaining checks.
+Native contract guidance used: retain checks; name/guard coordinates, no assumptions or
+disabling bounds. Full source/native-image gates precede timing.
+
+Trial11lowering gate: initial fixed-cycle builds passed all8native/8ASan and6equal-image
+controls but retained BL flatBranch calls in the larger worker. No timing ran. Preserve
+that exact build and source at fixed-cycle / fixed-cycle-before-branch-expansion.nim.
+Share the original comparison table as a value template, retaining its selected-function
+wrapper, and expand branch selection into ordinary/charged workers. No condition fork.
+Focused12096cycle checks pass. Requalify under fixed-expanded; no cohorts/images mixed.
+
+Trial11verdict: keep fixed-expanded. All6init reused pairs -48.65..-49.33%, median -48.95%;
+cold -48.59%, reusedlife -47.99%. Small kernels +0.18/-0.53/-0.12/-1.22%, tick reusedcall
+-0.39%.200timed/4negative controls,6fresh image pairs, stable source seals, complete state
+checks and native-call gate pass. Full8native/8ASan qualification archived before reuse of
+root logs. Add51840independent valid-target branch cases over all16conditional opcodes,
+signed/unsigned32/64boundary bits,gas,paid state and every quota; native/ASan entry passes.
+This is tests-only after measurement; measured experimental runtime bytes unchanged. The
+other7groups have unchanged tests and dependencies, so retain their source-identical passes.
+
+Measured runtime combines stable coordinates and shared branch-table expansion. Do not
+attribute49% to either alone yet. Next controlled comparison keeps the new branch expansion
+but restores type-guarded dynamic coordinates; prefer simpler code if performance is equal.

@@ -193,45 +193,60 @@ func signedLess(a, b: uint64): bool =
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
 # Evaluate the condition against the original register file; decoding already saturated register IDs.
+template branchConditionValue(indices: RegisterSlots, immediate: uint64, runtimeOpcode: byte,
+    registers: RegisterFile, selectedOpcode: static[int]): bool =
+  ## One shared comparison table expands into callers that need no out-of-line branch worker.
+  block:
+    let a = uint64(registers[indices.aIndex])
+    let b = (if runtimeOpcode <= 90: immediate
+      else: uint64(registers[indices.bIndex]))
+    # Prepared handlers fix the comparison once; ordinary execution keeps its owned runtime opcode.
+    let opcode = when selectedOpcode >= 0: byte(selectedOpcode) else: runtimeOpcode
+    case opcode
+    of 81, 170:
+      # Equality has identical signed and unsigned interpretations.
+      a == b
+    of 82, 171:
+      # Inequality also compares raw register bit patterns.
+      a != b
+    of 83, 172:
+      # Unsigned strict lower bound.
+      a < b
+    of 84:
+      # Unsigned inclusive lower bound.
+      a <= b
+    of 85, 174:
+      # Unsigned inclusive upper bound.
+      a >= b
+    of 86:
+      # Unsigned strict upper bound.
+      a > b
+    of 87, 173:
+      # Signed strict lower bound.
+      signedLess(a, b)
+    of 88:
+      # Signed inclusive lower bound.
+      not signedLess(b, a)
+    of 89, 175:
+      # Signed inclusive upper bound.
+      not signedLess(a, b)
+    else:
+      # The only remaining conditional opcode is signed greater-than immediate (90).
+      signedLess(b, a)
+
 func branchConditionOperands[SelectedOpcode: static[int]](indices: RegisterSlots,
     immediate: uint64, runtimeOpcode: byte, registers: RegisterFile): bool =
-  ## Shared comparisons consume original register values and caller-authorized immutable operand bits.
-  let a = uint64(registers[indices.aIndex])
-  let b = (if runtimeOpcode <= 90: immediate
-    else: uint64(registers[indices.bIndex]))
-  # Prepared handlers fix the comparison once; ordinary execution keeps its owned runtime opcode.
-  let opcode = when SelectedOpcode >= 0: byte(SelectedOpcode) else: runtimeOpcode
-  case opcode
-  of 81, 170:
-    # Equality has identical signed and unsigned interpretations.
-    a == b
-  of 82, 171:
-    # Inequality also compares raw register bit patterns.
-    a != b
-  of 83, 172:
-    # Unsigned strict lower bound.
-    a < b
-  of 84:
-    # Unsigned inclusive lower bound.
-    a <= b
-  of 85, 174:
-    # Unsigned inclusive upper bound.
-    a >= b
-  of 86:
-    # Unsigned strict upper bound.
-    a > b
-  of 87, 173:
-    # Signed strict lower bound.
-    signedLess(a, b)
-  of 88:
-    # Signed inclusive lower bound.
-    not signedLess(b, a)
-  of 89, 175:
-    # Signed inclusive upper bound.
-    not signedLess(a, b)
-  else:
-    # The only remaining conditional opcode is signed greater-than immediate (90).
-    signedLess(b, a)
+  ## Existing selected comparison workers retain the same shared original-register equation.
+  branchConditionValue(indices, immediate, runtimeOpcode, registers, SelectedOpcode)
+
+template flatBranchSelect(f: var FlatFrame, args: FlatArgs, Code: static[int],
+    destination: var uint32) =
+  ## Cached branch selection changes paid state only after preceding operations and uses copied sealed arms.
+  block:
+    f.info.blockCharged = false
+    destination = if branchConditionValue(args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
+        byte(Code), f.info.registers, Code): uint32(args.x shr 32)
+      else: args.y
 
 proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
   ## Complete bounds precede reads; the private initialized word never aliases the immutable source span.
@@ -461,10 +476,9 @@ proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
 proc flatBranch[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Conditions use our original-register comparison table; cached arms are already genuine executable offsets.
   let a = f.arguments[int(off)]
-  f.info.blockCharged = false
-  if branchConditionOperands[Code](a.slots, flatSext32(uint32(a.x and 0xffffffff'u64)), byte(Code),
-      f.info.registers): uint32(a.x shr 32)
-  else: a.y
+  var destination = flatStop
+  flatBranchSelect(f, a, Code, destination)
+  destination
 
 proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Prepare both valid arms: resolve both valid arms, patch, then retry this synthetic preparation dispatch without a source attempt.
@@ -515,8 +529,8 @@ template flatShapeRegister(f: var FlatFrame, off: uint32, Code: static[int]) =
       return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
     f.info.registers[index] = value
 
-template flatChargedStep(f: var FlatFrame, off: uint32, First, Second: static[int],
-    branchWorker: FlatHandler, destination: var uint32) =
+template flatChargedStep(f: var FlatFrame, off: uint32, First, Second, Branch: static[int],
+    destination: var uint32) =
   ## Execute one complete charged shape; failures and partial quotas return immediately from the containing interpreter loop.
   block:
     flatReserve(f, off)
@@ -529,50 +543,71 @@ template flatChargedStep(f: var FlatFrame, off: uint32, First, Second: static[in
       # A full reservation permits the second original arithmetic operation; partial cases returned through ordinary nodes above.
       flatShapeRegister(f, off+2, Second)
     let branchOff = off+(when Second >= 0: 3'u32 else: 2'u32)
-    destination = branchWorker(f, branchOff)
+    let args = f.arguments[int(branchOff)]
+    flatBranchSelect(f, args, Branch, destination)
 
 proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
   var current = off
   var destination = flatStop
-  let repeated: FlatHandler = flatChargedShape[First, Second, Branch]
-  let ownBranch: FlatHandler = flatBranch[Branch]
-  let branch88: FlatHandler = flatBranch[88]
-  let branch82: FlatHandler = flatBranch[82]
-  let branch173: FlatHandler = flatBranch[173]
+  var middleOff = flatStop
+  var lastOff = flatStop
+  # Every logical block still performs its own complete gas and source-budget reservation.
+  flatChargedStep(f, current, First, Second, Branch, destination)
+  when First == 131:
+    let middle: FlatHandler = flatChargedShape[151, 152, 173]
+    if f.handlers[int(destination)] != middle: return destination
+    middleOff = destination
+    current = middleOff
+    flatChargedStep(f, current, 151, 152, 173, destination)
+    let last: FlatHandler = flatChargedShape[200, 139, 82]
+    if f.handlers[int(destination)] != last: return destination
+    lastOff = destination
+    current = lastOff
+    flatChargedStep(f, current, 200, 139, 82, destination)
+  elif First == 200:
+    let middle: FlatHandler = flatChargedShape[131, -1, 88]
+    if f.handlers[int(destination)] != middle: return destination
+    middleOff = destination
+    current = middleOff
+    flatChargedStep(f, current, 131, -1, 88, destination)
+    let last: FlatHandler = flatChargedShape[151, 152, 173]
+    if f.handlers[int(destination)] != last: return destination
+    lastOff = destination
+    current = lastOff
+    flatChargedStep(f, current, 151, 152, 173, destination)
+  else:
+    let middle: FlatHandler = flatChargedShape[200, 139, 82]
+    if f.handlers[int(destination)] != middle: return destination
+    middleOff = destination
+    current = middleOff
+    flatChargedStep(f, current, 200, 139, 82, destination)
+    let last: FlatHandler = flatChargedShape[131, -1, 88]
+    if f.handlers[int(destination)] != last: return destination
+    lastOff = destination
+    current = lastOff
+    flatChargedStep(f, current, 131, -1, 88, destination)
+  # Only an actual closed round enables stable coordinates; a same-shaped but different record returns to normal dispatch.
+  if destination != off: return destination
+  let fixedMiddle = middleOff
+  let fixedLast = lastOff
   while true:
-    # Every logical block still performs its own complete gas and source-budget reservation.
-    flatChargedStep(f, current, First, Second, ownBranch, destination)
+    # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
+    flatChargedStep(f, off, First, Second, Branch, destination)
+    if destination != fixedMiddle: return destination
     when First == 131:
-      let middle: FlatHandler = flatChargedShape[151, 152, 173]
-      if f.handlers[int(destination)] != middle: return destination
-      current = destination
-      flatChargedStep(f, current, 151, 152, branch173, destination)
-      let last: FlatHandler = flatChargedShape[200, 139, 82]
-      if f.handlers[int(destination)] != last: return destination
-      current = destination
-      flatChargedStep(f, current, 200, 139, branch82, destination)
+      flatChargedStep(f, fixedMiddle, 151, 152, 173, destination)
+      if destination != fixedLast: return destination
+      flatChargedStep(f, fixedLast, 200, 139, 82, destination)
     elif First == 200:
-      let middle: FlatHandler = flatChargedShape[131, -1, 88]
-      if f.handlers[int(destination)] != middle: return destination
-      current = destination
-      flatChargedStep(f, current, 131, -1, branch88, destination)
-      let last: FlatHandler = flatChargedShape[151, 152, 173]
-      if f.handlers[int(destination)] != last: return destination
-      current = destination
-      flatChargedStep(f, current, 151, 152, branch173, destination)
+      flatChargedStep(f, fixedMiddle, 131, -1, 88, destination)
+      if destination != fixedLast: return destination
+      flatChargedStep(f, fixedLast, 151, 152, 173, destination)
     else:
-      let middle: FlatHandler = flatChargedShape[200, 139, 82]
-      if f.handlers[int(destination)] != middle: return destination
-      current = destination
-      flatChargedStep(f, current, 200, 139, branch82, destination)
-      let last: FlatHandler = flatChargedShape[131, -1, 88]
-      if f.handlers[int(destination)] != last: return destination
-      current = destination
-      flatChargedStep(f, current, 131, -1, branch88, destination)
-    # Matching the next native handler is a capability check, not an assumed guest-code graph or input identity.
-    if f.handlers[int(destination)] != repeated: return destination
-    current = destination
+      flatChargedStep(f, fixedMiddle, 200, 139, 82, destination)
+      if destination != fixedLast: return destination
+      flatChargedStep(f, fixedLast, 131, -1, 88, destination)
+    if destination != off: return destination
 
 proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
     off: uint32): uint32 =
