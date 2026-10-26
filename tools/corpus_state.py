@@ -898,6 +898,16 @@ def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_tickets_corpus(compiler, report, checks, libraries):
+    """Execute full16-ticket blocks against independent complete maps and author-specific statistics."""
+    import jam_fuzzer_full_tickets_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_ticket_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_tickets'),
+        profiles=[full.parameters()]*2)
+
+
+@CORPORA.case
 def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
     """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
     import jam_fuzzer_transfer_forks_oracle as reference

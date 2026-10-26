@@ -179,6 +179,14 @@ def jam_fuzzer_full_profile(identity):
 
 
 @reference()
+def jam_fuzzer_full_tickets(identity):
+    """Require both full-population nonempty16-ticket admission chains and every complete map."""
+    import jam_fuzzer_full_tickets_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*2,spec='full')
+
+
+@reference()
 def jam_fuzzer_guest_forks(identity):
     """Retain the original nonempty Tiny guest siblings and original-last chains."""
     import jam_fuzzer_guest_forks_oracle as source

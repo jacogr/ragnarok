@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_FULL_TICKETS",
+  "files": {
+    "jam-fuzzer-full-tickets.json": "a064ad1ad3832cd6d243463d133789c3780b3f944be9266b6b1f2375f2afe594"
+  },
+  "target": "jam-fuzzer-full-tickets.json"
+}
