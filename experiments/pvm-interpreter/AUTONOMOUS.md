@@ -302,3 +302,26 @@ necessary for this measured gain; hardware cause not proved. Complete200timed/4n
 8native/8ASan including51840truth cases,6fresh image pairs and source/full-state controls
 pass; qualification manifests/logs/image hashes archived. Restore runtime exactlycb5fd0dc.
 Retain accepted source-identical full/scoped passes; no unnecessary rerun on restoration.
+
+## Trial13 — exact page-image capacity
+
+Parent9244ec92(runtimecb5fd0dc). Reserve validated images.len once for the owned
+sourceImages sequence instead of repeated page-sized growth/copies. Check count*sizeof
+PageImage host bound before allocation and complete final length before publication.
+No guest-loop, memory checks, snapshot bytes/permissions or cache changes. Qualify full
+constructor/reset/cold/reused costs. Declare one fixed4additional cold-init pairs plus
+8separate full-process RSS probes after the standard cohort; preserve all samples.
+
+Trial13verdict: keep exact page capacity. All6reused tick lifecycle pairs -2.79..-3.45%,
+median-3.00%; calls essentiallyflat. Coldticklife-2.45%;6coldinitpairs call+0.12%,life-0.13%
+(including declared4pair replication). Eight full-process peak RSS probes270.23..270.36MiB
+baseline vs232.08..232.20MiB candidate. Resource clocks excluded; no engine-only claim.
+208timed/4negative,8native/8ASan,6fresh equal-image controls and stable source/full state
+allpass. Source snapshot completeness strengthened; gas/memory/cache semantics unchanged.
+
+Next bounded hypothesis: Pinky profile has hot standalone flatStore leaves(26/19/16hits),
+with charge104/dispatch86 and multiple memory-pair workers. These are statistical hits,
+not CPU percentages. Pinned Nimony src/lib/nifcore.nim:948–953 and1319–1323 documents
+alwaysInline force-splicing, while inline does not force the native frontend inliner.
+Try only flatStore inline->alwaysInline; keep slow fallback out of line, all checks.
+No compiler/toolchain change; prove actual helper-call removal, then paired timings.

@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Sample the unmodified qualified Pinky image separately; all profiled clocks are excluded."""
+from pathlib import Path
+import hashlib,json,os,platform,re,subprocess,time
+R=Path.cwd();B=R/'build/pvm-interpreter-experiment/pinky-sample';B.mkdir(exist_ok=True)
+C=R/'build/pvm-interpreter-experiment/comparisons/fixed-expanded'
+d=json.loads((C/'results.json').read_text());assert d['status']=='passed' and d['all_inputs_stable']
+exe=C/'candidate-kernel';before=hashlib.sha256(exe.read_bytes()).hexdigest();F=R/'build/tests/pvm-prepared-blocks/pinky/1'
+env=dict(os.environ,RAGNAROK_PVM_GUEST='pinky',RAGNAROK_PVM_SIEVE_INPUT=str(F/'input-1.bin'),RAGNAROK_PVM_SIEVE_EXPECTED=str(F/'expected-1.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='13')
+with (B/'run.log').open('w') as log:
+ p=subprocess.Popen([str(exe)],env=env,stdout=log,stderr=subprocess.STDOUT)
+ try:
+  # Start after process setup; this image remains unchanged and checks every call's complete state.
+  time.sleep(0.15);assert p.poll() is None,'Image finished before sampling'
+  sampled=subprocess.run(['/usr/bin/sample',str(p.pid),'1','1','-file',str(B/'sample.txt')],capture_output=True,text=True,timeout=10)
+  (B/'sampler.log').write_text(sampled.stdout+sampled.stderr);assert sampled.returncode==0
+  assert p.wait(timeout=30)==0
+ finally:
+  if p.poll() is None:p.kill();p.wait()
+text=(B/'run.log').read_text();assert text.count('EXPERIMENTAL,pinky,')==13
+assert hashlib.sha256(exe.read_bytes()).hexdigest()==before
+sample=(B/'sample.txt').read_text();section=sample.split('Sort by top of stack, same collapsed (when >= 5):',1)[1].split('Binary Images:',1)[0];leaves=[]
+for line in section.splitlines():
+ m=re.match(r'\s*(.+?)\s+\(in (.+?)\)\s+(\d+)\s*$',line)
+ if m:leaves.append(dict(symbol=m[1],image=m[2],hits=int(m[3])))
+assert sum(r['hits'] for r in leaves)>200
+proof=dict(status='passed',comparison='fixed-expanded',core_sha256=d['source_sha256']['experiments/pvm-interpreter/overlay/src/pvm/experimental.nim'],image_sha256=before,profile_sha256=hashlib.sha256((B/'sample.txt').read_bytes()).hexdigest(),architecture=platform.machine(),policy='Statistical hits are not CPU percentages, executed instruction counts or hardware misses. All profiled clocks excluded.',checked_calls=13,delay_seconds=0.15,requested_duration_seconds=1,interval_ms=1,collapsed_leaves=leaves)
+(B/'results.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(dict(status='passed',top=leaves[:15])))

@@ -1116,6 +1116,8 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   assert plan != nil
   let memory = captureMemory(images, PageLimit(1048576))
   assert memory.error == MachineError.None
+  # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
+  assert images.len <= high(int) div sizeof(PageImage)
   result = FlatFrame(plan: plan, hostSnapshot: default(Memory), hostChanges: @[], hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     dirtyPages: newSeq[uint64](16384),
@@ -1123,7 +1125,8 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory.value, sourceImages: @[],
+    compiledForPc: @[], sourceMemory: memory.value, sourceImages: newSeqOfCap[PageImage](
+        images.len),
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
         stack: @[], extra: @[],
     remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
@@ -1145,6 +1148,8 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
     region.bytes.setLen(previous+4096)
     assert region.bytes.len == previous+4096 and previous < region.bytes.len
     copyMem(addr region.bytes[previous], unsafeAddr image.bytes[0], 4096)
+  # A refused growth must never publish a truncated source snapshot, including for a valid empty mapping.
+  assert result.sourceImages.len == images.len
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
