@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import re
 
 from native_checks import NativeChecks, ROOT
 from native_fixture_contracts import load_fixture_contracts
@@ -73,13 +74,17 @@ def instrument_step(source, pair_capacity=512):
     """Every named mutation must match exactly once before any generated source can be compiled."""
     if pair_capacity not in (512, 4096):
         raise ValueError('unsupported opcode census pair capacity')
+    # Diagnostic fields belong to the cache object, independently of tuned production field capacities.
+    headers = re.findall(r'^  ExecutionCache = object(?:[ \t]+##[^\n]*)?\n', source, re.MULTILINE)
+    if len(headers) != 1:
+        raise ValueError('changed opcode census injection site: types')
+    header = headers[0]
     cache = CACHE.replace('512', str(pair_capacity))
     helpers = HELPERS.replace('512', str(pair_capacity)).replace('shr 55', 'shr '+str(64-(pair_capacity.bit_length()-1)))
     replacements = [
       ('import', 'import ./[program, machine, registers, gas, gas_plan, gas_memo]',
        'import std/[assertions, syncio]\nimport ./[program, machine, registers, gas, gas_plan, gas_memo]'),
-      ('types', '  ExecutionCache = object', FIELDS+'  ExecutionCache = object'),
-      ('fields', '    targets: array[4, DynamicTargetEntry]', '    targets: array[4, DynamicTargetEntry]\n'+cache.rstrip()),
+      ('types', header, FIELDS+header+cache),
       ('initialize', '  ExecutionCache(valid: false,', ('''  ExecutionCache(censusOps: default(array[256, uint64]), censusPairs: default(array[512, CensusPair]),
     censusPrevious: 0, censusStarted: false, censusSteps: 0, valid: false,''').replace('512', str(pair_capacity))),
       ('helpers', 'proc cachedSecondaryCharge(', helpers+'proc cachedSecondaryCharge('),
