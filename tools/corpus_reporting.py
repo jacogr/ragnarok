@@ -36,6 +36,16 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
 
 
 @CORPORA.case
+def current_stf_generated_corpus(compiler, report, checks, libraries):
+    """Qualify portable seeded reporting schedules, complete GP successors and isolated invalid credentials."""
+    import current_stf_generated_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_effects', 'current_stf_generated',
+         'current_stf_population', 'current_stf_population_guests', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_allowances_corpus(compiler, report, checks, libraries):
     """Qualify empty-operand allowances and actual deferred credits under late sender/recipient code integration."""
     import current_stf_late_allowances_oracle as oracle

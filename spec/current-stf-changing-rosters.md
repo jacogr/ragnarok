@@ -80,3 +80,9 @@ in its feature contract. The current host-history checkpoint/trace and operator
 contracts record the extended independent workloads and their source identities.
 PR publication and exact-head CI observations remain separate from these local
 checked replay results.
+
+
+The [generated STF campaign](current-stf-generated.md) adds a portable seeded
+reporting/availability workload, complete independent successors, exact invalid
+blocks and replay/reduction tooling. Its rule matrix records generated evidence
+separately from inherited finite coverage and explicit remaining validity gaps.
