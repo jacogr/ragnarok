@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Reproduce the active-stream quota failure on an exact accepted parent in a private source tree."""
+from pathlib import Path
+import hashlib,json,shutil,subprocess,sys
+R=Path.cwd();S=R/'experiments/pvm-interpreter';B=R/'build/pvm-interpreter-experiment/barrier-parent-proof';B.mkdir(exist_ok=True)
+sys.path.insert(0,str(R/'tools'));from native_checks import NativeChecks;from setup_nimony import installed
+shutil.copytree(R/'src',B/'src',dirs_exist_ok=True);(B/'checks').mkdir(exist_ok=True)
+for name in ['experimental','machine']:
+ data=subprocess.check_output(['git','show','84b8cbe3:experiments/pvm-interpreter/overlay/src/pvm/'+name+'.nim'])
+ (B/'src/pvm'/(name+'.nim')).write_bytes(data)
+shutil.copy2(S/'checks/publication-witness.nim',B/'checks/publication-witness.nim')
+checks=NativeChecks(B);build,binary=checks.build(installed()[0],B/'checks/publication-witness.nim','accepted-parent');assert build['exit_code']==0,build['output'][-1200:]
+run=checks.command([binary],'accepted-parent-run')
+assert run['exit_code']!=0 and 'ACTIVE_STREAM_REPRO,None,Halt,0' in run['output'] and 'active stream cached-suffix quota' in run['output'],run['output'][-1600:]
+proof=dict(status='expected-parent-regression-reproduced',parent='84b8cbe34424feff230ca88f20207c5654e39352',expected='StepLimitExceeded after two source instructions',observed='None/Halt/remaining0 after running past quota',core_sha256=hashlib.sha256((B/'src/pvm/experimental.nim').read_bytes()).hexdigest(),witness_sha256=hashlib.sha256((B/'checks/publication-witness.nim').read_bytes()).hexdigest(),build=build,run=run)
+(B/'results.json').write_text(json.dumps(proof,indent=2)+'\n');print('PASS expected accepted-parent regression reproduced independently')

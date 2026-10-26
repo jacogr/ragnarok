@@ -87,3 +87,7 @@ The first completed comparison rejects [rare exit outlining](findings/outline-ex
 that isolated change was restored to the accepted checkpoint. Later findings retain
 [bulk page construction](findings/bulk-page-construction.md), which improves measured gameplay
 lifecycle while leaving calls essentially flat. See the investigation record for current status.
+
+The [active-stream quota fix](findings/active-stream-barrier.md) corrects cached overlapping
+suffix reentry after resets. Its exact-parent regression and minimal independent-step oracle
+are preserved; this is a correctness change with no claimed timing benefit.

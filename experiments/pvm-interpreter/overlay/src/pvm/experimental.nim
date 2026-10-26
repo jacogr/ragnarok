@@ -120,10 +120,14 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   f.reservationEnd = f.sites[int(off)]+uint32(reserved)
   if reserved < uint64(a.y):
     f.barrierFact = f.reservationEnd
-    let pc = f.plan.facts[int(f.barrierFact)].pc
-    let packed = f.compiledForPc[int(pc)]
-    assert packed != 0
-    f.barrier = (packed-1) and 0x7fffffff'u32
+    # Multiple cached suffixes can represent this same source PC. Patch only the active stream,
+    # whose sites are ordered; a folded no-op stops at the next real node but reports its own PC.
+    var boundary = off+1
+    while int(boundary) < f.sites.len and f.sites[int(boundary)] < f.barrierFact:
+      inc boundary
+    assert int(boundary) < f.handlers.len
+    assert uint64(f.sites[int(boundary)]) < uint64(f.sites[int(off)])+uint64(a.y)
+    f.barrier = boundary
     f.savedHandler = f.handlers[int(f.barrier)]
     f.handlers[int(f.barrier)] = flatBudget
   # A successful entry consumes the next already sealed handler immediately; at most the existing

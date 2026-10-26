@@ -185,3 +185,145 @@ sameMemory(first, firstMemory)
 sameMemory(escaped, firstMemory)
 sameMemory(untouched, initialMemory)
 echo "PASS publication immutable epochs /64resets / frame destruction / RO replacement / empty memory / full bytes"
+
+# A minimal overlapping suffix must never redirect the original stream's quota barrier.
+let reuseProgram = owner([@[51'u8, 1'u8, 11'u8], @[51'u8, 2'u8, 22'u8], @[50'u8, 0'u8]])
+let reuseMemory = memory()
+var reuseInfo = MachineInfo(gas: MachineGas(1000), registers: default(RegisterFile))
+reuseInfo.registers[0] = RegisterValue(0xffff0000'u64)
+let reuseSource = captureMachine(reuseProgram, reuseMemory, reuseInfo).value
+let reuseImages = [pageImage(reuseMemory, PageIndex(16)).value, pageImage(reuseMemory, PageIndex(17)).value]
+var reuseFrame = newFlatFrame(cache(reuseProgram), reuseImages, reuseInfo)
+runFlat(reuseFrame, 1)
+assert reuseFrame.reason == StepError.StepLimitExceeded
+runFlat(reuseFrame, 2)
+assert reuseFrame.reason == StepError.None and reuseFrame.exit == StepExit.Halt
+resetFlatFrame(reuseFrame, reuseInfo)
+runFlat(reuseFrame, 2)
+if reuseFrame.reason != StepError.StepLimitExceeded:
+  echo "ACTIVE_STREAM_REPRO,", reuseFrame.reason, ",", reuseFrame.exit, ",", reuseFrame.remaining
+assert reuseFrame.reason == StepError.StepLimitExceeded and reuseFrame.remaining == 0, "active stream cached-suffix quota"
+let reuseOne = stepOnce(reuseSource, GasCycleLimit(100000))
+assert reuseOne.error == StepError.None and reuseOne.value.exit == StepExit.Continued
+let reuseTwo = stepOnce(reuseOne.value.machine, GasCycleLimit(100000))
+assert reuseTwo.error == StepError.None and reuseTwo.value.exit == StepExit.Continued
+sameCpu(reuseFrame.info, machineInfo(reuseTwo.value.machine).value)
+sameMemory(flatMemorySnapshot(reuseFrame), memoryOf(reuseTwo.value.machine).value)
+checkFlatSource(reuseFrame)
+echo "PASS minimal active-stream quota / partial-resume-reset / independent two-instruction state"
+
+# Descending first-dirty order, duplicate stores and a cross-word page pair must publish sorted complete changes.
+const directoryIndices = [16'u32, 17'u32, 63'u32, 64'u32, 1048575'u32]
+var directoryImages: seq[PageImage] = @[]
+for slot in 0..<directoryIndices.len:
+  var image = PageImage(index: PageIndex(directoryIndices[slot]), access: PageAccess.ReadWrite)
+  image.bytes[0] = byte(slot+1)
+  directoryImages.add(image)
+let directorySourceMemory = captureMemory(directoryImages, PageLimit(5)).value
+let directoryProgram = owner([firstMemoryPart(30, 4294963205'u64),
+  firstMemoryPart(30, 262151), firstMemoryPart(30, 65545), firstMemoryPart(30, 262151),
+  firstMemoryPart(33, 262141), firstMemoryPart(30, 69643), @[50'u8, 0'u8]])
+var directoryInfo = MachineInfo(gas: MachineGas(1000), registers: default(RegisterFile))
+directoryInfo.registers[0] = RegisterValue(0xffff0000'u64)
+let directorySource = captureMachine(directoryProgram, directorySourceMemory, directoryInfo).value
+let directoryPlan = cache(directoryProgram)
+var directoryFrame = newFlatFrame(directoryPlan, directoryImages, directoryInfo)
+proc directorySame(actual, expected: Memory) =
+  ## Every mapped byte and permission participates, including the top physical page and private extra region.
+  for index in directoryIndices:
+    let left = pageImage(actual, PageIndex(index))
+    let right = pageImage(expected, PageIndex(index))
+    assert left.error == MachineError.None and right.error == MachineError.None
+    assert left.value.bytes == right.value.bytes and left.value.access == right.value.access
+var completeStores = directorySource
+for step in 0..<6:
+  let next = stepOnce(completeStores, GasCycleLimit(100000))
+  assert next.error == StepError.None and next.value.exit == StepExit.Continued, "directory oracle store prefix"
+  completeStores = next.value.machine
+let completed = execute(directorySource, ExecutionStepLimit(7), GasCycleLimit(100000))
+assert completed.error == StepError.None and completed.value.exit == StepExit.Halt, "directory completed source"
+var directoryCases = 0
+for epoch in 0..<2:
+  for budget in 0..6:
+    # Each prefix is independently replayed by single-step semantics, then continued without clearing its dirty state.
+    var wanted = directorySource
+    for step in 0..<budget:
+      let next = stepOnce(wanted, GasCycleLimit(100000))
+      assert next.error == StepError.None and next.value.exit == StepExit.Continued
+      wanted = next.value.machine
+    resetFlatFrame(directoryFrame, directoryInfo)
+    runFlat(directoryFrame, uint64(budget))
+    assert directoryFrame.reason == StepError.StepLimitExceeded and directoryFrame.remaining == 0, "directory prefix source budget"
+    sameCpu(directoryFrame.info, machineInfo(wanted).value)
+    let heldPrefix = flatMemorySnapshot(directoryFrame)
+    directorySame(heldPrefix, memoryOf(wanted).value)
+    directorySame(flatMemorySnapshot(directoryFrame), memoryOf(wanted).value)
+    if budget < 6:
+      runFlat(directoryFrame, uint64(6-budget))
+      assert directoryFrame.reason == StepError.StepLimitExceeded
+    directorySame(flatMemorySnapshot(directoryFrame), memoryOf(completeStores).value)
+    directorySame(heldPrefix, memoryOf(wanted).value)
+    runFlat(directoryFrame, 1)
+    assert directoryFrame.reason == StepError.None and directoryFrame.exit == StepExit.Halt
+    sameCpu(directoryFrame.info, machineInfo(completed.value.machine).value)
+    directorySame(flatMemorySnapshot(directoryFrame), memoryOf(completed.value.machine).value)
+    directorySame(heldPrefix, memoryOf(wanted).value)
+    directorySame(directorySourceMemory, memoryOf(directorySource).value)
+    checkFlatSource(directoryFrame)
+    inc directoryCases
+assert directoryCases == 14
+echo "PASS active-stream publication /14prefix-epochs / reverse order / duplicate stores / cross-word and top pages / repeated observations / retained snapshots"
+
+
+proc cachedStreamPrefixes(program: Program, source: Machine, images: openArray[PageImage],
+    steps: int): int =
+  ## Reuse one stream through distinct paid suffix entries; every prefix is checked against independent single steps.
+  assert steps >= 0 and steps < 1024
+  let plan = cache(program)
+  let info = machineInfo(source).value
+  var expected: seq[Machine] = @[source]
+  for step in 0..<steps:
+    let next = stepOnce(expected[expected.len-1], GasCycleLimit(100000))
+    assert next.error == StepError.None and next.value.exit == StepExit.Continued
+    expected.add(next.value.machine)
+    assert expected.len == step+2
+  let done = execute(source, ExecutionStepLimit(uint64(steps+1)), GasCycleLimit(100000))
+  assert done.error == StepError.None and done.value.exit == StepExit.Halt
+  var active = newFlatFrame(plan, images, info)
+  result = 0
+  for epoch in 0..<2:
+    for budget in 0..steps:
+      resetFlatFrame(active, info)
+      runFlat(active, uint64(budget))
+      assert active.reason == StepError.StepLimitExceeded and active.remaining == 0, "cached stream prefix quota"
+      sameCpu(active.info, machineInfo(expected[budget]).value)
+      let held = flatMemorySnapshot(active)
+      directorySame(held, memoryOf(expected[budget]).value)
+      if budget < steps:
+        runFlat(active, uint64(steps-budget))
+        assert active.reason == StepError.StepLimitExceeded, "cached stream continued quota"
+      directorySame(flatMemorySnapshot(active), memoryOf(expected[steps]).value)
+      directorySame(held, memoryOf(expected[budget]).value)
+      runFlat(active, 1)
+      assert active.reason == StepError.None and active.exit == StepExit.Halt
+      sameCpu(active.info, machineInfo(done.value.machine).value)
+      directorySame(flatMemorySnapshot(active), memoryOf(done.value.machine).value)
+      directorySame(held, memoryOf(expected[budget]).value)
+      checkFlatSource(active)
+      inc result
+
+var foldedStreamCases = 0
+for noops in [1, 2, 7]:
+  # Folded gaps share executable coordinates, while each original source instruction retains a distinct quota boundary.
+  var parts: seq[seq[byte]] = @[]
+  for store in [firstMemoryPart(30, 4294963205'u64), firstMemoryPart(30, 262151),
+      firstMemoryPart(30, 65545), firstMemoryPart(30, 262151), firstMemoryPart(33, 262141),
+      firstMemoryPart(30, 69643)]:
+    for count in 0..<noops: parts.add(@[2'u8])
+    parts.add(store)
+  parts.add(@[50'u8, 0'u8])
+  let program = owner(parts)
+  let source = captureMachine(program, directorySourceMemory, directoryInfo).value
+  foldedStreamCases+=cachedStreamPrefixes(program, source, directoryImages, 6*(noops+1))
+assert foldedStreamCases == 162
+echo "PASS active-stream folded boundaries /162prefix-epochs / independent quotas / suffix reuse / immutable observations"

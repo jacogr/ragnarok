@@ -108,3 +108,27 @@ owners. Archive probe source/counts in findings. Next: directory at existing fir
 bounded by mapped page count, private sorted copy and checked source-slot lookup for publication.
 Keep bitmap and its full clearing initially; retain original per-candidate bit/permission/copy checks,
 refused-reply state, source snapshots and observation/epoch semantics. One mechanism at a time.
+
+## Correctness interlude — active-stream quota barrier
+
+The directory trial's new mixed-prefix witness exposed an existing accepted-parent bug; no timing
+of that optimization has run. Minimal program: two load-immediates then halt. Run1instruction,
+resume2tohalt, reset, run2: oldparent incorrectly returnsHalt instead ofStepLimitExceeded because
+compiledForPc now points into another suffix. Exact parent84b8cbe3 reproduces independently.
+
+Fix chooses the first active-stream node with source site at/after the reserved prefix boundary,
+starting at the actual charge header. Valid program admission guarantees concrete terminating
+nodes; folded gaps retain their original PC through barrierFact. Keep all temporary restoration,
+paid/gas/source-count behavior. Minimal +14mixed-prefix epochs +162folded-prefix epochs pass,
+as do all eight native/eight ASan groups. Fresh same-path image repeats match for3drivers/2roles.
+An exploratory unterminated-program fixture was rejected by the existing decoder's final-T rule
+(GP-PVM-004); no decoder/fallthrough behavior changed. Correctness comparison now starts against84.
+
+The dirty-directory runtime is saved only as a pending diagnostic. Reapply
+build/pvm-interpreter-experiment/pending-directory-only.patch AFTER committing this fix; do not
+copy the old complete pending runtime back, because that would reintroduce the fixed barrier bug.
+
+Correctness interlude verdict: retain active-stream quota fix.200timed processes/4negative
+controls and stable seals pass; init reused paired median +0.15%, tick -0.24% within spread.
+No speed gain claimed. Exact-parent failure and all176new prefix epochs are retained with
+the complete eight native/eight ASan witness groups. Production src remains untouched.
