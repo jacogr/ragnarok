@@ -4,6 +4,8 @@
 ## Execute pinned Psi_I from an original package's historical authorizer code and retain immutable provenance.
 ## Local policy refusals are distinct from protocol work errors; report composition/publication is separate.
 
+import ../lib/logging
+
 import ../codec/[bounded, composite, work_package, work_digest, work_report, state_service_values]
 import ../chain/parameters
 import ../crypto/primitives
@@ -23,6 +25,7 @@ type
     package*: FetchPackageLimit
     encoding*: FetchEncodingLimit
     copy*: MemoryByteLimit
+    logging*: LogWriter
     steps*: ExecutionStepLimit
     calls*: HostCallLimit
     cycles*: GasCycleLimit
@@ -68,6 +71,7 @@ type
     else:
       discard # Neither default nor simple local errors contain a partial source/trace or unrelated reason.
   AuthorizationContext = object ## One synchronous run binds fetch and heap responses to its own initialized machine.
+    logger: LogWriter
     fetch: FetchContext
     first, past: PageIndex
     copy: MemoryByteLimit
@@ -178,7 +182,8 @@ proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResu
       else: AuthorizationHostError.InvalidContext) # No partial fetch response escapes a local refusal.
   of 100:
     # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
-    hostSuccess[AuthorizationHostError](logHostResponse(cpu.gas, cpu.registers, memory))
+    hostSuccess[AuthorizationHostError](logHostResponse(cpu.gas, cpu.registers, memory,
+        context.logger))
   else:
     hostSuccess[AuthorizationHostError](unknownHostResponse(cpu.gas, cpu.registers, memory))
 
@@ -249,7 +254,8 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
     ro = ro or (uint64(envelope[index]) shl (8*index))
     stack = stack or (uint64(envelope[8+index]) shl (
         8*index)) # Initialized E3 values prove zone rounding and page narrowing fit.
-  var context = AuthorizationContext(fetch: fetched.value, copy: limits.copy,
+  var context = AuthorizationContext(logger: limits.logging, fetch: fetched.value,
+    copy: limits.copy,
     first: PageIndex(uint32(32+((ro+65535) div 65536)*16)),
     past: PageIndex(uint32((0xfefd0000'u64-((stack+65535) div 65536)*65536) div 4096)))
   let executed = executeWithHost(initialized.value, context, dispatch, limits.steps, limits.calls, limits.cycles)

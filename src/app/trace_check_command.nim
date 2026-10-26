@@ -71,7 +71,8 @@ proc runTraceChecks*(options: Options): TraceCheckCommandOutcome =
   let policy = decodeCurrentDownloadPolicy(text(policyInput.value))
   if policy.error != CurrentDownloadPolicyError.None:
     return refused(TraceCheckCommandError.InvalidPolicy, requested, 0, $policy.error)
-  let candidate = policy.value.candidate
+  var candidate = policy.value.candidate
+  candidate.selectLogging(options.logWriter)
   let config = readBoundedFile(options.chainPath, ByteLimit(TraceCheckConfigBytes))
   if config.error != AtomicFileError.None:
     return refused(TraceCheckCommandError.FileFailure, requested, 0, $config.error)

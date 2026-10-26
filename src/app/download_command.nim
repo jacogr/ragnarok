@@ -296,6 +296,7 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
   let policy = loadDownloadPolicy(options.argument(8))
   if policy.error != DownloadPolicyError.None: return DownloadCommandResult.InvalidPolicy
   var limits = policy.value
+  limits.candidate.selectLogging(options.logWriter)
   limits.input.discoverAncestors = options.discoverDownloadAncestors > 0
   let count = 1 + (options.argumentCount - 8) div 2
   if uint64(count) > uint64(limits.schedule.peers): return DownloadCommandResult.InvalidPolicy

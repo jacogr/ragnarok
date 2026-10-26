@@ -8,6 +8,7 @@
 ## transport sessions.
 
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
+import ../lib/logging
 import ./transport
 import ./protocol
 import ./integration
@@ -44,6 +45,7 @@ type
     job: JobId
   # This stack owner outlives every synchronous native callback and its dispatcher/engine teardown.
   Peer = object
+    logging: LogWriter
     transport: Transport
     telemetry: nil ptr Client
     incoming: IncomingAttempts
@@ -90,6 +92,7 @@ proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte
 proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
+  log(peer.logging, LogTarget.Network, LogLevel.Debug, "Peer event=" & $event & " slot=" & $slot)
   let exporter = peer.telemetry
   if exporter != nil: # Disabled runs install no observer or retained identity table entries.
     exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
@@ -504,8 +507,9 @@ proc runPeer*(options: Options): bool {.raises.} =
     attack = "valid" # These one-query fixtures use normal request bytes and FIN.
   elif mode == "holder":
     attack = "no-fin" # Saturation holders keep their read direction deliberately incomplete.
-  var peer = Peer(server: server, service: service, integrated: integrated,
-      mixed: mode == "mixed", attack: attack, mesh: load, overload: mode == "overload",
+  var peer = Peer(logging: options.logWriter, server: server, service: service,
+      integrated: integrated, mixed: mode == "mixed", attack: attack, mesh: load, overload: mode ==
+      "overload",
       offloading: mode == "offload", light: mode == "light", badProof: mode == "invalid-proof")
   # Explicitly integrated binaries load public fixtures before registering native callbacks.
   if peer.integrated and (not IntegrationEnabled or not loadBank(peer.bank, getEnv(
@@ -848,8 +852,9 @@ proc runMesh*(options: Options): bool {.raises.} =
   let gate = options.argument(9)
   let dispatcher = newDispatcher()
   defer: dispatcher.close() # Both borrowed endpoint registrations retire first, in reverse defer order.
-  var incoming = Peer(server: true, mesh: true, expected: expected, attack: "valid")
-  var outgoing = Peer(mesh: true, expected: expected, attack: "valid")
+  var incoming = Peer(logging: options.logWriter, server: true, mesh: true, expected: expected,
+      attack: "valid")
+  var outgoing = Peer(logging: options.logWriter, mesh: true, expected: expected, attack: "valid")
   var services = default(Services)
   defer: services.close() # The single service owner outlives both retained engines.
   if not services.start(options, options.argument(1)):

@@ -4,6 +4,8 @@
 ## Prepare finalized successors from owned blocks against the selected complete-map application head.
 ## Existing state/PVM stages retain authority; private prefixes never publish until a later handoff tick.
 
+import ../lib/logging
+
 import ./[chain, handoff]
 import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
@@ -400,3 +402,12 @@ proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
   let prepared = prepareCurrentCandidateReports(chain, candidate, limits)
   if prepared.error != CurrentCandidateError.None: return prepared.failure
   completeCurrentCandidateReports(chain, prepared.value, ancestors)
+
+proc selectLogging*(limits: var ApplicationCandidateLimits, writer: LogWriter) =
+  ## Initial and later accumulation cohorts borrow the same application-owned diagnostic sink.
+  limits.execution.logging = writer
+  limits.driver.execution.logging = writer
+proc selectLogging*(limits: var CurrentCandidateLimits, writer: LogWriter) =
+  ## Current execution keeps logging outside serialized resource policy and state authority.
+  limits.completion.execution.initial.guests.logging = writer
+  limits.completion.execution.execution.round.guests.logging = writer

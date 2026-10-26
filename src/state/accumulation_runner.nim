@@ -4,6 +4,8 @@
 ## Execute independent source-bound initial-round services and certify one complete supported batch.
 ## Exposes explicit local ceilings and guarded completion/reasons; never mutates a caller store.
 
+import ../lib/logging
+
 import ../chain/parameters
 import ../codec/[bounded, c2_records]
 import ../pvm/[initialize, machine, step, gas, host_fetch]
@@ -21,6 +23,7 @@ type
     contexts*: AccumulationContextConfig     ## Exact block population plus bounded initial chapter copies.
     fetch*: FetchAccumulationLimits          ## Input capture independent of host memory copies.
     copyBytes*: MemoryByteLimit              ## One host payload copy ceiling.
+    logging*: LogWriter
     steps*: ExecutionStepLimit               ## Attempted instructions per guest, independent of protocol gas.
     calls*: HostCallLimit                    ## Host dispatches per guest.
     cycles*: GasCycleLimit                   ## Gas analysis work per basic block.
@@ -146,7 +149,7 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts)
+        limits.deletedAccounts, logging = limits.logging)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.DispatchFailure,
           dispatchReason: executed) # Preserve StepError; prior successes die locally.

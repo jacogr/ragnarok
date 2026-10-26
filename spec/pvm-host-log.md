@@ -22,8 +22,11 @@ byte-for-byte. An absent target prints `null`, distinct from an empty present
 target. Suggested timestamp/core/service metadata is outside this increment.
 The user-agent suppresses records exceeding 4096 bytes in either field, without
 changing guest results. Check lengths before copying/scanning, validate both full
-ranges before invoking the sink, and never emit a readable prefix from invalid memory. The sink is
-best-effort synchronous diagnostic IO; output failure does not change guest state.
+ranges before invoking the sink, and never emit a readable prefix from invalid memory. The standalone adapter uses
+best-effort synchronous diagnostic IO; output failure does not change guest state. Application
+execution instead supplies the [shared logging](logging.md) handle, filters before guest reads,
+and submits bounded records without waiting for IO or queue space. Its output cap and counted
+drop policy are user-agent behavior; the ten-gas response and WHAT remain identical.
 Records are diagnostic observations, including of execution later rolled back;
 they are not committed state or telemetry.
 

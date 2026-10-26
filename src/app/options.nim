@@ -5,6 +5,8 @@
 ## Options owns copied positional arguments and explicit enable/configuration values. Failed parsing
 ## clears the output; private fields and read accessors prevent partial configuration from escaping.
 
+import ../lib/logging
+
 import std/[strutils, assertions]
 import ../codec/bounded
 
@@ -17,8 +19,9 @@ const
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
       "--download-local-ancestors", "--download-update-logical-source", "--state-paged-resume"]
-  Values = ["--trace-observations", "--telemetry", "--chain", "--management-socket", "--rpc-port",
-      "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
+  Values = ["--log-level", "--trace-observations", "--telemetry", "--chain", "--management-socket",
+      "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes",
+      "--state-checkpoint",
       "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--node-mode", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
@@ -40,6 +43,8 @@ type Options* = object ## Validated service controls; command handlers validate 
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
+  logging: LogPolicy
+  output: LogWriter
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
@@ -230,7 +235,8 @@ proc decimalLimit(text: string, value: var uint64): bool =
 proc parseOptions*(arguments: seq[string], options: var Options): bool =
   ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
   options = default(Options)
-  var candidate = Options(rpcNumber: 19800, uiNumber: 8888, downloadCount: 1,
+  var candidate = Options(logging: initLogPolicy(), rpcNumber: 19800, uiNumber: 8888,
+      downloadCount: 1,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
   var first = arguments.len
@@ -262,6 +268,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       let value = arguments[i + 1]
       if value.len == 0 or value.startsWith("--"): return false
       case name
+      of "--log-level":
+        if not parseLogPolicy(value, candidate.logging): return false
       of "--telemetry": candidate.endpoint = value
       of "--chain": candidate.chain = value
       of "--management-socket":
@@ -415,8 +423,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
     if not candidate.state or candidate.positional.len < 4 or candidate.positional.len > 259:
       return false # One explicit policy, Genesis and1..256 consecutive steps define a finite offline workload.
     for control in seen:
-      if control notin ["--with-state", "--chain", "--state-writes", "--state-write-bytes",
-          "--trace-observations"]:
+      if control notin ["--log-level", "--with-state", "--chain", "--state-writes",
+          "--state-write-bytes", "--trace-observations"]:
         return false # Offline validation accepts only its explicit trust/state budgets; no listener, disk, recovery or download control is silently ignored.
   if downloadCommand:
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
@@ -434,4 +442,31 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       return false # Neither unpaired controls nor other commands can silently ignore a logical startup request.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
+  true
+
+func loggingPolicy*(options: Options): LogPolicy =
+  ## Validated filters are configuration, not a mutable process global.
+  options.logging
+func logWriter*(options: Options): LogWriter =
+  ## The application logger outlives the services and worker leases borrowing this handle.
+  options.output
+proc attachLogWriter*(options: var Options, writer: LogWriter) {.requires: options.parsed.} =
+  ## Only validated options receive an explicitly started application-owned sink.
+  options.output = writer
+proc extractLoggingOptions*(arguments: seq[string], remaining: var seq[string],
+    policy: var LogPolicy): bool =
+  ## Dedicated command grammars consume the same unique logging option before their own parsing.
+  remaining = @[]
+  policy = initLogPolicy()
+  var seen = false
+  var index = 0
+  while index < arguments.len:
+    if arguments[index] == "--log-level":
+      if seen or arguments.len-index < 2: return false
+      if not parseLogPolicy(arguments[index+1], policy): return false
+      seen = true
+      index+=2
+    else:
+      remaining.add(arguments[index])
+      inc index
   true

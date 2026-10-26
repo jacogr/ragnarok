@@ -4,6 +4,8 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
+import ../lib/logging
+
 import ../pvm/[machine, program, step, gas, host_gas, host_log, host_heap, host_fetch,
     refinement_exports, inner_machines]
 import ../codec/[bounded, composite, state_service_values, work_package, work_digest]
@@ -45,6 +47,7 @@ type
     else:
       discard # No partially completed owner or scratch data on failure.
   DispatchContext = object ## Only one synchronous run mutates this private export selection.
+    logger: LogWriter
     source: RefinementData
     exports: RefinementExports
     copyLimit: MemoryByteLimit
@@ -195,7 +198,8 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   case uint64(stopped.hostCall)
   of 100:
     # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
-    hostSuccess[RefinementDispatchError](logHostResponse(cpu.gas, cpu.registers, memory))
+    hostSuccess[RefinementDispatchError](logHostResponse(cpu.gas, cpu.registers, memory,
+        context.logger))
   of 0:
     hostSuccess[RefinementDispatchError](gasHostResponse(cpu.gas, cpu.registers, memory)) # Shared gas semantics.
   of 1:
@@ -258,14 +262,15 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
 
 proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: MemoryByteLimit,
     exportLimits: ExportLimits, steps: ExecutionStepLimit, calls: HostCallLimit,
-    cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits)):
+    cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits),
+        logging: LogWriter = default(LogWriter)):
     RefinementDispatchResult[RefinementOutcome] =
   ## Replay the original immutable CPU with fresh exports; refuse atomically without exposing callback progress.
   let data = prepared.data
   if data == nil: return RefinementDispatchResult[RefinementOutcome](
       status: RefinementDispatchError.InvalidContext)
   let empty = captureRefinementExports(data.offset)
-  var context = DispatchContext(source: data, exports: empty, copyLimit: copyLimit,
+  var context = DispatchContext(logger: logging, source: data, exports: empty, copyLimit: copyLimit,
       exportLimits: exportLimits, machines: captureInnerMachines(inner),
           programCopyLimit: inner.program, innerFailure: StepError.Uninitialized)
   let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles)

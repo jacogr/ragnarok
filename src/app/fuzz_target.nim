@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit JAM_FUZZ startup runs only ephemeral full-state sessions with host-supplied Parameters and execution policy.
+import ../lib/logging
+
 import std/[assertions, atomics, envvars, monotimes, os, syncio]
 import std/posix/posix
 import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate, fuzz_policy]
@@ -156,7 +158,8 @@ proc prepareDirectory(path: string): bool =
   if readStatus(nativePath.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
       uint32(status.st_uid) != effectiveUid(): return false
   chmod(nativePath.toCString(), Mode(0o700)) == 0
-proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
+proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
+    LogWriter)): int {.raises.} =
   ## The ordinary executable selects conformance mode from standard environment variables and owns the complete startup lifecycle.
   let automatic = arguments.len == 0 or (arguments.len == 1 and arguments[0] == "--help")
   var namedPreset = automatic or (arguments.len == 4 and arguments[0] == "serve-fuzz-preset")
@@ -216,7 +219,9 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
   if policy.error != CurrentDownloadPolicyError.None or not parameters.ok:
     stderr.writeLine("FUZZ_START_FAILED configuration encoding")
     return 2
-  let prepared = prepareFuzzTarget(environment, parameters.value, policy.value.candidate,
+  var candidate = policy.value.candidate
+  candidate.selectLogging(logging)
+  let prepared = prepareFuzzTarget(environment, parameters.value, candidate,
       ElementLimit(writes), ByteLimit(writeBytes))
   if prepared.error != FuzzTargetError.None:
     stderr.writeLine("FUZZ_START_FAILED " & $prepared.error)
