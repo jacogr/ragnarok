@@ -1607,3 +1607,133 @@ retained under `build/pvm-port-lab/prepared-segment-worker{,-final}`. Qualified 
 SHA256: `095241ff06387eb4d6f3b2511fd612afe391e91c6c9a19de1cb337c0561c2104`. Next investigate miss-only sparse page resolution without adding
 more page-owner probes to the hot scalar path; larger readable-owner windows already failed
 local timing qualification.
+
+
+## Miss-only positive sparse page slots, 2026-10-26
+
+Keep a fixed 64-entry array of `uint32` sorted-slot-plus-one hints inside each scalar
+writer. Parent #1698 is `771dd2a6149783f390808526915e498220595709`; compared
+master is `ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`. This independently designed
+lookup policy does not change dependency pins, public APIs/defaults, JAM interpretation,
+page/window capacities, prepared representation, handler dispatch, pricing, budgets or PCs.
+No translated implementation ships.
+
+### Ownership and checked resolution
+
+The 256-byte array is explicitly zeroed at writer construction. It retains scalar
+coordinates only, with no page/chunk owner, pointer escape, extra per-access allocation
+or borrowed mutable guest data. Existing field offsets stay unchanged. Lookup occurs
+only in the original scalar-span miss path, after the existing two recent hints miss;
+no extra page-owner probes enter cached scalar loads/stores. Hash `(page xor(page shr 8))
+and 63` selects one bounded entry. Zero is empty. Every positive entry is checked against
+the current source page vector's bounds and exact physical page identity before use.
+Collisions fall through to the original lower-bound lookup; only present pages enter the
+directory, and slot-plus-one encoding has an explicit representability guard.
+
+A slot hint grants no permission or byte capability. Original owner/width/overflow/
+protected-prefix validation and complete presence-before-permission fault ordering remain
+unchanged, including final-page and two-page stores. Physical presence may be remembered
+even when permission later refuses an access; the same permission decision is repeated
+before every byte access. Scalar coordinates may survive epoch publication because
+every reuse revalidates them. Existing snapshot/COW alias invalidation remains unchanged;
+no cached PageData owner survives through this directory. Immutable nonwriter operations
+compile without directory probes or mutations. All checks stay enabled.
+
+### Measured selection
+
+Initial 64/256-entry controls passed 11 native runs (including the original uncached
+writer and both directory sizes against the new sparse oracle), four independent full-state
+references, two AddressSanitizer suites, ARC1000 and fresh-cache/equal-image controls.
+Seventy complete-state processes plus 72 alternating confirmations supported Pinky
+improvements of 5.11% and 5.67%, respectively. The sub-percent difference does not justify
+four times the metadata; retain 64 entries. The formatted selected implementation was
+rebuilt with fresh canonical paths and equal images, then requalified in 56 processes
+and 48 six-round confirmations. Median CPU changes against the immediate parent:
+
+- pinky: -4.88% (range -5.18% to -4.82%).
+- sieve: -1.33% (range -2.27% to +0.26%).
+- minimal: -0.77% (range -1.39% to +0.13%).
+- memset: -0.31% (range -0.53% to +0.20%).
+
+Pinky is a supported gain. Smaller changes elsewhere are unproven; no material regression
+was observed. Fresh same-path master/actual parent/final controls add 70 processes; restoring
+the final source reproduced its exact image. Each process makes 13 fully checked calls,
+three warmups then ten CPU samples. Apple M1 Max, checked ARC/Clang ThinLTO, pristine Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2`, PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Reused CPU milliseconds, forward / reverse
+process order, limit100000 except Pinky one invocation:
+
+| Guest | Master prepared | Parent #1698 | This implementation | Learning port | PolkaVM interpreted |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.223 / 195.627 | 129.888 / 129.509 | 122.794 / 123.337 | 95.122 / 94.689 | 92.470 / 92.029 |
+| sieve | 5.970 / 5.899 | 3.542 / 3.527 | 3.521 / 3.532 | 3.450 / 3.437 | 3.511 / 3.524 |
+| minimal | 13.607 / 13.591 | 7.819 / 7.797 | 7.709 / 7.710 | 6.291 / 6.411 | 6.033 / 6.065 |
+| memset | 6.282 / 6.271 | 3.601 / 3.488 | 3.553 / 3.484 | 3.749 / 3.638 | 3.903 / 3.859 |
+
+Cold CPU milliseconds are single first-call observations, not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 198.270 / 197.995 | 132.202 / 131.774 | 125.263 / 125.847 | 96.037 / 94.979 | 94.029 / 93.580 |
+| sieve | 9.891 / 9.957 | 7.771 / 7.726 | 7.688 / 7.703 | 3.681 / 3.605 | 6.082 / 6.090 |
+| minimal | 13.958 / 13.834 | 8.046 / 7.937 | 7.941 / 7.889 | 6.456 / 6.469 | 6.112 / 6.171 |
+| memset | 6.543 / 6.535 | 3.642 / 3.628 | 3.756 / 3.634 | 3.828 / 3.679 | 4.140 / 4.122 |
+
+Empty prepared-owner constructor CPU microseconds; writer creation remains inside execution
+clocks and its larger inline record is included. No constructor gain is established:
+
+| Guest | Master | Parent | This implementation |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 5.000 | 8.000 / 4.000 | 5.000 / 4.000 |
+| sieve | 5.000 / 5.000 | 4.000 / 7.000 | 5.000 / 5.000 |
+| minimal | 10.000 / 11.000 | 12.000 / 10.000 | 11.000 / 12.000 |
+| memset | 6.000 / 9.000 | 6.000 / 6.000 | 5.000 / 5.000 |
+
+Another56 two-order processes cover the shared dynamic/planned memory consumers:
+
+| Guest | Parent dynamic | Final dynamic | Parent planned | Final planned |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 289.019 / 290.285 | 280.333 / 282.711 | 276.641 / 279.707 | 270.013 / 269.268 |
+| sieve | 12.119 / 12.104 | 12.129 / 12.112 | 8.471 / 8.469 | 8.449 / 8.413 |
+| minimal | 16.289 / 16.438 | 16.584 / 16.285 | 15.717 / 16.291 | 15.766 / 15.742 |
+| memset | 8.503 / 8.508 | 8.474 / 8.459 | 8.380 / 8.322 | 8.325 / 8.305 |
+
+### Separate unclocked path counts
+
+Instrumentation lives only in an ignored source copy, outside production and all timing
+binaries. Counters belong to the invocation writer, not shared globals. All seven guest
+cases pass four complete reference/source checks with clocks disabled, and prepared cache
+observations match the timing runs. Each call reports identical path counts:
+
+| Guest | Span slot requests | Recent hint hits | Directory hits | Binary lookups |
+| --- | ---: | ---: | ---: | ---: |
+| sieve | 369 | 186 | 176 | 7 |
+| minimal | 3 | 0 | 0 | 3 |
+| memset | 92 | 6 | 53 | 33 |
+| pinky | 797667 | 253977 | 529907 | 13783 |
+
+These are actual software-path counts, not hardware cache/branch misses or executed native
+instruction counts. They demonstrate lower-bound lookups avoided; they do not by themselves
+establish a hardware cause or predict CPU speed. All production prepared counts, bytes,
+hits and evictions match the parent at every call. All13 timed calls verify registers,
+gas/exit, page bytes, permissions and original source snapshots; wrong-gas controls fail
+before emitting successful rows.
+
+The new source-owned witness intentionally collides 15 sparse physical pages in both
+candidate sizes, exercises missing/inaccessible/read-only pages, cross-page/final-page
+ordering, wrapped addresses and invalid widths, then compares every historical epoch's
+bytes/permissions and the original source. Selected code passes 10 native runs, four
+independent references, prepared and scalar-window AddressSanitizer/ARC1000 suites;
+existing full139-opcode,11815 register-pair,25020 memory-pair, host/budget/gas/reentry and
+703 long-block budget witnesses remain unchanged. Promoted Make scalar-window, prepared
+and mixed-reference suites plus formatting pass. No new exports, fixtures, registrations
+or CI jobs are introduced.
+
+These local M1 timings are not Linux qualification. Rust restores input outside its
+execution clock; Ragnarök stages invocations inside its clock. The local partial learning
+port uses predecoded pricing and unbounded retention; full lifecycle parity is not claimed.
+Pinky/minimal still trail the references; exceeding them overall remains unmet. Evidence
+under `build/pvm-port-lab/scalar-page-slots{,-final}` and `scalar-page-slot-trace` retains
+all samples/spreads, source/generated/image identities, cold/constructor/cache rows and
+original diagnostic failures. Qualified machine SHA256: `df41ad38f725583045e887e85e73b36f7bd980c7d03eb83aa541ad6e6c91f101`. Next inspect
+remaining checked scalar miss-handler work using isolated static-width controls.
