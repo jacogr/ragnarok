@@ -5,7 +5,8 @@
 import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
 import ../../src/state/[accumulation_current_completion, accumulation_current_driver,
-    accumulation_current_sequence, accumulation_current_round, accumulation_block_guests,
+    accumulation_current_finalization, accumulation_current_sequence, accumulation_history,
+    accumulation_current_round, accumulation_block_guests,
     accumulation_guest_runner,
     block_transition, block_admission, disputes]
 import ./[current_stf_population_context, current_stf_reporting_context, current_stf_guest_limits]
@@ -49,6 +50,16 @@ proc populationReason*(outcome: CurrentCandidateResult): string =
   if outcome.error == CurrentCandidateError.CompletionFailure:
     let completed = outcome.completionFailure
     result = "completion/" & $completed.error
+    if completed.error == CurrentAccumulationCompletionError.FinalizationFailure:
+      let finalized = completed.finalizationFailure
+      result.add("/" & $finalized.error) # Preserve the genuine terminal bound/refusal before deciding which explicit profile needs more capacity.
+      if finalized.error == CurrentAccumulationFinalizationError.QueueFailure:
+        result.add("/" & $finalized.queueFailure) # The accumulated ring's local count/byte ceiling is distinct from protocol package selection.
+      if finalized.error == CurrentAccumulationFinalizationError.ProjectionFailure:
+        let projected = finalized.projectionFailure
+        result.add("/" & $projected.error) # Retain the actual ring projection refusal rather than guessing which stage exhausted its policy.
+        if projected.error == AccumulationHistoryError.CodecFailure:
+          result.add("/" & $projected.codecError) # Parent capture and posterior encoding retain different guarded resource verdicts.
     if completed.error == CurrentAccumulationCompletionError.SequenceFailure:
       let sequence = completed.sequenceFailure
       result.add("/" & $sequence.error)

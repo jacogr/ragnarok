@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_HISTORIES",
+  "files": {
+    "current-stf-late-histories.json": "8b915b10c6e5fd8e42cda598356886854b27de61178c9bba34cdc89f337c14be"
+  },
+  "target": "current-stf-late-histories.json"
+}
