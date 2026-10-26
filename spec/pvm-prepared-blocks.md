@@ -1,5 +1,9 @@
 # Lazy prepared-block execution
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 ## Authorized scope and completion
 
 Build an optional interpreted execution tier for large programs, alongside the existing

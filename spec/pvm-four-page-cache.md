@@ -1,5 +1,9 @@
 # Four-page scalar-cache experiment: rejected
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 ## Scope and hypothesis
 
 Baseline: `6cdda51bc57abe5496409354c0d53265432ee02e` (DOOM evidence above PR1607).

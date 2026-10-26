@@ -1,5 +1,9 @@
 # Paired interpreter revision comparisons
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 ## Scope and reproduction
 
 `make compare-pvm-guests PVM_COMPARE_BASE=HEAD^` compares the selected local

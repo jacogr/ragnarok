@@ -17,41 +17,16 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, prepared-pvm, profile-doom, compare-doom, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]
         default: full
         required: true
-      pvm_doom_counts_only:
-        description: Collect DOOM instruction evidence without timing samples
-        type: boolean
-        default: false
-        required: false
-      pvm_compare_base:
-        description: Baseline ref for compare-pvm or compare-doom (PR labels use the exact PR base SHA)
-        type: string
-        default: HEAD^
-        required: false
-      pvm_diagnosis:
-        description: Profile both interpreters on the profile-pvm runner
-        type: boolean
-        default: false
-        required: false
-      pvm_build_identity:
-        description: Diagnose Linux image identity in profile-pvm
-        type: boolean
-        default: false
-        required: false
-      pvm_deep_attribution:
-        description: Verify image controls then attribute execution and memory in profile-pvm
-        type: boolean
-        default: false
-        required: false
 
 permissions:
   contents: read
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.event.label.name != 'ci:pvm-compare' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -559,13 +534,13 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   perf:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm"},{"name":"Storage","group":"bench-storage"},{"name":"Storage Growth","group":"bench-storage-growth"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM DOOM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm"},{"name":"PVM DOOM","group":"bench-doom"},{"name":"Storage","group":"bench-storage"},{"name":"Storage Growth","group":"bench-storage-growth"}]') }}
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -618,6 +593,31 @@ jobs:
             build/tests/pvm-guests/*/summary.md
             build/pvm-benchmark/native-build.log
             build/ci/*.log
+      - name: Install DOOM asset decompressor
+        if: ${{ matrix.family.group == 'bench-doom' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Compare complete DOOM calls with PolkaVM interpreted
+        if: ${{ matrix.family.group == 'bench-doom' }}
+        run: make bench-pvm-doom
+      - name: Show DOOM initialization and gameplay CPU comparison
+        if: ${{ always() && matrix.family.group == 'bench-doom' }}
+        run: |
+          if test -f build/tests/pvm-doom/summary.md; then
+            cat build/tests/pvm-doom/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain validated DOOM samples and source identities
+        if: ${{ always() && matrix.family.group == 'bench-doom' }}
+        uses: *upload-artifact
+        with:
+          name: bench-doom-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-doom/*.log
+            build/tests/pvm-doom/*.json
+            build/tests/pvm-doom/summary.md
       - name: Compare validated memory and durable storage workloads
         if: ${{ matrix.family.group == 'bench-storage' }}
         run: make bench-storage
@@ -702,218 +702,6 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/*.log
             build/tests/storage-growth-benchmark/growth/io/results.json
             build/tests/storage-growth-benchmark/growth/io/calls.csv
-            build/ci/*.log
-
-  # Explicit revision experiments use one VM; ordinary perf/full/master runs keep their existing scope.
-  # Manual diagnostics attribute checked execution only; ordinary performance and full jobs stay unchanged.
-  profile-pvm:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'profile-pvm' }}
-    name: Perf / PVM Instructions
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout profiling sources and fixed identity stress case
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Install the pinned diagnostic tool
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3
-      - name: Profile checked guest execution
-        if: ${{ !inputs.pvm_diagnosis && !inputs.pvm_build_identity && !inputs.pvm_deep_attribution }}
-        run: make profile-pvm-guests
-      - name: Diagnose both interpreted engines without runtime changes
-        if: ${{ inputs.pvm_diagnosis && !inputs.pvm_build_identity && !inputs.pvm_deep_attribution }}
-        run: make diagnose-pvm-interpreters
-      - name: Diagnose native build identity before attribution
-        if: ${{ inputs.pvm_build_identity && !inputs.pvm_deep_attribution }}
-        run: make diagnose-pvm-build-identity
-      - name: Verify controls then attribute both interpreters
-        if: ${{ inputs.pvm_deep_attribution }}
-        run: make attribute-pvm-execution
-      - name: Show instruction profiles
-        if: always()
-        run: |
-          if test -f build/tests/pvm-instruction-profile/summary.md; then
-            cat build/tests/pvm-instruction-profile/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if test -f build/tests/pvm-interpreter-diagnosis/summary.md; then
-            cat build/tests/pvm-interpreter-diagnosis/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain instruction profiles and diagnostics
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-instructions-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-instruction-profile/*.callgrind*
-            build/tests/pvm-instruction-profile/*.log
-            build/tests/pvm-instruction-profile/*.json
-            build/tests/pvm-instruction-profile/summary.md
-            build/tests/pvm-instruction-profile/generated-source/**/*.c
-            build/tests/pvm-interpreter-diagnosis/*.callgrind*
-            build/tests/pvm-interpreter-diagnosis/*.log
-            build/tests/pvm-interpreter-diagnosis/*.json
-            build/tests/pvm-interpreter-diagnosis/summary.md
-            build/tests/pvm-build-identity/*.json
-            build/tests/pvm-build-identity/*.log
-            build/tests/pvm-build-identity/*.diff
-            build/tests/pvm-execution-attribution/*.json
-            build/tests/pvm-execution-attribution/*.log
-            build/tests/pvm-execution-attribution/*.callgrind*
-            build/tests/pvm-execution-attribution/summary.md
-            build/tests/pvm-execution-attribution/generated-source/**/*.c
-            build/tests/pvm-execution-attribution/reference-source/**/*.rs
-            build/tests/pvm-guest-compare/*.json
-            build/tests/pvm-guest-compare/*.log
-            build/tests/pvm-guest-compare/summary.md
-
-  profile-doom:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'profile-doom' }}
-    name: Perf / DOOM Attribution
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-24.04
-    steps:
-      - *checkout
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Install pinned attribution tool and asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3 zstd
-      - name: Validate and profile both DOOM interpreters
-        env:
-          PVM_DOOM_COUNTS_ONLY: ${{ inputs.pvm_doom_counts_only && '1' || '0' }}
-        run: make profile-pvm-doom
-      - name: Show bounded attribution
-        if: always()
-        run: |
-          if test -f build/tests/pvm-doom/summary.md; then
-            cat build/tests/pvm-doom/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain raw profiles and source identities
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-doom-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-doom/*.callgrind*
-            build/tests/pvm-doom/*.log
-            build/tests/pvm-doom/*.json
-            build/tests/pvm-doom/summary.md
-            build/tests/pvm-doom/generated-source/**/*.c
-            build/tests/pvm-doom/reference-source/**/*.rs
-
-  # Timing qualification follows a successful instruction gate; ordinary jobs never run this workload.
-  compare-doom:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-doom' }}
-    name: Perf / DOOM Revisions
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout exact candidate and baseline history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Install asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
-      - name: Compare checked DOOM revisions and identical-image controls
-        env:
-          PVM_COMPARE_BASE: ${{ inputs.pvm_compare_base || 'HEAD^' }}
-        run: make compare-pvm-doom
-      - name: Show paired DOOM CPU comparisons
-        if: always()
-        run: |
-          if test -f build/tests/pvm-doom-compare/summary.md; then
-            cat build/tests/pvm-doom-compare/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain paired DOOM evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-doom-revisions-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-doom-compare/*.log
-            build/tests/pvm-doom-compare/*.json
-            build/tests/pvm-doom-compare/summary.md
-            build/tests/pvm-doom/*.log
-            build/tests/pvm-doom/*.json
-
-  compare-pvm:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-pvm') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action == 'labeled' && github.event.label.name == 'ci:pvm-compare') }}
-    name: Perf / PVM Revisions
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-24.04
-    env:
-      PVM_COMPARE_SYNTHETIC: "1"
-    steps:
-      - name: Checkout exact candidate and baseline history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Compare baseline and candidate on this runner
-        env:
-          PVM_COMPARE_BASE: ${{ github.event.pull_request.base.sha || inputs.pvm_compare_base || 'HEAD^' }}
-        run: make compare-pvm-guests
-      - name: Measure identical-source control on this runner
-        run: make compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_OUTPUT=build/tests/pvm-guest-control
-      - name: Compare candidate with pinned PolkaVM interpreted on this runner
-        run: make bench-pvm-guests
-      - name: Show paired, noise-control and reference comparisons
-        if: always()
-        run: |
-          for report in build/tests/pvm-guest-compare/summary.md build/tests/pvm-guest-control/summary.md build/tests/pvm-guests/summary.md; do
-            # Missing reports retain the original failed step; never substitute an earlier successful run.
-            if test -f "$report"; then
-              cat "$report" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-      - name: Retain raw paired comparison evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-revisions-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-guest-compare/*.log
-            build/tests/pvm-guest-compare/*.json
-            build/tests/pvm-guest-compare/builds/*/*.log
-            build/tests/pvm-guest-compare/summary.md
-            build/tests/pvm-guest-control/*.log
-            build/tests/pvm-guest-control/*.json
-            build/tests/pvm-guest-control/builds/*/*.log
-            build/tests/pvm-guest-control/summary.md
-            build/tests/pvm-guests/*.json
-            build/tests/pvm-guests/*.csv
-            build/tests/pvm-guests/summary.md
-            build/tests/pvm-guests/*/*.log
-            build/tests/pvm-guests/*/*.json
-            build/tests/pvm-guests/*/*.csv
-            build/tests/pvm-guests/*/summary.md
             build/ci/*.log
 
   perf-status:
@@ -1011,49 +799,3 @@ jobs:
         run: test "$PVM_FUZZ_RESULT" = success
 
   # Experimental execution-tier qualification is manual and independent of production performance gates.
-  prepared-pvm:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'prepared-pvm' }}
-    name: Perf / PVM Prepared
-    timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-24.04
-    env:
-      PVM_PREPARED_BASELINE: 7115dfd067c882577230bc3ba3bc6806de8d3a34
-    steps:
-      - name: Checkout exact candidate and baseline history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Install the pinned diagnostic tool
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3
-      - name: Check prepared opcode and host parity
-        run: make unit SUITE=pvm_prepared_blocks
-      - name: Qualify prepared execution and compare interpreted engines
-        run: make profile-pvm-prepared
-      - name: Show prepared execution comparison
-        if: always()
-        run: |
-          if test -f build/tests/pvm-prepared-blocks/summary.md; then
-            cat build/tests/pvm-prepared-blocks/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain prepared execution evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-prepared-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-prepared-blocks/*.log
-            build/tests/pvm-prepared-blocks/*.json
-            build/tests/pvm-prepared-blocks/*.callgrind*
-            build/tests/pvm-prepared-blocks/summary.md
-            build/tests/pvm-prepared-blocks/generated-source/
-            build/tests/pvm-prepared-blocks/generated-source-baseline/
-            build/tests/native/selected/pvm_prepared_blocks.log

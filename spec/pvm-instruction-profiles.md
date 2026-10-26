@@ -1,5 +1,9 @@
 # Checked PVM instruction profiles
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 `make profile-pvm-guests` is an opt-in Linux x86-64 diagnostic. Manual CI
 `suite=profile-pvm` selects a separate Ubuntu24.04 runner, installs the exact
 Ubuntu Valgrind package `1:3.22.0-0ubuntu3`, and requires `valgrind-3.22.0`.
