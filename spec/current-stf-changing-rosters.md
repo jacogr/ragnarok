@@ -38,6 +38,7 @@ erasure shards remain tied to the current population.
 | Unresolved cycles/published anchors through code arrival and exact row expiry |224|[Late-code cycles](current-stf-late-cycles.md)|
 | Selected posterior request relevance and actual extrinsic accounting |100|[Selected posterior request relevance and actual extrinsic accounting](current-stf-late-relevance.md)|
 | Strict code expunge, recreated requests and later actual reactivation |144|[Strict code expunge, recreated requests and later actual reactivation](current-stf-late-reactivation.md)|
+| Retained old-code reports after delayed selected upgrades |192|[Late-code upgrades](current-stf-late-upgrades.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|

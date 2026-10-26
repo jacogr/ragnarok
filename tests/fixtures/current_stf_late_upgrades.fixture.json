@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_UPGRADES",
+  "files": {
+    "current-stf-late-upgrades.json": "12e787352122ab5bb24b143d01b111148cea3f222e22c2632b6109aac643357e"
+  },
+  "target": "current-stf-late-upgrades.json"
+}
