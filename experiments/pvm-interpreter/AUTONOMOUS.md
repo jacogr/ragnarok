@@ -183,3 +183,26 @@ claim a CPU cause from unchanged source paths. First-use frame/plan costs remain
 Keep this startup benefit on the local learning branch; no uniform-win or production claim.
 8native/8ASan groups,4320new branch cases plus stronger10560entry quota CPU checks,6fresh
 image pairs,208timed/4negative controls and stable seals all pass.
+
+## Trial8 — complete charged register/branch shapes
+
+Separate full-state block trace at34bf60be observes dominant init shapes[200,139,82]21,304,033,
+[151,152,173]21,303,767 and[131,88]21,295,001visits. All diagnostic clocks excluded. These
+are independently decoded shapes, never input hashes/immediate values or skipped guest work.
+
+Try cold headers that preserve original dispatch until the terminal branch positively caches
+both arms. Then use a charged whole-shape worker with shared reservation/arithmetic/branch
+equations. Preserve all original nodes/layout; failed prices and other shapes unchanged.
+Partial quotas always use original handlers/barriers, before any fused arithmetic. No recursive
+block handoffs, native code generation or unchecked memory. Refactor charge prefix once into
+inline flatReserve, shared by original and new headers. Focused entry checks pass:4320existing
+branch cases gain bounded warm-before-quota runs;3888new three-op cases exercise immediate/
+register comparisons, aliases, signed bits, gas, both arms and invalid targets.
+
+Trial8 verdict: reject composition lowering.200timed/4negative and8native/8ASan groups
+pass; repeated images/source seals stable. Init reused -0.99%, but tick+3.53%, Pinky+2.07%,
+Minimal+2.48%. Actual ARM64 has BL flatReserve in all3hot shape bodies and BL fused-register
+worker in2. Static calls do not prove the CPU cause alone. Restore runtime34bf60be; retain
+stronger warm-prefix witnesses and block/profile/count evidence. Next bounded variant expands
+the same reservation/compute equations through templates; verify actual call removal before
+repeating timing. No native code generation or semantic shortcut.

@@ -82,7 +82,7 @@ proc same(actual: FlatFrame, expected: StepResult) =
         assert ai.access == bi.access and ai.bytes == bi.bytes
   checkFlatSource(actual)
 
-proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
+proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64, warm: bool = false) =
   ## A fresh and reused handler stream see the same original registers and private input reset on each call.
   let info = machineInfo(input).value
   let mem = memoryOf(input).value
@@ -96,6 +96,14 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
       assert next.error == StepError.None and next.value.exit == StepExit.Continued
       expectedPrefix = next.value.machine
   var frame = newFlatFrame(prepared, pages, info)
+  if warm:
+    # Warm with sufficient gas and a bounded independent invocation, then restore the actual caller state below.
+    var warmInfo = info
+    warmInfo.gas = MachineGas(high(uint64))
+    warmInfo.blockCharged = false
+    resetFlatFrame(frame, warmInfo)
+    runFlat(frame, 64)
+    checkFlatSource(frame)
   for repeat in 0..<2:
     resetFlatFrame(frame, info)
     runFlat(frame, steps)
@@ -182,6 +190,37 @@ for mode in [0, 1, 2]:
           for budget in [0'u64, 1'u64, 2'u64, 3'u64, 4'u64, 7'u64, 10'u64, 16'u64]:
             # Fresh/reused pairs exercise cold arm validation, cached branches, signed32 wrap, aliases and quota restoration.
             compare(input, plan, budget, 100000)
+            compare(input, plan, budget, 100000, true)
             inc branchCases
 assert branchCases == 4320
 echo "PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU"
+
+
+var shapeCases = 0
+for family in [0, 1]:
+  for mode in [0, 1, 2]:
+    # These two independently encoded three-op blocks cover immediate and register terminal comparisons.
+    let first = if family == 0: @[200'u8, 0x21, 3] else: @[151'u8, 0x11, 1]
+    let second = if family == 0: @[139'u8, 0x33, 1] else: @[152'u8, 0x11, 1]
+    var branch = if family == 0: @[82'u8, 0x13, 3] else: @[173'u8, 0x21]
+    immediate(branch, if mode == 0: (if family == 0: 12'u64 else: 11'u64)
+      elif mode == 1: 0xfffffffa'u64 else: 1'u64)
+    let source = owner([first, second, branch, @[51'u8, 7, 17], @[50'u8, 0], @[51'u8, 7, 34], @[
+        50'u8, 0]])
+    let plan = cache(source)
+    for bits in [0'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64,
+        0x8000000000000000'u64, high(uint64)]:
+      var selected = registers
+      selected[1] = RegisterValue(bits)
+      selected[2] = RegisterValue(bits xor 0x55555555'u64)
+      for paid in [false, true]:
+        for gas in [0'u64, 1'u64, 2'u64, 3'u64, 1000'u64, high(uint64)]:
+          let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(0),
+            gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+          for budget in 0'u64..8'u64:
+            # Warm before short quotas as well as after full runs: partial fallback must precede every skipped operation.
+            compare(input, plan, budget, 100000)
+            compare(input, plan, budget, 100000, true)
+            inc shapeCases
+assert shapeCases == 3888
+echo "PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU"
