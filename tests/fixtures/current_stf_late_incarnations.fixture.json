@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_INCARNATIONS",
+  "files": {
+    "current-stf-late-incarnations.json": "4a52e229702ca030f58a6ff370f3937f8f384ffaba93f5a8d4e89b392fefeddb"
+  },
+  "target": "current-stf-late-incarnations.json"
+}
