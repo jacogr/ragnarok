@@ -10,7 +10,7 @@ import ../../src/app/[fuzz_backend, fuzz_rejection, candidate]
 import ../../src/chain/[genesis, parameters, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
 import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
-    guarantee_credentials, block_transition, block_admission, safrole_transition,
+    guarantee_credentials, block_transition, block_admission, safrole_transition, availability,
     accumulation_current_completion,
     accumulation_current_recent, accumulation_current_activity, accumulation_current_authorization,
     accumulation_current_driver, accumulation_current_round]
@@ -50,6 +50,12 @@ proc refusalReason(failure: CurrentCandidateResult): string =
   case blockFailure.error
   of BlockTransitionError.DisputesFailure:
     "dispute/" & $blockFailure.disputesError
+  of BlockTransitionError.AvailabilityFailure:
+    let assurance = blockFailure.availabilityError
+    if assurance.error == AvailabilityTransitionError.ContextFailure:
+      "assurance/" & $assurance.contextError
+    else:
+      "availability/" & $assurance.error # Only the actual guarded availability cause can satisfy this planned refusal.
   of BlockTransitionError.SafroleFailure:
     let safrole = blockFailure.safroleError
     case safrole.error

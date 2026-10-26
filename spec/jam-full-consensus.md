@@ -251,3 +251,24 @@ ordinal1022. Unchanged upstream minifuzz passed three sessions,15 imports and
 42 exact exchanges with its real mismatch control. All57 focused Python tests,
 fresh formatting, driver semantics and inventory passed. GP checks and earlier
 fixture answers remain unchanged.
+
+## Verdicts, availability and guests in one block
+
+Three distinct real pending reports receive good/bad/wonky verdicts in the same
+block as a genuine availability quorum. Assurances for the newly canceled bad
+report must fail at the actual availability stage and leave the whole pre-block
+map intact, including all assignments and judgments. Cancellation therefore
+precedes assurance-bit validation rather than being repaired afterward.
+
+The valid block assures only the surviving good report. Its683 voters explicitly
+include newly faulted identity1022, still eligible through the original active
+roster. The guest then executes with storage/yield, panic rollback or checkpoint
+retention; extrinsic judgments and Phi persist even when guest writes roll back.
+Complete outputs, gas, statistics, namespaces, MMR and accumulated history derive
+independently before replay. Earlier guest helper defaults and fixtures remain exact.
+
+Observed verdict/availability validation: all15 new complete-map steps and12 unchanged
+guest steps passed checked ARC/Clang ThinLTO replay. Unchanged upstream minifuzz
+passed three sessions,15 imports and42 exact exchanges with its real mismatch
+control. All57 focused Python tests, fresh formatting, driver semantics and
+inventory passed. GP checks and previous fixture answers remain unchanged.
