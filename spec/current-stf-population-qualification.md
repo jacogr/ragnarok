@@ -140,8 +140,9 @@ conformance.
 Observed verification (2026-10-26): `make unit SUITE=pvm_accumulation_read`
 passes on macOS with checked ARC/Clang release and all four added guest variants.
 The suite retains its original output contract and 1,000-cycle ARC release check:
-2,344,640 occupied bytes before and after. `make format` passes for 4,822 Nim
-sources and the Rust crate. The source audit matches all 21 listed identifiers and
+2,344,640 occupied bytes before and after. The native verdict is reused after a
+comment/whitespace-only formatter cleanup. Both `make format` and
+`make format-check` pass for 4,822 Nim sources and the Rust crate. The source audit matches all 21 listed identifiers and
 names against the pinned GP and actual dispatcher; all 75 matrix links and 26
 named Python assertions resolve. Changed-document relative links and
 `git diff --check` pass. No native production source, protocol pin or default
@@ -151,4 +152,5 @@ exact-head PR Smoke remains separate CI evidence.
 Retained local records: `build/db5-qualification-audit.json`,
 `build/db5-qualification-read.log`,
 `build/tests/native/selected/pvm_accumulation_read.log` and
-`build/db5-qualification-format.log`.
+`build/db5-qualification-format.log` and
+`build/db5-qualification-format-check.log`.

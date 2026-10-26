@@ -263,11 +263,12 @@ assert run(source(keyLength = 6917529027641081856'u64, length = 2305843009213693
 var depositWire = encodeParameters(pvmParameters())
 for field, amount in [2'u64, 3, 10]:
   for i in 0..<8:
-    depositWire[field*8+i] = byte((amount shr (8*i)) and
-        255) # Preserve every other explicit parameter.
+    # Preserve every other explicit parameter with one independently encoded E8 field.
+    depositWire[field*8+i] = byte((amount shr (8*i)) and 255)
 let deposits = decodeParameters(depositWire).value
-      # A read after write observes the current regular map even after checkpoint divergence.
-      # Population changes are upstream of this invocation; the observer must not retain its bootstrap map.
+
+# A read after write observes the current regular map even after checkpoint divergence.
+# Population changes are upstream of this invocation; the observer must not retain its bootstrap map.
 for checkpoint in [false, true]:
   for panic in [false, true]:
     # Keep the raw key stable while replacing three authored bytes with their two-byte suffix.
