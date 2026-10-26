@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,19 +22,21 @@ def format_source(path):
                           input=path.read_bytes(), capture_output=True, check=True).stdout
 
 
-# Cargo selects project-owned Rust modules; the explicit toolchain pin also applies outside Make.
+# The optional ABI is formatted without resolving dependencies absent from minimal smoke setup.
 def format_rust(check):
     toolchain = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
-    passed = True
-    for crate in ('bandersnatch', 'polkavm'):
-        # Every maintained Rust ABI uses the same pristine pinned formatter.
-        arguments = ['rustup', 'run', toolchain, 'cargo', 'fmt', '--manifest-path',
-                     str(ROOT/'native'/crate/'Cargo.toml')]
-        if check:
-            arguments += ['--', '--check']
-        passed = subprocess.run(arguments, cwd=ROOT).returncode == 0 and passed
-    return passed
-
+    arguments = ['rustup', 'run', toolchain, 'cargo', 'fmt', '--manifest-path',
+                 str(ROOT/'native/bandersnatch/Cargo.toml')]
+    if check:
+        arguments += ['--', '--check']
+    passed = subprocess.run(arguments, cwd=ROOT).returncode == 0
+    manifest = tomllib.loads((ROOT/'native/polkavm/Cargo.toml').read_text())
+    # Use the same pinned rustfmt, reading only our owned edition/source instead of cargo metadata.
+    arguments = ['rustup', 'run', toolchain, 'rustfmt', '--edition', manifest['package']['edition'],
+                 str(ROOT/'native/polkavm/src/lib.rs')]
+    if check:
+        arguments += ['--check']
+    return subprocess.run(arguments, cwd=ROOT).returncode == 0 and passed
 
 
 # Include native tests and intentional compile-failure fixtures in the same canonical style.

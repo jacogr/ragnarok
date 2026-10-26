@@ -193,6 +193,22 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('build/tests/pvm-runtime-doom/results.json', section)
         self.assertIn('build/tests/pvm-runtime-measure/results.json', section)
 
+    def test_optional_rust_formatting_does_not_resolve_unprovisioned_vendor(self):
+        """Minimal smoke formatting must not require the optional upstream Cargo dependency checkout."""
+        import format as formatting
+        commands = []
+        def run(arguments, **options):
+            """Reject optional Cargo metadata while observing formatter-only command planning."""
+            commands.append(arguments)
+            if 'cargo' in arguments and str(ROOT/'native/polkavm/Cargo.toml') in arguments:
+                raise AssertionError('optional cargo metadata requires an absent vendor checkout')
+            return subprocess.CompletedProcess(arguments, 0)
+        with patch.object(formatting.subprocess, 'run', side_effect=run):
+            self.assertTrue(formatting.format_rust(True))
+        optional = next(arguments for arguments in commands if 'rustfmt' in arguments)
+        self.assertIn(str(ROOT/'native/polkavm/src/lib.rs'), optional)
+        self.assertIn('--check', optional)
+
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
