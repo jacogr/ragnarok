@@ -209,6 +209,9 @@ Python discovery's deadline and avoids a separate lazy fetch per fixture. Warm/f
 perform no fetch. Other groups retain focused setup. The sparse working tree, immutable pin and per-blob SHA-256 checks remain
 unchanged; no second fixture registry is introduced. Python discovery runs references and
 orchestration tests without compiling native binaries, so native LTO settings do not affect it.
+The full discovery process has a 30-minute deadline, separate from the 60-minute CI job limit.
+A timeout retains partial test progress and a fresh failed report; individual child-command limits
+remain unchanged.
 
 Runtime failure suites keep ordinary case identities in `tools/failure_suites/<family>.json`, one case per
 line. Suite defaults specify argument fields, labels and diagnostics; exceptional cases override
