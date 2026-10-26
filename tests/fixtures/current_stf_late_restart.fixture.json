@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_RESTART",
+  "files": {
+    "current-stf-late-restart.json": "0b766fb048b1558fddf49b0e53399450d83ca21274ced2664c79a567311111bd"
+  },
+  "target": "current-stf-late-restart.json"
+}
