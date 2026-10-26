@@ -9,6 +9,7 @@ polkajam-fuzz engine remains a separate prerequisite. Make owns all dependency s
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -16,6 +17,7 @@ import sys
 import time
 from types import SimpleNamespace
 from native_checks import NativeChecks, ROOT, announce
+from ci_shards import shuffled
 from runtime_provenance import runtime_sources
 from setup_nimony import installed
 from jam_fuzz_corpora import CORPORA
@@ -23,6 +25,35 @@ from jam_fuzz_corpora import CORPORA
 BUILD = ROOT/'build/tests/jam-fuzzer-interface'
 # The dedicated source-owned registry supplies the complete Fuzz inventory, disjoint from Unit.
 CASES = tuple(sorted(CORPORA.tasks))
+
+
+
+def parse_shard(value):
+    """Accept only the three complete CI partitions; omission preserves complete local execution."""
+    if not value:
+        return None
+    shard = tuple(int(part) for part in value.split('/'))
+    partition(shard)
+    return shard
+
+
+def partition(shard=None, seed=None):
+    """Randomize native corpora over two owners; the third owns all socket/upstream exchanges."""
+    if not CASES:
+        raise ValueError('Empty JAM fuzz plan')
+    if shard is None:
+        return CASES, True
+    if (not isinstance(shard, (tuple, list)) or len(shard) != 2
+            or any(type(value) is not int for value in shard) or shard[1] != 3
+            or not 1 <= shard[0] <= 3):
+        raise ValueError('JAM fuzz shard must be index/3 with 1 <= index <= 3')
+    names = shuffled(CASES, seed, 'jam-fuzz')
+    if shard[0] == 3:
+        return (), True
+    selected = tuple(names[shard[0]-1::2])
+    if not selected:
+        raise ValueError('Empty JAM fuzz corpus shard')
+    return selected, False
 
 
 def corpus_verified(result):
@@ -170,11 +201,18 @@ def minifuzz_verified(result):
 
 def passed(report):
     """Require every declared transcript plus complete real-entry guest execution, never a success flag alone."""
+    try:
+        names, integration = partition(report.get('jam_fuzz_shard'), report.get('shard_seed'))
+    except ValueError:
+        return False
     cases = report.get('cases', {})
     socket = report.get('socket', {})
-    return (bool(CASES) and set(cases) == set(CASES)
-            and all(corpus_verified(cases[name]) for name in CASES)
-            and socket.get('passed') is True and guest_socket_verified(socket.get('guests'))
+    if set(cases) != set(names) or not all(corpus_verified(cases[name]) for name in names):
+        return False
+    if not integration:
+        # A corpus-only report cannot claim another shard's socket or upstream verdict.
+        return 'socket' not in report and 'minifuzz' not in report
+    return (socket.get('passed') is True and guest_socket_verified(socket.get('guests'))
             and minifuzz_verified(report.get('minifuzz')))
 
 
@@ -184,9 +222,18 @@ def summary(report):
              'Interface checks: '+('passed' if passed(report) else 'failed'), '',
              'Live generated campaign validation: pending compatible polkajam-fuzz engine.', '',
              '| Check | Result |', '| --- | --- |']
-    for name in CASES:
+    try:
+        names, integration = partition(report.get('jam_fuzz_shard'), report.get('shard_seed'))
+    except ValueError:
+        return '# JAM fuzzer interface\n\nInvalid shard report.\n'
+    if report.get('jam_fuzz_shard') is not None:
+        index, count = report['jam_fuzz_shard']
+        lines[1:1] = [f'Scope: shard {index}/{count}; seed '+str(report.get('shard_seed')), '']
+    for name in names:
         result = report.get('cases', {}).get(name)
         lines.append('| '+name+' | '+('passed' if corpus_verified(result) else 'failed or missing')+' |')
+    if not integration:
+        return '\n'.join(lines)+'\n'
     lines.append('| real-entry socket | '+('passed' if report.get('socket', {}).get('passed') else 'failed or missing')+' |')
     lines.append('| upstream minifuzz whole-map replay | '+('passed' if minifuzz_verified(report.get('minifuzz')) else 'failed or missing')+' |')
     upstream = report.get('minifuzz')
@@ -208,16 +255,24 @@ def summary(report):
 
 def main():
     """Provision independent native owners, execute registered cases sequentially and retain fresh failure evidence."""
-    BUILD.mkdir(parents=True, exist_ok=True)
-    (BUILD/'results.json').unlink(missing_ok=True)
-    (BUILD/'summary.md').unlink(missing_ok=True)
+    shard = parse_shard(os.environ.get('JAM_FUZZ_SHARD'))
+    seed = os.environ.get('CI_SHARD_SEED') or None
+    names, integration = partition(shard, seed)
+    folder = BUILD if shard is None else BUILD/f'{shard[0]}-of-{shard[1]}'
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder/'results.json').unlink(missing_ok=True)
+    (folder/'summary.md').unlink(missing_ok=True)
     started = time.monotonic()
     report = dict(status='failed', cases={}, engine_validation='pending',
                   scope='fixed current-profile interface cases; no generated campaign',
                   environment=dict(system=platform.system(), machine=platform.machine()))
+    if shard is not None:
+        report['jam_fuzz_shard'] = shard
+        report['shard_seed'] = seed
+        print(f'JAM fuzz shard {shard[0]}/3; shuffle seed: {seed}', flush=True)
     try:
         compiler, _ = installed()
-        checks = NativeChecks(BUILD, reuse_builds=True)
+        checks = NativeChecks(folder, reuse_builds=True)
         report['compiler'] = checks.command([compiler, '--version'], 'compiler')
         report['revision'] = checks.command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -227,29 +282,32 @@ def main():
         from bandersnatch_native import prepare as prepare_bandersnatch
         from nimony_quic import prepare as prepare_quic
         import jam_fuzz_checks
-        crypto, _, report['crypto_native'] = prepare_crypto(BUILD)
-        bs, _, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
+        crypto, _, report['crypto_native'] = prepare_crypto(folder)
+        bs, _, report['bandersnatch_native'] = prepare_bandersnatch(folder)
         quic, _, report['quic_native'] = prepare_quic()
         libraries = dict(crypto=crypto, bandersnatch=bs, quic=quic)
-        for name in CASES:
+        for name in names:
             # These are the registered independent references; native results never calculate expected maps.
             report['cases'][name] = CORPORA.tasks[name](compiler, report, checks, libraries)
             if not report['cases'][name]['passed']:
                 raise AssertionError('Failed interface corpus: '+name)
-        context = SimpleNamespace(compiler=compiler, checks=checks, report=report, crypto=crypto, bs=bs, quic=quic)
-        jam_fuzz_checks.prepare_peer(context)
-        jam_fuzz_checks.prepare_fuzzer_policy(context)
-        report['socket'] = jam_fuzz_checks.application_fuzzer_interface(context)
-        jam_fuzz_checks.prepare_minifuzz(context)
-        report['minifuzz'] = jam_fuzz_checks.application_minifuzz_interface(context)
+        if integration:
+            context = SimpleNamespace(compiler=compiler, checks=checks, report=report, crypto=crypto, bs=bs, quic=quic)
+            jam_fuzz_checks.prepare_peer(context)
+            jam_fuzz_checks.prepare_fuzzer_policy(context)
+            print('JAM fuzz real-entry socket checks', flush=True)
+            report['socket'] = jam_fuzz_checks.application_fuzzer_interface(context)
+            jam_fuzz_checks.prepare_minifuzz(context)
+            print('JAM fuzz upstream minifuzz checks', flush=True)
+            report['minifuzz'] = jam_fuzz_checks.application_minifuzz_interface(context)
         report['status'] = 'checks-passed' if passed(report) else 'failed'
     except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
         # A partial invocation cannot reuse another group's success or an earlier results file.
         report['failure'] = repr(error)
     finally:
         report['elapsed_seconds'] = round(time.monotonic()-started, 6)
-        (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-        (BUILD/'summary.md').write_text(summary(report))
+        (folder/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+        (folder/'summary.md').write_text(summary(report))
     success = report['status'] == 'checks-passed' and passed(report)
     announce('JAM fuzzer interface verification', success)
     return 0 if success else 1

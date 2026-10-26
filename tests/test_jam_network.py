@@ -134,6 +134,9 @@ class NetworkReadiness(unittest.TestCase):
         """The Fuzz aggregate requires its independent Network child; E2E/Testnet keeps its own runner."""
         workflow = (ROOT/'.github/workflows/ci.yml').read_text()
         self.assertIn('{"name":"JAM Network","group":"jam-network"}',workflow)
+        for index in range(1,4):
+            # The dedicated network task must preserve every independently scheduled upstream JAM partition.
+            self.assertIn('{"name":"JAM ('+str(index)+'/3)","group":"jam-interface","shard":"'+str(index)+'/3"}',workflow)
         self.assertIn("if: matrix.family.group == 'jam-network'",workflow)
         self.assertIn('run: make check-jam-network',workflow)
         self.assertIn('jam-network-${{ github.run_attempt }}',workflow)

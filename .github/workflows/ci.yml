@@ -218,10 +218,10 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 18
+      max-parallel: 19
       matrix:
         os: *ci-os
-        family: ${{ fromJSON('[{"name":"Shard (1/16)","shard":"1/16","group":"suites"},{"name":"Shard (2/16)","shard":"2/16","group":"suites"},{"name":"Shard (3/16)","shard":"3/16","group":"suites"},{"name":"Shard (4/16)","shard":"4/16","group":"suites"},{"name":"Shard (5/16)","shard":"5/16","group":"suites"},{"name":"Shard (6/16)","shard":"6/16","group":"suites"},{"name":"Shard (7/16)","shard":"7/16","group":"suites"},{"name":"Shard (8/16)","shard":"8/16","group":"suites"},{"name":"Shard (9/16)","shard":"9/16","group":"suites"},{"name":"Shard (10/16)","shard":"10/16","group":"suites"},{"name":"Shard (11/16)","shard":"11/16","group":"suites"},{"name":"Shard (12/16)","shard":"12/16","group":"suites"},{"name":"Shard (13/16)","shard":"13/16","group":"suites"},{"name":"Shard (14/16)","shard":"14/16","group":"suites"},{"name":"Shard (15/16)","shard":"15/16","group":"suites"},{"name":"Shard (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/2)","shard":"","group":"corpus","corpus_shard":"1/2"},{"name":"Corpus (2/2)","shard":"","group":"corpus","corpus_shard":"2/2"}]') }}
+        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/3)","shard":"","group":"corpus","corpus_shard":"1/3"},{"name":"Corpus (2/3)","shard":"","group":"corpus","corpus_shard":"2/3"},{"name":"Corpus (3/3)","shard":"","group":"corpus","corpus_shard":"3/3"}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
       CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
@@ -275,7 +275,7 @@ jobs:
 
   failures:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
-    name: Contract / Shard (${{ matrix.shard }})
+    name: Contract / Test (${{ matrix.shard }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
@@ -936,10 +936,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM","group":"jam-interface"},{"name":"JAM Network","group":"jam-network"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM (1/3)","group":"jam-interface","shard":"1/3"},{"name":"JAM (2/3)","group":"jam-interface","shard":"2/3"},{"name":"JAM (3/3)","group":"jam-interface","shard":"3/3"},{"name":"JAM Network","group":"jam-network"}]') }}
     runs-on: ubuntu-latest
     env:
       FUZZ_RUNS: "10000"
+      JAM_FUZZ_SHARD: ${{ matrix.family.shard }}
+      CI_SHARD_SEED: ${{ github.run_id }}
     steps:
       - *checkout
       - *python
@@ -975,8 +977,9 @@ jobs:
       - name: Show JAM interface verdict and pending engine validation
         if: always() && matrix.family.group == 'jam-interface'
         run: |
-          if test -f build/tests/jam-fuzzer-interface/summary.md; then
-            cat build/tests/jam-fuzzer-interface/summary.md >> "$GITHUB_STEP_SUMMARY"
+          summary="build/tests/jam-fuzzer-interface/${JAM_FUZZ_SHARD/\//-of-}/summary.md"
+          if test -f "$summary"; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'JAM interface verification did not complete; live engine validation remains pending.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -984,14 +987,14 @@ jobs:
         if: always() && matrix.family.group == 'jam-interface'
         uses: *upload-artifact
         with:
-          name: jam-fuzzer-interface-${{ github.run_attempt }}
+          name: jam-fuzzer-interface-${{ strategy.job-index }}-${{ github.run_attempt }}
           retention-days: 14
           if-no-files-found: warn
           path: |
             build/ci/*.log
             build/tests/jam-fuzzer-interface/**/*.log
-            build/tests/jam-fuzzer-interface/results.json
-            build/tests/jam-fuzzer-interface/summary.md
+            build/tests/jam-fuzzer-interface/**/results.json
+            build/tests/jam-fuzzer-interface/**/summary.md
 
       - name: Verify issue215 JAM network target readiness
         if: matrix.family.group == 'jam-network'

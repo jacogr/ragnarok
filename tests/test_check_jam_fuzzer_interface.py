@@ -3,6 +3,7 @@
 
 """The opt-in JAM interface group fails closed and never claims live engine campaign validation."""
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -71,30 +72,115 @@ class JamInterfaceCI(unittest.TestCase):
             self.assertNotIn(setup, PLAN.names('setup'))
 
     def test_dedicated_runner_executes_complete_plan_once(self):
-        """Moving ownership preserves standalone setup and every native, socket and upstream verdict."""
+        """Every private shard runs exactly its complete plan; unsharded local execution still owns all work."""
         from contextlib import ExitStack
         from unittest.mock import Mock
         import jam_fuzz_checks
-        complete = self.complete()
-        tasks = {name: Mock(return_value=complete['cases'][name]) for name in interface.CASES}
-        with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
-            root = Path(folder)
-            stack.enter_context(patch.object(interface, 'BUILD', root))
-            stack.enter_context(patch.object(interface, 'installed', return_value=(root/'compiler', None)))
-            stack.enter_context(patch.object(interface, 'runtime_sources', return_value=[]))
-            stack.enter_context(patch.object(interface, 'NativeChecks')).return_value.command.return_value = dict(output='fixture', exit_code=0)
-            stack.enter_context(patch('nimony_crypto.prepare', return_value=(root/'crypto', None, {})))
-            stack.enter_context(patch('bandersnatch_native.prepare', return_value=(root/'bs', None, {})))
-            stack.enter_context(patch('nimony_quic.prepare', return_value=(root/'quic', root/'certs', {})))
-            stack.enter_context(patch.dict(CORPORA.tasks, tasks, clear=True))
-            setups = [stack.enter_context(patch.object(jam_fuzz_checks, name))
-                      for name in ('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz')]
-            socket = stack.enter_context(patch.object(jam_fuzz_checks, 'application_fuzzer_interface', return_value=complete['socket']))
-            minifuzz = stack.enter_context(patch.object(jam_fuzz_checks, 'application_minifuzz_interface', return_value=complete['minifuzz']))
-            self.assertEqual(interface.main(), 0)
-            self.assertTrue(interface.passed(json.loads((root/'results.json').read_text())))
-        for operation in (*tasks.values(), *setups, socket, minifuzz):
-            operation.assert_called_once()
+        for shard in (None, (1, 3), (2, 3), (3, 3)):
+            complete = self.complete()
+            selected, integration = interface.partition(shard, 'seed')
+            tasks = {name: Mock(return_value=complete['cases'][name]) for name in interface.CASES}
+            with self.subTest(shard=shard), tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
+                root = Path(folder)
+                stack.enter_context(patch.dict(os.environ, JAM_FUZZ_SHARD='' if shard is None else f'{shard[0]}/3', CI_SHARD_SEED='seed'))
+                stack.enter_context(patch.object(interface, 'BUILD', root))
+                stack.enter_context(patch.object(interface, 'installed', return_value=(root/'compiler', None)))
+                stack.enter_context(patch.object(interface, 'runtime_sources', return_value=[]))
+                stack.enter_context(patch.object(interface, 'NativeChecks')).return_value.command.return_value = dict(output='fixture', exit_code=0)
+                stack.enter_context(patch('nimony_crypto.prepare', return_value=(root/'crypto', None, {})))
+                stack.enter_context(patch('bandersnatch_native.prepare', return_value=(root/'bs', None, {})))
+                stack.enter_context(patch('nimony_quic.prepare', return_value=(root/'quic', root/'certs', {})))
+                stack.enter_context(patch.dict(CORPORA.tasks, tasks, clear=True))
+                setups = [stack.enter_context(patch.object(jam_fuzz_checks, name))
+                          for name in ('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz')]
+                socket = stack.enter_context(patch.object(jam_fuzz_checks, 'application_fuzzer_interface', return_value=complete['socket']))
+                minifuzz = stack.enter_context(patch.object(jam_fuzz_checks, 'application_minifuzz_interface', return_value=complete['minifuzz']))
+                self.assertEqual(interface.main(), 0)
+                workspace = root if shard is None else root/f'{shard[0]}-of-3'
+                report = json.loads((workspace/'results.json').read_text())
+                self.assertTrue(interface.passed(report))
+                self.assertEqual(set(report['cases']), set(selected))
+                self.assertEqual(report.get('jam_fuzz_shard'), None if shard is None else list(shard))
+                self.assertEqual('socket' in report, integration)
+                self.assertEqual('minifuzz' in report, integration)
+            for name, operation in tasks.items():
+                self.assertEqual(operation.call_count, int(name in selected))
+            for operation in (*setups, socket, minifuzz):
+                self.assertEqual(operation.call_count, int(integration))
+
+    def test_randomized_shards_and_exact_verdicts(self):
+        """All corpora have one reproducible owner; partial or foreign evidence cannot satisfy another scope."""
+        import copy
+        import random
+        state = random.getstate()
+        for seed in ('seed', 'other'):
+            plans = [interface.partition((index, 3), seed) for index in (1, 2, 3)]
+            self.assertEqual(plans, [interface.partition((index, 3), seed) for index in (1, 2, 3)])
+            self.assertFalse(set(plans[0][0]) & set(plans[1][0]))
+            self.assertEqual(set(plans[0][0]) | set(plans[1][0]), set(interface.CASES))
+            self.assertEqual(plans[2], ((), True))
+            for index, (names, integration) in enumerate(plans, 1):
+                report = self.complete()
+                report.update(jam_fuzz_shard=[index, 3], shard_seed=seed)
+                report['cases'] = {name: report['cases'][name] for name in names}
+                if not integration:
+                    del report['socket'], report['minifuzz']
+                self.assertTrue(interface.passed(report))
+                self.assertIn(f'shard {index}/3', interface.summary(report))
+                for name in names:
+                    missing = copy.deepcopy(report)
+                    del missing['cases'][name]
+                    self.assertFalse(interface.passed(missing))
+                changed = dict(report, jam_fuzz_shard=[index%3+1, 3])
+                self.assertFalse(interface.passed(changed))
+                if not integration:
+                    sibling = next(name for name in interface.CASES if name not in names)
+                    extra = copy.deepcopy(report)
+                    extra['cases'][sibling] = self.complete()['cases'][sibling]
+                    self.assertFalse(interface.passed(extra))
+                    self.assertFalse(interface.passed(dict(report, socket={})))
+                else:
+                    missing = dict(report)
+                    del missing['minifuzz']
+                    self.assertFalse(interface.passed(missing))
+        self.assertEqual(random.getstate(), state)
+        self.assertNotEqual(interface.partition((1, 3), 'seed'), interface.partition((1, 3), 'other'))
+        for value in ('0/3', '4/3', '1/2', '1/4', '1', 'x/3'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                interface.parse_shard(value)
+        for seed in ('', ' ', 1):
+            with self.assertRaises(ValueError):
+                interface.partition((3, 3), seed)
+
+    def test_invalid_shard_refuses_before_setup(self):
+        """Bad selectors and seeds cannot prepare native dependencies or publish a successful partial result."""
+        for shard, seed in (('1/2', 'seed'), ('0/3', 'seed'), ('1/3', ' ')):
+            with self.subTest(shard=shard, seed=seed), patch.dict(os.environ,
+                    JAM_FUZZ_SHARD=shard, CI_SHARD_SEED=seed), patch.object(interface, 'installed') as setup:
+                with self.assertRaises(ValueError):
+                    interface.main()
+                setup.assert_not_called()
+
+    def test_ci_summary_reads_its_private_shard(self):
+        """Execute the workflow's real summary shell so a sibling report cannot supply the displayed coverage."""
+        import subprocess
+        import textwrap
+        text = (interface.ROOT/'.github/workflows/ci.yml').read_text()
+        job = job_section(text, 'pvm-fuzz')
+        step = job.split('- name: Show JAM interface verdict and pending engine validation', 1)[1].split('      - name:', 1)[0]
+        script = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root/'summary.md'
+            for index in (1, 2, 3):
+                report = root/f'build/tests/jam-fuzzer-interface/{index}-of-3/summary.md'
+                report.parent.mkdir(parents=True)
+                report.write_text(f'private scope {index}\n')
+            for index in (1, 2, 3):
+                output.write_text('')
+                subprocess.run(['bash', '-e', '-c', script], cwd=root, check=True, timeout=10,
+                               env=dict(os.environ, JAM_FUZZ_SHARD=f'{index}/3', GITHUB_STEP_SUMMARY=str(output)))
+                self.assertEqual(output.read_text(), f'private scope {index}\n')
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -195,12 +281,23 @@ class JamInterfaceCI(unittest.TestCase):
         """PVM-only dispatch excludes the interface; both opt-in families keep their own commands and artifacts."""
         text = (interface.ROOT/'.github/workflows/ci.yml').read_text()
         job = job_section(text, 'pvm-fuzz')
-        for value in ("inputs.suite == 'fuzz-pvm'", '"name":"JAM"', "matrix.family.group == 'jam-interface'", 'run: make check-jam-fuzzer-interface', 'run: make fuzz-pvm-upstream', 'jam-fuzzer-interface-${{ github.run_attempt }}'):
+        for value in ("inputs.suite == 'fuzz-pvm'", '"name":"JAM (1/3)"', "matrix.family.group == 'jam-interface'", 'run: make check-jam-fuzzer-interface', 'run: make fuzz-pvm-upstream', 'jam-fuzzer-interface-${{ strategy.job-index }}-${{ github.run_attempt }}'):
             self.assertIn(value, job)
         self.assertIn("if: matrix.family.group == 'pvm'", job)
         self.assertIn('fail-fast: false', job)
         self.assertIn('needs: [pvm-fuzz]', job_section(text, 'fuzz-status'))
         self.assertNotIn('continue-on-error', job)
+        from workflow_fixtures import selected_families, event_context
+        families = selected_families(text, 'pvm-fuzz', event_context())
+        self.assertEqual([row['shard'] for row in families if row['group'] == 'jam-interface'], ['1/3', '2/3', '3/3'])
+        self.assertEqual(len(families), 5)
+        self.assertEqual([row for row in families if row['group'] == 'jam-network'],
+                         [dict(name='JAM Network', group='jam-network')])
+        self.assertEqual(selected_families(text, 'pvm-fuzz', event_context('workflow_dispatch', suite='fuzz-pvm')),
+                         [dict(name='PVM', group='pvm')])
+        self.assertIn('JAM_FUZZ_SHARD: ${{ matrix.family.shard }}', job)
+        self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', job)
+        self.assertIn('build/tests/jam-fuzzer-interface/**/results.json', job)
         make = (interface.ROOT/'Makefile').read_text()
         self.assertIn('check-jam-fuzzer-interface: setup check-inventory', make)
 

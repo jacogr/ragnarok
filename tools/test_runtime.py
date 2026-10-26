@@ -149,7 +149,7 @@ def main():
                         help='Run complete local verification, native suites only, or independent corpora only')
     parser.add_argument('--corpus-shard', type=parse_corpus_shard,
                         default=os.environ.get('CORPUS_SHARD') or None,
-                        help='Run one dependency-preserving randomized corpus partition, index/count (at most two)')
+                        help='Run one dependency-preserving randomized corpus partition, index/count (at most three)')
     parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD') or None,
                         help='Run one discovered unit partition, index/count (at most sixteen)')
     parser.add_argument('--failure-shard', type=parse_failure_shard, default=os.environ.get('FAILURE_SHARD'),
