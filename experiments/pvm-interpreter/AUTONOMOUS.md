@@ -288,3 +288,17 @@ other7groups have unchanged tests and dependencies, so retain their source-ident
 Measured runtime combines stable coordinates and shared branch-table expansion. Do not
 attribute49% to either alone yet. Next controlled comparison keeps the new branch expansion
 but restores type-guarded dynamic coordinates; prefer simpler code if performance is equal.
+
+## Trial12 — dynamic-coordinate attribution control
+
+Parentcb5fd0dc. Keep shared expanded comparison/reservation/register equations and all new
+witnesses; restore only type-guarded dynamic-cycle worker from258df174, adapted to the
+new branch template signature. This tests whether fixed-record coordinates are necessary
+for the49% result. No other runtime change; prefer simpler dynamic code if qualified equal.
+
+Trial12verdict: reject dynamic-coordinate control. With new branch expansion unchanged,
+all6reused init pairs regress91.61..93.95%, median92.89%. Thus stable coordinates are
+necessary for this measured gain; hardware cause not proved. Complete200timed/4negative,
+8native/8ASan including51840truth cases,6fresh image pairs and source/full-state controls
+pass; qualification manifests/logs/image hashes archived. Restore runtime exactlycb5fd0dc.
+Retain accepted source-identical full/scoped passes; no unnecessary rerun on restoration.
