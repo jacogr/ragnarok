@@ -21,9 +21,9 @@ RING = Path(__file__).parent/'fixtures/jam-full-population-ring-input.json'
 PLANS = ((599,600,601,1199,1200,1201),(1200,1201,1799,1800,1801))
 
 
-def original():
+def original(mode='create'):
     """Stage a reversed1020-member population before genuine offender evidence is admitted into the complete seed."""
-    parent = offenders.original();staged = list(reversed(guests.roster_records()[:1020]))
+    parent = offenders.original(mode);staged = list(reversed(guests.roster_records()[:1020]))
     parent[chapter_key(7)] = natural(len(staged))+b''.join(staged)
     return parent
 

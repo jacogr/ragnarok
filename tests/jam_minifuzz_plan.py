@@ -172,6 +172,14 @@ def jam_fuzzer_full_epochs(identity):
 
 
 @reference()
+def jam_fuzzer_full_epoch_guests(identity):
+    """Require genuine guest effects through offender filtering and physical population rotation."""
+    import jam_fuzzer_full_epoch_guests_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.MODES),spec='full')
+
+
+@reference()
 def jam_fuzzer_full_guests(identity):
     """Preserve distinct full-population guarantees, quorums and all guest outcomes."""
     import jam_fuzzer_full_guests_oracle as source
