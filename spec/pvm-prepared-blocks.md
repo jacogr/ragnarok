@@ -631,3 +631,103 @@ distinguishes reproducible instruction counts from variable execution time and w
 that its basic branch/cache simulations do not model modern hardware closely. The
 PC-deferral and bounded-loop changes were tested together; this result does not prove
 that a narrower PC-only change would regress or improve runtime.
+
+
+## Exact-tagged scalar successor hints, 2026-10-25
+
+Each prepared segment may remember the last successfully resolved successor PC
+and an index-plus-one into its owner's bounded slot array. Zero means unlearned.
+Hints contain no destination reference, handler pointer or operation index. They
+cannot form an ownership cycle or retain evicted payloads. The existing
+invocation-owned current segment survives a transfer so its hint can be inspected
+without adding another retained predecessor owner. A failed hint uses the original
+`preparedChunk` path; only successful resolution learns a destination.
+
+A hint is never authority. Before using it, execution checks the successor PC,
+index bounds, current resident owner and its exact start PC. The owning program
+and policy are fixed; a same-PC replacement in that slot is therefore a genuine
+current segment for the same source. No saved address requires generation-based
+pointer validation. Evicted, displaced, absent and changed-PC targets fall back
+to normal lookup/preparation. Host continuations, whole-block pricing, instruction
+attempts, checked memory, operation records and handlers retain their existing
+semantics. Hints are exclusive-worker mutable facts under the existing busy guard.
+
+The header grows by 16 bytes on the measured arm64 target. Its actual `sizeof`
+enters the existing minimum-payload admission, segment capacity, resident-byte,
+peak-byte and eviction accounting; storage ceilings and policies do not change.
+For the maintained guests, every block/operation/hit/eviction observation matches
+the baseline. Resident and peak bytes include the additional header payload.
+
+The prepared suite retains all 139-opcode, segment, gas, attempt, host/refusal and
+fault checks. An additional two-slot witness learns a path, executes a different
+marked entry that replaces its destination with a different register result, and
+reruns the original path. Repeated calls compare every CPU field, memory byte and
+permission with dynamic execution, including low-gas and attempt limits. The
+witness joins the existing 1,000 balanced ARC lifetime cycles.
+
+The inner loop borrows its active segment from the invocation-owned `chunk`;
+that owner remains unchanged until the iteration ends. The closed private handler
+set receives frame/operation facts and cannot mutate that local owner or the
+cache slots. No extra retain/release is needed for `active` on every segment.
+Cache replacement still uses the original owned current segment, and publication
+still stores an owned location before application callbacks. No borrow crosses a
+cache mutation or escapes a callback boundary. The full prepared/eviction/host/gas
+suite also passes checked AddressSanitizer with 1,000 balanced lifetime cycles.
+
+### Qualified local comparison
+
+The actual PR base is scalar-window PR #1679 at
+`01c4ee54525f645a0f6e434db5b27c754ef7f59b`. Current master for this comparison is
+`ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`. The final measured/promoted
+`src/pvm/step.nim` SHA-256 is `c2d39e6cde2a136da51e047937af41020cbdc6c0ec6bacfc3e4d66e164f2f737`.
+Pinned Nimony 4724f66c, ARC/Clang 21 checked release/speed with ThinLTO, Apple M1 Max.
+Every endpoint compiles through identical source/cache/output paths from fresh
+private caches. The repeated candidate image is byte-identical; rebuilding it
+after the master/base controls produces that same image again.
+
+The final 70-process comparison covers all seven maintained guest/size cases in
+both process orders, thirteen calls per process: three warmups, then ten measured
+CPU samples. All registers, gas, terminal state, page bytes/permissions and source
+snapshots pass. Wrong expected gas is rejected before a successful timing row for
+master, the actual PR base and the candidate. Earlier 112-process isolated link
+and 112-process active-borrow comparisons remain separate local evidence; two
+unsuccessful memory/hint trials were rejected without production changes.
+
+CPU milliseconds below are reused medians, forward / reverse process order:
+
+| Guest | Master prepared | #1679 prepared | This implementation | Learning port | Rust interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 203.766 / 203.044 | 179.427 / 180.035 | 168.244 / 168.486 | 98.092 / 98.107 | 95.421 / 95.465 |
+| sieve | 6.088 / 6.131 | 5.848 / 5.840 | 4.915 / 4.931 | 3.540 / 3.554 | 3.649 / 3.602 |
+| minimal | 14.032 / 14.008 | 11.650 / 11.745 | 11.464 / 11.492 | 6.490 / 6.540 | 6.199 / 6.178 |
+| memset | 6.505 / 6.504 | 6.391 / 6.472 | 5.051 / 5.006 | 3.791 / 3.773 | 3.958 / 3.982 |
+
+Against the actual PR base, Pinky uses about 6% less CPU, sieve 15.5–16.0% and
+fill 21.0–22.6%; minimal's small change remains unproven. Against master, the whole
+stack reduces CPU by about 17% Pinky, 19–20% sieve, 18% minimal and 22–23% fill. These
+are same-session comparisons, not percentages compounded from separate sessions.
+The isolated active borrow reduces fill CPU by 19.5–19.8% in both process orders;
+Pinky/minimal changes in that isolated trial remain unproven.
+
+Every block/operation/hit/eviction observation matches the actual PR base;
+resident/peak bytes include the larger successor headers. A separate clock-disabled
+four-call diagnostic copy validates hints that skip 4,338,676/5,285,285 normal
+lookups on Pinky, 253,436/353,857 on sieve, 200,002/300,005 on minimal and
+400,050/400,059 on fill. These software counts are not preparation misses or
+hardware instruction/cache/branch measurements. The diagnostic counters are
+absent from the measured and promoted implementation.
+
+Constructors and individual first-cold-owner calls stay separate from reused
+medians in the raw records. Constructor CPU brackets only the bounded empty
+prepared owner; program/initial-memory capture remains outside execution timing.
+Ragnarök creates fresh invocation memory staging inside each call; Rust's public
+reuse adapter resets input outside its execution clock. The learning port covers
+the maintained executed core, with predecoded/priced facts outside timing and an
+unbounded cache. It is an architectural control, not a complete interpreter or
+total lifecycle equivalent. The target of beating the port/Rust is not reached.
+
+Local records live under `build/pvm-port-lab/prepared-active-borrow`: isolated and
+cumulative JSON/raw logs, exact source snapshots, fresh-cache build controls,
+generated C, native and AddressSanitizer evidence. The earlier link-only record is
+under `prepared-links`. No translated core or diagnostic instrumentation ships
+with this feature. No Linux timing or hardware counter claim is made here.

@@ -425,6 +425,32 @@ let gasPosition = machineInfo(positionedGas.value.machine).value
 assert uint64(gasPosition.pc) == 772 and uint64(gasPosition.gas) == 0
 assert not gasPosition.blockCharged and uint64(gasPosition.registers[7]) == 11
 
+proc successorEvictionCycle() =
+  ## A learned predecessor stays resident while its destination slot is reused for different register results.
+  let program = owner([@[40'u8, 3], @[0'u8], @[51'u8, 7, 99], @[0'u8],
+    @[51'u8, 7, 55], @[0'u8]])
+  let prepared = cache(program, blocks = 2)
+  let entry = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
+    gas: MachineGas(100))).value
+  let replacement = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(7),
+    gas: MachineGas(100))).value
+  for repeat in 0..<4:
+    # Marked entries0/3/7 exercise two slots; the displaced target must be validated by PC before reuse.
+    compare(entry, prepared, 4, 100000)
+    compare(replacement, prepared, 4, 100000)
+    compare(entry, prepared, 4, 100000)
+    let final = execute(entry, ExecutionStepLimit(4), prepared)
+    assert final.error == StepError.None and final.value.exit == StepExit.Panic
+    assert uint64(machineInfo(final.value.machine).value.registers[7]) == 99
+  assert preparedInfo(prepared).value.evictions > 0
+  for gas in [0'u64, 1, 2, 3, 4]:
+    # Budget and gas exits keep their exact precharge and causing-PC semantics even with learned links.
+    let source = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
+      gas: MachineGas(gas))).value
+    for steps in [0'u64, 1, 2, 3, 4]: compare(source, prepared, steps, 100000)
+
+successorEvictionCycle()
+
 proc lifecycle(input: Machine) =
   ## Prepared owners release their arrays and program references without retaining invocation snapshots or callbacks.
   let prepared = cache(programOf(input).value, blocks = 2)
@@ -435,6 +461,7 @@ let occupiedBefore = getOccupiedMem()
 for cycle in 0..<1000:
   # Every private cache and completed outcome retires inside the bounded function call.
   lifecycle(firstSource)
+  successorEvictionCycle() # Scalar links never retain a destination owner or form a cycle.
 let occupiedAfter = getOccupiedMem()
 assert occupiedBefore == occupiedAfter
 recordArcRelease("pvm_prepared_blocks", 1000, occupiedBefore, occupiedAfter)
