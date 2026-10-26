@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import check_jam_fuzzer_interface as interface
-from corpus_state import CORPORA
+from jam_fuzz_corpora import CORPORA
 from workflow_fixtures import job_section
 
 
@@ -50,9 +50,55 @@ class JamInterfaceCI(unittest.TestCase):
                                  accepted_imports=0,refused_imports=0,observed_references=[],
                                  completed_sessions=1, completed_exchanges=1)]))
 
+    def test_fuzz_inventory_has_one_owner(self):
+        """Full CI executes each fuzz corpus once and leaves long socket/minifuzz work to Fuzz / JAM."""
+        import ast
+        import inspect
+        import jam_fuzz_corpora
+        from corpus_catalog import CORPUS_NAMES
+        from e2e_checks import PLAN
+        from jam_fuzz_checks import application_fuzzer_interface, application_minifuzz_interface
+        fuzz = set(interface.CASES)
+        self.assertTrue(fuzz)
+        self.assertFalse(fuzz & set(CORPUS_NAMES))
+        declared = {node.name for node in ast.parse(inspect.getsource(jam_fuzz_corpora)).body
+                    if isinstance(node, ast.FunctionDef) and node.name.startswith('jam_fuzzer_')
+                    and node.name.endswith('_corpus')}
+        self.assertEqual(fuzz, declared)
+        for check in (application_fuzzer_interface, application_minifuzz_interface):
+            self.assertNotIn(check.__name__, PLAN.names('workload'))
+        for setup in ('prepare_fuzzer_policy', 'prepare_minifuzz'):
+            self.assertNotIn(setup, PLAN.names('setup'))
+
+    def test_dedicated_runner_executes_complete_plan_once(self):
+        """Moving ownership preserves standalone setup and every native, socket and upstream verdict."""
+        from contextlib import ExitStack
+        from unittest.mock import Mock
+        import jam_fuzz_checks
+        complete = self.complete()
+        tasks = {name: Mock(return_value=complete['cases'][name]) for name in interface.CASES}
+        with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
+            root = Path(folder)
+            stack.enter_context(patch.object(interface, 'BUILD', root))
+            stack.enter_context(patch.object(interface, 'installed', return_value=(root/'compiler', None)))
+            stack.enter_context(patch.object(interface, 'runtime_sources', return_value=[]))
+            stack.enter_context(patch.object(interface, 'NativeChecks')).return_value.command.return_value = dict(output='fixture', exit_code=0)
+            stack.enter_context(patch('nimony_crypto.prepare', return_value=(root/'crypto', None, {})))
+            stack.enter_context(patch('bandersnatch_native.prepare', return_value=(root/'bs', None, {})))
+            stack.enter_context(patch('nimony_quic.prepare', return_value=(root/'quic', root/'certs', {})))
+            stack.enter_context(patch.dict(CORPORA.tasks, tasks, clear=True))
+            setups = [stack.enter_context(patch.object(jam_fuzz_checks, name))
+                      for name in ('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz')]
+            socket = stack.enter_context(patch.object(jam_fuzz_checks, 'application_fuzzer_interface', return_value=complete['socket']))
+            minifuzz = stack.enter_context(patch.object(jam_fuzz_checks, 'application_minifuzz_interface', return_value=complete['minifuzz']))
+            self.assertEqual(interface.main(), 0)
+            self.assertTrue(interface.passed(json.loads((root/'results.json').read_text())))
+        for operation in (*tasks.values(), *setups, socket, minifuzz):
+            operation.assert_called_once()
+
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
-        self.assertEqual(interface.CASES, tuple(sorted(name for name in CORPORA.tasks if name.startswith('jam_fuzzer_'))))
+        self.assertEqual(interface.CASES, tuple(sorted(CORPORA.tasks)))
         self.assertTrue(interface.CASES)
         self.assertTrue(interface.passed(self.complete()))
         for name in interface.CASES:

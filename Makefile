@@ -153,7 +153,7 @@ clean:
 	rm -rf -- build
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
-check: check-models check-python check-modules check-unit check-failures check-guards check-e2e
+check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.

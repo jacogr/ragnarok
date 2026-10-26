@@ -77,6 +77,9 @@ bundles retain randomized shard ownership. Independent corpora run once across t
 retain declaration order, without timing weights. The Unit gate requires every native and corpus
 shard to pass.
 Local `make check-unit` still runs both; `make check-corpus` selects only independent corpora.
+Fuzzer-interface corpora and socket/minifuzz exchanges belong exclusively to `Fuzz / JAM`.
+They run through `make check-jam-fuzzer-interface`, also included once in complete `make check`;
+Unit and E2E do not repeat them.
 
 New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.
 A new heavy request cancels an older heavy run for the same PR; unrelated labels schedule no runners and

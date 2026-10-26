@@ -332,6 +332,12 @@ verdict. A failed shared build blocks every dependent workload from running stal
 The E2E report records setup, workload and selftest durations under `task_timings`, including
 tasks which raise, so build costs can be distinguished from live scenarios.
 
+JAM fuzz interface corpora register in `tools/jam_fuzz_corpora.py`, outside Unit corpus discovery.
+`tools/jam_fuzz_checks.py` owns their socket and upstream minifuzz checks; these are not E2E
+workloads. `Fuzz / JAM` runs the complete interface plan once with its own setup, failure gate and
+artifacts. Complete local `make check` includes that same target once. This is fixed-reference
+interface coverage; it does not claim a generated fuzz campaign.
+
 CI runs E2E families in parallel on separate VMs: Application (RPC, state and explicit downloads),
 Current Downloads, Offload, Telemetry and Transport (peer entry points, retained/integrated
 services, mesh, resilience and soak). Decorators beside each verdict declare its group and
