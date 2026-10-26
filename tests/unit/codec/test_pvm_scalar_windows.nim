@@ -135,6 +135,53 @@ proc sparseSlotCycle() =
     assert original.access == images[index].access
     for offset in 0..<4096: assert original.bytes[offset] == images[index].bytes[offset]
 
+proc chunkEpochCycle() =
+  ## Unknown chunk bits must never reuse shared payloads, including spare-window hits and two-chunk stores.
+  var images: seq[PageImage] = @[]
+  for index in 0..<3:
+    var image = PageImage(index: PageIndex(uint32(16+index)), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+    for offset in 0..<4096: image.bytes[offset] = byte((index*31+offset*13) and 255)
+    images.add(image)
+  let source = captureMemory(images, PageLimit(3)).value
+  let writer = newScalarMemoryWriter(source).value
+  let alias = writer
+  var expected = source
+  var frozen: seq[Memory] = @[]
+  var oracle: seq[Memory] = @[]
+  for epoch in 0..<3:
+    for chunk in 0..<8:
+      for turn in 0..<9:
+        # Three pages rotate primary/spare windows; accesses straddling512-byte boundaries require both private chunks first.
+        let index = (turn*2) mod 3
+        let offsets = [3, 505, 511]
+        let address = MemoryAddress(uint64(16+index)*4096+uint64(chunk*512+offsets[turn mod 3]))
+        let width = AccessWidth([1'u8, 2, 4, 8][turn mod 4])
+        let prior = load(alias, address, width)
+        let wantedPrior = load(expected, address, width)
+        assert prior.error == wantedPrior.error
+        if prior.error == MachineError.None: assert prior.value == wantedPrior.value
+        elif prior.error == MachineError.Fault: assert prior.faultPage == wantedPrior.faultPage
+        let value = RegisterValue(uint64(epoch*1000+chunk*37+turn+7))
+        let wanted = store(expected, address, width, value)
+        let actual = store(writer, address, width, value)
+        assert actual.error == wanted.error
+        if wanted.error == MachineError.None: expected = wanted.value
+        elif wanted.error == MachineError.Fault: assert actual.faultPage == wanted.faultPage
+    frozen.add(snapshotMemory(alias).value)
+    oracle.add(expected)
+  for epoch in 0..<frozen.len:
+    for index in 0..<images.len:
+      # Full historical images remain independent after later writes reuse every chunk and window through the alias.
+      let actual = pageImage(frozen[epoch], images[index].index).value
+      let wanted = pageImage(oracle[epoch], images[index].index).value
+      assert actual.access == wanted.access
+      for offset in 0..<4096: assert actual.bytes[offset] == wanted.bytes[offset]
+  for index in 0..<images.len:
+    let original = pageImage(source, images[index].index).value
+    assert original.access == images[index].access
+    for offset in 0..<4096: assert original.bytes[offset] == images[index].bytes[offset]
+
 proc workingSetCycle() =
   ## Alternate two writable pages and a read-only table, then evict both writable owners and seal through aliases.
   var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
@@ -259,6 +306,7 @@ for repeat in 0..<20:
 workingSetCycle()
 sparseSlotCycle() # Independent sparse collision and immutable-epoch witness before retained-heap accounting.
 
+chunkEpochCycle() # Independent first-touch/cross-chunk/epoch witness precedes retained-heap accounting.
 let before = getOccupiedMem()
 for repeat in 0..<1000:
   workingSetCycle() # All retained readable/private page owners retire without cycles or published mutation.

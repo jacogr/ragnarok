@@ -1737,3 +1737,116 @@ under `build/pvm-port-lab/scalar-page-slots{,-final}` and `scalar-page-slot-trac
 all samples/spreads, source/generated/image identities, cold/constructor/cache rows and
 original diagnostic failures. Qualified machine SHA256: `df41ad38f725583045e887e85e73b36f7bd980c7d03eb83aa541ad6e6c91f101`. Next inspect
 remaining checked scalar miss-handler work using isolated static-width controls.
+
+
+## Epoch-private facts for wide scalar stores, 2026-10-26
+
+Retain two byte masks alongside the exact primary/spare writable page windows, recording
+only chunks already made private by the original COW preparation. Parent #1699 is
+`30111a4beaff720c189eddebfc5e6e03ed995672`; compared master remains
+`ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`. Dependency pins, public API/defaults,
+JAM semantics, memory/page/window/directory policies, prepared layout/handlers, pricing,
+budgets and ordinary PC writes stay unchanged. No translated implementation ships.
+
+### Ownership proof and checked fallback
+
+Masks initialize to zero. A newly admitted writable window receives its exact dirty-vector
+mask only after complete original span preparation. Rotation transfers mask, page owner,
+tag and sorted slot together. A matching window therefore retains a private header with
+at least one private chunk. Later first writes to other chunks clone their payload inside
+that same private header; they cannot replace the header while its dirty mask is nonzero.
+
+A wider cached store keeps every original owner, width, protected-prefix, exclusive-end,
+page-extent and exact-tag guard. Only a span wholly contained within one512-byte chunk
+whose bit is already present in that window's mask can omit the repeated dirty-vector
+lookup. Unknown bits and chunk/page crossings use the original complete-span COW path
+before any mutation. After a checked fallback, the window mask refreshes from the actual
+dirty vector. Byte stores retain the original path entirely; their new private chunks
+may leave cached masks conservative until a later refresh. Cold cross-page stores may
+also add bits without refreshing a window. These are underclaims, never permission to
+write a shared chunk.
+
+Snapshot publication clears both masks together with all retained page aliases before
+transferring immutable epoch storage. Writer aliases share those resets. No mask, page
+capability or borrowed mutable chunk escapes; no extra page/chunk reference or per-store
+allocation is introduced. All byte-helper bounds and first-write COW checks remain. The
+writer's slightly larger inline allocation is included in invocation clocks.
+
+### Selection and measured result
+
+An all-width version improved minimal but regressed fill by roughly4%; reject it.
+Wide-only controls compared primary-only, both-window single-chunk and full-span masks
+in84 complete-state processes plus96 alternating confirmations. Keep the simpler
+single-chunk version; crossing stores retain the original path. The formatted selection
+was rebuilt with fresh private canonical compiler caches, repeated equal images,56
+processes and48 six-round confirmations. Median CPU changes against the parent:
+
+- pinky: -2.13% (range -2.66% to -1.55%).
+- sieve: -1.64% (range -3.03% to -1.53%).
+- minimal: -3.94% (range -4.42% to -3.86%).
+- memset: +0.12% (range -0.32% to +0.14%).
+
+Minimal is a supported gain. Smaller Pinky/sieve changes remain cautious/unproven; fill
+is within noise. Fresh master/actual-parent/final controls add70 processes, with the
+selected image reproduced exactly after restoring sources. Every process makes13 fully
+checked calls, three warmups then ten CPU samples. Checked ARC/Clang ThinLTO on Apple
+M1 Max, pristine Nimony `4724f66c2e01b17810c844f26575b2317995fda2`, PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Reused CPU milliseconds, forward / reverse
+process order, limit100000 except Pinky one invocation:
+
+| Guest | Master prepared | Parent #1699 | This implementation | Learning port | PolkaVM interpreted |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.302 / 197.779 | 123.469 / 123.590 | 120.224 / 119.898 | 94.767 / 94.951 | 92.474 / 93.593 |
+| sieve | 5.903 / 5.838 | 3.577 / 3.441 | 3.401 / 3.399 | 3.503 / 3.401 | 3.492 / 3.574 |
+| minimal | 13.454 / 13.617 | 7.614 / 7.777 | 7.445 / 7.329 | 6.260 / 6.367 | 5.984 / 5.978 |
+| memset | 6.284 / 6.230 | 3.451 / 3.454 | 3.463 / 3.456 | 3.654 / 3.627 | 3.913 / 3.830 |
+
+Cold CPU milliseconds are single first-call observations, not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 198.209 / 198.469 | 126.489 / 125.323 | 122.231 / 122.020 | 95.252 / 95.276 | 94.002 / 94.095 |
+| sieve | 10.181 / 9.842 | 7.571 / 7.595 | 7.569 / 7.528 | 3.583 / 3.685 | 6.089 / 6.102 |
+| minimal | 13.683 / 13.512 | 7.799 / 7.698 | 7.365 / 7.682 | 6.285 / 6.226 | 6.045 / 6.205 |
+| memset | 6.700 / 6.591 | 3.600 / 3.679 | 3.600 / 3.594 | 3.743 / 3.643 | 4.021 / 3.989 |
+
+Empty prepared-owner constructor CPU microseconds; no constructor gain is established:
+
+| Guest | Master | Parent | This implementation |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 6.000 | 4.000 / 5.000 | 4.000 / 5.000 |
+| sieve | 5.000 / 3.000 | 5.000 / 5.000 | 6.000 / 3.000 |
+| minimal | 12.000 / 11.000 | 10.000 / 14.000 | 12.000 / 13.000 |
+| memset | 7.000 / 8.000 | 8.000 / 5.000 | 6.000 / 8.000 |
+
+Another56 two-order processes cover shared dynamic/planned consumers; no six-round gain
+claim follows from these controls:
+
+| Guest | Parent dynamic | Final dynamic | Parent planned | Final planned |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 280.222 / 280.899 | 279.912 / 281.258 | 270.337 / 270.081 | 269.443 / 270.678 |
+| sieve | 12.123 / 12.128 | 12.092 / 12.730 | 8.444 / 8.447 | 8.399 / 8.389 |
+| minimal | 16.153 / 16.755 | 16.602 / 15.989 | 16.592 / 15.756 | 15.945 / 15.543 |
+| memset | 8.439 / 8.454 | 8.261 / 8.272 | 8.325 / 8.297 | 8.034 / 8.013 |
+
+All prepared counts, resident/peak bytes, hits and evictions match the parent for every
+call. Every timed call verifies complete registers, gas/exit, mapped bytes, permissions
+and original source snapshots; tampered gas expectations reject before successful rows.
+The new oracle alternates three pages across all eight chunks, first touches, spare-window
+hits, partial/cross-chunk/page stores and three published epochs. It compares every
+historical byte/permission and the source against original immutable store operations.
+
+Selected-code native10, independent references4, prepared and scalar-window AddressSanitizer
+plus ARC1000 pass. Existing139-opcode/11815 register-pair/25020 memory-pair, sparse-directory
+collision,703 budget cutoff, host/gas/reentry and failure precedence witnesses remain.
+Promoted Make scalar-window, prepared and mixed-reference suites plus formatting pass.
+No exports, fixtures, suite metadata or CI jobs change.
+
+These local M1 results are not Linux qualification or hardware branch/cache counts. No
+executed native instruction-count claim is made. Rust restores input outside its clock;
+Ragnarök stages inside it. The partial learning port has predecoded pricing/unbounded
+retention, so full lifecycle parity is not claimed. Pinky/minimal still trail the references;
+exceeding them overall remains unmet. Source/generated/image identities, sample spreads,
+cold/constructor/cache rows and rejected controls remain under
+`build/pvm-port-lab/private-{,wide-}chunk-hints{,-final}`. Qualified machine source SHA256:
+`04530ecc3324291d6232078b6ec269c622a42acae2a2e3e48510a3de849a4d2a`. Next refresh matched-memory/profile diagnostics before another dispatch change.

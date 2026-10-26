@@ -75,6 +75,7 @@ type
     writeSlot: int        # Exact stable sorted slot admitted with this retained page owner.
     recent: array[2, int] # Fixed page slots retain no page/chunk owner and never imply permissions.
     pageSlots: array[64, uint32] # Miss-only positive sorted-slot hints retain no page owner or permission authority.
+    writePrivate, spareWritePrivate: byte # Underapproximated private-chunk facts travel with their exact retained epoch windows.
   MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
@@ -662,7 +663,7 @@ proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
   MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
     ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1],
-        pageSlots: default(array[64, uint32])))
+        pageSlots: default(array[64, uint32]), writePrivate: 0, spareWritePrivate: 0))
 
 proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) {.noinline.} =
   ## Keep allocator/TLS work on the first-write path; callers prove this chunk is not yet private.
@@ -775,18 +776,28 @@ proc storeWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: Me
     prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
   if span.first == span.last:
     # First-write preparation established the private header before retaining it for later accesses.
+    writer.spareWritePrivate = writer.writePrivate
     writer.spareWritePage = writer.writePage # Only a genuine miss rotates the bounded retained owners.
     writer.spareWriteTag = writer.writeTag
     writer.spareWriteSlot = writer.writeSlot
     writer.writeTag = start shr 12
     writer.writeSlot = span.first
     writer.writePage = writer.pages[span.first]
+    writer.writePrivate = writer.dirty[span.first]
   setPageScalar(writer.pages[span.first], span.offset, span.firstCount, uint64(value))
   if span.firstCount < span.count:
     # Both private page spans were prepared before mutation; source/snapshot aliases remain immutable.
     setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
         8*span.firstCount))
   MachineResult[bool](status: MachineError.None, completed: true)
+
+func privateMaskCovers(mask: byte, offset, count: int): bool {.inline,
+    requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
+        4096-offset.} =
+  ## A private epoch mask may only suppress checks for chunks already proved exclusive by the original COW path.
+  if offset mod 512 > 512-count: return false
+  let wanted = 1'u8 shl (offset div 512)
+  (mask and wanted) == wanted
 
 proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth, value: RegisterValue): MachineResult[bool] {.inline.} =
@@ -801,16 +812,26 @@ proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, add
   if writable != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
       start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
       within <= 4096-count and writer.writeTag == start shr 12:
-    # The retained header is private, but each touched chunk still needs its original COW check.
-    prepareWriterSpan(writer, writer.writeSlot, within, count)
+    # Only a mask bound to this exact retained header/epoch can prove every touched chunk already private.
+    if count == 1:
+      # Byte stores retain their cheaper original dirty-vector check; any newly private bits remain safe underclaims here.
+      prepareWriterSpan(writer, writer.writeSlot, within, count)
+    elif not privateMaskCovers(writer.writePrivate, within, count):
+      prepareWriterSpan(writer, writer.writeSlot, within, count)
+      writer.writePrivate = writer.dirty[writer.writeSlot]
     setPageScalar(writable, within, count, uint64(value))
     return MachineResult[bool](status: MachineError.None, completed: true)
   let spare {.cursor.} = writer.spareWritePage
   if spare != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
       start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
       within <= 4096-count and writer.spareWriteTag == start shr 12:
-    # The second private header follows the same complete-chunk preparation before any mutation.
-    prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+    # Spare facts travel with the same private header; unknown bits still take the original complete-span COW path.
+    if count == 1:
+      # Byte stores retain their cheaper original dirty-vector check; any newly private bits remain safe underclaims here.
+      prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+    elif not privateMaskCovers(writer.spareWritePrivate, within, count):
+      prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+      writer.spareWritePrivate = writer.dirty[writer.spareWriteSlot]
     setPageScalar(spare, within, count, uint64(value))
     return MachineResult[bool](status: MachineError.None, completed: true)
   storeWriterMiss(writer, source, address, width, value)
@@ -834,6 +855,8 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   writer.readPage = nil # All cached aliases retire before an immutable snapshot becomes observable.
   writer.writePage = nil
   writer.spareWritePage = nil # No cached private capability survives sealing through any alias.
+  writer.writePrivate = 0
+  writer.spareWritePrivate = 0
   if not writer.active:
     return MachineResult[Memory](status: MachineError.None,
         completed: writer.base) # No new write means no new snapshot allocation.
