@@ -180,6 +180,14 @@ def jam_fuzzer_full_guests(identity):
 
 
 @reference()
+def jam_fuzzer_full_offender_guests(identity):
+    """Require newly offending guarantor rollback and genuine prior-active assurance/guest effects in every mode."""
+    import jam_fuzzer_full_offender_guests_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.MODES),spec='full')
+
+
+@reference()
 def jam_fuzzer_full_offenders(identity):
     """Require independently calculated full-population evidence and all exact signed offender refusals."""
     import jam_fuzzer_full_offenders_oracle as source

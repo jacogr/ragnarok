@@ -899,6 +899,16 @@ def jam_fuzzer_full_guests_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_offender_guests_corpus(compiler, report, checks, libraries):
+    """Compare same-block punished-guarantor refusal, valid alternate credentials and prior-active guest availability."""
+    import jam_fuzzer_full_offender_guests_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_offender_guests', 'jam_fuzzer_full_pending_disputes', 'jam_fuzzer_full_guests'),
+        profiles=[full.parameters()]*len(reference.MODES))
+
+
+@CORPORA.case
 def jam_fuzzer_full_offenders_corpus(compiler, report, checks, libraries):
     """Execute full-roster culprit/fault evidence, cross-section markers and typed atomic refusals."""
     import jam_fuzzer_full_offenders_oracle as reference

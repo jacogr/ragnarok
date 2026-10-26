@@ -101,13 +101,16 @@ def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None):
                 credentials=[(index,signed(index,b'jam_guarantee',digest(raw))[1]) for index in indices[:2]])
 
 
-def assurances(parent,count):
+def assurances(parent,count,*,indices=None):
     """Use all43 canonical bit bytes and683 genuinely distinct validator signatures for strict full-population quorum."""
     assert count == 0 or 683 <= count <= 692
+    selected = tuple(range(count)) if indices is None else tuple(indices)
+    assert len(selected) == count and list(selected) == sorted(set(selected))
+    assert all(0 <= index < full.VALIDATORS for index in selected)
     anchor = history(parent[chapter_key(3)])[0][-1][0][:32]
     bits = (1 << CORE).to_bytes(43,'little')
     target = digest(anchor+bits)
-    return [dict(anchor=anchor,bits=bits,index=index,signature=signed(index,b'jam_available',target)[1]) for index in range(count)]
+    return [dict(anchor=anchor,bits=bits,index=index,signature=signed(index,b'jam_available',target)[1]) for index in selected]
 
 
 def body(gs,ass,*,disputes=bytes(3)):

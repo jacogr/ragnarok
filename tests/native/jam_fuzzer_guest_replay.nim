@@ -10,7 +10,8 @@ import ../../src/app/[fuzz_backend, fuzz_rejection, candidate]
 import ../../src/chain/[genesis, parameters, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
 import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
-    block_transition, block_admission, safrole_transition, accumulation_current_completion,
+    guarantee_credentials, block_transition, block_admission, safrole_transition,
+    accumulation_current_completion,
     accumulation_current_recent, accumulation_current_activity, accumulation_current_authorization,
     accumulation_current_driver, accumulation_current_round]
 
@@ -30,10 +31,20 @@ proc observe(backend: var FuzzBackend, header: OwnedHeader): StateStoreSnapshot 
   let reply = backend.executeFuzz(fuzzGetState(header))
   assert reply.error == FuzzBackendError.None
   reply.value.fuzzState.value
+proc reportRefusalReason[T](failure: ReportAdmissionResult[T]): string =
+  ## Only a guarded actual credential-stage failure supplies this report rejection reason.
+  if failure.error == ReportAdmissionError.CredentialFailure:
+    return "credential/" & $failure.credentialError.error
+  "unclassified" # Other report stages need their own explicit typed interpretation before a reference can select them.
+
 proc refusalReason(failure: CurrentCandidateResult): string =
   ## Read only guarded actual consensus-stage causes; a default or unrelated failure cannot match a planned refusal.
+  if failure.error == CurrentCandidateError.ReportFailure:
+    return reportRefusalReason(failure.reportFailure)
   if failure.error != CurrentCandidateError.PrefixFailure: return "unclassified"
   let prefix = failure.prefixFailure
+  if prefix.error == ApplicationCandidateError.ReportFailure:
+    return reportRefusalReason(prefix.reportFailure)
   if prefix.error != ApplicationCandidateError.BlockFailure: return "unclassified"
   let blockFailure = prefix.blockFailure
   case blockFailure.error

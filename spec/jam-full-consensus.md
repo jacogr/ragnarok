@@ -225,3 +225,29 @@ passed two sessions, 11 imports and 30 exact exchanges with its real mismatch
 control and freshly rebuilt full policy. All 61 focused Python tests, fresh pinned
 formatting, replay-driver/policy semantics and inventory passed. The older18
 baseline and12 guest reference answers also remained exactly unchanged.
+
+## Same-block offender exclusion and guest availability
+
+Three full-profile chains retain storage/yield, panic rollback and checkpoint-panic
+outcomes. Genuine culprit evidence punishes one of a core's three assigned
+members. A correctly signed report using that key must refuse at the actual
+credential stage and roll back the new Phi entry as well as all other state.
+The same report with the two other assigned members succeeds with the same
+culprit evidence in the block, demonstrating original assignment positions and
+posterior offender exclusion without remapping the group.
+
+A later683-vote availability quorum explicitly includes the offender and high
+ordinal1022. The offender remains in the original active roster and is eligible
+for assurances, so the real guest executes with independently calculated gas,
+namespace retention/rollback, outputs, statistics and accumulated history. Exact
+complete maps and valid continuation distinguish guarantee eligibility from prior
+active assurance eligibility. Typed native report-credential refusal extraction
+remains guarded; other report-stage reasons cannot impersonate this case.
+
+Observed offender/guest validation: 15 new complete-map steps (12 accepted and
+three exact credential refusals) and12 unchanged guest steps passed checked native
+replay. Punished guarantor637 remained an explicitly included assurer alongside
+ordinal1022. Unchanged upstream minifuzz passed three sessions,15 imports and
+42 exact exchanges with its real mismatch control. All57 focused Python tests,
+fresh formatting, driver semantics and inventory passed. GP checks and earlier
+fixture answers remain unchanged.
