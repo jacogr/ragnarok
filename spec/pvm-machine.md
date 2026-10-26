@@ -320,3 +320,29 @@ all policy comparisons and sample ranges. Adjacent trial JSON/logs, immutable
 source snapshots, generated C and `scalar-window-evidence-manifest.json` retain
 exact source/binary identities. Those ignored artifacts and the translated
 learning experiment are not shipped with this feature.
+
+
+## Constant scalar writer widths
+
+`load[Width](writer, address)` and `store[Width](writer, address, value)` accept the
+same writer identity and guest addresses as their runtime-width overloads. Width must
+be the compile-time constant 1, 2, 4 or 8; the supported-width precondition rejects
+other constants during compilation. Runtime-width calls retain typed `InvalidWidth`
+failures and the existing owner/width/permission/endpoint error ordering.
+
+Both surfaces use the same private implementation. The constant only exposes an
+already known byte count to the compiler: complete owner, low-32-bit address,
+protected-prefix, exclusive endpoint, page permissions and cross-chunk/page checks
+remain in place. Writable windows still prepare touched COW chunks before mutation;
+readable windows still retire when their epoch changes. No mutable page/chunk view
+or host address escapes. Ordinary interpreter and immutable snapshot access keep
+their existing paths; prepared memory handlers carry their genuine static width
+through invocation staging to these writer calls.
+
+The scalar-window suite exercises all four constant widths against immutable
+execution across nil owners, protected/wrapped/physical endpoint addresses,
+chunk/page edges, read-only/missing pages and three aliased snapshot epochs. Both
+constant-invalid load/store probes require the exact checked-precondition error.
+The prepared suite retains all 139 opcode families, faults, host suspension, budgets
+and lifetime checks. Performance qualification is recorded in
+[pvm-prepared-blocks.md](pvm-prepared-blocks.md).

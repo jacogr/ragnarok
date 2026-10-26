@@ -676,14 +676,14 @@ proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
     writer.recent[1] = writer.recent[0]
     writer.recent[0] = span.first
 
-proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
+proc loadScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
   ## Read the writer's latest scalar state; nil/default-invalid builders never imply a zero-filled address space.
   if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
   if source == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let start = uint64(address) and 0xffffffff'u64
-  let count = int(byte(width))
+  let count = when selectedWidth > 0: selectedWidth else: int(byte(width))
   let within = int(start and 4095'u64)
   if (count == 1 or count == 2 or count == 4 or count == 8) and start >= 0x10000'u64 and
       start <= uint64(high(uint32))-uint64(count) and within <= 4096-count:
@@ -717,14 +717,25 @@ proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
         8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
-proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: AccessWidth,
-    value: RegisterValue): MachineResult[bool] =
+proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
+    width: AccessWidth): MachineResult[RegisterValue] {.inline.} =
+  ## Runtime widths retain the original complete checked scalar path.
+  loadScalar[0](writer, address, width)
+
+proc load*[Width: static[int]](writer: nil ScalarMemoryWriter,
+    address: MemoryAddress): MachineResult[RegisterValue] {.inline, requires: Width == 1 or Width ==
+        2 or Width == 4 or Width == 8.} =
+  ## A constant supported width specializes byte access while retaining owner, extent, permission and epoch checks.
+  loadScalar[Width](writer, address, AccessWidth(byte(Width)))
+
+proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
+    width: AccessWidth, value: RegisterValue): MachineResult[bool] =
   ## Commit one atomic private scalar write; failures preserve all previous successful writes and expose only their reason.
   if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
   if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   let start = uint64(address) and 0xffffffff'u64
-  let count = int(byte(width))
+  let count = when selectedWidth > 0: selectedWidth else: int(byte(width))
   let within = int(start and 4095'u64)
   let writable {.cursor.} = writer.writePage
   if writable != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
@@ -770,6 +781,17 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
     setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
         8*span.firstCount))
   MachineResult[bool](status: MachineError.None, completed: true)
+
+proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: AccessWidth,
+    value: RegisterValue): MachineResult[bool] {.inline.} =
+  ## Runtime widths retain the original atomic private writer path.
+  storeScalar[0](writer, address, width, value)
+
+proc store*[Width: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
+    value: RegisterValue): MachineResult[bool] {.inline, requires: Width == 1 or Width == 2 or
+        Width == 4 or Width == 8.} =
+  ## A constant width specializes the same COW-preflight and atomic write; snapshots still retire every window.
+  storeScalar[Width](writer, address, AccessWidth(byte(Width)), value)
 
 proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   ## Seal the current epoch by transferring its private vector; all writer aliases resume from this immutable owner on later writes.

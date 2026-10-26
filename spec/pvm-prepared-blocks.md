@@ -731,3 +731,121 @@ cumulative JSON/raw logs, exact source snapshots, fresh-cache build controls,
 generated C, native and AddressSanitizer evidence. The earlier link-only record is
 under `prepared-links`. No translated core or diagnostic instrumentation ships
 with this feature. No Linux timing or hardware counter claim is made here.
+
+
+## Constant-width checked writer execution, 2026-10-25
+
+Prepared memory handlers already know their access width. Carry that fact through
+invocation staging into `load[Width]` / `store[Width]` on the scalar writer. Runtime
+width calls and fixed-width calls instantiate the same private implementation;
+only the byte count becomes constant. Unsupported constants fail the ordinary
+checked precondition. The runtime surface retains its existing error ordering.
+
+All owner, permission, physical-endpoint, protected-prefix, COW, alias and snapshot
+checks remain. Immutable memory access and ordinary interpreter behavior retain
+their existing paths. Handler ABI, 56-byte records, pricing, attempts, PC writes,
+cache policy/limits and ownership are unchanged. Generated C contains explicit
+1/2/4/8-byte writer specializations alongside the runtime-count specialization.
+This supplies compiler knowledge rather than disabling a check or replacing memory.
+
+The scalar-window suite adds differential fixed-width nil, chunk/page, read-only,
+missing/protected/wrapped/physical-endpoint and three-epoch alias witnesses. Exact
+constant-invalid load/store compiler rejections join the existing guard runner.
+Nine local native suites, four independent references, AddressSanitizer on all
+prepared opcodes/host/budget/eviction cases and ARC 1,000 pass. The promoted scalar
+window, prepared and independent mixed reference suites pass through Make;
+inventory, positive privacy controls and exact rejection evidence are retained.
+
+### Qualified local CPU comparison
+
+Measured parent #1683: `5e8e04fbf49413751e96a808a24a2a9f13e541f0`. Master: `ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`.
+Final `step.nim` SHA-256: `44590800fca26dcb0eddbc025e8a3a87415d4da55e802762e0913bdbbe09b398`;
+`machine.nim`: `0f5392ee189aac3321c50cf817edb0a6b33d0fe7788a36b22c08fc6aa183f152`.
+Pinned Nimony 4724f66c, checked ARC/Clang 21 release/speed/ThinLTO on Apple M1 Max.
+Fresh private compiler caches use identical source/cache/output paths for each
+endpoint. Candidate repeats are byte-identical; the final precondition-based valid
+code image also matches the initial trial, and rebuilding after master/parent
+controls reproduces the same image. No compiler/dependency changes are used.
+
+Initial and final isolated comparisons each contain 112 processes. The fresh
+cumulative comparison contains 70; an additional 48 alternating confirmation
+processes cover all four large cases. Each process makes 13 full-state calls:
+three warmups and ten measured CPU samples. All registers, gas, terminal state,
+every mapped page byte/permission and source snapshots pass. Wrong gas references
+are rejected before successful timing output. All seven maintained guest/size
+cases participate in the full comparisons. Constructors and cold calls remain
+separate from reused execution. This is local evidence, not exact-head Linux CI.
+
+Reused CPU milliseconds, **forward / reverse process order**, from the final
+same-session cumulative comparison:
+
+| Guest | Master prepared | Parent #1683 | This implementation | Learning port | Rust interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.367 / 196.300 | 162.099 / 161.348 | 153.384 / 153.440 | 94.485 / 94.211 | 91.851 / 92.115 |
+| sieve | 5.929 / 5.979 | 4.777 / 4.733 | 4.661 / 4.692 | 3.507 / 3.503 | 3.503 / 3.492 |
+| minimal | 13.610 / 13.569 | 11.154 / 11.040 | 9.776 / 9.800 | 6.300 / 6.469 | 6.064 / 5.992 |
+| memset | 6.251 / 6.367 | 4.823 / 4.918 | 4.660 / 4.679 | 3.644 / 3.645 | 3.845 / 3.936 |
+
+The independent runtime/planned controls below belong to the final isolated
+comparison, not the separate cumulative session above. CPU milliseconds:
+
+| Guest | Dynamic control | Planned control | Parent prepared | This implementation |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 296.525 / 295.899 | 284.188 / 283.346 | 161.680 / 161.216 | 154.293 / 160.399 |
+| sieve | 12.294 / 12.216 | 8.476 / 8.504 | 4.904 / 4.694 | 4.711 / 4.671 |
+| minimal | 16.564 / 16.545 | 16.218 / 16.635 | 11.042 / 11.029 | 9.745 / 9.730 |
+| memset | 8.789 / 8.774 | 8.471 / 8.505 | 4.821 / 4.825 | 4.638 / 4.636 |
+
+Median CPU change across six alternating confirmation pairs (candidate/parent):
+
+- pinky: -4.55% (pair range -5.78% to -3.69%).
+- sieve: -0.92% (pair range -1.19% to -0.09%).
+- minimal: -11.89% (pair range -12.22% to -11.32%).
+- memset: -3.54% (pair range -3.86% to -3.00%).
+
+Keep this change for the useful minimal/fill gains without a material measured
+regression. Pinky improves in most pairs, with one final isolated pair within
+noise; its size varies between sessions. Sieve changes remain unproven. No
+percentage is compounded from separate sessions. The learning port/Rust gap
+remains: this change does not establish parity or the target of being faster.
+
+Cold CPU milliseconds are single first-call observations, including lazy
+preparation, not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | Rust cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 200.929 / 196.221 | 164.204 / 162.910 | 154.703 / 154.724 | 94.769 / 94.502 | 93.442 / 93.417 |
+| sieve | 9.864 / 10.155 | 8.723 / 8.678 | 8.810 / 8.633 | 3.555 / 3.563 | 6.078 / 6.098 |
+| minimal | 13.589 / 13.591 | 11.135 / 11.465 | 9.836 / 9.845 | 6.428 / 6.250 | 6.034 / 6.125 |
+| memset | 6.343 / 6.376 | 4.966 / 4.969 | 4.977 / 4.782 | 3.669 / 3.684 | 4.007 / 4.020 |
+
+Constructor CPU microseconds bracket only creation of the empty bounded prepared
+owner; program/initial-memory capture remains outside execution timing. No
+constructor improvement is established. Port/Rust constructors are not measured:
+
+| Guest | Master constructor | Parent constructor | This implementation constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 5.000 / 5.000 | 5.000 / 5.000 | 5.000 / 5.000 |
+| sieve | 5.000 / 5.000 | 6.000 / 5.000 | 6.000 / 5.000 |
+| minimal | 14.000 / 15.000 | 12.000 / 15.000 | 11.000 / 11.000 |
+| memset | 8.000 / 7.000 | 5.000 / 7.000 | 6.000 / 7.000 |
+
+Every prepared block/operation/hit/eviction and resident/peak-byte observation
+matches the parent for all calls. Record size, cache occupancy and churn do not
+change. These software observations are not hardware cache/branch misses. No new
+native instruction-count or hardware-event claim is made. A separate one-second
+statistical baseline stack sample, excluded from timings, records 750 engine
+samples, including 110 scalar-load and 73 scalar-store self samples; this guided
+the hypothesis, not the quantified performance verdict.
+
+Ragnarök creates fresh invocation staging inside each execution clock. Rust's
+public reuse adapter restores input outside that clock. The learning port covers
+the maintained executed core using predecoded/priced input facts and an unbounded
+cache; it is an architectural control, not full JAM/lifecycle parity. Frozen port
+and Rust binaries are included in both orders; no translated implementation ships.
+
+Local provenance, all samples/spreads, constructors/cold calls, source/generated-C
+hashes, equal-image controls, exact compiler rejections and verification logs live
+under `build/pvm-port-lab/prepared-static-widths`. Rejected resident-borrow, direct
+switch and packed-result experiments remain ignored laboratory evidence, with no
+production changes or PRs. The independent memory implementation remains checked.
