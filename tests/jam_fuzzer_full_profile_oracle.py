@@ -68,11 +68,11 @@ def original(dense=False):
     return parent
 
 
-def sealed_child(parent, *, body=bytes(7), extrinsic_root=None, author=0, secret=1, slot=None, offenders=()):
+def sealed_child(parent, *, body=bytes(7), extrinsic_root=None, author=0, secret=1, slot=None, offenders=(), epoch=EPOCH, validators=VALIDATORS):
     """Independently seal an exact same-epoch full-profile body without deriving a hypothetical accepted state."""
     previous = int.from_bytes(parent[chapter_key(11)], 'little')
     slot = previous+1 if slot is None else slot
-    assert 1 < slot < EPOCH and previous < slot and 0 <= author < VALIDATORS
+    assert 1 < slot < 2**32 and previous < slot and previous//epoch == slot//epoch and 0 <= author < validators
     assert body and all(len(key) == 32 for key in offenders)
     entropy = parent[chapter_key(6)]
     context = b'jam_fallback_seal'+entropy[96:128]
@@ -89,24 +89,24 @@ def sealed_child(parent, *, body=bytes(7), extrinsic_root=None, author=0, secret
     return header+body,entropy_output
 
 
-def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, secret=1, slot=None, offenders=()):
+def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, secret=1, slot=None, offenders=(), epoch=EPOCH, validators=VALIDATORS):
     """Compose independent sealing with the complete full-profile posterior; default callers retain identical bytes."""
     wire,entropy_output = sealed_child(parent,body=body,extrinsic_root=extrinsic_root,author=author,secret=secret,slot=slot,offenders=offenders)
     return wire,successor(parent,wire[:-len(body)],entropy_output,outputs=outputs,author=author)
 
 
-def successor(parent, header, entropy_output, *, outputs=(), author=0):
+def successor(parent, header, entropy_output, *, outputs=(), author=0, cores=CORES, epoch=EPOCH):
     """Calculate full authorization, entropy, history/MMR, clock, outputs and statistics without a native observation."""
     result = dict(parent)
     slot = int.from_bytes(header[96:100], 'little')
     previous_slot = int.from_bytes(parent[chapter_key(11)], 'little')
     assert previous_slot < slot < 2**32
-    crossed = slot//EPOCH > previous_slot//EPOCH
+    crossed = slot//epoch > previous_slot//epoch
     entropy = parent[chapter_key(6)]
     result[chapter_key(6)] = digest(entropy[:32]+entropy_output)+(entropy[:96] if crossed else entropy[32:])
     result[chapter_key(11)] = slot.to_bytes(4, 'little')
     source = Reader(parent[chapter_key(1)]); queues = parent[chapter_key(2)]; pools = []
-    for core in range(CORES):
+    for core in range(cores):
         count = source.count()
         assert count <= 8
         row = source.take(count*32)
@@ -133,16 +133,16 @@ def successor(parent, header, entropy_output, *, outputs=(), author=0):
     current_count = Reader(parent[chapter_key(8)]).count()
     previous_count = Reader(parent[chapter_key(9)]).count()
     active_count = Reader(parent[chapter_key(4)]).count() if crossed else current_count
-    (current, previous, _, _), consumed = statistics_parse(parent[chapter_key(13)],(CORES,current_count,previous_count,2**64-1,2**64-1))
+    (current, previous, _, _), consumed = statistics_parse(parent[chapter_key(13)],(cores,current_count,previous_count,2**64-1,2**64-1))
     assert consumed == len(parent[chapter_key(13)])
     # Crossing rotates old-current statistics and sizes the new zero array from actual pending membership.
     if crossed: previous, current = current, [(0,)*6]*active_count
     row = list(current[author]); row[0] += 1; current[author] = tuple(row)
-    result[chapter_key(13)] = statistics_wire((current,previous,[(0,)*8]*CORES,[]))
+    result[chapter_key(13)] = statistics_wire((current,previous,[(0,)*8]*cores,[]))
     result[chapter_key(16)] = natural(len(leaves))+b''.join(leaves)
     # GP accumulated history advances once per block, including jumps across many elapsed slots.
     accumulated = Reader(parent[chapter_key(15)])
-    rows = [accumulated.take(32*accumulated.count()) for _ in range(EPOCH)]; accumulated.done()
+    rows = [accumulated.take(32*accumulated.count()) for _ in range(epoch)]; accumulated.done()
     result[chapter_key(15)] = queue_wire('A', rows[1:]+[b''])
     assert set(result) == set(parent)
     return result

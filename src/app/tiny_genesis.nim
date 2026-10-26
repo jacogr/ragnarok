@@ -5,7 +5,7 @@
 ## solely local testnet identities. Native codecs construct every global chapter before hashing.
 
 import std/strutils
-import ../chain/[genesis, parameters]
+import ../chain/[genesis, parameters, presets]
 import ../codec/[bounded, header, state_layout, state_trie, state_safrole, state_consensus,
   state_disputes, state_authorization, state_history, state_privileges, state_statistics,
   state_workqueues, state_outputs]
@@ -28,18 +28,8 @@ proc tinyPeerKey*(index: range[0..5]): CryptoResult[EdPublicKey] =
     return CryptoResult[EdPublicKey]() # No identity is exposed on primitive refusal.
   publicKey(imported.value)
 proc tinyParameters*(): ParameterResult =
-  ## AppendixB order/widths, with Tiny overrides from pinned jamtestvectors README Chainspec Parameters.
-  const widths = [8, 8, 8, 2, 4, 4, 8, 8, 8, 8, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4]
-  const values: array[29, uint64] = [10'u64, 1, 100, 2, 32, 12, 10000000, 50000000,
-    1000000000, 20000000, 8, 16, 8, 3, 24, 8, 6, 80, 4, 128, 5, 64000, 13791360, 4000000,
-    3072, 49152, 128, 3072, 10]
-  var wire = default(array[122, byte])
-  var offset = 0
-  for index in 0..<values.len:
-    for octet in 0..<widths[index]:
-      wire[offset+octet] = byte((values[index] shr (8*octet)) and 255)
-    offset += widths[index] # Fixed reviewed widths sum exactly to122.
-  decodeParameters(wire)
+  ## Select the canonical immutable Tiny tuple from the shared chain catalog.
+  presetParameters(ChainPreset.Tiny)
 
 proc initTinyGenesis*(): GenesisResult =
   ## Construct a complete empty-service map, fixed six-member ring and fallback first epoch.

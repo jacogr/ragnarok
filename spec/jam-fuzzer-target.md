@@ -24,10 +24,12 @@ write values); zero deliberately disables that resource. Other ignored productio
 service arguments are refused rather than activating RPC, QUIC, UI or persistent state.
 A container entry point may supply these four fixed host configuration arguments.
 
-Standard required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full),
+Standard required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full/fuzz),
 JAM_FUZZ_DATA_PATH and JAM_FUZZ_SOCK_PATH. JAM_FUZZ_LOG_LEVEL accepts the documented
 optional values. Configuration checks exact core/epoch/header-population domains:
-tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. All other Parameters
+tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. The experimental `fuzz`
+preset uses85/60/255 and requires its entire issue215 tuple plus matching policy
+consensus constants; see [network fuzz](jam-network-fuzz.md). For Tiny/Full, all other Parameters
 remain explicit operator configuration; these domain checks do not certify that an
 arbitrary supplied tuple equals the engine's complete selected preset. The caller
 must supply the same complete profile as the campaign.

@@ -100,10 +100,7 @@ func priorStateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} 
   value.priorCommitment
 func sameParameters*(left, right: BlockSnapshot): bool {.requires: left.ready and right.ready.} =
   ## Compare complete protocol tuples so retained history cannot silently mix startup chain profiles.
-  for field in low(Parameter)..high(Parameter):
-    if left.configuration.get(field) != right.configuration.get(field):
-      return false # Every encoded fetch field participates, not only cores and epoch length.
-  true
+  sameParameterProfile(left.configuration, right.configuration)
 
 func chainParameters*(value: BlockSnapshot): Parameters {.requires: value.ready.} =
   ## Copy the exact captured protocol tuple so state/chain adoption cannot substitute a caller profile.

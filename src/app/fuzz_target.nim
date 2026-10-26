@@ -5,7 +5,7 @@
 import std/[assertions, atomics, envvars, monotimes, os, syncio]
 import std/posix/posix
 import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate]
-import ../chain/[parameters, genesis]
+import ../chain/[parameters, presets, genesis]
 import ../codec/[bounded, block_codec]
 import ../state/[fuzz_protocol, fuzz_session, store]
 import ../management/file_status
@@ -58,11 +58,11 @@ func pathValid(path: string): bool =
 proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
     candidate: CurrentCandidateLimits, writes: ElementLimit,
         writeBytes: ByteLimit): FuzzTargetResult =
-  ## Match explicit tiny/full domains without deriving Parameters from a peer or arbitrary seed map.
+  ## Match explicit tiny/full/fuzz domains without deriving Parameters from a peer or arbitrary seed map.
   if not environment.enabled or environment.spec.len == 0 or environment.dataPath.len == 0 or
       environment.socketPath.len == 0: return FuzzTargetResult(
           status: FuzzTargetError.MissingEnvironment)
-  if environment.spec notin ["tiny", "full"]: return FuzzTargetResult(
+  if environment.spec notin ["tiny", "full", "fuzz"]: return FuzzTargetResult(
       status: FuzzTargetError.InvalidSpec)
   if environment.logLevel notin ["", "error", "warn", "info", "debug", "trace"]:
     return FuzzTargetResult(status: FuzzTargetError.InvalidLogLevel)
@@ -72,20 +72,44 @@ proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
   if uint64(writes) > 1000000 or uint64(writeBytes) > 67108864:
     return FuzzTargetResult(status: FuzzTargetError.InvalidBudget)
   let frame = candidate.reporting.admission.frame
-  let cores = if environment.spec == "tiny": 2'u64 else: 341'u64
-  let slots = if environment.spec == "tiny": 12'u64 else: 600'u64
-  let validators = if environment.spec == "tiny": 6'u64 else: 1023'u64
+  let preset = if environment.spec == "tiny": ChainPreset.Tiny elif environment.spec ==
+      "fuzz": ChainPreset.Fuzz else: ChainPreset.Full
+  let canonical = presetParameters(preset)
+  if not canonical.ok: return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+  let expected = canonical.value
+  let cores = expected.get(coreCount)
+  let slots = expected.get(epochPeriod)
+  let validators = cores * 3
+  var selectedParameters = parameters
   let parameterMatch = parameters.valid and parameters.get(coreCount) == cores and
       parameters.get(epochPeriod) == slots
   let frameMatch = uint64(frame.cores) == cores and uint64(frame.epochSlots) == slots and
       uint64(frame.validators) == validators
   if not parameterMatch or not frameMatch:
     return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+  if environment.spec == "fuzz":
+    # Issue215 changes exactly nine Full constants; require the complete trusted tuple, not only geometry.
+    for field in low(Parameter)..high(Parameter):
+      # The canonical catalog owns all scalars; independent fixtures verify their values separately.
+      if parameters.get(field) != expected.get(field):
+        return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+    selectedParameters = expected # Preserve explicit D900 interpretation throughout every retained snapshot.
+    # Policy-owned consensus constants must agree with Parameters; resource ceilings remain separate local limits.
+    if uint64(frame.ticketLimit) != expected.get(maxTicketsPerBlock) or
+        uint64(candidate.reporting.safrole.blockTickets) != expected.get(maxTicketsPerBlock) or
+        uint64(candidate.reporting.safrole.tailStart) != expected.get(epochTailStart) or
+        uint64(candidate.reporting.reports.credentials.assignments.rotationSlots) != expected.get(
+            rotationPeriod) or
+        uint64(candidate.reporting.reports.anchors.lookupAge) != expected.get(maxLookupAnchorAge) or
+        uint64(candidate.reporting.reports.policy.reportGas) != expected.get(maxAccumulateGas) or
+        uint64(candidate.round.reportGas) != expected.get(maxAccumulateGas) or uint64(
+            candidate.round.blockGas) != expected.get(blockGasLimit):
+      return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
   var state = genesisStoreLimits()
   state.writes = writes
   state.writeValueBytes = writeBytes
   let wire = FuzzLimits(bytes: ByteLimit(16777216), text: ByteLimit(4096), state: state, frame: frame)
-  let backend = FuzzBackendConfig(parameters: parameters, candidate: candidate, wire: wire,
+  let backend = FuzzBackendConfig(parameters: selectedParameters, candidate: candidate, wire: wire,
       initialAncestry: true, forkStates: ElementLimit(8))
   if initFuzzBackend(backend).error != FuzzBackendError.None:
     return FuzzTargetResult(status: FuzzTargetError.InvalidPolicy)
@@ -110,24 +134,37 @@ proc budget(text: string, maximum: uint64, value: var uint64): bool =
     value = value*10+digit
   value <= maximum
 proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
-  ## Dedicated process mode accepts only explicit policy/parameter paths and write budgets; no production services start.
-  if arguments.len != 5 or arguments[0] != "serve-fuzz":
-    stderr.writeLine("FUZZ_START_FAILED arguments: serve-fuzz CURRENT_POLICY PARAMETERS_JSON MAX_WRITES MAX_WRITE_BYTES")
+  ## Dedicated process mode selects canonical presets or explicit parameter files with bounded host policy.
+  let namedPreset = arguments.len == 4 and arguments[0] == "serve-fuzz-preset"
+  if not namedPreset and (arguments.len != 5 or arguments[0] != "serve-fuzz"):
+    stderr.writeLine("FUZZ_START_FAILED arguments: serve-fuzz CURRENT_POLICY PARAMETERS_JSON MAX_WRITES MAX_WRITE_BYTES or serve-fuzz-preset CURRENT_POLICY MAX_WRITES MAX_WRITE_BYTES")
     return 2
   let environment = FuzzEnvironment(enabled: existsEnv("JAM_FUZZ"), spec: getEnv("JAM_FUZZ_SPEC"),
     dataPath: getEnv("JAM_FUZZ_DATA_PATH"), socketPath: getEnv("JAM_FUZZ_SOCK_PATH"),
         logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
   var writes = 0'u64
   var writeBytes = 0'u64
-  if not budget(arguments[3], 1000000, writes) or not budget(arguments[4], 67108864,
-      writeBytes): return 2
+  let budgetOffset = if namedPreset: 2 else: 3
+  if not budget(arguments[budgetOffset], 1000000, writes) or not budget(arguments[budgetOffset+1],
+      67108864, writeBytes): return 2
   let loadedPolicy = readBoundedFile(arguments[1], ByteLimit(CurrentDownloadPolicyBytes))
-  let loadedParameters = readBoundedFile(arguments[2], ByteLimit(8388608))
-  if loadedPolicy.error != AtomicFileError.None or loadedParameters.error != AtomicFileError.None:
+  if loadedPolicy.error != AtomicFileError.None:
     stderr.writeLine("FUZZ_START_FAILED configuration files")
     return 2
   let policy = decodeCurrentDownloadPolicy(text(loadedPolicy.value))
-  let parameters = configuredParameters(text(loadedParameters.value))
+  var parameters = unavailableParameters()
+  if namedPreset:
+    # Select immutable catalog parameters before reading any seed supplied over the socket.
+    case environment.spec
+    of "tiny": parameters = presetParameters(ChainPreset.Tiny)
+    of "full": parameters = presetParameters(ChainPreset.Full)
+    of "fuzz": parameters = presetParameters(ChainPreset.Fuzz)
+    else: discard # Invalid/missing selection cannot expose a default successful tuple.
+  else:
+    # Existing explicit custom Tiny/Full host configurations remain supported.
+    let loadedParameters = readBoundedFile(arguments[2], ByteLimit(8388608))
+    if loadedParameters.error != AtomicFileError.None: return 2
+    parameters = configuredParameters(text(loadedParameters.value))
   if policy.error != CurrentDownloadPolicyError.None or not parameters.ok:
     stderr.writeLine("FUZZ_START_FAILED configuration encoding")
     return 2

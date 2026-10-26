@@ -75,41 +75,41 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None):
+def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None, profile=full):
     """A real full-profile core report binds its seed anchor/root, erasure population and two independently signed assigned indices."""
-    assert 0 <= core < full.CORES and (label is None or isinstance(label,bytes))
+    assert 0 <= core < profile.CORES and (label is None or isinstance(label,bytes))
     # An explicit earlier anchor binds independently known child-header evidence at a checkpoint seed.
     fixed,root = (history(initial[chapter_key(3)])[0][-1][0],tree(list(initial.items()))[0]) if anchor is None else anchor
     anchor = fixed[:32]+fixed[96:100]+root
-    source = Reader(parent[chapter_key(1)]); pools = [source.take(32*source.count()) for _ in range(full.CORES)]; source.done()
+    source = Reader(parent[chapter_key(1)]); pools = [source.take(32*source.count()) for _ in range(profile.CORES)]; source.done()
     material = b'full-profile guest report'+tree(list(initial.items()))[0]
     if label is not None: material += b'\0'+label # Explicit independent labels prevent package reuse across multiple cores.
     package = digest(material)
     header = (package+(100+slot+core).to_bytes(4,'little')+digest(package+b'segments')
-              +full.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+(3+core).to_bytes(2,'little')
+              +profile.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+(3+core).to_bytes(2,'little')
               +anchor+fixed[32:64]+anchor)
     layout = dict(header=header, prerequisites=b'', core=core, authorizer=pools[core][:32],
                   gas=17+core, auth=b'auth'+bytes([core % 256]), lookup=b'',
                   digests=[(99,account_parse(parent[chapter_service(255,99)],105)[0],
-                            digest(package+b'payload'),100000,0,bytes([slot,core % 256]),
+                            digest(package+b'payload'),100000,0,bytes([slot % 256,core % 256]),
                             (13+core,2+core,3+core,4+core,5+core))])
     raw = report_wire(layout)
-    order = guests.permutation(parent[chapter_key(6)][64:96],full.VALIDATORS)
-    indices = [index for index,position in enumerate(order) if (position//3+(slot % full.EPOCH)//10) % full.CORES == core]
+    order = guests.permutation(parent[chapter_key(6)][64:96],profile.VALIDATORS)
+    indices = [index for index,position in enumerate(order) if (position//3+(slot % profile.EPOCH)//profile.VALUES[18]) % profile.CORES == core]
     assert len(indices) == 3
     return dict(report=raw,slot=slot,layout=layout,
                 credentials=[(index,signed(index,b'jam_guarantee',digest(raw))[1]) for index in indices[:2]])
 
 
-def assurances(parent,count,*,indices=None,cores=(CORE,)):
+def assurances(parent,count,*,indices=None,cores=(CORE,),profile=full):
     """Use all43 canonical bit bytes and683 genuinely distinct validator signatures for strict full-population quorum."""
-    assert count == 0 or 683 <= count <= 692
+    assert count == 0 or (2*profile.VALIDATORS//3+1) <= count <= (2*profile.VALIDATORS//3+10)
     selected = tuple(range(count)) if indices is None else tuple(indices)
     assert len(selected) == count and list(selected) == sorted(set(selected))
-    assert all(0 <= index < full.VALIDATORS for index in selected)
+    assert all(0 <= index < profile.VALIDATORS for index in selected)
     anchor = history(parent[chapter_key(3)])[0][-1][0][:32]
-    assert cores and list(cores) == sorted(set(cores)) and all(0 <= core < full.CORES for core in cores)
-    bits = sum(1 << core for core in cores).to_bytes(43,'little')
+    assert cores and list(cores) == sorted(set(cores)) and all(0 <= core < profile.CORES for core in cores)
+    bits = sum(1 << core for core in cores).to_bytes((profile.CORES+7)//8,'little')
     target = digest(anchor+bits)
     return [dict(anchor=anchor,bits=bits,index=index,signature=signed(index,b'jam_available',target)[1]) for index in selected]
 
@@ -124,23 +124,24 @@ def body(gs,ass,*,disputes=bytes(3)):
     return raw,commitment
 
 
-def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3,disputes=bytes(3),offenders=(),posterior_judgments=None):
+def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3,disputes=bytes(3),offenders=(),posterior_judgments=None,profile=full,target_core=CORE,guest_effect=guests.guest_effect,guest_outputs=None):
     """Compose independent admission, availability, full statistics and literal guest effects over the full foundation."""
     released = slot == admission_slot+1
-    assert len(ass) >= 683 if released else not ass
+    assert len(ass) >= 2*profile.VALIDATORS//3+1 if released else not ass
     outputs = ((99,COMMITMENT),) if released and mode != 'panic-rollback' else ()
+    if guest_outputs is not None: outputs = guest_outputs # Explicit guest programs independently determine their outputs.
     raw,commitment = body(gs,ass,disputes=disputes)
-    author = int.from_bytes(digest(bytes(32)+slot.to_bytes(4,'little'))[:4],'little') % full.VALIDATORS
-    wire,result = full.child(parent,body=raw,extrinsic_root=commitment,outputs=outputs,author=author,secret=author+1,offenders=offenders)
+    author = int.from_bytes(digest(bytes(32)+slot.to_bytes(4,'little'))[:4],'little') % profile.VALIDATORS
+    wire,result = profile.child(parent,body=raw,extrinsic_root=commitment,outputs=outputs,author=author,secret=author+1,offenders=offenders)
     assert int.from_bytes(wire[96:100],'little') == slot
     if posterior_judgments is not None: result[chapter_key(5)] = posterior_judgments # Guest rollback never rewinds already-admitted extrinsic judgments.
-    old = [None]*full.CORES
+    old = [None]*profile.CORES
     # Only the guarantee-bearing child leaves a pending assignment; the next quorum releases it.
-    if slot == admission_slot: old[CORE] = dict(guarantee={key:gs[0][key] for key in ('report','slot','credentials')},registered=slot)
+    if slot == admission_slot: old[target_core] = dict(guarantee={key:gs[0][key] for key in ('report','slot','credentials')},registered=slot)
     result[chapter_key(10)] = availability_wire(old)
     pools = Reader(parent[chapter_key(1)]); rows = []; queues = parent[chapter_key(2)]
     # Calculate every pool independently, removing incoming authorizers before queue appends.
-    for core in range(full.CORES):
+    for core in range(profile.CORES):
         row = [pools.take(32) for _ in range(pools.count())]
         # A guarantee consumes only its own core authorizer.
         for item in gs:
@@ -154,27 +155,27 @@ def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3,disputes
     blocks,peaks = history(result[chapter_key(3)])
     blocks[-1] = (blocks[-1][0],b''.join(sorted(item['layout']['header'][:32]+item['layout']['header'][70:102] for item in gs)))
     result[chapter_key(3)] = history_wire((blocks,peaks))
-    accumulated = Reader(parent[chapter_key(15)]); ring = [accumulated.take(32*accumulated.count()) for _ in range(full.EPOCH)]; accumulated.done()
+    accumulated = Reader(parent[chapter_key(15)]); ring = [accumulated.take(32*accumulated.count()) for _ in range(profile.EPOCH)]; accumulated.done()
     result[chapter_key(15)] = queue_wire('A',ring[1:]+[stored['report'][:32] if released else b''])
-    (current,previous,_,_),_ = statistics_parse(result[chapter_key(13)],(full.CORES,full.VALIDATORS,full.VALIDATORS,2**64-1,2**64-1))
+    (current,previous,_,_),_ = statistics_parse(result[chapter_key(13)],(profile.CORES,profile.VALIDATORS,profile.VALIDATORS,2**64-1,2**64-1))
     # Reporter statistics count each distinct guarantor once in this block.
     for index in {index for item in gs for index,_ in item['credentials']}:
         row = list(current[index]); row[4] += 1; current[index] = tuple(row)
     # Each authenticated vote contributes to its signer even when the report was already qualified.
     for item in ass:
         row = list(current[item['index']]); row[5] += 1; current[item['index']] = tuple(row)
-    cores = [[0]*8 for _ in range(full.CORES)]; activity = {}
+    cores = [[0]*8 for _ in range(profile.CORES)]; activity = {}
     # Incoming reports contribute refinement and per-core load independently of later availability.
     for item in gs:
         layout = item['layout']; load = layout['digests'][0][-1]
-        cores[CORE][2:] = [*load[1:],int.from_bytes(layout['header'][32:36],'little'),load[0]]
+        cores[target_core][2:] = [*load[1:],int.from_bytes(layout['header'][32:36],'little'),load[0]]
         row = activity.setdefault(99,[99]+[0]*11); row[3] += 1
         for index,amount in enumerate(load,4): row[index] += amount
-    cores[CORE][1] = len(ass)
+    cores[target_core][1] = len(ass)
     # Literal guest behavior determines namespaces, retained gas and activity after release.
     if released:
-        report = stored['report']; cores[CORE][0] = int.from_bytes(report[32:36],'little')+4104*((65*int.from_bytes(report[102:104],'little')+63)//64)
-        applied = guests.guest_effect(result,parent,mode,99,1,slot)
+        report = stored['report']; cores[target_core][0] = int.from_bytes(report[32:36],'little')+4104*((65*int.from_bytes(report[102:104],'little')+63)//64)
+        applied = guest_effect(result,parent,mode,99,1,slot)
         row = activity.setdefault(99,[99]+[0]*11)
         for index in range(1,12): row[index] += applied[index]
     result[chapter_key(13)] = statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))

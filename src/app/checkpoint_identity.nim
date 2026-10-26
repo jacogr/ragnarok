@@ -70,6 +70,8 @@ proc captureApplicationCheckpointIdentity*(chain: ApplicationChain): Application
       selected.value.stateSnapshot):
     return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.StateMismatch) # Independently reconstructed equal roots do not prove canonical owner agreement.
   let head = selected.value
+  if head.chainParameters.hasExplicitExpungePeriod:
+    return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.InvalidParameters) # Ephemeral Fuzz interpretation must not disappear in the unchanged durable V1 tuple.
   ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.None,
     completed: ApplicationCheckpointIdentity(initialized: true, blockIdentity: head.blockHash,
       stateCommitment: state.value.commitment.root, timeslot: ApplicationCheckpointSlot(head.slot),

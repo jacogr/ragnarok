@@ -732,3 +732,18 @@ separately from captured full-header evidence.
 wrong roots, missing child evidence, independent sibling contexts and eviction.
 This is a tooling information gap, not a consensus exception. Live generated
 campaign validation remains pending engine availability.
+
+## FUZZ-PARAMETERS-001: explicit issue215 expunge period
+
+GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `text/pvm_invocations.tex`
+lines60–62, defines D=L+4800. The experimental
+[davxy/jam-conformance issue215](https://github.com/davxy/jam-conformance/issues/215)
+preset specifies D900 and L600, which would otherwise yield5400.
+
+Maintainer decision: use explicit D900 for Fuzz; preserve existing Tiny/Full/custom
+expiry behavior. The immutable central preset records this interpretation without
+changing fetch encoding. A removed preimage at slot32 stays at932 and expires at933;
+independent complete maps also cover restoration, live histories, panic rollback
+and checkpoint retention. See [the scoped contract and evidence](jam-network-fuzz.md#explicit-fuzz-expiry-and-central-parameters).
+This exception applies only to the selected Fuzz preset; it does not change GP checks
+for other profiles or establish live generated-campaign conformance.

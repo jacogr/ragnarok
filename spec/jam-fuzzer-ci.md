@@ -37,3 +37,9 @@ prepared socket plan and requires fresh-session isolation. Partial loops or
 missing guest evidence fail the same group even if the outer workload flag is
 present. Summaries retain explicit guest import/query evidence and the pending
 live-engine campaign status.
+
+The separate **Fuzz / JAM Network** matrix entry owns the experimental issue215
+`fuzz` preset through `make check-jam-network`. Its native and packaged-entry
+socket readiness evidence does not change this interface group's case plan or
+the pending live generated campaign status. See [network fuzz](jam-network-fuzz.md)
+and [usage](../docs/jam-network-fuzz.md).

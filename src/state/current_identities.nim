@@ -103,7 +103,7 @@ proc preserveSource(source: IdentitySource, update: PreparedCurrentChainUpdate,
   if not sameChainView(originalView, update.currentUpdatePriorView):
     fail(CurrentIdentityError.ViewMismatch) # Ordered history, complete Parameters and explicit finality/absence all bind the predecessor.
   let child = update.currentUpdateView.bestBlockContext
-  if original.parameters.encodeParameters != child.parameters.encodeParameters:
+  if not sameParameterProfile(original.parameters, child.parameters):
     fail(CurrentIdentityError.ParametersMismatch) # Matching four cardinalities cannot replace the full execution/economic tuple.
   var i = 0
   var j = 0
