@@ -152,18 +152,10 @@ class PreparedExecutionToolTests(unittest.TestCase):
         with self.assertRaises(ValueError): summary(broken)
 
     def test_manual_measurement_scope_preserves_existing_gates(self):
-        """Heavy architectural measurements are explicit; native property fixtures still run through ordinary unit discovery."""
+        """Historical prepared comparisons remain local; ordinary native tests retain their Make entry."""
         from native_checks import ROOT
-        text = (ROOT/'.github/workflows/ci.yml').read_text().split('  prepared-pvm:\n')[1]
-        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.suite == 'prepared-pvm'", text)
-        self.assertIn('run: make profile-pvm-prepared', text)
-        self.assertIn('fetch-depth: 0', text)
-        self.assertIn('run: make unit SUITE=pvm_prepared_blocks', text)
-        self.assertIn('PVM_PREPARED_BASELINE: 7115dfd067c882577230bc3ba3bc6806de8d3a34', text)
-        self.assertIn('generated-source-baseline/', text)
-        self.assertIn('valgrind=1:3.22.0-0ubuntu3', text)
-        self.assertIn('if: always()', text)
-        self.assertNotIn('continue-on-error', text)
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        self.assertNotIn('  prepared-pvm:\n',text)
         make = (ROOT/'Makefile').read_text()
         self.assertIn('tools/pvm_prepared_blocks.py --counts --timings', make)
         for target in ('check-pvm-prepared', 'profile-pvm-prepared'):

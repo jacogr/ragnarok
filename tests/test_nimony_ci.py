@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, prepared-pvm, profile-doom, compare-doom, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -122,7 +122,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         groups = {'compile': ['smoke', 'modules', 'python', 'guards'],
                   'interop': ['pvm-reference', 'telemetry-interop'],
-                  'perf': ['bench-pvm', 'bench-storage', 'bench-storage-growth'],
+                  'perf': ['bench-pvm', 'bench-doom', 'bench-storage', 'bench-storage-growth'],
                   'build': ['docker', 'binary', 'binary']}
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
                       event_context('pull_request', 'labeled', 'ci:full')):
@@ -145,6 +145,7 @@ class NimonyCISafeguards(unittest.TestCase):
         manual = {'smoke': ('compile', ['smoke']), 'unit': ('compile', groups['compile']),
                   'interop': ('interop', groups['interop']), 'ref-pvm': ('interop', ['pvm-reference']),
                   'perf': ('perf', groups['perf']), 'bench-pvm': ('perf', ['bench-pvm']),
+                  'bench-doom': ('perf', ['bench-doom']),
                   'bench-storage': ('perf', ['bench-storage']),
                   'bench-storage-growth': ('perf', ['bench-storage-growth']),
                   'build': ('build', groups['build']), 'docker': ('build', ['docker']),
@@ -156,65 +157,22 @@ class NimonyCISafeguards(unittest.TestCase):
                     text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
 
-    def test_instruction_profiles_are_manual_and_isolated(self):
-        """Diagnostic instruction collection never joins ordinary/master/full timing or unit checks."""
-        text = (ROOT/'.github/workflows/ci.yml').read_text()
-        condition = job_condition(text, 'profile-pvm')
-        for event, expected in [(event_context(), False),
-                (event_context('workflow_dispatch', suite='profile-pvm'), True),
-                (event_context('workflow_dispatch', suite='compare-pvm'), False),
-                (event_context('workflow_dispatch', suite='perf'), False),
-                (event_context('workflow_dispatch', suite='full'), False),
-                (event_context('pull_request', 'labeled', 'ci:pvm-compare'), False)]:
-            # Only the explicit diagnostic choice can allocate the profiling runner.
-            self.assertEqual(bool(expression(condition, event)), expected)
-        section = job_section(text, 'profile-pvm')
-        self.assertIn('runs-on: ubuntu-24.04', section)
-        self.assertIn('valgrind=1:3.22.0-0ubuntu3', section)
-        self.assertIn('run: make profile-pvm-guests', section)
-        self.assertNotIn('continue-on-error', section)
-        self.assertNotIn('needs:', section)
-        self.assertIn('build/tests/pvm-instruction-profile/*.callgrind', section)
-        self.assertNotIn('/snapshot/', section)
-
-    def test_paired_pvm_is_explicit_and_uses_exact_endpoints(self):
-        """Only the requested revision experiment runs, with literal refs and a separate control output."""
-        text = (ROOT/'.github/workflows/ci.yml').read_text()
-        condition = job_condition(text, 'compare-pvm')
-        for event, expected in [
-                (event_context(), False),
-                (event_context('workflow_dispatch', suite='compare-pvm'), True),
-                (event_context('workflow_dispatch', suite='perf'), False),
-                (event_context('workflow_dispatch', suite='full'), False),
-                (event_context('pull_request', 'labeled', 'ci:pvm-compare'), True),
-                (event_context('pull_request', 'synchronize', 'ci:pvm-compare'), False),
-                (event_context('pull_request', 'labeled', 'ci:perf'), False),
-                (event_context('pull_request', 'labeled', 'ci:full'), False),
-                (event_context('pull_request', 'labeled', 'ci:pvm-compare', state='closed'), False)]:
-            # Persistent labels and closed PRs cannot launch another expensive comparison.
-            self.assertEqual(bool(expression(condition, event)), expected)
-        section = job_section(text, 'compare-pvm')
-        self.assertIn('timeout-minutes: *ci-job-timeout', section)
-        self.assertIn('runs-on: ubuntu-24.04', section)
-        self.assertIn('PVM_COMPARE_SYNTHETIC: "1"', section)
-        self.assertIn('fetch-depth: 0', section)
-        self.assertIn('persist-credentials: false', section)
-        self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', section)
-        self.assertIn("PVM_COMPARE_BASE: ${{ github.event.pull_request.base.sha || inputs.pvm_compare_base || 'HEAD^' }}", section)
-        baseline = section.index('run: make compare-pvm-guests\n')
-        control = section.index('run: make compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_OUTPUT=build/tests/pvm-guest-control')
-        reference = section.index('run: make bench-pvm-guests\n')
-        self.assertLess(baseline, control)
-        self.assertLess(control, reference)
-        self.assertNotIn('continue-on-error', section)
-        self.assertNotIn('needs:', section)
-        self.assertEqual(section.count('if: always()'), 2)
-        for folder in ('pvm-guest-compare', 'pvm-guest-control', 'pvm-guests'):
-            # Both summaries and raw failed/partial evidence survive without uploading build trees.
-            self.assertIn('build/tests/'+folder+'/summary.md', section)
-            self.assertIn('build/tests/'+folder+'/*.json', section)
-        self.assertNotIn('/snapshots/', section)
-        self.assertNotIn('/compiler-', section)
+    def test_performance_monitoring_replaces_experiment_jobs(self):
+        """Retain regular interpreted comparisons and local tools without historical CI experiments."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        for job in ('profile-pvm','profile-doom','compare-doom','compare-pvm','prepared-pvm'):
+            self.assertNotIn('  '+job+':\n',text)
+        for option in ('pvm_compare_base','pvm_doom_counts_only','pvm_diagnosis',
+                       'pvm_build_identity','pvm_deep_attribution'):
+            self.assertNotIn(option+':',text)
+        self.assertNotIn('ci:pvm-compare',text)
+        section=family_section(text,'perf','bench-doom')
+        self.assertIn('run: make bench-pvm-doom',section)
+        self.assertNotIn('valgrind',section)
+        self.assertIn('build/tests/pvm-doom/results.json',section.replace('*.json','results.json'))
+        self.assertIn('build/tests/pvm-doom/summary.md',section)
+        self.assertNotIn('continue-on-error',section)
+        self.assertIn('needs: perf',job_section(text,'perf-status'))
 
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
@@ -256,7 +214,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
-                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.event.label.name != 'ci:pvm-compare' && github.run_id || github.ref }}")
+                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
     # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
@@ -468,7 +426,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling', 'Rejection Guards']),
-                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage', 'Storage Growth']),
+                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'PVM DOOM', 'Storage', 'Storage Growth']),
                              ('build', ['Docker', 'Linux', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))

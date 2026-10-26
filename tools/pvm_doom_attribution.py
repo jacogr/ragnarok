@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Validate pinned headless DOOM state/output, then collect isolated CI instruction profiles.
+"""Validate pinned headless DOOM state/output, then measure interpreted CI calls or local profiles.
 
 Make owns provisioning. Local --check runs correctness only; instrumented clocks are discarded.
 """
@@ -116,17 +116,51 @@ def timing_samples(output, engine, phase, event_bytes):
     return samples
 
 
-def run(check_only=False, warmup=0, counts_only=False):
+def summary_lines(report):
+    """Publish CPU medians for both process orders; optional profiles never masquerade as timings."""
+    lines=['# DOOM interpreted comparison','',f"Warmup ticks: {report['warmup_ticks']}; measured ticks: 1. Initialization is separate.",'']
+    if report['profiles']:
+        # Local diagnostic modes retain their independently scoped instruction evidence.
+        lines+=['| Engine | Phase | Instructions |','| --- | --- | ---: |']
+        lines.extend(f'| {r["engine"]} | {r["phase"]} | {r["counts"]["Ir"]:,} |' for r in report['profiles'])
+        lines+=['','Instrumented clocks establish no speed claim.','']
+    if report.get('mode') in ('timings','profiles-and-timings') and not report['slowdown']:
+        raise ValueError('missing DOOM timing summary')
+    if report['slowdown']:
+        # A successful timing report needs every phase/order, not a partially completed matrix.
+        if set(report['slowdown'])!={'init','tick'}:raise ValueError('partial DOOM timing summary')
+        lines+=['| Phase/order | Ragnarök CPU ms | PolkaVM interpreted CPU ms | Ragnarök/reference |',
+                '| --- | ---: | ---: | ---: |']
+        for phase in ('init','tick'):
+            rows=report['slowdown'][phase]
+            if len(rows)!=2 or [r['order'] for r in rows]!=[0,1]:
+                raise ValueError('incomplete DOOM timing orders')
+            for r in rows:
+                native,reference=r['native_cpu_ns'],r['reference_cpu_ns']
+                if min(native,reference)<=0 or r['native_over_reference']!=native/reference:
+                    raise ValueError('invalid DOOM timing ratio')
+                lines.append(f'| {phase}/{r["order"]} | {native/1e6:.3f} | {reference/1e6:.3f} | {native/reference:.3f}× |')
+        lines+=['','Three warmups and ten validated reused samples per process; both process orders.']
+    lines+=['','Complete CPU/memory state and ordered host output match; all six refusal controls pass.',
+            'Call CPU includes in-memory callbacks and excludes preparation, input reset, file I/O and final reference validation.',
+            'Preparation identities and first cold samples remain in results.json; this is not whole-client startup time.',
+            'Ratios are informational; semantic, identity and sample failures fail the job.']
+    return lines
+
+
+def run(check_only=False, warmup=0, counts_only=False, timings_only=False):
     """Prepare equal complete states, reject bad controls, and keep profiling separate from correctness."""
+    if sum((check_only, counts_only, timings_only))>1:
+        raise ValueError('DOOM modes are mutually exclusive')
     if type(warmup) is not int or not 0<=warmup<=1320:
         raise ValueError('unsupported DOOM warmup')
     if not check_only and (platform.system(),platform.machine())!=('Linux','x86_64'):
-        raise RuntimeError('DOOM instruction attribution requires Linux x86-64 CI')
+        raise RuntimeError('DOOM measurements require Linux x86-64')
     if not check_only and not counts_only and os.environ.get('GITHUB_ACTIONS')!='true':
         raise RuntimeError('DOOM timings require CI; use --counts-only for local instruction counts')
     BUILD.mkdir(parents=True,exist_ok=True)
     (BUILD/'results.json').unlink(missing_ok=True);(BUILD/'summary.md').unlink(missing_ok=True)
-    report=dict(status='running',warmup_ticks=warmup,measured_ticks=1,builds=[],controls=[],profiles=[],outputs={},timing_runs=[],slowdown={})
+    report=dict(status='running',mode='checks'if check_only else'timings'if timings_only else'counts'if counts_only else'profiles-and-timings',warmup_ticks=warmup,measured_ticks=1,builds=[],controls=[],profiles=[],outputs={},timing_runs=[],slowdown={})
     checks=NativeChecks(BUILD)
 
     def command(args,name,**kwargs):
@@ -206,7 +240,7 @@ def run(check_only=False, warmup=0, counts_only=False):
             command([binary,*args],engine+'-restored',environment=env,timeout=900)
         report['inputs']={p.name:digest(p) for p in sorted(prepared.iterdir())}
         report['binaries']={name:digest(path) for name,path in images.items()}
-        if not check_only:
+        if not check_only and not timings_only:
             # Validate source archival before expensive profiles; a missing root cannot waste a full run.
             _,report['generated_sources']=capture_generated_sources(BUILD,ROOT)
             report['reference_sources']={}
@@ -255,11 +289,14 @@ def run(check_only=False, warmup=0, counts_only=False):
                     ratios.append(dict(order=order,native_cpu_ns=medians['native'],reference_cpu_ns=medians['reference'],native_over_reference=medians['native']/medians['reference']))
                 report['slowdown'][phase]=ratios
         report['status']='checks-passed'
-        lines=['# Bounded DOOM attribution','',f'Warmup ticks: {warmup}; measured ticks:1. Initialization is separate.','', '| Engine | Phase | Instructions |','| --- | --- | ---: |']
-        lines.extend(f'| {r["engine"]} | {r["phase"]} | {r["counts"]["Ir"]:,} |' for r in report['profiles'])
-        lines.extend(['','| Phase | Native/reference CPU ratio, order0 /order1 |','| --- | ---: |'])
-        lines.extend(f'| {phase} | {rows[0]["native_over_reference"]:.3f}× /{rows[1]["native_over_reference"]:.3f}× |' for phase,rows in report['slowdown'].items())
-        lines.extend(['','Three warmup samples and ten validated measured samples per process; both process orders.','Complete state and ordered output bytes match; all six refusal controls pass.','Counts include in-memory host callbacks and exclude preparation/file I/O/hashing/final validation.','No instrumented duration is a timing result.'])
+        # Source/fixture/image drift invalidates timings just as it invalidates instruction profiles.
+        for name,sha in report['sources'].items():
+            if digest(ROOT/name)!=sha:raise ValueError('changed DOOM source: '+name)
+        for name,sha in report['inputs'].items():
+            if digest(prepared/name)!=sha:raise ValueError('changed DOOM input: '+name)
+        for name,sha in report['binaries'].items():
+            if digest(images[name])!=sha:raise ValueError('changed DOOM image: '+name)
+        lines=summary_lines(report)
         (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
     except Exception as error:
         report['status']='failed';report['error']=str(error)
@@ -270,5 +307,10 @@ def run(check_only=False, warmup=0, counts_only=False):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');parser.add_argument('--counts-only',action='store_true');parser.add_argument('--warmup',type=int,default=int(os.environ.get('RAGNAROK_PVM_DOOM_WARMUP','0')))
-    args=parser.parse_args();run(args.check,args.warmup,args.counts_only)
+    parser=argparse.ArgumentParser(description=__doc__)
+    modes=parser.add_mutually_exclusive_group()
+    modes.add_argument('--check',action='store_true')
+    modes.add_argument('--counts-only',action='store_true')
+    modes.add_argument('--timings-only',action='store_true')
+    parser.add_argument('--warmup',type=int,default=int(os.environ.get('RAGNAROK_PVM_DOOM_WARMUP','0')))
+    args=parser.parse_args();run(args.check,args.warmup,args.counts_only,args.timings_only)

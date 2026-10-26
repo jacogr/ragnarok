@@ -52,8 +52,7 @@ In the PR sidebar, add one label to request heavier verification of the current 
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
-| `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |
-| `ci:pvm-compare` | Opt-in baseline/candidate, identical-source control and pinned PolkaVM real guests on one runner |
+| `ci:perf` | All Perf jobs, including interpreted PVM and DOOM reference comparisons |
 | `ci:full` | All verification, Interop and Perf jobs |
 
 The label addition is the request; leaving a label on a PR does not enable automatic heavy checks on
@@ -90,9 +89,9 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `compare-pvm`, `profile-pvm`, `bench-storage`, `bench-storage-growth` or `full`
+choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-doom`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
-`ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
+`ref-pvm`, `bench-pvm` and `bench-doom` selections run their individual workloads.
 **Perf / PVM** also runs automatically on master pushes. Its validated interpreted
 [PVM speed comparison](../spec/pvm-benchmark-comparison.md) appears in the Actions
 run summary with raw artifacts, so no manual dispatch is needed after a merge. The same job also
@@ -109,27 +108,18 @@ See [the real-guest contract](../spec/pvm-sieve-benchmark.md). CLI equivalent:
 gh workflow run ci.yml --ref <branch> -f suite=full
 ```
 
-For revision experiments, add `ci:pvm-compare` to an open PR. **Perf / PVM Revisions**
-checks out the exact PR head and compares against its exact base SHA; this job is the exception
-to ordinary PR checks using the merge revision. It runs the paired seven-input/all-policy matrix,
-plus paired synthetic host/memory/tiny controls, then an identical-source control, then the
-pinned PolkaVM interpreted real-guest comparison,
-sequentially on one Ubuntu 24.04 runner. Builds finish before each measured matrix. Raw state-checked
-samples, endpoint/compiler/input hashes, CPU identity and separate summaries are retained for 30 days.
-Noise controls and repeated runs qualify small differences; a fresh VM does not guarantee identical
-physical CPUs across jobs. No speed threshold makes a noisy run pass or fail; semantic or identity
-failures still fail the job. This experimental job is excluded from ordinary `perf`, `full` and
-master requests. Manual requests accept `pvm_compare_base` as a local ref in the fetched history:
+**Perf / PVM DOOM** runs on the same master/full/Perf requests. It validates pinned initialization
+and gameplay states after 1,320 ticks, including the known rendered frame and ordered audio/video
+output, then reports Ragnarök versus PolkaVM interpreted CPU medians and ratios for both process
+orders. Every process checks three warmups plus ten reused calls; first cold calls and input/source
+identities remain in JSON. Call CPU includes in-memory callbacks and excludes preparation, input
+reset and final reference validation. Ratios are informational, while correctness, sample and identity
+failures fail the job. A standalone `bench-doom` request selects only this family.
 
-```sh
-gh workflow run ci.yml --ref <branch> -f suite=compare-pvm -f pvm_compare_base=<baseline-sha>
-```
-
-The manual `profile-pvm` choice runs checked Linux Callgrind diagnostics separately
-from timing jobs. It attributes native execution instructions on one state-checked
-invocation per selected guest/policy; instrumented clocks establish no speed claim.
-Use `make profile-pvm-guests` on a provisioned Linux x86-64 host with the pinned
-Valgrind tools. See [the profile contract](../spec/pvm-instruction-profiles.md).
+The regular jobs replace the old PVM Instructions, PVM Prepared, PVM Revisions, DOOM Attribution
+and DOOM Revisions CI entries. Their historical Make diagnostics are retained, subject to their
+existing Linux/profiler/timing admission rules. No automatic instruction baseline or noisy timing
+regression threshold is implied. See [the monitoring contract](../spec/pvm-ci-performance.md).
 
 Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
 verification and may not satisfy required PR checks. If branch protection is introduced, require

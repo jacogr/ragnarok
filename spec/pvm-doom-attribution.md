@@ -1,5 +1,9 @@
 # Bounded pinned DOOM attribution
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 ## Scope and correctness
 
 Use the existing PolkaVM pin `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`, its

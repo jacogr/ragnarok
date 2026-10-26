@@ -63,16 +63,8 @@ class DoomCompareTests(unittest.TestCase):
             with patch.object(compare, 'git', side_effect=[tree, b'owned']), self.assertRaises(ValueError):
                 compare.endpoint('head', {})
 
-    def test_doom_pair_job_is_explicit_and_complete(self):
-        """Ordinary jobs never launch DOOM timings; explicit comparisons fetch both exact histories."""
+    def test_revision_experiment_is_not_a_ci_job(self):
+        """Historical comparison remains a Make tool rather than an extra skipped CI check."""
         text=(compare.ROOT/'.github/workflows/ci.yml').read_text()
-        condition=job_condition(text, 'compare-doom')
-        for context, wanted in ((event_context(), False),
-            (event_context('workflow_dispatch', suite='compare-doom'), True),
-            (event_context('workflow_dispatch', suite='full'), False),
-            (event_context('pull_request', 'labeled', 'ci:perf'), False)):
-            self.assertEqual(bool(expression(condition, context)), wanted)
-        section=job_section(text, 'compare-doom')
-        self.assertIn('fetch-depth: 0', section)
-        self.assertIn('run: make compare-pvm-doom', section)
-        self.assertNotIn('continue-on-error', section)
+        self.assertNotIn('  compare-doom:\n',text)
+        self.assertIn('tools/pvm_doom_compare.py',(compare.ROOT/'Makefile').read_text())

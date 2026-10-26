@@ -540,6 +540,12 @@ profile-pvm-doom: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_attribution.py $(if $(filter 1,$(PVM_DOOM_COUNTS_ONLY)),--counts-only,)
 
+# Regular CI records real interpreted call timings without optional instruction instrumentation.
+.PHONY: bench-pvm-doom
+bench-pvm-doom: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_doom_attribution.py --timings-only --warmup 1320
+
 # Paired DOOM revisions use shared complete gameplay admission; local checks keep clocks disabled.
 PVM_DOOM_COMPARE_CHECK ?= 0
 .PHONY: compare-pvm-doom

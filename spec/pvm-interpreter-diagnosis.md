@@ -1,5 +1,9 @@
 # Comparative interpreter diagnosis
 
+Current CI: historical experiment workflow choices described below were retired in favor of
+regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
+remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
+
 This bounded investigation starts at merged master
 `98165f471684c217a6d959c1c021fd34d568ef54`, after the six accepted PVM layers.
 It changes no interpreter, compiler flags, dependency pins, fixture or maintained driver.
