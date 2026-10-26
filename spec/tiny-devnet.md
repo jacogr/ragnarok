@@ -41,7 +41,9 @@ invalid-seal and stale/replayed-block refusals, parent preservation and unset fi
 The native initializer constructs all16 global chapters and the exact configured Tiny tuple.
 Tiny overrides follow pinned `vendor/jamtestvectors/README.md`; the24-slot lookup age follows
 pinned conformance Tiny ancestry guidance. Initial active/pending/staged/previous populations all
-contain the six distinct public development identities. First-epoch keys cycle in roster order;
+contain the six distinct JIP-5 development identities from the shared
+[validator-key API](validator-keys.md). Canonical account names are Alice, Bob, Carol, David, Eve
+and Fergie; indices0..5 select both signing and Ed25519 TLS keys. First-epoch keys cycle in roster order;
 epoch transitions use the ordinary GP entropy-dependent fallback schedule. The genesis is a
 configured trust anchor with a zero seal. No authenticated-child bypass is introduced.
 
@@ -59,6 +61,7 @@ saved height and exact journal at all six processes, rather than accepting equal
 
 ## Observed verification
 
+Historical pre-JIP-5 identity run (its hashes are not current acceptance expectations):
 Initial macOS ARM64 checked ARC/Clang ThinLTO run: six processes produced and remotely consumed
 fourteen blocks, crossed slot12, stopped node5 after slot5, replayed/recovered it after slot8 and
 converged at slot14. All90 complete-map observations and84 journaled block records matched the

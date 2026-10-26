@@ -61,6 +61,11 @@ type
 func error*[T](value: CryptoResult[T]): CryptoError =
   ## Outcomes are read-only; failed/default imports and backend calls carry no usable value.
   value.status
+func cryptoFailure*[T](reason: CryptoError): CryptoResult[T] {.requires: reason !=
+    CryptoError.None.} =
+  ## Compose a typed failure without exposing private result fields or permitting fabricated success.
+  CryptoResult[T](status: reason)
+
 func value*[T](value: CryptoResult[T]): T {.inline, requires: value.status == CryptoError.None.} =
   ## Supported success contracts guard all fixed outputs and opaque seed handles.
   value.completed
@@ -74,6 +79,11 @@ proc dataPointer(input: openArray[byte]): pointer {.raises: [], gcsafe.} =
   # Empty arrays have no element address to evaluate.
   if input.len == 0: return nil
   unsafeAddr input[0]
+
+proc clearSecret*(input: var openArray[byte]) {.raises: [], gcsafe.} =
+  ## Explicitly erase caller-owned secret scratch; no pointer survives this synchronous call.
+  if input.len > 0:
+    wipe(addr input[0], csize_t(input.len)) # Empty buffers have no first-element address.
 
 proc importSeed*(input: openArray[byte]): CryptoResult[EdSeed] {.raises: [], gcsafe.} =
   ## Retain a private seed copy; no reference to the caller's original array survives this operation.
@@ -117,6 +127,26 @@ proc blake2b256*(input: openArray[byte]): CryptoResult[Blake2bHash] {.raises: []
   if nativeBlake(dataPointer(input), csize_t(input.len), addr output[0]) != 1:
     return CryptoResult[Blake2bHash](status: CryptoError.BackendFailure)
   CryptoResult[Blake2bHash](status: CryptoError.None, completed: Blake2bHash(output))
+
+proc blake2b256*(input: openArray[byte], output: var array[32, byte]): CryptoError {.raises: [], gcsafe.} =
+  ## Hash into caller-owned scratch so secret derivation can erase the digest without result copies.
+  if nativeBlake(dataPointer(input), csize_t(input.len), addr output[0]) != 1:
+    return CryptoError.BackendFailure # The native ABI leaves output unchanged on refusal.
+  CryptoError.None
+
+proc exportPkcs8*(seed: EdSeed): CryptoResult[array[48, byte]] {.raises: [], gcsafe.} =
+  ## Explicitly export unencrypted RFC 8410 Ed25519 PKCS8 DER; callers must erase returned secret bytes.
+  let storage = seed.storage
+  if storage == nil or not storage.alive:
+    return CryptoResult[array[48, byte]](status: CryptoError.InvalidSeed)
+  var encoded = default(array[48, byte])
+  const Prefix = [0x30'u8, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+    0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]
+  for i in 0..<16:
+    encoded[i] = Prefix[i] # Fixed algorithm identifier and nested 32-byte OCTET STRING.
+  for i in 0..<32:
+    encoded[i+16] = storage.bytes[i] # The export owns its bytes and never borrows the seed owner.
+  CryptoResult[array[48, byte]](status: CryptoError.None, completed: encoded)
 
 proc keccak256*(input: openArray[byte]): CryptoResult[KeccakHash] {.raises: [], gcsafe.} =
   ## Hash raw bytes with legacy Keccak-256 (suffix 0x01), independently of SHA3's 0x06 suffix.

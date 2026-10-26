@@ -10,7 +10,7 @@ import ../chain/[genesis, provider, parameters]
 import ../codec/[bounded, header, block_codec]
 import ../state/[store, checkpoint, accumulation_current_update, block_transition, safrole_transition]
 import ../bandersnatch/bandersnatch
-import ../crypto/primitives
+import ../crypto/[primitives, validator_keys]
 import ../quic/[devnet, protocol]
 import ../lib/atomic_file
 
@@ -224,13 +224,17 @@ proc runDevnet*(arguments: seq[string]): int {.raises.} =
   if arguments.len == 3 and arguments[1] == "identity":
     var index = 0'u64
     if not number(arguments[2], 5, index): return 2
-    let public = tinyPeerKey(int(index))
-    if public.error != CryptoError.None: return 2
+    let seed = deriveEd25519Seed(trivialSeed(uint32(index)))
+    if seed.error != CryptoError.None: return 2
+    defer: clearSeed(seed.value)
+    let public = publicKey(seed.value)
+    let exported = exportPkcs8(seed.value)
+    if public.error != CryptoError.None or exported.error != CryptoError.None: return 2
     let name = peerName(array[32, byte](public.value))
     var label = ""
     for octet in name: label.add(char(octet))
     stdout.writeLine("{\"public\":\"" & hex(array[32, byte](public.value)) & "\",\"name\":\"" &
-        label & "\"}")
+        label & "\",\"pkcs8\":\"" & hex(exported.value) & "\"}")
     return 0
   if arguments.len == 3 and arguments[1] == "init":
     let genesis = initTinyGenesis()

@@ -101,7 +101,7 @@ def submitted_for(slot, bank):
 
 
 def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=bytes(3),
-              new_offenders=(), body_override=None, extrinsic_override=None, outputs=(), preimages=()):
+              new_offenders=(), body_override=None, extrinsic_override=None, outputs=(), preimages=(), public_keys=PUBLIC):
     """Calculate each header, admitted contest, rotated state and entire successor independently."""
     previous = int.from_bytes(parent[chapter_key(11)], 'little')
     assert slot > previous
@@ -156,9 +156,9 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
         secret = attributed[0]['secret']
         transcript = b'jam_ticket_seal'+entropy[2 if crossed else 3]+selected[32:]
     else:
-        secret = PUBLIC[selected]
+        secret = public_keys[selected]
         transcript = b'jam_fallback_seal'+entropy[2 if crossed else 3]
-    author = next(i for i, record in enumerate(post_active) if PUBLIC.get(record[:32]) == secret)
+    author = next(i for i, record in enumerate(post_active) if public_keys.get(record[:32]) == secret)
     _, seal_output = sign(secret, transcript, b'')
     if post_kind == 0:
         assert seal_output == selected[:32]

@@ -9,7 +9,7 @@ mapping are calculated by the existing mathematical references without STF obser
 """
 import hashlib
 import json
-from current_stf_epoch_oracle import consensus, successor, PUBLIC
+from current_stf_epoch_oracle import consensus, successor
 from current_stf_oracle import checkpoint, tree
 from report_fixtures import openssl_sign
 from state_layout_oracle import chapter_key, digest
@@ -18,6 +18,13 @@ from state_history_oracle import wire as history_wire
 from state_privileges_oracle import wire as privilege_wire
 from state_statistics_oracle import wire as statistics_wire
 from test_codec import reference_encode as natural
+from test_bandersnatch_thin_reference import G, multiply, encode
+from bandersnatch_thin_oracle import secret_from_seed
+
+# Public development secrets only; independent Draft 35 A.3 arithmetic pins native seed import.
+SEEDS = [hashlib.blake2b(b'jam_val_key_bandersnatch'+index.to_bytes(4,'little')*8,
+                       digest_size=32).digest() for index in range(6)]
+PUBLIC = {encode(multiply(G,secret_from_seed(seed))):secret_from_seed(seed) for seed in SEEDS}
 
 WIDTHS = (8,8,8,2,4,4,8,8,8,8,2,2,2,2,4,2,2,2,2,2,2,4,4,4,4,4,4,4,4)
 VALUES = (10,1,100,2,32,12,10000000,50000000,1000000000,20000000,
@@ -31,11 +38,12 @@ def original(configuration):
     parameters = b''.join(number.to_bytes(width, 'little') for number,width in zip(VALUES,WIDTHS))
     assert bytes.fromhex(configuration['protocol_parameters']) == parameters
     supplied = {bytes.fromhex(key):bytes.fromhex(value) for key,value in configuration['genesis_state'].items()}
-    keys = {secret:public for public,secret in PUBLIC.items()}
+    keys = list(PUBLIC)
     records = []
     for index in range(6):
-        ed,_ = openssl_sign(bytes([index+16])+bytes(31),b'public-tiny-devnet-genesis')
-        records.append(keys[index+1]+ed+bytes(272))
+        seed = hashlib.blake2b(b'jam_val_key_ed25519'+index.to_bytes(4,'little')*8,digest_size=32).digest()
+        ed,_ = openssl_sign(seed,b'public-tiny-devnet-genesis')
+        records.append(keys[index]+ed+bytes(272))
     roster = natural(6)+b''.join(records)
     pending,ring,kind,schedule,contest = consensus(supplied[chapter_key(4)])
     assert pending == records and kind == 1 and not contest
@@ -62,7 +70,7 @@ def plan(configuration, slots):
     states = [checkpoint(list(parent.items()))]
     blocks,roots = [],[tree(list(parent.items()))[0].hex()]
     for slot in range(1,slots+1):
-        wire,parent = successor(parent,slot,[],[],dict(staging=ring))
+        wire,parent = successor(parent,slot,[],[],dict(staging=ring),public_keys=PUBLIC)
         blocks.append(wire)
         states.append(checkpoint(list(parent.items())))
         roots.append(tree(list(parent.items()))[0].hex())

@@ -9,23 +9,20 @@ import ../chain/[genesis, parameters, presets]
 import ../codec/[bounded, header, state_layout, state_trie, state_safrole, state_consensus,
   state_disputes, state_authorization, state_history, state_privileges, state_statistics,
   state_workqueues, state_outputs]
-import ../crypto/primitives
+import ../crypto/[primitives, validator_keys]
 import ../bandersnatch/bandersnatch
 import ../state/store
 import ../lib/json_writer
 
 proc tinySigningKey*(index: range[0..5]): BsResult[BsKey] =
-  ## Scalars1..6 are public development identities, never generated or loaded production secrets.
-  var scalar = default(array[32, byte])
-  scalar[0] = byte(index+1)
-  importScalar(scalar)
+  ## Use JIP-5 development identities Alice through Fergie for actual Tiny block signing.
+  deriveBandersnatchKey(trivialSeed(uint32(index)))
 proc tinyPeerKey*(index: range[0..5]): CryptoResult[EdPublicKey] =
-  ## Ed25519 seeds16..21 match the loopback TLS certificates produced by the launcher.
-  var seed = default(array[32, byte])
-  seed[0] = byte(index+16)
-  let imported = importSeed(seed)
+  ## The same JIP-5 development index supplies the validator roster and TLS identity.
+  let imported = deriveEd25519Seed(trivialSeed(uint32(index)))
   if imported.error != CryptoError.None:
     return CryptoResult[EdPublicKey]() # No identity is exposed on primitive refusal.
+  defer: clearSeed(imported.value)
   publicKey(imported.value)
 proc tinyParameters*(): ParameterResult =
   ## Select the canonical immutable Tiny tuple from the shared chain catalog.

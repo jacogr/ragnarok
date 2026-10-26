@@ -12,6 +12,8 @@
    3 missing owner, 4 failed verification, 5 backend failure, 6 caught panic. Outputs change only on success. */
 /* Import exactly one canonical 32-byte nonzero scalar into opaque Rust-owned storage. */
 uint32_t bs_key_new(const uint8_t *, size_t, void **);
+/* Import a 32-byte seed with Draft 35 A.3 and the pinned Bandersnatch v1 suite. */
+uint32_t bs_key_from_seed(const uint8_t *, size_t, void **);
 /* Destroy one key owner, zeroizing the retained scalar. All borrowed aliases become invalid. */
 void bs_key_free(void *);
 /* Derive a full 32-byte public encoding from a live owner. */
