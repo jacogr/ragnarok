@@ -101,14 +101,14 @@ Using `CI_SHARD_SEED=${{ github.run_id }}`, the planner randomizes ties, sorts b
 and forms blocks with one item per shard. Each block is independently dealt to random distinct
 shards, including the final partial block, then each shard's execution order is shuffled. The codec
 directory remains one batch, weighted by its members' combined unique dependencies. The corpus
-work runs once across two `Unit / Corpus (i/2)` matrix jobs alongside all sixteen suite-only shards.
+work runs once across three `Unit / Corpus (i/3)` matrix jobs alongside all sixteen suite-only shards.
 Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
 there are no timing weights or maintained assignments. Each shard executes its assigned cases in
 original feature/task order and reuses its own compatible driver builds. Consumers that read a
 previous corpus result declare `requires` on their source-owned decorator and stay with that producer.
 Native suite shards prepare only their selected native dependencies and fixture providers.
 The Unit aggregate requires every native and corpus shard to succeed.
-Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-2/`, separately from
+Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-3/`, separately from
 native shard reports and the other corpus shard. Artifact retention includes each shard's logs/results.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
@@ -118,8 +118,8 @@ on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SC
 assignment; plain `make check-unit` remains complete and keeps its original execution order.
 Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
 other's verdict, and corpus-only runs reject a unit-shard selection. To reproduce a corpus partition,
-use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/2 make check-corpus`, followed by
-`CORPUS_SHARD=1/2 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
+use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/3 make check-corpus`, followed by
+`CORPUS_SHARD=1/3 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
 partial reports retain `corpus_shard` and `shard_seed` and cannot borrow sibling-shard results.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
 requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.
@@ -337,6 +337,14 @@ JAM fuzz interface corpora register in `tools/jam_fuzz_corpora.py`, outside Unit
 workloads. `Fuzz / JAM` runs the complete interface plan once with its own setup, failure gate and
 artifacts. Complete local `make check` includes that same target once. This is fixed-reference
 interface coverage; it does not claim a generated fuzz campaign.
+The JAM matrix runs three partitions: two seeded random native-corpus partitions and one complete
+socket/minifuzz partition. There are no timing weights or maintained case assignments. The Fuzz
+aggregate requires all three, alongside PVM fuzz. Each owns private logs, caches, results and summary
+under `build/tests/jam-fuzzer-interface/<i>-of-3/`; its report records the selector and seed, and its
+verdict reconstructs the exact expected inventory. Corpora and integration evidence cannot satisfy
+one another's scope. Reproduce with `CI_SHARD_SEED=<run-id> JAM_FUZZ_SHARD=1/3 make check-jam-fuzzer-interface`;
+use `3/3` for socket/minifuzz. Omit the selector to run the complete local plan.
+
 
 CI runs E2E families in parallel on separate VMs: Application (RPC, state and explicit downloads),
 Current Downloads, Offload, Telemetry and Transport (peer entry points, retained/integrated
