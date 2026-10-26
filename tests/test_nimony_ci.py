@@ -187,6 +187,8 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('runs-on: ubuntu-latest', section)
         self.assertIn('sudo sysctl -w vm.unprivileged_userfaultfd=1', section)
         self.assertIn('sudo sysctl -w vm.unprivileged_userfaultfd=1', job_section(text, 'unit'))
+        self.assertIn('sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0', section)
+        self.assertIn('sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0', job_section(text, 'unit'))
         self.assertNotIn('continue-on-error', section)
         self.assertIn('build/tests/pvm-runtime-doom/results.json', section)
         self.assertIn('build/tests/pvm-runtime-measure/results.json', section)

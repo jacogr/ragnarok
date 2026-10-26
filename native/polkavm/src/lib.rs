@@ -9,6 +9,9 @@ use polkavm::{
 use polkavm_common::program::InstructionSetKind;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+/// Immutable identity used by both the loaded-library handshake and local engine diagnostics.
+const REVISION: &std::ffi::CStr = c"69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa";
+
 /// Exclusive invocation owner; module and engine lifetimes are retained by the public instance.
 pub struct Rpvm {
     instance: RawInstance,
@@ -68,7 +71,14 @@ pub unsafe extern "C" fn rpvm_create(
             }
             config.set_sandbox(Some(SandboxKind::Linux));
         }
-        let engine = Engine::new(&config).map_err(|_| 2)?;
+        let engine = Engine::new(&config).map_err(|error| {
+            // Preserve the actual CPU/kernel/sandbox refusal; never silently select another engine.
+            eprintln!(
+                "PVM_ENGINE_UNAVAILABLE backend={selected} revision={} reason={error}",
+                REVISION.to_string_lossy()
+            );
+            2
+        })?;
         if engine.backend() != selected {
             return Err(2);
         }
@@ -326,5 +336,5 @@ mod tests {
 /// Report the pristine upstream revision used by this maintained ABI; storage lives for the process.
 #[no_mangle]
 pub extern "C" fn rpvm_revision() -> *const std::ffi::c_char {
-    c"69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa".as_ptr()
+    REVISION.as_ptr()
 }

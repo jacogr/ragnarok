@@ -73,7 +73,7 @@ changes; deduplicated page tracking is bounded by the physical page domain. Publ
 only potentially changed writable pages, compares complete images, and captures changed pages
 with one immutable reference-vector merge. Unchanged page payloads remain shared. The next
 callback transfers only changed immutable host pages and permissions into the resident instance.
-No callback rebuilds the engine or all guest RAM.
+The outer engine is not rebuilt when its host callback returns.
 
 Protected low-page bytes can remain in the Nim snapshot without being mapped upstream: both
 implementations always trap guest accesses below 64 KiB. Inaccessible retained page bytes likewise
@@ -88,8 +88,11 @@ x86-64; this manifest uses the Linux sandbox and does not enable the generic exp
 sandbox. Explicit native requests on ARM macOS refuse. Native qualification requires an actual
 supported x86 Linux host with a working upstream sandbox, including `userfaultfd`. This exact upstream pin calls `userfaultfd(O_CLOEXEC)` rather
 than the user-mode-only variant. The supported CI jobs explicitly enable
-`vm.unprivileged_userfaultfd=1` on their disposable Linux hosts; application code never
-changes kernel settings or disables the sandbox.
+`vm.unprivileged_userfaultfd=1` and allow its unprivileged user namespaces with
+`kernel.apparmor_restrict_unprivileged_userns=0` on their disposable Linux hosts, matching
+this exact pin's `.github/workflows/rust.yml` prerequisites. Application code never changes
+kernel settings or disables the sandbox. Actual public Engine refusals include their original
+CPU/kernel/sandbox diagnostic in the local error log.
 
 The local x86 Linux image under QEMU correctly refused native construction. A direct pristine
 public API probe reported `compiler_target=true`, `linux_sandbox_target=true`, then:
@@ -105,7 +108,11 @@ native execution fails that qualification job. No native pass is claimed until t
 This adapter deliberately uses upstream instruction tracing, documented upstream as a debugging
 facility. It provides precise semantics and bounded attempts, not an optimized native-throughput
 claim. Reusable compiled-module caching across independent application invocations remains future
-work; residency currently spans one invocation and all its host callbacks.
+work; residency currently spans one host-driven invocation and all its callbacks. Raw nested
+segments start fresh instances from their retained immutable snapshots, so repeated inner-invoke
+hosts still pay inner construction and initial RAM transfer costs. Those costs are not a native
+throughput qualification; an exclusive cache that preserves immutable inner-map branching remains
+a separate performance gate.
 
 ## Verification and measurements
 
