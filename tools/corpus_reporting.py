@@ -143,6 +143,15 @@ def current_stf_late_rotation_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_trace_corpus(compiler, report, checks, libraries):
+    """Qualify complete late-code TraceSteps and recommitted wrong-map/seal refusals under authenticated actual chain state."""
+    import current_stf_late_trace_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_restart','current_stf_late_trace',
+         'state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_upgrades_corpus(compiler, report, checks, libraries):
     """Qualify delayed upgrade code and current account-code selection for retained old-code reports."""
     import current_stf_late_upgrades_oracle as oracle

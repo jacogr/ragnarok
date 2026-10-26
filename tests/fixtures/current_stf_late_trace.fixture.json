@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_TRACE",
+  "files": {
+    "current-stf-late-trace.json": "665984f9baab3d3a20283e95a1fe0f2865ee2664d0a904b486266fec14fd7e52"
+  },
+  "target": "current-stf-late-trace.json"
+}
