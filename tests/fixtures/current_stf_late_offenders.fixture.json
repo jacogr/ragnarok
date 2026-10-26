@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_OFFENDERS",
+  "files": {
+    "current-stf-late-offenders.json": "67587345c90adaf34086c8a08b9a71f10736f59c70c263dbdb5b1a3776fab4c2"
+  },
+  "target": "current-stf-late-offenders.json"
+}
