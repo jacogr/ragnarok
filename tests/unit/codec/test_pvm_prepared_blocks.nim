@@ -230,6 +230,11 @@ for steps in [0'u64, 1'u64, 255'u64, 256'u64, 257'u64, 700'u64]:
   # A local budget boundary cannot publish a prefix even when preparation already completed a segment.
   compare(longSource, longCache, steps, 100000)
 
+# Every exhaustion point in the long block crosses the same retained array without spending an ungranted attempt.
+for steps in 0'u64..702'u64:
+  # The ordinary interpreter independently establishes exact state and refusal semantics at every cutoff.
+  compare(longSource, longCache, steps, 100000)
+
 # Program identity is exact: independently captured equal bytes cannot share prepared capabilities.
 let first = owner([@[51'u8, 7, 11], @[0'u8]])
 let second = owner([@[51'u8, 7, 11], @[0'u8]])

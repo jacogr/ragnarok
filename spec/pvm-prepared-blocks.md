@@ -1512,3 +1512,98 @@ constructor/cold/cache rows and verification logs remain under
 Next investigate remaining checked-memory working sets/call overhead using separate
 unclocked diagnostics; retain the accepted window policy until independent evidence
 supports changing it.
+
+
+## Checked paired segment worker, 2026-10-26
+
+Extract the original paired handler loop into private inline `preparedSegment`; the
+caller retains preparation, cache resolution, whole-block charging and exit publication.
+Parent #1697 is `e18dc4be28b3e41f3dd1f593a7928dcc9ba65700`; compared master is
+`ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`. No dependency/pin, public API/default,
+JAM semantics, memory policy, cache policy, handler ABI or 64-byte operand layout changes.
+No translated implementation ships.
+
+The worker borrows the immutable operation sequence from the invocation-retained chunk.
+It keeps the exact previous segment/budget tests, two-attempt reservations, one-attempt
+fallback and rare memory-first refund. Every ordinary PC write remains. On a boundary it
+writes only the final next index and remaining attempts into the invocation frame; the
+caller validates the same complete evaluation before constructing observable state. No
+user callback or cache replacement runs during this borrowed worker. Fields add 16 bytes
+to invocation-local state, not retained cache records. All checks remain enabled.
+
+A non-inlined control regressed; it is not retained. The selected worker has no named
+standalone native symbol on M1 after inlining. This is static lowering evidence, not
+executed instruction counts, hardware branch/cache data or proof of a CPU cause. Initial
+70 processes plus 72 alternating confirmations compared both variants. After selection
+and formatting, fresh canonical builds and equal-image controls qualified 56 processes
+and 48 six-round confirmations. Median CPU changes against the immediate parent:
+
+- pinky: -1.64% (range -3.20% to -1.22%).
+- sieve: -1.30% (range -1.90% to -0.42%).
+- minimal: -0.40% (range -1.22% to +0.80%).
+- memset: -4.61% (range -6.42% to -4.24%).
+
+Keep the fill gain; the smaller differences elsewhere remain unproven. The repeatable
+fill improvement supports this bounded refactor without a general speed claim.
+
+Fresh same-path master/parent/final controls produced another 70 complete-state processes;
+restoring final sources reproduced the exact selected image. Every process makes 13 calls:
+three warmups and ten CPU samples. Checked ARC/Clang ThinLTO on Apple M1 Max, pristine
+Nimony `4724f66c2e01b17810c844f26575b2317995fda2`, PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Reused CPU milliseconds, forward / reverse
+process order, workload limit 100000 except Pinky one invocation:
+
+| Guest | Master prepared | Parent #1697 | This implementation | Learning port | PolkaVM interpreted |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.654 / 197.404 | 130.485 / 130.957 | 129.143 / 129.546 | 94.407 / 94.168 | 92.050 / 92.109 |
+| sieve | 5.851 / 5.842 | 3.518 / 3.536 | 3.479 / 3.485 | 3.397 / 3.384 | 3.492 / 3.494 |
+| minimal | 13.479 / 13.930 | 7.738 / 7.739 | 7.691 / 7.688 | 6.258 / 6.236 | 5.979 / 5.979 |
+| memset | 6.226 / 6.229 | 3.615 / 3.618 | 3.463 / 3.454 | 3.636 / 3.628 | 3.826 / 3.830 |
+
+Cold CPU milliseconds are single first-call observations, not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 199.464 / 198.004 | 131.672 / 133.847 | 130.680 / 130.835 | 94.233 / 94.358 | 93.494 / 93.486 |
+| sieve | 9.881 / 9.847 | 7.625 / 7.596 | 7.706 / 7.493 | 3.576 / 3.552 | 6.095 / 6.095 |
+| minimal | 13.645 / 13.723 | 7.857 / 7.801 | 7.735 / 7.744 | 6.259 / 6.249 | 6.042 / 6.025 |
+| memset | 6.344 / 6.343 | 3.760 / 3.770 | 3.606 / 3.605 | 3.829 / 3.646 | 4.052 / 4.054 |
+
+Empty prepared-owner constructor CPU microseconds; no constructor gain established:
+
+| Guest | Master | Parent | This implementation |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 4.000 | 7.000 / 7.000 | 5.000 / 5.000 |
+| sieve | 5.000 / 5.000 | 7.000 / 5.000 | 4.000 / 5.000 |
+| minimal | 11.000 / 10.000 | 15.000 / 11.000 | 17.000 / 12.000 |
+| memset | 6.000 / 6.000 | 7.000 / 6.000 | 6.000 / 6.000 |
+
+Another 56 two-order processes cover the existing dynamic/planned consumers. These are
+controls, not six-round gain claims:
+
+| Guest | Parent dynamic | Final dynamic | Parent planned | Final planned |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 289.187 / 291.103 | 287.726 / 290.788 | 278.024 / 280.134 | 279.520 / 277.651 |
+| sieve | 12.187 / 12.220 | 12.168 / 12.172 | 8.475 / 8.478 | 8.466 / 8.535 |
+| minimal | 16.346 / 16.481 | 16.480 / 16.562 | 15.976 / 15.949 | 15.995 / 15.947 |
+| memset | 8.535 / 8.470 | 8.507 / 8.486 | 8.456 / 8.324 | 8.428 / 8.438 |
+
+All prepared cache counts, bytes, hits, evictions and occupancy match the parent at every
+call. Full registers, gas/exit, mapped bytes, permissions and original source snapshots
+pass for all 13 calls; deliberately wrong gas expectations are rejected. Nine selected-code
+native suites, four independent references, AddressSanitizer and ARC1000 pass. The new
+long-block witness checks all 703 budgets from zero through 702 against the ordinary
+interpreter, including every segment/pair boundary; existing 139-opcode, 11815 register-pair,
+25020 memory-pair, host/reentry, fault, gas and eviction witnesses remain unchanged.
+Promoted Make prepared and mixed-reference suites plus full formatting pass. No fixtures,
+registrations or CI jobs change.
+
+Local partial-port predecoded pricing/unbounded retention and Rust input restoration outside
+the clock differ from Ragnarök invocation staging. Complete lifecycle parity is not claimed.
+These are local M1 measurements, not Linux qualification. Pinky/minimal remain substantially
+slower; exceeding the reference overall remains unmet. Native lowering, exact source/image
+identities, samples/spreads, cold/constructor/cache rows and rejected noinline evidence are
+retained under `build/pvm-port-lab/prepared-segment-worker{,-final}`. Qualified step source
+SHA256: `095241ff06387eb4d6f3b2511fd612afe391e91c6c9a19de1cb337c0561c2104`. Next investigate miss-only sparse page resolution without adding
+more page-owner probes to the hot scalar path; larger readable-owner windows already failed
+local timing qualification.

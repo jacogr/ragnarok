@@ -1343,6 +1343,8 @@ type
     memory: WorkingMemory
     cache: ExecutionCache
     exitEffect: InstructionEffect
+    after: int
+    remaining: uint64
   PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation {.nimcall,
         raises: [].}
   PreparedPrefixHandler = proc(frame: var PreparedFrame, first, second: PreparedOperation): PreparedEvaluation {.nimcall,
@@ -2152,6 +2154,47 @@ proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError =
   of GasError.NegativeBranchTarget: StepError.NegativeBranchTarget
   else: StepError.InvalidMachine
 
+proc preparedSegment(frame: var PreparedFrame, operations: seq[PreparedOperation],
+    initial: int, budget: uint64): PreparedEvaluation {.inline.} =
+  ## Run the unchanged checked paired loop under a stable borrowed array; publish scalar progress once at its boundary.
+  var at = initial
+  var remaining = budget
+  while at < operations.len and remaining > 0:
+    var evaluated = preparedFailure(StepError.Uninitialized)
+    let prefix = operations[at].prefix
+    if prefix != nil and remaining >= 2 and at < operations.len-1:
+      # Reserve two available attempts; a rare memory-first exit refunds the unattempted second operation below.
+      let first = at
+      let second = at+1
+      remaining -= 2
+      at += 2
+      evaluated = prefix(frame, operations[first], operations[second])
+    else:
+      # One-attempt and final-element paths retain the exact original handler, including every genuine exit.
+      let current = at
+      dec remaining
+      let selected = operations[current].handler
+      if selected == nil:
+        frame.after = at
+        frame.remaining = remaining
+        return preparedFailure(StepError.UnsupportedInstruction)
+      inc at
+      evaluated = selected(frame, operations[current])
+    if uint32(evaluated) != preparedContinueCode:
+      # The exact genuine continuation word needs no projection; rare memory-first exits restore the unattempted second reservation.
+      if (uint32(evaluated) and preparedPrefixEarly) != 0:
+        # Only the closed two-cell prefix factory emits this bit: at advanced by two and remaining was decremented by two.
+        # Thus at>=2 and remaining<=high(uint64)-2; the refund cannot wrap or expose another operation before this exit.
+        dec at
+        inc remaining
+        evaluated = PreparedEvaluation(uint32(evaluated) and not preparedPrefixEarly)
+      frame.after = at
+      frame.remaining = remaining
+      return evaluated
+  frame.after = at
+  frame.remaining = remaining
+  preparedSignal(StepExit.Continued)
+
 proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
     location: var PreparedLocation, remaining: var uint64): StepResult =
   ## Run selected handlers within a prepared segment; no decoder-cache/category/pricing lookup occurs between its ordinary operations.
@@ -2202,49 +2245,27 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       frame.info.gas = MachineGas(uint64(frame.info.gas)-active.price)
       frame.info.blockCharged = true
     let operations {.cursor.} = active.operations # Stable immutable metadata stays borrowed from the unchanged invocation-owned segment.
-    while at < operations.len and remaining > 0:
-      var evaluated = preparedFailure(StepError.Uninitialized)
-      let prefix = operations[at].prefix
-      if prefix != nil and remaining >= 2 and at < operations.len-1:
-        # Reserve two available attempts; a rare memory-first exit refunds the unattempted second operation below.
-        let first = at
-        let second = at+1
-        remaining -= 2
-        at += 2
-        evaluated = prefix(frame, operations[first], operations[second])
-      else:
-        # One-attempt and final-element paths retain the exact original handler, including every genuine exit.
-        let current = at
-        dec remaining
-        let selected = operations[current].handler
-        if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
-        inc at
-        evaluated = selected(frame, operations[current])
-      if uint32(evaluated) != preparedContinueCode:
-        # The exact genuine continuation word needs no projection; rare memory-first exits restore the unattempted second reservation.
-        if (uint32(evaluated) and preparedPrefixEarly) != 0:
-          # Only the closed two-cell prefix factory emits this bit: at advanced by two and remaining was decremented by two.
-          # Thus at>=2 and remaining<=high(uint64)-2; the refund cannot wrap or expose another operation before this exit.
-          dec at
-          inc remaining
-          evaluated = PreparedEvaluation(uint32(evaluated) and not preparedPrefixEarly)
-        # Strip the private attempt marker before validating the complete original status/exit word.
-        let reason = evaluated.status
-        if reason != StepError.None: return StepResult(status: reason)
-        # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
-        let effect = if evaluated.exit in {StepExit.Fault, StepExit.Host}: frame.exitEffect
-          else: InstructionEffect(kind: evaluated.exit)
-        if effect.kind != evaluated.exit: return StepResult(status: StepError.InvalidMachine)
-        # Fault/host/gas preserve the causing PC; panic/halt keep recursive terminal normalization.
-        # Closed handlers cannot mutate the retained facts; only nonterminal fault/host exits read the prior element address.
-        frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: operations[at-1].address
-        cursor.info = frame.info
-        let published = publishInstruction(owner.source, frame.memory, frame.info, effect, true)
-        if published.error == StepError.None:
-          cursor.memory = frame.memory.current
-          location.chunk = active
-          location.next = at
-        return published
+    let evaluated = preparedSegment(frame, operations, at, remaining)
+    at = frame.after
+    remaining = frame.remaining
+    if uint32(evaluated) != preparedContinueCode:
+      # Strip the private attempt marker before validating the complete original status/exit word.
+      let reason = evaluated.status
+      if reason != StepError.None: return StepResult(status: reason)
+      # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
+      let effect = if evaluated.exit in {StepExit.Fault, StepExit.Host}: frame.exitEffect
+        else: InstructionEffect(kind: evaluated.exit)
+      if effect.kind != evaluated.exit: return StepResult(status: StepError.InvalidMachine)
+      # Fault/host/gas preserve the causing PC; panic/halt keep recursive terminal normalization.
+      # Closed handlers cannot mutate the retained facts; only nonterminal fault/host exits read the prior element address.
+      frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: operations[at-1].address
+      cursor.info = frame.info
+      let published = publishInstruction(owner.source, frame.memory, frame.info, effect, true)
+      if published.error == StepError.None:
+        cursor.memory = frame.memory.current
+        location.chunk = active
+        location.next = at
+      return published
     location.chunk = nil
     location.next = 0
   StepResult(status: StepError.StepLimitExceeded)
