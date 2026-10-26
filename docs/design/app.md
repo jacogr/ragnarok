@@ -96,3 +96,15 @@ Services also owns an independently optional local HTTP management listener. Exp
 activation never enables it. Management ticks remain available during canonical worker leases
 because its initial registry holds only startup metadata and bounded OS resource observations.
 Future mutations require explicit host scheduling. See [management RPC](../../spec/management-rpc.md).
+
+## Bounded development validators
+
+`app/block_author.nim` derives empty-block fallback eligibility and markers from an exact complete
+parent using the ordinary Safrole components, then signs native entropy/seal transcripts. It
+returns immutable block bytes without adoption authority. `app/devnet_command.nim` owns the
+bounded Tiny validator host loop, explicit six-second development clock, complete canonical
+chain and per-process block journal. Both locally authored and remotely fetched blocks pass
+`prepareCurrentCandidate` before synchronized journal publication and installation. Restart
+replays those exact blocks from configured genesis through the same checks; complete checkpoints
+remain observations. The bounded host performs execution outside transport callbacks and claims
+neither fork choice nor finality. See [Tiny devnet](../../spec/tiny-devnet.md) for its contract.

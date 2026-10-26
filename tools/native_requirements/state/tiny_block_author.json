@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto",
+    "bandersnatch"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch",
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}

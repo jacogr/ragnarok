@@ -10,7 +10,7 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, download_command, current_download_command, trace_check_command, fuzz_target]
+import ./app/[options, download_command, current_download_command, trace_check_command, fuzz_target, devnet_command]
 import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
@@ -20,6 +20,8 @@ proc main(): int =
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
     if existsEnv("JAM_FUZZ"): return runFuzzTarget(
         arguments) # Explicit fuzz startup is isolated before normal production option/service selection.
+    if arguments.len > 0 and arguments[0] == "tiny-devnet":
+      return runDevnet(arguments) # Explicit bounded local validators use ordinary GP candidate admission.
     var options = default(Options)
     if not parseOptions(arguments, options): return 2 # No invalid configuration reaches a service.
     # Version inspection needs no certificates, listeners or service configuration.
@@ -36,6 +38,7 @@ proc main(): int =
       stdout.writeLine("         download-current requires ragnarok-current-download-policy-v1; discovery permission must match the requested mode.")
       stdout.writeLine("       ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] --with-state --chain FILE [STATE_BUDGETS]")
       stdout.writeLine("         check-traces optionally compares --trace-observations DIR/step-0000.bin (published RawState).")
+      stdout.writeLine("       ragnarok tiny-devnet init CHAIN_JSON | node DIRECTORY INDEX BASE_PORT START_UNIX_MS STOP_SLOT CURRENT_POLICY")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")

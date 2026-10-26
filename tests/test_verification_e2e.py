@@ -18,6 +18,31 @@ from native_tests import UNIT_SUITES
 
 # Keep e2e ownership and failure safeguards independent of other verification groups.
 class VerificationE2E(unittest.TestCase):
+    def test_tiny_devnet_failure_is_required(self):
+        """A compiled peer cannot turn failed six-node convergence into an E2E success."""
+        from e2e_checks import testnet_tiny_devnet, PLAN
+        from unittest.mock import patch
+        self.assertIn('testnet_tiny_devnet', PLAN.names('workload'))
+        context = SimpleNamespace(peer=({'exit_code': 0}, Path('/binary')),
+                                  checks=SimpleNamespace(folder=ROOT/'build/tests/e2e'))
+        with patch('tiny_devnet_checks.check', side_effect=AssertionError('whole-map mismatch')):
+            observed = testnet_tiny_devnet(context)
+        self.assertFalse(observed['passed'])
+        self.assertIn('whole-map mismatch', observed['failure'])
+
+    def test_testnet_has_its_own_full_acceptance_runner(self):
+        """Testnet runs independently from Application and uses the full epoch/restart checker."""
+        from e2e_checks import testnet_tiny_devnet, PLAN
+        from unittest.mock import patch
+        self.assertEqual(PLAN.select('testnet').names('workload'), ('testnet_tiny_devnet',))
+        self.assertNotIn('testnet_tiny_devnet', PLAN.select('application').names('workload'))
+        context = SimpleNamespace(peer=({'exit_code': 0}, Path('/binary')),
+                                  checks=SimpleNamespace(folder=ROOT/'build/tests/e2e'))
+        with patch('tiny_devnet_checks.check', return_value={'passed':True}) as full, patch(
+                'tiny_devnet_checks.smoke', side_effect=AssertionError('short smoke selected')):
+            self.assertTrue(testnet_tiny_devnet(context)['passed'])
+            full.assert_called_once()
+
     def test_peer_builds_link_download_dependencies(self):
         """Every executable shape needs the bootstrap crypto ABI, regardless of offload defines."""
         from e2e_checks import prepare_peer, prepare_integrated_peer
@@ -159,6 +184,7 @@ class VerificationE2E(unittest.TestCase):
             'application': ('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz'),
             'current': ('prepare_current_download_peer', 'prepare_current_sequence_responder'),
             'offload': ('prepare_offload_peer',),
+            'testnet': ('prepare_peer',),
             'telemetry': ('prepare_peer',),
             'transport': ('prepare_peer', 'prepare_integrated_peer')}
         for group in PLAN.groups():
