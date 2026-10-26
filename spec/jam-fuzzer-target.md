@@ -22,12 +22,19 @@ peer can supply or override this trusted configuration. Both file reads are boun
 The two unsigned write budgets are explicit (at most 1000000 writes and 64 MiB of
 write values); zero deliberately disables that resource. Other ignored production
 service arguments are refused rather than activating RPC, QUIC, UI or persistent state.
-A container entry point may supply these four fixed host configuration arguments.
+The public third-party launch contract is the ordinary binary with no arguments
+and the upstream target environment variables: JAM_FUZZ, JAM_FUZZ_SPEC,
+JAM_FUZZ_DATA_PATH, JAM_FUZZ_SOCK_PATH and optional JAM_FUZZ_LOG_LEVEL.
+Built-in native defaults require no external policy files or working directory.
+The binary prepares selected runtime paths and owns all startup and teardown.
+The ordinary image's default help argument also permits environment-selected
+startup. Explicit --version remains available for launcher introspection.
+The positional command above remains available for internal regression callers.
 
-Standard required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full),
-JAM_FUZZ_DATA_PATH and JAM_FUZZ_SOCK_PATH. JAM_FUZZ_LOG_LEVEL accepts the documented
-optional values. Configuration checks exact core/epoch/header-population domains:
-tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. All other Parameters
+Configuration checks exact core/epoch/header-population domains:
+tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. The experimental `fuzz`
+preset uses85/60/255 and requires its entire issue215 tuple plus matching policy
+consensus constants; see [network fuzz](jam-network-fuzz.md). For Tiny/Full, all other Parameters
 remain explicit operator configuration; these domain checks do not certify that an
 arbitrary supplied tuple equals the engine's complete selected preset. The caller
 must supply the same complete profile as the campaign.

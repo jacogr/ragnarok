@@ -290,7 +290,9 @@ class JamInterfaceCI(unittest.TestCase):
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'pvm-fuzz', event_context())
         self.assertEqual([row['shard'] for row in families if row['group'] == 'jam-interface'], ['1/3', '2/3', '3/3'])
-        self.assertEqual(len(families), 4)
+        self.assertEqual(len(families), 5)
+        self.assertEqual([row for row in families if row['group'] == 'jam-network'],
+                         [dict(name='JAM Network', group='jam-network')])
         self.assertEqual(selected_families(text, 'pvm-fuzz', event_context('workflow_dispatch', suite='fuzz-pvm')),
                          [dict(name='PVM', group='pvm')])
         self.assertIn('JAM_FUZZ_SHARD: ${{ matrix.family.shard }}', job)

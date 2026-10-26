@@ -153,7 +153,7 @@ clean:
 	rm -rf -- build
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
-check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface
+check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
@@ -279,6 +279,14 @@ fuzz-pvm-program: toolchain check-inventory
 .PHONY: check-jam-fuzzer-interface
 check-jam-fuzzer-interface: setup check-inventory minifuzz-tools
 	$(PYTHON) tools/check_jam_fuzzer_interface.py
+
+# Dedicated issue215 target readiness is separate from historical interface and live campaign verdicts.
+.PHONY: check-jam-network docker-build-jam-fuzz
+check-jam-network: setup check-inventory
+	$(PYTHON) tools/check_jam_network.py
+
+docker-build-jam-fuzz:
+	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --target fuzz-target --tag "$(DOCKER_IMAGE)-jam-fuzz" .
 
 # Python zipimport runs exact pure-Python codecs without upstream installers or global packages.
 .PHONY: minifuzz-tools
@@ -488,6 +496,8 @@ help:
 	  'make check-inventory  Validate local registries without native setup' \
 	  'make fuzz-pvm-program  Run bounded sanitized program fuzzing (FUZZ_RUNS=16..1000000)' \
 	  'make check-jam-fuzzer-interface  Verify current JAM socket/STF interface; live engine validation pending' \
+	  'make check-jam-network  Verify issue215 Fuzz preset and packaged socket target; live engine pending' \
+	  'make docker-build-jam-fuzz  Build the environment-driven linux/amd64 Fuzz target image' \
 	  'make fuzz-pvm-upstream  Run pinned upstream campaigns and JAM interpreter comparisons' \
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-storage-growth  Measure sustained storage growth and SDK IO' \

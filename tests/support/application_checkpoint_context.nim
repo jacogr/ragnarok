@@ -10,7 +10,7 @@ import ../../src/codec/[header, bounded, state_layout, state_trie]
 import ../../src/state/store
 
 type CheckpointFixtureVariant* {.pure.} = enum ## Each independent mismatch changes exactly one persistence-relevant fact.
-  Original, Header, Profile, State
+  Original, Header, Profile, State, ExplicitExpunge
 proc checkpointFixture*(variant = CheckpointFixtureVariant.Original): ApplicationChain {.raises.} =
   ## Read only the harness-supplied hash-checked source and retain complete original entries.
   let path = getEnv("RAGNAROK_APPLICATION_CHECKPOINT")
@@ -28,6 +28,9 @@ proc checkpointFixture*(variant = CheckpointFixtureVariant.Original): Applicatio
     var encodedParameters = configuration.encodeParameters
     encodedParameters[8] = encodedParameters[8] xor 1 # A deposit-byte change preserves population/time invariants and the exact original header/map.
     configuration = decodeParameters(encodedParameters).value
+  elif variant == CheckpointFixtureVariant.ExplicitExpunge:
+    # Process-local interpretation cannot silently round-trip through the unchanged durable identity schema.
+    configuration = withExplicitExpungePeriod(configuration).value
   else:
     var limits = genesisStoreLimits()
     limits.writes = ElementLimit(1)

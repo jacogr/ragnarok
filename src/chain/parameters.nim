@@ -5,7 +5,7 @@
 ## it does not initialize genesis state or infer validator-dependent settings.
 ##
 ## Exposes Parameter field identifiers, immutable Parameters and guarded ParameterResult accessors,
-## plus fixed-width encoding, byte/hex decoders and an explicit unavailable-result constructor.
+## plus fixed-width encoding, byte/hex decoders and explicit host-selected expiry interpretation.
 
 # Field order and widths follow Appendix B's fetch(0) tuple exactly.
 type
@@ -16,8 +16,10 @@ type
     authWindow, slotPeriodSec, authQueueLen, rotationPeriod, maxExtrinsics, availabilityTimeout,
     maxAuthorizerCodeSize, maxInput, maxServiceCodeSize, maxImports, maxReportElectiveData,
     transferMemoSize, maxExports, epochTailStart
+  ExpungePeriod* = distinct uint64 ## A configured expiry duration is distinct from a lookup-anchor age.
   Parameters* = object ## A successful snapshot owns fixed-size scalar data and exposes no mutable storage.
     numbers: array[29, uint64]
+    explicitExpunge: bool # Host-selected interpretation is immutable metadata, never a fetch(0) wire field.
   ParameterError* = enum wrongSize, invalidConfiguration ## Decoding failure is distinct from any valid numeric field value.
   ParameterResult* = object ## A default result is failure; unsuccessful decoding never exposes partial parameter values.
     case success: bool
@@ -53,6 +55,35 @@ func valid*(parameters: Parameters): bool =
   parameters.get(coreCount) >= 2 and parameters.get(epochPeriod) != 0 and
     parameters.get(slotPeriodSec) != 0 and parameters.get(rotationPeriod) != 0 and
     parameters.get(epochTailStart) <= parameters.get(epochPeriod)
+
+func withExplicitExpungePeriod*(parameters: Parameters): ParameterResult =
+  ## Select the configured D field explicitly; callers retain the unchanged original snapshot and wire tuple.
+  if not parameters.valid:
+    return ParameterResult(success: false, reason: invalidConfiguration)
+  var selected = parameters
+  selected.explicitExpunge = true
+  ParameterResult(success: true, snapshot: selected)
+
+func hasExplicitExpungePeriod*(parameters: Parameters): bool =
+  ## Identify process-local interpretation metadata before any durable profile encoding.
+  parameters.explicitExpunge
+
+func expungePeriod*(parameters: Parameters): ExpungePeriod {.requires: parameters.valid.} =
+  ## Normal profiles retain the pinned lookup safety margin; explicit presets use their configured D.
+  ## Both fields are decoded E4 values, so widened addition cannot overflow uint64.
+  if parameters.explicitExpunge:
+    ExpungePeriod(parameters.get(minTurnaroundPeriod))
+  else:
+    ExpungePeriod(parameters.get(maxLookupAnchorAge) + 4800)
+
+func sameParameterProfile*(left, right: Parameters): bool =
+  ## Complete immutable execution identity includes interpretation metadata as well as every numeric field.
+  if not left.valid or not right.valid or left.explicitExpunge != right.explicitExpunge:
+    return false
+  for field in low(Parameter)..high(Parameter):
+    # Equal fetch tuples alone cannot mix different expiry interpretations within a retained chain.
+    if left.get(field) != right.get(field): return false
+  true
 
 proc encodeParameters*(parameters: Parameters): array[ParameterBytes, byte]
     {.requires: parameters.valid.} =

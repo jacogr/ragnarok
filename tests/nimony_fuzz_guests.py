@@ -19,9 +19,9 @@ from state_trace_wire_oracle import wire
 def reference_sessions(reference, identity, parameters=None, *, spec='tiny', local_cases=None, fork_capacity=2):
     """Freeze exact independent headers/maps under one explicitly declared host profile per source chain."""
     from header_oracle import decode as decode_header, TINY, FULL
-    assert spec in ('tiny', 'full')
+    assert spec in ('tiny', 'full', 'fuzz')
     assert type(fork_capacity) is int and 1 <= fork_capacity <= 64
-    geometry = TINY if spec == 'tiny' else FULL
+    geometry = TINY if spec == 'tiny' else ((85,255,60,1024*1024) if spec == 'fuzz' else FULL)
     for path, expected in FIXTURE_CONTRACTS[identity][2]:
         assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
     _, lines, _ = reference.expected_observations()

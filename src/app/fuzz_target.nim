@@ -4,8 +4,8 @@
 ## Explicit JAM_FUZZ startup runs only ephemeral full-state sessions with host-supplied Parameters and execution policy.
 import std/[assertions, atomics, envvars, monotimes, os, syncio]
 import std/posix/posix
-import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate]
-import ../chain/[parameters, genesis]
+import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate, fuzz_policy]
+import ../chain/[parameters, presets, genesis]
 import ../codec/[bounded, block_codec]
 import ../state/[fuzz_protocol, fuzz_session, store]
 import ../management/file_status
@@ -58,11 +58,11 @@ func pathValid(path: string): bool =
 proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
     candidate: CurrentCandidateLimits, writes: ElementLimit,
         writeBytes: ByteLimit): FuzzTargetResult =
-  ## Match explicit tiny/full domains without deriving Parameters from a peer or arbitrary seed map.
+  ## Match explicit tiny/full/fuzz domains without deriving Parameters from a peer or arbitrary seed map.
   if not environment.enabled or environment.spec.len == 0 or environment.dataPath.len == 0 or
       environment.socketPath.len == 0: return FuzzTargetResult(
           status: FuzzTargetError.MissingEnvironment)
-  if environment.spec notin ["tiny", "full"]: return FuzzTargetResult(
+  if environment.spec notin ["tiny", "full", "fuzz"]: return FuzzTargetResult(
       status: FuzzTargetError.InvalidSpec)
   if environment.logLevel notin ["", "error", "warn", "info", "debug", "trace"]:
     return FuzzTargetResult(status: FuzzTargetError.InvalidLogLevel)
@@ -72,20 +72,44 @@ proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
   if uint64(writes) > 1000000 or uint64(writeBytes) > 67108864:
     return FuzzTargetResult(status: FuzzTargetError.InvalidBudget)
   let frame = candidate.reporting.admission.frame
-  let cores = if environment.spec == "tiny": 2'u64 else: 341'u64
-  let slots = if environment.spec == "tiny": 12'u64 else: 600'u64
-  let validators = if environment.spec == "tiny": 6'u64 else: 1023'u64
+  let preset = if environment.spec == "tiny": ChainPreset.Tiny elif environment.spec ==
+      "fuzz": ChainPreset.Fuzz else: ChainPreset.Full
+  let canonical = presetParameters(preset)
+  if not canonical.ok: return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+  let expected = canonical.value
+  let cores = expected.get(coreCount)
+  let slots = expected.get(epochPeriod)
+  let validators = cores * 3
+  var selectedParameters = parameters
   let parameterMatch = parameters.valid and parameters.get(coreCount) == cores and
       parameters.get(epochPeriod) == slots
   let frameMatch = uint64(frame.cores) == cores and uint64(frame.epochSlots) == slots and
       uint64(frame.validators) == validators
   if not parameterMatch or not frameMatch:
     return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+  if environment.spec == "fuzz":
+    # Issue215 changes exactly nine Full constants; require the complete trusted tuple, not only geometry.
+    for field in low(Parameter)..high(Parameter):
+      # The canonical catalog owns all scalars; independent fixtures verify their values separately.
+      if parameters.get(field) != expected.get(field):
+        return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
+    selectedParameters = expected # Preserve explicit D900 interpretation throughout every retained snapshot.
+    # Policy-owned consensus constants must agree with Parameters; resource ceilings remain separate local limits.
+    if uint64(frame.ticketLimit) != expected.get(maxTicketsPerBlock) or
+        uint64(candidate.reporting.safrole.blockTickets) != expected.get(maxTicketsPerBlock) or
+        uint64(candidate.reporting.safrole.tailStart) != expected.get(epochTailStart) or
+        uint64(candidate.reporting.reports.credentials.assignments.rotationSlots) != expected.get(
+            rotationPeriod) or
+        uint64(candidate.reporting.reports.anchors.lookupAge) != expected.get(maxLookupAnchorAge) or
+        uint64(candidate.reporting.reports.policy.reportGas) != expected.get(maxAccumulateGas) or
+        uint64(candidate.round.reportGas) != expected.get(maxAccumulateGas) or uint64(
+            candidate.round.blockGas) != expected.get(blockGasLimit):
+      return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)
   var state = genesisStoreLimits()
   state.writes = writes
   state.writeValueBytes = writeBytes
   let wire = FuzzLimits(bytes: ByteLimit(16777216), text: ByteLimit(4096), state: state, frame: frame)
-  let backend = FuzzBackendConfig(parameters: parameters, candidate: candidate, wire: wire,
+  let backend = FuzzBackendConfig(parameters: selectedParameters, candidate: candidate, wire: wire,
       initialAncestry: true, forkStates: ElementLimit(8))
   if initFuzzBackend(backend).error != FuzzBackendError.None:
     return FuzzTargetResult(status: FuzzTargetError.InvalidPolicy)
@@ -109,25 +133,86 @@ proc budget(text: string, maximum: uint64, value: var uint64): bool =
     if value > (maximum-digit) div 10: return false
     value = value*10+digit
   value <= maximum
+proc createNativeDirectory(path: cstring, mode: Mode): cint {.importc: "mkdir",
+    header: "<sys/stat.h>".}
+  ## The native binary creates selected runtime paths without a shell or external process.
+proc directoryStatus(path: cstring, status: var FileStatus): cint {.importc: "stat",
+    header: "<sys/stat.h>".}
+  ## Ancestor lookup follows ordinary OS aliases such as macOS /tmp; the selected leaf is checked separately.
+proc ensureDirectory(path: string, depth: int): bool =
+  ## Bounded recursive parent creation uses0700 from the first visible inode; existing parents stay unchanged.
+  if depth > 512 or not pathValid(path): return false
+  var nativePath = path
+  var status = default(FileStatus)
+  if directoryStatus(nativePath.toCString(), status) == 0: return S_ISDIR(Mode(status.st_mode))
+  let parent = parentDir(path)
+  if parent == path or not ensureDirectory(parent, depth+1): return false
+  createNativeDirectory(nativePath.toCString(), Mode(0o700)) == 0
+proc prepareDirectory(path: string): bool =
+  ## Only explicitly selected, runtime-owned non-symlink directories may become private startup storage.
+  if not ensureDirectory(path, 0): return false
+  var nativePath = path
+  var status = default(FileStatus)
+  if readStatus(nativePath.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
+      uint32(status.st_uid) != effectiveUid(): return false
+  chmod(nativePath.toCString(), Mode(0o700)) == 0
 proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
-  ## Dedicated process mode accepts only explicit policy/parameter paths and write budgets; no production services start.
-  if arguments.len != 5 or arguments[0] != "serve-fuzz":
-    stderr.writeLine("FUZZ_START_FAILED arguments: serve-fuzz CURRENT_POLICY PARAMETERS_JSON MAX_WRITES MAX_WRITE_BYTES")
-    return 2
+  ## The ordinary executable selects conformance mode from standard environment variables and owns the complete startup lifecycle.
+  let automatic = arguments.len == 0 or (arguments.len == 1 and arguments[0] == "--help")
+  var namedPreset = automatic or (arguments.len == 4 and arguments[0] == "serve-fuzz-preset")
   let environment = FuzzEnvironment(enabled: existsEnv("JAM_FUZZ"), spec: getEnv("JAM_FUZZ_SPEC"),
     dataPath: getEnv("JAM_FUZZ_DATA_PATH"), socketPath: getEnv("JAM_FUZZ_SOCK_PATH"),
-        logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
+    logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
+  var policyPath = ""
+  var parameterPath = ""
+  var writeText = "1000"
+  var byteText = "4194304"
+  if automatic:
+    discard # The public conformance contract needs only upstream environment variables and built-in policy.
+  elif namedPreset or (arguments.len == 5 and arguments[0] == "serve-fuzz"):
+    # Internal explicit-policy regression callers retain their established positional contract.
+    policyPath = arguments[1]
+    let offset = if namedPreset: 2 else: 3
+    if not namedPreset: parameterPath = arguments[2]
+    writeText = arguments[offset]
+    byteText = arguments[offset+1]
+  else:
+    stderr.writeLine("FUZZ_START_FAILED arguments")
+    return 2
   var writes = 0'u64
   var writeBytes = 0'u64
-  if not budget(arguments[3], 1000000, writes) or not budget(arguments[4], 67108864,
-      writeBytes): return 2
-  let loadedPolicy = readBoundedFile(arguments[1], ByteLimit(CurrentDownloadPolicyBytes))
-  let loadedParameters = readBoundedFile(arguments[2], ByteLimit(8388608))
-  if loadedPolicy.error != AtomicFileError.None or loadedParameters.error != AtomicFileError.None:
-    stderr.writeLine("FUZZ_START_FAILED configuration files")
+  if not budget(writeText, 1000000, writes) or not budget(byteText, 67108864, writeBytes):
+    stderr.writeLine("FUZZ_START_FAILED policy or budget")
     return 2
-  let policy = decodeCurrentDownloadPolicy(text(loadedPolicy.value))
-  let parameters = configuredParameters(text(loadedParameters.value))
+  var preset = ChainPreset.Tiny
+  case environment.spec
+  of "tiny": preset = ChainPreset.Tiny
+  of "full": preset = ChainPreset.Full
+  of "fuzz": preset = ChainPreset.Fuzz
+  else:
+    stderr.writeLine("FUZZ_START_FAILED InvalidSpec")
+    return 2
+  var policy = fuzzPresetPolicy(preset)
+  if not automatic:
+    # Legacy test-host overrides remain bounded; automatic third-party launch never needs a policy file.
+    let loadedPolicy = readBoundedFile(policyPath, ByteLimit(CurrentDownloadPolicyBytes))
+    if loadedPolicy.error != AtomicFileError.None:
+      stderr.writeLine("FUZZ_START_FAILED configuration files")
+      return 2
+    policy = decodeCurrentDownloadPolicy(text(loadedPolicy.value))
+  var parameters = unavailableParameters()
+  if namedPreset:
+    # Select immutable catalog parameters before reading any seed supplied over the socket.
+    case environment.spec
+    of "tiny": parameters = presetParameters(ChainPreset.Tiny)
+    of "full": parameters = presetParameters(ChainPreset.Full)
+    of "fuzz": parameters = presetParameters(ChainPreset.Fuzz)
+    else: discard # Invalid/missing selection cannot expose a default successful tuple.
+  else:
+    # Existing explicit custom Tiny/Full host configurations remain supported.
+    let loadedParameters = readBoundedFile(parameterPath, ByteLimit(8388608))
+    if loadedParameters.error != AtomicFileError.None: return 2
+    parameters = configuredParameters(text(loadedParameters.value))
   if policy.error != CurrentDownloadPolicyError.None or not parameters.ok:
     stderr.writeLine("FUZZ_START_FAILED configuration encoding")
     return 2
@@ -137,11 +222,8 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
     stderr.writeLine("FUZZ_START_FAILED " & $prepared.error)
     return 2
   let config = prepared.value
-  var directory = config.dataPath
-  var status = default(FileStatus)
-  if readStatus(directory.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
-      uint32(status.st_uid) != effectiveUid() or (uint32(status.st_mode) and 0o077'u32) != 0:
-    stderr.writeLine("FUZZ_START_FAILED private data directory")
+  if not prepareDirectory(config.dataPath) or not prepareDirectory(parentDir(config.socket.path)):
+    stderr.writeLine("FUZZ_START_FAILED private runtime directories")
     return 2
   var server = default(FuzzSocket)
   if not server.start(config.socket):
