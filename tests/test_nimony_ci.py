@@ -597,7 +597,7 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('FAIL Python verification', output.getvalue())
             self.assertEqual(runner.return_value.command.call_count, 1)
             self.assertIn('test_*.py', runner.return_value.command.call_args.args[0])
-            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 900)
+            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 1800)
             report = json.loads((folder/'results.json').read_text())
             self.assertEqual(report['status'], 'failed')
             self.assertEqual(report['check']['exit_code'], 7)
