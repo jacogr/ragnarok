@@ -105,3 +105,32 @@ native replay. Unchanged upstream minifuzz passed one session, eight imports and
 20 exact exchanges with its real mismatch control. All 61 focused Python tests
 and fresh inventory passed; unchanged native sources retain prior formatting and
 semantic evidence. Every original fixture answer and GP check remains unchanged.
+
+## Delayed nulling and population changes
+
+Two chains establish the actual five-member Phi through genuine offender evidence,
+with a reversed 1020-member staged roster. At the first imported epoch crossing,
+old pending 1023 becomes active; four offending staged identities are replaced
+by exact full NULL records in posterior pending 1020. Only the following crossing
+activates those pending records. The former complete active roster and its
+statistics remain in the previous-population fields.
+
+A two-epoch skip still performs one rotation per imported block; it cannot skip
+the delayed pending phase. Both chains preserve all judgments, service namespaces
+and complete history/queues while independently calculating variable epoch markers,
+fallback selection, entropy and actual current/previous statistics sizes.
+Genuinely sealed markers advertising the unfiltered staged keys must refuse
+atomically before the canonical marker-bearing block is accepted.
+
+The 1020-record ring commitment is an attributed input-only witness from the
+unchanged pinned crypto adapter, using the full 1023-member SRS capacity and the
+existing explicit invalid-member padding rule for four NULL keys. Its raw record,
+raw member, normalized member and pin hashes are retained. No native STF output
+supplies an expected record, complete map, root or later block.
+
+Observed population validation: 17 new complete-map steps (15 accepted and two
+exact marker refusals) plus eight unchanged offender steps passed checked native
+replay. Unchanged upstream minifuzz passed two sessions, 17 imports and 42 exact
+exchanges with its real mismatch control. All 54 focused Python tests and fresh
+inventory passed. Original fixture answers, checked native build configuration,
+GP checks and native-source formatting/semantic coverage remain unchanged.

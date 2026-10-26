@@ -1,0 +1,20 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "capacity": 1023,
+  "population": 1020,
+  "null_records": 4,
+  "offender_indices": [
+    0,
+    7,
+    510,
+    511,
+    1022
+  ],
+  "bandersnatch_pins_sha256": "edbc7bcb336a5adfc14a6e5c70d9792d2e70ae058ee75116a01408e1e6902854",
+  "members_sha256": "8a14b7a4510d428d7b8c6cf24b3fcd3e38d2a06197015ac2883cbb15842a4dfc",
+  "records_sha256": "70e84044b91cf496a7cdd1bff99abf7cd745dd514a000968fa2a858f1c1011eb",
+  "normalized_members_sha256": "7f5fa731bcb3e06964315f0e054fc68c2415de3ad779a9fcd6ffdea6e9a12563",
+  "padding": "da5ca18e76fbd5467319795e26fd80f0b9cf7fc888d995348b7ff299197a42c4",
+  "commitment": "b25eb1ee0a8a02d1ba86116b9078277881f711a5f020cebb683f79afa0964ffcefb14120fd2bc96a46edac795da47a4ea138a22b732726bfeb390f1edfd8e4b7690d27bb65ff976c87a617cd6f2e0917f69c461386ead7ccf0d2c993aa9ab44c96c1b168e2dcc743f9eadda76c041db42d39f27a58418f88c0ea67656a224934e12b5dfc8f0f460a95c2d467fa41907b",
+  "attribution": "Input-only KZG commitment from pristine pinned ark-vrf adapter, applying the maintained explicit invalid-member padding rule; raw full-roster points and NULL records independently authored; no native STF answer."
+}

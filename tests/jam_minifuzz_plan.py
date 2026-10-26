@@ -188,6 +188,14 @@ def jam_fuzzer_full_offenders(identity):
 
 
 @reference()
+def jam_fuzzer_full_population(identity):
+    """Require ordinary/skipped full population rotations and independently unchanged marker-refusal maps."""
+    import jam_fuzzer_full_population_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.PLANS),spec='full')
+
+
+@reference()
 def jam_fuzzer_full_profile(identity):
     """Preserve both original full-geometry sparse/saturated baseline chains."""
     import jam_fuzzer_full_profile_oracle as source

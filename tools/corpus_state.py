@@ -909,6 +909,16 @@ def jam_fuzzer_full_offenders_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_population_corpus(compiler, report, checks, libraries):
+    """Compare full offender nulling, delayed1020-member activation, multi-epoch skips and exact marker refusals."""
+    import jam_fuzzer_full_population_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_population_ring_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_population', 'jam_fuzzer_full_offenders'),
+        profiles=[full.parameters()]*len(reference.PLANS))
+
+
+@CORPORA.case
 def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
     """Execute full341-core/1023-validator/600-slot complete maps under every pinned GP parameter."""
     import jam_fuzzer_full_profile_oracle as reference
