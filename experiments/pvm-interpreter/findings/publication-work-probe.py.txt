@@ -1,0 +1,49 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Count mapped-page scans versus actual dirty candidates in separate fully checked DOOM images.
+
+Every printed clock is discarded. Instrumentation is confined to this generated snapshot.
+"""
+from pathlib import Path
+import json,os,shutil,sys
+R=Path.cwd();S=R/'experiments/pvm-interpreter';B=R/'build/pvm-interpreter-experiment/publication-probe'
+B.mkdir(exist_ok=True);sys.path.insert(0,str(R/'tools'))
+from native_checks import NativeChecks
+from setup_nimony import installed
+shutil.copytree(R/'src',B/'src',dirs_exist_ok=True)
+shutil.copy2(S/'overlay/src/pvm/machine.nim',B/'src/pvm/machine.nim')
+s=(S/'overlay/src/pvm/experimental.nim').read_text()
+s=s.replace('    dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.', '    dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.\n    probeCalls, probeScanned, probeMarked, probeChanges, probeEmpty, probeDeltaCalls, probeDeltaMapped, probeDeltaChanged: uint64')
+s=s.replace('  memory: Memory\n  changed: seq[PageImage]', '  memory: Memory\n  changed: seq[PageImage]\n  probeScanned, probeMarked: uint64')
+needle='''  for page in 0..<f.sourceImages.len:
+    # Read only metadata before the filter, avoiding even a temporary page copy for clean pages.
+    if not flatDirty(f, f.sourceImages[page].index): continue'''
+replacement='''  for page in 0..<f.sourceImages.len:
+    inc result.probeScanned
+    # Read only metadata before the filter, avoiding even a temporary page copy for clean pages.
+    if not flatDirty(f, f.sourceImages[page].index): continue
+    inc result.probeMarked'''
+assert needle in s;s=s.replace(needle,replacement)
+needle='  var published = flatPublishMemory(f, true)\n';assert s.count(needle)==1
+s=s.replace(needle,needle+'''  inc f.probeCalls
+  f.probeScanned+=published.probeScanned
+  f.probeMarked+=published.probeMarked
+  f.probeChanges+=uint64(published.changed.len)
+  if published.probeMarked==0:inc f.probeEmpty
+''')
+needle='  let delta = changedMemoryPages(f.hostSnapshot, posterior)\n';assert s.count(needle)==1
+s=s.replace(needle,needle+'''  if delta.error == MachineError.None and delta.value.len>0:
+    inc f.probeDeltaCalls
+    f.probeDeltaMapped+=uint64(f.sourceImages.len)
+    f.probeDeltaChanged+=uint64(delta.value.len)
+''')
+s+='\nfunc flatPublicationProbe*(f:FlatFrame):array[8,uint64] =\n  [f.probeCalls,f.probeScanned,f.probeMarked,f.probeChanges,f.probeEmpty,f.probeDeltaCalls,f.probeDeltaMapped,f.probeDeltaChanged]\n'
+(B/'src/pvm/experimental.nim').write_text(s);(B/'benchmarks').mkdir(exist_ok=True)
+s=(S/'benchmarks/doom.nim').read_text().replace('  let stats = flatHostStats(frame)','  let probe=flatPublicationProbe(frame)\n  echo "PUBLICATION_PROBE,",phase,",",probe[0],",",probe[1],",",probe[2],",",probe[3],",",probe[4],",",probe[5],",",probe[6],",",probe[7]\n  let stats = flatHostStats(frame)');(B/'benchmarks/doom.nim').write_text(s)
+checks=NativeChecks(B);build,exe=checks.build(installed()[0],B/'benchmarks/doom.nim','publication-probe',cflags=['-I'+str(R/'tests/performance')]);assert build['exit_code']==0,build['output'][-1600:]
+rows=[]
+for phase in ['init','tick']:
+ env=dict(os.environ,RAGNAROK_PVM_DOOM_INPUT=str(R/'build/pvm-port-lab/large-app-qualification/prepared'),RAGNAROK_PVM_DOOM_ROM=str(R/'vendor/polkavm/examples/doom/roms/doom1.wad'),RAGNAROK_PVM_DOOM_PHASE=phase,RAGNAROK_PVM_DOOM_TIMING='0')
+ run=checks.command([exe],phase+'-run',environment=env);assert run['exit_code']==0,run['output'][-1800:]
+ lines=[line for line in run['output'].splitlines()if line.startswith('PUBLICATION_PROBE,')];assert len(lines)==1;print(lines[0],flush=True);rows.append(dict(phase=phase,counts=list(map(int,lines[0].split(',')[2:])),run=run))
+(B/'results.json').write_text(json.dumps(dict(status='passed',build=build,rows=rows,clock_policy='All instrumented clocks discarded'),indent=2)+'\n')

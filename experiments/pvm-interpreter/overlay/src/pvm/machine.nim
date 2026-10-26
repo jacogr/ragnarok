@@ -291,7 +291,9 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
   if left.pages.len != right.pages.len:
     return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
   for i in 0..<left.pages.len:
-    # Validate the entire mapping before emitting a delta that a caller could apply.
+    # An identical immutable page owner already proves its index and access are unchanged.
+    if left.pages[i] == right.pages[i]: continue
+    # Still validate the complete mapping before allocating or returning any copied delta.
     if left.pages[i].index != right.pages[i].index or left.pages[i].access != right.pages[i].access:
       return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
   var changed: seq[PageImage] = @[]

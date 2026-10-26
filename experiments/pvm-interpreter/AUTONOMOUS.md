@@ -1,7 +1,7 @@
 # Autonomous investigation
 
-Authorized 2026-10-26 at 20:32:28 Europe/Nicosia. Absolute ceiling is 2026-10-27 at
-04:32:28 Europe/Nicosia (02:32:28 UTC). Stop earlier if useful hypotheses/returns are exhausted.
+Authorized 2026-10-26 at 20:32:28 Asia/Nicosia. Absolute ceiling is 2026-10-27 at
+04:32:28 Asia/Nicosia (02:32:28 UTC). Stop earlier if useful hypotheses/returns are exhausted.
 Branch: `codex/pvm-interpreter-lab`; starting checkpoint `72c79e4d`.
 
 No PR, CI experiment, merge, default engine switch or other checkout edits during this run.
@@ -78,3 +78,33 @@ positive ownership fact in the preceding mapping-validation pass, skipping index
 loads only for identical retained page owners. Keep two passes and complete mapping validation
 before allocating any delta, preserving refusal/atomicity ordering. This targets host resume
 cost without altering guest execution or introducing a new memory representation.
+
+## Trial4 — shared-page validation
+
+Exact parent bb7530f6. Keep the existing complete preflight and two-pass delta construction;
+inside preflight, identical immutable PageData ownership proves index/access identity and avoids
+redundant metadata dereferences. Six new late-permission mismatch cases, separate equal-byte
+owners, shared prefixes and default-owner witnesses pass with all eight native/ASan groups.
+Fresh same-path baseline/candidate repeat images match for all three drivers. Timing now starts.
+No changes to guest execution, cache, publication payloads or delta-allocation/refusal ordering.
+
+Campaign housekeeping: stop starting new work by02:22UTC (04:22Asia/Nicosia) to reserve ten
+minutes for qualification/restore, commits, push and the final report before the absolute ceiling.
+The next publication diagnostic is prepared under the ignored build directory; run only after
+current timings finish. It counts scanned metadata pages, dirty candidates and empty observations;
+all diagnostic clocks are discarded. Do not compile/profile concurrently with valid timing runs.
+
+Trial4 verdict: keep shared-page metadata shortcut. All six reused init calls improve0.65–1.98%
+(median0.79%); lifecycle -0.87%. Resume phases33.28–33.58ms ->25.53–25.90ms. Gameplay/small
+kernels broadly flat. Native/ASan8groups including6new metadata cases,6equal-image pairs,
+200timed processes/4negative controls and stable seals pass. Diagnostic clocks discarded.
+
+## Trial5 planned — bounded dirty publication directory
+
+Separate count-only diagnostic: init1621observations scan6,945,985mapped headers but only9253
+are dirty candidates (8293actually changed); all observations are nonempty. Tick scans4285for
+336dirty/273changed. Host delta positive cases1590cover6,813,150mapped pages with2026different
+owners. Archive probe source/counts in findings. Next: directory at existing first-dirty transition,
+bounded by mapped page count, private sorted copy and checked source-slot lookup for publication.
+Keep bitmap and its full clearing initially; retain original per-candidate bit/permission/copy checks,
+refused-reply state, source snapshots and observation/epoch semantics. One mechanism at a time.

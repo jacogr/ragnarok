@@ -65,13 +65,15 @@ def main():
     out.mkdir(exist_ok=True)
     summary = dict(experiment=args.name, verdict=args.verdict, baseline=data['baseline'],
                    candidate_overlay_sha256=data['source_sha256']['experiments/pvm-interpreter/overlay/src/pvm/experimental.nim'],
+                   candidate_memory_sha256=data['source_sha256']['experiments/pvm-interpreter/overlay/src/pvm/machine.nim'],
                    raw_report_sha256=hashlib.sha256(raw.read_bytes()).hexdigest(), processes=len(data['runs']),
                    negative_controls=len(data['controls']), all_inputs_stable=True, groups={}, runs=data['runs'],
                    resource_observations=data.get('resource_observations', []),
                    confirmation_plan=data.get('confirmation_plan'))
     text = ['# '+args.name, '', args.verdict, '',
             'Checked macOS arm64 CPU durations. Baseline commit `'+data['baseline']+'`; candidate overlay',
-            '`'+summary['candidate_overlay_sha256']+'`. All declared samples retained.', '',
+            '`'+summary['candidate_overlay_sha256']+'`. Memory overlay',
+            '`'+summary['candidate_memory_sha256']+'`. All declared samples retained.', '',
             'Fresh private-cache builds at identical source/output paths produce equal repeat images for',
             'both roles and all three drivers. All timed calls validate complete CPU, gas, memory,',
             'permissions, source snapshots and (for DOOM) host output. Negative fixtures reject.', '',

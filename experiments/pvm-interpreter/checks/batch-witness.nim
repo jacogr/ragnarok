@@ -97,5 +97,35 @@ assert withReplacedPages(empty, [PageImage(index: PageIndex(0))]).error == Machi
 assert withReplacedPages(default(Memory), []).error == MachineError.InvalidOwner
 assert withReplacedPages(default(Memory), [PageImage(index: PageIndex(1048576))]).error ==
     MachineError.InvalidOwner
+# Equal bytes are not an ownership proof; recreated pages must still appear in the copied delta.
+let mappingIndices = [16'u32, 32'u32, 1048575'u32]
+var mappingImages: seq[PageImage] = @[]
+for slot in 0..<mappingIndices.len:
+  var image = PageImage(index: PageIndex(mappingIndices[slot]), access: PageAccess.ReadWrite)
+  for at in 0..<4096: image.bytes[at] = byte((slot*19+at*7) mod 251)
+  mappingImages.add(image)
+let beforeMapping = captureMemory(mappingImages, PageLimit(4)).value
+let heldMapping = beforeMapping
+let recreated = captureMemory(mappingImages, PageLimit(4)).value
+let recreatedDelta = changedMemoryPages(beforeMapping, recreated)
+assert recreatedDelta.error == MachineError.None and recreatedDelta.value.len == 3
+assert changedMemoryPages(beforeMapping, heldMapping).value.len == 0
+var metadataCases = 0
+for slot in 0..<mappingIndices.len:
+  for access in [PageAccess.Inaccessible, PageAccess.ReadOnly]:
+    # A legitimate early byte change must not hide a later permission mismatch or publish a prefix.
+    var first = mappingImages[0]
+    first.bytes[0] = first.bytes[0] xor 17
+    let early = withPage(beforeMapping, first).value
+    var mismatched = mappingImages[slot]
+    mismatched.access = access
+    let posterior = withPage(early, mismatched).value
+    assert changedMemoryPages(beforeMapping, posterior).error == MachineError.InvalidRange
+    same(beforeMapping, heldMapping, mappingIndices)
+    inc metadataCases
+assert metadataCases == 6
+assert changedMemoryPages(default(Memory), beforeMapping).error == MachineError.InvalidOwner
+assert changedMemoryPages(beforeMapping, default(Memory)).error == MachineError.InvalidOwner
+echo "PASS delta identity / distinct equal-byte owners / six metadata refusals / shared-prefix and retained-source checks"
 assert cases == 256
 echo "PASS batch replacements /", cases, " subset-epoch cases / sequential oracle / all bytes and access / retained owners / caller mutation / ceilings / atomic refusals"
