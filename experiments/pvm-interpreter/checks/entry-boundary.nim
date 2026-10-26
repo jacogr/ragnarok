@@ -111,6 +111,7 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64, warm: bo
     if expected.error == StepError.StepLimitExceeded:
       # Budget boundaries retain exact PC, registers, gas and paid state even after combined-handler warmup.
       sameCpu(frame.info, machineInfo(expectedPrefix).value)
+      assert frame.remaining == 0
     sameCpu(machineInfo(input).value, info)
 
 proc immediate(bytes: var seq[byte], value: uint64) =
@@ -224,3 +225,47 @@ for family in [0, 1]:
             inc shapeCases
 assert shapeCases == 3888
 echo "PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU"
+
+
+var cycleCases = 0
+for order in @[@[0, 2, 1], @[1, 0, 2], @[2, 1, 0], @[0, 1, 2], @[0, 2]]:
+  # Rotated cycles, wrong-order exits and two-block prefixes exercise every positive and refused handoff.
+  var parts: seq[seq[byte]] = @[]
+  var position = 0
+  for at in 0..<order.len:
+    let kind = order[at]
+    if kind == 0: parts.add(@[131'u8, 0x11, 1])
+    elif kind == 1:
+      parts.add(@[200'u8, 0x21, 3])
+      parts.add(@[139'u8, 0x33, 1])
+    else:
+      parts.add(@[151'u8, 0x11, 1])
+      parts.add(@[152'u8, 0x11, 1])
+    let prefix = if kind == 0: 3 else: 6
+    let branchBytes = if kind == 2: 6 else: 7
+    var branch = if kind == 0: @[88'u8, 0x11, 3] elif kind == 1: @[82'u8, 0x13, 3] else: @[173'u8, 0x21]
+    # Intermediate arms coincide at the actual next block; the final taken arm returns to the genuine entry boundary.
+    let displacement = if at+1 < order.len: uint64(branchBytes)
+      else: (0x100000000'u64-uint64(position+prefix)) and 0xffffffff'u64
+    immediate(branch, displacement)
+    parts.add(branch)
+    position+=prefix+branchBytes
+  parts.add(@[50'u8, 0])
+  let source = owner(parts)
+  let plan = cache(source)
+  for bits in [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64, high(uint64)]:
+    var selected = registers
+    selected[1] = RegisterValue(bits)
+    selected[2] = RegisterValue(bits xor 0x55555555'u64)
+    for paid in [false, true]:
+      for gas in [0'u64, 1'u64, 2'u64, 3'u64, 7'u64, 8'u64, 9'u64, 1000'u64, high(uint64)]:
+        let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(0),
+          gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+        for budget in [0'u64, 1'u64, 2'u64, 3'u64, 4'u64, 5'u64, 6'u64, 7'u64,
+            8'u64, 9'u64, 15'u64, 16'u64, 17'u64, 23'u64, 24'u64, 25'u64]:
+          # Cold and fully warmed streams must match independent stepping at every block/cycle edge and exhausted allowance.
+          compare(input, plan, budget, 100000)
+          compare(input, plan, budget, 100000, true)
+          inc cycleCases
+assert cycleCases == 8640
+echo "PASS charged cycles /8640cases / rotations-wrong edges-two-block exits / every gas and quota boundary"

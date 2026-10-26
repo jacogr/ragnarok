@@ -225,3 +225,27 @@ executed native instruction/counter claim or uniform-win claim. Public/default u
 Next count-only question: do these charged blocks branch directly back to themselves? If so,
 a bounded nonrecursive interpreter loop could retain every charge/quota check while avoiding
 repeat outer dispatch. Count actual destinations before any runtime change; clocks discarded.
+
+## Trial10 — guarded nonrecursive charged-shape cycle
+
+Separate exact15763254diagnostics:63,902,796hot shapes,0self-targets. Destination source
+shape matrix(rows131/200/151; columns131/200/151/other):
+[0,0,21295000,0];[21294999,0,0,9032];[0,21303765,0,0]. Gameplay has0hot shapes.
+Thus test only the measured131->151->200->131shape cycle. Actual runtime handoffs require
+exact positive cached handler equality, never a source-graph guess. All exits/wrong orders
+return to ordinary dispatch. Every visited logical block repeats original gas/quota checks;
+partial quotas use original nodes. Native stack remains bounded by a while loop, not calls.
+
+Shared step template retains original compute/branch equations. Specialized branch workers
+need explicit typed locals before template substitution on this pinned compiler; no compiler
+changes. Focused entry matrix passes including8640new cases:all3rotations,wrong-order and
+2block exits,fresh/warmedgas and quotas across cycles. Local quota failures now also require
+remaining==0 alongside independently stepped full CPU. Ordinary payload/cache/memory unchanged.
+
+Trial10 verdict: keep guarded nonrecursive cycles. Init all6reused pairs -2.45..-3.19%,
+median -3.06%; coldcall -2.98%, reusedlife -2.98%. Small kernels within0.29%; tick reused
+call -0.03%, life -0.38%. Native/ASan8groups,8640new cycle witnesses,200timed/4negative
+and6fresh image pairs pass with stable source seals. Actual ARM64 has no composed
+reserve/register/branch calls in the3hot workers; loops are native-stack bounded.
+Next diagnose exact closure of the3actual records, not just their opcode-shape identity;
+run the prepared kernel block counter separately before choosing a next runtime change.

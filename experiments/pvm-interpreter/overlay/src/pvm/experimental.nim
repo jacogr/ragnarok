@@ -515,19 +515,64 @@ template flatShapeRegister(f: var FlatFrame, off: uint32, Code: static[int]) =
       return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
     f.info.registers[index] = value
 
+template flatChargedStep(f: var FlatFrame, off: uint32, First, Second: static[int],
+    branchWorker: FlatHandler, destination: var uint32) =
+  ## Execute one complete charged shape; failures and partial quotas return immediately from the containing interpreter loop.
+  block:
+    flatReserve(f, off)
+    if f.barrier != flatStop:
+      # Partial source quotas use the original addressable nodes and exact temporary boundary handler.
+      let selected = f.handlers[int(off+1)]
+      return selected(f, off+1)
+    flatShapeRegister(f, off+1, First)
+    when Second >= 0:
+      # A full reservation permits the second original arithmetic operation; partial cases returned through ordinary nodes above.
+      flatShapeRegister(f, off+2, Second)
+    let branchOff = off+(when Second >= 0: 3'u32 else: 2'u32)
+    destination = branchWorker(f, branchOff)
+
 proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
-  ## A whole validated register/branch shape shares charging, operands and branch equations with ordinary nodes.
-  flatReserve(f, off)
-  if f.barrier != flatStop:
-    # Partial source quotas use the original addressable nodes and exact temporary boundary handler.
-    let selected = f.handlers[int(off+1)]
-    return selected(f, off+1)
-  flatShapeRegister(f, off+1, First)
-  when Second >= 0:
-    # A full reservation permits the second original arithmetic operation; partial cases returned through ordinary nodes above.
-    flatShapeRegister(f, off+2, Second)
-  let branchOff = off+(when Second >= 0: 3'u32 else: 2'u32)
-  flatBranch[Branch](f, branchOff)
+  ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
+  var current = off
+  var destination = flatStop
+  let repeated: FlatHandler = flatChargedShape[First, Second, Branch]
+  let ownBranch: FlatHandler = flatBranch[Branch]
+  let branch88: FlatHandler = flatBranch[88]
+  let branch82: FlatHandler = flatBranch[82]
+  let branch173: FlatHandler = flatBranch[173]
+  while true:
+    # Every logical block still performs its own complete gas and source-budget reservation.
+    flatChargedStep(f, current, First, Second, ownBranch, destination)
+    when First == 131:
+      let middle: FlatHandler = flatChargedShape[151, 152, 173]
+      if f.handlers[int(destination)] != middle: return destination
+      current = destination
+      flatChargedStep(f, current, 151, 152, branch173, destination)
+      let last: FlatHandler = flatChargedShape[200, 139, 82]
+      if f.handlers[int(destination)] != last: return destination
+      current = destination
+      flatChargedStep(f, current, 200, 139, branch82, destination)
+    elif First == 200:
+      let middle: FlatHandler = flatChargedShape[131, -1, 88]
+      if f.handlers[int(destination)] != middle: return destination
+      current = destination
+      flatChargedStep(f, current, 131, -1, branch88, destination)
+      let last: FlatHandler = flatChargedShape[151, 152, 173]
+      if f.handlers[int(destination)] != last: return destination
+      current = destination
+      flatChargedStep(f, current, 151, 152, branch173, destination)
+    else:
+      let middle: FlatHandler = flatChargedShape[200, 139, 82]
+      if f.handlers[int(destination)] != middle: return destination
+      current = destination
+      flatChargedStep(f, current, 200, 139, branch82, destination)
+      let last: FlatHandler = flatChargedShape[131, -1, 88]
+      if f.handlers[int(destination)] != last: return destination
+      current = destination
+      flatChargedStep(f, current, 131, -1, branch88, destination)
+    # Matching the next native handler is a capability check, not an assumed guest-code graph or input identity.
+    if f.handlers[int(destination)] != repeated: return destination
+    current = destination
 
 proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
     off: uint32): uint32 =
