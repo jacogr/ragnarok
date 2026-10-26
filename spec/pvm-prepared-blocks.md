@@ -1383,3 +1383,132 @@ The rejected compact48-byte/56-byte controls remain in `prepared-compact-facts` 
 a PR: correctness and maintained-PC witnesses pass, but sieve/fill regress. Remaining
 work should follow the accepted engine's profile, including checked scalar-memory hot
 paths; smaller records or fewer source checks alone are insufficient evidence.
+
+
+## Checked scalar-memory cold paths, 2026-10-26
+
+Separate checked scalar-writer miss work from its cached hit paths. Parent is #1696
+at `98338fcb00b3634c35f55a2fc4dd1d0c6a6f67c2`; master remains
+`ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`. Only `machine.nim` runtime code
+changes. Dependency pins, JAM semantics, public API/defaults, memory representation,
+window capacity/replacement, prepared execution, PC writes, pricing, budgets and owner
+lifetimes remain unchanged. No translated implementation ships.
+
+### Factoring and ownership contract
+
+The original `loadScalar` and `storeScalar` keep their nil/default-owner checks,
+width selection, address normalization, supported-width/range/protected-prefix/exclusive-end
+checks and complete single-page cached-window guards. They still use the same checked
+page/chunk helpers; stores still prepare every touched private chunk before mutation.
+Only the original fallback tails move into private non-inlined `loadWriterMiss` and
+`storeWriterMiss` helpers. Small cached workers are marked inline so the optimizer can
+see successful outcomes in selected callers.
+
+Callers retain the writer and its immutable base through the callback-free operation.
+Private miss parameters borrow genuine non-null writer/source handles after the same
+original owner checks; they add neither a new capability nor an ownership transfer.
+Span resolution, first-fault/permission precedence, recent-slot updates, page-window
+admission, first activation, complete COW preparation, fragment reads/writes and typed
+failure construction remain in their original order. Both touched pages are preflighted
+before cross-page mutation. Snapshot publication still retires every cached alias.
+No checks, assertions, pointer rules or error alternatives are weakened.
+
+### Native and timing evidence
+
+Keep the combined load/store split for the useful minimal and fill improvements.
+Load-only and store-only controls isolate the effects; the combined endpoint remains
+within the original software-cache accounting and uses identical immutable input memory.
+Actual M1 native direct-call sites (`bl`, not executed instruction counts):
+
+| Endpoint | loadScalar sites | storeScalar sites | loadWriterMiss sites | storeWriterMiss sites |
+| --- | ---: | ---: | ---: | ---: |
+| Parent | 37 | 10 | 0 | 0 |
+| Load split | 30 | 10 | 8 | 0 |
+| Store split | 37 | 8 | 0 | 6 |
+| Combined | 30 | 8 | 8 | 6 |
+
+Some scalar-worker call boundaries disappear; many remain. Static call sites alone
+neither establish their dynamic frequency nor a hardware cause for the timing change.
+Six alternating confirmation pairs, median CPU change against the immediate parent:
+
+- pinky: -2.77% (range -3.11% to -1.86%).
+- sieve: +0.62% (range -0.75% to +4.26%).
+- minimal: -9.65% (range -9.74% to -9.58%).
+- memset: -5.74% (range -6.03% to -5.47%).
+
+Minimal and fill are supported gains. Pinky's smaller difference is cautious evidence;
+sieve is mostly flat with one slower outlier and has no established gain. Do not infer
+that fewer source helpers or call sites must improve every workload.
+
+Checked Apple M1 Max, ARC/Clang ThinLTO; pristine Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2` and PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Initial84 complete-state
+processes cover four endpoints plus port/Rust, seven cases and both process orders;
+another96 confirm four endpoints across six alternating rounds. Fresh cumulative70
+processes compare master/actual parent/final/port/Rust. Every process makes13 calls,
+three warmups then ten CPU samples. Canonical source/cache/output compiler paths,
+fresh private caches and restored byte-identical final images cover the final source.
+
+Reused CPU milliseconds, **forward / reverse process order** (100000 workload limit,
+Pinky one invocation):
+
+| Guest | Master prepared | Parent #1696 | This implementation | Learning port | PolkaVM interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 195.877 / 195.885 | 133.733 / 133.894 | 130.351 / 130.589 | 94.195 / 94.148 | 91.815 / 91.938 |
+| sieve | 5.918 / 5.905 | 3.540 / 3.569 | 3.579 / 3.569 | 3.435 / 3.402 | 3.504 / 3.505 |
+| minimal | 13.639 / 13.633 | 8.680 / 8.673 | 7.821 / 7.849 | 6.309 / 6.237 | 6.017 / 5.986 |
+| memset | 6.314 / 6.314 | 3.889 / 3.863 | 3.657 / 3.651 | 3.654 / 3.660 | 3.843 / 3.861 |
+
+Cold CPU milliseconds are single first-call observations including lazy preparation,
+not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 203.731 / 195.940 | 135.484 / 135.456 | 131.488 / 131.030 | 94.338 / 94.306 | 96.322 / 93.804 |
+| sieve | 9.954 / 9.943 | 7.718 / 7.653 | 7.641 / 7.727 | 3.589 / 3.557 | 6.125 / 6.090 |
+| minimal | 13.714 / 13.586 | 8.688 / 8.786 | 7.920 / 7.928 | 6.291 / 6.284 | 6.069 / 6.055 |
+| memset | 6.489 / 6.417 | 4.041 / 4.011 | 3.795 / 3.836 | 3.673 / 3.659 | 4.024 / 4.028 |
+
+Empty prepared-owner constructor CPU microseconds; no constructor gain is established:
+
+| Guest | Master constructor | Parent constructor | This implementation constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 3.000 / 5.000 | 3.000 / 5.000 | 5.000 / 8.000 |
+| sieve | 5.000 / 3.000 | 7.000 / 9.000 | 8.000 / 5.000 |
+| minimal | 11.000 / 12.000 | 12.000 / 13.000 | 12.000 / 12.000 |
+| memset | 7.000 / 6.000 | 7.000 / 9.000 | 8.000 / 7.000 |
+
+Another56 processes cover the changed memory workers through dynamic/planned execution;
+these two-order results are not six-round gain claims:
+
+| Guest | Parent dynamic | Final dynamic | Parent planned | Final planned |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 291.404 / 292.662 | 287.927 / 290.062 | 279.743 / 282.423 | 276.067 / 277.438 |
+| sieve | 12.178 / 12.267 | 12.742 / 12.204 | 8.502 / 8.576 | 8.534 / 8.514 |
+| minimal | 16.593 / 16.552 | 16.401 / 16.354 | 16.158 / 16.131 | 15.976 / 15.939 |
+| memset | 8.583 / 8.525 | 8.550 / 8.514 | 8.387 / 8.412 | 8.428 / 8.405 |
+
+All prepared-cache counts, resident/peak bytes and evictions match the parent for every
+call. All13 timed calls verify every register, gas/exit, mapped byte/permission and
+original source snapshot; tampered gas references are rejected before successful timing
+rows. These software observations and static native call sites are not hardware branch/
+cache misses or executed native instruction counts. No Linux claim is made.
+Ragnarök stages invocations inside its clock; Rust restores input outside its execution
+clock. The local partial port has predecoded/priced facts and unbounded retention, so
+complete lifecycle parity is not established. Pinky/minimal remain slower than that
+port and Rust; outperforming the reference overall remains an unmet target.
+
+Existing width/nil/boundary/permission/final-page/COW/epoch/alias checks, full139-opcode
+prepared coverage,11815 register pairs,25020 memory pairs, wide dynamic-target sets,
+host/gas/budget/reentry and source-snapshot witnesses pass unchanged. Nine native suites,
+four independent complete-state references, AddressSanitizer and ARC1000 pass. Promoted
+Make scalar-window, prepared and mixed-reference suites plus formatting pass. No new
+fixtures, exported APIs, suite metadata or CI jobs are introduced for this refactor.
+
+Samples/spreads, source/generated-source identities, equal-image controls, native text,
+constructor/cold/cache rows and verification logs remain under
+`build/pvm-port-lab/scalar-cold-paths`. Qualified machine runtime SHA256:
+`36283e4b8c353210ba4442cb529e7befc7ee2e6568834080282143ad112be815`.
+Next investigate remaining checked-memory working sets/call overhead using separate
+unclocked diagnostics; retain the accepted window policy until independent evidence
+supports changing it.
