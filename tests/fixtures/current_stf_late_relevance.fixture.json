@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_RELEVANCE",
+  "files": {
+    "current-stf-late-relevance.json": "5d4dd1ff23db889ae58e1216d511204bfb8fd6f9decbb75a9db63232842ee2cd"
+  },
+  "target": "current-stf-late-relevance.json"
+}
