@@ -565,3 +565,7 @@ check-devnet: build
 # CI-sized live smoke retains ordinary GP slots and the independent whole-map verifier.
 check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
+# Manual local interpreter laboratory; no default engine or CI job selects this overlay.
+.PHONY: check-pvm-experimental
+check-pvm-experimental: compiler-tools
+	$(PYTHON) experiments/pvm-interpreter/run.py $(PVM_EXPERIMENTAL_FLAGS)
