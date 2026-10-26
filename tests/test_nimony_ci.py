@@ -579,6 +579,7 @@ class NimonyCISafeguards(unittest.TestCase):
         for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)
+        self.assertEqual(complete.count('tools/check_jam_fuzzer_interface.py'), 1)
         self.assertEqual(complete.count('tools/test_runtime.py'), 2)
         self.assertEqual(complete.count('--group failures'), 1)
         failures = subprocess.check_output(command+['check-failures'], cwd=ROOT, text=True)

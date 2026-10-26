@@ -18,11 +18,11 @@ from types import SimpleNamespace
 from native_checks import NativeChecks, ROOT, announce
 from runtime_provenance import runtime_sources
 from setup_nimony import installed
-from corpus_state import CORPORA
+from jam_fuzz_corpora import CORPORA
 
 BUILD = ROOT/'build/tests/jam-fuzzer-interface'
-# Source-owned corpus declarations supply identities; the feature prefix selects this opt-in scope.
-CASES = tuple(sorted(name for name in CORPORA.tasks if name.startswith('jam_fuzzer_')))
+# The dedicated source-owned registry supplies the complete Fuzz inventory, disjoint from Unit.
+CASES = tuple(sorted(CORPORA.tasks))
 
 
 def corpus_verified(result):
@@ -226,7 +226,7 @@ def main():
         from nimony_crypto import prepare as prepare_crypto
         from bandersnatch_native import prepare as prepare_bandersnatch
         from nimony_quic import prepare as prepare_quic
-        import e2e_checks
+        import jam_fuzz_checks
         crypto, _, report['crypto_native'] = prepare_crypto(BUILD)
         bs, _, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
         quic, _, report['quic_native'] = prepare_quic()
@@ -237,11 +237,11 @@ def main():
             if not report['cases'][name]['passed']:
                 raise AssertionError('Failed interface corpus: '+name)
         context = SimpleNamespace(compiler=compiler, checks=checks, report=report, crypto=crypto, bs=bs, quic=quic)
-        e2e_checks.prepare_peer(context)
-        e2e_checks.prepare_fuzzer_policy(context)
-        report['socket'] = e2e_checks.application_fuzzer_interface(context)
-        e2e_checks.prepare_minifuzz(context)
-        report['minifuzz'] = e2e_checks.application_minifuzz_interface(context)
+        jam_fuzz_checks.prepare_peer(context)
+        jam_fuzz_checks.prepare_fuzzer_policy(context)
+        report['socket'] = jam_fuzz_checks.application_fuzzer_interface(context)
+        jam_fuzz_checks.prepare_minifuzz(context)
+        report['minifuzz'] = jam_fuzz_checks.application_minifuzz_interface(context)
         report['status'] = 'checks-passed' if passed(report) else 'failed'
     except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
         # A partial invocation cannot reuse another group's success or an earlier results file.

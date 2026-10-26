@@ -181,7 +181,7 @@ class VerificationE2E(unittest.TestCase):
         from summarize_tests import summarize
         workloads, selftests = [], []
         prerequisites = {
-            'application': ('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz'),
+            'application': ('prepare_peer',),
             'current': ('prepare_current_download_peer', 'prepare_current_sequence_responder'),
             'offload': ('prepare_offload_peer',),
             'testnet': ('prepare_peer',),
