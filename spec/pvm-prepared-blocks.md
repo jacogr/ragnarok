@@ -849,3 +849,115 @@ hashes, equal-image controls, exact compiler rejections and verification logs li
 under `build/pvm-port-lab/prepared-static-widths`. Rejected resident-borrow, direct
 switch and packed-result experiments remain ignored laboratory evidence, with no
 production changes or PRs. The independent memory implementation remains checked.
+
+
+## Stable prepared-loop facts, 2026-10-26
+
+Borrow the immutable operation-sequence metadata from the unchanged invocation-owned
+segment. Closed private handlers cannot mutate that array or the owning local;
+cache replacement occurs outside the iteration, and host publication retains its
+owned location before returning. The generated C copies metadata without retaining
+or destroying another sequence owner. No borrow crosses an application callback.
+
+Preparation stops immediately after a terminator, so only the final retained
+operation can end a block. The existing array-length bound already stops there;
+remove the redundant `ended` consumer flag. Keep the record flag/layout unchanged.
+Read the immutable causing PC only on a genuine nonterminal exit, from the checked
+just-executed element `at-1`; terminal exits still normalize to zero. Ordinary PC
+writes, instruction-attempt debits and all checks remain at their original points.
+Handler ABI, record size, cache policy/limits, pricing and memory are unchanged.
+
+The new witness jumps over a register-changing instruction and trap to a valid
+marked block. It verifies that sealed arrays cannot execute beyond a terminator,
+with cold/reused, paid/unpaid and gas/attempt boundaries. Its first positive-case
+gas assumption was wrong: both baseline and candidate correctly returned out-of-gas
+at gas 10. The final case uses ample gas and retains low-gas comparisons. The
+failure input and diagnostic logs remain local; no runtime defect was suppressed.
+
+### Qualified local CPU evidence
+
+Parent #1692 `0a16fb1dfd10d7f129cc7324b36a54d18c918066`; master `ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`.
+Final `step.nim` SHA-256 `b5713bc96be80d1ed71d7310861adb7277bd949928725897b0334939cb0d501b`.
+
+Pinned Nimony 4724f66c, checked ARC/Clang 21 release/speed/ThinLTO, Apple M1 Max.
+Fresh private caches use identical compiler source/cache/output paths; candidate
+repeats and the rebuild after master/parent controls are byte-identical. Existing
+component checks remain applicable to unchanged paths; the final full 139-opcode,
+host/budget/cache/eviction suite, four independent references and AddressSanitizer
+pass, with ARC 1,000 balanced. The promoted prepared/mixed reference suites pass
+through Make. The isolated view/end-flag/cause variants also pass the opcode suite.
+
+Initial 84-process and final 112-process comparisons cover all seven maintained
+guest/size cases in both orders. A fresh 70-process comparison includes master,
+actual parent, the complete composition, frozen port and Rust interpreted reuse.
+Another 72 alternating processes confirm parent/composition behavior. Each makes
+13 full-state calls: three warmups then ten CPU measurements. Every register, gas,
+terminal state, page byte/permission and original source snapshot passes; wrong
+gas references fail before a successful timing row. No Linux/hardware claim.
+
+Reused CPU milliseconds, **forward / reverse process order**, same-session controls:
+
+| Guest | Master prepared | Parent #1692 | This implementation | Learning port | Rust interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.171 / 195.921 | 157.385 / 153.300 | 148.512 / 146.923 | 94.881 / 94.264 | 91.959 / 93.091 |
+| sieve | 5.875 / 5.911 | 4.664 / 4.688 | 4.533 / 4.392 | 3.437 / 3.397 | 3.509 / 3.495 |
+| minimal | 13.622 / 13.611 | 9.851 / 9.838 | 9.319 / 9.319 | 6.293 / 6.292 | 5.970 / 6.025 |
+| memset | 6.287 / 6.306 | 4.694 / 4.669 | 4.355 / 4.355 | 3.651 / 3.654 | 3.852 / 3.853 |
+
+The separate final isolated comparison exposes interactions rather than assuming
+each smaller source change is independently useful. CPU milliseconds:
+
+| Guest | Parent | Array view | End flag only | View + end flag | Late cause only | Full composition |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| pinky | 156.101 / 155.680 | 152.868 / 152.811 | 154.810 / 154.633 | 149.815 / 148.966 | 155.274 / 153.183 | 149.135 / 147.363 |
+| sieve | 4.651 / 4.651 | 4.500 / 4.506 | 4.675 / 4.669 | 4.504 / 4.505 | 4.650 / 4.652 | 4.380 / 4.399 |
+| minimal | 9.722 / 9.866 | 9.466 / 9.633 | 9.620 / 9.767 | 9.380 / 9.432 | 9.916 / 9.785 | 9.302 / 9.261 |
+| memset | 4.686 / 4.753 | 4.458 / 4.474 | 4.690 / 4.659 | 4.293 / 4.327 | 4.690 / 4.665 | 4.348 / 4.364 |
+
+Median CPU change across six alternating confirmation pairs:
+
+- pinky: -3.76% (range -4.29% to -2.74%).
+- sieve: -5.79% (range -5.92% to -5.36%).
+- minimal: -5.34% (range -8.17% to -4.81%).
+- memset: -6.90% (range -7.19% to -6.87%).
+
+Retain the complete composition: it reduces CPU across all four large cases
+without a material measured regression. Individual changes interact; late cause
+reads alone do not improve all workloads, and the version without them has a
+slightly lower fill median but loses useful sieve/minimal improvement. The whole
+composition is the measured review unit. No CPU cause is inferred from source
+line count or fewer static instructions. The target of beating the port remains.
+
+Cold CPU milliseconds are single sample-0 observations, not repeated cold medians:
+
+| Guest | Master cold | Parent cold | Composition cold | Port cold | Rust cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 197.476 / 197.512 | 156.407 / 154.698 | 150.091 / 149.330 | 95.552 / 94.629 | 93.987 / 94.034 |
+| sieve | 9.942 / 9.876 | 8.645 / 8.694 | 8.466 / 8.376 | 3.565 / 3.550 | 6.089 / 6.112 |
+| minimal | 13.660 / 13.590 | 9.925 / 9.912 | 9.315 / 9.360 | 6.342 / 6.204 | 6.029 / 6.109 |
+| memset | 6.434 / 6.430 | 4.784 / 4.800 | 4.466 / 4.464 | 3.653 / 3.661 | 4.028 / 4.040 |
+
+Constructor CPU microseconds are recorded separately below; only the empty bounded
+prepared owner is constructed inside that clock. Program/initial-memory capture
+remain outside execution, and no constructor improvement is established:
+
+| Guest | Master constructor | Parent constructor | Composition constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 4.000 | 4.000 / 5.000 | 5.000 / 4.000 |
+| sieve | 5.000 / 4.000 | 4.000 / 5.000 | 5.000 / 4.000 |
+| minimal | 13.000 / 33.000 | 12.000 / 15.000 | 11.000 / 13.000 |
+| memset | 5.000 / 7.000 | 7.000 / 6.000 | 7.000 / 8.000 |
+
+All prepared-cache block/operation/hit/eviction and resident/peak-byte observations
+match the parent in every call. These are software observations, not hardware
+cache/branch misses. No new executed-native-instruction or branch-event counts are
+claimed. Assembly inspection showed the existing attempt counter already in a
+register, so that proposed optimization was skipped rather than reimplemented.
+
+Ragnarök starts fresh invocation staging inside each execution clock. Rust's public
+reuse adapter restores input outside its clock. The local partial port uses
+predecoded/priced facts and an unbounded cache; it is not full JAM/lifecycle parity.
+Port and Rust constructors are not measured. All translated code stays local.
+Evidence under `build/pvm-port-lab/prepared-loop-views` includes every sample/spread,
+separate constructors/cold calls, source/archive/generated-C identities, unchanged
+component checks, final Make/reference/ASan logs and fresh equal-image controls.

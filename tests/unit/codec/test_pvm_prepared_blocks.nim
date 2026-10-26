@@ -449,6 +449,23 @@ proc successorEvictionCycle() =
       gas: MachineGas(gas))).value
     for steps in [0'u64, 1, 2, 3, 4]: compare(source, prepared, steps, 100000)
 
+proc sealedTerminatorCycle() =
+  ## A genuine branch jumps over a mutating instruction to the block following a trap; no sealed array runs past its terminator.
+  let program = owner([@[51'u8, 7, 1], @[40'u8, 6], @[51'u8, 7, 99], @[0'u8], @[0'u8]])
+  let prepared = cache(program, blocks = 2)
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 2, 3, 4, 10, 100000]:
+      # Exact charge and attempt boundaries must preserve the selected path on both cold and reused arrays.
+      let source = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
+        gas: MachineGas(gas), blockCharged: paid)).value
+      for steps in [0'u64, 1, 2, 3, 4, 5]: compare(source, prepared, steps, 100000)
+  let source = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
+    gas: MachineGas(100000))).value
+  let final = execute(source, ExecutionStepLimit(4), prepared)
+  assert final.error == StepError.None and final.value.exit == StepExit.Panic
+  assert uint64(machineInfo(final.value.machine).value.registers[7]) == 1
+
+sealedTerminatorCycle()
 successorEvictionCycle()
 
 proc lifecycle(input: Machine) =

@@ -1860,16 +1860,14 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
             kind: StepExit.OutOfGas), false)
       frame.info.gas = MachineGas(uint64(frame.info.gas)-active.price)
       frame.info.blockCharged = true
-    var ended = false
-    while at < active.operations.len and remaining > 0 and not ended:
+    let operations {.cursor.} = active.operations # Stable immutable metadata stays borrowed from the unchanged invocation-owned segment.
+    while at < operations.len and remaining > 0:
       # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
       dec remaining
       # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
-      let causingPc = active.operations[at].address
-      let endsBlock = active.operations[at].endsBlock
-      let selected = active.operations[at].handler
+      let selected = operations[at].handler
       if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
-      let evaluated = selected(frame, active.operations[at])
+      let evaluated = selected(frame, operations[at])
       if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
       inc at
       if evaluated.exit != StepExit.Continued:
@@ -1878,7 +1876,8 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
           else: InstructionEffect(kind: evaluated.exit)
         if effect.kind != evaluated.exit: return StepResult(status: StepError.InvalidMachine)
         # Fault/host/gas preserve the causing PC; panic/halt keep recursive terminal normalization.
-        frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: causingPc
+        # Closed handlers cannot mutate the retained facts; only nonterminal fault/host exits read the prior element address.
+        frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: operations[at-1].address
         cursor.info = frame.info
         let published = publishInstruction(owner.source, frame.memory, frame.info, effect, true)
         if published.error == StepError.None:
@@ -1886,7 +1885,6 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
           location.chunk = active
           location.next = at
         return published
-      ended = endsBlock
     location.chunk = nil
     location.next = 0
   StepResult(status: StepError.StepLimitExceeded)
