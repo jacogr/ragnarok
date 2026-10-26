@@ -295,6 +295,52 @@ for op in [30'u8, 31, 32, 33, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 70,
             gas: MachineGas(1000), registers: selected)).value
         compare(source, prepared, 2, 100000)
 
+proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
+  ## Encode actual mapped absolute/indirect operands independently of the production decoder, with a deliberately aliased register1.
+  result = @[code]
+  if code <= 33:
+    # Absolute immediate stores carry two explicitly four-byte immediates.
+    result.add(4)
+    immediate(result, address)
+    immediate(result, 0x89abcdef'u64)
+  elif code in {70'u8..73'u8}:
+    # Indirect immediate stores select base1 and a four-byte offset followed by four-byte data.
+    result.add(65)
+    immediate(result, 0)
+    immediate(result, 0x89abcdef'u64)
+  else:
+    # Absolute forms select A1; indirect register forms alias source/destination/base1.
+    result.add(if code < 120: 1'u8 else: 17'u8)
+    immediate(result, if code < 120: address else: 0'u64)
+
+proc memoryPrefixMatrix(initialRegisters: RegisterFile) =
+  ## Every checked memory-first family precedes every genuine second opcode under success, permission and cross-page faults.
+  let memoryCodes = [30'u8, 31, 32, 33, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
+    70, 71, 72, 73, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130]
+  for firstCode in memoryCodes:
+    for secondCode in 0..255:
+      if validOpcode(byte(secondCode)):
+        # Saturated repeated descriptors expose first-load register aliasing before the second instruction reads its inputs.
+        var second = @[byte(secondCode)]
+        for index in 0..<24: second.add(17'u8)
+        for address in [65536'u64, 69631, 73727]:
+          let program = owner([firstMemoryPart(firstCode, address), second, @[0'u8]])
+          let prepared = cache(program, blocks = 2)
+          for access in [PageAccess.ReadWrite, PageAccess.ReadOnly]:
+            # A fresh owner changes permissions without changing any retained code fact or scalar memory window.
+            var images = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
+            images[1].access = access
+            let memory = captureMemory(images, PageLimit(2)).value
+            var initial = initialRegisters
+            initial[1] = RegisterValue(address)
+            let source = captureMachine(program, memory, MachineInfo(gas: MachineGas(100000),
+              blockCharged: true, registers: initial)).value
+            for steps in [0'u64, 1, 2, 3]:
+              # Early first exits must publish their own source PC; one attempt must never execute a genuine second operation.
+              compare(source, prepared, steps, 100000)
+
+memoryPrefixMatrix(registers)
+
 # Host callbacks retain exact continuation, may replace memory, and cannot recursively enter the same cache identity.
 type ReplyContext = object ## Test callback state contains only borrowed execution inputs and scalar progress.
   prepared, independent: PreparedProgram
@@ -370,6 +416,42 @@ for mode in 0..7:
     else: assert false
     # All success/failure callbacks release the outer busy flag before the next public call.
     assert execute(hostSource, ExecutionStepLimit(10), hostCache).error == StepError.None
+
+type MemoryPrefixContext = object ## Only callback progress escapes a successful checked load/host pair.
+  calls: int
+proc memoryPrefixReply(context: var MemoryPrefixContext,
+    stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## An independent byte-level expectation identifies the exact second source site and the first load's visible result.
+  assert stopped.exit == StepExit.Host
+  assert uint64(stopped.hostCall) == 13
+  let state = machineInfo(stopped.machine).value
+  assert uint64(state.pc) == 6
+  assert uint64(state.registers[1]) == 0x7a69584736251403'u64
+  inc context.calls
+  HostResponse(action: HostAction.Continue, gas: state.gas, registers: state.registers,
+    memory: memoryOf(stopped.machine).value)
+
+proc memoryPrefixHostBudgets() =
+  ## A first fault cannot reach the callback; a successful pair debits exactly two attempts before host continuation.
+  for address in [65536'u64, 73727]:
+    let program = owner([firstMemoryPart(58, address), @[10'u8, 13], @[51'u8, 7, 22], @[0'u8]])
+    for bytes in [192'u64, 1048576]:
+      # Byte-pressure fallback and ordinary retained pairing share all observable callback/budget boundaries.
+      let prepared = cache(program, bytes = bytes, blocks = 2)
+      for gas in [0'u64, 1, 100000]:
+        let source = captureMachine(program, mapped, MachineInfo(gas: MachineGas(gas))).value
+        for steps in 0'u64..5'u64:
+          for calls in 0'u64..1'u64:
+            var baseline = MemoryPrefixContext(calls: 0)
+            var candidate = MemoryPrefixContext(calls: 0)
+            let expected = executeWithHost(source, baseline, memoryPrefixReply,
+              ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(100000))
+            let actual = executeWithHost(source, candidate, memoryPrefixReply,
+              ExecutionStepLimit(steps), HostCallLimit(calls), prepared)
+            same(actual, expected)
+            assert candidate.calls == baseline.calls
+
+memoryPrefixHostBudgets()
 
 # A paid fault retry may replace memory without changing the prepared operations or charging twice.
 let faultProgram = owner([@[58'u8, 7, 0, 16, 1, 0], @[0'u8]])

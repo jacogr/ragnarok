@@ -1100,3 +1100,132 @@ controls, constructor/cold/cache rows and check logs remain under
 The next bounded investigation is broader literal-prefix coverage or a separately proven
 memory-prefix design with exact early-exit attempt accounting; neither is part of this
 change. Checked scalar-memory hot/cold separation remains another independent avenue.
+
+
+## Checked memory-first prefixes, 2026-10-26
+
+Extend bounded prepared pairs to all 30 original checked memory opcode forms. This
+independent change starts from #1694 at `3f118b2de0003f2974968387b2d310eb31e937a1`. The Gray Paper,
+JAM interpretation, public APIs/defaults, pinned dependencies and memory implementation
+remain unchanged. No learning-port implementation ships.
+
+### Exact attempt and exit contract
+
+The existing dispatcher reserves two attempts only when both source cells are retained
+and at least two attempts remain. A memory-first prefix calls the original specialized
+checked memory handler. On success it transfers to the original second handler, preserving
+operand aliasing, all permission/range/COW checks and ordinary PC writes. A first fault,
+panic or local failure skips the second handler and tags the original evaluation with a
+private high-bit early-return marker. Ordinary complete evaluation words cannot set this
+bit: guarded error and exit domains fit their reserved bytes.
+
+Only the closed memory-prefix factory emits this marker, and only after entering the
+bounded two-cell path. The existing rare non-continuation branch refunds one reserved
+attempt, backs the private operation index up by one and masks the marker before typed
+status/exit validation. The prior two-attempt decrement proves the refund cannot overflow;
+the two-cell advance proves the index cannot underflow. A first fault therefore publishes
+its own causing PC and exact original memory effect. A second fault/host exit retains the
+second source site. Local failures publish no state. Default evaluation zero stays
+Uninitialized. No marker or mutable frame error side channel reaches the public API.
+
+One remaining attempt, a missing retained successor or byte-pressure segment splitting
+uses the original single handler. No first memory result can invoke a host callback.
+A successful second host call sees exactly two debited attempts; continuation resumes
+from the existing owned location. Private 64-byte records, handler ABI, whole-block pricing,
+cache policy/accounting, source snapshots and acyclic ARC ownership remain unchanged.
+The continuation path adds no marker decode or frame writes; rare outcomes alone decode
+this attempt fact.
+
+### Local qualification and measured verdict
+
+Keep this bounded extension for the useful minimal-workload improvement. Pinky's smaller
+change remains cautious evidence; sieve/fill have no established gain. The cumulative
+sieve pairs are 1.4–2.7% slower, whereas the isolated and six-round confirmation
+comparisons do not establish a useful difference; retain this for minimal, without
+claiming a uniform improvement. Six alternating confirmation
+pairs, median CPU change versus the immediate parent:
+
+- pinky: -2.01% (range -3.01% to -1.93%).
+- sieve: +0.21% (range -0.09% to +1.58%).
+- minimal: -4.62% (range -4.86% to -1.74%).
+- memset: +0.51% (range -0.70% to +0.68%).
+
+Checked Apple M1 Max ARC/Clang ThinLTO with pristine Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2` and PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Final isolated comparison has
+56 processes, confirmation has 48, and the fresh cumulative comparison has 70. Each makes
+13 complete-state calls: three warmups and ten CPU measurements. Master, actual parent
+and restored final images use identical canonical compiler source/cache/output paths,
+fresh private caches and a byte-identical final image after the controls. Applying
+the final pinned formatting also produces byte-identical benchmark images, so all
+reported timings cover the final formatted runtime.
+
+Reused CPU milliseconds, **forward / reverse process order** (100000 workload limit,
+Pinky one invocation):
+
+| Guest | Master prepared | Parent #1694 | This implementation | Learning port | PolkaVM interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 195.798 / 197.358 | 142.587 / 141.683 | 140.009 / 138.446 | 95.055 / 94.169 | 92.221 / 92.025 |
+| sieve | 5.903 / 6.029 | 3.559 / 3.542 | 3.653 / 3.593 | 3.405 / 3.401 | 3.580 / 3.502 |
+| minimal | 13.599 / 13.591 | 9.078 / 9.011 | 8.666 / 8.604 | 6.430 / 6.222 | 5.989 / 6.199 |
+| memset | 6.296 / 6.228 | 3.827 / 3.835 | 3.877 / 3.845 | 3.643 / 3.626 | 3.963 / 3.831 |
+
+Cold CPU milliseconds are single first-call observations, including lazy preparation,
+not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.757 / 197.494 | 142.879 / 142.793 | 141.269 / 140.145 | 94.549 / 94.532 | 94.960 / 93.747 |
+| sieve | 10.187 / 9.858 | 7.605 / 7.576 | 7.786 / 7.776 | 3.565 / 3.566 | 6.209 / 6.134 |
+| minimal | 13.552 / 13.592 | 9.092 / 9.361 | 8.938 / 8.639 | 6.262 / 6.240 | 6.063 / 6.026 |
+| memset | 6.399 / 6.428 | 4.004 / 3.943 | 3.976 / 3.976 | 3.656 / 3.645 | 4.002 / 3.985 |
+
+Constructor CPU microseconds cover creation of the empty bounded owner only. No constructor
+improvement is established; program/memory capture and port/Rust construction are outside
+this constructor measurement:
+
+| Guest | Master constructor | Parent constructor | This implementation constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 5.000 | 5.000 / 5.000 | 5.000 / 5.000 |
+| sieve | 4.000 / 5.000 | 8.000 / 4.000 | 4.000 / 5.000 |
+| minimal | 15.000 / 12.000 | 13.000 / 12.000 | 12.000 / 11.000 |
+| memset | 6.000 / 9.000 | 8.000 / 7.000 | 9.000 / 7.000 |
+
+Every prepared cache observation, including bytes, resident operations/blocks, hits,
+preparations, peaks and evictions, exactly matches the parent in all measured calls.
+These are software counters, not hardware cache/branch misses. No Linux or executed native
+instruction-count claim is made. Rust's reuse adapter resets input outside its clock;
+Ragnarök stages each fresh invocation inside its clock. The partial local port uses
+predecoded/priced facts and unbounded retention, so neither comparison establishes full
+JAM lifecycle parity. Pinky/minimal remain substantially slower than the port/reference;
+being faster remains an unmet target.
+
+The prepared suite adds 25020 memory-first/second-opcode/page/permission cases:
+30 genuine first forms ×139 genuine second forms ×three mapped/cross-page/end-page
+addresses ×two permission settings, with budgets0/1/2/3 and two prepared repetitions.
+It retains the 11815 register-first combinations. Independent host witnesses assert
+causing PC6, host number13 and the exact first-load value, across successful/faulting
+memory, tight192-byte/ordinary caches, zero/insufficient/ample gas, zero through five
+attempts and zero/one callback limits. Existing partial-write, host refusal/reentry,
+segment-boundary, byte-pressure, eviction and source-snapshot checks remain.
+
+Nine checked native suites, four independent complete-state references, AddressSanitizer
+and balanced ARC1000 pass. Promoted Make prepared and mixed-reference suites and format
+checks pass. The only originating failure was a test helper's access to mutable global
+register inputs; it now receives explicit inputs, with the rejection saved locally.
+All timed calls check every register, gas/exit, page byte/permission and original snapshot;
+tampered gas references fail before successful timing output.
+
+A separate broader literal-register coverage trial was rejected without a PR: five/eight
+families generated 695/1112 direct literal functions, increasing native text from224 KiB
+to320/400 KiB. Its72 confirmation processes found no useful broad benefit (eight-family
+Pinky-2.30%, sieve-0.86%, minimal+1.05%, fill+0.21%). Static indirect-call elimination
+alone was insufficient evidence. Sources/checks/samples remain in
+`build/pvm-port-lab/prepared-literal-prefixes`; no rejected source is retained here.
+
+This change's source/generated-source identities, samples/spreads, constructor/cold/cache
+rows, equal-image controls and originating verification logs remain in
+`build/pvm-port-lab/prepared-memory-prefixes`. Qualified runtime SHA256:
+`bd6a1598253e5e97991f6e0c6beeaa390360b4d235d3602ee0f07c200ebf77e6`.
+Next investigate redundant prepared facts/layout using the existing exact PC-write
+invariant, and profile remaining costs before another execution-model change.

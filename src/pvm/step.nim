@@ -1421,6 +1421,7 @@ proc preparedIncrement(value: var uint64) =
   ## Diagnostics saturate without changing execution or refusing a long-lived cache.
   if value != high(uint64): inc value
 
+const preparedPrefixEarly = 1'u32 shl 31 # Only a memory prefix returning before its second attempt may set this private marker.
 const preparedContinueCode = uint32(ord(StepError.None)) or (uint32(ord(StepExit.Continued)) shl 8)
 when ord(high(StepError)) > 255 or ord(high(StepExit)) > 255:
   # Domain expansion must fail compilation instead of truncating a reason or admitting an unrelated exit.
@@ -1529,6 +1530,24 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
     preparedFailure(StepError.AmbiguousAccessOrder)
   else:
     preparedFailure(StepError.InvalidMachine)
+
+proc preparedMemoryPrefix[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[
+    bool]](frame: var PreparedFrame, first, second: PreparedOperation): PreparedEvaluation =
+  ## First memory execution retains every original check; its rare early outcome identifies exactly one attempted operation.
+  let evaluated = preparedMemory[Width, Loading, Signed, Indirect, ImmediateStore](frame, first)
+  if uint32(evaluated) != preparedContinueCode:
+    # No second handler ran: the caller restores one reserved attempt and selects the first causing source site.
+    return PreparedEvaluation(uint32(evaluated) or preparedPrefixEarly)
+  let selected = second.handler
+  if selected == nil: return preparedFailure(StepError.UnsupportedInstruction)
+  # The original second handler retains all publication semantics and cannot set the early-prefix marker.
+  selected(frame, second)
+
+proc selectPreparedMemoryPrefix[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[
+    bool]](operation: var PreparedOperation) {.inline.} =
+  ## Only a genuine checked memory nonterminator with valid fallthrough receives this bounded borrowed prefix.
+  if operation.fallthrough:
+    operation.prefix = preparedMemoryPrefix[Width, Loading, Signed, Indirect, ImmediateStore]
 
 proc preparedControl[Code: static[int]](frame: var PreparedFrame,
     operation: PreparedOperation): PreparedEvaluation =
@@ -1982,6 +2001,66 @@ proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
   of 228: selectPreparedRegister[228](result) # The ordinary handler and generic prefix remain independently available.
   of 229: selectPreparedRegister[229](result) # The ordinary handler and generic prefix remain independently available.
   of 230: selectPreparedRegister[230](result) # The ordinary handler and generic prefix remain independently available.
+  of 30: selectPreparedMemoryPrefix[1, false, false, false, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 31: selectPreparedMemoryPrefix[2, false, false, false, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 32: selectPreparedMemoryPrefix[4, false, false, false, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 33: selectPreparedMemoryPrefix[8, false, false, false, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 52: selectPreparedMemoryPrefix[1, true, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 53: selectPreparedMemoryPrefix[1, true, true, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 54: selectPreparedMemoryPrefix[2, true, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 55: selectPreparedMemoryPrefix[2, true, true, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 56: selectPreparedMemoryPrefix[4, true, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 57: selectPreparedMemoryPrefix[4, true, true, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 58: selectPreparedMemoryPrefix[8, true, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 59: selectPreparedMemoryPrefix[1, false, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 60: selectPreparedMemoryPrefix[2, false, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 61: selectPreparedMemoryPrefix[4, false, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 62: selectPreparedMemoryPrefix[8, false, false, false, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 70: selectPreparedMemoryPrefix[1, false, false, true, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 71: selectPreparedMemoryPrefix[2, false, false, true, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 72: selectPreparedMemoryPrefix[4, false, false, true, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 73: selectPreparedMemoryPrefix[8, false, false, true, true](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 120: selectPreparedMemoryPrefix[1, false, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 121: selectPreparedMemoryPrefix[2, false, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 122: selectPreparedMemoryPrefix[4, false, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 123: selectPreparedMemoryPrefix[8, false, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 124: selectPreparedMemoryPrefix[1, true, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 125: selectPreparedMemoryPrefix[1, true, true, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 126: selectPreparedMemoryPrefix[2, true, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 127: selectPreparedMemoryPrefix[2, true, true, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 128: selectPreparedMemoryPrefix[4, true, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 129: selectPreparedMemoryPrefix[4, true, true, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
+  of 130: selectPreparedMemoryPrefix[8, true, false, true, false](
+      result) # Shared checked memory semantics; rare first exits are explicitly tagged.
   else: discard # Other opcode families retain only their original checked handler.
 
 proc preparedSlot(owner: PreparedData, pc: CodeAddress): int =
@@ -2127,7 +2206,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       var evaluated = preparedFailure(StepError.Uninitialized)
       let prefix = operations[at].prefix
       if prefix != nil and remaining >= 2 and at < operations.len-1:
-        # The sealed register prefix cannot fault/exit; reserve exactly the two attempts that will execute.
+        # Reserve two available attempts; a rare memory-first exit refunds the unattempted second operation below.
         let first = at
         let second = at+1
         remaining -= 2
@@ -2142,7 +2221,14 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
         inc at
         evaluated = selected(frame, operations[current])
       if uint32(evaluated) != preparedContinueCode:
-        # The exact genuine continuation word needs no projection; all other words validate their reason before any exit access.
+        # The exact genuine continuation word needs no projection; rare memory-first exits restore the unattempted second reservation.
+        if (uint32(evaluated) and preparedPrefixEarly) != 0:
+          # Only the closed two-cell prefix factory emits this bit: at advanced by two and remaining was decremented by two.
+          # Thus at>=2 and remaining<=high(uint64)-2; the refund cannot wrap or expose another operation before this exit.
+          dec at
+          inc remaining
+          evaluated = PreparedEvaluation(uint32(evaluated) and not preparedPrefixEarly)
+        # Strip the private attempt marker before validating the complete original status/exit word.
         let reason = evaluated.status
         if reason != StepError.None: return StepResult(status: reason)
         # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
