@@ -86,7 +86,10 @@ instances. The raw ABI also supports explicit reset for reuse/isolation verifica
 The optional crate builds on ARM macOS with the interpreted engine. Its pinned compiler gate is
 x86-64; this manifest uses the Linux sandbox and does not enable the generic experimental
 sandbox. Explicit native requests on ARM macOS refuse. Native qualification requires an actual
-supported x86 Linux host with a working upstream sandbox, including `userfaultfd`.
+supported x86 Linux host with a working upstream sandbox, including `userfaultfd`. This exact upstream pin calls `userfaultfd(O_CLOEXEC)` rather
+than the user-mode-only variant. The supported CI jobs explicitly enable
+`vm.unprivileged_userfaultfd=1` on their disposable Linux hosts; application code never
+changes kernel settings or disables the sandbox.
 
 The local x86 Linux image under QEMU correctly refused native construction. A direct pristine
 public API probe reported `compiler_target=true`, `linux_sandbox_target=true`, then:

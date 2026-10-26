@@ -208,6 +208,8 @@ jobs:
       - *python
       - name: Validate verification inventory
         run: *inventory-run
+      - name: Enable the pinned native PVM paging sandbox
+        run: sudo sysctl -w vm.unprivileged_userfaultfd=1
       - name: Native unit or corpus tests
         run: make check-unit
       - name: Show verification coverage
@@ -837,6 +839,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
+      - name: Enable the pinned native PVM paging sandbox
+        run: sudo sysctl -w vm.unprivileged_userfaultfd=1
       - name: Check independent default and missing optional support
         run: make unit SUITE=pvm_runtime_backends
       - name: Require interpreted and genuinely compiled boundary execution
