@@ -15,7 +15,7 @@ proc appendNatural(bytes: var seq[byte], value: uint64) =
     # Only the explicitly encoded prefix belongs to the output.
     bytes.add(encoded.bytes[index])
 
-proc owner(parts: openArray[seq[byte]]): Program =
+proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program =
   ## Explicit instruction boundaries support long blocks and saturated operands without a production assembler.
   var code: seq[byte] = @[]
   var starts: seq[int] = @[]
@@ -23,8 +23,13 @@ proc owner(parts: openArray[seq[byte]]): Program =
     # Caller-provided operand bytes never become instruction boundaries.
     starts.add(code.len)
     for value in part: code.add(value)
-  var bytes = @[0'u8, 0]
+  var bytes: seq[byte] = @[]
+  appendNatural(bytes, uint64(jumps.len))
+  bytes.add(if jumps.len == 0: 0'u8 else: 4'u8)
   appendNatural(bytes, uint64(code.len))
+  for target in jumps:
+    # Fixed four-byte table entries are independent of operand decoding and may deliberately name invalid code targets.
+    for shift in 0..<4: bytes.add(byte((uint64(target) shr (shift*8)) and 255))
   for value in code: bytes.add(value)
   var mask = newSeq[byte]((code.len+7) div 8)
   for start in starts:
@@ -32,7 +37,7 @@ proc owner(parts: openArray[seq[byte]]): Program =
     mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for value in mask: bytes.add(value)
   let decoded = decodeProgram(bytes, CodeAddress(0), ProgramByteLimit(65536),
-      JumpCountLimit(0))
+      JumpCountLimit(1024))
   assert decoded.error == ProgramError.None
   decoded.value
 
@@ -341,6 +346,86 @@ proc memoryPrefixMatrix(initialRegisters: RegisterFile) =
 
 memoryPrefixMatrix(registers)
 
+proc targetWorkingProgram(count: int, aliasedLoad: bool): Program =
+  ## Three complete rounds visit every dynamic destination; final probes collide with valid ordinal tags after the cache is warm.
+  var parts: seq[seq[byte]] = @[]
+  var jumps: seq[uint32] = @[]
+  let transferBytes = if aliasedLoad: 11 else: 6
+  let blockBytes = 9+transferBytes
+  for index in 0..<count:
+    # Register7 counts actual visits; register9 independently accumulates destination identities.
+    jumps.add(uint32(index*blockBytes))
+    parts.add(@[149'u8, 0x77, 1])
+    var checksum = @[149'u8, 0x99]
+    immediate(checksum, uint64(index+1))
+    parts.add(checksum)
+    let ordinalAddress = if index+1 == count: 2'u64 else: uint64((index+2)*2)
+    var transfer: seq[byte] = @[]
+    if aliasedLoad:
+      # The old base must be read before replacing that same register; offsets deliberately include negative signed-four-byte values.
+      transfer = @[180'u8, 0x66, 4]
+      immediate(transfer, uint64((index+1)*2))
+      let priorBase = if index == 0: uint64(count*2) else: uint64(index*2)
+      immediate(transfer, (ordinalAddress+0x100000000'u64-priorBase) and 0xffffffff'u64)
+    else:
+      # A zero base plus the literal two-byte-aligned selector visits the next original table entry.
+      transfer = @[50'u8, 6]
+      immediate(transfer, ordinalAddress)
+    if index+1 == count:
+      # Equality exits only after exactly three rounds; both branch destinations are genuine basic-block starts.
+      var finish = @[170'u8, 0x87]
+      immediate(finish, uint64(6+transferBytes))
+      parts.add(finish)
+    parts.add(transfer)
+  parts.add(@[50'u8, 0]) # Register0 chooses halt, malformed address, invalid target or colliding out-of-table ordinal after warmup.
+  parts.add(@[0'u8])
+  jumps.add(3'u32) # Marked second arithmetic instruction is inside a block, never a legal dynamic target.
+  jumps.add(1'u32) # Operand byte is unmarked.
+  jumps.add(uint32(count*blockBytes+100)) # Beyond the complete code extent.
+  owner(parts, jumps)
+
+proc targetWorkingSource(program: Program, count: int, aliasedLoad: bool,
+    selector: uint64): Machine =
+  ## Source-owned registers choose the probe independently of cache contents and retain a predictable final counter/checksum.
+  var initial = default(RegisterFile)
+  initial[0] = RegisterValue(selector)
+  initial[6] = RegisterValue(if aliasedLoad: uint64(count*2) else: 0'u64)
+  initial[8] = RegisterValue(uint64(count*3))
+  captureMachine(program, mapped, MachineInfo(gas: MachineGas(1000000), registers: initial)).value
+
+proc dynamicTargetWorkingSets() =
+  ## Exact full ordinal tags reject collisions across both small and expanded bounded cache capacities, including first-failing target validation.
+  for count in [5, 17, 65, 257, 513]:
+    for aliasedLoad in [false, true]:
+      let program = targetWorkingProgram(count, aliasedLoad)
+      let prepared = cache(program)
+      for selector in [0xffff0000'u64, 0, 1, uint64((count+1)*2), uint64((count+2)*2),
+          uint64((count+3)*2), uint64((count+514)*2)]:
+        # The final out-of-table ordinal aliases a populated slot modulo512; no partial/tag-only match may authorize it.
+        let source = targetWorkingSource(program, count, aliasedLoad, selector)
+        compare(source, prepared, 100000, 100000)
+        let actual = execute(source, ExecutionStepLimit(100000), prepared)
+        assert actual.error == StepError.None
+        assert actual.value.exit == (if selector ==
+            0xffff0000'u64: StepExit.Halt else: StepExit.Panic)
+        let state = machineInfo(actual.value.machine).value
+        assert uint64(state.pc) == 0
+        assert uint64(state.registers[7]) == uint64(count*3)
+        assert uint64(state.registers[9]) == uint64(3*count*(count+1) div 2)
+        assert uint64(state.registers[6]) == (if aliasedLoad: uint64((count-1)*2) else: 0'u64)
+      let source = targetWorkingSource(program, count, aliasedLoad, 0xffff0000'u64)
+      for steps in [0'u64, 1, 2, 3, 4, 40, 80]:
+        # Attempt exhaustion before/after a large target working set remains a local failure with the same retained immutable source.
+        compare(source, prepared, steps, 100000)
+
+dynamicTargetWorkingSets()
+
+proc dynamicTargetLifecycle(input: Machine, prepared: PreparedProgram) =
+  ## A collision-heavy invocation retires its target facts on both completed and scheduling-failure exits.
+  let complete = execute(input, ExecutionStepLimit(100000), prepared)
+  assert complete.error == StepError.None and complete.value.exit == StepExit.Halt
+  assert execute(input, ExecutionStepLimit(80), prepared).error == StepError.StepLimitExceeded
+
 # Host callbacks retain exact continuation, may replace memory, and cannot recursively enter the same cache identity.
 type ReplyContext = object ## Test callback state contains only borrowed execution inputs and scalar progress.
   prepared, independent: PreparedProgram
@@ -602,10 +687,15 @@ proc lifecycle(input: Machine) =
   let first = execute(input, ExecutionStepLimit(5), prepared)
   let second = execute(input, ExecutionStepLimit(5), prepared)
   same(first, second)
+let targetArcProgram = targetWorkingProgram(17, true)
+let targetArcSource = targetWorkingSource(targetArcProgram, 17, true, 0xffff0000'u64)
+let targetArcCache = cache(targetArcProgram)
+dynamicTargetLifecycle(targetArcSource, targetArcCache) # Settle the retained chunk working set before measuring invocation-owned allocations.
 let occupiedBefore = getOccupiedMem()
 for cycle in 0..<1000:
   # Every private cache and completed outcome retires inside the bounded function call.
   lifecycle(firstSource)
+  dynamicTargetLifecycle(targetArcSource, targetArcCache) # Both successful and failed invocations retire target facts without retaining source or cache owners.
   successorEvictionCycle() # Scalar links never retain a destination owner or form a cycle.
 let occupiedAfter = getOccupiedMem()
 assert occupiedBefore == occupiedAfter

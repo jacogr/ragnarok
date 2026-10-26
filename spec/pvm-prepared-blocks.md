@@ -1229,3 +1229,157 @@ rows, equal-image controls and originating verification logs remain in
 `bd6a1598253e5e97991f6e0c6beeaa390360b4d235d3602ee0f07c200ebf77e6`.
 Next investigate redundant prepared facts/layout using the existing exact PC-write
 invariant, and profile remaining costs before another execution-model change.
+
+
+## Bounded dynamic-target working set, 2026-10-26
+
+Increase the invocation-local positive dynamic-target cache from 4 to 256 entries.
+The immediate parent is #1695 at `649a7964eaeacd06d7991565f69370d81fde9f3a`;
+fresh master remains `ea55b04d60bc8d3113d1dcac3cb537dfe57c7fab`.
+This independently implemented policy change affects dynamic, planned and prepared
+execution through their existing shared resolver. Public APIs/default selection, JAM
+semantics, dependency pins, memory, ordinary PC writes, pricing and 64-byte prepared
+records remain unchanged. No translated implementation ships.
+
+### Validated-fact and resource contract
+
+Keep the existing complete ordinal tag, source-bound invocation lifetime and unchanged
+validation sequence. Sentinel/alignment precedence remains in `dynamicControl`; a miss
+must pass the original jump-table lookup and basic-block membership check before insertion.
+A modulo slot alone never authorizes a target. Invalid ordinals, unmarked/interior and
+out-of-code destinations remain guest panics and never replace a good fact. Aliased
+load-and-jump reads the original base before its required register mutation.
+
+The private cache belongs to exactly one initialized execution cursor's immutable program.
+It is neither exported nor retained across invocations, contains no source/machine owner
+or back-reference, and never certifies paid gas. The same full-width ordinal/PC fields
+are retained. Both fixed arrays use actual length; modulo remains a bounded hash operation,
+not ordinal normalization. Bounds/range/assertion checks remain enabled.
+
+There is no new heap allocation or pressure state. The fixed target facts occupy about
+6 KiB on this measured 64-bit target, about 6 KiB more than the original four entries.
+They are initialized inside each execution clock. Empty prepared-owner constructor and
+retained `PreparedInfo` accounting do not include this invocation-local array, just as
+before; its fixed additional storage is explicit here.
+
+### Evidence-guided capacity and measured verdict
+
+An independent unclocked copy records the actual lookup sequence while preserving all
+reference-state/source checks and prepared-cache observations. Four calls per guest agree.
+The four-entry simulation exactly reproduces actual hits. Pinky has 780856 lookups,
+776125 actual four-slot misses, and highest ordinal475. Positive-only direct-map
+simulation predicts the following software lookup misses:
+
+| Capacity | Pinky misses |
+| ---: | ---: |
+| 4 | 776125 |
+| 16 | 693274 |
+| 64 | 312154 |
+| 256 | 22388 |
+| 512 | 322 |
+
+The 512 prediction follows directly from the 1024 simulation: every observed ordinal
+is below512, so both use the same exact slots. These are software target-fact lookup
+counts, not hardware cache/branch misses. Minimal already has just3 misses in200000
+lookups; sieve100000 has85 misses in97 lookups, falling to71 at16 or more entries;
+fill100000 has6 cold lookups. Larger retention should therefore primarily help Pinky.
+
+Keep the fixed256 endpoint. Four-hot-entry plus lazy256/512 spill controls preserve
+correctness/ownership but regress sieve by median2.52%/4.03%; they are rejected. This
+verdict follows timing, not the simulated miss count alone. Six alternating confirmation
+pairs for the retained fixed256 endpoint versus the actual parent:
+
+- pinky: -3.59% (range -4.74% to -2.91%).
+- sieve: -0.21% (range -0.92% to +0.04%).
+- minimal: -0.13% (range -0.29% to +0.02%).
+- memset: +0.26% (range -0.05% to +0.39%).
+
+Only Pinky's prepared gain is established; the other differences remain within noise.
+Its cumulative pairs improve by1.56–3.50%, while the six-round confirmation median
+is3.59%; the precise gain varies with the process/session.
+The final fixed image is byte-identical to its first canonical build after all rejected
+controls. Nine final native suites, four final references and AddressSanitizer are rerun
+on this exact retained model. No rejected spill type, field, allocation or helper remains.
+
+Checked Apple M1 Max, ARC/Clang ThinLTO; pristine Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2`, PolkaVM
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`. Initial84 processes compare
+all controls; another96 confirm four endpoints over six alternating rounds. Fresh
+cumulative70 processes compare master/actual parent/final/port/Rust. Each makes13
+full-state calls: three warmups then ten CPU samples. Source/cache/output compiler paths
+are canonical, private caches fresh, and the restored final image remains identical.
+
+Reused CPU milliseconds, **forward / reverse process order** (100000 workload limit,
+Pinky one invocation):
+
+| Guest | Master prepared | Parent #1695 | This implementation | Learning port | PolkaVM interpreted, reused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 196.216 / 194.325 | 139.738 / 138.562 | 134.844 / 136.399 | 95.074 / 94.254 | 92.594 / 92.249 |
+| sieve | 5.885 / 5.950 | 3.553 / 3.558 | 3.538 / 3.563 | 3.409 / 3.426 | 3.521 / 3.493 |
+| minimal | 13.948 / 13.591 | 8.918 / 8.642 | 8.621 / 8.731 | 6.244 / 6.260 | 6.008 / 6.098 |
+| memset | 6.279 / 6.272 | 3.853 / 3.851 | 3.846 / 3.865 | 3.646 / 3.632 | 3.889 / 3.839 |
+
+Cold CPU milliseconds are single first-call observations including lazy preparation,
+not repeated cold medians:
+
+| Guest | Master cold | Parent cold | This implementation cold | Port cold | PolkaVM cold |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 197.533 / 196.112 | 140.586 / 166.212 | 136.251 / 134.642 | 94.920 / 94.941 | 93.757 / 94.588 |
+| sieve | 9.953 / 9.889 | 7.721 / 7.707 | 7.676 / 7.686 | 3.589 / 3.601 | 6.154 / 6.119 |
+| minimal | 14.039 / 13.596 | 8.929 / 8.694 | 8.725 / 8.693 | 6.242 / 6.397 | 6.243 / 6.030 |
+| memset | 6.355 / 6.354 | 3.999 / 4.173 | 3.986 / 4.080 | 3.796 / 3.782 | 4.122 / 4.025 |
+
+Empty prepared-owner constructor CPU microseconds; no constructor gain is established:
+
+| Guest | Master constructor | Parent constructor | This implementation constructor |
+| --- | ---: | ---: | ---: |
+| pinky | 4.000 / 4.000 | 6.000 / 4.000 | 5.000 / 5.000 |
+| sieve | 4.000 / 5.000 | 5.000 / 5.000 | 5.000 / 5.000 |
+| minimal | 11.000 / 11.000 | 13.000 / 12.000 | 12.000 / 14.000 |
+| memset | 6.000 / 6.000 | 7.000 / 9.000 | 10.000 / 9.000 |
+
+Another56 complete-state processes cover the shared resolver's dynamic/planned consumers.
+These two-order measurements are coverage, not six-round gain claims:
+
+| Guest | Parent dynamic | Final dynamic | Parent planned | Final planned |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 298.002 / 297.473 | 294.307 / 293.886 | 284.599 / 285.360 | 279.334 / 278.846 |
+| sieve | 12.152 / 12.137 | 12.136 / 12.145 | 8.466 / 8.460 | 8.458 / 8.470 |
+| minimal | 16.392 / 16.401 | 16.425 / 16.298 | 16.037 / 16.017 | 15.970 / 15.987 |
+| memset | 8.459 / 8.547 | 8.550 / 8.486 | 8.299 / 8.344 | 8.445 / 8.368 |
+
+Every prepared-cache counter, resident/peak byte observation and eviction count matches
+the parent on every measured call. Source snapshots, every register, gas/exit and every
+mapped byte/permission pass; tampered gas references fail before successful timing rows.
+Profiles are one-second statistical stack samples, not deterministic instruction counts
+or hardware events. No Linux or hardware-speed claim is made. Ragnarök stages invocations
+inside timing; public Rust resets input outside timing. The local partial port uses
+predecoded/priced facts and unbounded retention; complete lifecycle parity is not implied,
+and the overall target of being faster remains unmet.
+
+### Boundary and ownership witnesses
+
+Independent programs visit5/17/65/257/513 destinations for three rounds, checking both
+plain and aliased load-and-dynamic-jump forms. Visit counts and destination checksums
+are asserted independently of either interpreter. A warmed final probe selects the halt
+sentinel, zero/odd addresses, an interior marked instruction, an unmarked operand,
+out-of-code target or out-of-table ordinal colliding modulo512 with a valid fact.
+Partial budgets cover setup and the large working set. The original four-entry endpoint
+also passes these independent expectations. Source-owned test framing now accepts explicit
+four-byte jump tables while leaving all zero-table fixtures byte-identical.
+
+ARC1000 additionally repeats the collision-heavy program through complete and interrupted
+invocations after warming retained prepared arrays. Exact occupied memory remains balanced.
+Nine final native suites, four independent references, ASan and promoted Make prepared,
+step and mixed-reference suites pass; canonical formatting passes. No APIs, fixture
+expectations, source-owned suite metadata or CI jobs change.
+
+Local trace evidence is in `build/pvm-port-lab/dynamic-target-trace`; policy controls,
+all samples/spreads, source/generated-source identities, cold/constructor rows, equal-image
+controls, final checks and rejected models are in
+`build/pvm-port-lab/prepared-dynamic-targets`. Qualified runtime SHA256:
+`4064160f8ec7cdfb14ee566dc640ec1225a7ad01167a4fe8383d608f3d04d31d`.
+The rejected compact48-byte/56-byte controls remain in `prepared-compact-facts` without
+a PR: correctness and maintained-PC witnesses pass, but sieve/fill regress. Remaining
+work should follow the accepted engine's profile, including checked scalar-memory hot
+paths; smaller records or fewer source checks alone are insufficient evidence.

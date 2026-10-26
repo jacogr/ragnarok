@@ -30,14 +30,14 @@ type
     replaceUpper: array[64, bool]
     expanded: nil ExpandedPrices
     pressure: range[0..128]
-  ExecutionCache = object ## Invocation-local prices retain their policy; four exact-tagged dynamic targets never certify paid gas.
+  ExecutionCache = object ## Invocation-local prices retain their policy; 256 exact-tagged dynamic targets never certify paid gas.
     valid: bool
     start: CodeAddress
     charge: BlockGas
     recent: array[3, BlockChargeEntry]
     next: range[0..2]
     secondary: nil SecondaryPrices
-    targets: array[4, DynamicTargetEntry]
+    targets: array[256, DynamicTargetEntry]
   DecodedSpill = ref object ## One bounded direct-mapped invocation spill retains copied scalar results, never a program or mutable machine.
     entries: array[16384, ProgramResult[Instruction]]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
@@ -303,7 +303,7 @@ func initExecutionCache(): ExecutionCache =
   ExecutionCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
     recent: default(array[3, BlockChargeEntry]), next: 0,
     secondary: nil,
-    targets: default(array[4, DynamicTargetEntry]))
+    targets: default(array[256, DynamicTargetEntry]))
 
 proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
