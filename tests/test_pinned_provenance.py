@@ -51,6 +51,18 @@ class PinnedProvenanceHarness(unittest.TestCase):
             self.assertEqual(set(pinned_fixture_sources(folder))-set(sources),
                              {folder/'vendor/vectors/new.bin'})
 
+    def test_native_configuration_policy_is_covered(self):
+        """Changing an operator policy must change the shared runtime/E2E evidence identity."""
+        with temporary_folder() as folder:
+            directory = folder/'config'
+            directory.mkdir()
+            policy = directory/'tiny-devnet-policy.conf'
+            policy.write_text('explicit-current-policy')
+            self.assertIn(policy, discover_project_sources(folder))
+            digest = hashlib.sha256(policy.read_bytes()).hexdigest()
+            policy.write_text('different-current-policy')
+            self.assertNotEqual(digest, hashlib.sha256(policy.read_bytes()).hexdigest())
+
     # Missing vendor bytes remain mandatory report inputs even though preflight permits deferred provisioning.
     def test_missing_vendor_bytes(self):
         with temporary_folder() as folder:

@@ -16,3 +16,14 @@ The application entry point is `src/ragnarok.nim`. `session.nim` receives valida
 configuration and privately owns peer/stream state, callbacks and retained mesh coordination.
 Both peer shapes use `app/services.nim` for optional service ownership/startup; transport
 callbacks retire before those shared services. Only lifecycle entry points are exported.
+
+## Canonical development block serving
+
+`quic/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and
+six pinned identities. Sixteen fixed incoming stream slots copy bounded CE128 requests and serve
+one canonical child from the host-published finite catalog. An absent child returns an empty
+response sequence. The outgoing path requires exact framing and response FIN before returning
+copied bytes to its host; it grants no execution/adoption authority. A catalog entry is published
+only after ordinary candidate validation, durable journal publication and canonical installation.
+Explicit teardown emits connection close while UDP is still live, retires both engines and only
+then releases callback storage. No consensus execution occurs inside native callbacks.

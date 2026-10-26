@@ -336,6 +336,10 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('E2E_GROUP: ${{ matrix.family.group }}', section)
         self.assertIn('name: E2E / ${{ matrix.family.name }}', section)
         self.assertIn('name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}', section)
+        for diagnostic in ('result.json','independent/plan.json','node-*/*.log','node-*/head.json'):
+            self.assertIn('build/tests/e2e/tiny-devnet-*/'+diagnostic, section)
+        self.assertNotIn('build/tests/e2e/tiny-devnet-*/**', section)
+        self.assertNotIn('node-*/*.pem', section) # Retain narrow diagnostics rather than TLS key directories.
         self.assertNotIn('needs:', section)
         gate = text.split('  e2e-status:\n', 1)[1].split('  interop:\n', 1)[0]
         self.assertIn('name: E2E', gate)

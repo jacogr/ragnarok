@@ -167,6 +167,23 @@ def rpc(context):
 
 
 @PLAN.workload(group='application', requires=('prepare_peer',))
+def application_tiny_devnet(context):
+    """Two blocks on six native validators must match independent signatures, journals and complete maps."""
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        from tiny_devnet_checks import smoke
+        try:
+            import time
+            observed = smoke(binary, context.checks.folder/('tiny-devnet-'+str(time.time_ns())))
+        except (AssertionError, OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError) as error:
+            # Independent transcript, process, network, convergence and cleanup failures all fail this workload.
+            observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+    announce('Six-node Tiny two-block conformance', observed['passed'])
+    return observed
+
+
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_state(context):
     """Verify explicit executable policy selection in both peer shapes and enabled RPC."""
     compiled, binary = context.peer

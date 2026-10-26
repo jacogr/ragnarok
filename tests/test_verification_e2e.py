@@ -18,6 +18,18 @@ from native_tests import UNIT_SUITES
 
 # Keep e2e ownership and failure safeguards independent of other verification groups.
 class VerificationE2E(unittest.TestCase):
+    def test_tiny_devnet_failure_is_required(self):
+        """A compiled peer cannot turn failed six-node convergence into an E2E success."""
+        from e2e_checks import application_tiny_devnet, PLAN
+        from unittest.mock import patch
+        self.assertIn('application_tiny_devnet', PLAN.names('workload'))
+        context = SimpleNamespace(peer=({'exit_code': 0}, Path('/binary')),
+                                  checks=SimpleNamespace(folder=ROOT/'build/tests/e2e'))
+        with patch('tiny_devnet_checks.smoke', side_effect=AssertionError('whole-map mismatch')):
+            observed = application_tiny_devnet(context)
+        self.assertFalse(observed['passed'])
+        self.assertIn('whole-map mismatch', observed['failure'])
+
     def test_peer_builds_link_download_dependencies(self):
         """Every executable shape needs the bootstrap crypto ABI, regardless of offload defines."""
         from e2e_checks import prepare_peer, prepare_integrated_peer

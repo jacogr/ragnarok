@@ -387,6 +387,10 @@ jobs:
             build/tests/e2e/retained-integration/*.log
             build/tests/e2e/retained-integration/resources.json
             build/tests/e2e/peer-cases/**/*.log
+            build/tests/e2e/tiny-devnet-*/result.json
+            build/tests/e2e/tiny-devnet-*/independent/plan.json
+            build/tests/e2e/tiny-devnet-*/node-*/*.log
+            build/tests/e2e/tiny-devnet-*/node-*/head.json
             build/tests/e2e/rpc*/*.log
             build/tests/e2e/rpc/browser/*.log
             build/tests/e2e/rpc/browser/*.json

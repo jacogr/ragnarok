@@ -477,6 +477,9 @@ help:
 	  'make check-docker  Build and smoke-test the image locally; never publish it' \
 	  'make ui-assets     Stage/embed UI assets (UI_MINIFY=1 minifies JS/CSS; default in CI)' \
 	  'make check-ui      Run the compiled UI against production WebSocket RPC in a browser' \
+	  'make devnet        Run six Tiny validators through an epoch (real six-second slots)' \
+	  'make check-devnet  Verify six-node whole maps, epoch crossing and restart catch-up' \
+	  'make check-devnet-smoke  Verify two blocks on six nodes with independent whole maps' \
 	  'make clean         Remove build/ completely' \
 	  'make check / test  Provision dependencies and run complete verification' \
 	  'make unit          Run Hastur application suites (COMPILE_CHECK_JOBS=1..4; default 4)' \
@@ -533,3 +536,16 @@ PVM_DOOM_COMPARE_CHECK ?= 0
 compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 compare-pvm-doom: check-pvm-doom
 	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)
+
+# Six real Tiny validators author and consume blocks with the pinned six-second slot clock.
+.PHONY: devnet check-devnet check-devnet-smoke
+devnet: build
+	$(PYTHON) tools/tiny_devnet.py
+
+# The separate bounded acceptance run freezes independent maps before launching validator processes.
+check-devnet: build
+	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py
+
+# CI-sized live smoke retains ordinary GP slots and the independent whole-map verifier.
+check-devnet-smoke: build
+	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
