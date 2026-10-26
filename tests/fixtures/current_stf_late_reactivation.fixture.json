@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_REACTIVATION",
+  "files": {
+    "current-stf-late-reactivation.json": "e9b036e521a7cc6dd0fb4bea594205822089b78034a6d19ee54f7755decd46c6"
+  },
+  "target": "current-stf-late-reactivation.json"
+}

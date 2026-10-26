@@ -63,6 +63,15 @@ def current_stf_late_gas_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_reactivation_corpus(compiler, report, checks, libraries):
+    """Qualify strict code expunge, recreated reservations and later actual code reactivation across population histories."""
+    import current_stf_late_reactivation_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_reactivation','current_stf_late_relevance',
+         'current_stf_late_rotation','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_relevance_corpus(compiler, report, checks, libraries):
     """Qualify prior code-preimage admission and posterior relevance after selected foreign request effects."""
     import current_stf_late_relevance_oracle as oracle
