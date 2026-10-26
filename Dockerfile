@@ -71,10 +71,8 @@ CMD ["--help"]
 FROM runtime AS fuzz-target
 # Rootful upstream supplies the host UID; rootless Docker maps container root to the host owner.
 USER 0:0
-COPY --chmod=755 tools/jam_fuzz_entrypoint.sh /usr/local/bin/jam-fuzz-entrypoint
 COPY config/jam-fuzz-policy.conf /usr/share/ragnarok/fuzz/
-ENTRYPOINT ["/usr/local/bin/jam-fuzz-entrypoint"]
-CMD []
+CMD ["--fuzz", "--fuzz-policy", "/usr/share/ragnarok/fuzz/jam-fuzz-policy.conf", "--fuzz-writes", "1000", "--fuzz-write-bytes", "4194304"]
 
 # Keep the ordinary peer image as the default build product.
 FROM runtime AS production

@@ -29,8 +29,12 @@ The complete new preset tuple and policy-owned consensus constants are checked a
 startup, including lookup age600, rotation5, tail50, ticket cap4 and block gas875000000.
 The bundled candidate policy retains601 header facts under16MiB and the standard
 24-record Initialize wire cap. Existing Tiny/Full startup behavior and fixture pins
-remain unchanged. The dedicated `fuzz-target` Docker stage accepts environment-only
-startup; its shell adapter only selects files and execs the native application.
+remain unchanged. The `fuzz-target` Docker stage inherits the ordinary binary
+entry point and supplies only configuration/default flags. `ragnarok --fuzz` owns
+argument validation, preset/policy loading, private directory creation and cleanup.
+Complete flag configuration needs no environment marker. Optional upstream env
+values remain compatible and explicit flags override them. Ambient JAM_FUZZ does
+not intercept ordinary commands; published positional Fuzz commands remain supported.
 
 Seventeen independently authored sessions contain67 imports:20 epoch/population maps,
 12 nonempty guest/sibling maps and35 expiry/rollback maps. Distinct Bandersnatch/Ed25519 identities, genuine
@@ -47,14 +51,12 @@ retained sibling maps and reconnect isolation. Live engine/campaign status stays
 pending in results and summary. Container build and live engine validation are
 separate from macOS native/entry-point readiness evidence.
 
-Local verification also built the Linux/amd64 container and replayed the same67
-imports,171 state queries and67 atomic refusals through its packaged entry point.
-A Linux-owned runtime volume avoids macOS bind-mount UID translation; real SIGTERM
-returned zero and removed the socket. Historical Full profile/guest/epoch and
-derived-expiry corpora passed80 imports with unchanged fixture pins. Tiny block
-authoring, startup and checkpoint identity suites passed, alongside75 focused
-Python tests, pinned formatting and registry checks. These are local results;
-exact published-head CI has its own verdict.
+Verified direct ordinary-binary replay requires malformed/missing/duplicate flags to fail
+before creating directories, starts from an owned0777 socket directory, creates
+nested data directories natively and verifies all67 imports/171 queries/67 atomic
+refusals with graceful SIGTERM cleanup. Historical Full profile/guest/epoch and
+derived-expiry corpora retain their80-import qualification and unchanged pins.
+Exact published-head Linux CI has its own verdict.
 
 Remaining campaign work: compatible engine distribution and a fuzz-aware upstream
 launcher, then bounded known campaigns with generated traces and explicit completion
@@ -62,8 +64,8 @@ accounting. New-preset disputes and ticket contests
 can extend this source-owned plan; existing Tiny/Full coverage remains unchanged.
 
 Upstream `scripts/target.py` creates the explicit host runtime directory with0777.
-The image adapter verifies that each selected data/socket directory belongs to the
-effective runtime user and tightens it to0700 before native startup. Rootful Docker
+The binary verifies that each selected data/socket directory belongs to the
+effective runtime user and tightens it to0700 before opening the socket. Rootful Docker
 uses the launcher's host UID; the dedicated stage defaults to container root for
 the rootless host-owner mapping. Native private-directory and inode cleanup checks
 remain unchanged. Actual entry-point replay starts from the upstream0777 mode.

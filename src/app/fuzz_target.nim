@@ -133,21 +133,87 @@ proc budget(text: string, maximum: uint64, value: var uint64): bool =
     if value > (maximum-digit) div 10: return false
     value = value*10+digit
   value <= maximum
+proc createNativeDirectory(path: cstring, mode: Mode): cint {.importc: "mkdir",
+    header: "<sys/stat.h>".}
+  ## The native binary creates selected runtime paths without a shell or external process.
+proc directoryStatus(path: cstring, status: var FileStatus): cint {.importc: "stat",
+    header: "<sys/stat.h>".}
+  ## Ancestor lookup follows ordinary OS aliases such as macOS /tmp; the selected leaf is checked separately.
+proc ensureDirectory(path: string, depth: int): bool =
+  ## Bounded recursive parent creation uses0700 from the first visible inode; existing parents stay unchanged.
+  if depth > 512 or not pathValid(path): return false
+  var nativePath = path
+  var status = default(FileStatus)
+  if directoryStatus(nativePath.toCString(), status) == 0: return S_ISDIR(Mode(status.st_mode))
+  let parent = parentDir(path)
+  if parent == path or not ensureDirectory(parent, depth+1): return false
+  createNativeDirectory(nativePath.toCString(), Mode(0o700)) == 0
+proc prepareDirectory(path: string): bool =
+  ## Only explicitly selected, runtime-owned non-symlink directories may become private startup storage.
+  if not ensureDirectory(path, 0): return false
+  var nativePath = path
+  var status = default(FileStatus)
+  if readStatus(nativePath.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
+      uint32(status.st_uid) != effectiveUid(): return false
+  chmod(nativePath.toCString(), Mode(0o700)) == 0
 proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
-  ## Dedicated process mode selects canonical presets or explicit parameter files with bounded host policy.
-  let namedPreset = arguments.len == 4 and arguments[0] == "serve-fuzz-preset"
-  if not namedPreset and (arguments.len != 5 or arguments[0] != "serve-fuzz"):
-    stderr.writeLine("FUZZ_START_FAILED arguments: serve-fuzz CURRENT_POLICY PARAMETERS_JSON MAX_WRITES MAX_WRITE_BYTES or serve-fuzz-preset CURRENT_POLICY MAX_WRITES MAX_WRITE_BYTES")
-    return 2
-  let environment = FuzzEnvironment(enabled: existsEnv("JAM_FUZZ"), spec: getEnv("JAM_FUZZ_SPEC"),
+  ## The ordinary executable owns flag parsing, preset/policy selection, directories, listener and teardown.
+  let direct = arguments.len > 0 and arguments[0] == "--fuzz"
+  var namedPreset = arguments.len == 4 and arguments[0] == "serve-fuzz-preset"
+  var environment = FuzzEnvironment(enabled: direct or existsEnv("JAM_FUZZ"), spec: getEnv(
+      "JAM_FUZZ_SPEC"),
     dataPath: getEnv("JAM_FUZZ_DATA_PATH"), socketPath: getEnv("JAM_FUZZ_SOCK_PATH"),
-        logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
+    logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
+  var policyPath = ""
+  var parameterPath = ""
+  var writeText = "1000"
+  var byteText = "4194304"
+  if direct:
+    # Explicit flags override optional upstream environment values; no environment marker enables this mode implicitly.
+    if arguments.len > 17 or arguments.len mod 2 != 1:
+      stderr.writeLine("FUZZ_START_FAILED arguments")
+      return 2
+    namedPreset = true
+    var seen: seq[string] = @[]
+    var index = 1
+    while index < arguments.len:
+      let flag = arguments[index]
+      if flag in seen:
+        stderr.writeLine("FUZZ_START_FAILED duplicate flag")
+        return 2
+      seen.add(flag)
+      let value = arguments[index+1]
+      case flag
+      of "--fuzz-spec": environment.spec = value
+      of "--fuzz-data": environment.dataPath = value
+      of "--fuzz-socket": environment.socketPath = value
+      of "--fuzz-log-level": environment.logLevel = value
+      of "--fuzz-policy": policyPath = value
+      of "--fuzz-parameters":
+        parameterPath = value
+        namedPreset = false # Explicit custom tuples retain the established Tiny/Full interface contract.
+      of "--fuzz-writes": writeText = value
+      of "--fuzz-write-bytes": byteText = value
+      else:
+        stderr.writeLine("FUZZ_START_FAILED unknown flag")
+        return 2
+      index += 2
+  elif namedPreset or (arguments.len == 5 and arguments[0] == "serve-fuzz"):
+    # Preserve published positional callers while routing every path through the same native startup.
+    policyPath = arguments[1]
+    let offset = if namedPreset: 2 else: 3
+    if not namedPreset: parameterPath = arguments[2]
+    writeText = arguments[offset]
+    byteText = arguments[offset+1]
+  else:
+    stderr.writeLine("FUZZ_START_FAILED arguments")
+    return 2
   var writes = 0'u64
   var writeBytes = 0'u64
-  let budgetOffset = if namedPreset: 2 else: 3
-  if not budget(arguments[budgetOffset], 1000000, writes) or not budget(arguments[budgetOffset+1],
-      67108864, writeBytes): return 2
-  let loadedPolicy = readBoundedFile(arguments[1], ByteLimit(CurrentDownloadPolicyBytes))
+  if policyPath.len == 0 or not budget(writeText, 1000000, writes) or not budget(byteText, 67108864, writeBytes):
+    stderr.writeLine("FUZZ_START_FAILED policy or budget")
+    return 2
+  let loadedPolicy = readBoundedFile(policyPath, ByteLimit(CurrentDownloadPolicyBytes))
   if loadedPolicy.error != AtomicFileError.None:
     stderr.writeLine("FUZZ_START_FAILED configuration files")
     return 2
@@ -162,7 +228,7 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
     else: discard # Invalid/missing selection cannot expose a default successful tuple.
   else:
     # Existing explicit custom Tiny/Full host configurations remain supported.
-    let loadedParameters = readBoundedFile(arguments[2], ByteLimit(8388608))
+    let loadedParameters = readBoundedFile(parameterPath, ByteLimit(8388608))
     if loadedParameters.error != AtomicFileError.None: return 2
     parameters = configuredParameters(text(loadedParameters.value))
   if policy.error != CurrentDownloadPolicyError.None or not parameters.ok:
@@ -174,11 +240,8 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
     stderr.writeLine("FUZZ_START_FAILED " & $prepared.error)
     return 2
   let config = prepared.value
-  var directory = config.dataPath
-  var status = default(FileStatus)
-  if readStatus(directory.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
-      uint32(status.st_uid) != effectiveUid() or (uint32(status.st_mode) and 0o077'u32) != 0:
-    stderr.writeLine("FUZZ_START_FAILED private data directory")
+  if not prepareDirectory(config.dataPath) or not prepareDirectory(parentDir(config.socket.path)):
+    stderr.writeLine("FUZZ_START_FAILED private runtime directories")
     return 2
   var server = default(FuzzSocket)
   if not server.start(config.socket):

@@ -18,12 +18,12 @@ EXCLUSIONS = {'tools/compare_nimony.py': 'Historical Nim 2 measurement control, 
 # Scope rules cover source families, not individual feature registrations or generated build outputs.
 SOURCE_SCOPES = {
     '.github/workflows': {'.yaml', '.yml'},
-    'config': {'.conf', '.json'},
+    'config': {'.conf'},
     'native': {'.c', '.cc', '.cpp', '.h', '.hpp', '.rs', '.toml', '.lock'},
     'spec': {'.json'},
     'src': {'.json', '.nim'},
     'tests': {'.py', '.nim', '.output', '.c', '.cc', '.cpp', '.h', '.hpp'},
-    'tools': {'.py', '.json', '.txt', '.mjs', '.sh'},
+    'tools': {'.py', '.json', '.txt', '.mjs'},
 }
 DATA_DIRECTORIES = ('src/ui/static', 'tests/fixtures', 'vectors')
 

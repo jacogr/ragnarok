@@ -22,9 +22,15 @@ peer can supply or override this trusted configuration. Both file reads are boun
 The two unsigned write budgets are explicit (at most 1000000 writes and 64 MiB of
 write values); zero deliberately disables that resource. Other ignored production
 service arguments are refused rather than activating RPC, QUIC, UI or persistent state.
-A container entry point may supply these four fixed host configuration arguments.
+The ordinary binary also accepts `--fuzz --fuzz-policy FILE --fuzz-spec PROFILE
+--fuzz-data DIRECTORY --fuzz-socket PATH`, optional `--fuzz-parameters FILE`,
+`--fuzz-log-level LEVEL`, `--fuzz-writes COUNT` and `--fuzz-write-bytes BYTES`.
+Explicit flags override optional standard environment values and require no JAM_FUZZ
+marker. The normal binary prepares selected runtime directories and owns every
+startup/teardown step; the container supplies only default arguments. Duplicate,
+unknown, incomplete and invalid-budget flags refuse before listener creation.
 
-Standard required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full/fuzz),
+For the legacy positional commands, required variables are JAM_FUZZ, JAM_FUZZ_SPEC (tiny/full/fuzz),
 JAM_FUZZ_DATA_PATH and JAM_FUZZ_SOCK_PATH. JAM_FUZZ_LOG_LEVEL accepts the documented
 optional values. Configuration checks exact core/epoch/header-population domains:
 tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. The experimental `fuzz`

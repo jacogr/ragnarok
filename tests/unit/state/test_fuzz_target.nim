@@ -13,6 +13,11 @@ import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission
 import ../../../src/chain/[provider, genesis, parameters, presets]
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
+  for arguments in [@["--fuzz", "--unknown", "x"], @["--fuzz", "--fuzz-policy"],
+      @["--fuzz", "--fuzz-policy", "unused", "--fuzz-writes", "-1"],
+      @["--fuzz", "--fuzz-spec", "fuzz", "--fuzz-spec", "tiny"]]:
+    # Actual native flag parsing refuses unknown, incomplete, negative-budget and duplicated configuration before IO.
+    assert runFuzzTarget(arguments) == 2
   let supplied = fuzzBackendTestConfig()
   let environment = FuzzEnvironment(enabled: true, spec: "tiny", dataPath: "/tmp/private-fuzz",
       socketPath: "/tmp/private-fuzz/target.sock")

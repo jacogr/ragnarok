@@ -5,9 +5,7 @@
 import copy
 import hashlib
 import json
-import os
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -35,7 +33,7 @@ class NetworkPreset(unittest.TestCase):
         self.assertEqual(changed,{3:(341,85),4:(19200,900),5:(600,60),8:(5000000000,1250000000),
                                   9:(3500000000,875000000),13:(16,4),14:(14400,600),18:(10,5),28:(500,50)})
         self.assertEqual(len(reference.parameters()),122)
-        self.assertIn('serve-fuzz-preset',(ROOT/'tools/jam_fuzz_entrypoint.sh').read_text())
+        self.assertIn('--fuzz',(ROOT/'src/ragnarok.nim').read_text())
 
     def test_delayed_population_and_complete_maps(self):
         """Both ordinary/skipped crossings activate old pending first, retaining prior population statistics exactly."""
@@ -127,7 +125,7 @@ class NetworkReadiness(unittest.TestCase):
         """Policy, parameters and entry point must be attributed just like the executable sources."""
         from runtime_provenance import runtime_sources
         paths = {str(path.relative_to(ROOT)) for path in runtime_sources()}
-        for name in ('config/jam-fuzz-policy.conf','tools/jam_fuzz_entrypoint.sh'):
+        for name in ('config/jam-fuzz-policy.conf','src/app/fuzz_target.nim'):
             self.assertIn(name,paths)
 
     def test_matrix_keeps_target_and_testnet_separate(self):
@@ -142,31 +140,13 @@ class NetworkReadiness(unittest.TestCase):
         self.assertIn('jam-network-${{ github.run_attempt }}',workflow)
         self.assertIn('check-jam-network: setup check-inventory',(ROOT/'Makefile').read_text())
 
-    def test_entrypoint_environment_and_exec_status(self):
-        """Standard environment-only startup forwards bundled paths exactly and propagates the native process status."""
-        with tempfile.TemporaryDirectory() as selected:
-            folder = Path(selected); binary = folder/'native'
-            binary.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\nexit 7\n'); binary.chmod(0o755)
-            environment = {key:value for key,value in os.environ.items() if not key.startswith(('JAM_FUZZ','RAGNAROK_FUZZ_'))}
-            environment.update(JAM_FUZZ='',JAM_FUZZ_SPEC='fuzz',JAM_FUZZ_DATA_PATH=str(folder/'data'),
-                JAM_FUZZ_SOCK_PATH=str(folder/'socket/target.sock'),RAGNAROK_FUZZ_BINARY=str(binary),
-                RAGNAROK_FUZZ_CONFIG_DIR=str(ROOT/'config'),CAPTURE=str(folder/'arguments'))
-            # Match the pinned upstream launcher's permissive mount directory before container startup.
-            (folder/'data').mkdir(mode=0o777); (folder/'data').chmod(0o777)
-            (folder/'socket').mkdir(mode=0o777); (folder/'socket').chmod(0o777)
-            command = [ROOT/'tools/jam_fuzz_entrypoint.sh']
-            result = subprocess.run(command,env=environment,capture_output=True,text=True)
-            self.assertEqual(result.returncode,7,result.stderr)
-            self.assertEqual((folder/'data').stat().st_mode & 0o777,0o700)
-            self.assertEqual((folder/'socket').stat().st_mode & 0o777,0o700)
-            arguments = (folder/'arguments').read_text().splitlines()
-            self.assertEqual(arguments,['serve-fuzz-preset',str(ROOT/'config/jam-fuzz-policy.conf'),'1000','4194304'])
-            (folder/'arguments').unlink()
-            for variable in ('JAM_FUZZ','JAM_FUZZ_SPEC','JAM_FUZZ_DATA_PATH','JAM_FUZZ_SOCK_PATH'):
-                missing = dict(environment); del missing[variable]
-                self.assertNotEqual(subprocess.run(command,env=missing,capture_output=True).returncode,0)
-                self.assertFalse((folder/'arguments').exists())
-            for value in ('tiny','full','typo'):
-                changed = dict(environment,JAM_FUZZ_SPEC=value)
-                self.assertNotEqual(subprocess.run(command,env=changed,capture_output=True).returncode,0)
-            self.assertNotEqual(subprocess.run(command+['ignored'],env=environment,capture_output=True).returncode,0)
+    def test_container_uses_ordinary_binary_and_flags(self):
+        """The preset image inherits the normal binary entry point and changes only policy/default arguments."""
+        source = (ROOT/'Dockerfile').read_text()
+        self.assertEqual(source.count('ENTRYPOINT '),1)
+        self.assertIn('ENTRYPOINT ["/usr/local/bin/ragnarok"]',source)
+        self.assertIn('CMD ["--fuzz", "--fuzz-policy",',source)
+        self.assertFalse((ROOT/'tools/jam_fuzz_entrypoint.sh').exists())
+        runner = (ROOT/'tools/check_jam_network.py').read_text()
+        self.assertIn("[str(binary),'--fuzz'",runner)
+        self.assertNotIn('jam_fuzz_entrypoint',runner)

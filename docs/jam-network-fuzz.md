@@ -26,47 +26,52 @@ Reconnect isolation and SIGTERM socket cleanup are required.
 readiness workload separately from **Fuzz / JAM** and **E2E / Testnet**. Request the
 Fuzz group with the existing `ci:fuzz` PR label.
 
-## Container entry point
+## Run the normal binary
+
+```sh
+build/ragnarok --fuzz --fuzz-policy config/jam-fuzz-policy.conf \
+  --fuzz-spec fuzz --fuzz-data /tmp/ragnarok-fuzz/data \
+  --fuzz-socket /tmp/ragnarok-fuzz/target.sock \
+  --fuzz-log-level info --fuzz-writes 1000 --fuzz-write-bytes 4194304
+```
+
+All mode selection, argument validation, directory creation, policy loading and
+socket cleanup happen in `ragnarok`. The replay runs this executable directly.
+Flags override the optional upstream `JAM_FUZZ_SPEC`, `JAM_FUZZ_DATA_PATH`,
+`JAM_FUZZ_SOCK_PATH` and `JAM_FUZZ_LOG_LEVEL` values. No environment variables are
+needed when the flags supply the configuration. An ambient `JAM_FUZZ` variable
+does not change ordinary commands such as `--version`.
+
+The immutable Tiny/Full/Fuzz catalog is `src/chain/presets.nim`. Fuzz uses explicit
+D900. Policy copies of consensus limits must match that catalog; local resource
+ceilings are configured separately. `--fuzz-parameters FILE` selects an explicit
+custom parameter tuple for existing Tiny/Full host profiles. The positional
+`serve-fuzz` and `serve-fuzz-preset` commands remain compatible.
+
+## Container defaults
 
 ```sh
 make docker-build-jam-fuzz
 mkdir -p build/jam-network-runtime
-chmod 700 build/jam-network-runtime
 docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
   -v "$PWD/build/jam-network-runtime:/jam" \
-  -e JAM_FUZZ=1 -e JAM_FUZZ_SPEC=fuzz \
-  -e JAM_FUZZ_DATA_PATH=/jam -e JAM_FUZZ_SOCK_PATH=/jam/target.sock \
+  -e JAM_FUZZ_SPEC=fuzz -e JAM_FUZZ_DATA_PATH=/jam \
+  -e JAM_FUZZ_SOCK_PATH=/jam/target.sock \
   -e JAM_FUZZ_LOG_LEVEL=info ragnarok:local-jam-fuzz
 ```
 
-The Make image tag is `${DOCKER_IMAGE}-jam-fuzz`; its default follows the normal
-Docker build configuration. As with the ordinary Docker target, linked worktrees
-need a standalone clone as build context. Use a matching writable host UID for
-rootful Docker; the standard upstream launcher supplies it. Directories must be
-owned by the runtime user; the entry point tightens these explicitly selected
-directories to0700, including the upstream launcher's0777 shared runtime directory.
-For rootless Docker, omit the explicit `--user`: container root maps to the host
-user, matching the standard upstream launcher.
+The image inherits the ordinary `/usr/local/bin/ragnarok` entry point. It only
+bundles `config/jam-fuzz-policy.conf` and supplies default `--fuzz` arguments.
+Supplying arguments to `docker run` replaces these defaults exactly as it does for
+the normal image; there is no Fuzz shell launcher or separate executable. The
+ordinary image remains the default build product. The tag follows
+`${DOCKER_IMAGE}-jam-fuzz`. Linked worktrees require a standalone build context.
 
-Some macOS Docker setups translate bind-mount ownership. For those setups, initialize
-a Linux-owned volume and use `-v ragnarok-jam-fuzz:/jam` in the command above:
-
-```sh
-docker volume create ragnarok-jam-fuzz
-docker run --rm --platform linux/amd64 --user 0:0 \
-  -v ragnarok-jam-fuzz:/jam --entrypoint sh ragnarok:local-jam-fuzz \
-  -c "chown $(id -u):$(id -g) /jam && chmod 700 /jam"
-```
-
-The dedicated image accepts standard environment variables without command-line
-arguments. It selects the immutable canonical catalog in `src/chain/presets.nim` and bundles
-`config/jam-fuzz-policy.conf`. Tiny, Full and Fuzz Appendix B scalars are defined in
-that catalog; the Fuzz expunge period explicitly uses D900. Existing Tiny/Full/custom
-expiry semantics remain unchanged. Policy copies of consensus limits must match the
-selected catalog; local resource ceilings are configured separately.
-Only `fuzz` is supported by this dedicated image. The ordinary image remains the
-default build product and its entry point is unchanged. The native binary continues
-to support explicit Tiny/Full `serve-fuzz` configurations.
+The binary creates missing selected runtime directories with0700 and tightens
+existing runtime-owned directories, including upstream's0777 mount. Rootful Docker
+uses the host UID supplied by the upstream launcher. For rootless Docker, omit
+`--user` so container root maps to the host owner. Some macOS Docker setups
+translate bind-mount ownership; use a Linux-owned volume in those environments.
 
 ## Live campaign prerequisite
 

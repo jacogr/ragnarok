@@ -37,7 +37,7 @@ def complete(report):
 
 
 def socket_check(binary, folder):
-    """Freeze independent messages first, then exercise the real packaged entry point and complete native STF."""
+    """Freeze independent messages first, then exercise the ordinary binary flags and complete native STF."""
     from nimony_fuzz_guests import reference_sessions, session_evidence, exercise_sessions
     import jam_fuzzer_network_oracle as reference
     jobs, proof = reference_sessions(reference,'jam_fuzzer_network',[reference.parameters()]*17,spec='fuzz',fork_capacity=8)
@@ -46,13 +46,22 @@ def socket_check(binary, folder):
     # A short private directory keeps Unix socket paths below the native103-byte limit on all supported hosts.
     with tempfile.TemporaryDirectory(prefix='jam-network-') as selected:
         directory = Path(selected); endpoint = directory/'target.sock'
-        directory.chmod(0o777) # Reproduce the pinned upstream launcher's mount mode; entry point must make it private.
+        directory.chmod(0o777) # Reproduce the pinned upstream launcher's mount mode; native startup must make it private.
         environment = {key:value for key,value in os.environ.items() if not key.startswith(('JAM_FUZZ','RAGNAROK_FUZZ_'))}
-        environment.update(JAM_FUZZ='1',JAM_FUZZ_SPEC='fuzz',JAM_FUZZ_DATA_PATH=str(directory),
-            JAM_FUZZ_SOCK_PATH=str(endpoint),JAM_FUZZ_LOG_LEVEL='error',RAGNAROK_FUZZ_BINARY=str(binary),
-            RAGNAROK_FUZZ_CONFIG_DIR=str(ROOT/'config'))
+        arguments = [str(binary),'--fuzz','--fuzz-policy',str(ROOT/'config/jam-fuzz-policy.conf'),
+            '--fuzz-spec','fuzz','--fuzz-data',str(directory/'data/nested'),'--fuzz-socket',str(endpoint),
+            '--fuzz-log-level','error','--fuzz-writes','1000','--fuzz-write-bytes','4194304']
+        for extra in (['--unknown','x'],['--fuzz-spec','fuzz'],['--fuzz-writes','-1'],['--fuzz-socket']):
+            # Parser and budget failures must occur in the actual binary before any listener exists.
+            rejected = subprocess.run(arguments+extra,env=environment,capture_output=True,timeout=30)
+            assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
+            assert not endpoint.exists()
+        assert not (directory/'data').exists()
+        ambient = dict(environment,JAM_FUZZ='1')
+        version = subprocess.run([str(binary),'--version'],env=ambient,capture_output=True,timeout=30)
+        assert version.returncode == 0 and b'Ragnarok' in version.stdout # Ambient compatibility variables never replace explicit binary flags.
         with (folder/'target.log').open('wb') as log:
-            process = subprocess.Popen([ROOT/'tools/jam_fuzz_entrypoint.sh'],env=environment,stdout=log,stderr=log)
+            process = subprocess.Popen(arguments,env=environment,stdout=log,stderr=log)
             try:
                 deadline = time.monotonic()+30
                 while not endpoint.exists():
@@ -60,6 +69,8 @@ def socket_check(binary, folder):
                     assert process.poll() is None, 'Network fuzz target exited before readiness'
                     assert time.monotonic() < deadline, 'Network fuzz startup deadline'
                     time.sleep(0.01)
+                assert directory.stat().st_mode & 0o777 == 0o700
+                assert (directory/'data/nested').stat().st_mode & 0o777 == 0o700
                 result = exercise_sessions(endpoint,jobs,evidence)
                 process.send_signal(signal.SIGTERM)
                 assert process.wait(timeout=30) == 0 and not endpoint.exists()
