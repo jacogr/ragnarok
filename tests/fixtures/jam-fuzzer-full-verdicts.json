@@ -1,0 +1,41 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "chains": 1,
+  "transitions": 8,
+  "accepted": 2,
+  "refused": 6,
+  "verdicts": 3,
+  "quorum": 683,
+  "judgments": 2049,
+  "positive_counts": [
+    683,
+    0,
+    341
+  ],
+  "full_guests_sha256": "2ff662f514ce4f26f9d7576ca72ce40ec691d1f676acf806b429f11eb54e3610",
+  "successor_roots": [
+    [
+      "21cafee63890953bdd26f5ac2e0748ddb0b70a4df74670ef444d1774d2460c47",
+      "21cafee63890953bdd26f5ac2e0748ddb0b70a4df74670ef444d1774d2460c47",
+      "21cafee63890953bdd26f5ac2e0748ddb0b70a4df74670ef444d1774d2460c47",
+      "21cafee63890953bdd26f5ac2e0748ddb0b70a4df74670ef444d1774d2460c47",
+      "21cafee63890953bdd26f5ac2e0748ddb0b70a4df74670ef444d1774d2460c47",
+      "c74aef9c9cfa2f3be421f418811fdde032b7bbc72009c86b317df8cc777210d8",
+      "c74aef9c9cfa2f3be421f418811fdde032b7bbc72009c86b317df8cc777210d8",
+      "bc29fa558a27b99e3cce9f782f75abc86474063e8cb47277b2ef99023b9b67a6"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "762b622e0097c81a8c9932b22e769c467f94d7fa58ebc7f749c3730420f77dbc",
+      "762b622e0097c81a8c9932b22e769c467f94d7fa58ebc7f749c3730420f77dbc",
+      "762b622e0097c81a8c9932b22e769c467f94d7fa58ebc7f749c3730420f77dbc",
+      "762b622e0097c81a8c9932b22e769c467f94d7fa58ebc7f749c3730420f77dbc",
+      "762b622e0097c81a8c9932b22e769c467f94d7fa58ebc7f749c3730420f77dbc",
+      "2168b7c7f4e3cae7b7981a70a0bb4c86f3089bfb685a0368d37b6ce15194f5a5",
+      "2168b7c7f4e3cae7b7981a70a0bb4c86f3089bfb685a0368d37b6ce15194f5a5",
+      "2cc48da3bad703e648ac62bfffadad06e75e6b0e2611d2d28c2cf0b44ae23b9e"
+    ]
+  ],
+  "expected_sha256": "85d6bbb5ca0672cfa637852717d0653d5f86f95d3323c0d0e974d66cf9392abd"
+}
