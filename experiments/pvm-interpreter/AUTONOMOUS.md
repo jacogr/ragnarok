@@ -144,3 +144,16 @@ store lowering even when rarely called; timing does not establish a CPU cause.
 
 Next: binary search for sparse checkpoint refresh. This changes only post-host source-image
 lookup, preserving complete preflight, checked copies, sorted changes and commit ordering.
+
+## Trial6 — sparse checkpoint binary lookup
+
+Parent ee649d60 (runtime identical to9e3317d5). Replace only flatRefreshImages' monotone
+linear scan with checked lower-bound search in the remaining source suffix. Preserve exact
+matching-index assertion and complete PageImage assignment. Existing mixed/top-page, host
+refusal/repair, snapshots and reset witnesses cover this path; no guest-store/dispatch change.
+
+Trial6 verdict: keep sparse checkpoint lookup. Init all6pairs -0.43..-0.91%, median -0.61%.
+Small kernel medians within0.13%; tick +0.35% (range+0.005..+0.79%) remains visible. Full
+200timed/4negative,8native/8ASan and6fresh equal-image pairs pass with stable seals. No
+broad guest-loop speed claim. Next diagnostic: fresh init statistical profile and count-only
+register-first pair trace; all diagnostic clocks excluded.

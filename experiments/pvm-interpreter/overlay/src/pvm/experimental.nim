@@ -1179,8 +1179,14 @@ proc flatRefreshImages(f: var FlatFrame, changes: openArray[PageImage]) =
   ## Advance only copied changed checkpoint pages after a successful response, preserving reset semantics.
   var slot = 0
   for i in 0..<changes.len:
-    while slot < f.sourceImages.len and uint32(f.sourceImages[slot].index) < uint32(changes[
-        i].index): inc slot
+    # Sorted checkpoint changes may skip thousands of clean pages; narrow only the remaining source suffix.
+    var low = slot
+    var high = f.sourceImages.len
+    while low < high:
+      let middle = low+(high-low) div 2
+      if uint32(f.sourceImages[middle].index) < uint32(changes[i].index): low = middle+1
+      else: high = middle
+    slot = low
     assert slot < f.sourceImages.len and f.sourceImages[slot].index == changes[i].index
     f.sourceImages[slot] = changes[i]
 
