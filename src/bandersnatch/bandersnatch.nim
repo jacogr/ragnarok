@@ -12,6 +12,9 @@ const Header = "bridge.h"
 # Import a canonical nonzero scalar into one opaque native owner.
 proc keyNew(data: nil pointer, length: csize_t, output: ptr (
     nil pointer)): uint32 {.importc: "bs_key_new", header: Header, cdecl, raises: [], gcsafe.}
+# Import a JIP-5-compatible seed, explicitly separate from canonical scalar import.
+proc keyFromSeed(data: nil pointer, length: csize_t, output: ptr (
+    nil pointer)): uint32 {.importc: "bs_key_from_seed", header: Header, cdecl, raises: [], gcsafe.}
 # Last-owner release cleanses the retained scalar in Rust.
 proc keyFree(handle: nil pointer) {.importc: "bs_key_free", header: Header, cdecl, raises: [], gcsafe.}
 # Copy public bytes from a live private scalar owner.
@@ -82,6 +85,10 @@ func error*[T](value: BsResult[T]): BsError =
   ## Read only the outcome; failed/default operations carry no native handle or proof value.
   value.status
 
+func bsFailure*[T](reason: BsError): BsResult[T] {.requires: reason != BsError.None.} =
+  ## Compose a typed failure without exposing private result fields or permitting fabricated success.
+  BsResult[T](status: reason)
+
 func value*[T](value: BsResult[T]): T {.inline, requires: value.status == BsError.None.} =
   ## Success contracts protect every fixed value, normalized sequence and opaque native owner.
   value.completed
@@ -132,6 +139,15 @@ proc importScalar*(input: openArray[byte]): BsResult[BsKey] {.raises: [], gcsafe
   let reason = error(keyNew(data(input), csize_t(input.len), addr native))
   # Native import errors contain no pointer or default key value.
   if reason != BsError.None: return BsResult[BsKey](status: reason)
+  let state = NativeData(handle: native, kind: SecretKind)
+  BsResult[BsKey](status: BsError.None, completed: BsKey(state: state))
+
+proc importSecretSeed*(input: openArray[byte]): BsResult[BsKey] {.raises: [], gcsafe.} =
+  ## Derive an opaque key from a 32-byte seed with Draft 35 A.3 and the pinned v1 transcript.
+  var native: nil pointer = nil
+  let reason = error(keyFromSeed(data(input), csize_t(input.len), addr native))
+  if reason != BsError.None:
+    return BsResult[BsKey](status: reason) # No default native owner is exposed on failure.
   let state = NativeData(handle: native, kind: SecretKind)
   BsResult[BsKey](status: BsError.None, completed: BsKey(state: state))
 

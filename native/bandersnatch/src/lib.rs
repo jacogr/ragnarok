@@ -17,6 +17,7 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     slice,
 };
+use zeroize::Zeroizing;
 
 /// Owned immutable ring parameters; only this bridge knows the concrete Rust allocation/layout.
 struct Setup {
@@ -134,6 +135,27 @@ pub unsafe extern "C" fn bs_key_new(data: *const u8, len: usize, out: *mut *mut 
         if *secret.scalar() == bs::ScalarField::from(0u64) {
             return Err(2);
         }
+        unsafe {
+            *out = Box::into_raw(Box::new(secret)).cast();
+        }
+        Ok(())
+    })
+}
+/// Import a 32-byte seed using Draft 35 A.3 and the pinned Bandersnatch v1 suite.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bs_key_from_seed(
+    data: *const u8,
+    len: usize,
+    out: *mut *mut c_void,
+) -> u32 {
+    guard(|| {
+        // Validate width and destinations before borrowing; publish only a complete owned key.
+        if len != 32 || out.is_null() {
+            return Err(1);
+        }
+        let mut seed = Zeroizing::new([0u8; 32]);
+        seed.copy_from_slice(unsafe { bytes(data, len)? });
+        let secret = bs::Secret::from_seed(*seed);
         unsafe {
             *out = Box::into_raw(Box::new(secret)).cast();
         }
@@ -380,6 +402,39 @@ pub unsafe extern "C" fn bs_padding(out: *mut u8) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Seed imports reject malformed ABI arguments without modifying an existing output slot.
+    #[test]
+    fn seed_import_boundaries() {
+        let seed = [0u8; 33];
+        let sentinel = 1usize as *mut c_void;
+        for length in [0, 31, 33] {
+            let mut handle = sentinel;
+            assert_eq!(
+                unsafe { bs_key_from_seed(seed.as_ptr(), length, &mut handle) },
+                1
+            );
+            assert_eq!(handle, sentinel);
+        }
+        let mut handle = sentinel;
+        assert_eq!(
+            unsafe { bs_key_from_seed(std::ptr::null(), 32, &mut handle) },
+            1
+        );
+        assert_eq!(handle, sentinel);
+        assert_eq!(
+            unsafe { bs_key_from_seed(seed.as_ptr(), 32, std::ptr::null_mut()) },
+            1
+        );
+        // An all-zero input seed is valid entropy for the primitive, unlike a zero scalar import.
+        let mut handle = std::ptr::null_mut();
+        assert_eq!(
+            unsafe { bs_key_from_seed(seed.as_ptr(), 32, &mut handle) },
+            0
+        );
+        assert!(!handle.is_null());
+        unsafe { bs_key_free(handle) };
+    }
+
     /// Additional data binds the Thin proof while leaving the VRF output unchanged.
     #[test]
     fn additional_data_separates_proofs() {

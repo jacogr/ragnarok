@@ -7,6 +7,7 @@ composition that uses them.
 
 | Module | Responsibility |
 | --- | --- |
+| [`validator_keys.nim`](validator_keys.nim) | JIP-5 domain-separated validator keys and full-width development seeds |
 | [`primitives.nim`](primitives.nim) | Raw-byte Blake2b-256, legacy Keccak-256, Ed25519 and owned signing-seed handling |
 | [`assurance_context.nim`](assurance_context.nim) | Assurance transcripts and validator-key/parent verification |
 | [`guarantee.nim`](guarantee.nim) | Guarantee signing transcripts over caller-validated report bytes |

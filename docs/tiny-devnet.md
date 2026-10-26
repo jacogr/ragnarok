@@ -70,8 +70,10 @@ routine operation and keep one process per node directory.
 
 ## Current scope
 
-This is an uncontested, empty-extrinsic development chain using six public deterministic validator
-identities. GP fallback schedule selection, epoch markers, entropy proofs, seals, state transitions
+This is an uncontested, empty-extrinsic development chain using the JIP-5 development identities
+Alice, Bob, Carol, David, Eve and Fergie. Genesis, signing and TLS share the native
+[validator-key API](../spec/validator-keys.md). Fresh directories are required after this identity
+change because the genesis and every dependent block/root change. GP fallback schedule selection, epoch markers, entropy proofs, seals, state transitions
 and full-state commitments remain checked. Block transfer uses authenticated JAMNP-S CE128
 one-child requests; peers discover progress by polling their canonical parent's successor.
 
