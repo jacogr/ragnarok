@@ -676,8 +676,28 @@ proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
     writer.recent[1] = writer.recent[0]
     writer.recent[0] = span.first
 
+proc loadWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: MemoryAddress,
+    width: AccessWidth): MachineResult[RegisterValue] {.noinline.} =
+  ## Keep full span resolution and readable-window admission on a separate checked miss path; the caller retains this genuine base.
+  let start = uint64(address) and 0xffffffff'u64
+  let checked = scalarSpan[true, false](writer.base, address, width, writer.recent)
+  if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
+  let span = checked.value
+  rememberScalarSpan(writer, span)
+  if span.first == span.last:
+    # Only complete preflight can admit a new readable owner; permission changes require a new writer.
+    writer.readTag = start shr 12
+    if writer.active: writer.readPage = writer.pages[span.first]
+    else: writer.readPage = source.pages[span.first]
+  var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
+  if span.firstCount < span.count:
+    # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
+    value = value or (writerScalar(writer, source, span.last, 0, span.count-span.firstCount) shl (
+        8*span.firstCount))
+  MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
+
 proc loadScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
-    width: AccessWidth): MachineResult[RegisterValue] =
+    width: AccessWidth): MachineResult[RegisterValue] {.inline.} =
   ## Read the writer's latest scalar state; nil/default-invalid builders never imply a zero-filled address space.
   if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
@@ -701,21 +721,7 @@ proc loadScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, addr
     if readable != nil and writer.readTag == tag:
       return MachineResult[RegisterValue](status: MachineError.None,
         completed: RegisterValue(pageScalar(readable, within, count)))
-  let checked = scalarSpan[true, false](writer.base, address, width, writer.recent)
-  if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
-  let span = checked.value
-  rememberScalarSpan(writer, span)
-  if span.first == span.last:
-    # Only complete preflight can admit a new readable owner; permission changes require a new writer.
-    writer.readTag = start shr 12
-    if writer.active: writer.readPage = writer.pages[span.first]
-    else: writer.readPage = source.pages[span.first]
-  var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
-  if span.firstCount < span.count:
-    # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
-    value = value or (writerScalar(writer, source, span.last, 0, span.count-span.firstCount) shl (
-        8*span.firstCount))
-  MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
+  loadWriterMiss(writer, source, address, width)
 
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] {.inline.} =
@@ -728,31 +734,10 @@ proc load*[Width: static[int]](writer: nil ScalarMemoryWriter,
   ## A constant supported width specializes byte access while retaining owner, extent, permission and epoch checks.
   loadScalar[Width](writer, address, AccessWidth(byte(Width)))
 
-proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
-    width: AccessWidth, value: RegisterValue): MachineResult[bool] =
-  ## Commit one atomic private scalar write; failures preserve all previous successful writes and expose only their reason.
-  if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
-  let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
-  if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+proc storeWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: MemoryAddress,
+    width: AccessWidth, value: RegisterValue): MachineResult[bool] {.noinline.} =
+  ## Complete original preflight and COW preparation precede every miss mutation; cached single-page hits remain in the small caller.
   let start = uint64(address) and 0xffffffff'u64
-  let count = when selectedWidth > 0: selectedWidth else: int(byte(width))
-  let within = int(start and 4095'u64)
-  let writable {.cursor.} = writer.writePage
-  if writable != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
-      start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
-      within <= 4096-count and writer.writeTag == start shr 12:
-    # The retained header is private, but each touched chunk still needs its original COW check.
-    prepareWriterSpan(writer, writer.writeSlot, within, count)
-    setPageScalar(writable, within, count, uint64(value))
-    return MachineResult[bool](status: MachineError.None, completed: true)
-  let spare {.cursor.} = writer.spareWritePage
-  if spare != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
-      start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
-      within <= 4096-count and writer.spareWriteTag == start shr 12:
-    # The second private header follows the same complete-chunk preparation before any mutation.
-    prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
-    setPageScalar(spare, within, count, uint64(value))
-    return MachineResult[bool](status: MachineError.None, completed: true)
   let checked = scalarSpan[true, true](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
   if not writer.active:
@@ -781,6 +766,33 @@ proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, add
     setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
         8*span.firstCount))
   MachineResult[bool](status: MachineError.None, completed: true)
+
+proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
+    width: AccessWidth, value: RegisterValue): MachineResult[bool] {.inline.} =
+  ## Commit one atomic private scalar write; failures preserve all previous successful writes and expose only their reason.
+  if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
+  if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let start = uint64(address) and 0xffffffff'u64
+  let count = when selectedWidth > 0: selectedWidth else: int(byte(width))
+  let within = int(start and 4095'u64)
+  let writable {.cursor.} = writer.writePage
+  if writable != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
+      start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
+      within <= 4096-count and writer.writeTag == start shr 12:
+    # The retained header is private, but each touched chunk still needs its original COW check.
+    prepareWriterSpan(writer, writer.writeSlot, within, count)
+    setPageScalar(writable, within, count, uint64(value))
+    return MachineResult[bool](status: MachineError.None, completed: true)
+  let spare {.cursor.} = writer.spareWritePage
+  if spare != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
+      start >= 0x10000'u64 and start <= uint64(high(uint32))-uint64(count) and
+      within <= 4096-count and writer.spareWriteTag == start shr 12:
+    # The second private header follows the same complete-chunk preparation before any mutation.
+    prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+    setPageScalar(spare, within, count, uint64(value))
+    return MachineResult[bool](status: MachineError.None, completed: true)
+  storeWriterMiss(writer, source, address, width, value)
 
 proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[bool] {.inline.} =
