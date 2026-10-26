@@ -2417,12 +2417,12 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     replacement = unavailableHistory(history.since, RequestSlot(
         time)) # One slot always appends actual invocation time, with no age/funding condition.
   of RequestState.Unavailable:
-    if uint64(uint32(history.unavailableFrom))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
+    if uint64(uint32(history.unavailableFrom))+uint64(parameters.expungePeriod) >= uint64(time):
       fail(AccumulationEffectError.NotRequested) # Strict widened expiry also handles nonpositive cutoffs without underflow.
     remove = true
     removePreimage = true # Only the expired two-slot row removes the retained preimage as well.
   of RequestState.Reavailable:
-    if uint64(uint32(history.removedAt))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
+    if uint64(uint32(history.removedAt))+uint64(parameters.expungePeriod) >= uint64(time):
       fail(AccumulationEffectError.NotRequested) # Expiry uses the second slot, never the later restoration time.
     replacement = unavailableHistory(history.restoredAt, RequestSlot(
         time)) # Retain latest availability and append current removal time.

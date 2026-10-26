@@ -18,8 +18,10 @@ proc main(): int =
   try:
     var arguments: seq[string] = @[]
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
-    if existsEnv("JAM_FUZZ"): return runFuzzTarget(
-        arguments) # Explicit fuzz startup is isolated before normal production option/service selection.
+    let versionRequest = arguments.len == 1 and arguments[0] == "--version"
+    if (existsEnv("JAM_FUZZ") and not versionRequest) or
+        (arguments.len > 0 and arguments[0] in ["serve-fuzz", "serve-fuzz-preset"]):
+      return runFuzzTarget(arguments) # Standard upstream environment variables activate the ordinary binary with no custom flags.
     if arguments.len > 0 and arguments[0] == "tiny-devnet":
       return runDevnet(arguments) # Explicit bounded local validators use ordinary GP candidate admission.
     var options = default(Options)
@@ -39,6 +41,8 @@ proc main(): int =
       stdout.writeLine("       ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] --with-state --chain FILE [STATE_BUDGETS]")
       stdout.writeLine("         check-traces optionally compares --trace-observations DIR/step-0000.bin (published RawState).")
       stdout.writeLine("       ragnarok tiny-devnet init CHAIN_JSON | node DIRECTORY INDEX BASE_PORT START_UNIX_MS STOP_SLOT CURRENT_POLICY")
+      stdout.writeLine("       JAM_FUZZ=1 JAM_FUZZ_SPEC=tiny|full|fuzz JAM_FUZZ_DATA_PATH=DIR JAM_FUZZ_SOCK_PATH=PATH ragnarok")
+      stdout.writeLine("         Optional JAM_FUZZ_LOG_LEVEL selects conformance logging; no flags or policy files are required.")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")

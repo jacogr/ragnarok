@@ -52,7 +52,7 @@ def original(profile):
     parent[key]=account_wire((hashed,wide,narrow));return parent
 
 
-def effects(result,parent,profile,slot,budget,*,lookup_age=0,statistics_config=DEFAULT):
+def effects(result,parent,profile,slot,budget,*,lookup_age=0,statistics_config=DEFAULT,expunge_period=EXPUNGE):
     """Use widened integer strict age equations; only expired two-slot removal releases the entire82-byte/two-item reservation."""
     key=request_key(99,digest(PAYLOAD),1);before=None if key not in parent else request_parse(parent[key],(3,13))[0]
     after=before;deleted=False
@@ -61,7 +61,7 @@ def effects(result,parent,profile,slot,budget,*,lookup_age=0,statistics_config=D
             after=after+(slot,) # Solicit restores an unavailable history even at the exact expiry boundary.
         if len(after)==1:
             after=after+(slot,)
-        elif len(after) in (2,3) and after[1]+EXPUNGE+lookup_age<slot:
+        elif len(after) in (2,3) and after[1]+expunge_period+lookup_age<slot:
             if len(after)==2:
                 after=None;deleted=True
             else:

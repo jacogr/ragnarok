@@ -7,7 +7,7 @@ import ../support/[fuzz_backend_context, accumulation_current_chain_context,
     fuzz_guest_replay_context, fuzz_full_replay_context]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[fuzz_backend, fuzz_rejection, candidate]
-import ../../src/chain/[genesis, parameters, provider]
+import ../../src/chain/[genesis, parameters, presets, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
 import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
     guarantee_credentials, block_transition, block_admission, safrole_transition, availability,
@@ -116,12 +116,20 @@ proc main() {.raises.} =
       if fields.len == 3:
         let parameters = decodeParameters(epoch.unhex(fields[2]))
         assert parameters.ok
+        config.parameters = parameters.value
         if parameters.value.get(coreCount) == 341:
           assert parameters.value.get(epochPeriod) == 600
           config = fuzzFullReplayConfig() # Explicit trusted host geometry selects finite policy before any state is decoded.
+        elif parameters.value.get(coreCount) == 85:
+          assert parameters.value.get(epochPeriod) == 60
+          config = fuzzNetworkReplayConfig() # Explicit issue215 profile precedes seed parsing.
+          let canonical = presetParameters(ChainPreset.Fuzz).value
+          assert parameters.value.encodeParameters == canonical.encodeParameters
+          config.parameters = canonical
         else:
           assert parameters.value.get(coreCount) == 2 and parameters.value.get(epochPeriod) == 12
-        config.parameters = parameters.value # Trusted test-host configuration is separate from fuzz-v1 Initialize bytes.
+        if parameters.value.get(coreCount) != 85:
+          config.parameters = parameters.value # Custom historical profiles retain their original interpretation.
       initialHeader = defaultHeader
       if hasHeader:
         let decoded = decodeHeader(pendingHeader, config.candidate.reporting.reports.ancestors.header)

@@ -22,6 +22,9 @@ proc main() {.raises.} =
   let inactive = default(ApplicationChain)
   let refused = captureApplicationCheckpointIdentity(inactive)
   assert refused.error == ApplicationCheckpointIdentityError.MissingHead
+  let explicit = captureApplicationCheckpointIdentity(checkpointFixture(
+      CheckpointFixtureVariant.ExplicitExpunge))
+  assert explicit.error == ApplicationCheckpointIdentityError.InvalidParameters
   let owner = checkpointFixture()
   let selected = owner.chainView.bestBlock.value
   let captured = captureApplicationCheckpointIdentity(owner).value

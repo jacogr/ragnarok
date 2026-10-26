@@ -10,8 +10,11 @@ proc main() {.raises.} =
   var policy = traceCheckTestPolicy()
   # Resource policy covers the exact known queue/code envelopes; GP parameters retain each source profile.
   if paramCount() == 2:
-    assert paramStr(2) == "full" # Only the explicit known full profile can select these local resource ceilings.
-    policy.candidate = fuzzFullReplayConfig().candidate
+    assert paramStr(2) in ["full", "fuzz"] # Only explicit known profiles select geometry.
+    if paramStr(2) == "fuzz":
+      policy.candidate = fuzzNetworkReplayConfig().candidate
+    else:
+      policy.candidate = fuzzFullReplayConfig().candidate
   else:
     assert paramCount() == 1
     policy.candidate = fuzzGuestReplayConfig().candidate

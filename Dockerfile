@@ -66,3 +66,12 @@ USER 10001:10001
 RUN ["/usr/local/bin/ragnarok", "--version"]
 ENTRYPOINT ["/usr/local/bin/ragnarok"]
 CMD ["--help"]
+
+# Explicit conformance image: standard environment variables select the bundled experimental preset.
+FROM runtime AS fuzz-target
+# Rootful upstream supplies the host UID; rootless Docker maps container root to the host owner.
+USER 0:0
+CMD []
+
+# Keep the ordinary peer image as the default build product.
+FROM runtime AS production

@@ -4,15 +4,25 @@
 ## Explicit startup policies and real candidate failures distinguish consensus Error replies from local faults.
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
-import ../../support/fuzz_fork_context
-import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate]
-import ../../../src/codec/[bounded, header, report_owned, block_codec]
+import ../../support/[fuzz_fork_context, fuzz_full_replay_context]
+import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate, fuzz_policy, current_download_policy]
+import ../../../src/codec/[bounded, header, report_owned, block_codec, tickets, work_digest]
 import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission,
-  accumulation_queue,
+  accumulation_queue, report_anchors, guarantors,
   accumulation_round, accumulation_current_completion, accumulation_current_update, accumulation_current_chain]
-import ../../../src/chain/[provider, genesis]
+import ../../../src/chain/[provider, genesis, parameters, presets]
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
+  for preset in [ChainPreset.Tiny, ChainPreset.Full, ChainPreset.Fuzz]:
+    # Every advertised environment-only profile has a complete native default policy derived from the central tuple.
+    let policy = fuzzPresetPolicy(preset)
+    assert policy.error == CurrentDownloadPolicyError.None
+    let name = if preset == ChainPreset.Tiny: "tiny" elif preset ==
+        ChainPreset.Full: "full" else: "fuzz"
+    let environment = FuzzEnvironment(enabled: true, spec: name, dataPath: "/tmp/fuzz-default",
+        socketPath: "/tmp/fuzz-default/target.sock")
+    assert prepareFuzzTarget(environment, presetParameters(preset).value, policy.value.candidate,
+      ElementLimit(1000), ByteLimit(4194304)).error == FuzzTargetError.None
   let supplied = fuzzBackendTestConfig()
   let environment = FuzzEnvironment(enabled: true, spec: "tiny", dataPath: "/tmp/private-fuzz",
       socketPath: "/tmp/private-fuzz/target.sock")
@@ -55,6 +65,48 @@ proc main() {.raises.} =
       1000001), ByteLimit(1)).error == FuzzTargetError.InvalidBudget
   assert prepareFuzzTarget(environment, supplied.parameters, supplied.candidate, ElementLimit(1),
       ByteLimit(67108865)).error == FuzzTargetError.InvalidBudget
+  block fuzzNetworkPreset:
+    # Independently frozen issue215 tuple must select the new geometry before any socket or seed exists.
+    let raw = decodeParametersHex("0a00000000000000010000000000000064000000000000005500840300003c000000809698000000000080f0fa0200000000807c814a00000000c07027340000000008001000080004005802000008000600500005008000050000fa00008070d20000093d00000c000000c0000080000000000c000032000000").value
+    let policy = fuzzNetworkReplayConfig().candidate
+    var selected = environment
+    selected.spec = "fuzz"
+    assert prepareFuzzTarget(selected, raw, policy, ElementLimit(1000), ByteLimit(4194304)).error ==
+        FuzzTargetError.None
+    let canonical = presetParameters(ChainPreset.Fuzz).value
+    assert canonical.encodeParameters == raw.encodeParameters
+    assert uint64(raw.expungePeriod) == 5400 and uint64(canonical.expungePeriod) == 900
+    assert not sameParameterProfile(raw, canonical)
+    assert not raw.hasExplicitExpungePeriod
+    let startup = prepareFuzzTarget(selected, raw, policy, ElementLimit(1000), ByteLimit(4194304))
+    assert sameParameterProfile(startup.value.backend.parameters, canonical)
+    assert uint64(presetParameters(ChainPreset.Tiny).value.expungePeriod) == 4824
+    assert uint64(presetParameters(ChainPreset.Full).value.expungePeriod) == 19200
+    const widths = [8, 8, 8, 2, 4, 4, 8, 8, 8, 8, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4]
+    var offset = 0
+    for field in low(Parameter)..high(Parameter):
+      # Every individual field mismatch, including unchanged Full constants, must fail startup.
+      var bytes = encodeParameters(raw)
+      bytes[offset] = bytes[offset] xor 1
+      let altered = decodeParameters(bytes)
+      if altered.ok:
+        assert prepareFuzzTarget(selected, altered.value, policy, ElementLimit(1000), ByteLimit(
+            4194304)).error == FuzzTargetError.ProfileMismatch
+      offset += widths[ord(field)]
+    var wrong = policy
+    wrong.reporting.admission.frame.ticketLimit = TicketLimit(3)
+    assert prepareFuzzTarget(selected, raw, wrong, ElementLimit(1000), ByteLimit(4194304)).error ==
+        FuzzTargetError.ProfileMismatch
+    for which in 0..<4:
+      # Legacy Full consensus limits must be refused even when the frame and complete fetch tuple match.
+      var inconsistent = policy
+      case which
+      of 0: inconsistent.reporting.reports.anchors.lookupAge = LookupAge(14400)
+      of 1: inconsistent.reporting.reports.credentials.assignments.rotationSlots = GuarantorRotationSlots(10)
+      of 2: inconsistent.reporting.safrole.tailStart = EpochSlots(500)
+      else: inconsistent.round.blockGas = Gas(3500000000'u64)
+      assert prepareFuzzTarget(selected, raw, inconsistent, ElementLimit(1000), ByteLimit(
+          4194304)).error == FuzzTargetError.ProfileMismatch
   let noCandidate = default(CurrentCandidateResult)
   assert not consensusFuzzRejection(noCandidate)
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

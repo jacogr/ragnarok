@@ -54,4 +54,4 @@ proc sameEconomicProfile*(left, right: StateEconomicProfile): bool =
   ## Fixed-value parameter equality requires initialization and all fields, not just matching deposit rates.
   if not left.parameters.valid or not right.parameters.valid:
     return false # Defaults never compare as selected usable configuration.
-  encodeParameters(left.parameters) == encodeParameters(right.parameters)
+  sameParameterProfile(left.parameters, right.parameters)
