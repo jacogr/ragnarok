@@ -66,8 +66,13 @@ never establishes complete state serialization, valid-state relationships or STF
 correctness. The interaction cases above extend independently derived whole-map
 execution and operator qualification without changing that distinction.
 
-Remaining scope includes arbitrary population/offender histories, all host-operation
-combinations under resizing, full JAM/STF and live client/network/finality conformance.
+The [bounded interaction assessment](current-stf-population-qualification.md) maps
+all21 accumulation calls and twelve distinct interaction risks to their evidence.
+It adds a direct current-map storage-read witness and replaces the unbounded
+“all host-operation combinations” item with explicit deferrals/reopening criteria.
+Component evidence and complete signed-transition evidence remain distinct.
+Arbitrary histories, other population/production-capacity configurations and full
+JAM/STF/live client/network/finality conformance retain the stated limitations.
 No external-client execution or physical power-loss qualification is inferred.
 
 The earlier operator qualification retains its original8,038-input Linux evidence

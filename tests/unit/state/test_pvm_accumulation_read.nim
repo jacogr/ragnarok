@@ -6,6 +6,7 @@
 ## Distinguish absent/empty raw keys and values, full-width gas, source ownership and ARC release.
 
 import std/[assertions, syncio]
+import ../../../src/chain/parameters
 import ../../../src/state/[accumulation_dispatch, accumulation_machine, accumulation_effects,
   accumulation_context, accumulation_invocation, accumulation_service, store]
 import ../../../src/codec/[bounded, composite, state_layout, state_accounts, state_service_values,
@@ -62,8 +63,9 @@ proc source(target = 42'u64, address = 65536'u64, destination = 196736'u64,
     registerImmediate(12, length), @[10'u8, 4], @[50'u8, 0]], credit, extra = extra)
 
 ## Raw keys and selected value slices each obey the local copy ceiling.
-proc run(prepared: PreparedAccumulationMachine, limit = 64'u64): AccumulationDispatchResult =
-  executeAccumulationMachine(prepared, pvmParameters(),
+proc run(prepared: PreparedAccumulationMachine, limit = 64'u64,
+    parameters: Parameters = pvmParameters()): AccumulationDispatchResult =
+  executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
       operand: OperandLimits(maxBytes: ByteLimit(132))), MemoryByteLimit(limit),
     ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig())
@@ -257,6 +259,58 @@ assert boundary.error == AccumulationDispatchError.None and boundary.value.exit 
 assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0
 assert run(source(keyLength = 6917529027641081856'u64, length = 2305843009213693952'u64,
     credit = boundaryCredit-1), limit = 0).value.exit == StepExit.OutOfGas
+# Authored finite deposits permit the actual writes; the default read-only fixture has maximal fees.
+var depositWire = encodeParameters(pvmParameters())
+for field, amount in [2'u64, 3, 10]:
+  for i in 0..<8:
+    # Preserve every other explicit parameter with one independently encoded E8 field.
+    depositWire[field*8+i] = byte((amount shr (8*i)) and 255)
+let deposits = decodeParameters(depositWire).value
+
+# A read after write observes the current regular map even after checkpoint divergence.
+# Population changes are upstream of this invocation; the observer must not retain its bootstrap map.
+for checkpoint in [false, true]:
+  for panic in [false, true]:
+    # Keep the raw key stable while replacing three authored bytes with their two-byte suffix.
+    var instructions = @[@[51'u8, 7, 255], registerImmediate(8, 65536), @[51'u8, 9, 1],
+      registerImmediate(10, 196608), @[51'u8, 11, 3], @[10'u8, 5],
+      @[51'u8, 7, 255], registerImmediate(10, 196736), @[51'u8, 11, 0],
+      @[51'u8, 12, 3], @[10'u8, 4]]
+    if checkpoint:
+      instructions.add(@[10'u8, 19]) # Only the first write becomes the exceptional account state.
+    instructions.add(@[51'u8, 7, 255])
+    instructions.add(registerImmediate(10, 196609))
+    instructions.add(@[51'u8, 11, 2])
+    instructions.add(@[10'u8, 5])
+    instructions.add(@[51'u8, 7, 255])
+    instructions.add(registerImmediate(10, 196752))
+    instructions.add(@[51'u8, 11, 0])
+    instructions.add(@[10'u8, 4])
+    if panic:
+      instructions.add(@[0'u8]) # Exceptional termination must not rewind already observed guest memory.
+    else:
+      instructions.add(@[50'u8, 0]) # Regular termination retains the same two independent read observations.
+    let prepared = guestProgram(instructions, 100000,
+      account = ServiceMetadata(balance: AccountBalance(10000)), spareEntries = 1,
+      writable = @[81'u8, 82, 83])
+    let done = run(prepared, parameters = deposits)
+    assert done.error == AccumulationDispatchError.None, "write/read execution completes"
+    assert done.value.exit == (if panic: StepExit.Panic else: StepExit.Halt)
+    checkBytes(done, 196736, @[81'u8, 82, 83])
+    checkBytes(done, 196752, @[82'u8, 83, 0]) # The shorter replacement cannot leak the old trailing byte.
+    assert uint64(machineInfo(done.value.machine).value.registers[7]) == 2
+    let key = serviceStorageKey(ServiceIndex(42), @[73'u8], ByteLimit(1)).value
+    let regularMap = done.effects.effectContext(regular).value.effectAccounts.value
+    assert regularMap.lookup(key).value.bytes == @[82'u8, 83]
+    let exceptionalMap = done.effects.effectContext(exceptional).value.effectAccounts.value
+    if checkpoint:
+      assert exceptionalMap.lookup(key).value.bytes == @[81'u8, 82, 83] # Read never mutates the saved checkpoint.
+    else:
+      assert exceptionalMap.lookup(key).error == StateStoreError.MissingKey # Reads cannot create exceptional writes.
+    let prior = prepared.machineBootstrap.value.bootstrapService.value.serviceState.value
+    assert prior.lookup(key).error == StateStoreError.MissingKey # Source accounts remain immutable after both writes.
+    assert readBytes(memoryOf(prepared.accumulationMachine.value).value, MemoryAddress(196736),
+      MemoryLength(3), MemoryByteLimit(3)).value == @[0'u8, 0, 0]
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let done = run(valid)
