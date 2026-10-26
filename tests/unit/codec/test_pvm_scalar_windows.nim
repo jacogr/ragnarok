@@ -81,6 +81,60 @@ proc cycle(mode: int) =
     assert original.access == images[side].access
     for offset in 0..<4096: assert original.bytes[offset] == images[side].bytes[offset]
 
+proc sparseSlotCycle() =
+  ## Exact sparse page identities must survive positive-hint collisions, failed permissions and alias epoch transitions.
+  var images: seq[PageImage] = @[]
+  for index in 0..<15:
+    # Stride65536 page ordinals collides in both64/256-slot hint tables while staying inside the physical page domain.
+    var image = PageImage(index: PageIndex(uint32(16+index*65536)),
+      access: PageAccess.ReadWrite, bytes: default(array[4096, byte]))
+    if index mod 3 == 1: image.access = PageAccess.ReadOnly
+    if index mod 3 == 2: image.access = PageAccess.Inaccessible
+    for offset in 0..<4096: image.bytes[offset] = byte((index*43+offset*19) and 255)
+    images.add(image)
+  images.add(PageImage(index: PageIndex(1048575), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte])))
+  let source = captureMemory(images, PageLimit(uint32(images.len))).value
+  let writer = newScalarMemoryWriter(source).value
+  let alias = writer
+  var expected = source
+  var frozen: seq[Memory] = @[]
+  var oracle: seq[Memory] = @[]
+  for epoch in 0..<3:
+    for operation in 0..<144:
+      # Repeated nonadjacent pages defeat recent hints; crossing/missing/final-page cases preserve original fault precedence.
+      let index = (operation*7) mod images.len
+      let offsets = [0'u64, 505, 511, 4090, 4095, 4096, 0, 4095, 1]
+      let widths = [1'u8, 2, 4, 8, 0, 3, 8]
+      let physical = uint64(uint32(images[index].index))*4096+offsets[operation mod offsets.len]
+      let address = MemoryAddress(physical+(if operation mod 2 == 0: 0x100000000'u64 else: 0'u64))
+      let width = AccessWidth(widths[operation mod widths.len])
+      let wanted = load(expected, address, width)
+      let actual = load(alias, address, width)
+      assert actual.error == wanted.error
+      if wanted.error == MachineError.None: assert actual.value == wanted.value
+      elif wanted.error == MachineError.Fault: assert actual.faultPage == wanted.faultPage
+      let value = RegisterValue(uint64(operation+epoch*1000))
+      let updated = store(expected, address, width, value)
+      let written = store(writer, address, width, value)
+      assert written.error == updated.error
+      if updated.error == MachineError.None: expected = updated.value
+      elif updated.error == MachineError.Fault: assert written.faultPage == updated.faultPage
+    let sealed = snapshotMemory(alias).value
+    frozen.add(sealed)
+    oracle.add(expected)
+  for epoch in 0..<frozen.len:
+    for index in 0..<images.len:
+      # Full historical byte/permission comparisons reject stale header/chunk capabilities after subsequent writes.
+      let actual = pageImage(frozen[epoch], images[index].index).value
+      let wanted = pageImage(oracle[epoch], images[index].index).value
+      assert actual.access == wanted.access
+      for offset in 0..<4096: assert actual.bytes[offset] == wanted.bytes[offset]
+  for index in 0..<images.len:
+    let original = pageImage(source, images[index].index).value
+    assert original.access == images[index].access
+    for offset in 0..<4096: assert original.bytes[offset] == images[index].bytes[offset]
+
 proc workingSetCycle() =
   ## Alternate two writable pages and a read-only table, then evict both writable owners and seal through aliases.
   var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
@@ -203,6 +257,8 @@ for mode in 0..<4: cycle(mode)
 for repeat in 0..<20:
   for mode in 0..<4: cycle(mode)
 workingSetCycle()
+sparseSlotCycle() # Independent sparse collision and immutable-epoch witness before retained-heap accounting.
+
 let before = getOccupiedMem()
 for repeat in 0..<1000:
   workingSetCycle() # All retained readable/private page owners retire without cycles or published mutation.
