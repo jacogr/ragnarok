@@ -182,3 +182,46 @@ native replay. Unchanged upstream minifuzz passed one session, 17 imports and
 38 exact exchanges with its real mismatch control. All 54 focused Python tests
 and fresh inventory passed. Native-source formatting/semantic coverage, original
 fixtures, GP checks and dependency pins remain unchanged.
+
+## Verdicts against real pending reports
+
+Three genuine guarantees at cores 0, 339 and 340 introduce distinct packages,
+canonical low/high core encodings, assigned signatures and complete refinement
+statistics. Subsequent good/bad/wonky verdicts refer to hashes of those exact
+canonical report bytes. Newly bad/wonky reports lose their guarantee and
+registration together; the good report stays byte-identical and unqualified until
+availability or expiry. A late missing-fault refusal must preserve all three
+original assignments and every other state field before valid continuation.
+
+A second chain first judges a package hash as bad: the three pending reports
+remain, because a package identity is not the hash of its canonical report.
+Judging the actual report hash then removes only that report; unrelated reports
+remain. Exact five-slot expiry clears the unqualified good/unrelated assignments
+without executing guests. Full pool consumption, nonzero queue appends, package
+history, per-core/service refinement statistics and all namespaces are calculated
+independently before native replay. Shared sealing/body helpers retain every
+older full-profile baseline and guest fixture answer unchanged.
+
+The first three-report replay exposed an inherited Tiny resource ceiling in the
+full test host: recent history still allowed two packages per block. Full-profile
+recent-history and anchor decoding now share finite policies for 341 packages per
+block, 2728 across eight retained blocks and a 256KiB complete encoding budget.
+The latter covers all eight full package dictionaries and the retained bounded
+MMR belt. Chain parameters, the eight-block window, GP admission and local-refusal
+classification remain unchanged. The real socket tests rebuild their policy
+materializer from this same explicit full-profile resource configuration.
+
+The same workload also exposed two inherited activity descriptor ceilings and
+one authorization descriptor ceiling. The full test host now allows 341 incoming
+reports, 5456 incoming digests (341 times the pinned16-work-item package bound)
+and 341 verified guarantee uses. Other workload counts were checked against their
+existing finite policies. Guarded native diagnostics now retain the actual
+recent/activity/authorization cause rather than only the enclosing composition
+stage. No independent expected map changed after these resource-policy fixes.
+
+Observed pending-report validation: all 11 new complete-map steps and 12 unchanged
+full guest steps passed checked ARC/Clang ThinLTO replay. Actual upstream minifuzz
+passed two sessions, 11 imports and 30 exact exchanges with its real mismatch
+control and freshly rebuilt full policy. All 61 focused Python tests, fresh pinned
+formatting, replay-driver/policy semantics and inventory passed. The older18
+baseline and12 guest reference answers also remained exactly unchanged.

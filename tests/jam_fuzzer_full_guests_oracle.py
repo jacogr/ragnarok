@@ -75,24 +75,27 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, *, slot=3, anchor=None):
-    """A real high-core report binds the seed anchor/root, full erasure population and two independently signed assigned indices."""
+def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None):
+    """A real full-profile core report binds its seed anchor/root, erasure population and two independently signed assigned indices."""
+    assert 0 <= core < full.CORES and (label is None or isinstance(label,bytes))
     # An explicit earlier anchor binds independently known child-header evidence at a checkpoint seed.
     fixed,root = (history(initial[chapter_key(3)])[0][-1][0],tree(list(initial.items()))[0]) if anchor is None else anchor
     anchor = fixed[:32]+fixed[96:100]+root
     source = Reader(parent[chapter_key(1)]); pools = [source.take(32*source.count()) for _ in range(full.CORES)]; source.done()
-    package = digest(b'full-profile guest report'+tree(list(initial.items()))[0])
-    header = (package+(100+slot+CORE).to_bytes(4,'little')+digest(package+b'segments')
-              +full.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+(3+CORE).to_bytes(2,'little')
+    material = b'full-profile guest report'+tree(list(initial.items()))[0]
+    if label is not None: material += b'\0'+label # Explicit independent labels prevent package reuse across multiple cores.
+    package = digest(material)
+    header = (package+(100+slot+core).to_bytes(4,'little')+digest(package+b'segments')
+              +full.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+(3+core).to_bytes(2,'little')
               +anchor+fixed[32:64]+anchor)
-    layout = dict(header=header, prerequisites=b'', core=CORE, authorizer=pools[CORE][:32],
-                  gas=17+CORE, auth=b'auth'+bytes([CORE % 256]), lookup=b'',
+    layout = dict(header=header, prerequisites=b'', core=core, authorizer=pools[core][:32],
+                  gas=17+core, auth=b'auth'+bytes([core % 256]), lookup=b'',
                   digests=[(99,account_parse(parent[chapter_service(255,99)],105)[0],
-                            digest(package+b'payload'),100000,0,bytes([slot,CORE % 256]),
-                            (13+CORE,2+CORE,3+CORE,4+CORE,5+CORE))])
+                            digest(package+b'payload'),100000,0,bytes([slot,core % 256]),
+                            (13+core,2+core,3+core,4+core,5+core))])
     raw = report_wire(layout)
     order = guests.permutation(parent[chapter_key(6)][64:96],full.VALIDATORS)
-    indices = [index for index,position in enumerate(order) if (position//3+(slot % full.EPOCH)//10) % full.CORES == CORE]
+    indices = [index for index,position in enumerate(order) if (position//3+(slot % full.EPOCH)//10) % full.CORES == core]
     assert len(indices) == 3
     return dict(report=raw,slot=slot,layout=layout,
                 credentials=[(index,signed(index,b'jam_guarantee',digest(raw))[1]) for index in indices[:2]])
@@ -107,13 +110,13 @@ def assurances(parent,count):
     return [dict(anchor=anchor,bits=bits,index=index,signature=signed(index,b'jam_available',target)[1]) for index in range(count)]
 
 
-def body(gs,ass):
+def body(gs,ass,*,disputes=bytes(3)):
     """Independently encode and commit full-profile guarantee projections and exact assurance tuples."""
     votes = natural(len(ass))+b''.join(item['anchor']+item['bits']+item['index'].to_bytes(2,'little')+item['signature'] for item in ass)
     hashes = natural(len(gs))+b''.join(digest(item['report'])+item['slot'].to_bytes(4,'little')+natural(len(item['credentials']))
                        +b''.join(index.to_bytes(2,'little')+signature for index,signature in item['credentials']) for item in gs)
-    raw = b'\0\0'+guarantees_wire(gs)+votes+bytes(3)
-    commitment = digest(2*digest(b'\0')+digest(hashes)+digest(votes)+digest(bytes(3)))
+    raw = b'\0\0'+guarantees_wire(gs)+votes+disputes
+    commitment = digest(2*digest(b'\0')+digest(hashes)+digest(votes)+digest(disputes))
     return raw,commitment
 
 
