@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_ALLOWANCES",
+  "files": {
+    "current-stf-late-allowances.json": "b45b6a2b19f126093fcd1d8fb87e4e3229f39910680c52b41a495ae9d663dac3"
+  },
+  "target": "current-stf-late-allowances.json"
+}

@@ -36,6 +36,15 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
 
 
 @CORPORA.case
+def current_stf_late_allowances_corpus(compiler, report, checks, libraries):
+    """Qualify empty-operand allowances and actual deferred credits under late sender/recipient code integration."""
+    import current_stf_late_allowances_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_allowances','current_stf_late_rotation',
+         'current_stf_transfers','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_cycles_corpus(compiler, report, checks, libraries):
     """Qualify unresolved cycles and absent anchors across code arrival, ready-row expiry and changing populations."""
     import current_stf_late_cycles_oracle as oracle
