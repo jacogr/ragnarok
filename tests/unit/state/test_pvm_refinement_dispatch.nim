@@ -164,6 +164,13 @@ for id in [3'u8, 6, 16, 27, 28, 127, 255]:
     let done = run(prepare(cpu([@[10'u8, id], @[50'u8, 0]], registers(), credit)).value).value
     assert uint64(done.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-1
     assert done.outcome.exit == (if credit < 1000: StepExit.OutOfGas else: StepExit.Halt)
+# JIP-1 is a known ten-gas extension; invalid argument ranges remain a nontrapping WHAT result.
+for credit in [9'u64, 10, 11]:
+  let done = run(prepare(cpu([@[10'u8, 100], @[50'u8, 0]], registers(), credit)).value).value
+  let info = done.outcome.machine.machineInfo.value
+  assert uint64(info.registers[7]) == high(uint64)-1
+  assert uint64(info.gas) == (if credit < 10: 0'u64 else: credit-10)
+  assert done.outcome.exit == (if credit < 10: StepExit.OutOfGas else: StepExit.Halt)
 # Shared gas/heap primitives preserve adopted zero-deficit OOG, exact growth cost and local page capacity refusals.
 var regs = registers()
 let gasResult = run(prepare(cpu([@[10'u8, 0], @[50'u8, 0]], regs, 100)).value).value

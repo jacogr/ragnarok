@@ -102,12 +102,20 @@ for selector in [1'u64, 2, 3, 4, 5, 6, 14, 15, 16]:
     refinementImmediate(7, 196608), refinementImmediate(8, 8), halt]
   assert authorizationRun(authorizationFixture(code)).value.authorizationTrace.value ==
     @[255'u8, 255, 255, 255, 255, 255, 255, 255]
-for host in [7'u8, 8, 9, 13, 14, 15, 27, 99]:
-  let code = @[@[10'u8, host], @[62'u8, 7, 0, 0, 3, 0], refinementImmediate(7, 196608),
-    refinementImmediate(8, 8), halt]
+# JIP-1 shares WHAT with unknown calls but uses its explicitly adopted ten-gas price.
+for host in [7'u8, 8, 9, 13, 14, 15, 27, 99, 100]:
+  var code: seq[seq[byte]] = @[]
+  if host == 100:
+    # Emit a genuine authorizer message before preserving WHAT in its successful return buffer.
+    code = @[refinementImmediate(7, 2), refinementImmediate(8, 0), refinementImmediate(9, 0),
+      refinementImmediate(10, 196608), refinementImmediate(11, 3)]
+  for instruction in [@[10'u8, host], @[62'u8, 7, 0, 0, 3, 0], refinementImmediate(7, 196608),
+      refinementImmediate(8, 8), halt]:
+    code.add(instruction) # Keep the authored host and return suffix identical for every identifier.
   let source = authorizationFixture(code)
   let done = authorizationRun(source).value
-  check(done, WorkKind.Success, authorizationPrice(source)+1000)
+  let cost = if host == 100: 10'u64 else: 1000'u64
+  check(done, WorkKind.Success, authorizationPrice(source)+cost)
   assert done.authorizationTrace.value == @[254'u8, 255, 255, 255, 255, 255, 255, 255]
 # Heap geometry comes from the standard envelope, with exact adopted shared host pricing and local page refusal.
 let heapCode = @[refinementImmediate(7, 50), @[10'u8, 1], @[62'u8, 7, 0, 0, 3, 0],

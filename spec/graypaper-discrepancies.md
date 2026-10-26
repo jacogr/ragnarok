@@ -747,3 +747,14 @@ independent complete maps also cover restoration, live histories, panic rollback
 and checkpoint retention. See [the scoped contract and evidence](jam-network-fuzz.md#explicit-fuzz-expiry-and-central-parameters).
 This exception applies only to the selected Fuzz preset; it does not change GP checks
 for other profiles or establish live generated-campaign conformance.
+
+## Adopted JIP-1 gas exception — 2026-10-26
+
+[JIP-1](pvm-host-log.md) at `0bbe9dd4c61fbfea00e0a79ee57e4bd7f0406c92`
+assigns debug host 100 a literal cost of 10, describing that as equal to an unknown
+call. GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` instead charges unknown calls
+1000. The maintainer explicitly authorized implementing the JIP's literal cost
+with the logging extension; this is a scoped extension, not a change to unknown
+calls or an assertion that enabling logging preserves gas relative to an unextended
+node. Both paths return WHAT. `pvm_host_log` and all three invocation dispatch
+suites witness the selected behavior; see the feature contract for scope and checks.

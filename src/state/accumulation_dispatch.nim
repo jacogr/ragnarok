@@ -7,7 +7,7 @@
 ## Outcome normalization and state publication are separate operations.
 
 import ../chain/parameters
-import ../pvm/[machine, step, gas, host_gas, host_fetch, host_heap]
+import ../pvm/[machine, step, gas, host_gas, host_log, host_fetch, host_heap]
 import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
     state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances,
     c2_records, bounded]
@@ -1178,6 +1178,9 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   let cpu = machineInfo(stopped.machine).value
   let memory = memoryOf(stopped.machine).value
   case uint64(stopped.hostCall)
+  of 100:
+    # JIP-1 uses its explicitly adopted ten-gas price, independent of the GP unknown fallback.
+    hostSuccess[AccumulationDispatchError](logHostResponse(cpu.gas, cpu.registers, memory))
   of 0:
     # GP general gas call reports the credit after its own charge.
     hostSuccess[AccumulationDispatchError](gasHostResponse(cpu.gas, cpu.registers, memory))

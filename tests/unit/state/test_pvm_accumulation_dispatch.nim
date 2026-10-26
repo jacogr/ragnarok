@@ -43,8 +43,9 @@ for id in [7'u8, 8, 9, 10, 11, 12, 13, 14, 15, 30, 127, 255]:
   assert done.error == AccumulationDispatchError.None
   assert done.value.exit == StepExit.Halt
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == high(uint64)-1
-for id in [0'u8, 1, 2, 30, 255]:
-  let cost = (if id == 0: 48'u64 elif id == 1: 275'u64 elif id == 2: 390'u64 else: 1000'u64)
+for id in [0'u8, 1, 2, 30, 100, 255]:
+  let cost = (if id == 0: 48'u64 elif id == 1: 275'u64 elif id == 2: 390'u64 elif id ==
+      100: 10'u64 else: 1000'u64)
   let source = prepared(id)
   let initial = source.accumulationMachine.value
   let price = uint64(blockGas(programOf(initial).value, CodeAddress(5), GasCycleLimit(200)).value)
@@ -58,7 +59,7 @@ for id in [0'u8, 1, 2, 30, 255]:
       assert done.value.exit == StepExit.OutOfGas
       assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == 0
       assert uint64(cpu.pc) == 5
-      let expected = (if id == 30 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
+      let expected = (if id == 30 or id == 100 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
       assert uint64(cpu.registers[7]) == expected
     else:
       # Funded calls execute the prepaid return; zero requested bytes still returns parameter length.
