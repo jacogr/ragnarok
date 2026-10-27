@@ -1435,7 +1435,8 @@ proc tick*(services: var Services, peers: uint32) =
     if services.stateProofPhase != ProofWorkerPhase.Done:
       services.ui.tick()
       return # Poll synchronized scalars only while native generation owns the canonical graph.
-    let completion = services.collectStateProof(services.rpcProofTicket)
+    let ticket = services.rpcProofTicket # Retain the small host-only identity before mutable collection.
+    let completion = services.collectStateProof(ticket)
     services.finishRpcProof(completion) # Exact collection releases the lease before response serialization.
   if services.proofing or services.preparing:
     services.ui.tick()

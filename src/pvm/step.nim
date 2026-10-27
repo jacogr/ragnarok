@@ -906,7 +906,8 @@ proc decodeInstructionMiss(program: Program, address: CodeAddress,
         inc cache.misses # Saturating successful-miss progress never wraps with guest work.
       else:
         # Only sustained pressure pays one fixed allocation; the existing small-program path remains allocation-free.
-        let table = DecodedSpill(entries: default(array[16384, ProgramResult[Instruction]]))
+        var table: DecodedSpill
+        new(table) # Initialize the fixed table on the heap without a 1 MiB constructor temporary on the worker stack.
         for entry in cache.entries:
           if entry.error == ProgramError.None: rememberSpill(table, entry.value.address, entry)
         cache.spill = table
