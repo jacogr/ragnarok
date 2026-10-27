@@ -48,8 +48,8 @@ proc newArmJit*(): ArmJit =
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
-  opcode in {20'u8, 51, 100, 107..110, 131..135, 138..141, 149..154, 158, 160,
-      190..192, 197..202, 207..212, 222..226}
+  opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
+      190..192, 197..202, 207..217, 222..226}
 
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
@@ -108,7 +108,23 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     left = right
     right = original
   let destination = armWrite(fragment, slots.destinationIndex)
+  if opcode in {136'u8, 137, 142, 143, 216, 217}:
+    # CMP consumes both original operands before CSET zero-extends a literal Boolean into an aliased destination.
+    let condition = case opcode
+      of 136, 216: 3'u32  # LO: unsigned less.
+      of 137, 217: 11'u32 # LT: signed less.
+      of 142: 8'u32       # HI: unsigned greater.
+      else: 12'u32        # GT: signed greater.
+    fragment.words.add(0xeb00001f'u32 or (right shl 16) or (left shl 5))
+    fragment.words.add(0x1a9f07e0'u32 or ((condition xor 1'u32) shl 12) or destination)
+    return
+  if opcode == 215:
+    # Form sign(A)&B in scratch before UMULH can overwrite either source; mixed signedness subtracts this correction.
+    fragment.words.add(0x937ffc01'u32 or (left shl 5)) # ASR X1,Xn,#63.
+    fragment.words.add(0x8a000021'u32 or (right shl 16)) # AND X1,X1,Xm.
   let operation = case opcode
+    of 213: 0x9b407c00'u32      # SMULH Xd,Xn,Xm.
+    of 214, 215: 0x9bc07c00'u32 # UMULH Xd,Xn,Xm; mixed signedness corrects below.
     of 131, 190: 0x0b000000'u32 # ADD Wd,Wn,Wm
     of 141, 191: 0x4b000000'u32 # SUB Wd,Wn,Wm
     of 135, 192: 0x1b007c00'u32 # MUL Wd,Wn,Wm
@@ -130,6 +146,9 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     of 226: 0xca200000'u32      # EON Xd,Xn,Xm
     else: 0x8b000000'u32        # ADD Xd,Xn,Xm
   fragment.words.add(operation or (right shl 16) or (left shl 5) or destination)
+  if opcode == 215:
+    # The correction is already independent of aliased source registers; subtraction wraps to the exact upper word.
+    fragment.words.add(0xcb010000'u32 or (destination shl 5) or destination)
   if opcode in {131'u8, 135, 138..141, 160, 190..192, 197..199, 223}:
     # ARM word operations zero high bits; GP requires sign extension of the low 32-bit result.
     fragment.words.add(0x93407c00'u32 or (destination shl 5) or destination)

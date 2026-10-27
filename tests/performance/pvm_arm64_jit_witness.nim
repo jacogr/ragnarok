@@ -99,6 +99,211 @@ when defined(pvmArm64Jit):
       inc constantCases
   echo "ARM_CONSTANT_CASES,", constantCases
 
+  const highProducts = [
+    # Columns A,B,signed*signed,unsigned*unsigned,signed*unsigned were frozen from independent unbounded integers.
+    [0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0x7fffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0x8000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0x0000000100000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000000'u64, 0xdeadbeef12345678'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x7fffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x8000000000000000'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0xffffffffffffffff'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0x0000000100000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000001'u64, 0xdeadbeef12345678'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0x7fffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0x8000000000000000'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0x0000000000000001'u64],
+    [0x0000000000000002'u64, 0xffffffffffffffff'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0x0000000000000001'u64],
+    [0x0000000000000002'u64, 0x0000000100000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000000000002'u64, 0xdeadbeef12345678'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0x0000000000000001'u64],
+    [0x7fffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x7fffffffffffffff'u64, 0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x7fffffffffffffff'u64, 0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x7fffffffffffffff'u64, 0x7fffffffffffffff'u64, 0x3fffffffffffffff'u64, 0x3fffffffffffffff'u64,
+        0x3fffffffffffffff'u64],
+    [0x7fffffffffffffff'u64, 0x8000000000000000'u64, 0xc000000000000000'u64, 0x3fffffffffffffff'u64,
+        0x3fffffffffffffff'u64],
+    [0x7fffffffffffffff'u64, 0xffffffffffffffff'u64, 0xffffffffffffffff'u64, 0x7ffffffffffffffe'u64,
+        0x7ffffffffffffffe'u64],
+    [0x7fffffffffffffff'u64, 0x0000000100000001'u64, 0x0000000080000000'u64, 0x0000000080000000'u64,
+        0x0000000080000000'u64],
+    [0x7fffffffffffffff'u64, 0xdeadbeef12345678'u64, 0xef56df77891a2b3c'u64, 0x6f56df77891a2b3b'u64,
+        0x6f56df77891a2b3b'u64],
+    [0x8000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x8000000000000000'u64, 0x0000000000000001'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0xffffffffffffffff'u64],
+    [0x8000000000000000'u64, 0x0000000000000002'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0xffffffffffffffff'u64],
+    [0x8000000000000000'u64, 0x7fffffffffffffff'u64, 0xc000000000000000'u64, 0x3fffffffffffffff'u64,
+        0xc000000000000000'u64],
+    [0x8000000000000000'u64, 0x8000000000000000'u64, 0x4000000000000000'u64, 0x4000000000000000'u64,
+        0xc000000000000000'u64],
+    [0x8000000000000000'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64, 0x7fffffffffffffff'u64,
+        0x8000000000000000'u64],
+    [0x8000000000000000'u64, 0x0000000100000001'u64, 0xffffffff7fffffff'u64, 0x0000000080000000'u64,
+        0xffffffff7fffffff'u64],
+    [0x8000000000000000'u64, 0xdeadbeef12345678'u64, 0x10a9208876e5d4c4'u64, 0x6f56df77891a2b3c'u64,
+        0x90a9208876e5d4c4'u64],
+    [0xffffffffffffffff'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0xffffffffffffffff'u64, 0x0000000000000001'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0x0000000000000002'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0x7fffffffffffffff'u64, 0xffffffffffffffff'u64, 0x7ffffffffffffffe'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0x8000000000000000'u64, 0x0000000000000000'u64, 0x7fffffffffffffff'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64, 0xfffffffffffffffe'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0x0000000100000001'u64, 0xffffffffffffffff'u64, 0x0000000100000000'u64,
+        0xffffffffffffffff'u64],
+    [0xffffffffffffffff'u64, 0xdeadbeef12345678'u64, 0x0000000000000000'u64, 0xdeadbeef12345677'u64,
+        0xffffffffffffffff'u64],
+    [0x0000000100000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000100000001'u64, 0x0000000000000001'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000100000001'u64, 0x0000000000000002'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0x0000000100000001'u64, 0x7fffffffffffffff'u64, 0x0000000080000000'u64, 0x0000000080000000'u64,
+        0x0000000080000000'u64],
+    [0x0000000100000001'u64, 0x8000000000000000'u64, 0xffffffff7fffffff'u64, 0x0000000080000000'u64,
+        0x0000000080000000'u64],
+    [0x0000000100000001'u64, 0xffffffffffffffff'u64, 0xffffffffffffffff'u64, 0x0000000100000000'u64,
+        0x0000000100000000'u64],
+    [0x0000000100000001'u64, 0x0000000100000001'u64, 0x0000000000000001'u64, 0x0000000000000001'u64,
+        0x0000000000000001'u64],
+    [0x0000000100000001'u64, 0xdeadbeef12345678'u64, 0xffffffffdeadbeee'u64, 0x00000000deadbeef'u64,
+        0x00000000deadbeef'u64],
+    [0xdeadbeef12345678'u64, 0x0000000000000000'u64, 0x0000000000000000'u64, 0x0000000000000000'u64,
+        0x0000000000000000'u64],
+    [0xdeadbeef12345678'u64, 0x0000000000000001'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64,
+        0xffffffffffffffff'u64],
+    [0xdeadbeef12345678'u64, 0x0000000000000002'u64, 0xffffffffffffffff'u64, 0x0000000000000001'u64,
+        0xffffffffffffffff'u64],
+    [0xdeadbeef12345678'u64, 0x7fffffffffffffff'u64, 0xef56df77891a2b3c'u64, 0x6f56df77891a2b3b'u64,
+        0xef56df77891a2b3c'u64],
+    [0xdeadbeef12345678'u64, 0x8000000000000000'u64, 0x10a9208876e5d4c4'u64, 0x6f56df77891a2b3c'u64,
+        0xef56df77891a2b3c'u64],
+    [0xdeadbeef12345678'u64, 0xffffffffffffffff'u64, 0x0000000000000000'u64, 0xdeadbeef12345677'u64,
+        0xdeadbeef12345678'u64],
+    [0xdeadbeef12345678'u64, 0x0000000100000001'u64, 0xffffffffdeadbeee'u64, 0x00000000deadbeef'u64,
+        0xffffffffdeadbeee'u64],
+    [0xdeadbeef12345678'u64, 0xdeadbeef12345678'u64, 0x04564f341cb0720d'u64, 0xc1b1cd1241191efd'u64,
+        0xe3040e232ee4c885'u64],
+  ]
+  var highCases = 0
+  for opcode in 213'u8..217'u8:
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 1) == 0
+    for vector in highProducts:
+      for alias in [[0, 1, 2], [0, 1, 0], [0, 1, 1], [1, 0, 0], [1, 0, 1], [12, 12, 12]]:
+        # Distinct sources cover D=A/D=B and swapped coordinates; equal-source aliases use only equal-value vectors.
+        if alias[0] == alias[1] and vector[0] != vector[1]: continue
+        let source = owner([@[opcode, byte(alias[0]+alias[1]*16), byte(alias[2])], @[0'u8]])
+        let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+        var fragment = default(ArmBlock)
+        emitArmOperation(fragment, opcode, slots, 0)
+        var words = armInstructions(fragment)
+        let published = publishArmEntry(jit, 0, 1, 1, words)
+        when defined(pvmArm64JitRefuse):
+          assert not published
+        else:
+          assert published
+          var registers = default(RegisterFile)
+          for slot in 0..<13: registers[slot] = RegisterValue(0x55aa00ff12340000'u64+uint64(slot))
+          registers[slots.aIndex] = RegisterValue(vector[0])
+          registers[slots.bIndex] = RegisterValue(vector[1])
+          let original = registers
+          let expected = if opcode <= 215: vector[int(opcode)-211]
+            elif opcode == 216: uint64(vector[0] < vector[1])
+            else: uint64((vector[0] xor 0x8000000000000000'u64) < (vector[
+                1] xor 0x8000000000000000'u64))
+          assert callArmEntry(jit, 0, registers) == 1
+          for slot in 0..<13:
+            let wanted = if slot == int(slots.destinationIndex): RegisterValue(
+                expected) else: original[slot]
+            if registers[slot] != wanted:
+              echo "ARM_HIGH_MISMATCH,", opcode, ",", vector[0], ",", vector[1], ",", slot
+              assert false, "independent high-product/comparison value"
+        inc highCases
+  var compareCases = 0
+  for opcode in [136'u8, 137, 142, 143]:
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 1) == 0
+    for raw in [0'u32, 1, 2, 0x7fffffff'u32, 0x80000000'u32, 0xffffffff'u32]:
+      let immediate = uint64(raw) or (if (raw and 0x80000000'u32) !=
+          0: 0xffffffff00000000'u64 else: 0'u64)
+      for value in [0'u64, 1, 2, 0x7fffffff'u64, 0x80000000'u64, 0x7fffffffffffffff'u64,
+          0x8000000000000000'u64, 0xffffffff80000000'u64, high(uint64)]:
+        for alias in [false, true]:
+          # Decode all four immediate octets; write A may alias the original B input without retaining a stale flag/value.
+          var part = @[opcode, byte(if alias: 0x11 else: 0x12)]
+          for shift in 0..<4: part.add(byte((uint64(raw) shr (shift*8)) and 255))
+          let source = owner([part, @[0'u8]])
+          let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+          var fragment = default(ArmBlock)
+          emitArmOperation(fragment, opcode, slots, immediate)
+          var words = armInstructions(fragment)
+          let published = publishArmEntry(jit, 0, 1, 1, words)
+          when defined(pvmArm64JitRefuse):
+            assert not published
+          else:
+            assert published
+            var registers = default(RegisterFile)
+            for slot in 0..<13: registers[slot] = RegisterValue(high(uint64)-uint64(slot))
+            registers[slots.bIndex] = RegisterValue(value)
+            let original = registers
+            let left = if opcode in [137'u8, 143]: value xor 0x8000000000000000'u64 else: value
+            let right = if opcode in [137'u8, 143]: immediate xor 0x8000000000000000'u64 else: immediate
+            let expected = uint64(if opcode in [142'u8, 143]: left > right else: left < right)
+            assert callArmEntry(jit, 0, registers) == 1
+            for slot in 0..<13:
+              let wanted = if slot == int(slots.destinationIndex): RegisterValue(
+                  expected) else: original[slot]
+              assert registers[slot] == wanted, "independent immediate comparison and untouched registers"
+          inc compareCases
+  echo "ARM_HIGH_CASES,", highCases
+  echo "ARM_COMPARE_CASES,", compareCases
+
   var nativeCases = 0
   for opcode in 0..255:
     if not supportedArmOpcode(byte(opcode)): continue
@@ -546,6 +751,34 @@ when defined(pvmArm64Jit):
   assert flatArmStatistics(hostLoadFrame) == beforeUnmapping
 
 echo "ARM_HEAD_HOST_MAP,1"
+
+var registerBoundaryCases = 0
+for pattern in [0'u8, 17, 128, 255]:
+  var parts: seq[seq[byte]] = @[]
+  for opcode in [136'u8, 137, 142, 143, 213, 214, 215, 216, 217]:
+    # Interleave all new comparisons/products so resident results feed later aliases before a partial-prefix exit.
+    var part = @[opcode]
+    for position in 0..<24: part.add(pattern)
+    parts.add(part)
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  let plan = newFlatPlan(program, GasCycleLimit(100000))
+  var input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+  for slot in 0..<13: input.registers[slot] = RegisterValue(high(uint64)-uint64(
+      slot)*0x100000001'u64)
+  var frame = newFlatFrame(plan, [], input)
+  verifyControl(frame, program, input, 100)
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 8, 9, 10, 1000]:
+      for budget in 0'u64..11'u64:
+        # Every attempt boundary and exact whole-block price retains the independent single-step CPU/PC/gas result.
+        var bounded = input
+        bounded.gas = MachineGas(gas)
+        bounded.blockCharged = paid
+        verifyControl(frame, program, bounded, budget)
+        inc registerBoundaryCases
+  checkFlatSource(frame)
+echo "ARM_REGISTER_BOUNDARIES,", registerBoundaryCases
 
 var controlCases = 0
 # Both formerly excluded short suffixes and the accepted four-operation shape retain all boundary checks.

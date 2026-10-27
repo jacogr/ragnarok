@@ -835,3 +835,130 @@ The prior counts show 182,782 native returns to opcode136 and 105,420 to opcode2
 Those counts identify a boundary to investigate; they do not establish a prospective CPU gain.
 A future trial must preserve alias/signedness/budget witnesses and pass matched repeated public
 measurements before retention. No further lowering was mixed into this measurement increment.
+
+
+## Comparison and multiply-high native coverage: retained
+
+This isolated increment adds six pure comparison opcodes 136/137/142/143/216/217 and three
+upper-product opcodes 213/214/215, increasing native register coverage from 44 to 53 opcodes.
+The sixteen existing conditional branch opcodes are unchanged. Accepted parent:
+`c81bac056458f28b4249ba4ea4b2b6912b3050c8`. The matched-owner comparison protocol is used
+for both public JIT roles. No memory/host/source-attempt/pricing/ownership/ABI/cache-cap,
+default, CLI, CI or dependency changes. The rejected checked-load trial remains absent.
+
+Comparisons emit CMP followed by a zero-extending Boolean CSET. Signed and unsigned upper
+products use SMULH and UMULH. Signed-by-unsigned upper multiplication computes sign(A)&B
+before either source can be overwritten, then subtracts it from UMULH. The resident register
+file and dirty-slot publication remain unchanged; aliased operands retain pre-mutation values.
+Exact encodings were checked against the local assembler before qualification.
+
+Independent literal products were frozen from unbounded integer multiplication over 64 operand
+pairs, including zero, one, two, signed extrema, all ones, cross-halfword carries and mixed bits.
+The expected upper word is `(product >> 64) & (2^64-1)` with each input signed only for the
+selected operation. Sign-key ordering supplies independent comparison expectations. The witness
+checks 1,640 upper-product/register-comparison cases, 432 immediate comparisons, 2,120 cases
+over all 53 native register opcodes, and 576 new mixed source-budget/gas boundaries. Existing
+constant, branch-predicate, memory, host, source-owner, move/copy and 10,560 control cases remain.
+All of these pass on native and forced-storage-refusal paths on both macOS and Linux ARM64.
+
+### Retention verdict from repeated public calls
+
+Apple M1 Max, pinned October 26 Nimony 358b9bce, checked release/ARC/Clang ThinLTO.
+Five balanced ABBA blocks per workload supply ten independent processes per public JIT role.
+Each process checks 13 complete calls; reused medians exclude its cold first call. Our public
+calls include fresh invocation memory and immutable publication. No competing builds run in
+this timing phase. These are measured process CPU clocks; no hardware counters were collected.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.893 (2.856–2.919) | 2.913 (2.860–2.944) | 1.007 | 1.009, 1.005, 0.994, 1.021, 1.006 |
+| minimal 100000 | 4.955 (4.897–5.003) | 4.947 (4.903–5.045) | 0.998 | 1.002, 0.996, 1.010, 0.996, 1.003 |
+| memset 100000 | 3.627 (3.538–3.676) | 3.599 (3.554–3.683) | 0.993 | 1.016, 1.000, 0.996, 0.981, 0.982 |
+| pinky 1 | 77.946 (77.311–78.662) | 73.803 (73.118–75.417) | 0.947 | 0.947, 0.944, 0.945, 0.955, 0.948 |
+| sieve 10000000 | 273.494 (272.408–274.722) | 272.627 (271.198–277.806) | 0.997 | 1.001, 0.997, 0.994, 0.991, 1.008 |
+| init 0 | 321.082 (319.197–321.942) | 320.511 (318.085–323.026) | 0.998 | 0.999, 0.998, 0.998, 1.000, 1.005 |
+| tick 0 | 37.677 (37.501–38.165) | 37.555 (37.120–38.986) | 0.997 | 0.996, 0.995, 0.987, 0.992, 1.025 |
+
+Pinky improves about 5.3%: every block ratio is 0.944–0.955, and the ten-process ranges do not
+overlap. This is the useful retained gain. Other aggregate deltas remain within about 0.7%;
+short sieve is about 0.7% slower with overlapping ranges, so no material regression is established.
+The full ordinary cohort had an inconsistent Pinky reverse-order sample (73.896/80.674ms);
+the repeated process cohort, rather than a selected favorable sample, determines retention.
+No additional speed gain is claimed for sieve, minimal, fill or DOOM.
+
+### Same-cohort interpreter/reference comparison
+
+This separate full cohort preserves both process orders. CPU ms, forward / reverse. Reference
+raw calls exclude restoration and teardown; their separate DOOM lifecycle receipts are checked.
+Retained-core execution has a separate reset/publication scope. Ratios in this table use only
+this cohort; repeated-process timings above are never paired with these reference clocks.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.579 / 3.509 | 2.873 / 2.838 | 2.865 / 2.853 | 2.833 / 2.819 | 6.095 / 6.046 | 0.800 / 0.813 | 0.470 / 0.472 |
+| minimal 100000 | 5.056 / 4.971 | 4.987 / 4.965 | 5.062 / 4.951 | 4.971 / 4.911 | 6.094 / 6.045 | 1.001 / 0.996 | 0.831 / 0.819 |
+| memset 100000 | 4.503 / 4.470 | 3.628 / 3.555 | 3.590 / 3.602 | 2.821 / 2.821 | 4.045 / 4.030 | 0.797 / 0.806 | 0.887 / 0.894 |
+| pinky 1 | 87.542 / 86.228 | 77.306 / 78.925 | 73.896 / 80.674 | 73.976 / 74.007 | 95.863 / 95.865 | 0.844 / 0.936 | 0.771 / 0.842 |
+| sieve 10000000 | 340.553 / 343.040 | 278.419 / 281.200 | 280.389 / 281.896 | 293.880 / 297.598 | 372.663 / 370.728 | 0.823 / 0.822 | 0.752 / 0.760 |
+| init 0 | 325.083 / 325.586 | 320.377 / 321.908 | 319.843 / 323.312 | 323.724 / 323.074 | 684.298 / 681.603 | 0.984 / 0.993 | 0.467 / 0.474 |
+| tick 0 | 41.332 / 40.836 | 37.925 / 37.794 | 37.908 / 37.580 | 34.398 / 34.412 | 44.688 / 45.148 | 0.917 / 0.920 | 0.848 / 0.832 |
+
+### Constructor and cold costs
+
+CPU ms, forward / reverse. Owner constructors are outside public call clocks; cold calls
+include lazy preparation and native compilation/publication. These are individual first-call
+observations, not repeated cold-start performance claims.
+
+| Case | Parent constructor | New constructor | Parent cold call | New cold call |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.603 / 1.583 | 1.632 / 1.583 | 8.206 / 7.921 | 8.158 / 8.209 |
+| sieve 10000000 | 1.636 / 1.677 | 1.611 / 1.601 | 284.870 / 287.781 | 288.072 / 285.433 |
+| minimal 100000 | 0.011 / 0.010 | 0.011 / 0.011 | 4.969 / 5.067 | 5.115 / 5.008 |
+| memset 100000 | 0.052 / 0.053 | 0.051 / 0.054 | 5.108 / 4.739 | 5.122 / 5.009 |
+| pinky 1 | 0.465 / 0.547 | 0.483 / 0.514 | 80.148 / 88.113 | 76.734 / 76.746 |
+| init 0 | 7.928 / 8.128 | 7.779 / 7.805 | 340.126 / 343.801 | 338.637 / 342.243 |
+| tick 0 | 7.898 / 8.689 | 7.788 / 7.666 | 50.366 / 45.794 | 50.364 / 47.450 |
+
+### Native coverage and cache observations
+
+In the full cohort Pinky native fragments rise 514→518 and emitted bytes 44,092→47,884.
+Compiled guest operations over 13 calls rise137,037,306→165,076,876; native calls rise
+30,828,356→31,512,494 and checked direct-header entries 12,564,678→13,669,609. Conditional
+entry counts remain 21,030,402. Native compilation/publication CPU is 0.839/0.976ms at parent
+and 0.824/0.928ms in the trial. These are compiled guest-operation counts, not executed hardware
+instruction counts, and they do not establish a particular CPU mechanism for the timing gain.
+
+DOOM initialization still reaches the unchanged 1,024-fragment cap and uses checked fallback.
+Its emitted bytes change 79,904→82,664; compilation/publication is 3.917/3.856→4.018/3.844ms.
+Gameplay occupancy rises 720→736 fragments and 52,748→55,504 emitted bytes, with compilation
+1.204/1.244→1.331/1.209ms. Wider native coverage therefore costs some code bytes without a
+measured useful DOOM gain in this increment. The one-MiB arena and all resource ceilings remain.
+
+### Qualification and provenance
+
+Mac qualification passes nine native gates, 42 kernel processes/546 checked calls/63 controls/
+six fresh builds (three equal-image pairs), and 70 application/core/reference processes/910
+checked calls/115 controls/sixteen fresh builds (eight equal-image pairs). Independent re-parsing
+checks all 706 kernel and 710 application seals plus exact accepted-parent source identity.
+The repeated cohort adds 140 public processes/1,820 checked calls, bound to the full-cohort
+source/input/compiler/image seals. Six stable native-counter fields match within each of its 14
+workload/role groups across all ten processes. All full CPU/gas/register/page/permission/source
+snapshots and ordered host events remain checked.
+
+Fresh isolated Linux ARM64 Docker qualification also passes: nine shared gates with all expanded
+witnesses, four public builds, 14 processes/182 checked calls and 32 controls. Independent
+verification re-parses all calls, checks 2,863 staged source/fixture seals, executable hashes and
+the compiler binary against the official pinned Linux ARM64 archive. Linux container clocks
+remain diagnostic only. Image: `sha256:c945183d805785e5999a334bffb3b662f1930852a8639df1f48d53655681093b`.
+
+Receipts are under `build/pvm-arm64-jit/register-coverage`, the corresponding
+`build/tests/pvm-arm64-jit` and `build/tests/pvm-arm64-applications` reports, and
+`build/pvm-arm64-jit/linux`. The preceding A/A cohort moved to
+`build/pvm-arm64-jit/boundary-investigation/aa-applications`; earlier Linux evidence moved to
+`build/pvm-arm64-jit/register-coverage/prior-linux`. No originating native/benchmark failure
+required a production correction in this increment. The emitted implementation is retained in
+the existing draft for further local work; it is not a default or merge recommendation.
