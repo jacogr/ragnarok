@@ -177,8 +177,10 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     of 89, 175: 10'u32 # GE, signed greater or equal
     else: 12'u32       # GT, signed greater
                    # Comparison precedes scratch reuse; these instructions do not change NZCV. X0 is overwritten only after stores.
-  armImmediate(fragment.terminal, 1, uint64(yes))
-  armImmediate(fragment.terminal, 2, uint64(no))
+  fragment.terminal.add(0x52800001'u32 or ((yes and 65535) shl 5))
+  fragment.terminal.add(0x72a00001'u32 or ((yes shr 16) shl 5))
+  fragment.terminal.add(0x52800002'u32 or ((no and 65535) shl 5))
+  fragment.terminal.add(0x72a00002'u32 or ((no shr 16) shl 5))
   fragment.terminal.add(0x1a820020'u32 or (condition shl 12)) # CSEL W0,W1,W2,cond
 
 proc armInstructions*(fragment: ArmBlock): seq[uint32] =
