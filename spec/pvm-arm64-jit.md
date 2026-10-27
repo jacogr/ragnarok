@@ -730,3 +730,23 @@ full-reservation replay before unmapping. A compiler alias rejection was fixed b
 gas/register values before a mutable resume call. No runtime check was weakened. The next
 question is why retained-frame gains fail to survive public execution, before expanding memory
 lowering further.
+
+Measured/preserving trial commit: `c00821923bdf1ccb62dcfd7e45f1a0e031cfa942`. The subsequent restoration keeps the accepted
+runtime byte-identical to `95841b75`; the useful 4,800 memory boundary cases and host-map witness
+remain, with native-coverage expectations removed for the rejected shape.
+
+Constructor CPU and first-call CPU are separate from the reused table. CPU ms, forward / reverse.
+The first call includes lazy stream/native preparation and executable publication.
+
+| Case | Accepted constructor | Trial constructor | Accepted cold call | Trial cold call |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.627 / 1.597 | 1.676 / 1.611 | 7.815 / 7.782 | 8.191 / 7.815 |
+| sieve 10000000 | 1.623 / 1.565 | 1.619 / 1.629 | 277.546 / 277.738 | 278.607 / 281.328 |
+| minimal 100000 | 0.010 / 0.010 | 0.010 / 0.009 | 4.969 / 4.962 | 4.998 / 4.996 |
+| memset 100000 | 0.050 / 0.049 | 0.049 / 0.053 | 4.795 / 4.796 | 4.853 / 4.971 |
+| pinky 1 | 0.480 / 0.454 | 0.457 / 0.458 | 81.280 / 79.369 | 82.020 / 79.277 |
+| init 0 | 7.564 / 7.861 | 7.846 / 8.029 | 335.740 / 344.357 | 346.906 / 343.302 |
+| tick 0 | 7.580 / 7.600 | 7.622 / 7.934 | 46.685 / 46.234 | 45.834 / 49.033 |
+
+The retained expanded witness passes again on restored native and forced-storage-refusal builds.
+The accepted runtime and its prior macOS/Linux qualification remain unchanged.

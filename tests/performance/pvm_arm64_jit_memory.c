@@ -69,7 +69,6 @@ int main(void) {
     assert(pvm_arm64_arena_publish(NULL, words, 1) == -1);
     assert(pvm_arm64_arena_call(NULL, 0, registers) == 0);
     assert(pvm_arm64_arena_next(NULL, 0, registers) == UINT32_MAX);
-    assert(pvm_arm64_arena_load(NULL, 0, registers, registers) == 0);
     pvm_arm64_arena_destroy(NULL);
     for (unsigned cycle = 0; cycle < 1000; ++cycle) {
         /* Each mapping is retired before the next is created; successful calls borrow only registers. */
@@ -90,23 +89,6 @@ int main(void) {
         assert(pvm_arm64_arena_call(arena, 0, NULL) == 0);
         pvm_arm64_arena_destroy(arena);
     }
-    /* A second borrowed argument reaches the leaf without entering the executable arena's retained state. */
-    void *borrowing = pvm_arm64_arena_create();
-    assert(borrowing != NULL);
-    uint64_t word = UINT64_C(0x923456789abcdef0);
-    uint32_t loaded[] = { UINT32_C(0xf9400022), UINT32_C(0xf9000002),
-                          UINT32_C(0xd65f03c0) }; /* LDR X2,[X1]; STR X2,[X0]; RET */
-    assert(pvm_arm64_arena_publish(borrowing, loaded, 3) == 0);
-    assert(pvm_arm64_arena_load(borrowing, 0, registers, &word) == 1);
-    assert(registers[0] == word && word == UINT64_C(0x923456789abcdef0));
-    uint64_t replacement = UINT64_C(0x1234567890abcdef);
-    assert(pvm_arm64_arena_load(borrowing, 0, registers, &replacement) == 1);
-    assert(registers[0] == replacement && word == UINT64_C(0x923456789abcdef0));
-    assert(pvm_arm64_arena_load(borrowing, 1, registers, &word) == 0);
-    assert(pvm_arm64_arena_load(borrowing, 12, registers, &word) == 0);
-    assert(pvm_arm64_arena_load(borrowing, 0, NULL, &word) == 0);
-    assert(pvm_arm64_arena_load(borrowing, 0, registers, NULL) == 0);
-    pvm_arm64_arena_destroy(borrowing);
     /* Returning leaves preserve their scalar ABI; invalid offsets refuse before entering generated code. */
     void *continuation = pvm_arm64_arena_create();
     assert(continuation != NULL);

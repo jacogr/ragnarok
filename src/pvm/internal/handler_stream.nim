@@ -1467,39 +1467,6 @@ when defined(pvmArm64Jit):
     if jit != nil: return callArmEntry(jit, offset, f.info.registers)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
-  proc flatArmWord(f: var FlatFrame, address: uint64): nil pointer {.inline.} =
-    ## Mirror the complete canonical contiguous load admission; all other shapes use the original typed worker.
-    var endian = 1'u16
-    var tag = default(array[2, byte])
-    copyMem(addr tag[0], addr endian, 2)
-    if tag[0] != 1: return nil
-    if address >= 65536'u64 and address <= uint64(high(uint32))-8'u64:
-      if address >= f.stackBase:
-        let at = int(address-f.stackBase)
-        if f.stack.len >= 8 and at <= f.stack.len-8: return unsafeAddr f.stack[at]
-      elif address >= f.rwBase:
-        let at = int(address-f.rwBase)
-        if f.rw.len >= 8 and at <= f.rw.len-8: return unsafeAddr f.rw[at]
-      elif address >= f.roBase:
-        let at = int(address-f.roBase)
-        if f.ro.len >= 8 and at <= f.ro.len-8: return unsafeAddr f.ro[at]
-    nil
-
-  proc flatArmHeadLoad(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial reservations and refused/fragmented extents retain the original memory worker and exact fault ordering.
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if f.barrier != flatStop: return original(f, offset)
-    let args = f.arguments[int(offset)]
-    let address = (uint64(f.info.registers[args.slots.bIndex])+args.x) and 0xffffffff'u64
-    let word = flatArmWord(f, address)
-    if word == nil: return original(f, offset)
-    let jit = f.armJit
-    assert jit != nil
-    if jit != nil: return callArmHeadLoad(jit, offset, f.info.registers, word)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
   proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
     ## First execution retains original branch resolution; only subsequent positive cached capability enables promotion.
     if f.barrier != flatStop: return flatArmExecute(f, offset)
@@ -1573,14 +1540,6 @@ when defined(pvmArm64Jit):
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32
-    let head = f.plan.facts[int(f.sites[int(offset)])]
-    let operationNode = not (int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1])
-    let loading = operationNode and head.opcode == 130 and head.fallthrough and not head.ending
-    if loading:
-      # A single head load is admitted before any later native arithmetic; no failing access can bypass a prefix mutation.
-      emitArmHeadLoad(native, head.args.slots)
-      inc ending
-      inc count
     while int(ending) < f.handlers.len and count < 64:
       # Headers share their source site with the immediately following operation; never bypass charging.
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
@@ -1593,9 +1552,7 @@ when defined(pvmArm64Jit):
         f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
-    if (loading and (count < 4 or terminal in {81'u8..90'u8, 170'u8..175'u8})) or
-        (not loading and count < 4 and (count == 0 or terminal notin {81'u8..90'u8,
-            170'u8..175'u8})):
+    if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
       refuseArmEntry(jit, offset)
       return offset
     var words = armInstructions(native)
@@ -1603,8 +1560,8 @@ when defined(pvmArm64Jit):
     if not published: return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = if loading: flatArmHeadLoad
-      elif terminal in {81'u8..90'u8, 170'u8..175'u8}: flatArmPending else: flatArmExecute
+    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
+        170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =

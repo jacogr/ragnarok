@@ -382,7 +382,7 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot]
   checkFlatSource(frame)
   if images.len != 0:
-    # Load-only native work must preserve all private bytes and permission metadata, including inaccessible pages.
+    # Load-only work must preserve all private bytes and permission metadata, including inaccessible pages.
     let published = flatMemorySnapshot(frame)
     for image in images:
       let actual = pageImage(published, image.index)
@@ -439,8 +439,9 @@ for layout in 0..<8:
         when defined(pvmArm64JitRefuse):
           assert stats[2] == 0
         else:
-          if layout in [1, 2, 3, 4, 5, 6, 7]: assert stats[2] > 0
-      # Same-plan replacement and a transferred code owner must lend the new invocation's word, never a prior pointer.
+          # The rejected head-load leaf is absent; three trailing operations retain the accepted floor.
+          assert stats[2] == 0
+      # Same-plan replacement and a transferred stream must read the new invocation's word.
       var changed: seq[PageImage] = @[]
       for original in images:
         var image = original
@@ -499,7 +500,7 @@ for folded in [false, true]:
 
 echo "ARM_HEAD_LOAD_CASES,", loadCases
 
-# A host call changes the map before a static jump reuses the exact same native head-load entry.
+# A host call changes the map before a static jump revisits the same checked load.
 let loadLoop = owner([@[130'u8, 0x10, 0, 0, 0, 0], @[149'u8, 0x02, 1],
   @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[10'u8, 7],
   @[40'u8, 0xef, 0xff, 0xff, 0xff]])
@@ -524,7 +525,7 @@ verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 6, [secondWord])
 when defined(pvmArm64Jit):
   let partialLoadStats = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert partialLoadStats[2] == 0
-  else: assert partialLoadStats[1] == 1 and partialLoadStats[2] == 4
+  else: assert partialLoadStats[1] == 0 and partialLoadStats[2] == 0
 # Include the jump and the complete six-instruction target block, even though its host exit refunds the final jump.
 verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 7, [secondWord])
 assert hostLoadFrame.exit == StepExit.Host and flatHostStats(hostLoadFrame)[1] == 1
@@ -532,7 +533,7 @@ assert pageImage(originalHostMemory, PageIndex(16)).value.bytes == firstWord.byt
 when defined(pvmArm64Jit):
   let beforeUnmapping = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert beforeUnmapping[2] == 0
-  else: assert beforeUnmapping[0] == 1 and beforeUnmapping[1] == 2 and beforeUnmapping[2] == 8
+  else: assert beforeUnmapping[0] == 0 and beforeUnmapping[1] == 0 and beforeUnmapping[2] == 0
   discard observeFlatHostMemory(hostLoadFrame)
   let absentHostMemory = captureMemory([], PageLimit(2)).value
   let unmappedGas = hostLoadFrame.info.gas

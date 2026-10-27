@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Experimental leaf register compiler; checked handler-stream facts are the sole caller authority.
-## Generated code borrows invocation registers and optionally one checked word for the call; it owns no guest/source pointers.
+## Generated code borrows only thirteen invocation registers and owns no guest/source pointers.
 import std/assertions
 import ../[program, machine]
 
@@ -14,9 +14,6 @@ proc publishArena(arena: nil pointer, words: pointer,
     count: uint32): int32 {.cdecl, importc: "pvm_arm64_arena_publish", header: "arm64_memory.h".}
 proc callArena(arena: nil pointer, offset: uint32,
     registers: pointer): cint {.cdecl, importc: "pvm_arm64_arena_call", header: "arm64_memory.h".}
-
-proc loadArena(arena: nil pointer, offset: uint32, registers, word: pointer): cint
-    {.cdecl, importc: "pvm_arm64_arena_load", header: "arm64_memory.h".}
 
 proc nextArena(arena: nil pointer, offset: uint32,
     registers: pointer): uint32 {.cdecl, importc: "pvm_arm64_arena_next", header: "arm64_memory.h".}
@@ -72,12 +69,6 @@ proc armImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
   for half in 1..3:
     words.add(0xf2800000'u32 or (uint32(half) shl 21) or
         (uint32((value shr (half*16)) and 65535) shl 5) or destination)
-
-proc emitArmHeadLoad*(fragment: var ArmBlock, slots: RegisterSlots) =
-  ## A private head-load leaf receives a complete checked word in X1 before arithmetic scratch reuses it.
-  assert fragment.words.len == 0 and fragment.reads == 0 and fragment.writes == 0
-  let destination = armWrite(fragment, slots.aIndex)
-  fragment.words.add(0xf9400020'u32 or destination) # LDR Xd,[X1]; address/extent/permissions were checked in Nim.
 
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
@@ -224,18 +215,6 @@ proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): ui
   let entry = jit.entries[int(offset)]
   assert entry >= 2
   let completed = callArena(jit.arena.handle, entry-2, addr registers)
-  assert completed == 1
-  inc jit.calls
-  jit.operations+=uint64(jit.counts[int(offset)])
-  jit.ends[int(offset)]
-
-proc callArmHeadLoad*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
-    word: pointer): uint32 =
-  ## The word pointer is invocation-local and never enters retained compiler metadata or executable bytes.
-  assert sizeof(RegisterFile) == 104
-  let entry = jit.entries[int(offset)]
-  assert entry >= 2
-  let completed = loadArena(jit.arena.handle, entry-2, addr registers, word)
   assert completed == 1
   inc jit.calls
   jit.operations+=uint64(jit.counts[int(offset)])
