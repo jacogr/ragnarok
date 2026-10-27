@@ -63,12 +63,30 @@ proc armWrite(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   uint32(slot)+4
 
 proc armImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
-  ## Explicit halfwords preserve all immediate bits, without host signed conversions or shifts by the width.
+  ## Choose MOVZ or MOVN plus only differing halfwords; every sequence initializes all sixty-four bits.
   assert destination <= 16
-  words.add(0xd2800000'u32 or (uint32(value and 65535) shl 5) or destination)
-  for half in 1..3:
-    words.add(0xf2800000'u32 or (uint32(half) shl 21) or
-        (uint32((value shr (half*16)) and 65535) shl 5) or destination)
+  var zeroParts = 0
+  var oneParts = 0
+  for half in 0..<4:
+    # Counts bound the exact instruction costs of zero-filled and one-filled initial values.
+    let part = uint32((value shr (half*16)) and 65535)
+    if part != 0: inc zeroParts
+    if part != 65535: inc oneParts
+  let inverted = oneParts < zeroParts
+  let fill = if inverted: 65535'u32 else: 0'u32
+  var initialized = false
+  for half in 0..<4:
+    # The first changed halfword initializes every other halfword; later MOVK instructions preserve them.
+    let part = uint32((value shr (half*16)) and 65535)
+    if part == fill: continue
+    let operation = if initialized: 0xf2800000'u32
+      elif inverted: 0x92800000'u32 else: 0xd2800000'u32
+    let payload = if not initialized and inverted: part xor 65535'u32 else: part
+    words.add(operation or (uint32(half) shl 21) or (payload shl 5) or destination)
+    initialized = true
+  if not initialized:
+    # Zero and all-ones still require one defining instruction, regardless of the incoming host register.
+    words.add((if inverted: 0x92800000'u32 else: 0xd2800000'u32) or destination)
 
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
@@ -159,10 +177,8 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     of 89, 175: 10'u32 # GE, signed greater or equal
     else: 12'u32       # GT, signed greater
                    # Comparison precedes scratch reuse; these instructions do not change NZCV. X0 is overwritten only after stores.
-  fragment.terminal.add(0x52800001'u32 or ((yes and 65535) shl 5))
-  fragment.terminal.add(0x72a00001'u32 or ((yes shr 16) shl 5))
-  fragment.terminal.add(0x52800002'u32 or ((no and 65535) shl 5))
-  fragment.terminal.add(0x72a00002'u32 or ((no shr 16) shl 5))
+  armImmediate(fragment.terminal, 1, uint64(yes))
+  armImmediate(fragment.terminal, 2, uint64(no))
   fragment.terminal.add(0x1a820020'u32 or (condition shl 12)) # CSEL W0,W1,W2,cond
 
 proc armInstructions*(fragment: ArmBlock): seq[uint32] =

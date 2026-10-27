@@ -47,6 +47,61 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 
 
 when defined(pvmArm64Jit):
+  var constantCases = 0
+  for destination in 0..<13:
+    # Each original decoded destination exercises actual emitted code; constants include high-halfword and negative values.
+    var operand = @[20'u8, byte(destination)]
+    for padding in 0..<23: operand.add(0'u8)
+    let source = owner([operand, @[0'u8]])
+    let decoded = instruction(source, CodeAddress(0))
+    assert decoded.error == ProgramError.None, "constant decode"
+    let slots = instructionRegisters(decoded)
+    assert int(slots.destinationIndex) == destination, "constant decoded destination"
+    var constants = @[(0'u64, 2), (1'u64, 2), (65535'u64, 2), (65536'u64, 2),
+      (0x8000000000000000'u64, 2), (0x0000123400000000'u64, 2),
+      (0xffffffffffffffff'u64, 2), (0xfffffffffffffffe'u64, 2),
+      (0xffffffffffff1234'u64, 2), (0x1234ffffffffffff'u64, 2),
+      (0xffff0000ffff0000'u64, 3), (0x123456789abcdef0'u64, 5)]
+    for pattern in 0..<81:
+      # Enumerate every four-halfword mixture of zero, ones and a nontrivial value independently of emitter policy.
+      var digits = pattern
+      var value = 0'u64
+      for half in 0..<4:
+        let part = case digits mod 3
+          of 0: 0'u64
+          of 1: 65535'u64
+          else: 0x1234'u64
+        value = value or (part shl (half*16))
+        digits = digits div 3
+      constants.add((value, 0))
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 1) == 0, "constant entry admission"
+    for item in constants:
+      # Poison all incoming registers; the selected slot must be defined in full and every other slot preserved.
+      var fragment = default(ArmBlock)
+      emitArmOperation(fragment, 20, slots, item[0])
+      var words = armInstructions(fragment)
+      assert words.len >= 2 and words.len <= 5, "constant word extent"
+      if item[1] != 0 and words.len != item[1]:
+        echo "ARM_CONSTANT_LENGTH,", destination, ",", item[0], ",", words.len, ",", item[1]
+        assert false, "constant instruction count"
+      let published = publishArmEntry(jit, 0, 1, 1, words)
+      when defined(pvmArm64JitRefuse):
+        assert not published
+      else:
+        assert published, "constant publication"
+        var registers = default(RegisterFile)
+        for slot in 0..<13: registers[slot] = RegisterValue(high(uint64)-uint64(slot))
+        assert callArmEntry(jit, 0, registers) == 1, "constant continuation"
+        for slot in 0..<13:
+          let expected = RegisterValue(if slot == destination: item[0] else: high(uint64)-uint64(slot))
+          if registers[slot] != expected:
+            echo "ARM_CONSTANT_VALUE,", destination, ",", item[0], ",", slot, ",", uint64(registers[
+                slot]), ",", uint64(expected)
+            assert false, "native constant value"
+      inc constantCases
+  echo "ARM_CONSTANT_CASES,", constantCases
+
   var nativeCases = 0
   for opcode in 0..255:
     if not supportedArmOpcode(byte(opcode)): continue
