@@ -387,3 +387,30 @@ for address in [0'u64, 65535, 65536, 69631, 73727, 73728, 0xffffffff'u64]:
           inc memoryRegisterCases
 assert memoryRegisterCases == 1680
 echo "PASS checked store/register composition /1680 prefix and fault cases"
+
+# A large immutable source does not authorize whole-program preparation for a one-attempt adapter.
+var singleParts: seq[seq[byte]] = @[]
+for index in 0..<17000:
+  # Literal additions make every original opcode position genuine and keep the final suffix independent.
+  singleParts.add(@[149'u8, 17, 1])
+singleParts.add(@[0'u8])
+let singleOwner = owner(singleParts)
+var singleAdmission = prepareSingleFlatPlan(singleOwner, CodeAddress(48000), GasCycleLimit(0))
+assert singleAdmission.error == FlatError.None
+let singlePlan = takeValue(singleAdmission)
+assert planFacts(singlePlan) == 1
+var singleCpu = default(MachineInfo)
+singleCpu.pc = CodeAddress(48000)
+singleCpu.gas = MachineGas(0)
+singleCpu.blockCharged = true
+singleCpu.registers[1] = RegisterValue(40)
+let singleMemory = captureMemory([], PageLimit(0)).value
+let singleSource = captureMachine(singleOwner, singleMemory, singleCpu).value
+let singleAnswer = stepOnce(singleSource, GasCycleLimit(0))
+assert singleAnswer.error == StepError.None and singleAnswer.value.exit == StepExit.Continued
+var singleExpected = singleCpu
+singleExpected.pc = CodeAddress(48003)
+singleExpected.registers[1] = RegisterValue(41)
+sameCpu(machineInfo(singleAnswer.value.machine).value, singleExpected)
+sameCpu(machineInfo(singleSource).value, singleCpu)
+echo "PASS bounded single-step /17001 instruction source /one admitted fact /prepaid interior /immutable source"

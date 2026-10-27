@@ -5,3 +5,4 @@ PASS charged cycles /12096cases / concrete rotations-wrong edges-two-block exits
 PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas
 PASS sealed source counts /3456interior suffix cases / containing-block gas distinct from entered source count
 PASS checked store/register composition /1680 prefix and fault cases
+PASS bounded single-step /17001 instruction source /one admitted fact /prepaid interior /immutable source

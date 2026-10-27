@@ -424,6 +424,29 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, memo: GasMemo): St
     return StepResult(status: StepError.InvalidGasMemo)
   executePolicy(source, stepLimit, settings.value.cycleLimit, memo = memo)
 
+proc runSingleStep(source: Machine, cycles: GasCycleLimit, plan: GasPlan): StepResult =
+  ## A one-instruction adapter owns no whole-program preparation and shares every checked mutation worker.
+  var cpu = default(MachineInfo)
+  var owner = default(Program)
+  var memory = default(Memory)
+  let valid = sourceInfo(source, cpu, owner, memory)
+  if valid != StepError.None: return StepResult(status: valid)
+  var prepared = prepareSingleFlatPlan(owner, cpu.pc, cycles)
+  if prepared.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
+  let admitted = takeValue(prepared)
+  var created = prepareFlatMemoryFrame(admitted, memory, cpu)
+  if created.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
+  var frame = takeValue(created)
+  let policy = selectFlatPrices(frame, plan, default(GasMemo))
+  if policy != StepError.None: return StepResult(status: policy)
+  runFlatSingle(frame)
+  if frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
+    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.OutOfGas,
+        machine: source))
+  if frame.reason != StepError.None and frame.reason != StepError.StepLimitExceeded:
+    return StepResult(status: frame.reason)
+  publishFrame(frame, owner, true, cpu.pc)
+
 proc scopedStep(source: Machine, cycles: GasCycleLimit, scope: range[0..3],
     plan: GasPlan = default(GasPlan)): StepResult =
   ## Capability refusal precedes affordability; actual instruction mutation always uses the one stream engine.
@@ -438,7 +461,7 @@ proc scopedStep(source: Machine, cycles: GasCycleLimit, scope: range[0..3],
   if category == '-' or (category in {'c', 'u'} and scope < 1) or (category == 'm' and scope < 2) or
       (category == 'h' and scope < 3):
     return StepResult(status: StepError.UnsupportedInstruction)
-  executePolicy(source, ExecutionStepLimit(1), cycles, plan, single = true)
+  runSingleStep(source, cycles, plan)
 
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Evaluate one permitted register instruction with the shared checked engine.

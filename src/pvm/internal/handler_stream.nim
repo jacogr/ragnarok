@@ -48,6 +48,7 @@ type
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
     limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
+    singleStep: bool   # A bounded adapter plan owns one instruction and never enters whole-program emission.
   FlatRegion = ref object ## Additional fragmented regions retain private bytes and immutable access metadata.
     first: uint64
     access: PageAccess
@@ -691,7 +692,7 @@ proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
     f.info.registers[a.slots.aIndex] = RegisterValue(a.x)
   flatStopExit(f, off, oracle.StepExit.Panic)
 
-proc flatDynamic[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
+proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off: uint32): uint32 =
   ## Full sentinel/alignment/table membership rules match our control worker, with predecoded dense target facts.
   let a = f.arguments[int(off)]
   let base = when Code == 50: uint64(f.info.registers[a.slots.aIndex]) else: uint64(
@@ -707,8 +708,18 @@ proc flatDynamic[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   if (known shr 32) == index+1:
     f.info.blockCharged = false
     return uint32(known and 0xffffffff'u64)-1
-  if index >= uint64(f.plan.jumps.len): return flatStopExit(f, off, oracle.StepExit.Panic)
-  let target = f.plan.jumps[int(index)]
+  var target = FlatTarget(pc: 0, valid: false)
+  when Single:
+    # A single instruction checks only its chosen original table ordinal; it never decodes the full table.
+    let found = jumpTarget(f.plan.source, JumpIndex(index))
+    if found.error != ProgramError.None: return flatStopExit(f, off, oracle.StepExit.Panic)
+    let starts = basicBlockStart(f.plan.source, found.value)
+    target = FlatTarget(pc: uint32(uint64(found.value) and 0xffffffff'u64),
+      valid: starts.error == ProgramError.None and starts.value)
+  else:
+    # Ordinary prepared execution retains the qualified dense-table lookup without a runtime mode branch.
+    if index >= uint64(f.plan.jumps.len): return flatStopExit(f, off, oracle.StepExit.Panic)
+    target = f.plan.jumps[int(index)]
   if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
   if resolved == flatStop: return flatResolutionFailure(f, off)
@@ -748,7 +759,7 @@ func flatHandler(code: byte, valid, fallthrough: bool): nil FlatHandler {.inline
   of 32: flatMemory[4, false, false, false, true]
   of 33: flatMemory[8, false, false, false, true]
   of 40: (if valid: flatJump[40] else: flatBadControl[40])
-  of 50: flatDynamic[50]
+  of 50: flatDynamic[50, false]
   of 51: flatRegister[51]
   of 52: flatMemory[1, true, false, false, false]
   of 53: flatMemory[1, true, true, false, false]
@@ -835,7 +846,7 @@ func flatHandler(code: byte, valid, fallthrough: bool): nil FlatHandler {.inline
   of 173: (if valid and fallthrough: flatUnresolvedBranch[173] else: flatBadControl[173])
   of 174: (if valid and fallthrough: flatUnresolvedBranch[174] else: flatBadControl[174])
   of 175: (if valid and fallthrough: flatUnresolvedBranch[175] else: flatBadControl[175])
-  of 180: flatDynamic[180]
+  of 180: flatDynamic[180, false]
   of 190: flatRegister[190]
   of 191: flatRegister[191]
   of 192: flatRegister[192]
@@ -1004,6 +1015,30 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 130: flatMemoryPair[8, true, false, true, false]
   else: nil
 
+proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact =
+  ## Seal genuine operands once for either admission path; extracted mutable instructions cannot grant target facts.
+  assert decoded.error == ProgramError.None
+  let item = decoded.value
+  let pc = uint64(item.address)
+  assert pc <= uint64(high(uint32))-25
+  let next = pc+1+uint64(item.skip)
+  var target = 0'u64
+  if item.opcode == 1: target = next
+  elif item.displacement < 0:
+    if uint64(-item.displacement) <= pc: target = pc-uint64(-item.displacement)
+  else: target = pc+uint64(item.displacement)
+  let valid = instructionTargetStartsBlock(decoded)
+  let fallthrough = instructionHasFallthrough(decoded)
+  var args = FlatArgs(x: uint64(item.x), y: uint32(uint64(item.y) and 0xffffffff'u64),
+      slots: instructionRegisters(decoded))
+  if item.opcode in {1'u8, 40'u8, 80'u8}: args.y = uint32(target and 0xffffffff'u64)
+  elif item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
+    args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
+    args.y = uint32(next)
+  FlatFact(args: args, handler: flatHandler(item.opcode, valid, fallthrough),
+    pc: uint32(pc), next: uint32(next), sourceCount: 0, priceIndex: priceIndex,
+    opcode: item.opcode, ending: terminatesBlock(item.opcode), fallthrough: fallthrough)
+
 proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits): FlatResult[FlatPlan] =
   ## Capture genuine complete instruction facts and containing-block pricing inputs before execution, preserving the explicit preparation boundary.
   if not validFlatLimits(limits): return FlatResult[FlatPlan](status: FlatError.InvalidPolicy)
@@ -1017,7 +1052,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
   var owner = FlatPlan(source: source, limits: limits, facts: @[], factAt: newSeq[int](int(
       extent.value)), pricePcs: @[
-    ], cycles: cycles, jumps: @[])
+    ], cycles: cycles, jumps: @[], singleStep: false)
   for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
@@ -1034,25 +1069,10 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     if begins.value:
       priceIndex = uint32(owner.pricePcs.len)
       owner.pricePcs.add(item.address)
-    let next = pc+1+uint64(item.skip)
-    var target = 0'u64
-    if item.opcode == 1: target = next
-    elif item.displacement < 0:
-      if uint64(-item.displacement) <= pc: target = pc-uint64(-item.displacement)
-    else: target = pc+uint64(item.displacement)
-    let valid = instructionTargetStartsBlock(decoded)
-    let fallthrough = instructionHasFallthrough(decoded)
-    var args = FlatArgs(x: uint64(item.x), y: uint32(uint64(item.y) and 0xffffffff'u64),
-        slots: instructionRegisters(decoded))
-    if item.opcode in {1'u8, 40'u8, 80'u8}: args.y = uint32(target and 0xffffffff'u64)
-    elif item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
-      args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
-      args.y = uint32(next)
+    let fact = flatFact(decoded, priceIndex)
     owner.factAt[int(pc)] = owner.facts.len
-    owner.facts.add(FlatFact(args: args, handler: flatHandler(item.opcode, valid, fallthrough),
-      pc: uint32(pc), next: uint32(next), sourceCount: 0, priceIndex: priceIndex,
-      opcode: item.opcode, ending: terminatesBlock(item.opcode), fallthrough: fallthrough))
-    pc = next
+    owner.facts.add(fact)
+    pc = uint64(fact.next)
   var count = 0'u32
   var nodes = 0'u32
   var at = owner.facts.len
@@ -1079,6 +1099,27 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     inc ordinal
 
   FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+
+proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
+    cycles: GasCycleLimit): FlatResult[FlatPlan] =
+  ## Admit exactly one genuine instruction; ordinary source/profile checks precede any mutable frame allocation.
+  let limits = defaultFlatLimits()
+  let extent = codeLength(source)
+  if extent.error != ProgramError.None: return FlatResult[FlatPlan](
+      status: FlatError.InvalidProgram)
+  if extent.value > uint64(limits.codeBytes): return FlatResult[FlatPlan](
+      status: FlatError.CodeLimitExceeded)
+  let decoded = instruction(source, pc)
+  if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
+      status: FlatError.InvalidProgram)
+  var fact = flatFact(decoded, 0)
+  fact.sourceCount = 1
+  fact.nodeCount = 1
+  if fact.opcode == 50: fact.handler = flatDynamic[50, true]
+  elif fact.opcode == 180: fact.handler = flatDynamic[180, true]
+  FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
+    facts: @[fact], factAt: @[], pricePcs: @[], cycles: cycles, jumps: @[], limits: limits,
+    singleStep: true))
 
 proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
   ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
@@ -1129,9 +1170,27 @@ proc flatMemoCharge(f: var FlatFrame, off: uint32): uint32 =
     f.handlers[int(off)] = flatCharge
   flatCharge(f, off)
 
+proc flatSingleEnd(f: var FlatFrame, off: uint32): uint32 =
+  ## A scalar successor publishes one completed source attempt without preparing its destination block.
+  f.info.pc = CodeAddress(f.arguments[int(off)].x)
+  f.reason = oracle.StepError.StepLimitExceeded
+  f.stoppedAt = off
+  f.attemptedExit = false
+  flatStop
+
+proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
+  ## At most two conditional arms add endpoint nodes; the same genuine target checks precede transfer.
+  let decoded = instruction(f.plan.source, CodeAddress(uint64(pc)))
+  if decoded.error != ProgramError.None: return flatStop
+  assert f.handlers.len < 5
+  let offset = uint32(f.handlers.len)
+  flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(pc), y: 0, slots: default(RegisterSlots)), 0)
+  offset
+
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## A dense positive map and monotone stream preserve stable offset links; interior resume creates a prepaid suffix header once.
   if f.preparationFailure != FlatError.None: return flatStop
+  if f.plan.singleStep: return flatSingleResolve(f, pc)
   if uint64(pc) >= uint64(f.plan.factAt.len): return flatStop
   if f.compiledForPc.len > 0:
     let packed = f.compiledForPc[int(pc)]
@@ -1353,6 +1412,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if f.plan == nil:
     f.reason = oracle.StepError.InvalidMachine
     return
+  if f.plan.singleStep:
+    # Bounded adapter plans carry no whole-program maps and cannot authorize an ordinary invocation.
+    f.reason = oracle.StepError.InvalidPreparedProgram
+    return
   if f.preparationFailure != FlatError.None:
     f.reason = oracle.StepError.InvalidPreparedProgram
     return
@@ -1375,6 +1438,36 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     let sourceFact = f.sites[int(f.stoppedAt)]
     if f.reservationEnd > sourceFact+1:
       f.remaining+=uint64(f.reservationEnd-sourceFact-1)
+
+proc runFlatSingle*(f: var FlatFrame) =
+  ## Reuse the ordinary charge and opcode workers with one source fact and scalar successor endpoints.
+  assert f.plan.singleStep and f.plan.facts.len == 1
+  assert f.handlers.len == 0 and f.arguments.len == 0 and f.sites.len == 0
+  f.remaining = 1
+  f.reason = oracle.StepError.None
+  f.exit = oracle.StepExit.Continued
+  let fact = f.plan.facts[0]
+  var cost = 0'u64
+  if not f.info.blockCharged:
+    # Prepaid stepping does not query an unused price; unpaid entry still charges the genuine containing block.
+    let start = containingBlockStart(f.plan.source, CodeAddress(uint64(fact.pc)))
+    if start.error != ProgramError.None:
+      f.reason = oracle.StepError.InvalidMachine
+      return
+    let priced = flatPrice(f, start.value, cost)
+    if priced != oracle.StepError.None:
+      f.reason = priced
+      return
+  flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0)
+  let selected = fact.handler
+  assert selected != nil
+  if selected != nil: flatEmit(f, selected, fact.args, 0)
+  flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(fact.next), y: 0, slots: default(RegisterSlots)), 0)
+  var offset = 0'u32
+  while offset != flatStop:
+    assert int(offset) < f.handlers.len
+    let handler = f.handlers[int(offset)]
+    offset = handler(f, offset)
 
 proc flatPublishMemory(f: FlatFrame, keepChanges: bool): FlatPublication =
   ## Reuse genuine immutable source pages; changed writable pages publish copied bytes, never private buffer aliases.

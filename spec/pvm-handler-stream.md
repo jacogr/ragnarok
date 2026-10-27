@@ -144,3 +144,45 @@ PVM Sanitizers is a family of the existing Unit matrix, alongside native suite a
 partitions. The shared Unit aggregate requires every family, and the same matrix artifact
 retains sanitizer calibration, source/image identities and ARC evidence. There is no separate
 sanitizer job when Unit is not requested. The scheduling and refusal safeguards pass locally.
+
+## Bounded single-instruction adaptation
+
+Linux Unit qualification exposed a genuine integration cost: the large execution-cache witness
+stepped a long program instruction by instruction, and the adapter re-admitted the complete source
+on every attempt. The unchanged 180-second codec deadline expired. This is not treated as a runner
+failure, and neither the witness nor its deadline is reduced.
+
+Scoped stepping now seals one genuine instruction into a private adapter plan. It uses the same
+charge, arithmetic, comparison, checked-memory, static-control and host workers as ordinary
+execution. Dynamic control specializes that same worker to query the selected original table
+ordinal instead of preparing the full table. Scalar successor nodes end the one-attempt call;
+no successor block is prepared or executed. The ordinary executor explicitly rejects adapter
+plans. Prepaid stepping skips unused pricing, while unpaid entry still prices its whole genuine
+containing block. Exact source ownership, capability-before-affordability, gas, faults and Psi_1
+exit-PC rules remain unchanged. There is no second opcode evaluator or global cache.
+
+A source with 17,001 instructions admits exactly one fact for a prepaid interior step, checks the
+posterior PC/registers and retains the unchanged source. The original large execution-cache suite
+and its 1,000-cycle ARC observation pass locally. Eleven selected native suites, all 19 calibrated
+sanitizer suites plus three controls, pinned formatting and the production smoke graph pass on
+this bounded-step implementation. Exact-head Linux qualification remains required.
+
+## Integrated public API checkpoint and merge hold
+
+[Run 40460762602](https://github.com/jacogr/ragnarok/actions/runs/40460762602) at
+`f881eca200d045884dfe2c8772bd7d7fc19e91ef` measured the public host API on AMD EPYC 9V74.
+Complete CPU/gas/memory/permissions/source snapshots and ordered host output pass, along with
+all six refusal controls and the golden frame after 1,320 warmup ticks. Reused CPU medians in
+forward/reverse process orders are initialization 441.529/443.947 ms versus PolkaVM interpreted
+668.540/664.740 ms, and gameplay 55.215/54.919 ms versus 34.820/34.776 ms. The implementation
+is unchanged between this measured cleanup head and its pre-cleanup integration parent. These
+figures do not measure the later bounded-step change.
+
+This confirms an integration gap: ordinary public calls reconstruct source facts, stream and
+private memory. A local ARM64 same-binary diagnostic in both process orders measures public
+planned sieve at 5.211/5.229 ms and public prepared-owner reuse at 3.853/3.830 ms. Those are local
+diagnostic figures, not Linux measurements. Public prepared execution still constructs private
+invocation memory and performs immutable publication; it must not be equated with core retained-
+frame timing. The merge hold remains until public execution costs and Linux native qualification
+are satisfactory. Next measurement must compare ordinary and prepared public APIs, retained core,
+exact master and interpreted reference on the same runner, including cold and constructor costs.
