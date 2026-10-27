@@ -55,7 +55,7 @@ def qualify(checks, compiler):
         ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',checks.folder/'memory-check'],'memory-build')
     if memory['exit_code']: raise RuntimeError(memory['output'])
     memory = checks.command([checks.folder/'memory-check'],'memory-run')
-    if memory['exit_code'] or memory['output'] != 'ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64,sealed-entries\n':
+    if memory['exit_code'] or memory['output'] != 'ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n':
         raise ValueError('Executable storage controls failed')
     rows.append(memory)
     for name,source,defines in (

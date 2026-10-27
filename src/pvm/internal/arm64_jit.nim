@@ -12,16 +12,14 @@ proc destroyArena(arena: nil pointer) {.cdecl, importc: "pvm_arm64_arena_destroy
     header: "arm64_memory.h".}
 proc publishArena(arena: nil pointer, words: pointer,
     count: uint32): int32 {.cdecl, importc: "pvm_arm64_arena_publish", header: "arm64_memory.h".}
-proc baseArena(arena: nil pointer): nil pointer {.cdecl, importc: "pvm_arm64_arena_base",
-    header: "arm64_memory.h".}
-proc sealArena(arena, base: nil pointer, offset: uint32): cint {.cdecl,
-    importc: "pvm_arm64_arena_seal", header: "arm64_memory.h".}
-proc callSealed(base: nil pointer, offset: uint32,
-    registers: pointer): cint {.cdecl, importc: "pvm_arm64_entry_call", header: "arm64_memory.h".}
-proc nextSealed(base: nil pointer, offset: uint32,
-    registers: pointer): uint32 {.cdecl, importc: "pvm_arm64_entry_next", header: "arm64_memory.h".}
-proc regionSealed(base: nil pointer, offset: uint32, registers, state: pointer): uint32 {.cdecl,
-    importc: "pvm_arm64_entry_region", header: "arm64_memory.h".}
+proc callArena(arena: nil pointer, offset: uint32,
+    registers: pointer): cint {.cdecl, importc: "pvm_arm64_arena_call", header: "arm64_memory.h".}
+
+proc nextArena(arena: nil pointer, offset: uint32,
+    registers: pointer): uint32 {.cdecl, importc: "pvm_arm64_arena_next", header: "arm64_memory.h".}
+
+proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer): uint32 {.cdecl,
+    importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
 
 type
   ArmEntryRecord = object ## One scalar record binds a published code offset to its hot operation count and cold successor.
@@ -34,8 +32,8 @@ type
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
-  ArenaOwner = object ## Move-only OS handle owns a fixed mapping; base is its private non-owning view.
-    handle, base: nil pointer
+  ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
+    handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
     arena: ArenaOwner
     region: ArmRegionCache
@@ -59,7 +57,7 @@ proc newArmJit*(): ArmJit =
   ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
-  ArmJit(arena: ArenaOwner(handle: nil, base: nil), region: default(ArmRegionCache), entries: @[])
+  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[])
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -232,21 +230,10 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
   if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
     refuseArmEntry(jit, offset)
     return false
-  if jit.arena.handle == nil:
-    # Capture both fields before publishing an entry; the exclusive parent moves and destroys this owner as one value.
-    let handle = createArena()
-    let base = baseArena(handle)
-    jit.arena.handle = handle
-    jit.arena.base = base
+  if jit.arena.handle == nil: jit.arena.handle = createArena()
   instructions.add(0xd65f03c0'u32) # RET; the leaf never changes SP, LR or any callee-saved register.
   let address = publishArena(jit.arena.handle, addr instructions[0], uint32(instructions.len))
   if address < 0:
-    refuseArmEntry(jit, offset)
-    return false
-  # Successful publication and sealing bind this immutable relative offset to the same fixed owned executable base.
-  let sealed = sealArena(jit.arena.handle, jit.arena.base, uint32(address))
-  assert sealed == 1
-  if sealed != 1:
     refuseArmEntry(jit, offset)
     return false
   jit.entries[int(offset)] = ArmEntryRecord(code: uint32(address)+2, operations: count,
@@ -261,7 +248,7 @@ proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): ui
   # A deliberate twelve-byte value copy keeps immutable facts stable without retaining a view across the native call.
   let entry = jit.entries[int(offset)]
   assert entry.code >= 2
-  let completed = callSealed(jit.arena.base, entry.code-2, addr registers)
+  let completed = callArena(jit.arena.handle, entry.code-2, addr registers)
   assert completed == 1
   inc jit.calls
   jit.operations+=uint64(entry.operations)
@@ -277,7 +264,7 @@ proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): u
   # A deliberate twelve-byte value copy keeps immutable facts stable without retaining a view across the native call.
   let entry = jit.entries[int(offset)]
   assert entry.code >= 2
-  result = nextSealed(jit.arena.base, entry.code-2, addr registers)
+  result = nextArena(jit.arena.handle, entry.code-2, addr registers)
   inc jit.calls
   inc jit.branchCalls
   jit.operations+=uint64(entry.operations)
@@ -435,7 +422,7 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
   let available = state[1]
   let gas = state[0]
   assert state[2] == 0 and state[3] == 0 and state[4] == 0
-  let destination = regionSealed(jit.arena.base, entry.code-2, addr registers, addr state)
+  let destination = regionArena(jit.arena.handle, entry.code-2, addr registers, addr state)
   assert state[1] <= available and state[0] <= gas
   let consumed = available-state[1]
   var accounted = 0'u64

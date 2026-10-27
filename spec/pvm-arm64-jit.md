@@ -1717,3 +1717,23 @@ the remaining runtime experiment; unchanged tests need not be duplicated while i
 Evidence:`build/pvm-arm64-jit/master-reconciliation/identity.json`,full failed Python logs/report
 and focused`nimony-ci.log`. Previously qualified runtime measurements remain tied to their
 preserved exact heads; forthcoming comparisons use the reconciled source/tooling cohort.
+
+## Rejected publication-sealed entries
+
+Measured prototype `5297454368aedb33411246eef1fd230c16913d9a` against maintenance-reconciled accepted parent `be50dad1567d87bf81684924f8db5cc3348ad5a0`. A private fixed arena-base borrow and cold owner/range/alignment seal moved immutable offset validation out of native calls. Records remained12 bytes; code, counters, guest checks and source/budget semantics were unchanged. The raw C/Nim prototype and controls remain in that commit.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.643 (2.626–2.693) | 2.649 (2.639–2.689) | 1.003 | 1.014, 1.002, 0.992, 1.004, 0.995 |
+| minimal 100000 | 4.928 (4.862–5.032) | 4.964 (4.901–5.061) | 1.007 | 1.000, 1.000, 1.019, 1.003, 1.014 |
+| memset 100000 | 3.382 (3.361–3.538) | 3.319 (3.293–3.791) | 0.981 | 0.960, 0.996, 1.034, 0.980, 0.960 |
+| pinky 1 | 70.209 (69.883–71.133) | 70.036 (69.830–70.785) | 0.998 | 1.000, 0.998, 1.000, 0.995, 0.999 |
+| sieve 10000000 | 258.569 (256.775–259.290) | 257.302 (256.627–262.444) | 0.995 | 0.999, 0.995, 1.004, 1.003, 1.001 |
+| init 0 | 211.277 (209.260–217.561) | 211.694 (210.000–214.431) | 1.002 | 0.996, 1.006, 1.007, 0.990, 0.999 |
+| tick 0 | 36.788 (36.556–37.340) | 36.543 (36.424–36.697) | 0.993 | 0.991, 0.997, 0.994, 0.997, 0.986 |
+
+Verdict:reject and restore the five isolated runtime/control/helper files byte-for-byte from the accepted parent. Public sieve/Pinky are effectively flat; fill's1.9% median improvement is inconsistent across balanced blocks and overlaps substantially; gameplay improves0.7% with overlapping ranges. Retained-core sieve regresses3.2% in both orders. This does not justify expanding the private entry/lifetime machinery. Counts alone do not identify a CPU cause. All seven workload groups have identical native operation/call/length counts across both versions.
+
+Mac correctness:all nine native gates,1,000 executable-storage lifetimes and new owner/base/alignment/append/full-arena controls passed. Kernel42processes/546calls/63controls/6fresh builds/3equal-image pairs; public70/910/115/16/8; another140balanced public processes/1,820calls. Independent706/710sealed identities, raw logs, exact parent sources and preserving-commit proofs684/667tracked files passed. No Linux run was requested for this rejected implementation; the retained parent already has Linux qualification. Ignored evidence:`build/pvm-arm64-jit/sealed-entry-capabilities/`.
