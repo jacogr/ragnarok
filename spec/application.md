@@ -165,3 +165,14 @@ tests, and the previously failed live RPC/browser, development UI, canonical-sta
 checkpoint-import and JAM Network socket checks. The live replay verifies the tracked
 fixture hash after every workload. Evidence is in `build/cli-ci-*`; these local results do
 not replace the new Linux CI run.
+
+
+CI job 122337219655 exposed one remaining caller dependency on the old RPC mutation:
+`parameter_checks` expected its chain to have become `{}` after the live workload. It now
+writes that incomplete configuration explicitly before its refusal assertion. A nonmutating
+live-check stub verifies the owning parameter-check function still constructs all five
+negative startup attempts independently. All five RPC unit tests and the complete owning
+RPC E2E workload passed locally, including browser and development UI, configured parameters,
+shared telemetry, service queries and invalid startup. The tracked genesis fixture stayed
+unchanged. Evidence is in `build/cli-ci-rpc-parameter-unit.log` and
+`build/cli-ci-rpc-complete/`; a fresh full Linux run is requested separately.

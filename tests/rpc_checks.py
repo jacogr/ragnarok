@@ -589,7 +589,8 @@ def parameter_checks(binary, certificates, folder):
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         rpc_port = reservation.getsockname()[1]
-    # The preceding run changed its source file to {}; startup must now reject that incomplete configuration.
+    # Construct the incomplete input explicitly; live retention tests preserve their caller's files.
+    chain.write_text('{}')
     arguments = [str(binary), 'server', '--net-port', '19899', '--net-cert', str(certificates/'a.cert.pem'),
                  '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid',
                  '--with-rpc', '--rpc-port', str(rpc_port), '--chain', str(chain)]
