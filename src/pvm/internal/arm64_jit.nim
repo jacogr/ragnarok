@@ -340,8 +340,17 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     # Reuse the verified operand/compare prefix; omit its five scalar-return selection instructions.
     for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
     let condition = (item.body.terminal[item.body.terminal.len-1] shr 12) and 15
-    armRegionEdge(words, fixes, item.yes, condition, false)
-    armRegionEdge(words, fixes, item.no, 16, false)
+    let following = if index < 2: blocks[index+1].header else: high(uint32)
+    if item.no == following:
+      # The false edge reaches the next guarded block by layout, retaining the original conditional transfer.
+      armRegionEdge(words, fixes, item.yes, condition, false)
+    elif item.yes == following:
+      # ARM condition pairs differ in their low bit; invert only to make the true edge fall through its original guard.
+      armRegionEdge(words, fixes, item.no, condition xor 1'u32, false)
+    else:
+      # Backedges and external destinations keep explicit transfers and the same guarded-return relocation.
+      armRegionEdge(words, fixes, item.yes, condition, false)
+      armRegionEdge(words, fixes, item.no, 16, false)
   for fix in fixes:
     # Every guarded return needs a stub, including guards whose header is also an internal branch destination.
     var internal = false

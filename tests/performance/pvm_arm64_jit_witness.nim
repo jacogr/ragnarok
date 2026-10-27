@@ -610,6 +610,39 @@ when defined(pvmArm64Jit):
           inc priceCases
     echo "ARM_REGION_PRICE_CASES,", priceCases
 
+    # All eight conditional orientations exercise native fall-through/inversion without changing the finite loop equation.
+    var layoutCases = 0
+    for mask in 0..<8:
+      let arranged = newArmJit()
+      assert armEntry(arranged, 0, 3) == 0
+      var oriented = default(array[3, ArmRegionBlock])
+      for index in 0..<3:
+        var body = default(ArmBlock)
+        emitArmOperation(body, 131, slots, 1)
+        let next = uint32((index+1) mod 3)
+        let inverted = (mask and (1 shl index)) != 0
+        let yes = if inverted: next else: 77'u32
+        let no = if inverted: 77'u32 else: next
+        emitArmBranch(body, if inverted: 82'u8 else: 81'u8, slots, 99, yes, no)
+        oriented[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
+            price: 1, yes: yes, no: no, body: move(body))
+      assert publishArmRegion(arranged, oriented)
+      for gas in [0'u64, 1, 2, 3, 98, 99, 100, high(uint64)]:
+        for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 197, 198, high(uint64)]:
+          # Literal exit and visit equations are independent of emitted branch layout and condition encodings.
+          var registers = default(RegisterFile)
+          var state = [gas, budget, 0'u64, 0'u64, 0'u64]
+          let count = min(99'u64, min(gas, budget div 2))
+          let target = if count == 99: 77'u32 else: uint32(count mod 3)
+          assert callArmRegion(arranged, registers, state) == target
+          assert uint64(registers[0]) == count
+          for slot in 1..<13: assert uint64(registers[slot]) == 0
+          assert state[0] == gas-count and state[1] == budget-count*2
+          for index in 0..<3:
+            assert state[index+2] == count div 3+uint64(uint64(index) < count mod 3)
+          inc layoutCases
+    echo "ARM_REGION_LAYOUT_CASES,", layoutCases
+
 proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, budget: uint64,
     images: openArray[PageImage] = []) =
   ## Bounded single-step execution independently checks charged prefixes, target PCs and terminal normalization.
