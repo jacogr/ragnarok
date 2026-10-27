@@ -41,9 +41,9 @@ Master pushes and PR opening, reopening and source updates automatically run **C
 complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. The **Compile** aggregate requires this Smoke job on automatic PR updates and manual
-`smoke` requests; master pushes and `unit`/`full` requests additionally require Source,
-Reference & Tooling, and Rejection Guards. No formatting is applied and no native libraries are
-linked. Master/full/unit source audits use the same complete graph with their checked-release profile.
+`smoke` requests; master pushes and `unit`/`full` requests additionally require Source and
+Reference & Tooling. Source and rejection checks share a runner; Smoke remains independent
+for ordinary PR updates. Source audits apply no formatting and link no native libraries. Master/full/unit source audits use the same complete graph with their checked-release profile.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:
 
@@ -71,8 +71,8 @@ shared GitHub run ID, without historical timing weights or maintained assignment
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for
 [local reproduction](testing/infrastructure.md). The dependency-ordered codec and specialized-control
-bundles retain randomized shard ownership. Independent corpora run once across three randomized
-`Unit / Corpus (i/3)` jobs alongside the unit shards. Producer/consumer bundles stay together and
+bundles retain randomized shard ownership. Independent corpora run once across four randomized
+`Unit / Corpus (i/4)` jobs alongside the unit shards. Producer/consumer bundles stay together and
 retain declaration order, without timing weights. The Unit gate requires every native and corpus
 shard to pass.
 Local `make check-unit` still runs both; `make check-corpus` selects only independent corpora.
@@ -108,13 +108,15 @@ See [the real-guest contract](../spec/pvm-sieve-benchmark.md). CLI equivalent:
 gh workflow run ci.yml --ref <branch> -f suite=full
 ```
 
-**Perf / PVM DOOM** runs on the same master/full/Perf requests. It validates pinned initialization
+**Perf / PVM** also runs the DOOM steps serially on the same runner for master/full/Perf requests. It validates pinned initialization
 and gameplay states after 1,320 ticks, including the known rendered frame and ordered audio/video
 output, then reports Ragnarök versus PolkaVM interpreted CPU medians and ratios for both process
 orders. Every process checks three warmups plus ten reused calls; first cold calls and input/source
 identities remain in JSON. Call CPU includes in-memory callbacks and excludes preparation, input
 reset and final reference validation. Ratios are informational, while correctness, sample and identity
-failures fail the job. A standalone `bench-doom` request selects only this family.
+failures fail the job. A standalone `bench-doom` request selects only the DOOM steps; `bench-pvm` retains the other PVM workloads.
+Both suites retain their own controls, source/runner provenance, raw artifacts and summaries.
+**Perf / PVM Comparison** remains a separate job.
 
 The regular jobs replace the old PVM Instructions, PVM Prepared, PVM Revisions, DOOM Attribution
 and DOOM Revisions CI entries. Their historical Make diagnostics are retained, subject to their
