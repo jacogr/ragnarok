@@ -3,6 +3,7 @@
 
 """Independent foreign namespace, selected request, annulled yield and surviving-provision invariants across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_supervision_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service, digest
 from state_accounts_oracle import parse as account_parse
@@ -16,12 +17,7 @@ class RotationSupervisionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive every complete shared-prior history once and retain states by actual slot."""
-        cls.states = {}
-        for case in reference.cases():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.states[case['name']] = states
+        cls.states = case_states(reference.cases())
 
     def test_inactive_foreign_storage_keeps_its_timestamp(self):
         """An authorized foreign write adds one38-byte entry without inventing target accumulation activity."""

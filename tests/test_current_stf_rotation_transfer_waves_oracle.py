@@ -3,6 +3,7 @@
 
 """Independent transfer reentry, actual-gas continuation and active-supervisor duplicate-credit batching invariants."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_transfer_waves_oracle as reference
 from state_layout_oracle import chapter_key,chapter_service
 from state_accounts_oracle import parse as account_parse
@@ -14,12 +15,7 @@ class RotationTransferWavesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive every complete transfer history once and retain actual-slot maps."""
-        cls.states={}
-        for case in reference.cases():
-            states={1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')]=state
-            cls.states[case['name']]=states
+        cls.states = case_states(reference.cases())
 
     def test_forwarded_credits_and_zero_fields(self):
         """Four original credits and selected three-token returns conserve balances independently of the offered reentry gas."""

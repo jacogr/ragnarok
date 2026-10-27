@@ -296,6 +296,12 @@ missing/duplicate verdicts and duplicate task/report keys are errors. All indepe
 values, trace coverage predicates, build refusals and exact output/hash comparisons remain in
 the owning corpus task.
 
+Scenario test setup shares mechanical indexing through `tests/scenario_states.py`, preserving
+caller-owned snapshots, actual successor slots and each suite's initial-slot policy. Replay
+adapters share restart/trace framing through `tests/scenario_replay_oracle.py`; the owning
+modules retain their frozen fixture/source pins and native defines. These helpers derive no
+protocol outcomes and do not replace feature assertions or independent scenario equations.
+
 The independent Python Thin-signing reference memoizes deterministic public-fixture signatures in
 an invocation-local LRU cache of at most 4,096 entries. Keys include the scalar, input bytes and
 additional-data bytes; results are immutable proof/output bytes computed by the same independent

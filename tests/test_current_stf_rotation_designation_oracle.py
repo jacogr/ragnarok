@@ -3,6 +3,7 @@
 
 """Independent staging/publication/authority invariants over four real epoch crossings."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_designation_oracle as reference
 from state_layout_oracle import chapter_key
 
@@ -13,12 +14,7 @@ class RotationDesignationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive every complete mathematical history once before testing separate relationships."""
-        cls.chains = {}
-        for case in reference.cases():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.chains[case['name']] = states
+        cls.chains = case_states(reference.cases())
 
     def test_staging_precedes_pending_and_active(self):
         """A guest write cannot retroactively affect the same block's already-promoted roster."""

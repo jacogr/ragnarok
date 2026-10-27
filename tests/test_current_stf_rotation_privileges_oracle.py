@@ -3,6 +3,7 @@
 
 """Independent precedence, scheduling and cohort invariants for privileged host operations across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_privileges_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service
 from state_accounts_oracle import parse as account_parse
@@ -14,12 +15,7 @@ class RotationPrivilegesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive each whole chain once and retain states indexed by the actual slot."""
-        cls.chains = {}
-        for case in reference.cases():
-            states = {1: case['initial']}
-            for _, state, _ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)], 'little')] = state
-            cls.chains[case['name']] = states
+        cls.chains = case_states(reference.cases())
 
     def test_manager_handoff_cannot_be_reclaimed(self):
         """Real authority changes survive growth/shrinkage and deny later attempts by the old manager."""

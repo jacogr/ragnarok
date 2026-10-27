@@ -3,6 +3,7 @@
 
 """Independent newborn-eject, pool refund, checkpoint boundary and fresh-incarnation invariants across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_retirement_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service, digest
 from state_accounts_oracle import parse as account_parse
@@ -16,12 +17,8 @@ class RotationRetirementTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Retain every derived complete state and its original immutable parent by execution slot."""
-        cls.cases = {case['name']:case for case in reference.cases()};cls.states = {}
-        for name,case in cls.cases.items():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.states[name] = states
+        cls.cases = {case['name']: case for case in reference.cases()}
+        cls.states = case_states(cls.cases.values())
 
     def test_newborn_survives_same_slot_eject_after_cleanup(self):
         """Empty items do not allow deleting a service in its own creation slot."""

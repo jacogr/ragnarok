@@ -3,6 +3,7 @@
 
 """Independent code-publication, current-code execution and original-code pending-report invariants across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_code_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service, digest
 from state_accounts_oracle import parse as account_parse
@@ -16,12 +17,8 @@ class RotationCodeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive complete code histories once and index actual execution slots."""
-        cls.cases = {case['name']:case for case in reference.cases()};cls.states = {}
-        for name,case in cls.cases.items():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.states[name] = states
+        cls.cases = {case['name']: case for case in reference.cases()}
+        cls.states = case_states(cls.cases.values())
 
     def test_child_code_publication_controls_later_execution(self):
         """A retained request alone cannot execute code; selected fnprovide makes actual later child reports runnable."""

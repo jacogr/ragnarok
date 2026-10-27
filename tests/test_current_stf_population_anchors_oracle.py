@@ -5,9 +5,10 @@
 import hashlib
 import json
 import unittest
+from scenario_states import checkpoint_states
 from collections import Counter
 import current_stf_population_anchors_oracle as reference
-from current_stf_oracle import decode_checkpoint,tree,history
+from current_stf_oracle import tree, history
 from state_layout_oracle import chapter_key
 
 
@@ -17,11 +18,8 @@ class PopulationAnchorsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive the full signed-input corpus once, retaining its explicit trusted configuration."""
-        cls.requests,lines,cls.evidence=reference.expected_observations();cls.states=[]
-        for line in lines:
-            if line.startswith('P '):cls.states.append({1:decode_checkpoint(bytes.fromhex(line[2:]))})
-            elif line.startswith('O '):
-                state=decode_checkpoint(bytes.fromhex(line[2:]));cls.states[-1][int.from_bytes(state[chapter_key(11)],'little')]=state
+        cls.requests, lines, cls.evidence = reference.expected_observations()
+        cls.states = checkpoint_states(lines)
 
     def test_full_parameters_are_explicit_and_hashed(self):
         """The complete122-byte profile names three cores and an explicit14,400-slot lookup age."""

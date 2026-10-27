@@ -3,6 +3,7 @@
 
 """Independent balance, participation, memo replacement and exact-budget invariants across validator changes."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_transfers_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service
 from state_accounts_oracle import parse as account_parse
@@ -15,12 +16,7 @@ class RotationTransfersTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Compute each chain once and index the actual slot without reading native observations."""
-        cls.chains = {}
-        for case in reference.cases():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.chains[case['name']] = states
+        cls.chains = case_states(reference.cases())
 
     def test_balance_pools_and_participation(self):
         """Four releases debit and credit exactly the selected pools; direct credit creates no receiver invocation."""

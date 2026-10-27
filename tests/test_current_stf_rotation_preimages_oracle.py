@@ -3,6 +3,7 @@
 
 """Independent pending/provided reservation, strict age and restoration invariants across validator rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_preimages_oracle as reference
 from state_layout_oracle import chapter_key,chapter_service,digest
 from state_accounts_oracle import parse as account_parse
@@ -16,14 +17,13 @@ class RotationPreimagesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive complete histories once and preserve actual slots and original immutable maps."""
-        cls.cases={case['name']:case for case in reference.cases()};cls.states={}
-        for name,case in cls.cases.items():
-            states={1:case['initial']}
-            for block,state,_ in case['steps']:
-                slot=int.from_bytes(state[chapter_key(11)],'little')
-                assert int.from_bytes(block[96:100],'little')==slot
-                states[slot]=state
-            cls.states[name]=states
+        cls.cases = {case['name']: case for case in reference.cases()}
+        for case in cls.cases.values():
+            # Every authored block must still agree with its independently calculated successor slot.
+            for block, state, _ in case['steps']:
+                slot = int.from_bytes(state[chapter_key(11)], 'little')
+                assert int.from_bytes(block[96:100], 'little') == slot
+        cls.states = case_states(cls.cases.values())
 
     def test_pending_request_selection_reserves_once(self):
         """Repeated pending solicit changes only one82-byte/two-item reservation and creates no value."""

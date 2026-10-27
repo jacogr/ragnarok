@@ -3,8 +3,8 @@
 
 """Independent ticket contest, exact body commitment and report/roster invariants."""
 import unittest
+from scenario_states import checkpoint_states
 import current_stf_ticket_reporting_oracle as reference
-from current_stf_oracle import decode_checkpoint
 from state_layout_oracle import chapter_key, digest
 from state_statistics_oracle import parse as statistics_parse, DEFAULT
 from test_current_stf_epoch_oracle import header_parts
@@ -16,14 +16,16 @@ class TicketReportingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Freeze complete outputs once and retain headers alongside their exact successor maps."""
-        _,lines,cls.evidence=reference.expected_observations();cls.states=[];cls.blocks=[]
+        _, lines, cls.evidence = reference.expected_observations()
+        cls.states = checkpoint_states(lines)
+        cls.blocks = []
         for line in lines:
+            # Keep ticket-specific signed header observations separate from checkpoint indexing.
             if line.startswith('P '):
-                cls.states.append({1:decode_checkpoint(bytes.fromhex(line[2:]))});cls.blocks.append({})
+                cls.blocks.append({})
             elif line.startswith('B '):
-                block=bytes.fromhex(line[2:]);cls.blocks[-1][int.from_bytes(block[96:100],'little')]=block
-            elif line.startswith('O '):
-                state=decode_checkpoint(bytes.fromhex(line[2:]));cls.states[-1][int.from_bytes(state[chapter_key(11)],'little')]=state
+                block = bytes.fromhex(line[2:])
+                cls.blocks[-1][int.from_bytes(block[96:100], 'little')] = block
 
     def test_contest_saturation_selects_tickets_only_after_tail(self):
         """A full contest requires the observed tail to choose ticket sealing; skipped/incomplete tails choose fallback."""
