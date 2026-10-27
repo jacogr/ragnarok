@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Preserve source-bound native/address reports, executed-image hashes and logs before later tests overwrite them."""
+from pathlib import Path
+import hashlib,json,shutil,sys
+R=Path.cwd();B=R/'build/pvm-interpreter-experiment';dest=B/'comparisons'/sys.argv[1]/sys.argv[2];expected=int(sys.argv[3]);dest.mkdir(parents=True,exist_ok=True)
+assert not (dest/'manifest.json').exists(),'Already archived; never overwrite a qualified record'
+manifest=dict(expected_groups_per_mode=expected,modes={},script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+for mode in ['native','asan']:
+ p=B/('results-'+mode+'.json');d=json.loads(p.read_text());assert d['status']=='passed' and len(d['checks'])==expected
+ for name,h in d['source_sha256'].items():assert hashlib.sha256((R/name).read_bytes()).hexdigest()==h,name
+ folder=dest/mode;folder.mkdir(exist_ok=True);shutil.copy2(p,folder/p.name);rows=[]
+ for c in d['checks']:
+  assert c['build']['exit_code']==0 and c['run']['exit_code']==0
+  exe=Path(c['run']['command'][0]);imagesha=hashlib.sha256(exe.read_bytes()).hexdigest()
+  copies=[]
+  for action in ['build','run']:
+   log=R/c[action]['log'];target=folder/log.name;shutil.copy2(log,target);copies.append(dict(path=str(target.relative_to(R)),sha256=hashlib.sha256(target.read_bytes()).hexdigest()))
+  rows.append(dict(name=c['name'],executed_image_path=str(exe.relative_to(R)),present_executed_image_sha256=imagesha,logs=copies))
+ manifest['modes'][mode]=dict(report_sha256=hashlib.sha256(p.read_bytes()).hexdigest(),source_sha256=d['source_sha256'],checks=rows)
+(dest/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');print('PASS archived qualification',sys.argv[1],sys.argv[2],expected,flush=True)

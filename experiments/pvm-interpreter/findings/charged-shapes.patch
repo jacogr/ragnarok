@@ -1,0 +1,94 @@
+diff --git a/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim b/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
+index ccf77e1d..94b26139 100644
+--- a/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
++++ b/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
+@@ -105,14 +105,17 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
+   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
+   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
+ 
+-proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
++proc flatReserve(f: var FlatFrame, off: uint32): bool {.inline.} =
+   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
+   if f.remaining == 0:
+     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
+-    return flatLocal(f, off, oracle.StepError.StepLimitExceeded)
++    discard flatLocal(f, off, oracle.StepError.StepLimitExceeded)
++    return false
+   let a = f.arguments[int(off)]
+   if not f.info.blockCharged:
+-    if uint64(f.info.gas) < a.x: return flatStopExit(f, off, oracle.StepExit.OutOfGas, false)
++    if uint64(f.info.gas) < a.x:
++      discard flatStopExit(f, off, oracle.StepExit.OutOfGas, false)
++      return false
+     f.info.gas = MachineGas(uint64(f.info.gas)-a.x)
+     f.info.blockCharged = true
+   let reserved = min(f.remaining, uint64(a.y))
+@@ -130,6 +133,11 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
+     f.barrier = boundary
+     f.savedHandler = f.handlers[int(f.barrier)]
+     f.handlers[int(f.barrier)] = flatBudget
++  true
++
++proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
++  ## Ordinary headers retain their original indirect handoff after the shared complete reservation checks.
++  if not flatReserve(f, off): return flatStop
+   # A successful entry consumes the next already sealed handler immediately; at most the existing
+   # disjoint operation prefix adds a third call. Control transfers return offsets, never recurse.
+   let next = off+1
+@@ -501,6 +509,35 @@ proc flatRegisterBranchCold[First, Branch: static[int]](f: var FlatFrame, off: u
+     f.handlers[int(off)] = combined
+   outcome
+ 
++proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
++  ## A whole validated register/branch shape shares charging, operands and branch equations with ordinary nodes.
++  if not flatReserve(f, off): return flatStop
++  if f.barrier != flatStop:
++    # Partial source quotas use the original addressable nodes and exact temporary boundary handler.
++    let selected = f.handlers[int(off+1)]
++    return selected(f, off+1)
++  var branchOff = flatStop
++  when Second >= 0:
++    branchOff = flatFusedRegisters[First, Second](f, off+1)
++  else:
++    branchOff = flatRegister[First](f, off+1)
++  if branchOff == flatStop: return flatStop
++  flatBranch[Branch](f, branchOff)
++
++proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
++    off: uint32): uint32 =
++  ## Preserve original first-use dispatch until the real terminal branch has validated and cached both arms.
++  if not flatReserve(f, off): return flatStop
++  let selected = f.handlers[int(off+1)]
++  let outcome = selected(f, off+1)
++  let branchOff = off+(when Second >= 0: 3'u32 else: 2'u32)
++  let cached: FlatHandler = flatBranch[Branch]
++  if f.handlers[int(branchOff)] == cached:
++    # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
++    let combined: FlatHandler = flatChargedShape[First, Second, Branch]
++    f.handlers[int(off)] = combined
++  outcome
++
+ proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
+   ## Invalid destinations retain GP load mutations but never permit an unselected invalid conditional arm to escape validation.
+   when Code == 80:
+@@ -909,7 +946,19 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
+       var charge: FlatHandler = flatCharge
+       var needed = 0'u64
+       case price.error
+-      of GasError.None: needed = uint64(price.value)
++      of GasError.None:
++        needed = uint64(price.value)
++        # Only these measured complete shapes specialize normal headers; folded prefixes and failed prices stay ordinary.
++        if fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 131 and
++            f.plan.facts[index+1].opcode == 88:
++          charge = flatChargedShapeCold[131, -1, 88]
++        elif fact.sourceCount == 3 and index+2 < f.plan.facts.len:
++          let second = f.plan.facts[index+1].opcode
++          let last = f.plan.facts[index+2].opcode
++          if fact.opcode == 200 and second == 139 and last == 82:
++            charge = flatChargedShapeCold[200, 139, 82]
++          elif fact.opcode == 151 and second == 152 and last == 173:
++            charge = flatChargedShapeCold[151, 152, 173]
+       of GasError.CycleLimitExceeded: charge = flatChargeFailure[
+           oracle.StepError.GasCycleLimitExceeded]
+       of GasError.NegativeBranchTarget: charge = flatChargeFailure[

@@ -1,0 +1,99 @@
+diff --git a/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim b/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
+index 3c04ca4a..d15b8f82 100644
+--- a/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
++++ b/experiments/pvm-interpreter/overlay/src/pvm/experimental.nim
+@@ -550,64 +550,40 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
+   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
+   var current = off
+   var destination = flatStop
+-  var middleOff = flatStop
+-  var lastOff = flatStop
+-  # Every logical block still performs its own complete gas and source-budget reservation.
+-  flatChargedStep(f, current, First, Second, Branch, destination)
+-  when First == 131:
+-    let middle: FlatHandler = flatChargedShape[151, 152, 173]
+-    if f.handlers[int(destination)] != middle: return destination
+-    middleOff = destination
+-    current = middleOff
+-    flatChargedStep(f, current, 151, 152, 173, destination)
+-    let last: FlatHandler = flatChargedShape[200, 139, 82]
+-    if f.handlers[int(destination)] != last: return destination
+-    lastOff = destination
+-    current = lastOff
+-    flatChargedStep(f, current, 200, 139, 82, destination)
+-  elif First == 200:
+-    let middle: FlatHandler = flatChargedShape[131, -1, 88]
+-    if f.handlers[int(destination)] != middle: return destination
+-    middleOff = destination
+-    current = middleOff
+-    flatChargedStep(f, current, 131, -1, 88, destination)
+-    let last: FlatHandler = flatChargedShape[151, 152, 173]
+-    if f.handlers[int(destination)] != last: return destination
+-    lastOff = destination
+-    current = lastOff
+-    flatChargedStep(f, current, 151, 152, 173, destination)
+-  else:
+-    let middle: FlatHandler = flatChargedShape[200, 139, 82]
+-    if f.handlers[int(destination)] != middle: return destination
+-    middleOff = destination
+-    current = middleOff
+-    flatChargedStep(f, current, 200, 139, 82, destination)
+-    let last: FlatHandler = flatChargedShape[131, -1, 88]
+-    if f.handlers[int(destination)] != last: return destination
+-    lastOff = destination
+-    current = lastOff
+-    flatChargedStep(f, current, 131, -1, 88, destination)
+-  # Only an actual closed round enables stable coordinates; a same-shaped but different record returns to normal dispatch.
+-  if destination != off: return destination
+-  let fixedMiddle = middleOff
+-  let fixedLast = lastOff
++  let repeated: FlatHandler = flatChargedShape[First, Second, Branch]
+   while true:
+-    # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
+-    flatChargedStep(f, off, First, Second, Branch, destination)
+-    if destination != fixedMiddle: return destination
++    # Every logical block still performs its own complete gas and source-budget reservation.
++    flatChargedStep(f, current, First, Second, Branch, destination)
+     when First == 131:
+-      flatChargedStep(f, fixedMiddle, 151, 152, 173, destination)
+-      if destination != fixedLast: return destination
+-      flatChargedStep(f, fixedLast, 200, 139, 82, destination)
++      let middle: FlatHandler = flatChargedShape[151, 152, 173]
++      if f.handlers[int(destination)] != middle: return destination
++      current = destination
++      flatChargedStep(f, current, 151, 152, 173, destination)
++      let last: FlatHandler = flatChargedShape[200, 139, 82]
++      if f.handlers[int(destination)] != last: return destination
++      current = destination
++      flatChargedStep(f, current, 200, 139, 82, destination)
+     elif First == 200:
+-      flatChargedStep(f, fixedMiddle, 131, -1, 88, destination)
+-      if destination != fixedLast: return destination
+-      flatChargedStep(f, fixedLast, 151, 152, 173, destination)
++      let middle: FlatHandler = flatChargedShape[131, -1, 88]
++      if f.handlers[int(destination)] != middle: return destination
++      current = destination
++      flatChargedStep(f, current, 131, -1, 88, destination)
++      let last: FlatHandler = flatChargedShape[151, 152, 173]
++      if f.handlers[int(destination)] != last: return destination
++      current = destination
++      flatChargedStep(f, current, 151, 152, 173, destination)
+     else:
+-      flatChargedStep(f, fixedMiddle, 200, 139, 82, destination)
+-      if destination != fixedLast: return destination
+-      flatChargedStep(f, fixedLast, 131, -1, 88, destination)
+-    if destination != off: return destination
++      let middle: FlatHandler = flatChargedShape[200, 139, 82]
++      if f.handlers[int(destination)] != middle: return destination
++      current = destination
++      flatChargedStep(f, current, 200, 139, 82, destination)
++      let last: FlatHandler = flatChargedShape[131, -1, 88]
++      if f.handlers[int(destination)] != last: return destination
++      current = destination
++      flatChargedStep(f, current, 131, -1, 88, destination)
++    # Matching the next native handler is a capability check, not an assumed guest-code graph or input identity.
++    if f.handlers[int(destination)] != repeated: return destination
++    current = destination
+ 
+ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
+     off: uint32): uint32 =

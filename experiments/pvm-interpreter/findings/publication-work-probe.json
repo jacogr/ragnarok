@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "counts": {"init": [1621, 6945985, 9253, 8293, 0, 1590, 6813150, 2026], "tick": [1, 4285, 336, 273, 0, 0, 0, 0]},
+  "fields": [
+    "host_observations",
+    "mapped_headers_scanned",
+    "dirty_candidates",
+    "changed_pages",
+    "empty_observations",
+    "nonempty_host_deltas",
+    "mapped_pages_in_nonempty_deltas",
+    "changed_owner_pages"
+  ],
+  "clock_policy": "All instrumented clocks discarded",
+  "instrumenter_sha256": "6543780e42b571687a20c4e47580b8fd00dda601a07c997a777e1621e204a1a4",
+  "raw_report_sha256": "5c986639d48407fac3027cc74647904e13fdd92ff0929b53c38d0b21593190d8"
+}

@@ -1,0 +1,24 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""One declared four-pair cold gameplay confirmation; retain every original and new sample."""
+import json,shutil,sys
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0,'experiments/pvm-interpreter')
+from compare import Comparison,ROOT
+B=ROOT/'build/pvm-interpreter-experiment/comparisons/register-branch'
+d=json.loads((B/'results.json').read_text());assert d['status']=='passed' and not d.get('confirmation_plan')
+old=ROOT/'build/pvm-port-lab/large-app-qualification'
+c=Comparison(SimpleNamespace(name='register-branch',deadline='2026-10-27T02:32:28Z',baseline=d['baseline'],doom_fixtures=old/'prepared',rom=ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
+c.report=d;c.verify();shutil.copy2(B/'results.json',B/'results-before-confirmation.json')
+c.report.update(status='confirming',confirmation_plan=dict(cold_tick_additional_pairs=4,original_pairs_retained=True,reason='Original two cold tick lifecycle pairs both regress1.5–2.6%; one fixed replication to distinguish spread',adaptive_repetition=False))
+c.seal([ROOT/'build/pvm-interpreter-experiment/confirm-register-branch-cold.py'])
+try:
+ for order in range(2,6):
+  roles=['baseline','candidate']
+  for role in roles if order%2==0 else reversed(roles):c.record(c.doom(role,'tick',order,cold=True))
+  print('PASS fixed cold tick pair',order,flush=True)
+ c.verify();c.report.update(status='passed',all_inputs_stable=True)
+except Exception as e:
+ c.report.update(status='failed',error=str(e));raise
+finally:c.save()

@@ -1,0 +1,18 @@
+{
+  "base_revision": "dff50516931066f5fdd11323fc5feb645f792c26",
+  "measured_runtime": {
+    "overlay/src/pvm/experimental.nim": {
+      "origin": "build/pvm-port-lab/lazy-block-pricing/resident-core.nim",
+      "original_sha256": "6b8a57ba83514a0b6a2b5ce8144954969b52ed08445b499e538866f4f7050ac7",
+      "published_sha256": "dbd1c9354af8fa912741e58babbd52cd7c5d7fab72c2c61a5157d5e4b2fcf2ee"
+    },
+    "overlay/src/pvm/machine.nim": {
+      "origin": "build/pvm-port-lab/lazy-block-pricing/resident-machine.nim",
+      "original_sha256": "e4f58300f31bf1fd81a8166c3cadc3538dbaac8efb3354fdcf87f0512181519d",
+      "published_sha256": "e4f58300f31bf1fd81a8166c3cadc3538dbaac8efb3354fdcf87f0512181519d"
+    }
+  },
+  "changes": "Published copy changes module names, comments and output labels only; previous timing evidence names the original images, not newly linked images.",
+  "compiler_revision": "4724f66c2e01b17810c844f26575b2317995fda2",
+  "reference_revision": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa"
+}

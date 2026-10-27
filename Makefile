@@ -553,6 +553,11 @@ compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 compare-pvm-doom: check-pvm-doom
 	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)
 
+# Isolated interpreter qualification; CI verifies the overlay without changing the default backend.
+.PHONY: check-pvm-experimental
+check-pvm-experimental: toolchain
+	$(PYTHON) experiments/pvm-interpreter/run.py $(PVM_EXPERIMENTAL_FLAGS)
+
 # Six real Tiny validators author and consume blocks with the pinned six-second slot clock.
 .PHONY: devnet check-devnet check-devnet-smoke
 devnet: build

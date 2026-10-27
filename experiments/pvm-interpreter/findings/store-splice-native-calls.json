@@ -1,0 +1,24 @@
+{
+  "status": "passed",
+  "policy": "Static code facts only, not executed instruction counts or a CPU cause attribution",
+  "rows": [
+    {
+      "driver": "kernel",
+      "image_sha256": "810e6b9687e289bc28f12dc29944eca1d823284af8e0a7c21110d5d830a4f8fd",
+      "fast_store_direct_calls": [],
+      "checked_slow_store_call_sites": 32
+    },
+    {
+      "driver": "lifecycle",
+      "image_sha256": "35f467d3682fb174521479d8167bb03ec642aa807205b8de17e996570085f214",
+      "fast_store_direct_calls": [],
+      "checked_slow_store_call_sites": 32
+    },
+    {
+      "driver": "doom",
+      "image_sha256": "e3002f3ebb31523e4aeacd6a4aac71a23c1d2ae10e8eab19abc73d9fcd10077d",
+      "fast_store_direct_calls": [],
+      "checked_slow_store_call_sites": 32
+    }
+  ]
+}

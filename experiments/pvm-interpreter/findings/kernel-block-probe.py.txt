@@ -1,0 +1,51 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Count all logical charged shapes in four checked kernels; every instrumented clock is excluded."""
+from pathlib import Path
+import hashlib,json,os,shutil,sys
+R=Path.cwd();S=R/'experiments/pvm-interpreter';B=R/'build/pvm-interpreter-experiment/kernel-block-probe';B.mkdir(exist_ok=True);sys.path.insert(0,str(R/'tools'))
+from native_checks import NativeChecks
+from setup_nimony import installed
+shutil.copytree(R/'src',B/'src',dirs_exist_ok=True);shutil.copy2(S/'overlay/src/pvm/machine.nim',B/'src/pvm/machine.nim')
+s=(S/'overlay/src/pvm/experimental.nim').read_text();original=hashlib.sha256(s.encode()).hexdigest()
+n='    dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.';assert s.count(n)==1;s=s.replace(n,n+'\n    probeBlocks: seq[uint64] # Diagnostic only; clocks are excluded.')
+n='    dirtyPages: newSeq[uint64](16384),';assert s.count(n)==1;s=s.replace(n,n+' probeBlocks: newSeq[uint64](plan.facts.len),')
+entry=next(n for n in ['template flatReserve(','proc flatReserve(','proc flatCharge('] if n in s)
+a=s.index('  if f.remaining == 0:',s.index(entry));s=s[:a]+'  inc f.probeBlocks[int(f.sites[int(off)])]\n'+s[a:]
+s+='''
+func flatBlockProbe*(f:FlatFrame):seq[uint64] =
+  f.probeBlocks
+proc flatBlockOpcodes*(f:FlatFrame,first:int):seq[byte] =
+  result = @[]
+  assert first>=0 and first<f.plan.facts.len
+  for i in first..<first+int(f.plan.facts[first].sourceCount):
+    assert i<f.plan.facts.len
+    result.add(f.plan.facts[i].opcode)
+'''
+(B/'src/pvm/experimental.nim').write_text(s);(B/'benchmarks').mkdir(exist_ok=True)
+s=(S/'benchmarks/kernel.nim').read_text()+'''
+let probe = flatBlockProbe(frame)
+for i in 0..<probe.len:
+  # A single fully checked call supplies all counts, with no timing selection.
+  if probe[i]>0:
+    echo "KERNEL_BLOCK,",guest,",",i,",",probe[i]
+    let opcodes = flatBlockOpcodes(frame,i)
+    for opcode in opcodes:echo "KERNEL_BLOCK_OP,",guest,",",i,",",opcode
+''';(B/'benchmarks/kernel.nim').write_text(s)
+checks=NativeChecks(B);build,exe=checks.build(installed()[0],B/'benchmarks/kernel.nim','block-probe',cflags=['-I'+str(R/'tests/performance')]);assert build['exit_code']==0,build['output'][-1600:]
+rows=[]
+for guest in ['pinky','sieve','minimal','memset']:
+ limit=1 if guest=='pinky' else 100000;fixture=R/'build/tests/pvm-prepared-blocks'/guest/str(limit)
+ env=dict(os.environ,RAGNAROK_PVM_GUEST=guest,RAGNAROK_PVM_SIEVE_INPUT=str(fixture/f'input-{limit}.bin'),RAGNAROK_PVM_SIEVE_EXPECTED=str(fixture/f'expected-{limit}.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='1')
+ run=checks.command([exe],guest+'-run',environment=env);assert run['exit_code']==0 and 'EXPERIMENTAL,' in run['output'],run['output'][-1600:]
+ blocks={}
+ for line in run['output'].splitlines():
+  v=line.split(',')
+  if v[0]=='KERNEL_BLOCK':blocks[int(v[2])]=dict(count=int(v[3]),opcodes=[])
+  elif v[0]=='KERNEL_BLOCK_OP':blocks[int(v[2])]['opcodes'].append(int(v[3]))
+ shapes={}
+ for v in blocks.values():
+  key=tuple(v['opcodes']);shapes[key]=shapes.get(key,0)+v['count']
+ ranked=sorted([dict(opcodes=list(k),count=v) for k,v in shapes.items()],key=lambda x:x['count'],reverse=True)
+ print(guest,'top shapes',ranked[:8],flush=True);rows.append(dict(guest=guest,shapes=ranked,blocks=blocks,run=run))
+(B/'results.json').write_text(json.dumps(dict(status='passed',core_sha256=original,build=build,rows=rows,clock_policy='All diagnostic clocks discarded'),indent=2)+'\n')

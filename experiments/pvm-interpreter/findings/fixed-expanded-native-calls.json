@@ -1,0 +1,46 @@
+{
+  "status": "passed",
+  "image_sha256": "0e9fb5eb05cc6e5958cd6194923f817fac14178977c94f49da4f481995b98b26",
+  "policy": "Static ARM64 code facts only; no executed instruction counts or CPU cause inferred",
+  "rows": [
+    {
+      "symbol": "_flatCharge_0_expxt086x1",
+      "disassembled_lines": 119,
+      "calls": [
+        "0000000100019cb4\tbr\tx2",
+        "0000000100019cdc\tbl\t_panic_0_sysvq0asl",
+        "0000000100019ce8\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_I4832e41_expxt086x1",
+      "disassembled_lines": 748,
+      "calls": [
+        "000000010002b758\tbr\tx2",
+        "000000010002b998\tbl\t_flatStopExit_0_expxt086x1",
+        "000000010002c040\tbl\t_panic_0_sysvq0asl",
+        "000000010002c058\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_Ixtdlc2_expxt086x1",
+      "disassembled_lines": 751,
+      "calls": [
+        "000000010002c344\tbr\tx2",
+        "000000010002c574\tbl\t_flatStopExit_0_expxt086x1",
+        "000000010002cbfc\tbl\t_panic_0_sysvq0asl",
+        "000000010002cc14\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    },
+    {
+      "symbol": "_flatChargedShape_0_Iqa0x5s1_expxt086x1",
+      "disassembled_lines": 748,
+      "calls": [
+        "000000010002ced8\tbr\tx2",
+        "000000010002d13c\tbl\t_flatStopExit_0_expxt086x1",
+        "000000010002d7ac\tbl\t_panic_0_sysvq0asl",
+        "000000010002d7c4\tbl\t_raiseAssert_0_assy765wm"
+      ]
+    }
+  ]
+}
