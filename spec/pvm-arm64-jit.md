@@ -1419,3 +1419,69 @@ four public builds,14processes/182calls and32refusal controls. Independent verif
 all2,863staged seals, the official compiler binary, executable images and copied logs;2,846
 tracked staged source files match that runtime commit. Docker architecture/network isolation
 and successful container state are verified. Its clocks remain diagnostic only.
+
+
+## Adjacent native block fall-through — retained (October 27)
+
+Measured runtime `942879cef358d17bc0abbfe1ea613a0d165f6e72` against accepted charge-lowering
+parent `741d935d02543ac151c18edeb7bc334200ccb6aa`, same Apple M1 Max and pinned checked
+ARC/Clang ThinLTO build. A connected block may fall directly into the following physical
+block's original gas/source guards. If its true arm is that successor, complement the verified
+ARM condition and branch only to the other arm. Backedges and external destinations keep
+explicit relocations; guards and state publication are unchanged. No synthetic work or native
+operation is omitted from accounting.
+
+An ignored source snapshot confirms the actual initialization graph:25351→25362→25373→25351
+for internal edges, with distinct external exits25355/25365/25377. Source PCs are193987,
+193996,194002. This removes two unconditional transfers per complete round, not its checks.
+Snapshot hashes and four complete DOOM calls are retained; diagnostic clocks are discarded.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.461 / 3.781 | 2.800 / 2.993 | 2.788 / 2.892 | 2.838 / 2.808 | 5.979 / 6.088 | 0.805 / 0.765 | 0.466 / 0.475 |
+| minimal 100000 | 4.880 / 4.968 | 4.879 / 5.108 | 4.891 / 5.043 | 4.880 / 5.051 | 6.125 / 6.197 | 1.002 / 1.015 | 0.799 / 0.814 |
+| memset 100000 | 4.394 / 4.449 | 3.529 / 3.579 | 3.558 / 3.580 | 2.745 / 2.800 | 3.927 / 3.947 | 0.810 / 0.805 | 0.906 / 0.907 |
+| pinky 1 | 85.406 / 86.210 | 72.070 / 72.834 | 72.136 / 72.873 | 72.905 / 73.755 | 94.384 / 94.755 | 0.845 / 0.845 | 0.764 / 0.769 |
+| sieve 10000000 | 339.341 / 339.915 | 277.422 / 279.087 | 277.598 / 279.885 | 292.853 / 294.606 | 372.659 / 368.888 | 0.818 / 0.823 | 0.745 / 0.759 |
+| init 0 | 328.108 / 322.579 | 221.948 / 220.738 | 218.982 / 218.048 | 221.908 / 217.929 | 674.405 / 674.176 | 0.667 / 0.676 | 0.325 / 0.323 |
+| tick 0 | 40.569 / 40.722 | 37.697 / 37.650 | 37.515 / 37.356 | 34.117 / 33.971 | 45.651 / 44.366 | 0.925 / 0.917 | 0.822 / 0.842 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.810 (2.789–2.833) | 2.836 (2.809–2.881) | 1.009 | 1.019, 1.014, 1.004, 1.001, 1.017 |
+| minimal 100000 | 4.852 (4.846–4.859) | 4.867 (4.843–4.886) | 1.003 | 1.007, 1.005, 1.002, 1.000, 1.000 |
+| memset 100000 | 3.529 (3.490–3.606) | 3.538 (3.502–3.597) | 1.003 | 0.996, 1.014, 1.001, 0.998, 1.003 |
+| pinky 1 | 72.584 (72.022–73.203) | 72.309 (71.861–72.768) | 0.996 | 0.998, 0.999, 0.994, 1.000, 0.987 |
+| sieve 10000000 | 271.676 (271.219–273.423) | 271.274 (270.916–273.116) | 0.999 | 0.998, 0.998, 0.999, 0.997, 1.000 |
+| init 0 | 221.898 (219.745–226.931) | 218.421 (215.832–219.781) | 0.984 | 0.987, 0.982, 0.982, 0.984, 0.966 |
+| tick 0 | 37.486 (37.184–37.745) | 37.318 (37.024–37.630) | 0.996 | 0.997, 0.994, 1.001, 0.994, 0.994 |
+
+The repeated public initialization median improves1.6%,221.898→218.421ms; all five balanced
+blocks favor the candidate (ratios0.966–0.987). Process ranges nearly separate, overlapping
+by0.036ms. This is a small local result supported by the explicit reduction in executed transfers,
+not a claim of gains on another CPU. Short sieve's median increases0.9% with overlapping
+ranges; long sieve is unchanged. Other medians differ by at most0.4% with overlapping ranges.
+Retain the bounded layout improvement and record that short-workload tradeoff rather than
+claiming a universal win. Native work/call counts remain identical; initialization code shrinks
+83,044→83,036bytes. No hardware counters were collected or hardware cause inferred.
+
+All nine native gates pass. Additional704literal cases cover all eight orientations of the three
+branches, guards at each source/gas boundary, natural exit, register publication and visit counts.
+The3,546region,486price/quota and1,024publication witnesses still pass. Kernel42/546/63/6/3
+and application70/910/115/16/8 cohorts are independently reparsed with706/710seals, exact parent
+sources and fresh equal-image controls. Extra140repeated processes/1,820calls independently
+reparse with stable native counts across all14workload/role groups. Measured tracked bytes match
+this preserving runtime commit (684kernel/667application files).
+
+Constructor, cold, reused public call and retained-core reset/publication remain separate scopes;
+reference DOOM invocation restoration/teardown remains separate from its raw call time. Linux
+ARM64 qualification passes at this exact staged runtime: nine shared gates, four public builds,
+14processes/182calls and32refusal controls. All2,863staged seals, official compiler bytes,
+images and copied logs independently verify;2,846tracked staged files match the runtime commit.
+Container architecture/network isolation and successful exit are verified; clocks are diagnostic only.
+Raw local evidence lives in
+`build/pvm-arm64-jit/region-layout/` and the sealed current kernel/application folders.
