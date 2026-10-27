@@ -472,6 +472,7 @@ when defined(pvmArm64Jit):
 
 when defined(pvmArm64Jit):
   var branchPredicates = 0
+  var regionBranchPredicates = 0
   for opcode in 0..255:
     if byte(opcode) notin {81'u8..90'u8, 170'u8..175'u8}: continue
     for pattern in [0'u8, 17, 128, 255]:
@@ -483,44 +484,47 @@ when defined(pvmArm64Jit):
       let slots = instructionRegisters(decoded)
       let low = uint64(decoded.value.x) and 0xffffffff'u64
       let immediate = if (low and 0x80000000'u64) != 0: low or 0xffffffff00000000'u64 else: low
-      var native = default(ArmBlock)
-      emitArmBranch(native, byte(opcode), slots, immediate, 0x12345678'u32, 0x76543210'u32)
-      var words = armInstructions(native)
-      let jit = newArmJit()
-      assert armEntry(jit, 0, 1) == 0
-      let published = publishArmEntry(jit, 0, 0, 1, words)
-      when defined(pvmArm64JitRefuse):
-        assert not published
-      else:
-        assert published
-        for left in [0'u64, 1, 0x80000000'u64, 0xffffffff'u64, 0x7fffffffffffffff'u64,
-            0x8000000000000000'u64, high(uint64)]:
-          for right in [0'u64, 1, 0x80000000'u64, 0xffffffff'u64, 0x7fffffffffffffff'u64,
+      for compact in [false, true]:
+        var native = if compact: newArmRegionBody() else: default(ArmBlock)
+        emitArmBranch(native, byte(opcode), slots, immediate, 0x12345678'u32, 0x76543210'u32)
+        var words = armInstructions(native)
+        let jit = newArmJit()
+        assert armEntry(jit, 0, 1) == 0
+        let published = publishArmEntry(jit, 0, 0, 1, words)
+        when defined(pvmArm64JitRefuse):
+          assert not published
+        else:
+          assert published
+          for left in [0'u64, 1, 0x80000000'u64, 0xffffffff'u64, 0x7fffffffffffffff'u64,
               0x8000000000000000'u64, high(uint64)]:
-            var original = default(RegisterFile)
-            original[slots.aIndex] = RegisterValue(left)
-            original[slots.bIndex] = RegisterValue(right)
-            let a = uint64(original[slots.aIndex])
-            let b = if opcode <= 90: immediate else: uint64(original[slots.bIndex])
-            let sa = a xor 0x8000000000000000'u64
-            let sb = b xor 0x8000000000000000'u64
-            let condition = case opcode
-              of 81, 170: a == b
-              of 82, 171: a != b
-              of 83, 172: a < b
-              of 84: a <= b
-              of 85, 174: a >= b
-              of 86: a > b
-              of 87, 173: sa < sb
-              of 88: sa <= sb
-              of 89, 175: sa >= sb
-              else: sa > sb
-            let expected = if condition: 0x12345678'u32 else: 0x76543210'u32
-            var registers = original
-            assert callArmBranch(jit, 0, registers) == expected
-            for slot in 0..<13: assert registers[slot] == original[slot]
-            inc branchPredicates
+            for right in [0'u64, 1, 0x80000000'u64, 0xffffffff'u64, 0x7fffffffffffffff'u64,
+                0x8000000000000000'u64, high(uint64)]:
+              var original = default(RegisterFile)
+              original[slots.aIndex] = RegisterValue(left)
+              original[slots.bIndex] = RegisterValue(right)
+              let a = uint64(original[slots.aIndex])
+              let b = if opcode <= 90: immediate else: uint64(original[slots.bIndex])
+              let sa = a xor 0x8000000000000000'u64
+              let sb = b xor 0x8000000000000000'u64
+              let condition = case opcode
+                of 81, 170: a == b
+                of 82, 171: a != b
+                of 83, 172: a < b
+                of 84: a <= b
+                of 85, 174: a >= b
+                of 86: a > b
+                of 87, 173: sa < sb
+                of 88: sa <= sb
+                of 89, 175: sa >= sb
+                else: sa > sb
+              let expected = if condition: 0x12345678'u32 else: 0x76543210'u32
+              var registers = original
+              assert callArmBranch(jit, 0, registers) == expected
+              for slot in 0..<13: assert registers[slot] == original[slot]
+              if compact: inc regionBranchPredicates
+              else: inc branchPredicates
   echo "ARM_BRANCH_PREDICATES,", branchPredicates
+  echo "ARM_REGION_BRANCH_PREDICATES,", regionBranchPredicates
 
   # A full arena must retain the last valid entry after a failed replacement publication.
   let capacity = newArmJit()
@@ -597,7 +601,7 @@ when defined(pvmArm64Jit):
       var pricedBlocks = default(array[3, ArmRegionBlock])
       for index in 0..<3:
         # A literal ninety-nine-increment exit bounds even zero-price execution with a maximal source budget.
-        var body = default(ArmBlock)
+        var body = newArmRegionBody()
         emitArmOperation(body, 131, slots, 1)
         emitArmBranch(body, 81, slots, 99, 77, uint32((index+1) mod 3))
         pricedBlocks[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
@@ -627,7 +631,7 @@ when defined(pvmArm64Jit):
       assert armEntry(arranged, 0, 3) == 0
       var oriented = default(array[3, ArmRegionBlock])
       for index in 0..<3:
-        var body = default(ArmBlock)
+        var body = newArmRegionBody()
         emitArmOperation(body, 131, slots, 1)
         let next = uint32((index+1) mod 3)
         let inverted = (mask and (1 shl index)) != 0

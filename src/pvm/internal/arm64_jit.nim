@@ -117,7 +117,7 @@ proc armCompactImmediate(words: var seq[uint32], destination: uint32, value: uin
 
 
 proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uint64) =
-  ## Both policies define all bits; regional shortening never changes the fixed conditional-return prefix.
+  ## Arithmetic constants define all bits independently of the fixed conditional return selector.
   if fragment.compact: armCompactImmediate(fragment.words, destination, value)
   else: armImmediate(fragment.words, destination, value)
 
@@ -213,7 +213,9 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
   var right = 1'u32
   if opcode <= 90:
     # Branch immediates retain GP signed low-word extension before full 64-bit comparison.
-    armImmediate(fragment.terminal, 1, immediate)
+    # Keep ordinary branch layout fixed; a connected body owns a variable-length defining compare prefix.
+    if fragment.compact: armCompactImmediate(fragment.terminal, 1, immediate)
+    else: armImmediate(fragment.terminal, 1, immediate)
   else:
     right = armRead(fragment, slots.bIndex)
   fragment.terminal.add(0xeb00001f'u32 or (right shl 16) or (left shl 5)) # CMP Xn,Xm
@@ -361,7 +363,10 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     let item = blocks[index]
     if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
       return false
-    if item.body.terminal.len notin [6, 10]: return false
+    if item.body.terminal.len notin [6, 10]:
+      # Only our explicit regional policy can shorten the compare constant; the final five return words remain fixed.
+      if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
+        return false
     labels[index] = words.len
     words.add(0xf100007f'u32 or (item.span shl 10)) # CMP Xremaining,#wholeSourceSpan.
     armRegionEdge(words, fixes, item.header, 3, true) # LO returns before charging a partial block.
