@@ -108,8 +108,11 @@ class DoomAttributionTests(unittest.TestCase):
                 (event_context('pull_request','synchronize'),False),
                 (event_context('pull_request','labeled','ci:perf',state='closed'),False)]:
             families=selected_families(text,'perf',context)
-            self.assertEqual(any(f['group']=='bench-doom'for f in families),wanted)
-        section=family_section(text,'perf','bench-doom')
+            sections=[family_section(text,'perf',family['group'],context=context) for family in families]
+            self.assertEqual(any('run: make bench-pvm-doom\n' in section for section in sections),wanted)
+        sections=[family_section(text,'perf',family['group'])
+                  for family in selected_families(text,'perf',event_context())]
+        section=next(section for section in sections if 'run: make bench-pvm-doom\n' in section)
         self.assertIn('run: make bench-pvm-doom',section)
         self.assertNotIn('valgrind',section)
         make=(ROOT/'Makefile').read_text().split('bench-pvm-doom: setup\n')[1].split('\n\n')[0]
