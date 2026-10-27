@@ -570,3 +570,10 @@ check-devnet: build
 # CI-sized live smoke retains ordinary GP slots and the independent whole-map verifier.
 check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
+
+# Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
+.PHONY: bench-pvm-experimental
+bench-pvm-experimental: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) experiments/pvm-interpreter/linux.py
