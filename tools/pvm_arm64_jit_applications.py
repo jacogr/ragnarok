@@ -26,7 +26,7 @@ from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
-BASELINE = 'c81bac056458f28b4249ba4ea4b2b6912b3050c8'
+BASELINE = 'baa94af2026ec0a63c6b6e0a2bee2aa0847416de'
 ROLES = ('interpreter', 'baseline', 'jit', 'core', 'reference')
 COUNTERS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns', 'branches', 'headers')
 

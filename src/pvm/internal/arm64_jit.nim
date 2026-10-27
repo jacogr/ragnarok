@@ -209,6 +209,11 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
   ## A source-bound refusal avoids repeated compilation attempts without changing interpreted semantics.
   if int(offset) < jit.entries.len and jit.entries[int(offset)] < 2: jit.entries[int(offset)] = 1
 
+proc deferArmEntry*(jit: ArmJit, offset, ending: uint32) =
+  ## Keep only a source-bound terminal coordinate until the original branch validates both arms; allocate no executable code.
+  assert int(offset) < jit.entries.len and jit.entries[int(offset)] == 0
+  jit.ends[int(offset)] = ending
+
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32]): bool =
   ## Admit at most 1,024 fragments/one MiB; OS or capacity refusal leaves the original interpreter available.
