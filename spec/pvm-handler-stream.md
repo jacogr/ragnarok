@@ -247,3 +247,16 @@ the original golden output and balanced 1,000-cycle ARC observation. Local ARM64
 CPU is 3.149 seconds before and 1.269 seconds afterward. This is an allocation-heavy single-step
 witness, not a claim about Linux throughput or ordinary sieve/DOOM execution. Exact-head CI and
 matched-toolchain performance qualification remain required.
+
+## October 26 toolchain reconciliation
+
+The native stack now descends from master `5bbe2a44b7b2cc4c6e0be58a1a8eebdb8abe1e32`,
+including the October 26 Nimony upgrade to `358b9bce4dd855453f57a80a0c499b0b2e27d7ee`.
+Historical scalar/prepared changes already landed as squash commits were reconciled against
+their exact combined patch identities; distinct experiment commits remain intact. The old
+decoder's heap-allocation adaptation is obsolete because integration removes that decoder.
+The integrated engine, adapter, empty-map fix and comparison/scheduling tools remain byte-for-
+byte unchanged from pre-restack commit `42937451`. The focused boundary suite and 94 affected
+Python tooling/CI tests pass, and all 452 production modules plus the peer entry point pass
+semantic compilation. Historical timing tables retain their original compiler provenance;
+the upgraded compiler requires a new matched-toolchain Linux comparison before new claims.
