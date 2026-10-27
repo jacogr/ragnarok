@@ -26,7 +26,7 @@ from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
-BASELINE = '4af05970f9309e38f3cb9e910b0b2cc7fe014686'
+BASELINE = '39aa1617ad3503185f7c353e5418b1af4186cf34'
 ROLES = ('interpreter', 'baseline', 'jit', 'core', 'reference')
 COUNTERS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns', 'branches', 'headers')
 
@@ -48,10 +48,10 @@ def owner_receipt(output, case):
 
 
 def parse_run(output, role, case, limit, event_bytes=0):
-    """Use maintained complete lifecycle parsers; require additional native coverage only from current code."""
+    """Use identical native-owner framing for both compared public JIT roles and strict lifecycle parsers."""
     counters = None
     doom = case in ('init','tick')
-    if role=='jit' or (role=='core' and doom):
+    if role in ('baseline','jit') or (role=='core' and doom):
         output,counters = owner_receipt(output,case)
     if role=='reference':
         parsed = reference_lifecycle_samples(output,case,event_bytes) if doom else parse_process_output(output,'polkavm_interpreter',limit,guest=case)
@@ -72,7 +72,7 @@ def run():
         raise SystemExit('Application experiment requires macOS or Linux ARM64')
     BUILD.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',baseline=BASELINE,platform=platform.platform(),cpu=cpu_model(),
-                  builds=[],sources={},controls=[],runs=[])
+                  builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-v1')
     (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (BUILD/'summary.md').write_text('Application comparison incomplete.\n')
     checks = NativeChecks(BUILD)
@@ -127,7 +127,8 @@ def run():
             driver=canonical/'benchmarks'/(family+'.nim')
             driver.write_text((ROOT/('tests/performance/'+name+'.nim')).read_text().replace('../../src/','../src/'))
             defines=[] if role=='interpreter' else ['pvmArm64Jit']
-            if role=='jit' or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
+            # Both public JIT roles need identical code-generation settings, including out-of-clock coverage receipts.
+            if role in ('baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
             if role=='core' and family=='kernel': defines+=['pvmArm64JitControlReceipt']
             pair=[]
             for repeat in range(2):
@@ -142,6 +143,12 @@ def run():
             if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
             images[role,family]=pair[0]
         report['sources'][role]={str(path.relative_to(canonical)):digest(path) for path in sorted(canonical.rglob('*')) if path.is_file()}
+    # An unchanged source cohort is an A/A control: role naming must never change either public executable image.
+    report['equal_source_control'] = report['sources']['baseline'] == report['sources']['jit']
+    if report['equal_source_control']:
+        for family in ('kernel','doom'):
+            if images['baseline',family].read_bytes()!=images['jit',family].read_bytes():
+                raise ValueError('Equal public JIT sources produced different role images')
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
     (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     for order in range(2):

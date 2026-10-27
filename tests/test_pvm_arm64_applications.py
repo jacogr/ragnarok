@@ -4,6 +4,7 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from pvm_arm64_jit_applications import owner_receipt, parse_run
@@ -18,6 +19,18 @@ class NativeOwnerReceiptTests(unittest.TestCase):
                                       compilation_ns=1000,branches=10,headers=8))
         with self.assertRaises(ValueError):
             parse_run('original\nARM_OWNER,tick,2,20,80,128,1000,10,8\n','jit','tick',0)
+
+    def test_baseline_requires_the_same_complete_owner_evidence(self):
+        """The baseline cannot bypass coverage framing merely because the candidate carries stronger diagnostics."""
+        receipt='ARM_OWNER,tick,2,20,80,128,1000,10,8\n'
+        with patch('pvm_arm64_jit_applications.parse_public',return_value={'validated':True}) as checked:
+            candidate=parse_run('full-state\n'+receipt,'jit','tick',0)
+            baseline=parse_run('full-state\n'+receipt,'baseline','tick',0)
+            self.assertEqual(candidate,baseline)
+            self.assertEqual(checked.call_count,2)
+            for role in ('baseline','jit'):
+                with self.subTest(role=role),self.assertRaisesRegex(ValueError,'Missing native owner receipt'):
+                    parse_run('full-state\n',role,'tick',0)
 
     def test_foreign_partial_and_noninteger_receipts(self):
         """Only the selected phase's complete bounded scalar receipt can claim native execution."""

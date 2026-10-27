@@ -750,3 +750,88 @@ The first call includes lazy stream/native preparation and executable publicatio
 
 The retained expanded witness passes again on restored native and forced-storage-refusal builds.
 The accepted runtime and its prior macOS/Linux qualification remain unchanged.
+
+
+## Public/core comparison controls and process variation
+
+The accepted runtime remains byte-identical to `39aa1617ad3503185f7c353e5418b1af4186cf34`
+(and accepted runtime `4af05970`). This increment changes only local comparison tooling and
+its parser tests. No runtime optimization, default, dependency or CI configuration changes.
+
+### Diagnostic separation
+
+An ignored combined driver ran public execution, a retained frame and a fresh frame leasing the
+same prepared stream within one executable per exact runtime revision. On long sieve, accepted
+public/retained/fresh CPU medians were 292.185/292.909/291.0205 ms in forward order and
+284.295/285.428/284.028 ms in reverse order. The rejected head-load trial measured
+266.029/267.122/264.087 and 265.4725/267.160/266.1205 ms respectively. All three modes
+have identical fragment/call/compiled-operation/code-byte counts for their own runtime. The
+24 processes / 312 complete-state calls and two equal-image build pairs pass.
+
+This does not support attributing the earlier long-loop difference to fresh invocation ownership.
+Short sieve public calls add about 0.24–0.30 ms in this diagnostic; long-loop execution tracks the
+other modes closely. These diagnostic numbers are tied to that combined executable and cannot
+be substituted into the maintained public/reference timing table.
+
+The application harness also compiled only the candidate public role with
+`pvmArm64JitOwnerReceipt`; the baseline omitted it. A separate receipt-on/off matrix over both
+exact revisions uses identical public drivers: four equal-image build pairs and sixteen processes /
+208 complete-state calls pass. Results vary by build and process order; they do not establish
+a stable head-load win. No hardware counters were collected and no CPU/cache/predictor cause
+is inferred. The rejected runtime remains absent.
+
+### Matched public comparison protocol
+
+`matched-owner-v1` now compiles baseline and candidate public JIT roles with identical feature
+defines and requires the same complete native-owner receipt from both. Strict full-state and
+DOOM lifecycle parsing remains mandatory. When source cohorts are identical, the harness also
+requires byte-identical baseline/candidate kernel and DOOM executables before timing. Older
+reports retain their original framing and exact helper identities; this protocol applies to new runs.
+
+The full A/A cohort uses baseline `39aa1617` and the unchanged working runtime. Both public
+source cohorts and both executable families are byte-identical. Six stable native counters
+(fragments, calls, compiled guest operations, code bytes, conditional entries and direct-header
+entries) match across the two public roles for all workloads and both process orders.
+Compilation CPU is a clock and is checked separately from those deterministic counters.
+
+CPU ms, forward / reverse. These A/A rows demonstrate measurement variation with identical
+engines. Public calls include fresh memory and immutable publication.
+
+| Case | Public baseline JIT | Public candidate JIT | Candidate / baseline |
+|---|---:|---:|---:|
+| sieve 100000 | 2.804 / 2.893 | 2.793 / 2.882 | 0.996 / 0.996 |
+| sieve 10000000 | 291.229 / 281.786 | 308.877 / 283.476 | 1.061 / 1.006 |
+| minimal 100000 | 4.907 / 5.077 | 4.950 / 5.066 | 1.009 / 0.998 |
+| memset 100000 | 3.478 / 3.651 | 3.452 / 3.564 | 0.992 / 0.976 |
+| pinky 1 | 76.526 / 78.483 | 78.216 / 78.459 | 1.022 / 1.000 |
+| init 0 | 324.489 / 323.416 | 326.892 / 323.800 | 1.007 / 1.001 |
+| tick 0 | 37.812 / 37.965 | 37.757 / 37.852 | 0.999 / 0.997 |
+
+Long sieve differs by about 5.1% in one A/A process order and 0.6% in the reverse order.
+Twenty additional same-image long-sieve processes (260 fully checked calls), in five balanced
+ABBA blocks, yield baseline process-median range 276.876–280.9005 ms and aggregate median
+279.56525 ms; the other role ranges 277.1515–285.454 ms with aggregate median 278.38725 ms.
+The aggregate difference is about 0.4% and the distributions overlap. A single process pair or
+a retained-core delta cannot establish a small public-call improvement here. Future timing
+verdicts require repeated process-level pairs when observed variation is material to the claimed gain.
+
+### Qualification and next bounded work
+
+The matched full cohort passes 70 processes / 910 complete-state calls / 115 positive and
+refusal controls / sixteen fresh builds (eight equal-image pairs). Independent re-parsing checks
+all 710 source/helper/input/compiler/image seals, exact baseline source bytes, both cross-role
+image equalities and all stable native counters. All twelve affected parser tests pass.
+The repeated A/A cohort checks unchanged sealed inputs and images before every process.
+No new Linux result is claimed: production bytes remain identical to the previously qualified runtime.
+
+Records are under `build/pvm-arm64-jit/boundary-investigation` and the maintained
+`build/tests/pvm-arm64-applications` report. Rejected head-load application receipts were moved
+to `build/pvm-arm64-jit/head-load/trial-applications` before the fresh cohort. Diagnostic-only
+runner failures (an incorrect constructor name and an omitted required sample setting) were fixed
+without changing production behavior or weakening the drivers; the original diagnostics remain.
+
+The next bounded coverage candidate is pure register comparisons and multiply-high operations.
+The prior counts show 182,782 native returns to opcode136 and 105,420 to opcode214 on Pinky.
+Those counts identify a boundary to investigate; they do not establish a prospective CPU gain.
+A future trial must preserve alias/signedness/budget witnesses and pass matched repeated public
+measurements before retention. No further lowering was mixed into this measurement increment.
