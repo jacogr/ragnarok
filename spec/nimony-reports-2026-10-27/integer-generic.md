@@ -2,6 +2,10 @@
 
 Filed by the maintainer as [nim-lang/nimony#2808](https://github.com/nim-lang/nimony/issues/2808) on October 27, 2026.
 
+## Upstream resolution
+
+Closed as not a bug. The [maintainer explains](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445) that `SomeInteger` constrains the type without guaranteeing a dollar operator. The original expectation below was incorrect; retain concrete integer overloads as a supported implementation choice rather than tracking this as an outstanding compiler defect. The reproducer and observed output remain as historical evidence.
+
 ## Nim Version
 
 ```text
@@ -43,11 +47,11 @@ nifmake: command failed (exit code 1): /Users/<user>/Projects/<project>/build/to
 FAILURE: /Users/<user>/Projects/<project>/build/toolchain/nightly-358b9bce4dd855453f57a80a0c499b0b2e27d7ee/nimony/bin/nifmake --rerun -j run --progress:0:100 cache/repn6ksyd1.build.nif
 ```
 
-## Expected Output
+## Original expected output (superseded by upstream resolution)
 
-Accept this constrained declaration. The pinned basic_types.nim defines SomeInteger as all signed/unsigned integer types; formatint.nim exports scalar integer dollar overloads. Contract: https://github.com/nim-lang/nimony/blob/358b9bce4dd855453f57a80a0c499b0b2e27d7ee/lib/std/system/basic_types.nim#L52
+The report originally expected acceptance of this constrained declaration. The pinned basic_types.nim defines SomeInteger as all signed/unsigned integer types; formatint.nim exports scalar integer dollar overloads. Contract: https://github.com/nim-lang/nimony/blob/358b9bce4dd855453f57a80a0c499b0b2e27d7ee/lib/std/system/basic_types.nim#L52
 
-## Known Workarounds
+## Supported alternative
 
 This alternative compiled and ran successfully with the same ARC/Clang checked-release profile:
 
