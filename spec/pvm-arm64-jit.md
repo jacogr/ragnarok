@@ -581,11 +581,10 @@ Receipts are under `build/tests/pvm-arm64-jit` and `build/tests/pvm-arm64-applic
 prior cohorts and the independent verifier are retained under
 `build/pvm-arm64-jit/short-conditional`. Linux qualification of this increment is recorded separately.
 
-Automatic per-program admission is a reasonable future policy: captured source size and prepared
-node count are available, while unsupported instructions, arena refusal and capacity exhaustion
-already preserve checked interpretation. These seven programs do not establish a defensible source
-size threshold. A bounded size cap can limit exposure; hot-loop reuse and compilation cost should
-determine profitability. This increment neither chooses an arbitrary cutoff nor switches a default.
+Admission remains opportunistic per block, with the existing bounded code cache and checked
+interpreter fallback. The qualified workloads give no reason to impose a whole-program size cutoff;
+large repeatedly executed applications remain an important target. Further admission decisions should
+follow measured reuse and compilation costs. No production default changes in this draft.
 
 
 The retained trial also passes a fresh isolated Linux ARM64 Docker qualification: nine shared
@@ -595,3 +594,84 @@ source/configuration/fixture files. Independent protocol and source/image checks
 clocks remain diagnostic only; the timing table above is macOS-only. Receipts are under
 `build/pvm-arm64-jit/linux`; the preceding platform cohort is preserved under
 `build/pvm-arm64-jit/short-conditional/prior-linux`.
+
+
+## Compact constant materialization: rejected
+
+Two isolated constant-emission variants were qualified against accepted runtime
+`4af05970f9309e38f3cb9e910b0b2cc7fe014686`. The combined variant chooses MOVZ/MOVN plus only
+differing MOVK halfwords and uses that helper for scalar conditional destinations. The second keeps
+only arithmetic constant shortening and restores the accepted branch-destination words.
+Neither variant changes admission, reservation, budgets, memory/host semantics, native ABI or cache caps.
+
+Combined measured/preserving head: `d1a1bc9f21199046c0a8c5f8cc5e0d998b502dca`.
+Arithmetic-only measured/preserving head: `2ab9f62f88cef97f2ff09ac4ee0608c13703c203`.
+Both variants are rejected; the final runtime is restored byte-for-byte to the accepted parent.
+Their commits and sealed local records preserve the measured implementation rather than claiming
+a timing result for the later restoration commit.
+
+### Paired retained-core CPU results
+
+Apple M1 Max, unchanged pinned checked release/ARC/Clang ThinLTO. CPU ms, forward / reverse.
+Each row compares its own same-runner parent and variant; the two cohorts are not directly paired.
+
+| Variant | Case | Accepted parent | Trial | Trial / parent |
+|---|---|---:|---:|---:|
+| Combined | sieve 100000 | 2.763 / 2.756 | 3.263 / 3.271 | 1.181 / 1.187 |
+| Combined | minimal 100000 | 4.897 / 4.891 | 4.920 / 4.904 | 1.005 / 1.003 |
+| Combined | memset 100000 | 2.773 / 2.747 | 2.797 / 2.695 | 1.009 / 0.981 |
+| Combined | pinky 1 | 76.306 / 76.181 | 76.259 / 75.844 | 0.999 / 0.996 |
+| Arithmetic only | sieve 100000 | 2.745 / 2.748 | 3.168 / 3.179 | 1.154 / 1.157 |
+| Arithmetic only | minimal 100000 | 4.831 / 4.842 | 4.848 / 4.839 | 1.004 / 0.999 |
+| Arithmetic only | memset 100000 | 2.743 / 2.743 | 2.795 / 2.708 | 1.019 / 0.987 |
+| Arithmetic only | pinky 1 | 75.927 / 75.916 | 75.412 / 75.377 | 0.993 / 0.993 |
+
+### Combined variant public application results
+
+CPU ms, forward / reverse, reused public medians. Fresh invocation memory and immutable
+publication remain inside our calls; reference raw calls exclude restoration/teardown, whose DOOM
+lifecycle receipts are also checked. Retained-core results above are a different scope.
+
+| Case | Accepted public JIT | Trial public JIT | PolkaVM interpreted call | Trial / parent |
+|---|---:|---:|---:|---:|
+| pinky 1 | 76.642 / 76.431 | 76.066 / 76.123 | 95.468 / 94.248 | 0.992 / 0.996 |
+| sieve 100000 | 2.842 / 2.820 | 2.890 / 2.888 | 5.961 / 6.075 | 1.017 / 1.024 |
+| sieve 10000000 | 278.670 / 275.558 | 290.340 / 281.818 | 366.714 / 368.882 | 1.042 / 1.023 |
+| minimal 100000 | 4.928 / 4.897 | 4.958 / 4.921 | 6.049 / 6.038 | 1.006 / 1.005 |
+| memset 100000 | 3.461 / 3.450 | 3.424 / 3.421 | 3.947 / 3.945 | 0.989 / 0.992 |
+| init 0 | 318.478 / 314.299 | 323.175 / 314.870 | 671.534 / 671.957 | 1.015 / 1.002 |
+| tick 0 | 37.188 / 37.034 | 36.717 / 36.703 | 44.238 / 44.287 | 0.987 / 0.991 |
+
+### Verdict and retained checks
+
+Combined native emitted bytes fell from 22,228 to 14,220 on sieve and 44,092 to 26,348 on Pinky,
+with identical fragment counts, native calls and compiled guest operation counts. This smaller
+code does not establish a speed benefit: retained sieve regressed about 18%, and public long sieve
+about 2–4%. Other public deltas are too small to justify that regression. Restoring the accepted
+branch words still leaves arithmetic-only retained sieve about 15–16% slower, with no useful
+other kernel gain. The latter therefore stops at the qualified kernel gate; no public or Linux
+performance result is claimed for that variant. No hardware counters were collected, so no
+particular CPU/cache/predictor cause is inferred from code size or instruction forms.
+
+Combined qualification: nine native gates; 42 kernel processes / 546 calls / 63 controls / six
+fresh builds (three equal-image pairs); 70 public/core/reference processes / 910 calls / 115 controls
+/ sixteen fresh builds (eight equal-image pairs). Arithmetic-only qualification: the same nine
+gates and 42 kernel processes / 546 calls / 63 controls / six fresh builds. Independent re-parsing,
+source/input/compiler/image seals and exact parent source checks pass for both measured cohorts.
+Tracked measured sources match their preserving commits. Receipts and rejection records remain
+under `build/pvm-arm64-jit/constants/full-variant-*` and `arithmetic-variant-kernels`.
+
+The first added constant fixture was 26 bytes wide and failed program admission before native
+emission. Correcting it to the decoder's existing 25-byte maximum fixes the fixture; the failed
+input/log is retained under `constants/first-failure`. No decoder check was changed.
+The useful 1,209-case witness is retained: every guest destination, zero/all-ones/high-halfword
+constants and all four-halfword mixtures of zero/ones/nontrivial values execute against literal
+expected values, with all unrelated registers preserved. Compact-word-count expectations are
+removed with the rejected emitter; emitted-code extent and exact register-value checks remain.
+Both native and explicit executable-storage refusal paths are rerun against the restored runtime.
+Previous macOS/Linux runtime qualification applies to that identical accepted implementation.
+
+Full native compile mode and execution selection are tracked in
+[#1733](https://github.com/jacogr/ragnarok/issues/1733): Linux x86-64 and Linux/macOS ARM64,
+eventual qualified default JIT with explicit opt-out, independently selectable full compile mode,
+and separate compilation/cold/reused/reference-compiled measurements. No new default is enabled.

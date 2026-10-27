@@ -63,30 +63,12 @@ proc armWrite(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   uint32(slot)+4
 
 proc armImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
-  ## Choose MOVZ or MOVN plus only differing halfwords; every sequence initializes all sixty-four bits.
+  ## Explicit halfwords preserve all immediate bits, without host signed conversions or shifts by the width.
   assert destination <= 16
-  var zeroParts = 0
-  var oneParts = 0
-  for half in 0..<4:
-    # Counts bound the exact instruction costs of zero-filled and one-filled initial values.
-    let part = uint32((value shr (half*16)) and 65535)
-    if part != 0: inc zeroParts
-    if part != 65535: inc oneParts
-  let inverted = oneParts < zeroParts
-  let fill = if inverted: 65535'u32 else: 0'u32
-  var initialized = false
-  for half in 0..<4:
-    # The first changed halfword initializes every other halfword; later MOVK instructions preserve them.
-    let part = uint32((value shr (half*16)) and 65535)
-    if part == fill: continue
-    let operation = if initialized: 0xf2800000'u32
-      elif inverted: 0x92800000'u32 else: 0xd2800000'u32
-    let payload = if not initialized and inverted: part xor 65535'u32 else: part
-    words.add(operation or (uint32(half) shl 21) or (payload shl 5) or destination)
-    initialized = true
-  if not initialized:
-    # Zero and all-ones still require one defining instruction, regardless of the incoming host register.
-    words.add((if inverted: 0x92800000'u32 else: 0xd2800000'u32) or destination)
+  words.add(0xd2800000'u32 or (uint32(value and 65535) shl 5) or destination)
+  for half in 1..3:
+    words.add(0xf2800000'u32 or (uint32(half) shl 21) or
+        (uint32((value shr (half*16)) and 65535) shl 5) or destination)
 
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =

@@ -57,11 +57,11 @@ when defined(pvmArm64Jit):
     assert decoded.error == ProgramError.None, "constant decode"
     let slots = instructionRegisters(decoded)
     assert int(slots.destinationIndex) == destination, "constant decoded destination"
-    var constants = @[(0'u64, 2), (1'u64, 2), (65535'u64, 2), (65536'u64, 2),
-      (0x8000000000000000'u64, 2), (0x0000123400000000'u64, 2),
-      (0xffffffffffffffff'u64, 2), (0xfffffffffffffffe'u64, 2),
-      (0xffffffffffff1234'u64, 2), (0x1234ffffffffffff'u64, 2),
-      (0xffff0000ffff0000'u64, 3), (0x123456789abcdef0'u64, 5)]
+    var constants = @[0'u64, 1'u64, 65535'u64, 65536'u64,
+      0x8000000000000000'u64, 0x0000123400000000'u64,
+      0xffffffffffffffff'u64, 0xfffffffffffffffe'u64,
+      0xffffffffffff1234'u64, 0x1234ffffffffffff'u64,
+      0xffff0000ffff0000'u64, 0x123456789abcdef0'u64]
     for pattern in 0..<81:
       # Enumerate every four-halfword mixture of zero, ones and a nontrivial value independently of emitter policy.
       var digits = pattern
@@ -73,18 +73,15 @@ when defined(pvmArm64Jit):
           else: 0x1234'u64
         value = value or (part shl (half*16))
         digits = digits div 3
-      constants.add((value, 0))
+      constants.add(value)
     let jit = newArmJit()
     assert armEntry(jit, 0, 1) == 0, "constant entry admission"
-    for item in constants:
+    for value in constants:
       # Poison all incoming registers; the selected slot must be defined in full and every other slot preserved.
       var fragment = default(ArmBlock)
-      emitArmOperation(fragment, 20, slots, item[0])
+      emitArmOperation(fragment, 20, slots, value)
       var words = armInstructions(fragment)
       assert words.len >= 2 and words.len <= 5, "constant word extent"
-      if item[1] != 0 and words.len != item[1]:
-        echo "ARM_CONSTANT_LENGTH,", destination, ",", item[0], ",", words.len, ",", item[1]
-        assert false, "constant instruction count"
       let published = publishArmEntry(jit, 0, 1, 1, words)
       when defined(pvmArm64JitRefuse):
         assert not published
@@ -94,9 +91,9 @@ when defined(pvmArm64Jit):
         for slot in 0..<13: registers[slot] = RegisterValue(high(uint64)-uint64(slot))
         assert callArmEntry(jit, 0, registers) == 1, "constant continuation"
         for slot in 0..<13:
-          let expected = RegisterValue(if slot == destination: item[0] else: high(uint64)-uint64(slot))
+          let expected = RegisterValue(if slot == destination: value else: high(uint64)-uint64(slot))
           if registers[slot] != expected:
-            echo "ARM_CONSTANT_VALUE,", destination, ",", item[0], ",", slot, ",", uint64(registers[
+            echo "ARM_CONSTANT_VALUE,", destination, ",", value, ",", slot, ",", uint64(registers[
                 slot]), ",", uint64(expected)
             assert false, "native constant value"
       inc constantCases
