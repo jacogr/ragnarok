@@ -442,7 +442,8 @@ proc walkTree(io: PagedOutput, mode: TreeMode, shape: PagedGeometry,
       return refused[PagedDigest](work)
     if mode == TreeMode.Check and shape.contextBytes > 0 and ordinal < shape.dataPages and
         ordinal >= uint64(shape.contextOffset) div uint64(PagedPageBytes):
-      work.contextRoot = bindContext(work.contextRoot, leaf.value,
+      let previousContext = work.contextRoot # Capture the fixed digest before passing its owner mutably.
+      work.contextRoot = bindContext(previousContext, leaf.value,
           work) # Reuse each real context leaf with no additional source read.
       if work.status != PagedStreamError.None: return refused[PagedDigest](work)
     var current = leaf.value

@@ -8,9 +8,7 @@ These observations came from the structured JSON refactor, CE 128 stream integra
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
 The October 21–23 nightly review and retained-workaround decisions are recorded in
 [the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
-The generic-integer, nullable mutable-callback and sequence-slice failures persist on October 23
-`4724f66c2`; standalone [report drafts](../spec/nimony-reports-2026-10-23/integer-generic.md)
-record exact reproducers, output and successful alternatives.
+The October 26 nightly `358b9bce4` fixes sequence slicing ([#2782](https://github.com/nim-lang/nimony/issues/2782), [#2789](https://github.com/nim-lang/nimony/pull/2789)). Generic-integer formatting and nullable mutable-callback refinement still fail; refreshed [integer](../spec/nimony-reports-2026-10-27/integer-generic.md) and [callback](../spec/nimony-reports-2026-10-27/nullable-var-call.md) drafts record five clean reproductions and successful alternatives. See the [October 26 upgrade audit](../spec/nimony-nightly-2026-10-26.md) for current qualification.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
@@ -90,9 +88,11 @@ The October 21 nightly fixes the reproduced imported-generic invalidation failur
 source epochs have been removed after the same-cache control passed. Native ABI, compiler,
 configuration and worker/profile cache isolation remain in place.
 
-## Sequence slices on the October 22/23 candidates
+## Sequence slices: fixed in the October 26 nightly
 
-At `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`, instantiating the stdlib sequence
+The original two-line reproducer now compiles and runs on the official October 26 archive. A permanent native suite checks inclusive/backwards/half-open/empty ranges and independent scalar/string ownership. Restore ordinary slices for owned mutable prefixes and remove the dedicated refinement-prefix assertion helper. Keep read-only `toOpenArray` inputs and indexed marker checks where they avoid allocating a sequence.
+
+Historical October 22/23 evidence follows. At `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`, instantiating the stdlib sequence
 slice with `let bytes = @[1'u8, 2, 3]; let prefix = bytes[0..<2]` fails in
 `lib/std/system.nim` with `cannot mutate rawData(result)[i] through a ref/ptr in a
 .noSideEffect context` (the diagnostic prints `.noSideEffect` with backticks).
@@ -113,8 +113,7 @@ Master run [39986981066](https://github.com/jacogr/ragnarok/actions/runs/3998698
 exposed additional instantiations of the same sequence-slice defect at
 `4724f66c2e01b17810c844f26575b2317995fda2`. The preserved
 [minimal reproducer and workaround](../spec/nimony-reports-2026-10-23/sequence-slice.md)
-are a draft, not a filed upstream issue. A public issue search on 2026-10-23 found no matching
-report; unrelated older slice issues are not evidence of this defect.
+record the original draft, subsequently submitted as [#2782](https://github.com/nim-lang/nimony/issues/2782) and fixed by [#2789](https://github.com/nim-lang/nimony/pull/2789). The historical search on 2026-10-23 found no matching report.
 
 Use the narrowest equivalent operation while keeping source owners alive:
 
@@ -161,3 +160,20 @@ its C calling convention, signature, zero return value, all registrations and pr
 forwarding code remain unchanged. No matching public upstream issue was found in the
 2026-10-23 callback/ambiguity search. Keep this observation scoped to the reproduced included
 module/test combination rather than treating all callback variables as unsupported.
+
+
+## October 26 alias checks and bounded allocation
+
+The stricter forwarded-var check rejects passing an owner's field alongside mutable access to
+the owner. Capture fixed digests, host-only proof tickets and query-policy values before the
+mutable call. For full-paged writes, admit callback/budgets first, borrow the existing page for
+its synchronous callback, then record the Boolean outcome after that borrow ends. Keep exact
+IO/write charging, padding and partial-write refusal; do not add a page-buffer copy or an
+unchecked borrow. Retained-ref iteration still needs its existing indexed reads.
+
+An exercised PVM decoder spill constructor materialized a 1 MiB default-array temporary on a
+native preparation-worker stack and hit the macOS stack guard. The old compiler emits the same
+large literal in a focused control. Use `var table: DecodedSpill; new(table)` to initialize the
+same fixed-size heap table directly. Old/new archive controls verify its size and default entries;
+the actual disk-download scenario passes after the change. This is a bounded allocation fix,
+not a claim of a new compiler regression or a new performance measurement.

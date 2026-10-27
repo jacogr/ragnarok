@@ -474,7 +474,8 @@ proc collectDisk(runtime: var LightRuntime) =
   runtime.finishDisk(completion)
 proc collectRpcQuery(runtime: var LightRuntime) =
   ## Exact CPU collection ends exclusion before response serialization and connection-local completion.
-  let completion = runtime.collectQuery(runtime.cpuTicket)
+  let ticket = runtime.cpuTicket # Retain the small host-only ticket before mutable actor collection.
+  let completion = runtime.collectQuery(ticket)
   assert completion.kind != ProofWorkerCompletionKind.Uninitialized
   let rpc = runtime.rpc
   assert rpc != nil
@@ -510,7 +511,8 @@ proc beginRpcRequest(runtime: var LightRuntime) =
     let reason = runtime.stageImport(selected.blockHash, selected.importBytes)
     discard runtime.admitImport(reason) # Staging returns only a scalar reason; no captured request alias remains live here.
   else:
-    let reason = runtime.stageQuery(selected.blockHash, selected.plan, runtime.policy.query)
+    let limits = runtime.policy.query # Capture fixed policy values before mutably staging the actor.
+    let reason = runtime.stageQuery(selected.blockHash, selected.plan, limits)
     let admitted = runtime.admitQuery(reason)
     if admitted.error != LightRuntimeError.None:
       assert rpc != nil # Refused admission retained the same stable borrowed listener.

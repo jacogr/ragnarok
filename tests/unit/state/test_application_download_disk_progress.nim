@@ -37,7 +37,7 @@ proc main() {.raises.} =
       discard posix.unlink(path.toCString()) # Every synchronous inspection/command returns after closing its actual disk lock.
   let healthy = @[DownloadTransferMode.Healthy, DownloadTransferMode.Healthy,
       DownloadTransferMode.Healthy]
-  let healthyPair = @[healthy[0], healthy[1]] # Independently owned two-response modes retain the original order.
+  let healthyPair = healthy[0..1] # Independently owned two-response modes retain the original order.
   let first = responseFrame(context.children[0])
   let second = responseFrame(context.children[1])
   let third = responseFrame(context.children[2])

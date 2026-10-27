@@ -201,9 +201,7 @@ proc boundaries() =
   for slots in [(10'u32, 10'u32), (11'u32, 10'u32), (high(uint32), 0'u32)]:
     assert selectSafroleSchedule(parent, staged, active, StateTime(slots[0]), StateTime(slots[1]),
       default(StateEntropyWord), config).error == SealerScheduleError.InvalidSlot # Repeat, reverse and wrap are distinct invalid inputs.
-  var truncated = newSeq[byte](parent.len-1)
-  for index in 0..<truncated.len:
-    truncated[index] = parent[index] # Preserve an independently owned shortened parent alongside the suffixed control.
+  let truncated = parent[0..<parent.len-1] # Keep an independently owned shortened parent beside the suffixed control.
   for raw in [truncated, suffixed(parent)]:
     assert selectSafroleSchedule(raw, staged, active, StateTime(10), StateTime(12),
       default(StateEntropyWord), config).error == SealerScheduleError.InvalidState # Exact parent extent is mandatory.

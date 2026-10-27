@@ -113,21 +113,32 @@ func refused(work: Build): FullPagedBuildResult =
     return FullPagedBuildResult(status: FullPagedBuildError.CodecFailure,
         codecCause: work.codecCause)
   FullPagedBuildResult(status: work.status)
-proc appendRaw(output: PagedOutput, bytes: openArray[byte], work: var Build): bool =
-  ## Positive completion means every input byte appended; caller callbacks own partial-write uncertainty.
-  let callback = output.append
-  if callback == nil:
+proc admitAppend(output: PagedOutput, size: uint64, work: var Build): bool =
+  ## Validate the callback and charge exact IO/byte budgets before borrowing any page contents.
+  if output.append == nil:
     work.fail(FullPagedBuildError.Uninitialized)
     return false
-  if not work.charge(Channel.IO, 1) or not work.charge(Channel.Write, uint64(
-      bytes.len)): return false
-  if not callback(bytes): work.fail(FullPagedBuildError.IOFailure)
+  work.charge(Channel.IO, 1) and work.charge(Channel.Write, size)
+proc completeAppend(succeeded: bool, work: var Build): bool =
+  ## Record callback failure only after its input borrow ends; preserve partial-write uncertainty.
+  if not succeeded: work.fail(FullPagedBuildError.IOFailure)
   work.status == FullPagedBuildError.None
+proc appendRaw(output: PagedOutput, bytes: openArray[byte], work: var Build): bool =
+  ## Positive completion means every input byte appended; caller callbacks own partial-write uncertainty.
+  if not output.admitAppend(uint64(bytes.len), work): return false
+  let callback = output.append
+  assert callback != nil # Admission checked the immutable callback before consuming any output.
+  let succeeded = callback(bytes)
+  completeAppend(succeeded, work)
 proc flush(output: PagedOutput, work: var Build): bool =
   ## Canonical zero padding fills only the final suffix of one page, then retires its contents.
   if work.filled == 0: return work.status == FullPagedBuildError.None
   for index in work.filled..<4096: work.page[index] = 0 # Explicit zero padding, never stale preceding data.
-  if not output.appendRaw(work.page, work): return false
+  if not output.admitAppend(uint64(work.page.len), work): return false
+  let callback = output.append
+  assert callback != nil # Borrow the existing page only after mutable accounting has finished.
+  let succeeded = callback(work.page) # No page copy and no overlapping mutable owner argument.
+  if not completeAppend(succeeded, work): return false
   work.filled = 0
   true
 proc appendPaged(output: PagedOutput, bytes: openArray[byte], work: var Build): bool =

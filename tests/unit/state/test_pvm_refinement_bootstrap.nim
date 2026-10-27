@@ -16,12 +16,6 @@ import ../../support/arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
-proc assertPrefix(bytes: openArray[byte], expected: openArray[byte]) =
-  ## Compare every frozen prefix byte without allocating a standard-library sequence slice.
-  assert bytes.len >= expected.len
-  for index in 0..<expected.len:
-    assert bytes[index] == expected[index] # Exact prefix length and ordering remain checked.
-
 # Frozen Python hashlib.blake2b(digest_size=32) oracles over independently laid-out literal GP bytes.
 let expectedCodeHash = [141'u8, 7, 23, 157, 74, 113, 205, 19, 174, 74, 148, 253, 84, 241, 255, 131,
     4, 138, 27, 199, 83, 20, 219, 31, 109, 106, 75, 71, 2, 228, 130, 69]
@@ -123,11 +117,11 @@ assert captureOutput(done.outcome, OutputByteLimit(39)).value == expected
 # Compact core/payload framing and the second work item's gas/service remain distinct.
 let other = prepare(item = 1).value
 assert uint32(other.bootstrapInfo.value.service) == 99 and uint64(other.bootstrapInfo.value.gas) == 20000
-assertPrefix(other.bootstrapArguments.value, [5'u8, 1, 99, 1, 91])
+assert other.bootstrapArguments.value[0..<5] == @[5'u8, 1, 99, 1, 91]
 let compact = prepare(core = 128).value
-assertPrefix(compact.bootstrapArguments.value, [128'u8, 128, 0, 42, 3, 81, 82, 83])
+assert compact.bootstrapArguments.value[0..<8] == @[128'u8, 128, 0, 42, 3, 81, 82, 83]
 let largePayload = prepare(payload = newSeq[byte](130)).value
-assertPrefix(largePayload.bootstrapArguments.value, [5'u8, 0, 42, 128, 130])
+assert largePayload.bootstrapArguments.value[0..<5] == @[5'u8, 0, 42, 128, 130]
 # Metadata cannot bypass the entire-preimage BIG gate, and BIG requires no local preimage copy allowance.
 var oversized = newSeq[byte](4000001)
 var cap = limits()

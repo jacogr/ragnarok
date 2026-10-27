@@ -1,5 +1,7 @@
 # Sequence slicing fails inside the standard library noSideEffect body
 
+Submitted as [nim-lang/nimony#2782](https://github.com/nim-lang/nimony/issues/2782), fixed by [#2789](https://github.com/nim-lang/nimony/pull/2789). The October 26 archive `358b9bce4` passes the original reproducer; this file preserves the original October 23 report evidence.
+
 ## Nim Version
 
 ```text
@@ -28,9 +30,9 @@ Slicing a one-element integer sequence fails while instantiating the standard sl
 Exit code: 1.
 
 ```text
-../../../../../../../Users/<user>/Projects/jacogr/ragnarok-misc/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/lib/std/system.nim(645, 12) Error: cannot mutate rawData(result)[i] through a ref/ptr in a `.noSideEffect` context
-nifmake: command failed (exit code 1): /Users/<user>/Projects/jacogr/ragnarok-misc/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/bin/nimsem --mm:arc --cc:clang --d:release --nimcache:cache --define:nimNativeAlloc --define:nimNativeIo m --isMain cache/repn6ksyd1.p.nif
-FAILURE: /Users/<user>/Projects/jacogr/ragnarok-misc/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/bin/nifmake --rerun -j run --progress:0:100 cache/repn6ksyd1.build.nif
+../../../../../../../Users/<user>/Projects/<project>/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/lib/std/system.nim(645, 12) Error: cannot mutate rawData(result)[i] through a ref/ptr in a `.noSideEffect` context
+nifmake: command failed (exit code 1): /Users/<user>/Projects/<project>/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/bin/nimsem --mm:arc --cc:clang --d:release --nimcache:cache --define:nimNativeAlloc --define:nimNativeIo m --isMain cache/repn6ksyd1.p.nif
+FAILURE: /Users/<user>/Projects/<project>/build/toolchain/nightly-4724f66c2e01b17810c844f26575b2317995fda2/nimony/bin/nifmake --rerun -j run --progress:0:100 cache/repn6ksyd1.build.nif
 ```
 
 ## Expected Output
@@ -57,4 +59,4 @@ The same minimized source also fails on official October 22 commit `8cb7a690ae48
 
 No exact duplicate found in searches for slice and noSideEffect slice.
 
-The user-home and transient working-directory prefixes in Current Output are redacted as `/Users/<user>` and `/tmp/<reproducer>`; all other output is copied from the final observed run. This is a draft for maintainer review, not a submitted issue. No root cause is asserted.
+The user-home and transient working-directory prefixes in Current Output are redacted as `/Users/<user>/Projects/<project>` and `/tmp/<reproducer>`; all other output is copied from the final observed run. This preserves the original draft subsequently submitted as #2782. No root cause is asserted.

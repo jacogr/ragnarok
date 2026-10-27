@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.6.3",
-  "commit": "4724f66c2e01b17810c844f26575b2317995fda2",
-  "date": "2026-10-23",
+  "commit": "358b9bce4dd855453f57a80a0c499b0b2e27d7ee",
+  "date": "2026-10-26",
   "formatter_version": "2.2.12",
   "formatter_banner": "0.2",
   "platforms": {
@@ -13,8 +13,8 @@
         "AMD64"
       ],
       "download": {
-        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-4724f66c2/nimony-0.6.3-4724f66c2-linux_amd64.tar.xz",
-        "sha256": "659f4a80f31a8fd88b21c546237f03e09411a33195083b4d668adbdc58a3ca47"
+        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-358b9bce4/nimony-0.6.3-358b9bce4-linux_amd64.tar.xz",
+        "sha256": "ea6fd4d024ab86d2d26e093321013fac4058a4360bd511f20b5557663fa9f0e1"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-09-08-version-2-2-8e8fbf60693418dc95bb0d762fd660231d08a583/nim-2.2.12-linux_x64.tar.xz",
@@ -28,8 +28,8 @@
         "aarch64"
       ],
       "download": {
-        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-4724f66c2/nimony-0.6.3-4724f66c2-macos_arm64.tar.xz",
-        "sha256": "0c361caae7351e7dd8a68d435179e8cf37744ad86b8c4df66b41a57eda71774b"
+        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-358b9bce4/nimony-0.6.3-358b9bce4-macos_arm64.tar.xz",
+        "sha256": "7955438a772c3536694d491d4c608f482d55350e321eb2fa5a559b7bab7b9f7a"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-09-08-version-2-2-8e8fbf60693418dc95bb0d762fd660231d08a583/nim-2.2.12-macosx_arm64.tar.xz",

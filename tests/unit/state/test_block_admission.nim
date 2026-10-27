@@ -341,9 +341,7 @@ proc stagedDisputesRollback(source: seq[StateEntry], raw: seq[byte], candidate: 
   let digest = array[32, byte](extrinsicCommitment(extrinsic, policy().frame.maxBytes).value)
   let hlen = headerInfo(readHeader(blockHeader(candidate).value).value.owner).value.consumed
   assert raw[hlen-97] == 0 # This authored case starts from an empty literal offender marker.
-  var authored = newSeq[byte](hlen-97)
-  for index in 0..<authored.len:
-    authored[index] = raw[index] # Own the same complete prefix before mutating the authored header.
+  var authored = raw[0..<hlen-97] # Own the complete prefix before mutating the authored header.
   authored.add(1'u8) # Exact new marker count.
   for b in public: authored.add(b) # New offender key precedes the preserved seal.
   for b in raw.toOpenArray(hlen-96, hlen-1): authored.add(
