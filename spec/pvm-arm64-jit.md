@@ -1771,3 +1771,41 @@ CPU ms, forward / reverse. Public calls include fresh invocation memory and immu
 All9Mac native gates pass, including10,560 warm-cache paid/gas/source/pricing cases and full host/CPU/gas/page/permission/source checks. Kernel42processes/546calls/63controls/6freshbuilds/3equal-image pairs; public70/910/115/16/8; another140balanced processes/1,820calls. Independent706/710seals, exact parent sources, raw receipts and preserving runtime proofs684/667tracked files pass. An ignored source snapshot with a deliberate assertion immediately inside the admitted complete path fails at exactly ARM_WHOLE_PATH_REACHED under the same witness; this proves the path executes, while its clocks are discarded. Production has no trace/assertion hook.
 
 Linux ARM64 also passes9shared gates,4public builds,14processes/182calls/32refusal controls,2,863sealed identities and2,846tracked source files bound to measured runtime `efece20b92d915915211a710aeb672041510f5f9`. Official pinned compiler binary, image/architecture/network isolation and copied raw logs/states verify independently. Docker timings are diagnostic only. No hardware counters were collected. Evidence:`build/pvm-arm64-jit/whole-native-header/`, including the explicit gameplay tradeoff.
+
+## Regional arithmetic constants
+
+Measured runtime `3a60bd09fdc4439ca813f8cb5d0ee33a9de88829`, accepted parent `397dc77b1213a61d3d2a0445cb18d88775a4d31f`.
+
+The private regional-body factory selects MOVZ/MOVN plus only differing MOVK halfwords for arithmetic constants. Ordinary fragment words, conditional compare/return sequences and wide-price materialization retain their previous policy. This revisits previously rejected ordinary-fragment shortening only in the newer connected execution model. No guest memory, host, gas/source, cache bound, ownership, ABI or default changes.
+
+Retain:initialization209.934→199.302ms(5.1%) and gameplay37.688→36.479ms(3.2%), all five balanced blocks favoring the trial with non-overlapping ranges. Long sieve improves0.8%, likewise non-overlapping/all five blocks. Minimal costs0.4% consistently with non-overlapping ranges; this small tradeoff is explicit. Short sieve/fill/Pinky overlap and differ by at most0.5%. Gameplay and sieve execute no connected region, so their improvements cannot be attributed to executing shorter regional constants:these are observed whole-image code-generation/layout side effects, with no hardware cause established.
+
+Native operations/calls/branches/headers match exactly in all seven workload groups. Only initialization code length changes,83,044→82,996bytes; ordinary code lengths are identical. Separate exact-source diagnostics pass eight complete checked DOOM calls with all clocks discarded. They show unchanged guarded visits and body reductions3/3/6words. Across two initialization calls, observed block visits42,608,063/42,589,999/42,589,999 account for511,134,180fewer unconditional body instructions. This is derived code-length×visit accounting, not hardware counters. The first diagnostic had a directory/binary naming collision; its originating linker receipt is retained, and only that diagnostic was rerun with distinct names. Production/timing cohorts were unaffected.
+
+All9Mac native gates pass, including1,209literal constant cases in each ordinary/regional policy(all13destinations, zero/ones/high/mixed patterns). Kernel42processes/546calls/63controls/6freshbuilds/3equal-image pairs; applications70/910/115/16/8;140balanced public processes/1,820calls. Independent706/710seals, exact parent objects, raw logs, native quantities and preserving commit proofs684/667tracked files pass. Both diagnostic snapshots bind477original source files to their respective measured cohort; only the declared two instrumentation modules and diagnostic driver differ.
+
+LinuxARM64:9shared gates,4public builds,14processes/182calls,32controls,2,863sealed files/2,846tracked source files bound to this runtime. Official compiler archive/binary, private build caches, image/architecture/network isolation and copied protocols verify. Container clocks remain diagnostic only. Full public cold CPU includes preparation/publication, including regional body emission; the supplementary compilation counter's regional bracket will be widened separately. No hardware counters were collected. Evidence:`build/pvm-arm64-jit/region-constants/`.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.537 (2.513–2.631) | 2.524 (2.510–2.532) | 0.995 | 0.994, 0.996, 0.996, 1.003, 0.976 |
+| minimal 100000 | 4.838 (4.823–4.847) | 4.859 (4.853–4.877) | 1.004 | 1.004, 1.007, 1.006, 1.004, 1.004 |
+| memset 100000 | 3.334 (3.303–3.352) | 3.327 (3.313–3.334) | 0.998 | 1.000, 0.994, 0.996, 1.006, 0.997 |
+| pinky 1 | 69.655 (69.409–70.525) | 69.654 (69.463–69.790) | 1.000 | 1.000, 1.000, 0.999, 0.995, 1.001 |
+| sieve 10000000 | 247.347 (247.083–247.607) | 245.314 (244.984–245.946) | 0.992 | 0.992, 0.992, 0.992, 0.993, 0.991 |
+| init 0 | 209.934 (209.635–211.520) | 199.302 (198.919–200.940) | 0.949 | 0.951, 0.948, 0.946, 0.950, 0.950 |
+| tick 0 | 37.688 (37.441–37.969) | 36.479 (36.196–36.615) | 0.968 | 0.957, 0.966, 0.973, 0.963, 0.972 |
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.450 / 3.421 | 2.550 / 2.541 | 2.543 / 2.514 | 2.369 / 2.357 | 5.944 / 5.902 | 0.737 / 0.735 | 0.428 / 0.426 |
+| minimal 100000 | 4.950 / 4.880 | 4.980 / 4.880 | 4.960 / 4.888 | 4.917 / 4.965 | 6.160 / 6.013 | 1.002 / 1.002 | 0.805 / 0.813 |
+| memset 100000 | 4.543 / 4.311 | 3.491 / 3.334 | 3.501 / 3.346 | 2.645 / 2.651 | 3.929 / 3.920 | 0.771 / 0.776 | 0.891 / 0.854 |
+| pinky 1 | 84.746 / 84.728 | 69.490 / 69.992 | 69.469 / 69.865 | 70.032 / 70.236 | 93.524 / 93.713 | 0.820 / 0.825 | 0.743 / 0.746 |
+| sieve 10000000 | 336.373 / 336.214 | 250.364 / 247.367 | 245.734 / 245.774 | 244.514 / 244.732 | 366.361 / 368.180 | 0.731 / 0.731 | 0.671 / 0.668 |
+| init 0 | 319.625 / 324.834 | 210.494 / 213.559 | 202.367 / 202.542 | 198.835 / 202.209 | 672.460 / 671.880 | 0.633 / 0.624 | 0.301 / 0.301 |
+| tick 0 | 39.841 / 40.752 | 37.681 / 38.259 | 36.300 / 37.114 | 34.172 / 34.776 | 44.525 / 44.873 | 0.911 / 0.911 | 0.815 / 0.827 |
