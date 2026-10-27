@@ -707,3 +707,13 @@ without a reported failure at recording time. Its pending state does not establi
 Linux qualification, so the merge hold remains. Parent Unit run 40473624906 passed completely;
 its result does not substitute for the candidate run. No merge is performed. Remaining gameplay
 cost and unused private single-mode forwarding are explicitly separate follow-up work.
+
+
+## Regular comparison scheduling
+
+`Perf / PVM Comparison` runs on master pushes, manual `perf`/`full`/`bench-pvm` requests and
+open PR requests through `ci:perf` or `ci:full`. Ordinary PR updates retain their light smoke
+selection. The Perf aggregate requires both its existing families and this same-runner comparison
+to succeed. The comparison retains exact-master/source evidence, checked public and core scopes,
+DOOM lifecycle observations, summaries and refusal artifacts; its command and timing boundaries
+are unchanged. The broader name leaves room for later backend coverage.

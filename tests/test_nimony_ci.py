@@ -172,7 +172,35 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('build/tests/pvm-doom/results.json',section.replace('*.json','results.json'))
         self.assertIn('build/tests/pvm-doom/summary.md',section)
         self.assertNotIn('continue-on-error',section)
-        self.assertIn('needs: perf',job_section(text,'perf-status'))
+        self.assertIn('needs: [perf, pvm-comparison]',job_section(text,'perf-status'))
+
+    def test_pvm_comparison_runs_with_regular_perf_requests(self):
+        """Master and explicit Perf/Full requests include exact-master comparison; ordinary PR updates remain light."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        section=job_section(text,'pvm-comparison')
+        self.assertIn('name: Perf / PVM Comparison',section)
+        self.assertNotIn('Perf / PVM Interpreter Comparison',text)
+        guard=job_condition(text,'pvm-comparison')
+        enabled=[event_context('push')]
+        enabled += [event_context('workflow_dispatch',suite=suite) for suite in ('perf','bench-pvm','full')]
+        enabled += [event_context('pull_request',action='labeled',label=label) for label in ('ci:perf','ci:full')]
+        disabled=[event_context('pull_request',action='synchronize'),
+                  event_context('pull_request',action='labeled',label='ci:unit'),
+                  event_context('pull_request',state='closed',label='ci:perf')]
+        disabled += [event_context('workflow_dispatch',suite=suite) for suite in ('unit','bench-doom','bench-storage')]
+        for context in enabled:
+            with self.subTest(context=context): self.assertTrue(expression(guard,context))
+        for context in disabled:
+            with self.subTest(context=context): self.assertFalse(expression(guard,context))
+        self.assertIn('run: make bench-pvm-interpreter',section)
+        self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
+        self.assertIn('if: always()',section)
+        self.assertIn('build/tests/pvm-interpreter-linux/*.json',section)
+        self.assertNotIn('continue-on-error',section)
+        summary=job_section(text,'perf-status')
+        self.assertIn('needs: [perf, pvm-comparison]',summary)
+        self.assertIn('COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}',summary)
+        self.assertIn('test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success',summary)
 
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
