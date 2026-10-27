@@ -173,9 +173,9 @@ class VerificationUnit(unittest.TestCase):
         """Neither omitted, failed nor sibling-owned cases can stand in for a complete recorded corpus partition."""
         from corpus_catalog import corpus_partition
         from summarize_tests import summarize
-        for index in (1, 2, 3):
-            names = corpus_partition((index, 3), 'seed')
-            report = dict(unit_scope='corpus', corpus_shard=[index, 3], shard_seed='seed', suites=[],
+        for index in (1, 2, 3, 4):
+            names = corpus_partition((index, 4), 'seed')
+            report = dict(unit_scope='corpus', corpus_shard=[index, 4], shard_seed='seed', suites=[],
                           **{name: dict(passed=True) for name in names})
             self.assertTrue(test_runtime.unit_passed(report))
             for name in names:
@@ -184,17 +184,17 @@ class VerificationUnit(unittest.TestCase):
                 self.assertFalse(test_runtime.unit_passed(missing))
                 self.assertFalse(test_runtime.unit_passed({**report, name: dict(passed=False)}))
             sibling = next(name for name in test_runtime.CORPUS_NAMES if name not in names)
-            for changed in ({sibling: dict(passed=True)}, {'corpus_shard': [index%3+1, 3]},
-                            {'corpus_shard': [1, 4]}, {'shard_seed': 'other'},
+            for changed in ({sibling: dict(passed=True)}, {'corpus_shard': [index%4+1, 4]},
+                            {'corpus_shard': [1, 5]}, {'shard_seed': 'other'},
                             {'unit_scope': 'suites'}, {'unit_scope': 'all'}):
                 self.assertFalse(test_runtime.unit_passed({**report, **changed}))
-            self.assertIn(f'shard {index}/3 (seed seed)', summarize({**report, 'status': 'checks-passed'}, 'runtime'))
+            self.assertIn(f'shard {index}/4 (seed seed)', summarize({**report, 'status': 'checks-passed'}, 'runtime'))
 
     def test_corpus_cli_preparation_and_execution(self):
         """Full and sharded CLI runs prepare only corpus inputs and render their own exact private report."""
         from corpus_catalog import corpus_directory
         import summarize_tests
-        for shard in (None, (1, 2), (2, 2), (1, 3), (2, 3), (3, 3)):
+        for shard in (None, (1, 2), (2, 2), (1, 3), (2, 3), (3, 3), (1, 4), (2, 4), (3, 4), (4, 4)):
             with self.subTest(shard=shard), temporary_folder() as folder, ExitStack() as stack:
                 for name in ('ROOT', 'BUILD', 'checks', 'command', 'build'):
                     # Restore runner globals after main selects this temporary scope workspace.
@@ -259,7 +259,7 @@ class VerificationUnit(unittest.TestCase):
                                        ([], {'UNIT_SCOPE': 'unknown'}),
                                        (['--corpus-shard', '1/2'], {}),
                                        (['--corpus-shard', '1/2', '--group', 'failures'], {}),
-                                       (['--unit-scope', 'corpus', '--corpus-shard', '1/4'], {})):
+                                       (['--unit-scope', 'corpus', '--corpus-shard', '1/5'], {})):
             with patch.dict(os.environ, environment, clear=True), patch.object(sys, 'argv',
                     ['test_runtime.py', '--compiler', '/fixture/nimony']+arguments), patch(
                     'sys.stderr', new_callable=io.StringIO), patch.object(test_runtime, 'NativeChecks') as checks:

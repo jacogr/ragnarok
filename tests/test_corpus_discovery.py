@@ -97,21 +97,22 @@ class CorpusShards(unittest.TestCase):
     def test_complete_disjoint_reproducible_partitions(self):
         """Every declared case has exactly one owner; a seed changes assignment without touching global RNG."""
         state = random.getstate()
-        for seed in ('first', 'second', '40197476202'):
-            partitions = [corpus_catalog.corpus_partition((index, 3), seed) for index in (1, 2, 3)]
-            self.assertEqual(partitions, [corpus_catalog.corpus_partition((index, 3), seed) for index in (1, 2, 3)])
-            self.assertEqual(sum(map(len, partitions)), len(set().union(*partitions)))
-            self.assertEqual(set().union(*partitions), set(corpus_catalog.CORPUS_NAMES))
-            for group in corpus_catalog.GROUPS:
-                for name, dependencies in group.dependencies.items():
-                    # Dependencies connect across source modules as well as within one feature group.
-                    owner = next(partition for partition in partitions if name in partition)
-                    self.assertTrue(set(dependencies) <= set(owner))
+        for count in (3, 4):
+            for seed in ('first', 'second', '40197476202'):
+                partitions = [corpus_catalog.corpus_partition((index, count), seed) for index in range(1, count+1)]
+                self.assertEqual(partitions, [corpus_catalog.corpus_partition((index, count), seed) for index in range(1, count+1)])
+                self.assertEqual(sum(map(len, partitions)), len(set().union(*partitions)))
+                self.assertEqual(set().union(*partitions), set(corpus_catalog.CORPUS_NAMES))
+                for group in corpus_catalog.GROUPS:
+                    for name, dependencies in group.dependencies.items():
+                        # Dependencies connect across source modules as well as within one feature group.
+                        owner = next(partition for partition in partitions if name in partition)
+                        self.assertTrue(set(dependencies) <= set(owner))
         self.assertNotEqual(corpus_catalog.corpus_partition((1, 2), 'first'),
                             corpus_catalog.corpus_partition((1, 2), 'second'))
         self.assertEqual(random.getstate(), state)
         self.assertEqual(set(corpus_catalog.corpus_partition()), set(corpus_catalog.CORPUS_NAMES))
-        for shard in ((0, 2), (3, 2), (1, 4), (True, 2), (1,), '1/2'):
+        for shard in ((0, 2), (3, 2), (1, 5), (True, 2), (1,), '1/2'):
             with self.subTest(shard=shard), self.assertRaises(ValueError):
                 corpus_catalog.corpus_partition(shard)
         for seed in ('', ' ', 1, True):

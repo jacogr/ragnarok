@@ -103,14 +103,14 @@ shards, including the final partial block, then each shard's execution order is 
 mains are independent single-suite items in multi-shard runs, with their existing checked flags,
 private compatible caches, fixtures, expected outputs and fresh ARC observations. An unsharded
 run keeps the reusable directory batch; CI never places the whole directory under one child deadline. The corpus
-work runs once across three `Unit / Corpus (i/3)` matrix jobs alongside all sixteen suite-only shards.
+work runs once across four `Unit / Corpus (i/4)` matrix jobs alongside all sixteen suite-only shards.
 Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
 there are no timing weights or maintained assignments. Each shard executes its assigned cases in
 original feature/task order and reuses its own compatible driver builds. Consumers that read a
 previous corpus result declare `requires` on their source-owned decorator and stay with that producer.
 Native suite shards prepare only their selected native dependencies and fixture providers.
 The Unit aggregate requires every native and corpus shard to succeed.
-Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-3/`, separately from
+Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-4/`, separately from
 native shard reports and the other corpus shard. Artifact retention includes each shard's logs/results.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
@@ -363,9 +363,10 @@ one another's scope. Reproduce with `CI_SHARD_SEED=<run-id> JAM_FUZZ_SHARD=1/3 m
 use `3/3` for socket/minifuzz. Omit the selector to run the complete local plan.
 
 
-CI runs E2E families in parallel on separate VMs: Application (RPC, state and explicit downloads),
-Current Downloads, Offload, Telemetry and Transport (peer entry points, retained/integrated
-services, mesh, resilience and soak). Decorators beside each verdict declare its group and
+CI runs E2E families in parallel on separate VMs: Testnet (RPC, state, explicit downloads
+and full Tiny testnet acceptance), Current Downloads, Telemetry and Transport (peer entry
+points, retained/integrated services,
+mesh, resilience, soak and offload). Decorators beside each verdict declare its group and
 earlier prerequisites. Selection closes over those prerequisites in original declaration order;
 only setup builds may be shared between groups. Every workload and selftest has exactly one
 owning group. Network/resource scenarios remain sequential inside each VM, with independent

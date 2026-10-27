@@ -30,12 +30,13 @@ class VerificationE2E(unittest.TestCase):
         self.assertFalse(observed['passed'])
         self.assertIn('whole-map mismatch', observed['failure'])
 
-    def test_testnet_has_its_own_full_acceptance_runner(self):
-        """Testnet runs independently from Application and uses the full epoch/restart checker."""
+    def test_testnet_keeps_full_acceptance_with_application(self):
+        """The combined Testnet family uses the full epoch/restart checker and the same peer setup."""
         from e2e_checks import testnet_tiny_devnet, PLAN
         from unittest.mock import patch
-        self.assertEqual(PLAN.select('testnet').names('workload'), ('testnet_tiny_devnet',))
-        self.assertNotIn('testnet_tiny_devnet', PLAN.select('application').names('workload'))
+        selected = PLAN.select('testnet')
+        self.assertIn('testnet_tiny_devnet', selected.names('workload'))
+        self.assertEqual(selected.names('setup').count('prepare_peer'), 1)
         context = SimpleNamespace(peer=({'exit_code': 0}, Path('/binary')),
                                   checks=SimpleNamespace(folder=ROOT/'build/tests/e2e'))
         with patch('tiny_devnet_checks.check', return_value={'passed':True}) as full, patch(
@@ -181,12 +182,10 @@ class VerificationE2E(unittest.TestCase):
         from summarize_tests import summarize
         workloads, selftests = [], []
         prerequisites = {
-            'application': ('prepare_peer',),
-            'current': ('prepare_current_download_peer', 'prepare_current_sequence_responder'),
-            'offload': ('prepare_offload_peer',),
             'testnet': ('prepare_peer',),
+            'current': ('prepare_current_download_peer', 'prepare_current_sequence_responder'),
             'telemetry': ('prepare_peer',),
-            'transport': ('prepare_peer', 'prepare_integrated_peer')}
+            'transport': ('prepare_peer', 'prepare_integrated_peer', 'prepare_offload_peer')}
         for group in PLAN.groups():
             selected = PLAN.select(group)
             names, suites = selected.names('workload'), selected.names('selftest')
