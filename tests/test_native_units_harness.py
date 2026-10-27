@@ -59,7 +59,7 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(len(names), len(set(names)))
             self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
             self.assertEqual(sum(corpora for _, corpora in partitions), 1)
-            self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), 1)
+            self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), int(count == 1))
             lengths = [sum(target is not None for _, _, target in batches) for batches, _ in partitions]
             self.assertLessEqual(max(lengths)-min(lengths), 1)
         self.assertEqual(native_tests.unit_partition(), (native_tests.unit_batches(), True))
@@ -81,7 +81,13 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(len(names), len(set(names)))
                 self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
                 self.assertEqual(sum(corpora for _, corpora in partitions), 1)
-                self.assertEqual(sum(batch[0] == 'codec' for batch in batches), 1)
+                self.assertEqual(sum(batch[0] == 'codec' for batch in batches), int(count == 1))
+                if count > 1:
+                    # Every CI batch is one original source main; no aggregate codec deadline hides unfinished siblings.
+                    for name, members, target in batches:
+                        self.assertEqual(members, (name,))
+                        self.assertEqual(target, name)
+                        self.assertIn(name, native_tests.unit_dependency_weights())
                 sizes = [len(selected)+int(corpora) for selected, corpora in partitions]
                 self.assertLessEqual(max(sizes)-min(sizes), 1)
         self.assertNotEqual(native_tests.unit_partition((1, 16), '40080775112'),

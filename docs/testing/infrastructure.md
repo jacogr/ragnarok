@@ -83,7 +83,7 @@ exact ordered compiler/linker profile. The cache identity also includes native l
 contents and the compiler installation. Observer renames and feature defines therefore remain
 isolated. Every main still compiles and runs in its own process; expected-output comparisons,
 per-suite ARC evidence retirement and fresh observations remain mandatory. The codec batch uses
-bounded private serial Hastur workers: each worker keeps its own cache across a contiguous group
+bounded private serial Hastur workers for unsharded runs: each worker keeps its own cache across a strided group
 of discovered mains, with no concurrent cache sharing. Workers still run every main separately,
 retain its expected-output verdict and report failure if any main fails. Cache identities include
 the exact build profile; workers reuse only their own compatible intermediates. A compiler-owned
@@ -99,8 +99,10 @@ read once per invocation and needs no compiler setup, historical timings or main
 
 Using `CI_SHARD_SEED=${{ github.run_id }}`, the planner randomizes ties, sorts batches by weight,
 and forms blocks with one item per shard. Each block is independently dealt to random distinct
-shards, including the final partial block, then each shard's execution order is shuffled. The codec
-directory remains one batch, weighted by its members' combined unique dependencies. The corpus
+shards, including the final partial block, then each shard's execution order is shuffled. Codec
+mains are independent single-suite items in multi-shard runs, with their existing checked flags,
+private compatible caches, fixtures, expected outputs and fresh ARC observations. An unsharded
+run keeps the reusable directory batch; CI never places the whole directory under one child deadline. The corpus
 work runs once across three `Unit / Corpus (i/3)` matrix jobs alongside all sixteen suite-only shards.
 Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
 there are no timing weights or maintained assignments. Each shard executes its assigned cases in
@@ -114,8 +116,8 @@ native shard reports and the other corpus shard. Artifact retention includes eac
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
 the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
 on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SCOPE=suites make check-unit` (or
-`--shard-seed` on the underlying runner). Unseeded local partitions keep their historical lexical
-assignment; plain `make check-unit` remains complete and keeps its original execution order.
+`--shard-seed` on the underlying runner). Unseeded local partitions use a balanced lexical
+stride; plain `make check-unit` remains complete and keeps its original execution order.
 Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
 other's verdict, and corpus-only runs reject a unit-shard selection. To reproduce a corpus partition,
 use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/3 make check-corpus`, followed by
