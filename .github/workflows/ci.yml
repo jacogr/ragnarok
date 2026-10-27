@@ -739,6 +739,44 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
+  # Explicit architecture qualification before application integration; no extra master-push experiment.
+  pvm-interpreter-comparison:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}
+    name: Perf / PVM Interpreter Comparison
+    timeout-minutes: *ci-job-timeout
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - name: Resolve current master
+        run: git fetch --no-tags origin master:refs/remotes/origin/master
+      - name: Install DOOM asset decompressor
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Compare complete states on one runner
+        run: make bench-pvm-experimental
+      - name: Show complete comparison
+        if: always()
+        run: |
+          if test -f build/tests/pvm-interpreter-linux/summary.md; then
+            cat build/tests/pvm-interpreter-linux/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain exact-source timing and refusal evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-interpreter-linux-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-interpreter-linux/*.json
+            build/tests/pvm-interpreter-linux/*.log
+            build/tests/pvm-interpreter-linux/summary.md
+            build/tests/pvm-doom/*.json
+            build/tests/pvm-doom/*.log
+            build/ci/*.log
+
   perf-status:
     name: Perf
     timeout-minutes: *ci-job-timeout

@@ -114,3 +114,29 @@ This PR publishes the experimental engine and accumulated measurements for revie
 select the engine through the application backend, establish current-master performance ratios,
 or make local timing drivers portable CI benchmarks. Deployment budgets, backend ownership and
 application integration remain the gates described in [resource admission](RESOURCES.md).
+
+## Linux performance comparison
+
+The second stack layer adds an explicit `bench-pvm` workflow dispatch comparison job. It resolves
+`origin/master` once on its runner and compares that exact source revision (the existing planned
+interpreter) with this overlay and pinned PolkaVM interpreted. Regular master monitoring remains
+separate. `make bench-pvm-experimental` owns clean-checkout provisioning; timing execution requires
+Linux x86-64 and the CI environment. Local builds/parser tests require no fabricated CI variables.
+
+The job prepares all guest states using the pinned public interpreted reference. Pinky, sieve
+100,000, minimal 100,000, memory fill 100,000 and DOOM initialization/gameplay after 1,320 warmup
+frames each run in forward and reverse process order. Each process retains thirteen checked calls:
+index zero is cold, indices three through twelve form reused medians. Complete memory, permissions,
+registers, gas, exit state, source snapshots and DOOM host-output events are checked. DOOM admission
+also matches upstream frame 1,320. Every engine must reject assertion and corrupted-state controls.
+
+Both Nim roles build twice at canonical source/output paths with fresh private compiler caches;
+repeat images must match byte for byte. The report records resolved revisions, source/image/input
+hashes, commands, CPU model, toolchain and every sample. Source attempts and stream occupancy are
+observations, not native instruction or hardware-counter measurements. No samples are dropped.
+
+Candidate plan/frame construction, reset, outer execution and immutable final publication are
+reported separately, with a cold sum. Master planned calls include their final publication, while
+its gas-plan preparation is additional. Common fixture I/O, decoding and full-state validation are
+outside these scopes. PolkaVM has call-only timing; no constructor/lifecycle parity is claimed.
+A failed/incomplete cohort retains diagnostics but cannot publish a successful comparison table.

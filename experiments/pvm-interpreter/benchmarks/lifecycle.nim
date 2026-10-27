@@ -14,6 +14,9 @@ proc local(path: string): string =
   ## A fixture I/O refusal aborts before any valid result row.
   try: result = readFile(path)
   except: quit 2
+if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
+  # Linux comparison proves optimized assertion checks remain present before accepting timings.
+  assert false, "pvm experimental assertion control"
 let guest = getEnv("RAGNAROK_PVM_GUEST")
 let data = local(getEnv("RAGNAROK_PVM_SIEVE_INPUT"))
 let expected = local(getEnv("RAGNAROK_PVM_SIEVE_EXPECTED"))
@@ -75,3 +78,5 @@ for sample in 0..<samples:
   checkFlatReference(frame, expected)
   echo "PHASE,", guest, ",", sample, ",", before-beforeReset, ",", elapsed, ",",
       afterPublication-afterExecution, ",", afterPublication-beforeReset
+  echo "PHASE_CACHE,", guest, ",", sample, ",", flatNodes(frame), ",", flatPreparationUnits(frame),
+      ",", 1000000000'u64-frame.remaining
