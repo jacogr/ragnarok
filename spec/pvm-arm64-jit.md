@@ -962,3 +962,104 @@ Receipts are under `build/pvm-arm64-jit/register-coverage`, the corresponding
 `build/pvm-arm64-jit/register-coverage/prior-linux`. No originating native/benchmark failure
 required a production correction in this increment. The emitted implementation is retained in
 the existing draft for further local work; it is not a default or merge recommendation.
+
+
+## Remaining boundary profile after 53-opcode coverage
+
+Profiled runtime: `1003f8f7c0f54326d0f2a5f220b6eb9a281e9ead`. All instrumentation lives in
+ignored source snapshots; production code and benchmark timing images are unchanged. Each of the
+seven fixtures executes once cold and once with its retained stream. Additional DOOM shape and
+admission probes execute the same two-call pattern. All 22 calls retain complete reference CPU,
+gas, memory/permission, source-snapshot and ordered host-event checks. Every diagnostic clock
+is discarded. These are logical operation/transition counts, not hardware counters or sampled CPU
+costs. Register counts include arithmetic in inline fused/charged interpreter workers; they are
+not counts of separate function dispatches.
+
+| Workload | Memory visits | Interpreted register visits | Missing register-opcode visits |
+|---|---:|---:|---:|
+| sieve 100000 | 119,665 | 283,652 | 81 |
+| sieve 10000000 | 15,475,522 | 31,283,927 | 462 |
+| pinky 1 | 8,066,877 | 6,030,323 | 488,059 |
+| memset 100000 | 300,101 | 109 | 11 |
+| minimal 100000 | 1,000,015 | 600,011 | 0 |
+| init 0 | 8,145,614 | 118,652,603 | 7,980 |
+| tick 0 | 4,126,674 | 4,113,547 | 16,627 |
+
+### Highest-priority candidate: conditional publication and admission
+
+DOOM initialization's five hottest arithmetic sites already have native opcode support:
+
+| Source PC | Opcode | Reused interpreted visits |
+|---|---:|---:|
+| 193987 | add64 (200) | 21,304,033 |
+| 193990 | logical right32 (139) | 21,304,033 |
+| 193996 | add immediate32 (131) | 21,295,001 |
+| 194002 | logical left immediate64 (151) | 21,303,767 |
+| 194005 | logical right immediate64 (152) | 21,303,767 |
+
+These total 106,510,601 operations per call. Exact handler probes identify the existing three
+specialized charged-shape headers at PCs 193987/193996/194002; their first bodies are not native
+pending, native branch or native arithmetic handlers. The lazy compilation trace reaches each
+header/body pair with zero prior entry and a full 1,024-publication count. The absent native body
+therefore has direct admission evidence; this is not inferred from opcode support alone.
+
+Initialization retains 774 active native entries after 1,024 publications: 250 older publications
+are superseded by later versions at the same entry. The two publication call sites are initial
+arithmetic emission and conditional promotion. The unchanged counter/limit counts both versions.
+Only 82,664 bytes of the one-MiB arena are used in this fixture. Gameplay has 467 active entries
+after 736 publications, including 269 superseded publications, and does not reach the cap.
+
+The next bounded experiment should publish a complete conditional fragment once its original
+checked branch worker has positively cached both scalar destinations, retaining checked
+interpreter execution before that point. This can recover publication budget without raising
+limits or adding eviction. Specialized charged headers must hand off coherently when a native
+body becomes available; otherwise an already-compiled body could remain bypassed. Preserve
+partial-budget/gas behavior, invalid-target ordering, OS/capacity refusal and exact owner transfer.
+
+The hypothesis is improved admission of later hot supported code, especially the initialization
+loop. Recovered budget does not prove that loop will be admitted or faster: the existing Nim
+three-shape cycle is already fused, and small native leaves may lose to it. Qualification must
+check actual header/body selection, full state and repeated public timings before retention.
+No runtime or cap change is included in this profiling increment.
+
+### Other bounded candidates
+
+Pinky's remaining unsupported register work is exactly six opcodes. Conditional moves 218/219
+account for 191,513/151,705 visits, totaling 343,218 (about 70.3% of unsupported register visits).
+Alternative immediate shifts 147/148 account for 61,383/41,040 visits; leading-zero operations
+104/103 contribute 36,548/5,870. Conditional-move lowering is the next small pure-register
+coverage candidate, with explicit old-destination live-in and destination/source-alias tests.
+These visit counts do not establish a prospective CPU gain.
+
+DOOM gameplay has only 16,627 unsupported register visits; 16,509 are signed division32
+(opcode 194). Its larger boundary is short supported arithmetic around memory: the pixel-loop
+site 530670 executes logical right32 (198) 1,024,000 times, followed by byte store 120 at
+site 530673 the same number of times. Native branch returns land at that shift site 768,000
+times. The current fragment floor and memory boundary leave this short sequence interpreted.
+A later checked register/memory-loop experiment should target that pattern with exact prefix
+publication and refusal behavior; adding division alone is a much smaller coverage change.
+
+Long sieve still performs 15,475,522 memory visits. Source 156874 performs a 64-bit load
+5,000,000 times followed by three supported operations and a static jump. Memory fill has
+199,998 byte stores at source 1913; minimal has 1,000,015 memory visits and 200,001 dynamic
+transfers while its missing-register count is zero. None of these suggests broad arithmetic
+coverage as the main remaining boundary. All seven workloads have zero full slow-load/store
+fallback hits: accesses satisfy the existing contiguous-region fast checks. This observation
+does not authorize weakening those checks or resurrecting the previously rejected head-load trial.
+
+### Diagnostic provenance
+
+The main probe counts interpreter register equations at all six worker/template call sites, memory
+workers and region paths, scalar control workers, arithmetic-leaf returns and native branch
+landing sites. Counts are reset between cold/reused calls while native source/stream ownership
+remains retained. The DOOM follow-ups inspect exact header/body identities, active entry maps
+and late admission context. Snapshot hashes are independently checked for all three successful
+probes (478 files each); all 710 source/helper/input/compiler/image seals of the qualified
+application cohort remain unchanged. No Linux timing/profile or hardware-cause claim is added.
+
+Records: `build/pvm-arm64-jit/expanded-boundaries/{results,shapes,admission}.json`, their sealed
+snapshots and `independent-verification.json`. Four diagnostic images execute eleven processes /
+22 checked calls. The first active-entry dump used a reference-container iterator rejected by
+the pinned compiler; an index loop fixes that diagnostic without a hidden sequence copy. Its
+failed source and originating log remain preserved. Production implementation and existing
+macOS/Linux qualification remain unchanged.
