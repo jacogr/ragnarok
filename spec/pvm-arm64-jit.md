@@ -1809,3 +1809,41 @@ CPU ms, forward / reverse. Public calls include fresh invocation memory and immu
 | sieve 10000000 | 336.373 / 336.214 | 250.364 / 247.367 | 245.734 / 245.774 | 244.514 / 244.732 | 366.361 / 368.180 | 0.731 / 0.731 | 0.671 / 0.668 |
 | init 0 | 319.625 / 324.834 | 210.494 / 213.559 | 202.367 / 202.542 | 198.835 / 202.209 | 672.460 / 671.880 | 0.633 / 0.624 | 0.301 / 0.301 |
 | tick 0 | 39.841 / 40.752 | 37.681 / 38.259 | 36.300 / 37.114 | 34.172 / 34.776 | 44.525 / 44.873 | 0.911 / 0.911 | 0.815 / 0.827 |
+
+## Regional comparison constants
+
+Measured runtime `d11d785f7f1bf03960ea651ec9647331d00e5afe`, accepted parent `aab4f68dcd242c5967c9f3b4c51fbf5e686248ea`.
+
+The regional policy now shortens conditional comparison operands as well as arithmetic constants. Ordinary branch code, the final five return-selector words, wide-price guards, ABI and caps remain unchanged. The private regional factory alone admits shortened7–9word terminal shapes alongside original6/10word shapes; the compiler still copies exactly the compare prefix, extracts the unchanged final condition and relocates every guarded edge after emission.
+
+Retain:initialization199.561→194.301ms(2.6%), all five balanced blocks favoring the trial with non-overlapping ranges. Other workloads differ by at most1.0% with overlapping ranges. Pinky costs0.5%; gameplay improves1.0%, with one balanced block favoring the parent. Neither executes a connected region, so these small changes are whole-image code-generation/layout effects, not evidence of regional instruction execution there. No CPU cause is inferred from code lengths.
+
+Both ordinary and regional branch policies pass3,136independent predicate/register-preservation cases each; both constant policies retain1,209literal cases each. Direct price486and orientation704fixtures now exercise compact comparison prefixes; the capacity fixture retains full prefixes. All9Mac native/opcode/host/lifetime/owner gates pass. Kernel42processes/546calls/63controls/6freshbuilds/3equal-image pairs; public70/910/115/16/8;140balanced processes/1,820calls. Independent706/710source/input/compiler/image seals, exact parent sources, raw receipts and preserving-commit proofs684/667tracked files pass.
+
+Native operations/calls/branches/headers match across versions; only initialization code length changes82,996→82,972bytes. Eight separate complete checked DOOM calls, with diagnostic clocks discarded, confirm unchanged guarded visits and compare-prefix reductions3/3/0instructions. Observed visits42,608,063/42,589,999/42,589,999across two initialization calls account for255,594,186fewer unconditional compare-prefix instructions. This derives from code lengths×visits, not hardware counters. Both477-file diagnostic originals match the measured source cohorts.
+
+LinuxARM64 passes9shared gates,4public builds,14processes/182calls,32controls,2,863sealed identities/2,846tracked files bound to this measured runtime. Official compiler binary/archive, copied raw protocols and image/architecture/network identities independently verify; container clocks remain diagnostic only. No guest-memory, host, source/gas, ownership, default, dependency or JIT CI change. Full constructor/cold/reused/lifecycle scopes remain separate. Evidence:`build/pvm-arm64-jit/region-compare-constants/`.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.531 (2.514–2.622) | 2.526 (2.519–2.546) | 0.998 | 1.007, 0.999, 1.000, 1.001, 0.977 |
+| minimal 100000 | 4.866 (4.848–4.915) | 4.866 (4.849–4.971) | 1.000 | 0.997, 0.998, 1.005, 1.002, 1.006 |
+| memset 100000 | 3.351 (3.333–3.386) | 3.351 (3.324–3.374) | 1.000 | 0.993, 0.998, 0.995, 1.003, 1.002 |
+| pinky 1 | 69.710 (69.419–70.031) | 70.034 (69.497–70.579) | 1.005 | 1.006, 1.007, 1.001, 1.000, 1.005 |
+| sieve 10000000 | 246.047 (245.558–248.791) | 245.809 (245.256–247.856) | 0.999 | 0.999, 0.995, 0.999, 1.003, 0.998 |
+| init 0 | 199.561 (198.974–200.242) | 194.301 (193.752–196.109) | 0.974 | 0.972, 0.978, 0.972, 0.976, 0.974 |
+| tick 0 | 36.717 (36.471–37.331) | 36.352 (36.291–36.828) | 0.990 | 1.001, 0.989, 0.995, 0.985, 0.984 |
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.480 / 3.415 | 2.530 / 2.522 | 2.561 / 2.503 | 2.396 / 2.354 | 6.032 / 5.854 | 0.736 / 0.733 | 0.425 / 0.428 |
+| minimal 100000 | 4.947 / 4.878 | 4.962 / 4.923 | 4.968 / 4.876 | 4.955 / 4.874 | 6.101 / 5.998 | 1.004 / 1.000 | 0.814 / 0.813 |
+| memset 100000 | 4.429 / 4.344 | 3.546 / 3.310 | 3.485 / 3.325 | 2.692 / 2.667 | 3.986 / 3.933 | 0.787 / 0.765 | 0.874 / 0.845 |
+| pinky 1 | 86.609 / 84.584 | 71.672 / 69.507 | 71.718 / 69.760 | 72.322 / 70.207 | 93.701 / 93.489 | 0.828 / 0.825 | 0.765 / 0.746 |
+| sieve 10000000 | 339.213 / 336.276 | 245.631 / 245.684 | 245.745 / 245.502 | 244.756 / 244.702 | 366.863 / 366.678 | 0.724 / 0.730 | 0.670 / 0.670 |
+| init 0 | 319.861 / 319.858 | 199.262 / 200.095 | 194.340 / 194.539 | 193.438 / 193.755 | 671.861 / 671.513 | 0.608 / 0.608 | 0.289 / 0.290 |
+| tick 0 | 40.113 / 40.404 | 36.360 / 36.613 | 36.756 / 36.245 | 34.275 / 34.423 | 44.538 / 44.813 | 0.916 / 0.897 | 0.825 / 0.809 |
