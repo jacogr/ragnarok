@@ -304,7 +304,9 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
   assert jit.region.status == 0
   jit.region.status = 1 # Any refusal remains interpreted and avoids repeated compilation attempts.
-  var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32]
+  # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
+  var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
+      0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
   var fixes: seq[ArmRegionFixup] = @[]
   var labels = default(array[3, int])
   var exits: seq[uint32] = @[]
@@ -332,10 +334,9 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
       armRegionEdge(words, fixes, item.header, 3, true)
       words.add(0xcb010042'u32) # SUB Xgas,Xgas,Xprice after the unsigned sufficiency check.
     words.add(0xd1000063'u32 or (item.span shl 10)) # SUB Xremaining,Xremaining,#wholeSourceSpan.
-    # Invocation-local visits preserve exact lowered-operation counts without retaining mutable counters in code.
-    words.add(0xf9400221'u32 or (uint32(index+2) shl 10))
-    words.add(0x91000421'u32)
-    words.add(0xf9000221'u32 or (uint32(index+2) shl 10))
+    # One exact integer SIMD add replaces a context load/add/store; no FP arithmetic, flags or callee-saved state changes.
+    let counter = uint32(index+16)
+    words.add(0x5ef38400'u32 or (counter shl 5) or counter) # ADD Dcounter,Dcounter,D19 (integer scalar).
     for word in item.body.words: words.add(word)
     # Reuse the verified operand/compare prefix; omit its five scalar-return selection instructions.
     for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
@@ -374,6 +375,10 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
   for slot in 0..<13: words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   words.add(0xf9000222'u32) # STR Xgas,[Xcontext].
   words.add(0xf9000623'u32) # STR Xremaining,[Xcontext,#8].
+  # Publish invocation-local visits once on every guarded/external exit, preserving the existing five-word context ABI.
+  words.add(0xfd000a30'u32)
+  words.add(0xfd000e31'u32)
+  words.add(0xfd001232'u32)
   words.add(0x2a0103e0'u32) # MOV W0,Wtarget after register/state publication.
   if words.len >= 1024: return false
   for at in epilogueBranches:

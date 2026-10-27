@@ -113,6 +113,36 @@ int main(void) {
     assert(pvm_arm64_arena_next(continuation, 0, registers) == 7);
     assert(pvm_arm64_arena_next(continuation, 8, registers) == 9);
     pvm_arm64_arena_destroy(continuation);
+    /* SIMD scalar ADD is integer arithmetic: exact carries beyond 2^53 and modular 64-bit wrap must survive execution. */
+    void *integer_arena = pvm_arm64_arena_create();
+    assert(integer_arena != NULL);
+    uint32_t integer_words[] = {
+        UINT32_C(0xaa0103f1), /* MOV X17,X1: borrow the context without touching register-file bytes. */
+        UINT32_C(0xfd400a30), /* LDR D16,[X17,#16]. */
+        UINT32_C(0xfd400e33), /* LDR D19,[X17,#24]. */
+        UINT32_C(0x5ef38610), /* ADD D16,D16,D19: integer, not FADD. */
+        UINT32_C(0xfd001230), /* STR D16,[X17,#32]. */
+        UINT32_C(0x528009a0), UINT32_C(0xd65f03c0) /* MOV W0,#77; RET. */
+    };
+    assert(pvm_arm64_arena_publish(integer_arena, integer_words, 7) == 0);
+    const uint64_t integer_values[] = {0, 1, UINT64_C(0x1fffffffffffff),
+        UINT64_C(0x20000000000000), UINT64_C(0x20000000000001),
+        UINT64_C(0x8000000000000000), UINT64_MAX - 1, UINT64_MAX};
+    for (unsigned slot = 0; slot < 13; ++slot) registers[slot] = UINT64_C(0xfedcba9876543210) + slot;
+    for (unsigned left = 0; left < 8; ++left) {
+        for (unsigned right = 0; right < 8; ++right) {
+            /* Every context field and borrowed register byte outside the one declared result remains unchanged. */
+            uint64_t integer_context[5] = {11, 22, integer_values[left], integer_values[right], 0};
+            assert(pvm_arm64_arena_region(integer_arena, 0, registers, integer_context) == 77);
+            assert(integer_context[0] == 11 && integer_context[1] == 22);
+            assert(integer_context[2] == integer_values[left] && integer_context[3] == integer_values[right]);
+            assert(integer_context[4] == integer_values[left] + integer_values[right]);
+            for (unsigned slot = 0; slot < 13; ++slot) {
+                assert(registers[slot] == UINT64_C(0xfedcba9876543210) + slot);
+            }
+        }
+    }
+    pvm_arm64_arena_destroy(integer_arena);
     /* Exact final capacity is admitted; subsequent publication refuses without extending the mapping. */
     void *arena = pvm_arm64_arena_create();
     assert(arena != NULL);
@@ -124,6 +154,6 @@ int main(void) {
 #if defined(__linux__) && defined(__aarch64__)
     assert(descriptor_count() == descriptors);
 #endif
-    puts("ARM_MEMORY_OK,1000,capacity,publication,retirement");
+    puts("ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64");
     return 0;
 }
