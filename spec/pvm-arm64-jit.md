@@ -1555,3 +1555,74 @@ passes at this exact staged runtime: nine shared gates, four public builds,14pro
 Container architecture/network isolation and successful exit verify; clocks remain diagnostic only.
 Raw evidence, assembler/ABI controls and preserving
 receipts live under `build/pvm-arm64-jit/resident-counters/` and sealed kernel/application folders.
+
+
+## Scoped native adapter borrows — retained (October 27)
+
+Measured runtime `3b8ecacc34d33d93f7f9dec36dcad6d73c2be6f4` against accepted counter parent
+`70900fcdbb5cf7100e53ea3fc4397d54419ee33e`, Apple M1 Max, unchanged pinned checked
+ARC/Clang ThinLTO. Only three native adapters change:flatArmRunNext,flatArmEnter,flatArmExecute.
+Their temporary cache references are explicit scoped cursor borrows. The exclusive frame retains
+the cache throughout a non-host native call; mutable register bytes are a disjoint sibling.
+The header's borrow ends before the next helper receives the whole mutable frame. No borrow
+bypass, ownership transfer, host callback or retained invocation pointer is introduced.
+
+Nil assertions, typed failure paths, bounds checks, quota/gas ordering, partial barriers, source
+PCs, native generation, metrics and cache admission remain unchanged. Generated C independently
+confirms all refcount work disappears in these three functions:baseline8/5/8refcount mentions,
+current0/0/0. Function extraction and complete generated-source hashes are retained. The native
+register/branch instruction generator is unchanged; native call/work counts and emitted lengths
+remain identical for every workload.
+
+A separate12process/156checked-call sampling cohort on sealed pre-trial images identified
+427/761long-sieve leaf samples in flatArmEnter. Disassembly confirms repeated ownership guards,
+arena validation and count-array metadata work. Those samples guide the bounded hypothesis;
+they do not prove that ARC alone caused that share. Sample clocks are discarded. Profiles for
+public interpreter/JIT, retained core and reference across long sieve and both DOOM phases,
+all snapshot hashes and full-state outputs independently verify against710sealed identities.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.463 / 3.421 | 2.801 / 2.767 | 2.764 / 2.736 | 2.522 / 2.497 | 5.941 / 5.923 | 0.798 / 0.800 | 0.465 / 0.462 |
+| minimal 100000 | 4.931 / 4.894 | 4.946 / 4.869 | 4.941 / 4.880 | 4.902 / 4.841 | 6.019 / 5.994 | 1.002 / 0.997 | 0.821 / 0.814 |
+| memset 100000 | 4.367 / 4.377 | 3.447 / 3.511 | 3.400 / 3.414 | 2.671 / 2.693 | 3.954 / 4.030 | 0.778 / 0.780 | 0.860 / 0.847 |
+| pinky 1 | 85.403 / 85.947 | 72.243 / 72.934 | 72.151 / 72.428 | 71.038 / 71.909 | 94.302 / 95.228 | 0.845 / 0.843 | 0.765 / 0.761 |
+| sieve 10000000 | 336.276 / 347.659 | 275.817 / 283.831 | 269.378 / 275.219 | 264.123 / 268.978 | 366.474 / 372.920 | 0.801 / 0.792 | 0.735 / 0.738 |
+| init 0 | 319.166 / 321.637 | 209.396 / 209.833 | 211.494 / 209.441 | 209.851 / 208.482 | 674.716 / 690.492 | 0.663 / 0.651 | 0.313 / 0.303 |
+| tick 0 | 40.205 / 39.977 | 37.238 / 37.171 | 36.709 / 36.424 | 33.283 / 33.029 | 43.928 / 44.234 | 0.913 / 0.911 | 0.836 / 0.823 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.803 (2.774–2.820) | 2.768 (2.748–2.856) | 0.988 | 0.988, 0.983, 0.985, 0.987, 1.007 |
+| minimal 100000 | 4.911 (4.871–5.021) | 4.933 (4.893–5.026) | 1.004 | 0.997, 1.013, 1.005, 1.004, 1.005 |
+| memset 100000 | 3.475 (3.429–3.521) | 3.359 (3.344–3.398) | 0.967 | 0.978, 0.959, 0.971, 0.966, 0.966 |
+| pinky 1 | 72.108 (71.900–72.553) | 71.908 (71.609–73.375) | 0.997 | 0.999, 0.993, 0.997, 1.009, 0.995 |
+| sieve 10000000 | 270.748 (270.642–272.443) | 266.558 (266.343–268.199) | 0.985 | 0.983, 0.985, 0.985, 0.984, 0.985 |
+| init 0 | 209.857 (209.107–210.561) | 209.846 (208.797–210.428) | 1.000 | 1.001, 0.998, 1.001, 1.000, 0.999 |
+| tick 0 | 37.161 (36.869–37.356) | 36.669 (36.480–37.337) | 0.987 | 0.987, 0.990, 0.984, 0.987, 0.996 |
+
+Retain the public-call improvement:fill3.3% and long sieve1.5%, with non-overlapping process
+ranges and all five balanced blocks favoring the candidate. Gameplay improves1.3% in its median
+and all five blocks favor it, though process ranges overlap. Short sieve1.2%/Pinky0.3% movements
+have overlapping ranges; no smaller broad win is claimed. Minimal's median rises0.4% with
+substantial overlap; initialization is unchanged. Retained-core sieve's earlier~9% result is
+not the public speedup and must not be substituted for it.
+
+All nine native/opcode/host/exclusive-owner gates and ARC1000pass. Kernel42processes/546calls/
+63controls/6freshbuilds/3equal-image pairs and public70/910/115/16/8cohorts independently reparse
+with706/710seals and exact accepted-parent sources. Another140public processes/1,820calls
+independently reparse with stable native counters in14workload/role groups. Measured tracked
+bytes match this runtime commit:684kernel and667application files.
+
+Constructor, cold, reused public call and core reset/publication scopes remain separate;
+reference restoration/teardown remains separate from its call CPU. Linux qualification passes
+at the exact staged runtime:nine shared gates,four public builds,14processes/182calls and
+32refusal controls. All2,863staged seals,2,846tracked files bound to this commit, official compiler
+bytes, images and copied logs independently verify; Docker architecture/network isolation and
+successful exit pass. Its clocks remain diagnostic only. Records:`build/pvm-arm64-jit/adapter-borrows/`, pre-trial samples
+in`accepted-sampling/`, and the sealed current kernel/application folders. No defaults/CI/pins
+change; no hardware counter or microarchitectural-cause claim is made.
