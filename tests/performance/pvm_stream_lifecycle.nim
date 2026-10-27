@@ -81,3 +81,9 @@ for sample in 0..<samples:
       afterPublication-afterExecution, ",", afterPublication-beforeReset
   echo "PHASE_CACHE,", guest, ",", sample, ",", flatNodes(frame), ",", flatPreparationUnits(frame),
       ",", 1000000000'u64-frame.remaining
+
+when defined(pvmArm64Jit):
+  # Local compiler trials report actual native coverage and cumulative compilation/publication CPU.
+  let native = flatArmStatistics(frame)
+  echo "ARM_JIT,", guest, ",", native[0], ",", native[1], ",", native[2], ",", native[3], ",",
+      native[4]

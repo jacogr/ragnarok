@@ -6,6 +6,8 @@ import std/assertions
 import ../[program, machine, gas, gas_plan, gas_memo]
 import ./execution_types as oracle
 import ./register_ops
+when defined(pvmArm64Jit):
+  import ./arm64_jit
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -87,6 +89,9 @@ type
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
     pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
     pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
+    when defined(pvmArm64Jit):
+      armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
+      armJit: nil ArmJit # Frame-owned code cache never retains CPU/memory or transfers into public prepared owners.
     pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
 
 
@@ -132,6 +137,10 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   ## Preserve GP sign extension with unsigned bit operations.
   if (x and 0x80000000'u32) != 0: uint64(x) or 0xffffffff00000000'u64
   else: uint64(x)
+
+when defined(pvmArm64Jit):
+  proc flatArmPrepare(f: var FlatFrame, origin: uint32)
+    ## Cold suffix preparation may replace eligible entries with native fragments.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -1282,6 +1291,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
     if fact.ending: break
     inc index
+  when defined(pvmArm64Jit):
+    flatArmPrepare(f, origin)
   origin
 
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
@@ -1405,6 +1416,63 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   var prepared = prepareFlatFrame(plan, images, info)
   assert prepared.error == FlatError.None
   takeValue(prepared)
+
+when defined(pvmArm64Jit):
+  proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
+    ## Partial budgets retain original atomic handler behaviour, including a second-node barrier.
+    if f.barrier != flatStop:
+      let original = f.armOriginal[int(offset)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let jit = f.armJit
+    assert jit != nil
+    if jit != nil: return callArmEntry(jit, offset, f.info.registers)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
+    ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
+    if f.armJit == nil: f.armJit = newArmJit()
+    let jit = f.armJit
+    if jit == nil: return offset
+    let entry = armEntry(jit, offset, uint32(f.handlers.len))
+    if entry != 0: return offset
+    var words: seq[uint32] = @[]
+    var ending = offset
+    var count = 0'u32
+    while int(ending) < f.handlers.len and count < 32:
+      # Headers share their source site with the immediately following operation; never bypass charging.
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
+      emitArmOperation(words, fact.opcode, fact.args.slots, fact.args.x)
+      inc ending
+      inc count
+    if count < 2:
+      refuseArmEntry(jit, offset)
+      return offset
+    let published = publishArmEntry(jit, offset, ending, count, words)
+    if not published: return offset
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(offset)] = f.handlers[int(offset)]
+    f.handlers[int(offset)] = flatArmExecute
+    ending
+
+  proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
+    ## Only newly emitted suffix nodes are examined. Unsupported nodes keep the ordinary hot loop unchanged.
+    let before = armClock()
+    var offset = origin
+    while int(offset) < f.handlers.len:
+      let ending = flatArmCompile(f, offset)
+      offset = if ending > offset: ending else: offset+1
+    let jit = f.armJit
+    if jit != nil: jit.compilationNs+=armClock()-before
+
+  proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =
+    ## Explicit native coverage counters distinguish compilation, reuse, lowered operations and emitted bytes.
+    if f.armJit == nil: default(array[5, uint64])
+    else: [f.armJit.fragments, f.armJit.calls, f.armJit.operations, f.armJit.codeBytes,
+        f.armJit.compilationNs]
 
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The hot loop is the offset-returning dispatch; budgets are reserved only at synthetic block entries.
@@ -1725,12 +1793,23 @@ type FlatStream* = object
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Move only immutable executable facts back to the exclusively leased prepared owner.
+  when defined(pvmArm64Jit):
+    # Native entries are frame-owned in this first slice; transferred streams carry only original checked handlers.
+    for offset in 0..<f.armOriginal.len:
+      let original = f.armOriginal[offset]
+      if original != nil: f.handlers[offset] = original
+    f.armOriginal = @[]
+    f.armJit = nil
   FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
     compiledForPc: move(f.compiledForPc), failure: f.preparationFailure,
     preparation: f.preparationUsed)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Exact-source binding belongs to the opaque public owner; invocation memory remains newly captured.
+  when defined(pvmArm64Jit):
+    # A different emission history must never inherit code keyed only by a previous frame's scalar offsets.
+    f.armOriginal = @[]
+    f.armJit = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
   f.sites = move(stream.sites)
