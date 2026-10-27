@@ -332,14 +332,6 @@ class Comparison:
                 for driver, source in (('kernel', ROOT/'tests/performance/pvm_sieve.nim'), ('doom', ROOT/'tests/performance/pvm_doom.nim')):
                     # The same checked public driver is imported from one-level-up source coordinates.
                     text = subprocess.check_output(['git','show',commit+':'+str(source.relative_to(ROOT))],cwd=ROOT,text=True).replace('../../src/', '../src/')
-                    if driver == 'doom' and role == 'master':
-                        # Expose additional master preparation without changing its measured host loop.
-                        needle = 'let created = newGasPlan(owner,'
-                        assert text.count(needle) == 1
-                        text = text.replace(needle, 'let masterPrepare = cpuNanoseconds()\n'+needle)
-                        needle = 'let requestedTiming = getEnv('
-                        assert text.count(needle) == 1
-                        text = text.replace(needle, 'echo "MASTER_PREPARE,", cpuNanoseconds()-masterPrepare\n'+needle)
                     (drivers/(driver+'.nim')).write_text(text)
             self.report.setdefault('sources', {})[role] = {str(p.relative_to(canonical)):digest(p) for p in sorted(canonical.rglob('*.nim'))}
             for driver in ('kernel','doom'):
@@ -371,7 +363,7 @@ class Comparison:
             RAGNAROK_PVM_SIEVE_CLOCK='1', RAGNAROK_PVM_DOOM_TIMING='1',
             RAGNAROK_PVM_DOOM_ASSERT='0', RAGNAROK_PVM_LOCAL_ONECALL='0',
             RAGNAROK_PVM_DOOM_PRICING='prepared' if role in ('prepared','baseline') else 'planned',
-            RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('public','prepared','baseline') else '0',
+            RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('master','public','prepared','baseline') else '0',
             RAGNAROK_PVM_DOOM_LIFECYCLE='1' if doom and role=='reference' else '0')
         if doom:
             rom = ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'
@@ -418,20 +410,11 @@ class Comparison:
         event_bytes = len((DOOM/'prepared'/(case+'.events')).read_bytes()) if doom else 0
         if role == 'candidate':
             parsed = parse_candidate(output,case,doom,event_bytes)
-        elif role in ('public','prepared','baseline'):
+        elif role in ('public','prepared','baseline') or (doom and role == 'master'):
+            # Current master emits the same public constructor protocol; never rewrite its source.
             parsed = parse_public(output,case,None if doom else limit,role in ('prepared','baseline'),doom,event_bytes)
         elif doom:
-            preparation = None
-            if role == 'master':
-                lines = output.splitlines()
-                if not lines or not lines[0].startswith('MASTER_PREPARE,'):
-                    raise ValueError('Missing master constructor')
-                preparation = integers(lines.pop(0).split(',')[1:])
-                if len(preparation) != 1:
-                    raise ValueError('Malformed master constructor')
-                output = '\n'.join(lines)+'\n'
-            parsed = reference_lifecycle_samples(output,case,event_bytes) if role=='reference' else dict(
-                samples=timing_samples(output,'native',case,event_bytes), preparation_ns=preparation)
+            parsed = reference_lifecycle_samples(output,case,event_bytes)
         else:
             parsed = parse_process_output(output,'polkavm_interpreter' if role=='reference' else 'ragnarok_planned',limit,guest=case)
         unchanged(self.identities)
