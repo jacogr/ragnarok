@@ -139,3 +139,8 @@ Cleanup verification passed 50 comparison/CI tooling tests, source inventory and
 Both relocated drivers compile through the ordinary and canonical snapshot import paths. Full
 sieve/gameplay snapshots and both assertion-refusal controls pass through the relocated binaries;
 production PVM sources are byte-identical to the pre-cleanup integration commit.
+
+PVM Sanitizers is a family of the existing Unit matrix, alongside native suite and corpus
+partitions. The shared Unit aggregate requires every family, and the same matrix artifact
+retains sanitizer calibration, source/image identities and ARC evidence. There is no separate
+sanitizer job when Unit is not requested. The scheduling and refusal safeguards pass locally.
