@@ -369,13 +369,18 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group in ('compile', 'interop', 'perf', 'build'):
             gate = job_section(text, group+'-status')
-            self.assertIn('needs: '+group+'\n', gate)
+            dependencies = '[perf, pvm-comparison]' if group == 'perf' else group
+            self.assertIn('needs: '+dependencies+'\n', gate)
             self.assertIn('if: ${{ always() && (', gate)
             self.assertIn('SHARDS_RESULT: ${{ needs.'+group+'.result }}', gate)
             command = re.search(r'        run: ([^\n]+)', gate).group(1)
-            for result in ('success', 'failure', 'cancelled', 'skipped'):
-                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(status == 0, result == 'success')
+            results = ('success', 'failure', 'cancelled', 'skipped')
+            for result in results:
+                for comparison_result in (results if group == 'perf' else ('success',)):
+                    # Execute all Perf dependency combinations; a missing or failed comparison stays red.
+                    environment = dict(SHARDS_RESULT=result, COMPARISON_RESULT=comparison_result)
+                    status = subprocess.run(['bash', '-c', command], env=environment).returncode
+                    self.assertEqual(status == 0, result == comparison_result == 'success')
             for suite in ('smoke', 'ref-pvm', 'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker'):
                 # Only Compile's lightweight requests have an aggregate; standalone other groups omit theirs.
                 condition = re.search(r'^    if: (.+)$', gate, re.MULTILINE).group(1)

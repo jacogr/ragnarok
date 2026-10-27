@@ -717,3 +717,22 @@ selection. The Perf aggregate requires both its existing families and this same-
 to succeed. The comparison retains exact-master/source evidence, checked public and core scopes,
 DOOM lifecycle observations, summaries and refusal artifacts; its command and timing boundaries
 are unchanged. The broader name leaves room for later backend coverage.
+
+
+### Post-merge comparison harness correction
+
+Master run [40505388921](https://github.com/jacogr/ragnarok/actions/runs/40505388921)
+at `2f0bcae018eca7f31fa7ee576ac0472ee36debef` exposed two harness regressions.
+Reference & Tooling failed on three stale workflow expectations after the comparison job rename
+and Perf dependency expansion. The comparison failed compiling its master DOOM driver: historical
+constructor-clock source injection broke indentation after the driver's preparation became conditional.
+The aggregate Compile and Perf failures were consequences of these originating jobs.
+
+The comparison now compiles the exact committed public driver with only its existing import-path
+relocation. Master DOOM enables and strictly parses the driver's existing `API_PREPARE,planned`
+constructor record, matching the ordinary public role. Call boundaries, complete state/host-event
+checks, source seals, repeated fresh builds and refusal controls remain mandatory. Tests cover
+all sixteen Perf dependency result combinations and reject missing or historical constructor output.
+Local verification includes all CI/comparison safeguard tests, related parsers, verification inventory
+and real master DOOM initialization/gameplay calls with assertion refusals. Linux confirmation is
+separate from these local checks; this correction changes no production interpreter source.
