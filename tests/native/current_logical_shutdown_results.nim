@@ -53,7 +53,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, witness: Witness)
     servers.close()
     owner.close() # Every callback and native worker retires before canonical or retained result aliases.
   var options = default(Options)
-  if layout == 0: assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  if layout == 0: assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   else: options = currentDiskOptions(path, database, layout == 2, 0)
   assert owner.start(options, "joined logical receipt")
   let parent = owner.stateSnapshot.value

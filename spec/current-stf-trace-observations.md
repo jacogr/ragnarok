@@ -10,7 +10,8 @@ dfb696dfb92425009af80dbbb403e647f6c9e3e4. Historical fixtures remain unchanged.
 
 The existing offline command accepts one additional control:
 
-    build/ragnarok check-traces POLICY GENESIS TRACE... --with-state --chain CHAIN \
+    build/ragnarok check-traces --trace-policy POLICY --trace-genesis GENESIS \
+      --trace-file TRACE [--trace-file TRACE ...] --with-state --chain CHAIN \
       --trace-observations OBSERVATION_DIRECTORY
 
 Observation files are named step-0000.bin, step-0001.bin and so on, one per expected

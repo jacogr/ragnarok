@@ -9,7 +9,7 @@ import ../../src/app/options
 let argument = paramStr(1)
 var configuration = default(Options)
 if argument == "disabled-count" or argument == "disabled-bytes":
-  assert parseOptions(@["server"], configuration) # A valid legacy configuration still selects no state policy.
+  assert parseCanonicalOptions(@["server"], configuration) # A valid legacy configuration still selects no state policy.
 if argument == "default-count" or argument == "disabled-count":
   discard configuration.stateWrites # Both accessors require a parsed active canonical policy.
 else:

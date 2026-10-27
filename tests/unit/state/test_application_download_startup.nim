@@ -38,7 +38,7 @@ proc arguments(port: uint16, peer: string, timeout = "10000"): seq[string] =
 proc options(port: uint16, peer: string, timeout = "10000"): Options =
   ## Failed/default command parsing cannot retain a previous valid configuration.
   result = default(Options)
-  assert parseOptions(arguments(port, peer, timeout), result), "valid startup options"
+  assert parseCanonicalOptions(arguments(port, peer, timeout), result), "valid startup options"
 proc peerOptions(port: uint16, peer: string, extra: openArray[string]): Options =
   ## Additional positional pairs precede service controls, exactly as in the public CLI.
   let base = arguments(port, peer, "10000")
@@ -47,7 +47,7 @@ proc peerOptions(port: uint16, peer: string, extra: openArray[string]): Options 
   for value in extra: args.add(value) # Malformed list shapes remain command-level refusals.
   for index in 8..<base.len: args.add(base[index]) # Service controls always follow every positional pair.
   result = default(Options)
-  assert parseOptions(args, result), "peer list option parsing"
+  assert parseCanonicalOptions(args, result), "peer list option parsing"
 
 proc peerPreflight(peer: string) {.raises.} =
   ## Refuse partial, aliased and oversized lists before touching canonical state or TLS.
@@ -107,7 +107,7 @@ proc ancestorPreflight(peer: string) {.raises.} =
       "--download-ancestor", "missing-ancestor-header"]:
     args.add(value) # The selected nonexistent file must refuse before the fresh disk startup side effect.
   var selected = default(Options)
-  assert parseOptions(args, selected)
+  assert parseCanonicalOptions(args, selected)
   assert runDownload(selected) == DownloadCommandResult.InvalidAncestors
   assert not fileExists("download-ancestor-preflight.db")
   configured.input.ancestors = ElementLimit(0)
@@ -234,7 +234,7 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario,
     if scenario == AncestorDisk:
       for value in ["--state-storage", "disk", "--state-db", "download-startup-ancestor.db"]:
         args.add(value) # Genuine report/guest success must wait for confirmed durable publication.
-    assert parseOptions(args, selected)
+    assert parseCanonicalOptions(args, selected)
   let outcome = runDownload(selected)
   let wanted = if scenario in [Healthy, Fallback, AncestorHealthy,
       AncestorDisk]: DownloadCommandResult.Adopted
@@ -265,7 +265,7 @@ proc independentRequest(): array[42, byte] {.raises.} =
   var owner = default(Services)
   defer: owner.close()
   var initial = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], initial)
   assert owner.start(initial, "test")
   var request = default(BlockDownload)
@@ -309,11 +309,11 @@ proc main() {.raises.} =
     "exact public identity width"
   assert runDownload(options(1, peer, "10")) == DownloadCommandResult.Timeout, "whole run timeout"
   var selected = default(Options)
-  assert not parseOptions(@["download"], selected), "state must be selected"
+  assert not parseCanonicalOptions(@["download"], selected), "state must be selected"
   var telemetry = arguments(1, peer)
   for control in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
     telemetry.add(control) # Append explicit controls without relying on unsupported sequence concatenation.
-  assert not parseOptions(telemetry, selected), "unwired outgoing telemetry refused"
+  assert not parseCanonicalOptions(telemetry, selected), "unwired outgoing telemetry refused"
   peerPreflight(peer)
   ancestorPreflight(peer)
   let expected = independentRequest()
@@ -354,7 +354,7 @@ proc main() {.raises.} =
   let expectedChild = reference.applyAccumulation(prepared.value, completionLimits().composition)
   assert expectedChild.error == ApplicationChainError.None
   var diskOptions = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000", "--state-storage", "disk",
     "--state-db", "download-startup-ancestor.db"], diskOptions)
   var resumed = default(Services)

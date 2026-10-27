@@ -486,12 +486,12 @@ proc runPeer*(options: Options): bool {.raises.} =
   let port = parseInt(options.argument(2))
   let timeout = parseInt(options.argument(7))
   let timeoutLimit = if options.argumentCount() == 8 and options.argument(8) ==
-      "offload": 300000 else: 120000
+      "offload": MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
   # Guard host-to-native conversions before any endpoint is created.
   if port < 1 or port > 65535 or timeout < 1 or timeout > timeoutLimit: return false
   let server = options.argument(1) == "server"
   if not server and options.argument(1) != "client": return false # Never infer an unknown role.
-  let mode = if options.argumentCount() == 8: options.argument(8) else: "valid"
+  let mode = if options.argumentCount() == 8: options.argument(8) else: DefaultPeerMode
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
   if mode in ["service", "integration", "overload", "offload"] and not server: return false
   let integrated = mode in ["integration", "integrated"]

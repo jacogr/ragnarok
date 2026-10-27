@@ -2,7 +2,8 @@
 
 The production application now accepts:
 
-    build/ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] \
+    build/ragnarok check-traces --trace-policy CURRENT_POLICY --trace-genesis GENESIS \
+      --trace-file TRACE [--trace-file TRACE ...] \
       --with-state --chain CONFIGURED_CHAIN \
       --state-writes 1000 --state-write-bytes 1000000
 

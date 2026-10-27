@@ -31,7 +31,7 @@ proc check(context: CurrentChainFixture, done: bool) {.raises.} =
   let reserved = reservation()
   discard posix.close(reserved.fd)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path, "--with-rpc",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path, "--with-rpc",
       "--rpc-port", $reserved.port], options)
   assert owner.start(options, "current RPC proof lease")
   let parent = owner.stateSnapshot.value

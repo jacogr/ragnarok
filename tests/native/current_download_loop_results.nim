@@ -16,7 +16,7 @@ proc lifecycle(mode: string) {.raises.} =
   writeFile("build/current-download-loop-guard-chain.json", context.currentApplicationText)
   var owner = default(Services)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
       "build/current-download-loop-guard-chain.json"], options)
   assert owner.start(options, "current close contract")
   defer: owner.close()

@@ -86,7 +86,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, mode: Mode) {.rai
     owner.close() # The dispatcher ends all graph/callback borrows before canonical ownership retires.
   var options = default(Options)
   if layout == 0:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   else: options = currentDiskOptions(path, database, layout == 2, 0)
   assert owner.start(options, "logical authenticated session")
   let original = owner.stateSnapshot.value

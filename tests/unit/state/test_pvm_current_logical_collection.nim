@@ -30,7 +30,7 @@ proc scenario(fixture: NamespaceExecutionFixture) {.raises.} =
   writeFile(path, fixture.parent.bestBlock.value.currentApplicationText)
   defer: discard posix.unlink(path.toCString())
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   let admitted = fixture.source.round.roundBlockQueue.value.accumulationAdmission.value
   let child = admitted.reportBlockStage.value.value.admitted.admittedBlock
   var wire = newSeq[byte](child.blockInfo.value.consumed)

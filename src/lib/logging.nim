@@ -19,8 +19,9 @@ type
     ## Borrow one bounded batch synchronously; never retain bytes, raise, close or restart the logger.
 
 const
-  LogQueueCapacity* = 256 ## Fixed records, independent of guest rate or sink latency.
-  LogRecordBytes* = 2048  ## Includes level, component, escaped message and newline.
+  DefaultLogLevel* = LogLevel.Info ## One application-default threshold also displayed by CLI help.
+  LogQueueCapacity* = 256          ## Fixed records, independent of guest rate or sink latency.
+  LogRecordBytes* = 2048           ## Includes level, component, escaped message and newline.
   LogBatchRecords = 16
 
 type
@@ -60,7 +61,7 @@ proc `=wasMoved`*(logger: var Logger) {.nodestroy, inline, requires: not logger.
   logger.started = false
   logger.running = false
 
-func initLogPolicy*(level = LogLevel.Info): LogPolicy =
+func initLogPolicy*(level = DefaultLogLevel): LogPolicy =
   ## Default application verbosity includes fatal, error, warning and informational records.
   result = default(LogPolicy)
   for index in 0..ord(high(LogTarget)): result.levels[index] = level

@@ -18,7 +18,8 @@ proc lifecycle(mode: string) {.raises.} =
   writeFile("build/download-loop-guard-chain.json", context.text)
   var owner = default(Services)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "build/download-loop-guard-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
+    "build/download-loop-guard-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
   assert owner.start(options, "test")
   defer: owner.close()

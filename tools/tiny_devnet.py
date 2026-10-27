@@ -35,7 +35,7 @@ def certificates(binary, directory):
     for index in range(6):
         folder = directory/f'node-{index}'
         folder.mkdir()
-        identity = json.loads(command([binary, 'tiny-devnet', 'identity', index]))
+        identity = json.loads(command([binary, 'tiny-devnet', 'identity', '--devnet-index', index]))
         der = folder/'key.der'
         der.write_bytes(bytes.fromhex(identity['pkcs8']))
         der.chmod(0o600)
@@ -92,7 +92,7 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
     binary, directory = Path(binary).resolve(), Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     certificates(binary, directory)
-    command([binary, 'tiny-devnet', 'init', directory/'chain.json'])
+    command([binary, 'tiny-devnet', 'init', '--devnet-output', directory/'chain.json'])
     # Native initialization supplies a recorded genesis input, never an observed STF successor.
     expected = before_start(directory, slots) if before_start else None
     base = free_ports()
@@ -111,8 +111,8 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
             stdout.close() # A failed second acquisition must still retire the first log owner.
             raise
         logs[index] = (stdout, stderr)
-        arguments = [str(binary), 'tiny-devnet', 'node', str(directory), str(index),
-                     str(base), str(start), str(slots), str(POLICY)]
+        arguments = [str(binary), 'tiny-devnet', 'node', '--devnet-dir', str(directory), '--devnet-index', str(index),
+                     '--devnet-base-port', str(base), '--devnet-start-unix-ms', str(start), '--devnet-stop-slot', str(slots), '--devnet-policy', str(POLICY)]
         processes[index] = subprocess.Popen(arguments, cwd=ROOT, stdout=stdout, stderr=stderr)
         launches.append(dict(node=index, pid=processes[index].pid, command=arguments))
 

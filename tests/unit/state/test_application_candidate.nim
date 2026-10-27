@@ -120,7 +120,7 @@ proc configured(port = 0'u16, withState = false): Options =
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 
 proc reservation(): tuple[fd: cint, port: uint16] =
   ## Keep an OS-assigned loopback port occupied until the caller deliberately releases it.

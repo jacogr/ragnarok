@@ -80,7 +80,7 @@ proc logicalCommandExchange*(chainPath, policyPath, sourcePath, logicalPolicyPat
   for arg in ["--download-logical-source", sourcePath, "--download-logical-policy",
       logicalPolicyPath]: arguments.add(arg)
   var options = default(Options)
-  assert parseOptions(arguments, options), "complete logical command arguments accepted"
+  assert parseCanonicalOptions(arguments, options), "complete logical command arguments accepted"
   let outcome = runCurrentDownloads(options)
   writeFile(stopPath, "stop")
   var state = 0.cint

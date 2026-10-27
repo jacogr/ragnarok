@@ -51,7 +51,7 @@ proc scenario(fixture: CurrentConsecutiveFixture, disk, managed: bool) {.raises.
     args.add("--state-compact-bytes")
     args.add("0") # One explicit replacement gives a deterministic lease boundary independent of scheduling speed.
   var configuration = default(Options)
-  assert parseOptions(args, configuration)
+  assert parseCanonicalOptions(args, configuration)
   var owner = default(Services)
   defer: owner.close()
   assert owner.start(configuration, "current management lease witness")

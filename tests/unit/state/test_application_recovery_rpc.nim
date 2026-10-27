@@ -30,7 +30,8 @@ proc main() {.raises.} =
     let selected = reservation()
     discard posix.close(selected.fd)
     var options = default(Options)
-    assert parseOptions(@["server", "--with-state", "--with-rpc", "--rpc-port", $selected.port,
+    assert parseCanonicalOptions(@["server", "--with-state", "--with-rpc", "--rpc-port",
+      $selected.port,
       "--chain", getEnv("RAGNAROK_APPLICATION_CHECKPOINT"), "--state-writes", "0",
           "--state-write-bytes", "0"], options)
     if owner.startRecovered(options, "recovered RPC", restored):

@@ -85,7 +85,7 @@ proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false
     arguments.add("--with-rpc"); arguments.add("--rpc-port"); arguments.add(
         $port) # The listener remains real and loopback-only.
   result = default(Options)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 proc idle(owner: Services): bool =
   ## Scalar exclusion observation never copies a partial graph during CPU/IO borrowing.
   not owner.stateProofActive and not owner.lightDiskActive

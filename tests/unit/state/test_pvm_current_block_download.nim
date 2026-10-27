@@ -132,7 +132,7 @@ proc scenario(context: CurrentChainFixture, ancestry = false) {.raises.} =
     discard download.retirePreparation(CurrentBlockDownloadId(1), owner)
     owner.close() # No outstanding worker may outlive its receiver even on exceptional test exit.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current receiver")
   let wire = context.frame
   if not ancestry:

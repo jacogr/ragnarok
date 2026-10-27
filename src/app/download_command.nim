@@ -286,12 +286,14 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
 proc performDownloads(options: Options, adopted: var int): DownloadCommandResult {.raises.} =
   ## One Services owner retains every confirmed prefix; per-child barriers precede ancestry mutation and final shutdown joins.
   adopted = 0
-  if not options.valid or options.argumentCount < 8 or
-      options.argumentCount > 38 or (options.argumentCount - 8) mod 2 != 0 or options.argument(1) !=
-          "download" or
-      not options.stateEnabled or options.telemetryEnabled:
-    return DownloadCommandResult.InvalidOptions # This command cannot silently discard requested outgoing telemetry.
-  let timeout = number(options.argument(7), 120000)
+  let commandWords = options.argumentCount
+  if not options.valid or commandWords < 8 or commandWords > MaxDownloadArguments:
+    return DownloadCommandResult.InvalidOptions # Prove every normalized endpoint position before access.
+  if (commandWords-8) mod 2 != 0 or options.argument(1) != "download":
+    return DownloadCommandResult.InvalidOptions # Additional peers are complete port/key pairs.
+  if not options.stateEnabled or options.telemetryEnabled:
+    return DownloadCommandResult.InvalidOptions # Downloads require state and cannot discard requested outgoing telemetry.
+  let timeout = number(options.argument(7), uint64(MaxPeerTimeoutMs))
   if timeout == 0: return DownloadCommandResult.InvalidEndpoint
   let policy = loadDownloadPolicy(options.argument(8))
   if policy.error != DownloadPolicyError.None: return DownloadCommandResult.InvalidPolicy

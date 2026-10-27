@@ -27,7 +27,7 @@ proc main() {.raises.} =
     "--state-writes", "0", "--state-write-bytes", "0", "--state-storage", "disk", "--state-db", path,
     "--state-layout", "managed"]
   var options = default(Options)
-  assert parseOptions(base, options)
+  assert parseCanonicalOptions(base, options)
   var owner = default(Services)
   defer: owner.close()
   assert owner.startRecovered(options, "import", restored)
@@ -46,11 +46,11 @@ proc main() {.raises.} =
   for value in ["--state-checkpoint", "missing-checkpoint", "--state-trust", "missing-trust",
     "--state-header", "missing-header", "--state-checkpoint-bytes", "100000"]:
     imported.add(value)
-  assert parseOptions(imported, options)
+  assert parseCanonicalOptions(imported, options)
   assert not owner.start(options, "missing external trust")
   owner.close()
   assert readFile(current) == exact # Explicit import intent cannot silently select the already admitted local head.
-  assert parseOptions(base, options)
+  assert parseCanonicalOptions(base, options)
   assert owner.start(options, "local restart")
   assert array[32, byte](owner.chainView.bestBlock.value.blockHash) == array[32, byte](
       expected.blockHash)

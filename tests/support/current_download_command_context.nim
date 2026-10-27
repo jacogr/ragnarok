@@ -107,7 +107,7 @@ proc exchangeCurrentDownloads*(context: CurrentChainFixture, responses: seq[seq[
         index]) # Pair preflight remains before all service controls.
     arguments = pairs
   var options = default(Options)
-  assert parseOptions(arguments, options)
+  assert parseCanonicalOptions(arguments, options)
   let outcome = runCurrentDownloads(options)
   writeFile(stopPath, "stop")
   var state = 0.cint

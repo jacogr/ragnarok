@@ -13,7 +13,7 @@ proc pathExists(path: cstring, mode: cint): cint {.importc: "access", header: "<
 proc configured(path: string, threshold: string): Options =
   ## Explicit zero preserves forensic staging; a positive threshold authorizes bounded startup retirement.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-db", path, "--state-layout", "managed",
     "--state-compact-bytes", threshold], result)

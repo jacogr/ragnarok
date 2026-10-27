@@ -16,7 +16,7 @@ proc configured(path, layout, source: string): Options =
   if source.len > 0:
     arguments.add("--state-migrate-from"); arguments.add(source)
   result = default(Options)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 proc main() {.raises.} =
   ## Copy creates a fresh managed directory; subsequent ordinary restart uses its own admitted local head.
   var sourcePath = "managed-services-migration-source.wal"

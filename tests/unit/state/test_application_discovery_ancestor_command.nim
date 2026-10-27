@@ -111,7 +111,7 @@ proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, b
     for value in ["--state-storage", "disk", "--state-db", "discovery-command.db"]:
       args.add(value) # Acquisition itself writes no history; actual child adoption still waits for durable publication.
   var selected = default(Options)
-  assert parseOptions(args, selected)
+  assert parseCanonicalOptions(args, selected)
   let outcome = runDownloads(selected)
   let wanted = if which in [Healthy, Fallback, Available, Durable]: DownloadCommandResult.Adopted
     elif which == CountRefusal: DownloadCommandResult.InvalidPolicy
@@ -174,7 +174,7 @@ proc main() {.raises.} =
   let expected = source.applyAccumulation(genuine.value, completionLimits().composition)
   assert expected.error == ApplicationChainError.None, "independent successor retains its original canonical owner"
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "discovery-command-chain",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "discovery-command-chain",
     "--state-writes", "1000", "--state-write-bytes", "1000000", "--state-storage", "disk",
     "--state-db", "discovery-command.db"], options)
   var resumed = default(Services)

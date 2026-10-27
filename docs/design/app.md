@@ -10,11 +10,12 @@ explicitly; transport, telemetry, RPC and UI modules do not inspect command-line
 bounded development entry points with supported child admission, execution and publication.
 The long-running node, complete validation, consensus and validator lifecycles remain open.
 
-`app/options.nim` validates trailing service switches/configuration atomically. Private fields
+`app/cli_defaults.nim` owns typed defaults and bounds. `cli_catalog.nim` owns option metadata; `cli_commands.nim` validates named
+process inputs and normalizes them for bounded handlers. `cli_help.nim` renders the same catalog.
+`app/options.nim` validates normalized service switches/configuration atomically. Private fields
 have read-only accessors; a failed/default result cannot start a session. Endpoint configuration
 alone does not enable services, and UI implies RPC. Canonical state requires `--with-state` and
-a chain file. Mutation budgets default to 1,000 writes and 100,000 value bytes, with independent
-overrides. State activation does not enable listeners. Repeated parses have independent ownership.
+a chain file. Mutation budgets use the catalog defaults, with independent overrides. State activation does not enable listeners. Repeated parses have independent ownership.
 
 The entry point also owns one fixed-address shared diagnostic writer. Immutable level/target
 filters and borrowed producer handles travel through options and execution policy rather than

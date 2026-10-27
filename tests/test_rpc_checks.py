@@ -60,7 +60,7 @@ class RpcSessionBudget(unittest.TestCase):
                     rpc_checks.run(Path('/fixture/ragnarok'), folder/'certificates', folder/'peer',
                                    browser=browser)
                 arguments = spawn.call_args.args[0]
-                peer_seconds = int(arguments[7])/1000
+                peer_seconds = int(arguments[arguments.index('--net-timeout-ms')+1])/1000
                 if browser:
                     # Check both actual command deadlines, rather than only testing constant definitions.
                     self.assertEqual(launch.call_args.args[0][0], 'node')

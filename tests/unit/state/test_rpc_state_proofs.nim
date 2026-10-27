@@ -35,7 +35,7 @@ proc listener(owner: var Services, path: string, command = "server",
       $reserved.port, "--state-writes", "1000", "--state-write-bytes", "1000000"]
     if management.len > 0:
       arguments.add("--with-management"); arguments.add("--management-socket"); arguments.add(management)
-    assert parseOptions(arguments, options)
+    assert parseCanonicalOptions(arguments, options)
     if owner.start(options, command): return reserved.port
   assert false, "proof RPC listener startup"
   0'u16

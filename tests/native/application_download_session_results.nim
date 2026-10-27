@@ -17,7 +17,7 @@ proc admitted(): DownloadSessionResult[DownloadSessionAttempt] {.raises.} =
   let context = fixture(decodeOwnedReport(wire, 2).value)
   writeFile("build/download-session-guard-chain.json", context.text)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
     "build/download-session-guard-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
   var owner = default(Services)

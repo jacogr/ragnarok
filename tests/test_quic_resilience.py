@@ -78,9 +78,9 @@ def disruption(languages, folder, rounds, warmup, *, binaries=None, directory=No
     def launch(role, language, gate, count, path):
         index = 0 if role == 'a' else 1
         other = 'b' if role == 'a' else 'a'
-        command = [str(binaries[language]), 'mesh', str(local_ports[index]), str(local_ports[1-index]),
-                   str(folder / f'{role}.cert.pem'), str(folder / f'{role}.key.pem'), str(folder / f'{role}.pub'),
-                   str(folder / f'{other}.pub'), 'jamnp-s/1/00000000', str(gate)]
+        command = [str(binaries[language]), 'mesh', '--net-local-port', str(local_ports[index]), '--net-remote-port', str(local_ports[1-index]),
+                   '--net-cert', str(folder / f'{role}.cert.pem'), '--net-key', str(folder / f'{role}.key.pem'), '--net-local-key', str(folder / f'{role}.pub'),
+                   '--net-peer-key', str(folder / f'{other}.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(gate)]
         output = path.open('w'); handles.append(output)
         process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_MESH_ROUNDS': str(count), 'RAGNAROK_MESH_FALLBACK': '0',
@@ -178,16 +178,16 @@ def closed_before_request(languages, folder, *, binaries=None, directory=None):
     try:
         # The listener uses the existing two-second crash profile; no new protocol/settings are introduced.
         output = logs['server'].open('w'); handles.append(output)
-        processes['server'] = subprocess.Popen([str(binaries[languages[0]]), 'server', str(port),
-            str(folder / 'a.cert.pem'), str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '60000', 'overload'],
+        processes['server'] = subprocess.Popen([str(binaries[languages[0]]), 'server', '--net-port', str(port),
+            '--net-cert', str(folder / 'a.cert.pem'), '--net-key', str(folder / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '60000', '--net-mode', 'overload'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(directory / f'stop-{time.time_ns()}')},
             stdout=output, stderr=subprocess.STDOUT)
         watch({'server': processes['server']}, {'server': logs['server']},
               {'server': lambda text: 'READY' in text.splitlines()}, {'server': peaks['server']}, thread_limits=limits)
         output = logs['client'].open('w'); handles.append(output)
-        processes['client'] = subprocess.Popen([str(binaries[languages[1]]), 'client', str(port),
-            str(folder / 'b.cert.pem'), str(folder / 'b.key.pem'), str(folder / 'a.pub'),
-            'jamnp-s/1/00000000', '60000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+        processes['client'] = subprocess.Popen([str(binaries[languages[1]]), 'client', '--net-port', str(port),
+            '--net-cert', str(folder / 'b.cert.pem'), '--net-key', str(folder / 'b.key.pem'), '--net-peer-key', str(folder / 'a.pub'),
+            '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '60000', '--net-mode', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         # Idle mode deliberately opens no streams, so only connection retirement can settle this failure.
         watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks, thread_limits=limits)
         processes['server'].kill(); assert processes['server'].wait(timeout=5) == -9
@@ -224,8 +224,8 @@ def overload(language, folder, rounds, warmup, *, binaries=None, directory=None)
     handles, children, idle = [], [], []
     peaks = {'server': {}}
     output = server_log.open('w'); handles.append(output)
-    server = subprocess.Popen([str(binaries[language]), 'server', str(port), str(folder / 'a.cert.pem'),
-        str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '120000', 'overload'],
+    server = subprocess.Popen([str(binaries[language]), 'server', '--net-port', str(port), '--net-cert', str(folder / 'a.cert.pem'),
+        '--net-key', str(folder / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '120000', '--net-mode', 'overload'],
         env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)}, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
     started = time.monotonic()
@@ -234,8 +234,8 @@ def overload(language, folder, rounds, warmup, *, binaries=None, directory=None)
     def client(index, label, implementation, mode):
         path = directory / f'{index}-{label}.log'
         output = path.open('w'); handles.append(output)
-        process = subprocess.Popen([str(binaries[implementation]), 'client', str(port), str(folder / 'b.cert.pem'),
-            str(folder / 'b.key.pem'), str(folder / 'a.pub'), 'jamnp-s/1/00000000', '60000', mode],
+        process = subprocess.Popen([str(binaries[implementation]), 'client', '--net-port', str(port), '--net-cert', str(folder / 'b.cert.pem'),
+            '--net-key', str(folder / 'b.key.pem'), '--net-peer-key', str(folder / 'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '60000', '--net-mode', mode],
             stdout=output, stderr=subprocess.STDOUT)
         children.append(process)
         return process, path

@@ -15,7 +15,8 @@ proc main() =
   ## Default and valid-but-disabled options must fail the same helpers used by complete active parsing.
   var options = default(Options)
   if paramStr(1) == "positive":
-    assert parseOptions(@["server", "--with-state", "--chain", "chain.json", "--state-writes", "0",
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", "chain.json",
+      "--state-writes", "0",
       "--state-write-bytes", "0",
       "--state-checkpoint", "state.bin", "--state-trust", "trust.bin", "--state-header",
       "header.bin", "--state-checkpoint-bytes", "1000"], options)
@@ -23,6 +24,6 @@ proc main() =
       inspect(options, field) # Every exact helper succeeds for a genuine active parser result.
   else:
     if paramStr(1) == "disabled":
-      assert parseOptions(@["server"], options) # Parsed status alone cannot authorize external recovery.
+      assert parseCanonicalOptions(@["server"], options) # Parsed status alone cannot authorize external recovery.
     inspect(options, paramStr(2))
 main() # Runtime assertions remain distinct from compiler rejection.

@@ -97,7 +97,7 @@ proc main() {.raises.} =
   limits.input.ancestors = ElementLimit(1)
   writeFile(PolicyPath, encodeDownloadPolicy(limits))
   var selected = default(Options)
-  assert parseOptions(downloadArguments(1, 3, ChainPath, PolicyPath,
+  assert parseCanonicalOptions(downloadArguments(1, 3, ChainPath, PolicyPath,
     @["--state-storage", "disk", "--state-db", "download-progress-refused.db"]), selected)
   let refused = runDownloads(selected)
   assert refused.error == DownloadCommandResult.InvalidPolicy and refused.adoptedBlocks == 0

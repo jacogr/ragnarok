@@ -17,12 +17,13 @@ unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can b
 matching the existing peer mode and actual bound UDP port.
 
 Pass `--chain PATH` with an explicit JIP-4 JSON chain file. Both options are required together
-and may appear in either order after the positional arguments. For example, after producing
+and may appear in either order among the command flags. For example, after producing
 the usual proof-peer certificate/key/public-key fixtures:
 
 ```sh
-./build/ragnarok server 40000 a.cert.pem a.key.pem b.pub \
-  jamnp-s/1/245becfe 10000 --chain /absolute/path/dev.json --with-telemetry --telemetry 127.0.0.1:9000
+./build/ragnarok server --net-port 40000 \
+  --net-cert a.cert.pem --net-key a.key.pem --net-peer-key b.pub \
+  --net-alpn jamnp-s/1/245becfe --net-timeout-ms 10000 --chain /absolute/path/dev.json --with-telemetry --telemetry-endpoint 127.0.0.1:9000
 ```
 
 Keep the existing positional mode argument, if any, before the trailing switches and option pairs.

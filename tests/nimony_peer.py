@@ -30,9 +30,9 @@ def exchanges(binary, fixtures, folder):
 
 # Trusted malformed controls must fail before announcing a listener or accepting any application work.
 def controls(binary, fixtures):
-    base = ['client', '1', str(fixtures/'b.cert.pem'), str(fixtures/'b.key.pem'),
-            str(fixtures/'a.pub'), 'jamnp-s/1/00000000', '900']
-    cases = [('arity', []), ('role', ['other', *base[1:]]),
+    base = ['client', '--net-port', '1', '--net-cert', str(fixtures/'b.cert.pem'), '--net-key', str(fixtures/'b.key.pem'),
+            '--net-peer-key', str(fixtures/'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '900']
+    cases = [('arity', ['client']), ('role', ['other', *base[1:]]),
              ('telemetry-missing-endpoint', ['server', *base[1:], '--telemetry']),
              ('telemetry-nontrailing', ['--with-telemetry', '--telemetry', '127.0.0.1:9000', *base]),
              ('telemetry-duplicate', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000', '--telemetry', '127.0.0.1:9001']),
@@ -45,11 +45,11 @@ def controls(binary, fixtures):
     # Host/native port narrowing and deadline validation must precede opening any endpoint.
     for text in ('0', '-1', '65536', 'not-a-port'):
         args = base.copy()
-        args[1] = text
+        args[args.index('--net-port')+1] = text
         cases.append(('port-'+text, args))
     for text in ('0', '120001', 'not-a-timeout'):
         args = base.copy()
-        args[6] = text
+        args[args.index('--net-timeout-ms')+1] = text
         cases.append(('timeout-'+text, args))
     # RPC is independently optional but its port and command scope remain strict.
     for text in ('0', '-1', '65536', 'no', ''):
@@ -67,8 +67,8 @@ def controls(binary, fixtures):
               ('ui-selftest', ['--selftest', '--with-ui']),
               ('ui-dir-missing', [*base, '--with-ui', '--dev-ui-dir']),
               ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]
-    download = ['download', '1', str(fixtures/'a.cert.pem'), str(fixtures/'a.key.pem'),
-                str(fixtures/'b.pub'), 'jamnp-s/1/00000000', '10', 'missing-download-policy.conf']
+    download = ['download', '--net-port', '1', '--net-cert', str(fixtures/'a.cert.pem'), '--net-key', str(fixtures/'a.key.pem'),
+                '--net-peer-key', str(fixtures/'b.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '10', '--download-policy', 'missing-download-policy.conf']
     state = ['--with-state', '--chain', 'missing-download-chain.json',
              '--state-writes', '1000', '--state-write-bytes', '1000000']
     # The new command must reach policy preflight before missing Services inputs, and reject unwired activation.

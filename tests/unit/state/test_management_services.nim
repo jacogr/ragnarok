@@ -18,7 +18,7 @@ proc main() {.raises.} =
   defer: assert rmdir(directory.toCString()) == 0 # Inner service lifetimes remove their own socket first.
   block disabled:
     var configuration = default(Options)
-    assert parseOptions(@["server", "--management-socket", path], configuration)
+    assert parseCanonicalOptions(@["server", "--management-socket", path], configuration)
     var owner = default(Services)
     assert owner.start(configuration, "server")
     owner.tick(0)
@@ -27,7 +27,7 @@ proc main() {.raises.} =
     owner.close()
   block enabled:
     var configuration = default(Options)
-    assert parseOptions(@["server", "--with-management", "--management-socket", path], configuration)
+    assert parseCanonicalOptions(@["server", "--with-management", "--management-socket", path], configuration)
     assert configuration.rpcPort == 0 and configuration.uiPort == 0
     var owner = default(Services)
     defer: owner.close() # Services destruction is preceded by its explicit joined lifetime shutdown.
@@ -49,7 +49,7 @@ proc main() {.raises.} =
     let reserved = reservation()
     discard posix.close(reserved.fd)
     var configuration = default(Options)
-    assert parseOptions(@["server", "--with-rpc", "--rpc-port", $reserved.port,
+    assert parseCanonicalOptions(@["server", "--with-rpc", "--rpc-port", $reserved.port,
       "--with-management", "--management-socket", path], configuration)
     var owner = default(Services)
     assert not owner.start(configuration, "server")

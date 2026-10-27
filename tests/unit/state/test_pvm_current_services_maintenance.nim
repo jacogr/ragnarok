@@ -27,7 +27,7 @@ proc optionsFor(port: uint16, automatic: bool): Options =
     args.add("--rpc-port")
     args.add($port) # Reuse only a test-owned loopback reservation.
   result = default(Options)
-  assert parseOptions(args, result), "current maintenance: parseOptions(args, result)"
+  assert parseCanonicalOptions(args, result), "current maintenance: parseCanonicalOptions(args, result)"
 proc excluded(owner: var Services, update: PreparedCurrentChainUpdate) =
   ## During any native operation only synchronized/scalar observations and immediate Busy gates are permitted.
   assert owner.diskPublicationActive and owner.rpc.chainPaused, "current maintenance: owner.diskPublicationActive and owner.rpc.chainPaused"

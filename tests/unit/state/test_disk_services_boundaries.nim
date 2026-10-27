@@ -38,7 +38,7 @@ const DiskPath = "disk-services-boundaries.db"
 proc configured(): Options =
   ## CLI defaults supply mutation budgets while explicit controls select disk, with no listener or import fallback.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", ChainPath,
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", ChainPath,
      "--state-storage", "disk", "--state-db", DiskPath], result)
 proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFinalAccumulation {.raises.} =
   ## Actual native guest preparation binds the certificate to this newly decoded canonical map owner.

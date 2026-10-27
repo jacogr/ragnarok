@@ -57,7 +57,7 @@ proc scenario(fixture: CurrentGuaranteeSequenceFixture, mode: LookupCase, layout
     owner.close() # The stable Services address survives every callback/input/worker borrower.
   var options = default(Options)
   if layout == 0:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   else:
     options = currentDiskOptions(path, database, layout == 2, 0)
   assert owner.start(options, "current guarantee ancestry after adoption")

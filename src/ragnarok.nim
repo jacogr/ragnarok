@@ -10,7 +10,8 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, download_command, current_download_command, trace_check_command, fuzz_target, devnet_command]
+import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
+    trace_check_command, fuzz_target, devnet_command]
 import ./version
 import ./lib/logging
 
@@ -25,60 +26,51 @@ proc main(): int =
   try:
     var arguments: seq[string] = @[]
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
-    var commandArguments: seq[string] = @[]
-    var logging = initLogPolicy()
-    if not extractLoggingOptions(arguments, commandArguments, logging): return 2
+    var topic = ""
+    if (arguments.len > 0 or not existsEnv("JAM_FUZZ")) and helpRequest(arguments, topic):
+      let page = commandHelp(topic)
+      if page.len == 0:
+        stderr.writeLine("Unknown help topic: " & topic & "; use ragnarok --help")
+        return 2
+      stdout.write(page)
+      return 0 # Help never starts the logger, conformance adapter or a native listener.
     let versionRequest = arguments.len == 1 and arguments[0] == "--version"
-    if (existsEnv("JAM_FUZZ") and not versionRequest) or
-        (arguments.len > 0 and arguments[0] in ["serve-fuzz", "serve-fuzz-preset"]):
+    let special = (existsEnv("JAM_FUZZ") and not versionRequest) or
+      (arguments.len > 0 and arguments[0] in ["fuzz", "serve-fuzz", "serve-fuzz-preset",
+          "tiny-devnet"])
+    if special:
+      var normalized, commandArguments: seq[string] = @[]
+      var diagnostic = ""
+      if not normalizeCommand(arguments, normalized, diagnostic):
+        stderr.writeLine(diagnostic)
+        return 2
+      var logging = initLogPolicy()
+      if not extractLoggingOptions(normalized, commandArguments, logging):
+        stderr.writeLine("Invalid --log-level filter")
+        return 2
+      let fuzzCommand = arguments.len == 0 or arguments[0] != "tiny-devnet"
+      if fuzzCommand and "--log-level" notin normalized:
+        # Apply the conformance environment threshold before an optional general logging filter.
+        var fuzzLevel = getEnv("JAM_FUZZ_LOG_LEVEL")
+        for index in 0..<max(0, normalized.len-1):
+          if normalized[index] == "--fuzz-log-level": fuzzLevel = normalized[index+1]
+        if fuzzLevel.len > 0 and not parseLogPolicy(fuzzLevel, logging):
+          stderr.writeLine("Invalid --fuzz-log-level / JAM_FUZZ_LOG_LEVEL")
+          return 2
       if not logger.start(logging): return 2
-      return runFuzzTarget(commandArguments, logger.writer) # Standard upstream environment variables activate the ordinary binary with no custom flags.
-    if arguments.len > 0 and arguments[0] == "tiny-devnet":
-      if not logger.start(logging): return 2
-      return runDevnet(commandArguments, logger.writer) # Explicit bounded local validators use ordinary GP candidate admission.
+      if arguments.len > 0 and arguments[0] == "tiny-devnet":
+        return runDevnet(commandArguments, logger.writer)
+      return runFuzzTarget(commandArguments, logger.writer)
     var options = default(Options)
-    if not parseOptions(arguments, options): return 2 # No invalid configuration reaches a service.
+    var diagnostic = ""
+    if not parseOptions(arguments, options, diagnostic):
+      stderr.writeLine(diagnostic)
+      return 2 # No invalid configuration reaches a service.
     # Version inspection needs no certificates, listeners or service configuration.
     if options.argumentCount() == 1 and options.argument(1) == "--version":
       stdout.writeLine("Ragnarok " & AppVersion & " " & AppRevision)
       stdout.writeLine("Nimony " & CompilerVersion & " " & CompilerRevision)
       stdout.writeLine("Built " & BuildTimestamp)
-      return 0
-    if options.argumentCount() == 1 and options.argument(1) == "--help":
-      stdout.writeLine("Usage: ragnarok server|client PORT CERT KEY PEER ALPN TIMEOUT [MODE] [OPTIONS]")
-      stdout.writeLine("       ragnarok mesh LOCAL_PORT REMOTE_PORT CERT KEY LOCAL_KEY PEER_KEY ALPN GATE [OPTIONS]")
-      stdout.writeLine("       ragnarok download PORT CERT KEY PEER ALPN TIMEOUT POLICY [PORT PEER ...] [OPTIONS]")
-      stdout.writeLine("       ragnarok download-current PORT CERT KEY PEER ALPN TIMEOUT CURRENT_POLICY [PORT PEER ...] [OPTIONS]")
-      stdout.writeLine("         download-current requires ragnarok-current-download-policy-v1; discovery permission must match the requested mode.")
-      stdout.writeLine("       ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] --with-state --chain FILE [STATE_BUDGETS]")
-      stdout.writeLine("         check-traces optionally compares --trace-observations DIR/step-0000.bin (published RawState).")
-      stdout.writeLine("       ragnarok tiny-devnet init CHAIN_JSON | node DIRECTORY INDEX BASE_PORT START_UNIX_MS STOP_SLOT CURRENT_POLICY")
-      stdout.writeLine("       JAM_FUZZ=1 JAM_FUZZ_SPEC=tiny|full|fuzz JAM_FUZZ_DATA_PATH=DIR JAM_FUZZ_SOCK_PATH=PATH ragnarok")
-      stdout.writeLine("         Optional JAM_FUZZ_LOG_LEVEL selects conformance logging; no flags or policy files are required.")
-      stdout.writeLine("       ragnarok --version | --help")
-      stdout.writeLine("Logging: --log-level off|fatal|error|warn|info|debug|trace[,TARGET=LEVEL...] (default info)")
-      stdout.writeLine("         Targets: startup,pvm,telemetry,rpc,network,storage,app; e.g. info,pvm=debug,network=warn")
-      stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
-      stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
-      stdout.writeLine("         --with-management --management-socket /PRIVATE_DIRECTORY/admin.sock (local HTTP; disabled by default)")
-      stdout.writeLine("         --with-state --chain FILE [--state-writes COUNT] [--state-write-bytes BYTES]")
-      stdout.writeLine("         State mutation defaults: 1000 writes, 100000 value bytes per batch.")
-      stdout.writeLine("         --node-mode full|light (default full; independent of memory/disk)")
-      stdout.writeLine("         Light requires --with-state --chain FILE --state-trust FILE --state-header FILE.")
-      stdout.writeLine("         Light disk requires explicit --state-layout paged; full checkpoint/replay/migration controls are separate.")
-      stdout.writeLine("         --state-storage memory|disk --state-db PATH (disk requires --with-state)")
-      stdout.writeLine("         --state-layout journal|managed|paged (disk only; default journal)")
-      stdout.writeLine("         --state-paged-resume (explicitly resume interrupted paged storage)")
-      stdout.writeLine("         --state-compact-bytes BYTES (managed only; default 67108864, max 134217728; 0 disables automatic maintenance)")
-      stdout.writeLine("         --state-migrate-from LEGACY_PATH (managed only; requires a separate new --state-db destination)")
-      stdout.writeLine("         --state-checkpoint FILE --state-trust FILE --state-header FILE --state-checkpoint-bytes BYTES")
-      stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
-      stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download commands only, maximum 64)")
-      stdout.writeLine("         --download-local-ancestors (download commands only; prepend all retained local parents)")
-      stdout.writeLine("         --download-remote-ancestors COUNT (download commands only; fetch up to 1..64 older parents)")
-      stdout.writeLine("         --download-discover-ancestors COUNT (download commands only; fetch on demand, 1..64 headers per run)")
-      stdout.writeLine("         --download-blocks COUNT (download commands only, default 1, range 1..64)")
-      stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
     if not logger.start(options.loggingPolicy): return 2
     options.attachLogWriter(logger.writer)

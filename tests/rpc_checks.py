@@ -118,8 +118,8 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     log = folder/'peer.log'
     # The normal RPC budget starts after the optional browser allowance; success still stops immediately.
     service_seconds = RPC_SERVICE_SECONDS + (BROWSER_TIMEOUT_SECONDS if browser else 0)
-    command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
-               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', str(service_seconds*1000), 'service',
+    command = [str(binary), 'server', '--net-port', str(peer_port), '--net-cert', str(certificates/'a.cert.pem'),
+               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', str(service_seconds*1000), '--net-mode', 'service',
                '--with-rpc', '--rpc-port', str(rpc_port)]
     if ui:
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
@@ -147,7 +147,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             occupied.bind(('127.0.0.1', 0))
             occupied.listen()
             port = str(occupied.getsockname()[1])
-            inactive = command[:9] + ['--rpc-port', port, '--ui-port', port,
+            inactive = command[:command.index('--net-mode')+2] + ['--rpc-port', port, '--ui-port', port,
                                       '--dev-ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
             child = subprocess.Popen(inactive,
                                      env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(disabled_stop)},
@@ -441,9 +441,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 try:
                     # The retained service's existing proof contract requires three concurrent peers.
                     for identity in ('b', 'c', 'd'):
-                        clients.append(subprocess.Popen([str(binary), 'client', str(peer_port),
-                                       str(certificates/f'{identity}.cert.pem'), str(certificates/f'{identity}.key.pem'),
-                                       str(certificates/'a.pub'), 'jamnp-s/1/00000000', '5000', 'mixed'],
+                        clients.append(subprocess.Popen([str(binary), 'client', '--net-port', str(peer_port),
+                                       '--net-cert', str(certificates/f'{identity}.cert.pem'), '--net-key', str(certificates/f'{identity}.key.pem'),
+                                       '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '5000', '--net-mode', 'mixed'],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE))
                     for client in clients:
                         stdout, stderr = client.communicate(timeout=8)
@@ -583,8 +583,8 @@ def parameter_checks(binary, certificates, folder):
         reservation.bind(('127.0.0.1', 0))
         rpc_port = reservation.getsockname()[1]
     # The preceding run changed its source file to {}; startup must now reject that incomplete configuration.
-    arguments = [str(binary), 'server', '19899', str(certificates/'a.cert.pem'),
-                 str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid',
+    arguments = [str(binary), 'server', '--net-port', '19899', '--net-cert', str(certificates/'a.cert.pem'),
+                 '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid',
                  '--with-rpc', '--rpc-port', str(rpc_port), '--chain', str(chain)]
     failed = subprocess.run(arguments, capture_output=True, timeout=5)
     assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr

@@ -128,13 +128,13 @@ def attempt(case, folder, binaries=None, logs=None):
     client_alpn = 'jamnp-s/1/11111111' if scenario == 'wrong-alpn' else alpn
     cert = lambda name: str(folder / f'{name}.cert.pem')
     key = lambda name: str(folder / f'{name}.key.pem')
-    server = [str(binaries[server_language]), 'server', '0', cert(server_identity), key(server_identity), '-', alpn, '900']
-    client = [str(binaries[client_language]), 'client', '0',
-              '-' if scenario == 'missing-cert' else cert(client_identity),
-              '-' if scenario == 'missing-cert' else key(client_identity), str(folder / f'{expected}.pub'), client_alpn, '900']
+    server = [str(binaries[server_language]), 'server', '--net-port', '0', '--net-cert', cert(server_identity), '--net-key', key(server_identity), '--net-peer-key', '-', '--net-alpn', alpn, '--net-timeout-ms', '900']
+    client = [str(binaries[client_language]), 'client', '--net-port', '0',
+              '--net-cert', '-' if scenario == 'missing-cert' else cert(client_identity),
+              '--net-key', '-' if scenario == 'missing-cert' else key(client_identity), '--net-peer-key', str(folder / f'{expected}.pub'), '--net-alpn', client_alpn, '--net-timeout-ms', '900']
     application_failure = scenario in ('bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')
     if application_failure:
-        client.append(scenario)
+        client += ['--net-mode', scenario]
     logs = BUILD / 'cases' if logs is None else logs
     logs.mkdir(parents=True, exist_ok=True)
     path = logs / '-'.join(case)
@@ -149,7 +149,7 @@ def attempt(case, folder, binaries=None, logs=None):
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
                     reservation.bind(('127.0.0.1', 0))
                     port = reservation.getsockname()[1]
-                    server[2] = client[2] = str(port)
+                    server[server.index('--net-port')+1] = client[client.index('--net-port')+1] = str(port)
                 # Release immediately before spawn; readiness proves the native listener owns the port.
                 process = subprocess.Popen(server, stdout=server_log, stderr=subprocess.STDOUT)
                 wait_server_ready(process, path.with_suffix('.server.log'), case)

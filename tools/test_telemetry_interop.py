@@ -183,8 +183,8 @@ def run(binary, collector, report, scenario, folder):
         if scenario != 'outgoing-timeout':
             # Reject b's certificate by pinning a instead; success retains the original eight-request case.
             pin = 'a.pub' if scenario == 'incoming-rejection' else 'b.pub'
-            children['server'] = launch('server', [binary, 'server', udp_port, certificates/'a.cert.pem',
-                certificates/'a.key.pem', certificates/pin, 'jamnp-s/1/245becfe', '15000', *controls])
+            children['server'] = launch('server', [binary, 'server', '--net-port', udp_port, '--net-cert', certificates/'a.cert.pem',
+                '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *controls])
             while True:
                 # A decoded status proves registration acceptance and an active listener before the dial.
                 value = receive(stream, messages, deadline)
@@ -199,9 +199,9 @@ def run(binary, collector, report, scenario, folder):
             udp_port = silent.getsockname()[1]
         # The rejecting server is the sole exporter in that case, avoiding assumptions about its remote's TLS state.
         client_controls = [] if scenario == 'incoming-rejection' else controls
-        children['client'] = launch('client', [binary, 'client', udp_port, certificates/'b.cert.pem',
-            certificates/'b.key.pem', certificates/'a.pub', 'jamnp-s/1/245becfe',
-            '6000' if scenario == 'exchange' else '3000', 'clean', *client_controls])
+        children['client'] = launch('client', [binary, 'client', '--net-port', udp_port, '--net-cert', certificates/'b.cert.pem',
+            '--net-key', certificates/'b.key.pem', '--net-peer-key', certificates/'a.pub', '--net-alpn', 'jamnp-s/1/245becfe',
+            '--net-timeout-ms', '6000' if scenario == 'exchange' else '3000', '--net-mode', 'clean', *client_controls])
         terminal = {'exchange': 27, 'incoming-rejection': 22, 'outgoing-timeout': 25}[scenario]
         required = 2 if scenario == 'exchange' else 1
         while sum(row['event_type'] == terminal for row in events) < required:
