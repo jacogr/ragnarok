@@ -3,6 +3,7 @@
 
 """Independent creation, funding, request-only code, retirement and logical completeness invariants across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_creation_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service
 from state_accounts_oracle import parse as account_parse
@@ -17,13 +18,8 @@ class RotationCreationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive every complete mathematical case once and preserve original maps for later invariants."""
-        cls.cases = {case['name']:case for case in reference.cases()}
-        cls.states = {}
-        for name,case in cls.cases.items():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.states[name] = states
+        cls.cases = {case['name']: case for case in reference.cases()}
+        cls.states = case_states(cls.cases.values())
 
     def test_public_ids_and_request_only_code(self):
         """Actual execution slots seed independent public cursors; creation requests code without supplying a preimage."""

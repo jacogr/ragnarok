@@ -3,8 +3,8 @@
 
 """Independent epoch reporting invariants distinguish roster roles and pre-rollover assurance counters."""
 import unittest
+from scenario_states import checkpoint_states
 import current_stf_epoch_reporting_oracle as reference
-from current_stf_oracle import decode_checkpoint
 from state_layout_oracle import chapter_key
 from state_statistics_oracle import parse as statistics_parse, DEFAULT
 
@@ -16,12 +16,7 @@ class EpochReportingOracleTests(unittest.TestCase):
     def setUpClass(cls):
         """Retain the two chains and immutable frozen identities once for all equation checks."""
         cls.requests, cls.lines, cls.evidence = reference.expected_observations()
-        cls.states = []
-        for line in cls.lines:
-            if line.startswith('P '): cls.states.append({1: decode_checkpoint(bytes.fromhex(line[2:]))})
-            elif line.startswith('O '):
-                state = decode_checkpoint(bytes.fromhex(line[2:]))
-                cls.states[-1][int.from_bytes(state[chapter_key(11)], 'little')] = state
+        cls.states = checkpoint_states(cls.lines)
 
     def test_prior_and_posterior_credentials_select_distinct_keys(self):
         """Current versus previous guarantees at12 select different roster order and historical entropy."""

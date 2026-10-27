@@ -4,8 +4,8 @@
 """Whole-map expiry order, skipped-time row clearing and block-count history invariants."""
 import json
 import unittest
+from scenario_states import checkpoint_states
 import current_stf_ready_expiry_oracle as reference
-from current_stf_oracle import decode_checkpoint
 from current_stf_reporting_oracle import ready
 from state_layout_oracle import chapter_key, chapter_service
 from state_accounts_oracle import parse as metadata_parse
@@ -18,12 +18,8 @@ class CurrentStfReadyExpiryOracle(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Retain complete states indexed by their explicit slot, not by child count across gaps."""
-        cls.requests, cls.lines, cls.evidence = reference.expected_observations(); cls.states = []
-        for line in cls.lines:
-            if line.startswith('P ') or line.startswith('O '):
-                state = decode_checkpoint(bytes.fromhex(line[2:]))
-                if line.startswith('P '): cls.states.append({})
-                cls.states[-1][int.from_bytes(state[chapter_key(11)], 'little')] = state
+        cls.requests, cls.lines, cls.evidence = reference.expected_observations()
+        cls.states = checkpoint_states(cls.lines, initial_slot=None)
 
     def trace(self, case, slot):
         """Inspect only the explicitly independently calculated processing/expiry trace."""

@@ -3,6 +3,7 @@
 
 """Independent common-prior selection, foreign pool conservation and retained junior-write invariants across rotation."""
 import unittest
+from scenario_states import case_states
 import current_stf_rotation_funding_oracle as reference
 from state_layout_oracle import chapter_key, chapter_service
 from state_accounts_oracle import parse as account_parse
@@ -15,12 +16,8 @@ class RotationFundingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Derive complete shared-prior histories once for independent cross-phase assertions."""
-        cls.cases = {case['name']:case for case in reference.cases()};cls.states = {}
-        for name,case in cls.cases.items():
-            states = {1:case['initial']}
-            for _,state,_ in case['steps']:
-                states[int.from_bytes(state[chapter_key(11)],'little')] = state
-            cls.states[name] = states
+        cls.cases = {case['name']: case for case in reference.cases()}
+        cls.states = case_states(cls.cases.values())
 
     def test_foreign_child_funding_annuls_only_selected_debit(self):
         """The first224-token debit suppresses the concurrent junior write; later FULL permits its own one-entry write."""

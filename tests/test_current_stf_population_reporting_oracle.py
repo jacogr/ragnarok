@@ -3,8 +3,8 @@
 
 """Independent population/reporting invariants for prior quorum, resize clearing and roster-key attribution."""
 import unittest
+from scenario_states import checkpoint_states
 import current_stf_population_reporting_oracle as reference
-from current_stf_oracle import decode_checkpoint
 from state_layout_oracle import chapter_key
 from state_statistics_oracle import parse as statistics_parse, DEFAULT
 
@@ -24,12 +24,7 @@ class PopulationReportingOracleTests(unittest.TestCase):
     def setUpClass(cls):
         """Retain complete independently generated chains once for separate mathematical assertions."""
         cls.requests, cls.lines, cls.evidence = reference.expected_observations()
-        cls.states = []
-        for line in cls.lines:
-            if line.startswith('P '): cls.states.append({1: decode_checkpoint(bytes.fromhex(line[2:]))})
-            elif line.startswith('O '):
-                state = decode_checkpoint(bytes.fromhex(line[2:]))
-                cls.states[-1][int.from_bytes(state[chapter_key(11)], 'little')] = state
+        cls.states = checkpoint_states(cls.lines)
 
     def test_populations_and_statistics_resize_independently(self):
         """The fixed capacity9/cores3 does not replace the actual6/9/6 active populations or6/9 previous rows."""
