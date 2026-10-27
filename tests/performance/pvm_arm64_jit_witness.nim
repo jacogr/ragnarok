@@ -330,83 +330,85 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   checkFlatSource(frame)
 
 var controlCases = 0
-for folded in [false, true]:
-  var parts: seq[seq[byte]] = @[]
-  if folded: parts.add(@[2'u8])
-  for position in 0..<4:
-    parts.add(@[149'u8, 0, 1])
-    if folded and position == 0: parts.add(@[2'u8])
-  let branchPc = if folded: 14'u32 else: 12'u32
-  let backwards = 0'u32-branchPc
-  var branch = @[172'u8, 0x10]
-  for shift in 0..<4: branch.add(byte((backwards shr (shift*8)) and 255))
-  parts.add(branch)
-  parts.add(@[0'u8])
-  let program = owner(parts)
-  let plan = newFlatPlan(program, GasCycleLimit(100000))
-  var registers = default(RegisterFile)
-  registers[1] = RegisterValue(20)
-  let warm = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: registers)
-  var frame = newFlatFrame(plan, [], warm)
-  verifyControl(frame, program, warm, 100)
-  when defined(pvmArm64Jit):
-    let counters = flatArmControlStatistics(frame)
-    when defined(pvmArm64JitRefuse):
-      assert counters[0] == 0 and counters[1] == 0
-    else:
-      assert counters[0] >= 4 and counters[1] >= 3
-  for paid in [false, true]:
-    for gas in [0'u64, 1, 4, 5, 6, 9, 10, 25, 26, 27, 1000, high(uint64)]:
-      for budget in 0'u64..40'u64:
-        let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(gas), registers: registers,
-            blockCharged: paid)
-        verifyControl(frame, program, input, budget)
-        inc controlCases
-  for policy in [0, 1]:
-    # Explicit complete/lazy price owners must preserve the same native charge/quota observations as dynamic pricing.
-    var priced = newFlatFrame(plan, [], warm)
-    let complete = newGasPlan(program, GasPlanLimits(bytes: GasPlanByteLimit(65536),
-        blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
-    assert complete.error == GasPlanError.None
-    let lazy = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(65536),
-        cycles: GasCycleLimit(100000)))
-    assert lazy.error == GasMemoError.None
-    if policy == 0:
-      assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
-    else:
-      assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
-      assert gasMemoInfo(lazy.value).value.pricedBlocks == 0
-      verifyControl(priced, program, warm, 0)
-      assert gasMemoInfo(lazy.value).value.pricedBlocks == 0
-      verifyControl(priced, program, warm, 1)
-      assert gasMemoInfo(lazy.value).value.pricedBlocks == 1
-    verifyControl(priced, program, warm, 100)
+# Both formerly excluded short suffixes and the accepted four-operation shape retain all boundary checks.
+for arithmeticCount in [1, 2, 3, 4]:
+  for folded in [false, true]:
+    var parts: seq[seq[byte]] = @[]
+    if folded: parts.add(@[2'u8])
+    for position in 0..<arithmeticCount:
+      parts.add(@[149'u8, 0, 1])
+      if folded and position == 0: parts.add(@[2'u8])
+    let branchPc = uint32(arithmeticCount*3+(if folded: 2 else: 0))
+    let backwards = 0'u32-branchPc
+    var branch = @[172'u8, 0x10]
+    for shift in 0..<4: branch.add(byte((backwards shr (shift*8)) and 255))
+    parts.add(branch)
+    parts.add(@[0'u8])
+    let program = owner(parts)
+    let plan = newFlatPlan(program, GasCycleLimit(100000))
+    var registers = default(RegisterFile)
+    registers[1] = RegisterValue(20)
+    let warm = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: registers)
+    var frame = newFlatFrame(plan, [], warm)
+    verifyControl(frame, program, warm, 100)
     when defined(pvmArm64Jit):
-      let observed = flatArmControlStatistics(priced)
+      let counters = flatArmControlStatistics(frame)
       when defined(pvmArm64JitRefuse):
-        assert observed[0] == 0 and observed[1] == 0
+        assert counters[0] == 0 and counters[1] == 0
       else:
-        assert observed[0] >= 4 and observed[1] >= 3
+        assert counters[0] >= 4 and counters[1] >= 3
     for paid in [false, true]:
-      for gas in [0'u64, 1, 6, 7, 8, 35, 1000]:
-        for budget in [0'u64, 1, 4, 5, 6, 7, 8, 34, 35, 36, 37, 100]:
+      for gas in [0'u64, 1, 4, 5, 6, 9, 10, 25, 26, 27, 1000, high(uint64)]:
+        for budget in 0'u64..40'u64:
           let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(gas), registers: registers,
               blockCharged: paid)
-          verifyControl(priced, program, input, budget)
+          verifyControl(frame, program, input, budget)
           inc controlCases
-    if policy == 1: assert gasMemoInfo(lazy.value).value.pricedBlocks == 2
-  # Transfer retains promoted headers and leaves with their exact plan; a new frame owns fresh CPU and budgets.
-  var transferred = takeFlatStream(frame)
-  var fresh = newFlatFrame(plan, [], warm)
-  restoreFlatStream(fresh, transferred)
-  verifyControl(fresh, program, warm, 100)
-  when defined(pvmArm64Jit):
-    let retired = flatArmControlStatistics(fresh)
-    when defined(pvmArm64JitRefuse):
-      assert retired[0] == 0 and retired[1] == 0
-    else:
-      assert retired[0] >= 9 and retired[1] >= 7
-    assert flatArmControlStatistics(frame) == default(array[2, uint64])
+    for policy in [0, 1]:
+      # Explicit complete/lazy price owners must preserve the same native charge/quota observations as dynamic pricing.
+      var priced = newFlatFrame(plan, [], warm)
+      let complete = newGasPlan(program, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+          blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+      assert complete.error == GasPlanError.None
+      let lazy = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+          cycles: GasCycleLimit(100000)))
+      assert lazy.error == GasMemoError.None
+      if policy == 0:
+        assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+      else:
+        assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+        assert gasMemoInfo(lazy.value).value.pricedBlocks == 0
+        verifyControl(priced, program, warm, 0)
+        assert gasMemoInfo(lazy.value).value.pricedBlocks == 0
+        verifyControl(priced, program, warm, 1)
+        assert gasMemoInfo(lazy.value).value.pricedBlocks == 1
+      verifyControl(priced, program, warm, 100)
+      when defined(pvmArm64Jit):
+        let observed = flatArmControlStatistics(priced)
+        when defined(pvmArm64JitRefuse):
+          assert observed[0] == 0 and observed[1] == 0
+        else:
+          assert observed[0] >= 4 and observed[1] >= 3
+      for paid in [false, true]:
+        for gas in [0'u64, 1, 6, 7, 8, 35, 1000]:
+          for budget in [0'u64, 1, 4, 5, 6, 7, 8, 34, 35, 36, 37, 100]:
+            let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(gas), registers: registers,
+                blockCharged: paid)
+            verifyControl(priced, program, input, budget)
+            inc controlCases
+      if policy == 1: assert gasMemoInfo(lazy.value).value.pricedBlocks == 2
+    # Transfer retains promoted headers and leaves with their exact plan; a new frame owns fresh CPU and budgets.
+    var transferred = takeFlatStream(frame)
+    var fresh = newFlatFrame(plan, [], warm)
+    restoreFlatStream(fresh, transferred)
+    verifyControl(fresh, program, warm, 100)
+    when defined(pvmArm64Jit):
+      let retired = flatArmControlStatistics(fresh)
+      when defined(pvmArm64JitRefuse):
+        assert retired[0] == 0 and retired[1] == 0
+      else:
+        assert retired[0] >= 9 and retired[1] >= 7
+      assert flatArmControlStatistics(frame) == default(array[2, uint64])
 
 echo "ARM_CONTROL_CASES,", controlCases
 

@@ -1548,7 +1548,11 @@ when defined(pvmArm64Jit):
       emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
       inc ending
       inc count
-    if count < 4:
+    let terminal = if int(ending) < f.sites.len:
+        f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
+    # Short conditional suffixes can fuse their checked header after genuine branch admission.
+    # Other short leaves retain the original floor; isolated calls would add an extra native transition.
+    if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
       refuseArmEntry(jit, offset)
       return offset
     var words = armInstructions(native)
@@ -1556,7 +1560,6 @@ when defined(pvmArm64Jit):
     if not published: return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    let terminal = f.plan.facts[int(f.sites[int(ending)])].opcode
     f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
         170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending

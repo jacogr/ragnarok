@@ -514,3 +514,84 @@ Linux ARM64 now has the same local correctness and lifetime baseline as macOS fo
 slice. Further speed work remains paused for the platform qualification; the next measured design
 questions are short-block entry/exit costs and checked-memory coverage identified by the sieve
 trace. No fully native PVM, production readiness or merge recommendation follows from these checks.
+
+
+## Short conditional-block admission trial
+
+The next isolated trial admits one to three supported arithmetic operations only when their
+immediate successor is a genuine conditional branch. Other short leaves retain the four-operation
+floor. Native branch promotion still requires both cached positive scalar arms, and header fusion
+still performs the original complete reservation. Pricing, partial-budget fallback, source PCs,
+checked memory, host handling, native ABI, code ownership and the 1,024-publication/one-MiB limits
+are unchanged. The native slice remains explicit and experimental; no production default changes.
+
+The exact accepted parent is `8fb019b726e53e9e0622d56ee85a54909793c1d8`. Current working-source
+hashes are sealed in the receipts and checked against the later preserving commit. The expanded
+folded/unfolded one/two/three/four-operation witness passes 10,560 gas, attempt-budget and pricing
+cases, plus the existing opcode, host/memory, storage-refusal and move/copy ownership gates.
+
+### Same-cohort macOS ARM64 public results
+
+Apple M1 Max, pinned October 26 Nimony, checked release/ARC/Clang ThinLTO. CPU milliseconds,
+forward / reverse process orders; reused medians use samples 3–12 of thirteen complete checked calls.
+Public calls include fresh invocation memory, genuine hosts and immutable publication. Reference
+call clocks exclude restoration/teardown, whose separate DOOM lifecycle receipts are also checked.
+Retained-core reset/publication remains a separate scope and is not used for public ratios.
+
+| Case | Public interpreter | Accepted public JIT | Current public JIT | PolkaVM interpreted call | Current / parent | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky 1 | 84.665 / 85.335 | 76.323 / 77.001 | 75.962 / 76.228 | 93.291 / 93.989 | 0.995 / 0.990 | 0.814 / 0.811 |
+| sieve 100000 | 3.446 / 3.417 | 3.417 / 3.375 | 2.794 / 2.771 | 5.930 / 5.891 | 0.818 / 0.821 | 0.471 / 0.470 |
+| sieve 10000000 | 337.414 / 338.793 | 334.430 / 334.613 | 279.183 / 279.072 | 368.687 / 369.264 | 0.835 / 0.834 | 0.757 / 0.756 |
+| minimal 100000 | 4.918 / 4.875 | 4.935 / 4.872 | 4.871 / 4.867 | 5.998 / 5.994 | 0.987 / 0.999 | 0.812 / 0.812 |
+| memset 100000 | 4.335 / 4.320 | 4.311 / 4.314 | 3.453 / 3.439 | 3.922 / 3.926 | 0.801 / 0.797 | 0.880 / 0.876 |
+| init 0 | 320.352 / 322.976 | 318.647 / 315.043 | 316.185 / 315.291 | 676.184 / 671.608 | 0.992 / 1.001 | 0.468 / 0.469 |
+| tick 0 | 39.821 / 40.222 | 39.654 / 39.475 | 36.864 / 36.788 | 44.048 / 44.215 | 0.930 / 0.932 | 0.837 / 0.832 |
+
+### Constructor, cold and coverage costs
+
+Prepared-owner constructor and native compilation costs remain separate; compilation/publication
+also remains inside each cold call. Coverage below counts compiled guest operations across thirteen
+calls, not host instructions or hardware counters. No hardware counters were collected.
+
+| Case | Current owner ctor ms | Current cold ms | Parent cold ms | Current compile ms | Publications | Native guest operations / 13 calls |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky 1 | 0.454 / 0.462 | 79.058 / 78.540 | 79.456 / 79.753 | 0.790 / 0.749 | 514 | 137037306 |
+| sieve 100000 | 1.628 / 1.595 | 7.691 / 7.666 | 8.285 / 8.226 | 0.732 / 0.719 | 253 | 9206651 |
+| sieve 10000000 | 1.696 / 1.622 | 284.141 / 284.230 | 338.977 / 339.568 | 0.837 / 0.833 | 253 | 924980744 |
+| minimal 100000 | 0.010 / 0.010 | 4.929 / 4.924 | 4.988 / 4.917 | 0.016 / 0.014 | 2 | 25 |
+| memset 100000 | 0.052 / 0.051 | 5.019 / 4.771 | 5.673 / 5.615 | 0.096 / 0.077 | 47 | 9100943 |
+| init 0 | 7.739 / 7.568 | 337.578 / 335.005 | 334.083 / 334.060 | 3.621 / 3.767 | 1024 | 54065702 |
+| tick 0 | 7.568 / 7.812 | 45.689 / 46.486 | 48.494 / 49.546 | 1.147 / 1.178 | 720 | 72738125 |
+
+### Verdict and automatic admission direction
+
+Keep this isolated trial: public sieve improves roughly 17–18%, long sieve 16–17%, memory fill
+about 20% and gameplay about 7% against the accepted native parent, consistently in both orders.
+Pinky, minimal and reused initialization remain close to parent; no useful gains are claimed there.
+DOOM initialization reaches the unchanged 1,024-publication cap and safely falls back for later
+candidates. Its cold call is about 0.3–1.1% slower than parent; that cost is retained rather than
+being hidden by reused medians. Gameplay uses 720 publications. No larger cache was introduced.
+
+Independent verification checks all 42 kernel processes / 546 calls / 63 controls / six builds
+(three equal-image pairs), plus 70 application processes / 910 calls / 115 controls / sixteen builds
+(eight equal-image pairs). Exact baseline source hashes and all 706 kernel / 710 application
+input, source, helper, compiler and image seals match. Eleven parser tests and pinned formatting pass.
+Receipts are under `build/tests/pvm-arm64-jit` and `build/tests/pvm-arm64-applications`;
+prior cohorts and the independent verifier are retained under
+`build/pvm-arm64-jit/short-conditional`. Linux qualification of this increment is recorded separately.
+
+Automatic per-program admission is a reasonable future policy: captured source size and prepared
+node count are available, while unsupported instructions, arena refusal and capacity exhaustion
+already preserve checked interpretation. These seven programs do not establish a defensible source
+size threshold. A bounded size cap can limit exposure; hot-loop reuse and compilation cost should
+determine profitability. This increment neither chooses an arbitrary cutoff nor switches a default.
+
+
+The retained trial also passes a fresh isolated Linux ARM64 Docker qualification: nine shared
+native gates (including the expanded 10,560-case boundary witness), four public image builds,
+14 public processes / 182 checked calls, 32 assertion/state/host-event refusals and 2,863 sealed
+source/configuration/fixture files. Independent protocol and source/image checks pass. Linux
+clocks remain diagnostic only; the timing table above is macOS-only. Receipts are under
+`build/pvm-arm64-jit/linux`; the preceding platform cohort is preserved under
+`build/pvm-arm64-jit/short-conditional/prior-linux`.
