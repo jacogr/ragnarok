@@ -545,11 +545,6 @@ compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 compare-pvm-doom: check-pvm-doom
 	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)
 
-# Manual historical witness entry; ordinary CI now discovers the promoted production suites.
-.PHONY: check-pvm-experimental
-check-pvm-experimental: toolchain
-	$(PYTHON) experiments/pvm-interpreter/run.py $(PVM_EXPERIMENTAL_FLAGS)
-
 # Six real Tiny validators author and consume blocks with the pinned six-second slot clock.
 .PHONY: devnet check-devnet check-devnet-smoke
 devnet: build
@@ -564,8 +559,8 @@ check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
 
 # Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
-.PHONY: bench-pvm-experimental
-bench-pvm-experimental: toolchain sources rust-tools
+.PHONY: bench-pvm-interpreter
+bench-pvm-interpreter: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
-	$(PYTHON) experiments/pvm-interpreter/linux.py
+	$(PYTHON) tools/pvm_interpreter_compare.py

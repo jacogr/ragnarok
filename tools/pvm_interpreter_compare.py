@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Qualify and compare the isolated interpreter, exact current master and pinned interpreted reference.
+"""Qualify and compare the production handler stream, exact current master and pinned interpreted reference.
 
 Make owns provisioning. Fresh canonical builds, complete state assertions, negative controls and
 unchanged input seals precede publication. Every sample is retained; no outlier filtering is used.
@@ -19,8 +19,9 @@ import subprocess
 import sys
 import tarfile
 
-ROOT = Path(__file__).resolve().parents[2]
-LAB = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
+DRIVERS = {"kernel": ROOT/"tests/performance/pvm_stream_lifecycle.nim",
+           "doom": ROOT/"tests/performance/pvm_stream_doom.nim"}
 BUILD = ROOT/'build/tests/pvm-interpreter-linux'
 sys.path.insert(0, str(ROOT/'tools'))
 from native_checks import NativeChecks
@@ -177,7 +178,7 @@ class Comparison:
         self.report = dict(status='running', master=revision(master), candidate=revision('HEAD'),
             cpu=cpu_model(), platform=platform.platform(), builds=[], controls=[], runs=[])
         self.identities = {p:digest(p) for p in [
-            *sorted(LAB.rglob('*.nim')), *sorted(LAB.glob('*.py')),
+            *sorted((ROOT/'src/pvm').rglob('*.nim')), *DRIVERS.values(), Path(__file__).resolve(),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_doom.nim',
             ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tools/native_checks.py',
             ROOT/'tools/setup_nimony.py',ROOT/'spec/toolchain.json']}
@@ -208,7 +209,7 @@ class Comparison:
         self.report['toolchain'] = json.loads((ROOT/'spec/toolchain.json').read_text())
         canonical = BUILD/'snapshot'
         self.images = {}
-        # Candidate uses its committed source, then applies only the two tracked runtime overlays.
+        # Each role uses its exact committed production sources; the candidate exposes separate lifecycle clocks.
         for role, commit in (('master', self.report['master']), ('candidate', self.report['candidate'])):
             if canonical.exists():
                 shutil.rmtree(canonical)
@@ -218,10 +219,10 @@ class Comparison:
                 archive.extractall(canonical, filter='data')
             drivers = canonical/'benchmarks'; drivers.mkdir()
             if role == 'candidate':
-                for path in sorted((LAB/'overlay').rglob('*.nim')):
-                    shutil.copy2(path, canonical/path.relative_to(LAB/'overlay'))
-                for driver, source in (('kernel', LAB/'benchmarks/lifecycle.nim'), ('doom', LAB/'benchmarks/doom.nim')):
-                    shutil.copy2(source, drivers/(driver+'.nim'))
+                for driver, source in DRIVERS.items():
+                    # Rebase only imports into the canonical snapshot; do not inject another implementation.
+                    text = source.read_text().replace('../../src/', '../src/')
+                    (drivers/(driver+'.nim')).write_text(text)
             else:
                 for driver, source in (('kernel', ROOT/'tests/performance/pvm_sieve.nim'), ('doom', ROOT/'tests/performance/pvm_doom.nim')):
                     # The same checked public driver is imported from one-level-up source coordinates.

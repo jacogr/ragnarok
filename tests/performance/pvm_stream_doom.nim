@@ -3,7 +3,8 @@
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
 import std/[assertions, syncio, envvars, monotimes]
-import ../src/pvm/[program, machine, gas, gas_plan, step, experimental]
+import ../../src/pvm/[program, machine, gas, gas_plan, step]
+import ../../src/pvm/internal/handler_stream
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Reuse the checked OS process clock only for explicitly enabled CI timing runs.

@@ -8,7 +8,7 @@ import unittest
 from workflow_fixtures import event_context, expression, job_condition, job_section
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'experiments/pvm-interpreter/linux.py')
+spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'tools/pvm_interpreter_compare.py')
 comparison = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(comparison)
 
@@ -59,12 +59,12 @@ class InterpreterLinuxTests(unittest.TestCase):
         """The architecture comparison is explicitly requested and never adds a master experiment."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = job_section(text,'pvm-interpreter-comparison')
-        self.assertIn('run: make bench-pvm-experimental',section)
+        self.assertIn('run: make bench-pvm-interpreter',section)
         self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
         self.assertIn('if: always()',section)
         for context,wanted in ((event_context(),False),
                 (event_context('pull_request','synchronize'),False),
                 (event_context('workflow_dispatch',suite='bench-pvm'),True),
                 (event_context('workflow_dispatch',suite='full'),False)):
-            # Normal monitoring stays separate from this bounded pre-integration qualification.
+            # Normal monitoring stays separate from this explicit core/lifecycle qualification.
             self.assertEqual(bool(expression(job_condition(text,'pvm-interpreter-comparison'),context)),wanted)

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Frozen full-state benchmark with the same decoded-fact/reset boundary as the historical local control.
 import std/[assertions, syncio, envvars]
-import ../src/pvm/[program, machine, gas, experimental]
-import ../src/pvm/step as oracle
+import ../../src/pvm/[program, machine, gas]
+import ../../src/pvm/internal/handler_stream
+import ../../src/pvm/step as oracle
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
 proc word(data: string, at, width: int): uint64 =
   ## All local fixture words are bounded before shifts or narrowing.
@@ -14,6 +15,9 @@ proc local(path: string): string =
   ## A fixture I/O refusal aborts before any valid result row.
   try: result = readFile(path)
   except: quit 2
+if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
+  # Linux comparison proves optimized assertion checks remain present before accepting timings.
+  assert false, "pvm stream assertion control"
 let guest = getEnv("RAGNAROK_PVM_GUEST")
 let data = local(getEnv("RAGNAROK_PVM_SIEVE_INPUT"))
 let expected = local(getEnv("RAGNAROK_PVM_SIEVE_EXPECTED"))
@@ -46,18 +50,34 @@ let planNs = cpuNanoseconds()-beforePlan
 let beforeFrame = cpuNanoseconds()
 var frame = newFlatFrame(plan, images, info)
 let frameNs = cpuNanoseconds()-beforeFrame
-echo "EXPERIMENTAL_PREPARE,", guest, ",", planNs, ",", frameNs
+echo "PHASE_PREPARE,", guest, ",", planNs, ",", frameNs
 let samples = if getEnv("RAGNAROK_PVM_SIEVE_SAMPLES") == "13": 13 elif getEnv(
     "RAGNAROK_PVM_SIEVE_SAMPLES") == "4": 4 else: 1
 for sample in 0..<samples:
+  let beforeReset = cpuNanoseconds()
   resetFlatFrame(frame, info)
   let before = cpuNanoseconds()
   runFlat(frame, 1000000000)
-  let elapsed = cpuNanoseconds()-before
+  let afterExecution = cpuNanoseconds()
+  let published = flatMemorySnapshot(frame)
+  let captured = captureMachine(decoded.value, published, frame.info)
+  let afterPublication = cpuNanoseconds()
+  assert captured.error == MachineError.None
+  let finalMemory = memoryOf(captured.value).value
+  for page in 0..<images.len:
+    # Publication is an independent immutable full-state observation, not the frame's private checker.
+    let actual = pageImage(finalMemory, images[page].index)
+    assert actual.error == MachineError.None
+    let image = actual.value
+    assert image.access == images[page].access
+    for at in 0..<4096: assert image.bytes[at] == byte(expected[120+page*4096+at])
+  let elapsed = afterExecution-before
   assert frame.reason == oracle.StepError.None and frame.exit == oracle.StepExit.Halt
   assert uint64(frame.info.pc) == 0 and frame.info.blockCharged and uint64(frame.info.gasDeficit) == 0
   assert uint64(frame.info.gas) == word(expected, 8, 8)
   for i in 0..<13: assert uint64(frame.info.registers[i]) == word(expected, 16+i*8, 8)
   checkFlatReference(frame, expected)
-  echo "EXPERIMENTAL,", guest, ",", sample, ",", elapsed, ",", flatNodes(frame), ",", flatNodes(
-      frame)*24, ",", flatNodes(frame)*4, ",", 1000000000'u64-frame.remaining
+  echo "PHASE,", guest, ",", sample, ",", before-beforeReset, ",", elapsed, ",",
+      afterPublication-afterExecution, ",", afterPublication-beforeReset
+  echo "PHASE_CACHE,", guest, ",", sample, ",", flatNodes(frame), ",", flatPreparationUnits(frame),
+      ",", 1000000000'u64-frame.remaining

@@ -124,3 +124,18 @@ not measured peak call-stack usage or evidence for a different compiler/architec
 Exact-head Linux production-API comparisons are pending. No Linux production-API speed claim is
 made until those measurements complete. This replaces the interpreter only; it does not claim
 complete JAM/client readiness or change existing independent protocol discrepancy gates.
+
+## Lab retirement
+
+The integration removes the complete experimental directory, including bulky sample/probe JSON,
+rejected patches, duplicate witness sources, overlay shim and standalone runner. The concise
+[findings and provenance](pvm-interpreter-findings.md) retain measured scope and exact recovery
+coordinates. Ordinary native/sanitizer suites own the promoted checks. Maintained lifecycle and
+DOOM drivers live in `tests/performance/`; `make bench-pvm-interpreter` uses the production core
+through `tools/pvm_interpreter_compare.py`. This cleanup changes no runtime implementation,
+measurement scopes or complete-state/refusal predicates.
+
+Cleanup verification passed 50 comparison/CI tooling tests, source inventory and pinned formatting.
+Both relocated drivers compile through the ordinary and canonical snapshot import paths. Full
+sieve/gameplay snapshots and both assertion-refusal controls pass through the relocated binaries;
+production PVM sources are byte-identical to the pre-cleanup integration commit.

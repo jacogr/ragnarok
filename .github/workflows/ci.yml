@@ -732,7 +732,7 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
-  # Explicit architecture qualification before application integration; no extra master-push experiment.
+  # Explicit core/lifecycle comparison against exact master; regular Perf owns public API timings.
   pvm-interpreter-comparison:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}
     name: Perf / PVM Interpreter Comparison
@@ -748,7 +748,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
       - name: Compare complete states on one runner
-        run: make bench-pvm-experimental
+        run: make bench-pvm-interpreter
       - name: Show complete comparison
         if: always()
         run: |
