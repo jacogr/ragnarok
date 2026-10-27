@@ -3,6 +3,8 @@
 
 """Verify parallel codec cache ownership, complete execution, strict failure and ordered output."""
 import io
+import json
+import subprocess
 from pathlib import Path
 import sys
 import threading
@@ -28,6 +30,10 @@ class NativeCodecWorkers(unittest.TestCase):
                     # Sources/goldens exist only for planner validation; fake commands never execute them.
                     (folder/(name+'.nim')).touch()
                     (folder/(name+'.output')).touch()
+                previous = folder/'cache/codec-diagnostics'
+                previous.mkdir(parents=True)
+                (previous/'worker-99.json').write_text('{"active":"stale"}')
+                (previous/'old.log').write_text('stale output')
                 arguments = ['hastur', '--cachedir:'+str(folder/'cache'), '--jobs:2',
                              '--joined:off', '--forward:--mm:arc', 'test', str(folder)]
                 barrier, calls = threading.Barrier(2), []
@@ -46,6 +52,20 @@ class NativeCodecWorkers(unittest.TestCase):
                      patch('sys.stdout', new_callable=io.StringIO) as output:
                     status = native_codec.run_codec_batch(arguments)
                 self.assertEqual(status, 0 if failed is None else 1)
+                receipts = [json.loads(path.read_text()) for path in
+                            sorted((folder/'cache/codec-diagnostics').glob('worker-*.json'))]
+                self.assertEqual(len(receipts),2)
+                self.assertFalse((previous/'worker-99.json').exists())
+                self.assertFalse((previous/'old.log').exists())
+                self.assertEqual([row['active'] for row in receipts],[None,None])
+                self.assertEqual([row['suite'] for receipt in receipts for row in receipt['completed']],list(names))
+                for receipt in receipts:
+                    # The receipt records the actual child result; sibling success cannot hide its failure.
+                    for row in receipt['completed']:
+                        self.assertEqual(row['exit_code'],int(row['suite']==failed))
+                        self.assertGreaterEqual(row['elapsed_seconds'],0)
+                        log = folder/'cache/codec-diagnostics'/row['log']
+                        self.assertEqual(log.read_text(),row['suite']+'\n')
                 self.assertCountEqual([name for name, _ in calls], names)
                 caches = {name: next(arg for arg in command if arg.startswith('--cachedir:'))
                           for name, command in calls}
@@ -60,6 +80,24 @@ class NativeCodecWorkers(unittest.TestCase):
                 self.assertLess(text.index('a\n'), text.index('b\n'))
                 self.assertLess(text.index('b\n'), text.index('c\n'))
                 self.assertLess(text.index('c\n'), text.index('d\n'))
+
+    def test_interrupted_child_keeps_active_identity(self):
+        """An unfinished child leaves a durable active receipt rather than an invented completed/pass row."""
+        with temporary_folder() as folder:
+            (folder/'sample.nim').touch()
+            (folder/'sample.output').touch()
+            arguments = ['hastur','--cachedir:'+str(folder/'cache'),'--jobs:1',
+                         '--joined:off','test',str(folder)]
+            with patch.object(native_codec,'UNIT_ROOT',folder), \
+                 patch.object(native_codec,'unit_batches',return_value=[('codec',('sample',),None)]), \
+                 patch.object(native_codec,'unit_source',return_value=folder/'sample.nim'), \
+                 patch.object(native_codec.subprocess,'run',side_effect=subprocess.TimeoutExpired(['hastur'],180)):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    native_codec.run_codec_batch(arguments)
+            row = json.loads((folder/'cache/codec-diagnostics/worker-0.json').read_text())
+            self.assertEqual(row['active']['suite'],'sample')
+            self.assertEqual(row['completed'],[])
+            self.assertEqual(row['scheduled'],['sample'])
 
     def test_invalid_scope_or_missing_golden_refuses_before_execution(self):
         """No malformed command, empty scope or missing expected output can become a green batch."""

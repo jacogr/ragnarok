@@ -204,3 +204,19 @@ local probe altered a register while expecting a gas-specific diagnostic; its fa
 retained, and the complete local cohort was rerun with the gas-field mutation corrected. All 71
 selected parser/CI/host-tooling tests pass. These checks qualify the measurement harness, not a
 new Linux performance claim; the full same-runner comparison must still complete.
+
+## Codec deadline diagnostics
+
+The later Linux Unit shard again exhausted the unchanged 180-second codec-batch deadline.
+The adapter previously buffered an entire worker before emitting diagnostics, so that failure did
+not identify an active suite. Codec workers now retain atomic active/completed receipts and exact
+per-suite logs in their private cache's `codec-diagnostics` directory. Each attempt retires stale
+receipts. Interrupted children retain active identities and never gain a fabricated completion;
+ordered aggregate output and nonzero failure propagation remain unchanged. Unit artifacts retain
+only these JSON/log files, not compiler objects. All 89 affected native-runner/CI safeguards pass.
+
+A cold local reproduction of all 87 codec mains with fresh private caches and required independent
+fixtures passes in 166.206 seconds under the original 180-second deadline. Completed work per
+worker is 40.66/165.92/126.47/127.07 seconds. These are local whole-build/test scheduling figures,
+not interpreter execution-speed measurements or a passing Linux receipt. The imbalance motivates
+redistribution across the existing four workers before the next exact-head Linux request.

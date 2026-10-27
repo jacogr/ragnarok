@@ -229,6 +229,8 @@ jobs:
             build/ci/*.log
             build/tests/runtime/*.log
             build/tests/runtime/results.json
+            build/tests/native/**/codec-diagnostics/*.json
+            build/tests/native/**/codec-diagnostics/*.log
             build/tests/corpus/*.log
             build/tests/corpus/results.json
             build/tests/corpus/*/*.log
