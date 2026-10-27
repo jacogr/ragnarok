@@ -1063,3 +1063,108 @@ snapshots and `independent-verification.json`. Four diagnostic images execute el
 the pinned compiler; an index loop fixes that diagnostic without a hidden sequence copy. Its
 failed source and originating log remain preserved. Production implementation and existing
 macOS/Linux qualification remain unchanged.
+
+## Single-publication conditional admission trial — rejected (October 27)
+
+Measured prototype `a4adf513f92947a60cabb119abd9a4777ca4e232` against accepted parent
+`baa94af2026ec0a63c6b6e0a2bee2aa0847416de` on Apple M1 Max with the unchanged pinned
+October 26 compiler, ARC, checked release and Clang ThinLTO. The final runtime is restored to
+that parent; its accepted 53 register operations and 16 conditional operations remain unchanged.
+
+The trial deferred conditional executable publication until the original branch had positively
+cached both scalar destinations. It stored only the terminal coordinate before admission, used
+original checked handlers for first/partial execution and restored them on publication refusal.
+Three specialized cold charged headers kept pending bodies reachable and could hand off after
+admission. Neither cache ceiling, memory checks, quotas, source ownership nor host semantics changed.
+
+### Paired public/core results
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.434 / 3.460 | 2.787 / 2.869 | 2.826 / 2.853 | 2.817 / 2.872 | 5.936 / 6.022 | 0.823 / 0.825 | 0.476 / 0.474 |
+| minimal 100000 | 4.921 / 4.953 | 4.913 / 4.915 | 4.891 / 4.949 | 4.859 / 4.938 | 6.020 / 6.077 | 0.994 / 0.999 | 0.813 / 0.814 |
+| memset 100000 | 4.386 / 4.320 | 3.501 / 3.541 | 3.449 / 3.483 | 2.752 / 2.758 | 3.957 / 3.978 | 0.786 / 0.806 | 0.872 / 0.876 |
+| pinky 1 | 86.297 / 85.631 | 72.911 / 72.438 | 72.320 / 72.674 | 72.410 / 73.207 | 94.091 / 94.484 | 0.838 / 0.849 | 0.769 / 0.769 |
+| sieve 10000000 | 339.164 / 337.423 | 278.269 / 276.635 | 280.761 / 281.149 | 291.303 / 293.496 | 366.476 / 368.824 | 0.828 / 0.833 | 0.766 / 0.762 |
+| init 0 | 323.765 / 325.248 | 320.420 / 320.440 | 503.323 / 503.398 | 508.144 / 500.099 | 674.673 / 674.621 | 1.555 / 1.548 | 0.746 / 0.746 |
+| tick 0 | 40.304 / 41.642 | 37.081 / 37.617 | 37.144 / 37.403 | 33.849 / 33.903 | 45.110 / 44.406 | 0.922 / 0.898 | 0.823 / 0.842 |
+
+Reference is PolkaVM interpreted call CPU; it excludes its separate restoration/teardown.
+Public calls include private invocation memory and immutable output publication. Retained core
+has its separate reset/publication lifecycle and does not establish a public-call gain.
+
+### Owner construction and first call
+
+CPU ms, forward / reverse. First calls include cold preparation and native publication.
+
+| Case | Previous owner | Trial owner | Previous cold call | Trial cold call |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.607 / 1.651 | 1.587 / 1.633 | 7.821 / 8.304 | 7.826 / 8.013 |
+| minimal 100000 | 0.010 / 0.010 | 0.009 / 0.010 | 5.094 / 5.053 | 4.911 / 5.008 |
+| memset 100000 | 0.059 / 0.060 | 0.053 / 0.051 | 4.952 / 5.020 | 4.866 / 4.887 |
+| pinky 1 | 0.457 / 0.454 | 0.465 / 0.467 | 75.923 / 75.475 | 76.049 / 76.535 |
+| sieve 10000000 | 1.609 / 1.631 | 1.618 / 1.599 | 288.315 / 288.391 | 293.205 / 284.530 |
+| init 0 | 7.706 / 8.449 | 7.671 / 7.957 | 341.161 / 343.842 | 519.811 / 542.634 |
+| tick 0 | 7.686 / 8.070 | 7.744 / 7.700 | 46.760 / 47.627 | 47.785 / 47.624 |
+
+### Repeated public-call verdict
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.813 (2.796–2.926) | 2.857 (2.820–2.948) | 1.016 | 1.015, 1.019, 0.996, 1.006, 1.024 |
+| minimal 100000 | 4.869 (4.827–4.916) | 4.878 (4.853–4.897) | 1.002 | 1.003, 0.999, 1.007, 1.004, 0.997 |
+| memset 100000 | 3.482 (3.433–3.627) | 3.480 (3.446–3.529) | 0.999 | 1.000, 0.972, 1.007, 1.000, 1.007 |
+| pinky 1 | 73.072 (72.141–74.731) | 72.683 (72.067–76.284) | 0.995 | 0.994, 0.985, 0.999, 0.998, 1.016 |
+| sieve 10000000 | 273.750 (271.958–275.779) | 272.851 (271.564–276.935) | 0.997 | 0.998, 1.000, 0.998, 1.004, 0.992 |
+| init 0 | 321.008 (316.704–323.709) | 508.433 (503.234–513.154) | 1.584 | 1.590, 1.574, 1.592, 1.580, 1.587 |
+| tick 0 | 37.483 (37.325–37.797) | 37.357 (37.105–37.874) | 0.997 | 0.988, 1.002, 1.004, 0.999, 0.991 |
+
+The initialization regression is consistent across all five balanced blocks (trial/parent
+1.574–1.592), with non-overlapping process ranges. Other medians are within 1.6%, with
+overlapping ranges; no smaller benefit is claimed. Reject the complete runtime experiment.
+
+Admission did improve: initialization has 1,024 active entries for 1,024 publications instead
+of 774 active entries for 1,024 publications. The exact header/body diagnostic confirms native
+handoff at source PCs 193987 and 194002; 193996 remains interpreted. Gameplay has 426 active
+entries/publications after reuse. These are bounded cache observations, not hardware counters.
+
+Across the thirteen initialization calls, native calls increase from 21,252,751 to 583,159,301
+and lowered guest operations from 72,240,971 to 1,770,509,491. Source inspection shows that the
+new handoffs replace the already fused three-shape interpreter cycle with many small native
+calls. Greater native coverage is therefore not a useful objective by itself. Counts and timings
+support rejecting this boundary arrangement; no specific hardware cause is inferred.
+
+### Checks and provenance
+
+All nine native gates passed, including full opcode/host state, forced refusal and exclusive
+owner move/copy controls. The focused warmed-loop witness verified one final publication.
+The full kernel cohort passed 42 processes / 546 calls / 63 controls / six fresh builds and
+three equal-image pairs; the application cohort passed 70 processes / 910 calls / 115 controls /
+sixteen fresh builds and eight equal-image pairs. Independent verification reparsed all logs
+and checked 706/710 seals, exact parent sources and image equality. All 140 additional repeated
+processes / 1,820 calls were independently reparsed against the sealed application cohort.
+Measured tracked sources match the preserved prototype commit (684 kernel / 667 application files).
+
+An isolated untimed diagnostic adds two processes/four complete DOOM calls; all its snapshot
+hashes are checked. Its clocks are discarded. No Linux performance claim or new Linux runtime
+qualification is needed for this rejected implementation. Restored native/refusal witnesses
+and exact source equality are recorded separately after the reversal.
+
+The first build required an explicit non-null proof for restoring the original handler.
+The pinned formatter then joined the multiline header predicate into an invalid token; using
+a named predicate and formatting before the final cohort resolved it. Failed build logs remain
+with the experiment; only the completed final cohorts support this verdict.
+
+Records: `build/pvm-arm64-jit/single-publication/` (prior accepted receipts, repeated-public
+cohort, admission snapshot, failed/final logs, restored checks); measured current cohorts in
+`build/tests/pvm-arm64-{jit,applications}/` each include independent verification and preserving
+commit receipts. The comparison helper retains the updated exact accepted-parent pin.
+
+Next bounded candidate: conditional moves 218/219 inside already admitted register fragments,
+with explicit old-destination live-in and alias checks. This extends useful work per existing
+handoff while leaving the successful charged interpreter cycle intact. No next lowering is
+included here.

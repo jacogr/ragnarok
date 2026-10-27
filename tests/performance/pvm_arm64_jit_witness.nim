@@ -808,9 +808,6 @@ for arithmeticCount in [1, 2, 3, 4]:
         assert counters[0] == 0 and counters[1] == 0
       else:
         assert counters[0] >= 4 and counters[1] >= 3
-        if not folded:
-          # A warmed conditional loop owns one final publication, without a superseded arithmetic leaf.
-          assert flatArmStatistics(frame)[0] == 1
     for paid in [false, true]:
       for gas in [0'u64, 1, 4, 5, 6, 9, 10, 25, 26, 27, 1000, high(uint64)]:
         for budget in 0'u64..40'u64:

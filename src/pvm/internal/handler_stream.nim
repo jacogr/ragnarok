@@ -145,8 +145,6 @@ func flatSext32(x: uint32): uint64 {.inline.} =
 when defined(pvmArm64Jit):
   proc flatArmPrepare(f: var FlatFrame, origin: uint32)
     ## Cold suffix preparation may replace eligible entries with native fragments.
-  proc flatArmShapePending(f: FlatFrame, offset: uint32): bool
-    ## Specialized cold headers must keep a pending or admitted native body reachable.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -696,9 +694,6 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
   let cached: FlatHandler = flatBranch[Branch]
   if f.handlers[int(branchOff)] == cached:
     # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
-    when defined(pvmArm64Jit):
-      # Do not overwrite a native handoff or hide a pending body behind the combined interpreter cycle.
-      if flatArmShapePending(f, off+1): return outcome
     let combined: FlatHandler = flatChargedShape[First, Second, Branch]
     f.handlers[int(off)] = combined
   outcome
@@ -1474,17 +1469,9 @@ when defined(pvmArm64Jit):
 
   proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
     ## First execution retains original branch resolution; only subsequent positive cached capability enables promotion.
-    if f.barrier == flatStop and flatArmUpgrade(f, offset): return flatArmBranch(f, offset)
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmShapePending(f: FlatFrame, offset: uint32): bool =
-    ## Exact worker identities preserve the specialized interpreter path whenever native admission was refused.
-    let pending: FlatHandler = flatArmPending
-    let admitted: FlatHandler = flatArmBranch
-    f.handlers[int(offset)] == pending or f.handlers[int(offset)] == admitted
+    if f.barrier != flatStop: return flatArmExecute(f, offset)
+    if flatArmUpgrade(f, offset): return flatArmBranch(f, offset)
+    flatArmExecute(f, offset)
 
   func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original handler identity certifies both arms already passed genuine source and preparation checks.
@@ -1529,24 +1516,17 @@ when defined(pvmArm64Jit):
     let promoted = publishArmEntry(jit, offset, ending, ending-offset+1, words)
     jit.compilationNs+=armClock()-before
     if not promoted:
-      # There is no provisional executable version; restore the original checked body on terminal refusal.
-      let original = f.armOriginal[int(offset)]
-      assert original != nil
-      if original != nil: f.handlers[int(offset)] = original
+      # A full arena retains the already published arithmetic leaf; never replace a valid entry with a refusal marker.
+      f.handlers[int(offset)] = flatArmExecute
       return false
     f.handlers[int(offset)] = flatArmBranch
     if offset > 0:
       let header = offset-1
       let plain: FlatHandler = flatCharge
-      let shapeOne: FlatHandler = flatChargedShapeCold[131, -1, 88]
-      let shapeTwo: FlatHandler = flatChargedShapeCold[200, 139, 82]
-      let shapeThree: FlatHandler = flatChargedShapeCold[151, 152, 173]
-      let original = f.handlers[int(header)]
-      # Only recognized charged headers owning this complete suffix can fuse; memo and error headers remain original.
-      let recognized = original == plain or original == shapeOne or original == shapeTwo or
-          original == shapeThree
-      if recognized and f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
-        f.armOriginal[int(header)] = original
+      # Only an exact ordinary header owning this complete source suffix can fuse. Memo/errors/special shapes remain original.
+      if f.handlers[int(header)] == plain and
+          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
+        f.armOriginal[int(header)] = plain
         f.handlers[int(header)] = flatArmEnter
     true
 
@@ -1575,20 +1555,13 @@ when defined(pvmArm64Jit):
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
       refuseArmEntry(jit, offset)
       return offset
-    let conditional = terminal in {81'u8..90'u8, 170'u8..175'u8}
-    if conditional:
-      # First-use branch resolution remains interpreted; only scalar source metadata is retained before admission.
-      if jit.fragments >= 1024:
-        refuseArmEntry(jit, offset)
-        return offset
-      deferArmEntry(jit, offset, ending)
-    else:
-      # Ordinary arithmetic leaves have no later branch capability and publish exactly once at preparation.
-      var words = armInstructions(native)
-      if not publishArmEntry(jit, offset, ending, count, words): return offset
+    var words = armInstructions(native)
+    let published = publishArmEntry(jit, offset, ending, count, words)
+    if not published: return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = if conditional: flatArmPending else: flatArmExecute
+    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
+        170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
