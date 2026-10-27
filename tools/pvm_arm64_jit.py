@@ -19,11 +19,24 @@ import statistics
 from native_checks import NativeChecks, ROOT
 from setup_nimony import installed, cache_directory
 from pvm_guest_inputs import prepare_inputs, digest
-from pvm_guest_compare import unchanged
+from pvm_guest_compare import unchanged, revision
 from pvm_interpreter_compare import parse_candidate
 
 BUILD = ROOT/'build/tests/pvm-arm64-jit'
 DRIVER = ROOT/'tests/performance/pvm_stream_lifecycle.nim'
+
+
+def baseline_revision(value=None):
+    """Freeze current HEAD by default, or require an explicit immutable forty-digit commit ID."""
+    if value is not None and (type(value) is not str or len(value)!=40
+            or any(c not in '0123456789abcdef' for c in value)):
+        raise ValueError('Baseline must be an exact lowercase commit SHA')
+    resolved = revision('HEAD' if value is None else value)
+    if len(resolved)!=40 or any(c not in '0123456789abcdef' for c in resolved):
+        raise ValueError('Invalid resolved baseline commit')
+    if value is not None and resolved!=value:
+        raise ValueError('Resolved baseline differs from the exact commit SHA')
+    return resolved
 
 
 def parse(output, guest, native, control=False):
@@ -91,11 +104,9 @@ def main():
     if platform.system() not in ('Darwin','Linux') or platform.machine() not in ('arm64','aarch64'):
         raise SystemExit('This local experiment requires macOS or Linux ARM64')
     args = argparse.ArgumentParser(description=__doc__)
-    args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE', 'e6382bc6e5e75ec40edea25d3000df1a4aa5dd6a'))
-    baseline = args.parse_args().baseline
-    if len(baseline)!=40 or any(x not in '0123456789abcdef' for x in baseline):
-        raise SystemExit('Baseline must be an exact lowercase commit SHA')
-    subprocess.run(['git','cat-file','-e',baseline+'^{commit}'],cwd=ROOT,check=True)
+    args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE'),
+        help='Exact previous JIT commit; defaults to the current HEAD as an A/A control')
+    baseline = baseline_revision(args.parse_args().baseline)
     BUILD.mkdir(parents=True,exist_ok=True)
     checks = NativeChecks(BUILD)
     compiler, _ = installed()

@@ -4,10 +4,11 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse
+from pvm_arm64_jit import parse, baseline_revision
 
 
 def transcript():
@@ -19,6 +20,35 @@ def transcript():
 
 
 class Arm64JitReportTests(unittest.TestCase):
+    def test_default_baseline_freezes_current_head(self):
+        """A fresh checkout needs no unreachable historical draft commit to run its A/A control."""
+        value='a'*40
+        with patch('pvm_arm64_jit.revision',return_value=value) as resolve:
+            self.assertEqual(baseline_revision(),value)
+            resolve.assert_called_once_with('HEAD')
+
+    def test_exact_baseline_revision(self):
+        """An explicit immutable ID survives unchanged in comparison provenance."""
+        value='0123456789abcdef'*2+'01234567'
+        with patch('pvm_arm64_jit.revision',return_value=value) as resolve:
+            self.assertEqual(baseline_revision(value),value)
+            resolve.assert_called_once_with(value)
+
+    def test_mutable_and_malformed_baselines(self):
+        """Mutable names, short or padded IDs, non-ASCII and wrong types cannot masquerade as exact heads."""
+        valid='a'*40
+        with patch('pvm_arm64_jit.revision') as resolve:
+            for value in ('master','HEAD',valid[:-1],valid+'a','A'*40,'g'*40,'１'*40,' '+valid,valid+'\n',0,False,[],b'a'*40):
+                with self.subTest(value=value),self.assertRaisesRegex(ValueError,'exact lowercase commit SHA'):
+                    baseline_revision(value)
+            resolve.assert_not_called()
+
+    def test_baseline_must_resolve_to_itself(self):
+        """A hex-shaped ref resolving to another object cannot stand in for a measured commit."""
+        with patch('pvm_arm64_jit.revision',return_value='b'*40):
+            with self.assertRaisesRegex(ValueError,'Resolved baseline differs'):
+                baseline_revision('a'*40)
+
     def test_complete_native_receipt(self):
         """Native execution and compiler clocks stay separate from the complete inherited sample protocol."""
         result = parse(transcript()+'ARM_JIT,sieve,1,13,26,36,100\n', 'sieve', True)

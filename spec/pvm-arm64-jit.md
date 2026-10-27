@@ -2,13 +2,50 @@
 
 ## Scope and authority
 
-Draft tracking work based on merged interpreter master
-`ac4ba21c1486b24ad8ec8967de3208bf7cb470b1`. GP 0.8.0 and the existing PVM feature contracts
+Draft tracking work started from merged interpreter master
+`ac4ba21c1486b24ad8ec8967de3208bf7cb470b1` and is reconciled with master
+`1a768c26879c14965e4e37bf2ee9ce89bcbb1abd`. GP 0.8.0 and the existing PVM feature contracts
 remain authoritative; pinned PolkaVM is a cross-check. This is an optional local experiment,
 not a default engine, supported backend, CI requirement or completed compiler.
 The October 26 Nimony pin, checked release, ARC and Clang ThinLTO remain unchanged.
 
-## First executable increment
+## Current retained model
+
+The sections below preserve the chronological experiments; initial limitations in historical
+sections do not describe the current implementation.
+
+- Opt in at build time with `pvmArm64Jit`. Production defaults, CLI/backend selection and CI
+  selection are unchanged. Native generation is qualified on macOS ARM64 and Linux ARM64;
+  Linux x86-64 generation remains future work.
+- Lower 53 pure register opcodes and 16 conditional opcodes from sealed source facts. Complete
+  pure headers can share native charging/dispatch, and one validated three-block register loop
+  keeps registers resident across guarded internal edges. Guest memory and host calls remain
+  in the checked engine. All other operations and eligibility/resource refusals use that engine.
+- Exact-plan prepared owners retain exclusive code/cache ownership across public calls. Native
+  bodies borrow only the current thirteen-register file and, for connected execution, a fresh
+  bounded scalar gas/budget/count context. They retain no guest-memory or invocation pointer.
+  Whole-block gas and source guards precede each connected block; partial/paid/error handling,
+  fault/exit PCs, source snapshots and ordered host transitions keep their existing workers.
+- Immutable arenas remain one MiB with at most 1,024 publications, including one reserved
+  connected publication. The 262,144-node JIT coordinate-map bound is a local resource refusal,
+  not a whole-program input-size limit. Original checked arena-offset validation stays in calls;
+  the publication-sealed alternative was measured and rejected.
+- Only connected bodies shorten arithmetic/comparison constants; ordinary fragment layout and
+  the fixed five-word branch-return selector retain their measured policy. Native visits use
+  exact 64-bit SIMD integer additions, without floating-point arithmetic or callee-saved changes.
+- Initial executable-storage refusal is remembered per owner without repeated allocation/map
+  growth; a fresh owner can retry. Later capacity refusal preserves existing code. Unsupported
+  byte order refuses before native allocation. Full public cold-call clocks include emission and
+  publication; the successful regional compilation diagnostic now brackets body emission too.
+
+Both local comparison helpers default to a frozen current HEAD, so a clean checkout gets an
+A/A source-and-image control without needing an old draft object. To compare a prior JIT commit,
+set `PVM_JIT_BASELINE` to its exact lowercase commit SHA (or use the kernel helper's `--baseline`).
+The requested ID must resolve to itself; branch names are not accepted as explicit benchmark heads.
+The final session-wide cohort explicitly selects the session's starting commit, not this default.
+
+## First executable increment (historical)
+
 
 Compile bounded straight-line register operations from genuine sealed handler-stream facts.
 Retain block charging, exact source-attempt reservation, budget barriers, source ownership,

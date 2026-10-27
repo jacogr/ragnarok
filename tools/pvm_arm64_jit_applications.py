@@ -16,7 +16,7 @@ import statistics
 import subprocess
 import tarfile
 from native_checks import NativeChecks, ROOT
-from pvm_arm64_jit import parse as parse_core
+from pvm_arm64_jit import parse as parse_core, baseline_revision
 from pvm_guest_inputs import prepare_inputs, digest
 from pvm_guest_compare import unchanged
 from pvm_interpreter_compare import parse_public, parse_candidate
@@ -26,7 +26,7 @@ from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
-BASELINE = 'aab4f68dcd242c5967c9f3b4c51fbf5e686248ea'
+BASELINE = os.environ.get('PVM_JIT_BASELINE')
 ROLES = ('interpreter', 'baseline', 'jit', 'core', 'reference')
 COUNTERS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns', 'branches', 'headers')
 
@@ -70,8 +70,9 @@ def run():
     """Qualify one explicit source cohort before accepting any timing or native/public claim."""
     if platform.system() not in ('Darwin','Linux') or platform.machine() not in ('arm64','aarch64'):
         raise SystemExit('Application experiment requires macOS or Linux ARM64')
+    baseline = baseline_revision(BASELINE)
     BUILD.mkdir(parents=True,exist_ok=True)
-    report = dict(status='incomplete',baseline=BASELINE,platform=platform.platform(),cpu=cpu_model(),
+    report = dict(status='incomplete',baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-v1')
     (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (BUILD/'summary.md').write_text('Application comparison incomplete.\n')
@@ -110,7 +111,7 @@ def run():
         if canonical.exists(): shutil.rmtree(canonical)
         canonical.mkdir()
         if role=='baseline':
-            raw=subprocess.check_output(['git','archive',BASELINE,'src','native/pvm_jit'],cwd=ROOT)
+            raw=subprocess.check_output(['git','archive',baseline,'src','native/pvm_jit'],cwd=ROOT)
             with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
                 for member in archive.getmembers():
                     if not member.isfile(): continue
