@@ -260,3 +260,8 @@ byte unchanged from pre-restack commit `42937451`. The focused boundary suite an
 Python tooling/CI tests pass, and all 452 production modules plus the peer entry point pass
 semantic compilation. Historical timing tables retain their original compiler provenance;
 the upgraded compiler requires a new matched-toolchain Linux comparison before new claims.
+
+All 19 calibrated native memory-check suites and their controls also pass on the upgraded
+compiler. The six benchmark-driver pairs (master/core/public, kernels/DOOM) compile from fresh
+private caches with byte-identical repeats: twelve successful builds. This verifies build and
+measurement compatibility, not new Linux timing results.
