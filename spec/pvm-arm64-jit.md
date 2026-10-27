@@ -1216,3 +1216,143 @@ images/inputs. Exact tracked source hashes match the preserving commit. No Linux
 claimed for the rejected variant; the restored runtime equals the previously qualified parent.
 Owner/first-call raw clocks remain in the complete application receipt. Records:
 `build/pvm-arm64-jit/conditional-moves/` and the current sealed kernel/application cohorts.
+
+## Connected charged-loop execution — retained (October 27)
+
+Measured runtime `973c2f6d04920b438e14c109d1998b99b9918140` against accepted parent
+`1521566105e94e3eb667b85535ec94627db34937`, whose runtime is the accepted 53-register-opcode
+implementation. The conditional-move trial above remains rejected; its measurements and
+correct implementation are preserved for revisiting after further execution-boundary work.
+Both sides use the pinned October 26 compiler, ARC, Clang ThinLTO and enabled checks.
+
+### Bounded execution model
+
+After the existing interpreter completes an actual closed round through three positively cached
+charged shapes, it may publish one connected register-only loop. This initial region targets
+the existing 200/139/82 →131/88 →151/152/173 shape cycle in any entry rotation; it is not
+a general program-wide graph compiler. Every arithmetic operation and both scalar branch arms
+come from checked immutable plan facts and original cached branch workers.
+
+All thirteen guest registers remain resident across internal branches. X0 borrows the current
+register array; X17 borrows a fresh invocation-local context; X2/X3 hold gas/source attempts,
+and X1 is scratch. Generated code changes neither SP/LR nor callee-saved registers. No guest
+memory access or host callback runs natively; no invocation/guest/source pointer is cached.
+All registers are live on entry and published on exit, avoiding unsound linear live-in analysis
+when a path skips a definition. Native edges are bounded relative branches inside one immutable
+image, or captured scalar returns to the checked stream.
+
+Each block first checks its whole source span, then unsigned gas sufficiency; only a complete
+block debits either counter. If the block cannot run completely, the original checked header
+receives its untouched state and preserves exact zero-budget/gas/partial-prefix precedence,
+PC, paid flags and temporary barriers. Incoming paid state, active barriers, changed scalar
+charges or non-dynamic pricing use original workers. Every completed branch clears paid state.
+The invocation context also counts block visits; checked return accounting verifies that their
+sealed spans exactly equal consumed source attempts. These are guest-work counts, not CPU counters.
+
+The source-bound cache retains one connected region and three scalar headers/prices/spans.
+One of the existing 1,024 publication slots is reserved for that region (ordinary leaves stop
+at1,023); the total remains1,024 and one MiB. Its image contains at most1,024words including return, with up to64
+source nodes per scanned block and source spans limited to the immediate-encoding bound.
+OS/capacity refusal preserves the original fused interpreter cycle. Only the observed root
+changes dispatch; originals for all three guard returns survive exact-owner stream transfer.
+
+### Qualified public and reference CPU timings
+
+Apple M1 Max, CPU ms, forward / reverse process order. Public calls include fresh invocation
+memory and immutable publication. Retained core has separate reset/publication costs.
+Reference is PolkaVM interpreted call CPU; its restoration/teardown lifecycle remains separate.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.451 / 3.462 | 2.795 / 2.802 | 2.821 / 2.849 | 2.816 / 2.813 | 6.026 / 6.182 | 0.817 / 0.823 | 0.468 / 0.461 |
+| minimal 100000 | 4.905 / 4.912 | 4.887 / 4.904 | 4.904 / 4.893 | 4.904 / 5.054 | 6.013 / 6.147 | 1.000 / 0.996 | 0.816 / 0.796 |
+| memset 100000 | 4.548 / 4.447 | 3.497 / 3.567 | 3.494 / 3.531 | 2.765 / 2.792 | 3.957 / 3.942 | 0.768 / 0.794 | 0.883 / 0.896 |
+| pinky 1 | 85.004 / 85.960 | 72.623 / 72.424 | 72.641 / 72.758 | 72.880 / 73.606 | 94.986 / 94.722 | 0.855 / 0.846 | 0.765 / 0.768 |
+| sieve 10000000 | 336.659 / 336.869 | 275.550 / 278.204 | 277.293 / 278.238 | 293.017 / 294.336 | 367.421 / 368.120 | 0.824 / 0.826 | 0.755 / 0.756 |
+| init 0 | 325.486 / 323.928 | 320.209 / 317.223 | 230.120 / 227.960 | 232.913 / 227.567 | 690.681 / 676.375 | 0.707 / 0.704 | 0.333 / 0.337 |
+| tick 0 | 40.562 / 40.416 | 38.092 / 37.319 | 37.801 / 37.575 | 34.547 / 33.906 | 44.934 / 44.466 | 0.932 / 0.930 | 0.841 / 0.845 |
+
+Owner construction and first call, CPU ms, forward / reverse:
+
+| Case | Previous owner | Connected owner | Previous cold call | Connected cold call |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.580 / 1.701 | 1.604 / 1.727 | 7.843 / 7.646 | 7.734 / 8.102 |
+| minimal 100000 | 0.012 / 0.015 | 0.012 / 0.011 | 5.065 / 4.968 | 4.963 / 5.012 |
+| memset 100000 | 0.049 / 0.051 | 0.057 / 0.055 | 4.729 / 4.913 | 4.903 / 5.245 |
+| pinky 1 | 0.451 / 0.457 | 0.458 / 0.481 | 76.026 / 76.165 | 76.325 / 75.330 |
+| sieve 10000000 | 1.567 / 1.598 | 1.606 / 1.634 | 281.216 / 283.113 | 282.461 / 283.850 |
+| init 0 | 7.785 / 7.740 | 7.735 / 7.584 | 340.224 / 336.414 | 246.028 / 246.541 |
+| tick 0 | 7.825 / 7.759 | 7.847 / 7.711 | 47.572 / 47.998 | 47.401 / 47.534 |
+
+All recognition, descriptor preparation, code generation/publication and execution are inside
+the first-call CPU clock. The dedicated compilation counter times region image generation/
+publication after descriptor extraction; it is not the complete first-call preparation cost.
+Reference module construction and our immutable prepared-owner construction remain separate.
+No combined constructor/call or cross-runner ratio is inferred.
+
+### Balanced process repeats
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.842 (2.817–3.115) | 2.843 (2.830–2.885) | 1.000 | 1.007, 1.001, 0.959, 1.003, 1.004 |
+| minimal 100000 | 4.885 (4.835–4.932) | 4.905 (4.893–4.941) | 1.004 | 1.005, 1.006, 1.008, 1.007, 1.002 |
+| memset 100000 | 3.542 (3.455–3.575) | 3.510 (3.473–3.600) | 0.991 | 1.004, 1.002, 1.002, 0.981, 0.988 |
+| pinky 1 | 72.104 (71.945–72.819) | 71.911 (71.629–72.832) | 0.997 | 0.995, 1.002, 0.998, 1.003, 0.991 |
+| sieve 10000000 | 275.173 (271.953–280.313) | 273.320 (270.695–274.375) | 0.993 | 0.994, 0.983, 0.996, 0.990, 0.995 |
+| init 0 | 321.013 (317.849–323.528) | 230.957 (229.090–232.657) | 0.719 | 0.721, 0.720, 0.718, 0.720, 0.719 |
+| tick 0 | 37.521 (37.309–39.317) | 37.673 (37.463–39.315) | 1.004 | 0.992, 1.011, 1.005, 1.010, 1.003 |
+
+Initialization improves28.1%, with every balanced block at0.718–0.721 of the accepted parent
+and non-overlapping process ranges. Other medians differ by less than1% with overlapping
+ranges; no smaller gain is claimed. Retain the bounded connected-loop implementation.
+
+Untimed retained-frame diagnostics confirm root/source headers193987,193996,194002. A reused
+initialization call executes63,894,035 complete native block visits in9,032 connected entries
+(about7,075 blocks per entry). Gameplay has no such region and remains on existing paths.
+This directly distinguishes connected execution from the rejected many-small-handoff trial.
+Across thirteen public initialization calls, ordinary-plus-connected native calls are21,370,154
+versus21,252,751; lowered guest operations rise72,240,971 to2,287,273,247. Publications remain
+1,024 and code bytes82,664→83,092. Counts are diagnostic source work, not hardware instructions,
+branch misses or a particular CPU cause. No hardware counters were collected.
+
+### Complete verification and provenance
+
+All nine native gates pass on macOS and isolated Linux ARM64 Docker. New witnesses include
+3,546 independent all-entry-rotation loop cases covering gas/source boundaries, paid state,
+both non-root branch exits, original pricing-mode fallback, source snapshots and changed
+invocation registers after exclusive owner transfer. Literal context cases check guard counts,
+all preserved registers and the1,023ordinary+1connected publication ceiling; the new C bridge
+also checks both borrowed arguments, null/misaligned/out-of-range refusal and scalar return ABI.
+All existing139-opcode, memory/host, native predicate, forced refusal and move/copy checks remain.
+
+macOS kernel cohort:42processes/546calls/63controls,6freshbuilds/3equal-imagepairs.
+Application/core/reference cohort:70processes/910calls/115controls,16builds/8equal pairs.
+Independent verifiers reparse all logs,706/710source/input/compiler/image seals and exact parent
+sources. Additional140processes/1,820calls independently reparse with stable native counters
+in all14workload/role groups. All684kernel/667application measured tracked-source hashes
+match the preserved runtime commit. Isolated admission diagnostics add2processes/4complete
+DOOM calls with sealed snapshot hashes; their clocks are discarded.
+
+Linux:9shared gates,4public builds,14processes/182checked calls,32refusal controls and2,863
+staged seals. The actual Linux compiler binary is independently verified against the pinned
+official archive. Container architecture/network/image and all copied logs are checked;
+2,846tracked staged files match the runtime commit. Container clocks are diagnostic only,
+and do not establish a bare-metal Linux speed claim.
+
+The first compile needed a stable non-null cache borrow in its statistics accessor; after that
+the focused witness and formatted complete cohorts passed. No semantic test failure occurred.
+No production default, CLI backend activation, dependency pin or JIT CI job changes.
+
+Records: `build/pvm-arm64-jit/connected-loop/` (balanced repeats, independent admission probe,
+failed/final logs and prior Linux receipts), `build/tests/pvm-arm64-{jit,applications}/`
+(full independent/preserving-commit receipts), and `build/pvm-arm64-jit/linux/` (sealed Linux
+context, compiler archive, environment/state and independent/preserving-commit receipts).
+
+The next structural extension should connect further validated blocks without reintroducing
+per-block interpreter calls. Memory-heavy loops still require precise native checked-memory
+and fault-prefix accounting; this register-only region does not solve that boundary. Conditional
+moves remain a separately measured deferred addition rather than a presumed performance gain.
