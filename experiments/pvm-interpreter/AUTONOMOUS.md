@@ -353,3 +353,25 @@ Trial15verdict: reject load-only force-splice. Pinky+0.002%/init-0.029% effectiv
 fill+0.68%(retained+5.43%pair),Minimal+0.22%,tick+0.33%.200timed/4negative,8native/8ASan,
 fresh images and complete state/source allpass. Restore runtimeexact80350f56; no extra
 validation on unchanged accepted code. Keep store pragma; only load hint restored.
+
+## Trial16 — sealed logical source counts
+
+Parentaa1f0204(runtime80350f56). Add compile-time knownCount0..3 to shared reservation:
+0keepsordinary metadata,2/3only at selectors already proving those exact logical lengths.
+Cached gas price x remains independent and unchanged. Normal/memory/failed-price headers
+keep dynamic count. Compile-time assertion bounds this private specialization; all runtime
+charge/quota/barrier checks retained. Focused entry matrix passes with3456new interior-entry
+cases after1/7leading noops, bothpaid/unpaid,full containing-block fees vs suffix source
+counts, cold/warm streams, gas and every prefix. Last small trial before cumulative run.
+
+Trial16verdict: reject private source-count specialization. Initialization reused all6pairs
+-0.97..-1.24%,median-1.10%; cold-1.06%. Small kernels within0.24%median. Reused tick+0.40%,
+cold tick+2.19%(two pairs-0.25/+4.63%),cold lifecycle+2.14%. Insufficient broad benefit to
+retain extra specialization; no hardware explanation claimed. Full200timed/4negative,
+8native/8ASan and fresh equal-image/full-state/source controls pass. Restore runtimeexact
+80350f56 while retaining3456new interior-entry witnesses. Check those on restored runtime.
+
+Stop isolated runtime trials here. Next: direct cumulative comparison against starting
+checkpoint72c79e4d, then evidence cleanup and a qualified campaign summary. No PR/default change.
+
+Restored runtime passes the expanded entry-boundary suite natively and with AddressSanitizer; scoped reports/logs archived under static-count/qualification-restored.

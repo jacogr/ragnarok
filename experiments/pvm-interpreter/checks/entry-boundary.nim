@@ -314,3 +314,44 @@ for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 17
             inc predicateCases
 assert predicateCases == 51840
 echo "PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas"
+
+
+var suffixCases = 0
+for family in [0, 1, 2]:
+  for noops in [1, 7]:
+    # An uncharged interior entry still pays its containing block's price, while its source allowance counts only the entered suffix.
+    var parts: seq[seq[byte]] = @[]
+    for i in 0..<noops: parts.add(@[2'u8])
+    if family == 0: parts.add(@[131'u8, 0x11, 1])
+    elif family == 1:
+      parts.add(@[200'u8, 0x21, 3])
+      parts.add(@[139'u8, 0x33, 1])
+    else:
+      parts.add(@[151'u8, 0x11, 1])
+      parts.add(@[152'u8, 0x11, 1])
+    var branch = if family == 0: @[88'u8, 0x11, 3]
+      elif family == 1: @[82'u8, 0x13, 3] else: @[173'u8, 0x21]
+    immediate(branch, if family == 2: 11'u64 else: 12'u64)
+    parts.add(branch)
+    parts.add(@[51'u8, 7, 17])
+    parts.add(@[50'u8, 0])
+    parts.add(@[51'u8, 7, 34])
+    parts.add(@[50'u8, 0])
+    let source = owner(parts)
+    let plan = cache(source)
+    for bits in [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64, high(uint64)]:
+      var selected = registers
+      selected[1] = RegisterValue(bits)
+      selected[2] = RegisterValue(bits xor 0x55555555'u64)
+      for paid in [false, true]:
+        for gas in [0'u64, 1'u64, 2'u64, 3'u64, 4'u64, 10'u64, 1000'u64, high(uint64)]:
+          let seeded = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(uint64(noops)),
+            gas: MachineGas(gas), blockCharged: paid, registers: selected))
+          assert seeded.error == MachineError.None
+          for budget in 0'u64..5'u64:
+            # Both the cold and warmed prepared suffix must preserve full pricing and exact per-instruction prefixes.
+            compare(seeded.value, plan, budget, 100000)
+            compare(seeded.value, plan, budget, 100000, true)
+            inc suffixCases
+assert suffixCases == 3456
+echo "PASS sealed source counts /3456interior suffix cases / containing-block gas distinct from entered source count"
