@@ -1168,3 +1168,51 @@ Next bounded candidate: conditional moves 218/219 inside already admitted regist
 with explicit old-destination live-in and alias checks. This extends useful work per existing
 handoff while leaving the successful charged interpreter cycle intact. No next lowering is
 included here.
+
+## Conditional-move coverage trial — rejected (October 27)
+
+Measured prototype `a578fe46a65835b10c43acab54db9a9cb83495fb` against accepted parent
+`290f3bf78cea8b4a938732e686e38bed8c22f393`, Apple M1 Max with the same pinned checked
+ARC/Clang ThinLTO build. Added opcodes218/219 using CMP/CSEL, explicitly reading the
+old destination before declaring its write. Independent960literal predicate/value/alias cases,
+55-opcode register matrix2,200cases and672mixed partial-budget cases passed.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.560 / 3.462 | 2.827 / 2.887 | 3.055 / 3.110 | 2.636 / 2.642 | 5.974 / 5.950 | 0.858 / 0.898 | 0.511 / 0.523 |
+| minimal 100000 | 4.920 / 4.915 | 4.894 / 4.888 | 4.915 / 4.870 | 4.896 / 4.931 | 6.065 / 6.006 | 0.999 / 0.991 | 0.810 / 0.811 |
+| memset 100000 | 4.476 / 4.431 | 3.607 / 3.575 | 3.579 / 3.534 | 2.796 / 2.777 | 3.988 / 3.953 | 0.800 / 0.798 | 0.897 / 0.894 |
+| pinky 1 | 86.183 / 85.775 | 72.661 / 72.671 | 72.999 / 72.859 | 72.566 / 72.135 | 95.333 / 94.436 | 0.847 / 0.849 | 0.766 / 0.772 |
+| sieve 10000000 | 337.733 / 340.305 | 276.752 / 278.575 | 293.428 / 295.614 | 276.431 / 276.226 | 369.017 / 368.579 | 0.869 / 0.869 | 0.795 / 0.802 |
+| init 0 | 322.702 / 326.245 | 319.043 / 321.355 | 321.611 / 319.262 | 321.060 / 320.029 | 677.189 / 675.370 | 0.997 / 0.979 | 0.475 / 0.473 |
+| tick 0 | 40.531 / 40.456 | 37.298 / 37.678 | 37.996 / 37.833 | 34.792 / 34.868 | 44.440 / 44.706 | 0.937 / 0.935 | 0.855 / 0.846 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.854 (2.838–2.883) | 3.075 (3.042–3.095) | 1.077 | 1.076, 1.069, 1.078, 1.078, 1.072 |
+| minimal 100000 | 4.934 (4.901–4.963) | 4.932 (4.900–4.965) | 1.000 | 0.995, 1.005, 0.998, 1.006, 0.997 |
+| memset 100000 | 3.621 (3.540–3.674) | 3.561 (3.523–3.628) | 0.983 | 0.983, 0.977, 0.987, 1.002, 0.989 |
+| pinky 1 | 72.534 (72.225–73.031) | 72.542 (72.195–72.688) | 1.000 | 1.001, 0.997, 0.997, 1.001, 0.999 |
+| sieve 10000000 | 273.174 (272.558–275.401) | 294.344 (292.599–295.950) | 1.077 | 1.075, 1.072, 1.081, 1.073, 1.074 |
+| init 0 | 320.662 (318.479–322.304) | 321.812 (318.940–325.090) | 1.004 | 1.001, 1.000, 1.002, 1.005, 1.009 |
+| tick 0 | 37.612 (37.370–37.758) | 38.215 (37.837–38.414) | 1.016 | 1.006, 1.020, 1.020, 1.014, 1.016 |
+
+Repeated public sieve100k and10m regress7.7%, consistently across all five balanced blocks,
+with non-overlapping process ranges. Pinky is unchanged. Retained-core sieve improved in
+the initial kernel cohort, which does not establish a public-call gain. Public sieve100k
+native calls differ by only13over13calls, and lowered operations by52; no hardware or
+code-layout cause is inferred. Reject this isolated runtime addition and restore53-opcode
+coverage before the connected-loop trial. The native instruction implementation and witnesses
+remain preserved in the measured prototype for revisiting after the execution-boundary work.
+
+All nine native gates passed; kernel42processes/546calls/63controls/6freshbuilds/3equal-image
+pairs and application70processes/910calls/115controls/16builds/8pairs independently verified
+706/710seals. Repeated140processes/1,820calls were independently reparsed against sealed
+images/inputs. Exact tracked source hashes match the preserving commit. No Linux run is
+claimed for the rejected variant; the restored runtime equals the previously qualified parent.
+Owner/first-call raw clocks remain in the complete application receipt. Records:
+`build/pvm-arm64-jit/conditional-moves/` and the current sealed kernel/application cohorts.
