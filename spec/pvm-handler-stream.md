@@ -431,3 +431,78 @@ All 88 redistributed mains retain exactly the directory build's checked compiler
 The execution-cache suite passes its original 1,000-cycle ARC observation, and the complete-opcode
 suite passes through the same single-main path used by the new CI plan. Production engine and
 benchmark sources are unchanged from measured head `44ee182c`.
+
+## Private invocation-region allocation trial
+
+The corrected Unit run [40473624906](https://github.com/jacogr/ragnarok/actions/runs/40473624906)
+passes completely at `665d6a9fb49e2070c9d29bd095a53a7027a6371c`. That is the accepted
+prepared-parent source for the next bounded constructor trial, not a receipt for the trial itself.
+
+An ignored source-copy diagnostic on Apple M1 Max isolates page-image extraction at about
+0.75 ms and private region construction at 8.4–8.7 ms per DOOM call. Gameplay publication totals
+about 0.4 ms per call. Instrumented clocks are diagnostic only. Production has no diagnostic hooks.
+The trial scans each genuine contiguous permission run, proves its complete host allocation
+extent, allocates that region once and copies each original page into its final offset. It retains
+inaccessible snapshot metadata, arbitrary gaps, immutable source ownership, checked access,
+whole-block pricing, source quotas, host transitions and publication. No allocation or validation
+cost is moved outside the public call.
+
+Baseline and candidate use fresh private compiler caches at identical canonical source/output
+coordinates, pinned October 26 Nimony, ARC, Clang ThinLTO and checked release flags. Eight builds
+produce four byte-identical repeat pairs. Both process orders cover all seven existing kernel
+inputs plus DOOM initialization/gameplay: 54 measured processes / 702 checked calls and 87
+positive/assertion/state/event controls. Full register/gas/page-byte/permission/source and ordered
+host-event checks pass; every input and image identity remains stable through the cohort. An early
+control harness expected a gas-specific diagnostic from the reference's aggregate state check;
+that receipt is retained, the exact diagnostic is corrected and the complete cohort rerun.
+
+These are local ARM64 CPU medians in milliseconds, forward/reverse process orders. They are not
+Linux evidence. Prepared public calls include invocation memory and immutable publication; source
+owner construction remains separate. Pinky's roughly 1% movement is below a useful timing claim.
+
+| Workload | Accepted prepared parent | Exact-region trial | PolkaVM interpreted call | Trial / parent |
+|---|---:|---:|---:|---:|
+| sieve 1000 | 0.625 / 0.627 | 0.196 / 0.198 | 0.473 / 0.475 | 0.313 / 0.316 |
+| sieve 100000 | 3.830 / 3.842 | 3.413 / 3.409 | 5.929 / 5.944 | 0.891 / 0.887 |
+| minimal 1000 | 0.060 / 0.062 | 0.055 / 0.055 | 0.076 / 0.077 | 0.917 / 0.887 |
+| minimal 100000 | 4.886 / 4.944 | 4.889 / 4.933 | 6.011 / 6.038 | 1.001 / 0.998 |
+| memory fill 1000 | 2.345 / 2.352 | 0.765 / 0.673 | 0.132 / 0.134 | 0.326 / 0.286 |
+| memory fill 100000 | 5.963 / 6.013 | 4.337 / 4.370 | 3.922 / 3.948 | 0.727 / 0.727 |
+| pinky 1 | 84.763 / 84.433 | 85.400 / 85.282 | 94.022 / 94.703 | 1.008 / 1.010 |
+| DOOM gameplay | 47.154 / 48.419 | 40.362 / 41.227 | 43.758 / 44.992 | 0.856 / 0.851 |
+| DOOM initialization | 328.716 / 326.015 | 321.434 / 318.766 | 675.445 / 675.025 | 0.978 / 0.978 |
+
+The trial is retained provisionally for matched-runner Linux qualification. The local gain is
+about 14–15% for gameplay, 27% for the larger memory-fill case and 11% for the larger sieve case.
+Minimal is effectively unchanged; the small initialization gain remains qualified by its scope
+and spread. Remaining material platform regressions would require reconsidering this runtime trial.
+
+## Reference lifecycle accounting
+
+Earlier reference DOOM call clocks exclude instance construction/restoration; public prepared
+calls include private invocation construction and immutable publication. Keep the old raw call
+receipts, but do not describe those as equivalent invocation lifecycles. An explicit reference
+measurement now separately accounts for private instance construction/restoration, execution and
+teardown. Independent complete-state validation and fixture I/O remain outside. Reference module
+construction and our prepared source-owner construction remain separate; immutable publication
+has no reference-equivalent API operation. Default reference output and call-only timing stay
+compatible, verified by a complete original-format thirteen-call run.
+
+Strict lifecycle parsing requires all thirteen ordered call/phase pairs, exact positive durations
+(with nonnegative teardown), matching call clocks, additive totals and the final state/event
+success record. Partial, foreign, duplicated, inconsistent and overflowing records are refused.
+On M1 Max, reference gameplay instance/restoration costs 2.155/2.099 ms and teardown about
+0.004/0.005 ms. Total reference invocation lifecycle is 45.940/47.181 ms versus current prepared
+public calls 40.362/41.227 ms. Both raw call and lifecycle ratios must remain visible.
+
+Prepared public execution is the headline comparison. Ordinary entry points remain thin
+compatibility adapters over this same engine; ordinary timing is diagnostic. An optional full
+commit SHA adds an accepted prepared baseline alongside current master, current prepared public
+execution, ordinary diagnostics, retained core and PolkaVM interpreted. That expanded cohort has
+72 processes / 936 calls, 120 controls and sixteen fresh builds / eight equal-image pairs, plus
+six shared DOOM admission controls. Invalid selectors fail before a SHA-only fetch; missing
+baseline roles or reference lifecycle phases cannot publish a complete table.
+
+Local qualification passes all 19 calibrated native memory suites and controls, the fragmented
+regions/host witness, 452 production modules plus peer entry point, inventory and 75 affected
+comparison/CI checks. Exact-head Linux parent pairing remains required before acceptance.

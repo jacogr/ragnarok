@@ -1342,21 +1342,31 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
   var regions: seq[FlatRegion] = @[]
-  for i in 0..<images.len:
-    result.sourceImages.add(images[i])
-    let image = images[i]
-    if image.access == PageAccess.Inaccessible: continue
+  var first = 0
+  while first < images.len:
+    let image = images[first]
+    if image.access == PageAccess.Inaccessible:
+      # Inaccessible pages retain their original snapshot metadata without authorizing a private byte region.
+      result.sourceImages.add(image)
+      inc first
+      continue
+    var after = first+1
+    while after < images.len and images[after].access == image.access and
+        uint64(uint32(images[after].index)) == uint64(uint32(images[after-1].index))+1:
+      # Only an adjacent page with the same genuine permission belongs to this allocation.
+      inc after
+    let pages = after-first
+    assert pages > 0 and pages <= high(int) div 4096
     let address = uint64(uint32(image.index))*4096
-    if regions.len == 0 or regions[regions.len-1].access != image.access or
-        regions[regions.len-1].first+uint64(regions[regions.len-1].bytes.len) != address:
-      regions.add(FlatRegion(first: address, access: image.access, bytes: @[]))
-    let region {.cursor.} = regions[regions.len-1]
-    let previous = region.bytes.len
-    # Grow one checked complete page before borrowing either source or destination bytes.
-    assert previous <= high(int)-4096
-    region.bytes.setLen(previous+4096)
-    assert region.bytes.len == previous+4096 and previous < region.bytes.len
-    copyMem(addr region.bytes[previous], unsafeAddr image.bytes[0], 4096)
+    let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
+    for page in first..<after:
+      # The complete private extent is allocated once; each proven page copies exactly its original bytes.
+      result.sourceImages.add(images[page])
+      let offset = (page-first)*4096
+      assert offset >= 0 and offset <= region.bytes.len-4096
+      copyMem(addr region.bytes[offset], unsafeAddr images[page].bytes[0], 4096)
+    regions.add(region)
+    first = after
   # A refused growth must never publish a truncated source snapshot, including for a valid empty mapping.
   assert result.sourceImages.len == images.len
   var firstRO = -1
