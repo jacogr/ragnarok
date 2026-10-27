@@ -1432,13 +1432,16 @@ when defined(pvmArm64Jit):
 
   proc flatArmRunNext(f: var FlatFrame, offset: uint32): uint32 =
     ## A complete checked reservation precedes native arithmetic/branch work; no native path can exit mid-prefix.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let destination = callArmBranch(jit, offset, f.info.registers)
-    assert int(destination) < f.handlers.len
-    f.info.blockCharged = false
-    destination
+    block:
+      # The exclusive frame retains its cache throughout this non-host call; only disjoint register bytes are borrowed mutably.
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil:
+        let destination = callArmBranch(jit, offset, f.info.registers)
+        assert int(destination) < f.handlers.len
+        f.info.blockCharged = false
+        return destination
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmBranch(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial source prefixes always reenter the original checked operations and exact temporary barrier.
@@ -1455,9 +1458,11 @@ when defined(pvmArm64Jit):
     if f.barrier != flatStop:
       let selected = f.handlers[int(offset+1)]
       return selected(f, offset+1)
-    let jit = f.armJit
-    assert jit != nil
-    if jit != nil: inc jit.headerCalls
+    block:
+      # End the cache borrow before the next helper receives the whole mutable frame; no owner reference needs retaining.
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil: inc jit.headerCalls
     flatArmRunNext(f, offset+1)
 
   proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
@@ -1467,9 +1472,11 @@ when defined(pvmArm64Jit):
       assert original != nil
       if original != nil: return original(f, offset)
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let jit = f.armJit
-    assert jit != nil
-    if jit != nil: return callArmEntry(jit, offset, f.info.registers)
+    block:
+      # Native arithmetic cannot replace the frame-owned cache or invoke a host; the owner outlives this register borrow.
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil: return callArmEntry(jit, offset, f.info.registers)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
