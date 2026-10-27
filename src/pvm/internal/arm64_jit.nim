@@ -32,6 +32,7 @@ type
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
+    compact: bool
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
@@ -64,6 +65,11 @@ func supportedArmOpcode*(opcode: byte): bool =
   opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
       190..192, 197..202, 207..217, 222..226}
 
+func newArmRegionBody*(): ArmBlock =
+  ## Connected bodies have their own measured constant policy; ordinary fragment layout stays unchanged.
+  result = default(ArmBlock)
+  result.compact = true
+
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
   let bit = (1'u32 shl int(slot))
@@ -83,6 +89,38 @@ proc armImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
     words.add(0xf2800000'u32 or (uint32(half) shl 21) or
         (uint32((value shr (half*16)) and 65535) shl 5) or destination)
 
+proc armCompactImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
+  ## Choose MOVZ or MOVN plus only differing halfwords; every sequence initializes all sixty-four bits.
+  assert destination <= 16
+  var zeroParts = 0
+  var oneParts = 0
+  for half in 0..<4:
+    # Counts bound the exact instruction costs of zero-filled and one-filled initial values.
+    let part = uint32((value shr (half*16)) and 65535)
+    if part != 0: inc zeroParts
+    if part != 65535: inc oneParts
+  let inverted = oneParts < zeroParts
+  let fill = if inverted: 65535'u32 else: 0'u32
+  var initialized = false
+  for half in 0..<4:
+    # The first changed halfword initializes every other halfword; later MOVK instructions preserve them.
+    let part = uint32((value shr (half*16)) and 65535)
+    if part == fill: continue
+    let operation = if initialized: 0xf2800000'u32
+      elif inverted: 0x92800000'u32 else: 0xd2800000'u32
+    let payload = if not initialized and inverted: part xor 65535'u32 else: part
+    words.add(operation or (uint32(half) shl 21) or (payload shl 5) or destination)
+    initialized = true
+  if not initialized:
+    # Zero and all-ones still require one defining instruction, regardless of the incoming host register.
+    words.add((if inverted: 0x92800000'u32 else: 0xd2800000'u32) or destination)
+
+
+proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uint64) =
+  ## Both policies define all bits; regional shortening never changes the fixed conditional-return prefix.
+  if fragment.compact: armCompactImmediate(fragment.words, destination, value)
+  else: armImmediate(fragment.words, destination, value)
+
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
   ## Each instruction consumes original operands before declaring its destination; native aliases obey GP ordering.
@@ -90,7 +128,7 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
   if opcode in [20'u8, 51]:
     # Immediate loads have no register live-in; their destination may previously be undefined in the leaf.
     let destination = armWrite(fragment, slots.destinationIndex)
-    armImmediate(fragment.words, destination, immediate)
+    armOperandImmediate(fragment, destination, immediate)
     return
   if opcode == 100 or opcode in {107'u8..110'u8}:
     # Unary operations read the genuine A slot; every result is full-width, including signed extension.
@@ -109,7 +147,7 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
   if opcode < 190:
     # Immediate arithmetic reads B; X1 is scratch and cannot alias the resident guest register bank.
     left = armRead(fragment, slots.bIndex)
-    armImmediate(fragment.words, 1, immediate)
+    armOperandImmediate(fragment, 1, immediate)
     right = 1
   else:
     # Three-register arithmetic snapshots both source coordinates before recording a destination write.

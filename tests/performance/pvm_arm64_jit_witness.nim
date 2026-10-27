@@ -48,6 +48,7 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 
 when defined(pvmArm64Jit):
   var constantCases = 0
+  var regionConstantCases = 0
   for destination in 0..<13:
     # Each original decoded destination exercises actual emitted code; constants include high-halfword and negative values.
     var operand = @[20'u8, byte(destination)]
@@ -76,28 +77,31 @@ when defined(pvmArm64Jit):
       constants.add(value)
     let jit = newArmJit()
     assert armEntry(jit, 0, 1) == 0, "constant entry admission"
-    for value in constants:
-      # Poison all incoming registers; the selected slot must be defined in full and every other slot preserved.
-      var fragment = default(ArmBlock)
-      emitArmOperation(fragment, 20, slots, value)
-      var words = armInstructions(fragment)
-      assert words.len >= 2 and words.len <= 5, "constant word extent"
-      let published = publishArmEntry(jit, 0, 1, 1, words)
-      when defined(pvmArm64JitRefuse):
-        assert not published
-      else:
-        assert published, "constant publication"
-        var registers = default(RegisterFile)
-        for slot in 0..<13: registers[slot] = RegisterValue(high(uint64)-uint64(slot))
-        assert callArmEntry(jit, 0, registers) == 1, "constant continuation"
-        for slot in 0..<13:
-          let expected = RegisterValue(if slot == destination: value else: high(uint64)-uint64(slot))
-          if registers[slot] != expected:
-            echo "ARM_CONSTANT_VALUE,", destination, ",", value, ",", slot, ",", uint64(registers[
-                slot]), ",", uint64(expected)
-            assert false, "native constant value"
-      inc constantCases
+    for compact in [false, true]:
+      for value in constants:
+        # Poison all incoming registers; the selected slot must be defined in full and every other slot preserved.
+        var fragment = if compact: newArmRegionBody() else: default(ArmBlock)
+        emitArmOperation(fragment, 20, slots, value)
+        var words = armInstructions(fragment)
+        assert words.len >= 2 and words.len <= 5, "constant word extent"
+        let published = publishArmEntry(jit, 0, 1, 1, words)
+        when defined(pvmArm64JitRefuse):
+          assert not published
+        else:
+          assert published, "constant publication"
+          var registers = default(RegisterFile)
+          for slot in 0..<13: registers[slot] = RegisterValue(high(uint64)-uint64(slot))
+          assert callArmEntry(jit, 0, registers) == 1, "constant continuation"
+          for slot in 0..<13:
+            let expected = RegisterValue(if slot == destination: value else: high(uint64)-uint64(slot))
+            if registers[slot] != expected:
+              echo "ARM_CONSTANT_VALUE,", destination, ",", value, ",", slot, ",", uint64(registers[
+                  slot]), ",", uint64(expected)
+              assert false, "native constant value"
+        if compact: inc regionConstantCases
+        else: inc constantCases
   echo "ARM_CONSTANT_CASES,", constantCases
+  echo "ARM_REGION_CONSTANT_CASES,", regionConstantCases
 
   const highProducts = [
     # Columns A,B,signed*signed,unsigned*unsigned,signed*unsigned were frozen from independent unbounded integers.

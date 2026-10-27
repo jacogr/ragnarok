@@ -1618,7 +1618,7 @@ when defined(pvmArm64Jit):
     for index in 0..<3:
       let header = headers[index]
       let charge = f.arguments[int(header)]
-      var native = default(ArmBlock)
+      var native = newArmRegionBody()
       var current = header+1
       var terminal = false
       while int(current) < f.handlers.len and current-header <= 64:
