@@ -79,6 +79,11 @@ proc runDoom(source: Machine, context: var HostContext, plan: GasPlan): StepResu
   ## Give calibrated collection one stable boundary around the real host loop and in-memory callbacks.
   executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), plan)
 
+proc runPreparedDoom(source: Machine, context: var HostContext,
+    prepared: PreparedProgram): StepResult {.noinline.} =
+  ## Reuse only source facts and executable nodes; every public call still owns private invocation memory.
+  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), prepared)
+
 if getEnv("RAGNAROK_PVM_DOOM_ASSERT") == "1":
   # Refusal controls prove assertions remain present in this optimized driver.
   assert false, "doom native assertion control"
@@ -140,9 +145,28 @@ for page in 0..<pages:
 let captured = captureMemory(images, PageLimit(8192))
 assert captured.error == MachineError.None
 let source = captureMachine(owner, captured.value, info).value
-let created = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(262144),
-  bytes: GasPlanByteLimit(64*1024*1024), cycles: GasCycleLimit(1000000)))
-assert created.error == GasPlanError.None
+let pricing = getEnv("RAGNAROK_PVM_DOOM_PRICING")
+assert pricing in ["", "planned", "prepared"]
+let preparedMode = pricing == "prepared"
+let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
+assert requestedPreparation in ["", "0", "1"]
+let prepareStart = if requestedPreparation == "1": cpuNanoseconds() else: 0'i64
+var plan = default(GasPlan)
+var prepared = default(PreparedProgram)
+if preparedMode:
+  # The explicit reusable owner is admitted outside calls; sample zero retains its cold stream preparation.
+  let created = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)))
+  assert created.error == PreparationError.None
+  prepared = created.value
+else:
+  # Ordinary attribution and performance runs retain their existing complete-price policy.
+  let created = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(262144),
+    bytes: GasPlanByteLimit(64*1024*1024), cycles: GasCycleLimit(1000000)))
+  assert created.error == GasPlanError.None
+  plan = created.value
+if requestedPreparation == "1":
+  # Only the explicit lifecycle comparison accepts this constructor record; ordinary reports stay unchanged.
+  echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", cpuNanoseconds()-prepareStart
 let requestedTiming = getEnv("RAGNAROK_PVM_DOOM_TIMING")
 assert requestedTiming in ["", "0", "1"]
 let timing = requestedTiming == "1"
@@ -153,7 +177,8 @@ for sample in 0..<samples:
   context.outputBytes = 0
   let cpuStart = if timing: cpuNanoseconds() else: 0'i64
   let wallStart = if timing: getMonoTime().ticks else: 0'i64
-  let done = runDoom(source, context, created.value)
+  let done = if preparedMode: runPreparedDoom(source, context, prepared) else: runDoom(source,
+      context, plan)
   let wallElapsed = if timing: getMonoTime().ticks-wallStart else: 0'i64
   let cpuElapsed = if timing: cpuNanoseconds()-cpuStart else: 0'i64
   assert done.error == StepError.None and done.value.exit == StepExit.Halt

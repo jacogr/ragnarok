@@ -186,3 +186,21 @@ invocation memory and performs immutable publication; it must not be equated wit
 frame timing. The merge hold remains until public execution costs and Linux native qualification
 are satisfactory. Next measurement must compare ordinary and prepared public APIs, retained core,
 exact master and interpreted reference on the same runner, including cold and constructor costs.
+
+## Same-runner public API measurement
+
+The explicit Linux comparison now includes five roles on one runner: exact master with complete
+pricing, ordinary current public API with complete pricing, current public PreparedProgram reuse,
+retained-frame core, and pinned PolkaVM interpreted. A shared public driver image selects ordinary
+or prepared ownership; fresh private-cache repeat builds still require byte-identical images.
+The complete cohort has 60 measured processes / 780 calls, 100 positive/refusal controls and 12
+repeat builds. Constructor, cold and reused samples remain separate. Both public modes construct
+private invocation memory and publish inside their calls; retained core reset/publication remains
+outside its call. Missing/duplicated public roles cannot publish an integrated timing table.
+
+Public host-driver validation covers initialization and gameplay in both ownership modes, with
+complete state/source/event checks and assertion, gas-state and event-refusal controls. The first
+local probe altered a register while expecting a gas-specific diagnostic; its failure receipt is
+retained, and the complete local cohort was rerun with the gas-field mutation corrected. All 71
+selected parser/CI/host-tooling tests pass. These checks qualify the measurement harness, not a
+new Linux performance claim; the full same-runner comparison must still complete.

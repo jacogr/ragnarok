@@ -55,6 +55,59 @@ class InterpreterLinuxTests(unittest.TestCase):
                 with self.subTest(case=case,output=variant[:100]), self.assertRaises(ValueError):
                     comparison.parse_candidate(variant,case,large,1024005)
 
+    def test_public_prepared_constructor_and_cache_framing(self):
+        """Reusable public owners must retain cold construction and every ordered cache/sample record."""
+        output = 'PREPARED_PROGRAM,10,20,100,30\n'+''.join(
+            f'SIEVE,ragnarok_prepared,100000,{i},101,100\nPREPARED_CACHE,{i},3,6,100,200\n'
+            for i in range(13))
+        parsed = comparison.parse_public(output,'sieve',100000,True)
+        self.assertEqual(parsed['preparation_ns'],[10])
+        self.assertEqual(len(parsed['samples']),13)
+        self.assertEqual(len(parsed['caches']),13)
+        for altered in (output.replace('PREPARED_PROGRAM','GAS_PLAN'),
+                        output.replace(',3,6,100,200',',101,6,100,200',1),
+                        output.replace('PREPARED_CACHE,0,','PREPARED_CACHE,1,',1),
+                        '\n'.join(output.splitlines()[1:])):
+            # Missing construction or inadmissible occupancy cannot be disguised as a valid reused call.
+            with self.subTest(output=altered[:90]), self.assertRaises(ValueError):
+                comparison.parse_public(altered,'sieve',100000,True)
+
+    def test_public_doom_constructor_role_and_complete_calls(self):
+        """Public host loops retain their own constructor, complete calls and events with exact role identity."""
+        calls = ''.join(f'DOOM_SAMPLE,native,tick,{i},100,101\n' for i in range(13))
+        for prepared in (False,True):
+            mode = 'prepared' if prepared else 'planned'
+            output = f'API_PREPARE,{mode},10\n'+calls+'DOOM_OK,native,tick,1024005\n'
+            parsed = comparison.parse_public(output,'tick',None,prepared,True,1024005)
+            self.assertEqual(parsed['preparation_ns'],[10])
+            self.assertEqual(len(parsed['samples']),13)
+            for altered in (output.replace(',10\n',',0\n',1),
+                            output.replace(mode,'foreign',1),output+'unexpected\n',
+                            output.replace('DOOM_SAMPLE,native,tick,0,100,101\n','')):
+                # Neither core phase output nor a partial host run can stand in for a public API observation.
+                with self.subTest(output=altered[:90]), self.assertRaises(ValueError):
+                    comparison.parse_public(altered,'tick',None,prepared,True,1024005)
+
+    def test_summary_requires_distinct_public_and_core_roles(self):
+        """A core-only or duplicated cohort cannot publish an integrated-public-API performance table."""
+        runs = []
+        for case in [row[0] for row in comparison.CASES]+['init','tick']:
+            for order in range(2):
+                for role in comparison.ROLES:
+                    # Constant inert clocks make only the role/scoping obligations relevant here.
+                    samples = [dict(cpu_ns=100,lifecycle_ns=103,attempts=1,nodes=2) for _ in range(13)]
+                    runs.append(dict(case=case,order=order,role=role,
+                        parsed=dict(preparation_ns=[10,20],samples=samples)))
+        report = dict(status='passed',master='master',candidate='candidate',runs=runs)
+        rendered = comparison.summary(report)
+        self.assertIn('Ours ordinary API',rendered)
+        self.assertIn('Ours prepared API',rendered)
+        self.assertIn('Retained-frame core is a separate scope',rendered)
+        for incomplete in (runs[1:],runs+[runs[0]],
+                           [row for row in runs if row['role']!='public']):
+            with self.assertRaises(ValueError):
+                comparison.summary(dict(report,runs=incomplete))
+
     def test_explicit_comparison_job_and_evidence(self):
         """The architecture comparison is explicitly requested and never adds a master experiment."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()

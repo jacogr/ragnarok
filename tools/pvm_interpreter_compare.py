@@ -28,11 +28,12 @@ from native_checks import NativeChecks
 from pvm_guest_inputs import prepare_inputs, digest
 from pvm_guest_compare import revision, unchanged
 from pvm_sieve_report import parse_process_output
+from pvm_prepared_blocks import parse_output as parse_prepared_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples
 from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
-ROLES = ('master', 'candidate', 'reference')
+ROLES = ('master', 'public', 'prepared', 'candidate', 'reference')
 CASES = (('pinky', 1), ('sieve', 100000), ('minimal', 100000), ('memset', 100000))
 
 
@@ -131,13 +132,42 @@ def parse_candidate(output, case, doom=False, event_bytes=0):
     return result
 
 
+def parse_public(output, case, limit, prepared=False, doom=False, event_bytes=0):
+    """Require exact public API constructor/sample framing; fresh invocation costs remain inside each call."""
+    if doom:
+        lines = output.splitlines()
+        mode = 'prepared' if prepared else 'planned'
+        fields = lines.pop(0).split(',') if lines else []
+        if len(fields) != 3 or fields[:2] != ['API_PREPARE', mode]:
+            raise ValueError('Missing public constructor')
+        constructor = integers(fields[2:])
+        if constructor[0] <= 0:
+            raise ValueError('Invalid public constructor clock')
+        return dict(preparation_ns=constructor,
+                    samples=timing_samples('\n'.join(lines)+'\n','native',case,event_bytes))
+    if prepared:
+        parsed = parse_prepared_output(output,'ragnarok_prepared',limit,13,case,True)
+        parsed['preparation_ns'] = [int(parsed['preparation'][0][1])]
+        return parsed
+    parsed = parse_process_output(output,'ragnarok_planned',limit,guest=case)
+    parsed['preparation_ns'] = [parsed['preparation']['cpu_ns']]
+    return parsed
+
+
 def summary(report):
     """Publish complete same-runner CPU tables; cold is sample zero, reused is samples three to twelve."""
     if report['status'] != 'passed':
         return 'Interpreter comparison incomplete: '+report['status']+'\n'
+    identities = [(row['case'],row['order'],row['role']) for row in report['runs']]
+    expected = {(case,order,role) for case in [x[0] for x in CASES]+['init','tick']
+                for order in range(2) for role in ROLES}
+    if len(identities) != len(expected) or set(identities) != expected:
+        raise ValueError('Incomplete or duplicate public/core timing matrix')
     lines = ['Exact master: `'+report['master']+'`; candidate: `'+report['candidate']+'`.', '',
-        'CPU milliseconds. Master uses its existing planned interpreter. Forward/reverse orders; reused medians exclude the first three calls.', '',
-        '| Workload | Order | Master call | Ours call | PolkaVM call | Ours / master | Ours / PolkaVM | Ours lifecycle |',
+        'CPU milliseconds. Both process orders; reused medians exclude the first three calls.',
+        'Master and ordinary public calls use complete pricing. Prepared API reuses source facts and stream,',
+        'but still creates private invocation memory and publishes an immutable result inside every call.', '',
+        '| Workload | Order | Master API | Ours ordinary API | Ours prepared API | PolkaVM | Ordinary / ref | Prepared / ref |',
         '|---|---|---:|---:|---:|---:|---:|---:|']
     for case in [x[0] for x in CASES]+['init', 'tick']:
         for order in range(2):
@@ -146,8 +176,32 @@ def summary(report):
                 raise ValueError('Incomplete timing matrix')
             ns = {role: statistics.median(s['cpu_ns'] for s in row['parsed']['samples'][3:])
                   for role, row in rows.items()}
-            life = statistics.median(s['lifecycle_ns'] for s in rows['candidate']['parsed']['samples'][3:])
-            lines.append(f"| {case} | {order} | {ns['master']/1e6:.3f} | {ns['candidate']/1e6:.3f} | {ns['reference']/1e6:.3f} | {ns['candidate']/ns['master']:.3f} | {ns['candidate']/ns['reference']:.3f} | {life/1e6:.3f} |")
+            lines.append(f"| {case} | {order} | {ns['master']/1e6:.3f} | {ns['public']/1e6:.3f} | {ns['prepared']/1e6:.3f} | {ns['reference']/1e6:.3f} | {ns['public']/ns['reference']:.3f} | {ns['prepared']/ns['reference']:.3f} |")
+    lines += ['', 'Retained-frame core is a separate scope: invocation reset and publication are outside its call.', '',
+              '| Workload | Order | Core call | Core reset + call + publication | Core / reference |',
+              '|---|---|---:|---:|---:|']
+    for row in report['runs']:
+        if row['role'] != 'candidate':
+            continue
+        samples = row['parsed']['samples']
+        call = statistics.median(s['cpu_ns'] for s in samples[3:])
+        life = statistics.median(s['lifecycle_ns'] for s in samples[3:])
+        reference = next(r for r in report['runs'] if (r['case'],r['order'],r['role']) == (row['case'],row['order'],'reference'))
+        ref = statistics.median(s['cpu_ns'] for s in reference['parsed']['samples'][3:])
+        lines.append(f"| {row['case']} | {row['order']} | {call/1e6:.3f} | {life/1e6:.3f} | {call/ref:.3f} |")
+    lines += ['', 'Public API owner construction and cold first call (CPU ms). No reference-equivalent constructor claim.', '',
+              '| Workload | Order | API | Owner constructor | Cold call | Constructor + cold call |',
+              '|---|---|---|---:|---:|---:|']
+    for row in report['runs']:
+        if row['role'] not in ('master','public','prepared'):
+            continue
+        parsed = row['parsed']
+        preparation = parsed.get('preparation_ns')
+        if preparation is None:
+            preparation = [parsed['preparation']['cpu_ns']]
+        cost = sum(preparation)
+        cold = parsed['samples'][0]['cpu_ns']
+        lines.append(f"| {row['case']} | {row['order']} | {row['role']} | {cost/1e6:.3f} | {cold/1e6:.3f} | {(cost+cold)/1e6:.3f} |")
     lines += ['', 'Constructors and first execution (CPU ms). Master calls include their immutable final publication;',
               'ours publishes separately. PolkaVM has call-only timing; no equivalent constructor claim.', '',
               '| Workload | Order | Ours plan / frame | Ours cold call | Ours cold lifecycle + constructors | Master cold call |',
@@ -175,12 +229,14 @@ class Comparison:
     def __init__(self, master):
         BUILD.mkdir(parents=True, exist_ok=True)
         self.checks = NativeChecks(BUILD)
-        self.report = dict(status='running', master=revision(master), candidate=revision('HEAD'),
+        self.report = dict(status='running', scopes=dict(public='ordinary public API with complete pricing', prepared='public prepared owner, fresh invocation memory', candidate='retained-frame core'), master=revision(master), candidate=revision('HEAD'),
             cpu=cpu_model(), platform=platform.platform(), builds=[], controls=[], runs=[])
         self.identities = {p:digest(p) for p in [
             *sorted((ROOT/'src/pvm').rglob('*.nim')), *DRIVERS.values(), Path(__file__).resolve(),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_doom.nim',
             ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tools/native_checks.py',
+            ROOT/'tools/pvm_prepared_blocks.py',ROOT/'tools/pvm_sieve_report.py',
+            ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_guest_inputs.py',
             ROOT/'tools/setup_nimony.py',ROOT/'spec/toolchain.json']}
         self.report['compiler_version'] = subprocess.check_output([str(installed()[0]),'--version'],text=True).strip()
         self.report['clang_version'] = subprocess.check_output(['clang','--version'],text=True).splitlines()[0]
@@ -210,7 +266,7 @@ class Comparison:
         canonical = BUILD/'snapshot'
         self.images = {}
         # Each role uses its exact committed production sources; the candidate exposes separate lifecycle clocks.
-        for role, commit in (('master', self.report['master']), ('candidate', self.report['candidate'])):
+        for role, commit in (('master', self.report['master']), ('candidate', self.report['candidate']), ('public', self.report['candidate'])):
             if canonical.exists():
                 shutil.rmtree(canonical)
             raw = subprocess.check_output(['git', 'archive', commit, 'src'], cwd=ROOT)
@@ -227,7 +283,7 @@ class Comparison:
                 for driver, source in (('kernel', ROOT/'tests/performance/pvm_sieve.nim'), ('doom', ROOT/'tests/performance/pvm_doom.nim')):
                     # The same checked public driver is imported from one-level-up source coordinates.
                     text = subprocess.check_output(['git','show',commit+':'+str(source.relative_to(ROOT))],cwd=ROOT,text=True).replace('../../src/', '../src/')
-                    if driver == 'doom':
+                    if driver == 'doom' and role == 'master':
                         # Expose additional master preparation without changing its measured host loop.
                         needle = 'let created = newGasPlan(owner,'
                         assert text.count(needle) == 1
@@ -261,21 +317,23 @@ class Comparison:
 
     def execute(self, role, case, order, prepared, doom=False):
         """Validate both CPU/memory/source state and exact host events before accepting each timing."""
-        env = dict(os.environ, RAGNAROK_PVM_PRICING='planned', RAGNAROK_PVM_GUEST=case,
+        env = dict(os.environ, RAGNAROK_PVM_PRICING='prepared' if role=='prepared' else 'planned', RAGNAROK_PVM_GUEST=case,
             RAGNAROK_PVM_SIEVE_SAMPLES='13', RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',
             RAGNAROK_PVM_SIEVE_CLOCK='1', RAGNAROK_PVM_DOOM_TIMING='1',
-            RAGNAROK_PVM_DOOM_ASSERT='0', RAGNAROK_PVM_LOCAL_ONECALL='0')
+            RAGNAROK_PVM_DOOM_ASSERT='0', RAGNAROK_PVM_LOCAL_ONECALL='0',
+            RAGNAROK_PVM_DOOM_PRICING='prepared' if role=='prepared' else 'planned',
+            RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('public','prepared') else '0')
         if doom:
             rom = ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'
             env.update(RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'), RAGNAROK_PVM_DOOM_PHASE=case,
                        RAGNAROK_PVM_DOOM_ROM=str(rom))
-            args = [self.images[role,'doom']] if role != 'reference' else [
+            args = [self.images['public' if role=='prepared' else role,'doom']] if role != 'reference' else [
                 ROOT/'build/pvm-doom-rust-target/release/ragnarok-pvm-doom','run',DOOM/'doom.polkavm',rom,DOOM/'prepared',case]
         else:
             guest,limit,data,expected = prepared
             env.update(RAGNAROK_PVM_SIEVE_INPUT=str(data),RAGNAROK_PVM_SIEVE_EXPECTED=str(expected))
             fixture = ROOT/'tests/fixtures'/({'sieve':'pvm-sieve','pinky':'pvm-pinky'}.get(case,'pvm-guests'))/(case+'.polkavm')
-            args = [self.images[role,'kernel']] if role != 'reference' else [
+            args = [self.images['public' if role=='prepared' else role,'kernel']] if role != 'reference' else [
                 ROOT/'build/pvm-benchmark-rust-target/release/ragnarok-pvm-benchmark','--sieve',fixture,data.parent,limit,13]
         unchanged(self.identities)
         if order == 0:
@@ -283,28 +341,35 @@ class Comparison:
             positive, _ = self.command(args,f'{case}-{role}-positive',env)
             self.report['controls'].append(dict(case=case,role=role,kind='positive',run=positive))
             expected_path = DOOM/'prepared'/(case+'.expected') if doom else expected
-            original = expected_path.read_bytes()
-            for control in ('assertions','state'):
+            for control in (('assertions','state','events') if doom else ('assertions','state')):
+                # Each mode/phase must reject changed host events as well as CPU state and disabled assertions.
+                controlled = DOOM/'prepared'/(case+'.events') if control=='events' else expected_path
+                original = controlled.read_bytes()
                 probe = dict(env)
                 if control == 'assertions':
                     probe['RAGNAROK_PVM_DOOM_ASSERT' if doom else 'RAGNAROK_PVM_SIEVE_ASSERT_PROBE'] = '1'
                 else:
-                    changed = bytearray(original);changed[16] ^= 1;expected_path.write_bytes(changed)
+                    changed = bytearray(original);changed[16] ^= 1;controlled.write_bytes(changed)
                 try:
                     refusal = self.checks.command(args,f'{case}-{role}-{control}',environment=probe,timeout=900)
                     diagnostic = refusal.pop('output')
                     needle = 'assertion control' if control == 'assertions' else ''
+                    if control == 'events':
+                        # The pinned reference and our drivers deliberately retain their own exact diagnostics.
+                        needle = 'DOOM event mismatch' if role=='reference' else 'doom event payload mismatch'
                     if refusal['exit_code'] == 0 or needle not in diagnostic:
                         raise ValueError('Negative control did not refuse: '+refusal['log'])
                     self.report['controls'].append(dict(case=case,role=role,kind=control,run=refusal))
                     self.save()
                 finally:
-                    expected_path.write_bytes(original)
+                    controlled.write_bytes(original)
         row, output = self.command(args,f'{case}-{order}-{role}',env)
         raw_output = output
         event_bytes = len((DOOM/'prepared'/(case+'.events')).read_bytes()) if doom else 0
         if role == 'candidate':
             parsed = parse_candidate(output,case,doom,event_bytes)
+        elif role in ('public','prepared'):
+            parsed = parse_public(output,case,None if doom else limit,role=='prepared',doom,event_bytes)
         elif doom:
             preparation = None
             if role == 'master':
