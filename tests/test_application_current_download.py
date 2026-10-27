@@ -76,6 +76,46 @@ class CurrentDownloadExecutable(unittest.TestCase):
         process.kill.assert_called_once_with()
         self.assertEqual(process.wait.call_count, 2)
 
+    def test_startup_logging_preserves_exact_terminal_markers(self):
+        """A separate startup record is allowed; merged diagnostic text must never satisfy the exact refusal."""
+        for interleaved in (False, True):
+            modes = {}
+
+            def spawn(arguments, cwd, env, stdout, **options):
+                """Author only the independent witness completion expected for this fixed logical case."""
+                mode = env['RAGNAROK_CURRENT_DOWNLOAD_CASE']
+                modes[Path(cwd)] = mode
+                adopted = 0 if mode == 'legacy-policy' else 1
+                requests = 0 if mode == 'legacy-policy' else 1 if mode in ('journal', 'managed') else 2
+                stdout.write(f'CURRENT_EXECUTABLE_VERIFIED adopted={adopted} requests={requests}\n')
+                stdout.flush()
+                process = Mock()
+                process.poll.return_value = 0
+                process.wait.return_value = 0
+                return process
+
+            def execute(arguments, cwd, **options):
+                """Keep success/progress/refusal lines exact, with the observed logger race only on the fast failure."""
+                mode = modes[Path(cwd)]
+                if mode in ('journal', 'managed'):
+                    return SimpleNamespace(returncode=0, stdout='CURRENT_DOWNLOAD_ADOPTED\n', stderr='')
+                failure = 'InvalidPolicy' if mode == 'legacy-policy' else 'Timeout' if mode == 'timeout' else 'Exhausted'
+                marker = 'CURRENT_DOWNLOAD_FAILED '+failure
+                startup = '[info][startup] fixture'
+                error = marker+startup+'\n\n' if interleaved and mode == 'legacy-policy' else startup+'\n'+marker+'\n'
+                progress = '' if mode == 'legacy-policy' else 'CURRENT_DOWNLOAD_PROGRESS adopted=1 requested=2\n'
+                return SimpleNamespace(returncode=2, stdout=progress, stderr=error)
+
+            with self.subTest(interleaved=interleaved), tempfile.TemporaryDirectory() as temporary, patch(
+                    'application_current_download.ready_port', return_value=1234), patch(
+                    'application_current_download.subprocess.Popen', side_effect=spawn), patch(
+                    'application_current_download.subprocess.run', side_effect=execute):
+                if interleaved:
+                    with self.assertRaisesRegex(ValueError, 'Executable current download verification failed'):
+                        observe(Path('/peer'), Path('/witness'), Path(temporary), self.environment())
+                else:
+                    self.assertTrue(observe(Path('/peer'), Path('/witness'), Path(temporary), self.environment())['passed'])
+
     def test_cli_success_cannot_hide_failed_native_witness(self):
         """A genuine CLI success marker cannot satisfy failed independent protocol/map verification."""
         process = Mock()

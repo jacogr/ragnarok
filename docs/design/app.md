@@ -19,7 +19,9 @@ overrides. State activation does not enable listeners. Repeated parses have inde
 The entry point also owns one fixed-address shared diagnostic writer. Immutable level/target
 filters and borrowed producer handles travel through options and execution policy rather than
 process globals. Its bounded queue drops on contention/overload, and all service/worker producers
-retire before joined draining shutdown. Command responses remain on their existing output paths.
+retire before joined draining shutdown. Terminal CLI errors drain and join the writer before
+writing their standalone stderr line, preventing interleaved machine-readable refusals.
+Command responses remain on their existing output paths.
 See [shared logging](../../spec/logging.md) for loss, lifetime and shutdown contracts.
 
 `app/services.nim` owns one non-copyable aggregate of RPC, UI, telemetry and an optional canonical application chain. It captures one
