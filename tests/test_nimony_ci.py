@@ -103,6 +103,20 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual([row['group'] for row in families], ['smoke'])
         self.assertNotIn('minutes', families[0])
 
+    def test_source_and_guards_share_runner_without_expanding_smoke(self):
+        """Both full compiler checks execute together, including rejection evidence after source failure."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        family = family_section(text, 'compile', 'modules')
+        self.assertIn('run: make check-modules', family)
+        self.assertIn('run: make check-guards', family)
+        self.assertIn('run: make summary-guards SUMMARY_OUTPUT=', family)
+        self.assertIn("if: ${{ !cancelled() && matrix.family.group == 'modules' }}", family)
+        # Separate evidence directories and uploads keep both verdicts visible after either check fails.
+        self.assertIn('build/tests/modules/results.json', family)
+        self.assertIn('build/tests/guards/results.json', family)
+        smoke = selected_families(text, 'compile', event_context('pull_request', 'synchronize'))
+        self.assertEqual(smoke, [dict(name='Smoke', group='smoke')])
+
     def test_every_job_uses_shared_timeout(self):
         """Randomized workload variance has one 60-minute safety limit across all CI jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -120,9 +134,9 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_ci_request_scopes(self):
         """Actual matrix expressions preserve every automatic, labeled and standalone manual request."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        groups = {'compile': ['smoke', 'modules', 'python', 'guards'],
+        groups = {'compile': ['smoke', 'modules', 'python'],
                   'interop': ['pvm-reference', 'telemetry-interop'],
-                  'perf': ['bench-pvm', 'bench-doom', 'bench-storage', 'bench-storage-growth'],
+                  'perf': ['bench-pvm-all', 'bench-storage', 'bench-storage-growth'],
                   'build': ['docker', 'binary', 'binary']}
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
                       event_context('pull_request', 'labeled', 'ci:full')):
@@ -157,6 +171,28 @@ class NimonyCISafeguards(unittest.TestCase):
                     text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
 
+    def test_combined_pvm_keeps_standalone_modes_and_failure_evidence(self):
+        """Full CI runs both suites serially; manual selectors retain their original workload boundaries."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        combined = family_section(text, 'perf', 'bench-pvm-all')
+        self.assertLess(combined.index('run: make bench-pvm\n'), combined.index('run: make bench-pvm-doom\n'))
+        for suite, group, included, excluded in (
+                ('bench-pvm', 'bench-pvm', 'bench-pvm', 'bench-pvm-doom'),
+                ('bench-doom', 'bench-doom', 'bench-pvm-doom', 'bench-pvm')):
+            # Scheduling conditions retain independent workflow_dispatch controls even with one full-CI family.
+            section = family_section(text, 'perf', group,
+                context=event_context('workflow_dispatch', suite=suite))
+            self.assertIn('run: make '+included+'\n', section)
+            self.assertNotIn('run: make '+excluded+'\n', section)
+        cancelled = dict(event_context(), cancelled=True)
+        stopped = family_section(text, 'perf', 'bench-pvm-all', context=cancelled)
+        self.assertNotIn('run: make bench-pvm-doom\n', stopped)
+        self.assertIn("if: ${{ !cancelled() && (matrix.family.group == 'bench-doom'", combined)
+        for folder in ('pvm-benchmark', 'pvm-doom'):
+            self.assertIn('build/tests/'+folder+'/results.json', combined.replace('*.json', 'results.json'))
+            self.assertIn('build/tests/'+folder+'/summary.md', combined)
+        self.assertIn('needs: [perf, pvm-comparison]', job_section(text, 'perf-status'))
+
     def test_performance_monitoring_replaces_experiment_jobs(self):
         """Retain regular interpreted comparisons and local tools without historical CI experiments."""
         text=(ROOT/'.github/workflows/ci.yml').read_text()
@@ -166,13 +202,41 @@ class NimonyCISafeguards(unittest.TestCase):
                        'pvm_build_identity','pvm_deep_attribution'):
             self.assertNotIn(option+':',text)
         self.assertNotIn('ci:pvm-compare',text)
-        section=family_section(text,'perf','bench-doom')
+        section=family_section(text,'perf','bench-pvm-all')
         self.assertIn('run: make bench-pvm-doom',section)
         self.assertNotIn('valgrind',section)
         self.assertIn('build/tests/pvm-doom/results.json',section.replace('*.json','results.json'))
         self.assertIn('build/tests/pvm-doom/summary.md',section)
         self.assertNotIn('continue-on-error',section)
-        self.assertIn('needs: perf',job_section(text,'perf-status'))
+        self.assertIn('needs: [perf, pvm-comparison]',job_section(text,'perf-status'))
+
+    def test_pvm_comparison_runs_with_regular_perf_requests(self):
+        """Master and explicit Perf/Full requests include exact-master comparison; ordinary PR updates remain light."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        section=job_section(text,'pvm-comparison')
+        self.assertIn('name: Perf / PVM Comparison',section)
+        self.assertNotIn('Perf / PVM Interpreter Comparison',text)
+        guard=job_condition(text,'pvm-comparison')
+        enabled=[event_context('push')]
+        enabled += [event_context('workflow_dispatch',suite=suite) for suite in ('perf','bench-pvm','full')]
+        enabled += [event_context('pull_request',action='labeled',label=label) for label in ('ci:perf','ci:full')]
+        disabled=[event_context('pull_request',action='synchronize'),
+                  event_context('pull_request',action='labeled',label='ci:unit'),
+                  event_context('pull_request',state='closed',label='ci:perf')]
+        disabled += [event_context('workflow_dispatch',suite=suite) for suite in ('unit','bench-doom','bench-storage')]
+        for context in enabled:
+            with self.subTest(context=context): self.assertTrue(expression(guard,context))
+        for context in disabled:
+            with self.subTest(context=context): self.assertFalse(expression(guard,context))
+        self.assertIn('run: make bench-pvm-interpreter',section)
+        self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
+        self.assertIn('if: always()',section)
+        self.assertIn('build/tests/pvm-interpreter-linux/*.json',section)
+        self.assertNotIn('continue-on-error',section)
+        summary=job_section(text,'perf-status')
+        self.assertIn('needs: [perf, pvm-comparison]',summary)
+        self.assertIn('COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}',summary)
+        self.assertIn('test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success',summary)
 
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
@@ -223,10 +287,10 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'unit', event_context())
-        self.assertEqual(len(families), 20)
+        self.assertEqual(len(families), 21)
         corpus = [row for row in families if row['group'] == 'corpus']
-        self.assertEqual(corpus, [dict(name=f'Corpus ({index}/3)', shard='', group='corpus',
-                                     corpus_shard=f'{index}/3') for index in (1, 2, 3)])
+        self.assertEqual(corpus, [dict(name=f'Corpus ({index}/4)', shard='', group='corpus',
+                                     corpus_shard=f'{index}/4') for index in (1, 2, 3, 4)])
         values = [row['shard'] for row in families if row['group'] == 'suites']
         partitions = [parse_unit_shard(value) for value in values]
         count = partitions[0][1]
@@ -234,7 +298,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
-        self.assertIn('max-parallel: 20', unit)
+        self.assertIn('max-parallel: 21', unit)
         self.assertIn('CORPUS_SHARD: ${{ matrix.family.corpus_shard }}', unit)
         self.assertIn('build/tests/corpus/*/results.json', unit)
         self.assertIn('name: Unit / ${{ matrix.family.name }}', unit)
@@ -341,13 +405,18 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group in ('compile', 'interop', 'perf', 'build'):
             gate = job_section(text, group+'-status')
-            self.assertIn('needs: '+group+'\n', gate)
+            dependencies = '[perf, pvm-comparison]' if group == 'perf' else group
+            self.assertIn('needs: '+dependencies+'\n', gate)
             self.assertIn('if: ${{ always() && (', gate)
             self.assertIn('SHARDS_RESULT: ${{ needs.'+group+'.result }}', gate)
             command = re.search(r'        run: ([^\n]+)', gate).group(1)
-            for result in ('success', 'failure', 'cancelled', 'skipped'):
-                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(status == 0, result == 'success')
+            results = ('success', 'failure', 'cancelled', 'skipped')
+            for result in results:
+                for comparison_result in (results if group == 'perf' else ('success',)):
+                    # Execute all Perf dependency combinations; a missing or failed comparison stays red.
+                    environment = dict(SHARDS_RESULT=result, COMPARISON_RESULT=comparison_result)
+                    status = subprocess.run(['bash', '-c', command], env=environment).returncode
+                    self.assertEqual(status == 0, result == comparison_result == 'success')
             for suite in ('smoke', 'ref-pvm', 'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker'):
                 # Only Compile's lightweight requests have an aggregate; standalone other groups omit theirs.
                 condition = re.search(r'^    if: (.+)$', gate, re.MULTILINE).group(1)
@@ -389,9 +458,9 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         self.assertIn('run: &inventory-run make check-inventory', text)
         for job, family, target in [('compile', 'modules', 'check-modules'), ('compile', 'python', 'check-python'),
-                                    ('compile', 'guards', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
+                                    ('compile', 'modules', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
-                                    ('perf', 'bench-pvm', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
+                                    ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
                                     ('perf', 'bench-storage-growth', 'bench-storage-growth'), ('build', 'docker', 'check-docker')]:
             section = family_section(text, job, family)
             self.assertEqual(section.count('name: Validate verification inventory'), 1)
@@ -428,7 +497,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_benchmark_runs_on_master_and_perf_requests_with_raw_data(self):
         """Master/group requests retain the Actions table and raw validated measurements."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = family_section(text, 'perf', 'bench-pvm')
+        section = family_section(text, 'perf', 'bench-pvm-all')
         self.assertEqual([row['group'] for row in selected_families(text, 'perf',
                          event_context('workflow_dispatch', suite='bench-pvm'))], ['bench-pvm'])
         self.assertEqual(section.count('run: make bench-pvm\n'), 1)
@@ -451,8 +520,8 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_one_matrix_per_display_group(self):
         """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling', 'Rejection Guards']),
-                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'PVM DOOM', 'Storage', 'Storage Growth']),
+        for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling']),
+                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage', 'Storage Growth']),
                              ('build', ['Docker', 'Linux', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))

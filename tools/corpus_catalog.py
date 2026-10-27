@@ -62,8 +62,8 @@ CORPUS_NAMES = tuple(sorted(name for group in GROUPS for name in group.tasks))
 # Assign dependency-connected bundles once, without maintained names, timings or per-runner weights.
 def corpus_partition(shard=None, seed=None):
     if shard is not None and (not isinstance(shard, (tuple, list)) or len(shard) != 2
-            or any(type(value) is not int for value in shard) or not 1 <= shard[0] <= shard[1] <= 3):
-        raise ValueError('Corpus shard must be index/count with 1 <= index <= count <= 3')
+            or any(type(value) is not int for value in shard) or not 1 <= shard[0] <= shard[1] <= 4):
+        raise ValueError('Corpus shard must be index/count with 1 <= index <= count <= 4')
     names = [name for group in GROUPS for name in group.tasks]
     if shard is None:
         # Plain local verification still executes the full source-owned declaration order.

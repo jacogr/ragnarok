@@ -17,7 +17,8 @@ def event_context(event='push', action='', label='', suite='', state='open', mer
 # Interpret only the operators used by the workflow; never execute arbitrary Python from YAML.
 def expression(source, context):
     source = source.removeprefix('${{').removesuffix('}}').strip()
-    tree = ast.parse(source.replace('&&', ' and ').replace('||', ' or '), mode='eval')
+    source = re.sub(r'!(?!=)', 'not ', source).replace('&&', ' and ').replace('||', ' or ')
+    tree = ast.parse(source.strip(), mode='eval')
 
     # Explicit AST cases preserve short-circuit value selection used by fromJSON matrices.
     def value(node):
@@ -27,6 +28,8 @@ def expression(source, context):
             return context[node.id]
         if isinstance(node, ast.Attribute):
             return value(node.value).get(node.attr, '')
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not value(node.operand)
         if isinstance(node, ast.BoolOp):
             for operand in node.values:
                 result = value(operand)
@@ -45,6 +48,8 @@ def expression(source, context):
                 return json.loads(value(node.args[0]))
             if node.func.id == 'always' and not node.args:
                 return True
+            if node.func.id == 'cancelled' and not node.args:
+                return context.get('cancelled', False)
         raise ValueError('Unsupported workflow expression: '+ast.dump(node))
 
     return value(tree.body)
@@ -78,11 +83,12 @@ def selected_families(text, job, context):
 
 
 # Retain only steps applicable to one family; native commands never execute during these checks.
-def family_section(text, job, group, name=None):
+def family_section(text, job, group, name=None, context=None):
     section = job_section(text, job)
-    family = next(row for row in selected_families(text, job, event_context())
+    request = event_context() if context is None else context
+    family = next(row for row in selected_families(text, job, request)
                   if row['group'] == group and (name is None or row['name'] == name))
-    context = dict(event_context(), matrix=dict(family=family, os='ubuntu-latest'))
+    context = dict(request, matrix=dict(family=family, os='ubuntu-latest'))
     header, steps = section.split('    steps:\n', 1)
     kept = []
     for step in re.findall(r'^      - .*?(?=^      - |\Z)', steps, re.MULTILINE | re.DOTALL):
