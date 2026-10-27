@@ -1430,7 +1430,7 @@ when defined(pvmArm64Jit):
   proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool
     ## A positive original branch cache is required before any native continuation is published.
 
-  proc flatArmRunNext(f: var FlatFrame, offset: uint32): uint32 =
+  proc flatArmRunNext[ClearPaid: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
     ## A complete checked reservation precedes native arithmetic/branch work; no native path can exit mid-prefix.
     block:
       # The exclusive frame retains its cache throughout this non-host call; only disjoint register bytes are borrowed mutably.
@@ -1439,7 +1439,7 @@ when defined(pvmArm64Jit):
       if jit != nil:
         let destination = callArmBranch(jit, offset, f.info.registers)
         assert int(destination) < f.handlers.len
-        f.info.blockCharged = false
+        when ClearPaid: f.info.blockCharged = false
         return destination
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
@@ -1450,7 +1450,7 @@ when defined(pvmArm64Jit):
       assert original != nil
       if original != nil: return original(f, offset)
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    flatArmRunNext(f, offset)
+    flatArmRunNext[true](f, offset)
 
   proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
     ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
@@ -1463,7 +1463,26 @@ when defined(pvmArm64Jit):
       let jit {.cursor.} = f.armJit
       assert jit != nil
       if jit != nil: inc jit.headerCalls
-    flatArmRunNext(f, offset+1)
+    flatArmRunNext[true](f, offset+1)
+
+  proc flatArmWhole(f: var FlatFrame, offset: uint32): uint32 =
+    ## Complete pure blocks cannot observe a transient paid flag; every partial/paid/error case uses the original entry.
+    let args = f.arguments[int(offset)]
+    if f.barrier != flatStop or f.info.blockCharged or f.remaining < uint64(args.y) or
+        uint64(f.info.gas) < args.x:
+      # These nonmutating guards preserve zero-budget, gas and resumed-block precedence in the existing reservation worker.
+      return flatArmEnter(f, offset)
+    # The sealed suffix includes its cached conditional: no host, fault or exit can observe these two omitted paid writes.
+    f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
+    f.remaining-=uint64(args.y)
+    # Retain the exact endpoint even for complete native blocks; observable exit/refund behavior has no new dependency.
+    f.reservationEnd = f.sites[int(offset)]+args.y
+    block:
+      # End the source-owned cache borrow before the shared helper receives the whole mutable invocation frame.
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil: inc jit.headerCalls
+    flatArmRunNext[false](f, offset+1)
 
   proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial budgets retain original atomic handler behaviour, including a second-node barrier.
@@ -1539,7 +1558,8 @@ when defined(pvmArm64Jit):
       if f.handlers[int(header)] == plain and
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
         f.armOriginal[int(header)] = plain
-        f.handlers[int(header)] = flatArmEnter
+        assert f.arguments[int(header)].y > 0
+        f.handlers[int(header)] = flatArmWhole
     true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
