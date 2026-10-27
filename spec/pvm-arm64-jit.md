@@ -456,3 +456,63 @@ not justify globally lowering the floor without measurements. Source copy, trace
 block observations remain under `build/pvm-arm64-jit/hot-blocks`. Native public counters and full
 constructor/cold samples remain in the application receipts. No native-memory or full-JIT claim
 is made by this lifetime increment.
+
+
+## Linux ARM64 platform qualification
+
+The optional experiment now runs on macOS ARM64 and Linux ARM64. This adds the official
+`linux_arm64` archive and matching formatter for the **same** October 26 Nimony commit; neither
+compiler nor formatter revisions change. GitHub release asset digests are pinned in
+`spec/toolchain.json` and the ordinary installer verifies hashes, archive metadata and banners.
+The production Docker target remains independently qualified on Linux x86-64; no production
+backend, default, CLI or CI platform selection changes here. Native x86-64 code generation is
+still planned; other CPU/OS combinations remain unsupported for JIT.
+
+Linux uses a bounded memfd backing with separate shared RW and RX aliases. The descriptor closes
+after mapping, and every partial admission path closes/unmaps its admitted resources before
+returning refusal. Publication copies only into the writable alias, then uses the compiler's
+instruction-cache publication primitive for the written and executable aliases before exposing
+the scalar offset. Previously published bytes never change. macOS retains its existing MAP_JIT
+and thread write-protection path. The OS boundary remains narrow; GP semantics stay in Nim.
+See the [glibc memory-mapping API](https://sourceware.org/glibc/manual/latest/html_node/Memory_002dmapped-I_002fO.html)
+and [instruction-cache builtin contract](https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html).
+
+`make check-pvm-arm64-jit-docker` stages only explicit source and sealed reference-produced fixture
+bytes, provisions the same pinned ARM64 tools in a private image, then runs with networking disabled
+and no host mounts. It preserves the created container's logs/results and removes only that
+container. `make check-pvm-arm64-jit-linux` is its native inner entry point. The native gates are
+shared directly with the macOS runner: full register/branch matrices, source budgets/gas, opcode
+and ARC suites, host/memory boundaries, storage refusal and explicit owner move/copy lowering.
+Linux additionally checks individual mapping permissions, both failed mapping admission paths,
+unchanged descriptor counts over 1,000 lifetimes, appended publication and retained old code.
+
+The completed Linux run uses native `aarch64`, Linux 5.15.49-linuxkit/glibc 2.39,
+compiler SHA-256 `5eb5f0d8ef1c1fd388845fa1139a54475cb889f40056b37a7b63f045812239ff`, and image
+`sha256:ec7be80d8f8746f2cecd56e8813845f14609e87e95760de698277100c0406942`.
+Independent verification confirms nine shared native gates, fourteen public processes / **182**
+complete-state calls, **32** assertion/state/event refusal controls, four freshly built public
+images and **2,863** sealed source/configuration/fixture files unchanged within the run. The
+fixture source is the preceding qualified application cohort; Linux performs its own complete
+CPU/gas/register/page/permission/source and ordered-host-event checks against those expected bytes.
+No reference executable or host compiler/cache is reused inside the container.
+
+Native coverage agrees with the macOS cohort, including Pinky 103,017,060 compiled guest operations,
+DOOM initialization 41,177,248 and gameplay 16,013,017 across thirteen calls each. These are guest
+coverage counters, not host instructions or hardware performance counters. All container clocks
+are diagnostic only: there is **no Linux-versus-macOS timing ratio** and no claimed Linux speed gain.
+The same nine native gates pass again on macOS with the current OS header; host selection, eleven
+parser tests and formatting checks pass. Existing production Nim sources are unchanged by this
+platform increment, so the preceding identical-source default smoke remains applicable.
+
+The first two Docker attempts retained useful staging failures: missing required unit output
+contracts, then an omitted native header. Both were fixed by staging the original required files;
+no check was weakened. Their logs remain under `build/pvm-arm64-jit/linux/failed-*`. Final receipts,
+sealed context, image metadata and independent verification remain under
+`build/pvm-arm64-jit/linux/`. Source-base commit is recorded separately from the full working-source
+seals; production/runtime/helper/toolchain bytes are checked against the preserving commit.
+Documentation-only updates follow qualification and do not alter the measured implementation.
+
+Linux ARM64 now has the same local correctness and lifetime baseline as macOS for this native
+slice. Further speed work remains paused for the platform qualification; the next measured design
+questions are short-block entry/exit costs and checked-memory coverage identified by the sieve
+trace. No fully native PVM, production readiness or merge recommendation follows from these checks.

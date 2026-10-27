@@ -19,8 +19,20 @@ static uint64_t pvm_arm64_jit_cpu_ns(void) {
 #include <pthread.h>
 #include <libkern/OSCacheControl.h>
 #endif
-/* Each exclusive arena owns one fixed mapping. Published fragments are never overwritten. */
-typedef struct { void *memory; uint32_t used; uint32_t capacity; } pvm_arm64_arena;
+#if defined(__linux__) && defined(__aarch64__)
+#include <sys/mman.h>
+#include <unistd.h>
+#include <linux/memfd.h>
+/* GNU libc exposes this OS interface under feature macros that may precede generated includes. */
+extern int memfd_create(const char *name, unsigned int flags);
+#endif
+#if defined(__aarch64__) && (defined(__APPLE__) || defined(__linux__))
+#define PVM_ARM64_JIT_HOST 1
+#else
+#define PVM_ARM64_JIT_HOST 0
+#endif
+/* Each exclusive arena owns fixed executable and writable mappings; published bytes never change. */
+typedef struct { void *memory; void *writable; uint32_t used; uint32_t capacity; } pvm_arm64_arena;
 static void *pvm_arm64_arena_create(void) {
 #if defined(__APPLE__) && defined(__aarch64__)
     const uint32_t capacity = 1024 * 1024;
@@ -30,7 +42,27 @@ static void *pvm_arm64_arena_create(void) {
                         MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
     if (owner->memory == MAP_FAILED) { free(owner); return NULL; }
     owner->capacity = capacity;
+    owner->writable = owner->memory;
     pthread_jit_write_protect_np(1);
+    return owner;
+#elif defined(__linux__) && defined(__aarch64__)
+    const uint32_t capacity = 1024 * 1024;
+    pvm_arm64_arena *owner = calloc(1, sizeof(*owner));
+    if (!owner) return NULL;
+    int descriptor = memfd_create("ragnarok-pvm-code", MFD_CLOEXEC);
+    if (descriptor < 0) { free(owner); return NULL; }
+    if (ftruncate(descriptor, capacity) != 0) { close(descriptor); free(owner); return NULL; }
+    /* Distinct shared aliases keep every mapping either writable or executable, never both. */
+    owner->writable = mmap(NULL, capacity, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0);
+    if (owner->writable == MAP_FAILED) { close(descriptor); free(owner); return NULL; }
+    owner->memory = mmap(NULL, capacity, PROT_READ | PROT_EXEC, MAP_SHARED, descriptor, 0);
+    close(descriptor);
+    if (owner->memory == MAP_FAILED) {
+        munmap(owner->writable, capacity);
+        free(owner);
+        return NULL;
+    }
+    owner->capacity = capacity;
     return owner;
 #else
     /* Unsupported platforms refuse before allocation or execution. */
@@ -39,23 +71,32 @@ static void *pvm_arm64_arena_create(void) {
 }
 static void pvm_arm64_arena_destroy(void *handle) {
     if (!handle) return;
-#if defined(__APPLE__) && defined(__aarch64__)
+#if PVM_ARM64_JIT_HOST
     pvm_arm64_arena *owner = handle;
+    if (owner->writable != owner->memory) munmap(owner->writable, owner->capacity);
     munmap(owner->memory, owner->capacity);
 #endif
     free(handle);
 }
 static int32_t pvm_arm64_arena_publish(void *handle, const uint32_t *words, uint32_t count) {
-#if defined(__APPLE__) && defined(__aarch64__)
+#if PVM_ARM64_JIT_HOST
     pvm_arm64_arena *owner = handle;
     if (!owner || !words || count == 0 || count > 1024) return -1;
     uint32_t length = count * 4;
     if (owner->used > owner->capacity || length > owner->capacity - owner->used) return -1;
     uint32_t offset = owner->used;
+#if defined(__APPLE__)
     pthread_jit_write_protect_np(0);
-    memcpy((unsigned char *)owner->memory + offset, words, length);
+#endif
+    memcpy((unsigned char *)owner->writable + offset, words, length);
+#if defined(__APPLE__)
     sys_icache_invalidate((unsigned char *)owner->memory + offset, length);
     pthread_jit_write_protect_np(1);
+#else
+    /* Clean the written alias and invalidate the executable alias before publishing its offset. */
+    __builtin___clear_cache((char *)owner->writable + offset, (char *)owner->writable + offset + length);
+    __builtin___clear_cache((char *)owner->memory + offset, (char *)owner->memory + offset + length);
+#endif
     owner->used += length;
     return (int32_t)offset;
 #else
@@ -64,7 +105,7 @@ static int32_t pvm_arm64_arena_publish(void *handle, const uint32_t *words, uint
 #endif
 }
 static int pvm_arm64_arena_call(void *handle, uint32_t offset, void *registers) {
-#if defined(__APPLE__) && defined(__aarch64__)
+#if PVM_ARM64_JIT_HOST
     pvm_arm64_arena *owner = handle;
     if (!owner || !registers || offset >= owner->used || (offset & 3)) return 0;
     void (*entry)(void *) = (void (*)(void *))((unsigned char *)owner->memory + offset);
@@ -77,7 +118,7 @@ static int pvm_arm64_arena_call(void *handle, uint32_t offset, void *registers) 
 }
 /* Conditional leaves return only a previously validated scalar stream offset, never a host address. */
 static uint32_t pvm_arm64_arena_next(void *handle, uint32_t offset, void *registers) {
-#if defined(__APPLE__) && defined(__aarch64__)
+#if PVM_ARM64_JIT_HOST
     pvm_arm64_arena *owner = handle;
     if (!owner || !registers || offset >= owner->used || (offset & 3)) return UINT32_MAX;
     uint32_t (*entry)(void *) = (uint32_t (*)(void *))((unsigned char *)owner->memory + offset);

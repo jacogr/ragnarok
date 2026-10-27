@@ -68,8 +68,8 @@ def parse_run(output, role, case, limit, event_bytes=0):
 
 def run():
     """Qualify one explicit source cohort before accepting any timing or native/public claim."""
-    if (platform.system(),platform.machine())!=('Darwin','arm64'):
-        raise SystemExit('Application experiment currently requires Darwin ARM64')
+    if platform.system() not in ('Darwin','Linux') or platform.machine() not in ('arm64','aarch64'):
+        raise SystemExit('Application experiment requires macOS or Linux ARM64')
     BUILD.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',baseline=BASELINE,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[])

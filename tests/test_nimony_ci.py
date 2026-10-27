@@ -527,7 +527,8 @@ class NimonyCISafeguards(unittest.TestCase):
     # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
     def test_local_and_ci_host_selection(self):
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
-        for system, machine, name in (('Linux', 'x86_64', 'linux_amd64'), ('Darwin', 'arm64', 'macos_arm64')):
+        for system, machine, name in (('Linux', 'x86_64', 'linux_amd64'), ('Linux', 'aarch64', 'linux_arm64'),
+                                      ('Linux', 'arm64', 'linux_arm64'), ('Darwin', 'arm64', 'macos_arm64')):
             # Host selection changes archive identity, never the selected compiler revision.
             with self.subTest(system=system):
                 selected = host_pins(pins, system, machine)

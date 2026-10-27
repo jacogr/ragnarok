@@ -48,10 +48,48 @@ def parse(output, guest, native, control=False):
     return dict(execution=parse_candidate('\n'.join(lines)+'\n',guest), native=receipt, control=control_receipt)
 
 
+def qualify(checks, compiler):
+    """Share identical native, refusal, opcode, host and exclusive-lifetime gates across supported ARM64 hosts."""
+    rows = []
+    memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
+        ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',checks.folder/'memory-check'],'memory-build')
+    if memory['exit_code']: raise RuntimeError(memory['output'])
+    memory = checks.command([checks.folder/'memory-check'],'memory-run')
+    if memory['exit_code'] or memory['output'] != 'ARM_MEMORY_OK,1000,capacity,publication,retirement\n':
+        raise ValueError('Executable storage controls failed')
+    rows.append(memory)
+    for name,source,defines in (
+        ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit']),
+        ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
+        ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit']),
+        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'])):
+        # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
+        built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
+        if built['exit_code']: raise RuntimeError(built['output'][-3000:])
+        checked=checks.command([binary],name+'-run')
+        if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        rows.append(checked)
+    for owner, extra in (('stream', []), ('frame', ['pvmArm64JitFrameOwner'])):
+        for moving in (True, False):
+            # Lowering must reject the intended duplicate, while an explicit move has an executable positive control.
+            name = 'ownership-'+owner+('-move' if moving else '-copy')
+            built, binary = checks.build(compiler, ROOT/'tests/performance/pvm_arm64_jit_ownership.nim', name,
+                defines=['pvmArm64Jit', *extra, *(['pvmArm64JitMoveOwner'] if moving else [])],
+                cflags=['-I'+str(ROOT/'native/pvm_jit')])
+            if moving:
+                if built['exit_code']: raise RuntimeError(built['output'][-2000:])
+                checked = checks.command([binary], name+'-run')
+                if checked['exit_code'] or checked['output'] != '0\n0\n': raise ValueError('Owner move control failed')
+            elif built['exit_code']==0 or "'=dup' is not available for type <Flat" not in built['output']:
+                raise ValueError('Missing intended exclusive-owner lowering refusal')
+            rows.append(dict(owner=owner, moving=moving, build=built))
+    return rows
+
+
 def main():
     """Build serially before all timing, keep complete receipts and refuse incomplete cohorts."""
-    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
-        raise SystemExit('This local experiment requires Darwin ARM64')
+    if platform.system() not in ('Darwin','Linux') or platform.machine() not in ('arm64','aarch64'):
+        raise SystemExit('This local experiment requires macOS or Linux ARM64')
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE', 'e6382bc6e5e75ec40edea25d3000df1a4aa5dd6a'))
     baseline = args.parse_args().baseline
@@ -69,39 +107,7 @@ def main():
     result_path.write_text(json.dumps(report,indent=2)+'\n')
     summary_path = BUILD/'summary.md'
     summary_path.write_text('Comparison incomplete; no current timing verdict.\n')
-    report['qualification'] = []
-    memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
-        ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',BUILD/'memory-check'],'memory-build')
-    if memory['exit_code']: raise RuntimeError(memory['output'])
-    memory = checks.command([BUILD/'memory-check'],'memory-run')
-    if memory['exit_code'] or memory['output'] != 'ARM_MEMORY_OK,1000,capacity,publication,retirement\n':
-        raise ValueError('Executable storage controls failed')
-    report['qualification'].append(memory)
-    for name,source,defines in (
-        ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit']),
-        ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
-        ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit']),
-        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'])):
-        # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
-        built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
-        if built['exit_code']: raise RuntimeError(built['output'][-3000:])
-        checked=checks.command([binary],name+'-run')
-        if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
-        report['qualification'].append(checked)
-    for owner, extra in (('stream', []), ('frame', ['pvmArm64JitFrameOwner'])):
-        for moving in (True, False):
-            # Lowering must reject the intended duplicate, while an explicit move has an executable positive control.
-            name = 'ownership-'+owner+('-move' if moving else '-copy')
-            built, binary = checks.build(compiler, ROOT/'tests/performance/pvm_arm64_jit_ownership.nim', name,
-                defines=['pvmArm64Jit', *extra, *(['pvmArm64JitMoveOwner'] if moving else [])],
-                cflags=['-I'+str(ROOT/'native/pvm_jit')])
-            if moving:
-                if built['exit_code']: raise RuntimeError(built['output'][-2000:])
-                checked = checks.command([binary], name+'-run')
-                if checked['exit_code'] or checked['output'] != '0\n0\n': raise ValueError('Owner move control failed')
-            elif built['exit_code']==0 or "'=dup' is not available for type <Flat" not in built['output']:
-                raise ValueError('Missing intended exclusive-owner lowering refusal')
-            report['qualification'].append(dict(owner=owner, moving=moving, build=built))
+    report['qualification'] = qualify(checks, compiler)
     fixtures = prepare_inputs(checks,BUILD/'inputs')
     identities = dict(fixtures['identities'])
     identities[compiler] = digest(compiler)
