@@ -1485,3 +1485,73 @@ images and copied logs independently verify;2,846tracked staged files match the 
 Container architecture/network isolation and successful exit are verified; clocks are diagnostic only.
 Raw local evidence lives in
 `build/pvm-arm64-jit/region-layout/` and the sealed current kernel/application folders.
+
+
+## Native visit counters in registers — retained (October 27)
+
+Measured runtime `e0ba437d5e3059d90ab9824ff23cdf0e539ca333` against accepted layout parent
+`ce512c8f5df7a2960eb2b6eb270c953fde98e085`, Apple M1 Max and the same pinned checked
+ARC/Clang ThinLTO build. Connected native execution now keeps its three invocation-local visit
+counters in caller-saved D16..D18, with the integer bit-pattern1 in D19. Scalar SIMD ADD performs
+exact64-bit integer arithmetic: no floating-point arithmetic, conversion or precision assumption.
+X17 remains the distinct general-purpose context pointer. No SP/LR/callee-saved register changes.
+
+The five-word invocation context ABI is unchanged. Load the three fresh counters at entry,
+perform one integer add per actual complete block, and store all three counters on every exit.
+This replaces the previous per-block context load/add/store. Source/gas checks, debits, native
+work accounting, guest-register publication and exact guard exits are unchanged. Nothing mutable
+is retained in executable bytes. Admission, pricing and cache policy remain unchanged.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.481 / 3.415 | 2.819 / 2.757 | 2.781 / 2.787 | 2.843 / 2.789 | 5.990 / 5.893 | 0.799 / 0.816 | 0.464 / 0.473 |
+| minimal 100000 | 4.947 / 4.888 | 4.900 / 4.887 | 4.910 / 4.870 | 4.900 / 4.875 | 6.018 / 5.997 | 0.993 / 0.996 | 0.816 / 0.812 |
+| memset 100000 | 4.525 / 4.306 | 3.541 / 3.502 | 3.584 / 3.592 | 2.783 / 2.740 | 3.945 / 3.941 | 0.792 / 0.834 | 0.909 / 0.912 |
+| pinky 1 | 85.493 / 85.426 | 72.487 / 72.216 | 73.109 / 72.254 | 73.510 / 75.124 | 94.645 / 94.325 | 0.855 / 0.846 | 0.772 / 0.766 |
+| sieve 10000000 | 337.427 / 340.417 | 275.830 / 279.839 | 279.158 / 281.504 | 292.375 / 293.920 | 368.643 / 369.216 | 0.827 / 0.827 | 0.757 / 0.762 |
+| init 0 | 324.509 / 320.159 | 219.960 / 220.596 | 213.172 / 210.482 | 213.367 / 209.916 | 675.063 / 677.171 | 0.657 / 0.657 | 0.316 / 0.311 |
+| tick 0 | 39.814 / 39.739 | 37.499 / 37.114 | 37.294 / 36.933 | 33.657 / 33.380 | 44.307 / 44.358 | 0.937 / 0.929 | 0.842 / 0.833 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.888 (2.815–2.917) | 2.905 (2.892–2.919) | 1.006 | 1.005, 1.009, 1.016, 1.005, 1.003 |
+| minimal 100000 | 5.045 (5.010–5.084) | 5.055 (4.893–5.074) | 1.002 | 1.001, 1.001, 0.991, 0.980, 1.003 |
+| memset 100000 | 3.440 (3.396–3.618) | 3.448 (3.402–3.607) | 1.002 | 1.002, 0.998, 1.010, 1.001, 0.992 |
+| pinky 1 | 71.700 (71.442–72.582) | 71.703 (71.474–72.112) | 1.000 | 1.003, 0.998, 1.000, 0.995, 0.999 |
+| sieve 10000000 | 270.913 (270.522–273.101) | 270.553 (270.403–272.534) | 0.999 | 1.000, 0.997, 0.999, 0.996, 0.999 |
+| init 0 | 215.092 (214.324–216.258) | 210.311 (209.330–211.255) | 0.978 | 0.977, 0.980, 0.974, 0.978, 0.976 |
+| tick 0 | 37.109 (37.005–37.365) | 36.974 (36.734–37.482) | 0.996 | 1.002, 0.996, 0.992, 0.990, 1.001 |
+
+Retain this isolated change: repeated public initialization improves2.2%,215.092→210.311ms.
+All five balanced blocks improve2.0–2.6%, with non-overlapping process ranges. Short sieve's
+median rises0.6% with overlapping ranges; other medians differ by at most0.4% and overlap.
+The initial fill/long-sieve movements do not persist in repeated qualification. Native call/work
+counts are identical. Initialization code grows83,036→83,044bytes: per-entry setup/publication
+replaces repeated counter memory accesses. This is a measured local result, not a hardware
+counter or microarchitectural-cause claim.
+
+The host assembler independently confirms every new instruction encoding. Compile-only macOS
+and Linux target controls confirm V16..V19 are caller-saved; the D8 positive control requires
+stack preservation. A real executable-storage witness checks64pairs of literal integer values,
+including2^53−1/2^53/2^53+1, the top bit, carries and unsigned wrap; all borrowed register/context
+bytes outside its declared result remain unchanged. The strict terminal memory marker includes
+`integer64`, so the shared qualifier requires completion of these new cases.
+
+All nine shared native gates pass. Kernel42/546/63/6/3 and application70/910/115/16/8 cohorts
+independently reparse with706/710sealed identities, exact accepted-parent source hashes and
+fresh equal-image controls. Repeated140processes/1,820calls independently reparse with stable
+native work in all14workload/role groups. Measured tracked sources match this runtime commit:
+684kernel and667application files. Previous region/price/orientation/capacity witnesses pass.
+
+Constructor, cold, reused public call and retained-core reset/publication remain separate;
+reference DOOM restoration/teardown is separate from raw call CPU. Linux ARM64 qualification
+passes at this exact staged runtime: nine shared gates, four public builds,14processes/182calls,
+32refusal controls and the new64integer cases. Independent verification checks2,863staged seals,
+2,846tracked source files bound to this commit, official compiler bytes, images and copied logs.
+Container architecture/network isolation and successful exit verify; clocks remain diagnostic only.
+Raw evidence, assembler/ABI controls and preserving
+receipts live under `build/pvm-arm64-jit/resident-counters/` and sealed kernel/application folders.
