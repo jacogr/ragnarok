@@ -65,7 +65,7 @@ class NimonyCISafeguards(unittest.TestCase):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
         self.assertEqual(text.count('needs:'), 8)
-        self.assertIn('needs: unit', text)
+        self.assertIn('needs: [unit, pvm-experimental]', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
         self.assertNotIn('nimony-trial', text)
@@ -249,15 +249,40 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(selected_families(text, 'unit', event_context(event='pull_request')), [])
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Unit', gate)
-        self.assertIn('needs: unit', gate)
+        self.assertIn('needs: [unit, pvm-experimental]', gate)
         self.assertIn('if: ${{ always() && (', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:
-            # Exercise the actual aggregate command so a skipped/failed matrix cannot become green.
-            with self.subTest(result=result):
-                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(status == 0, result == 'success')
+            for experimental in ['success', 'failure', 'cancelled', 'skipped']:
+                # Either matrix refusing completion must keep the actual aggregate command red.
+                with self.subTest(result=result, experimental=experimental):
+                    status = subprocess.run(['bash', '-c', command], env={
+                        'SHARDS_RESULT': result, 'EXPERIMENTAL_RESULT': experimental}).returncode
+                    self.assertEqual(status == 0, result == experimental == 'success')
+
+    def test_experimental_interpreter_request_scope(self):
+        """Both isolated native profiles share ordinary unit requests and retain failure diagnostics."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = job_section(text, 'pvm-experimental')
+        self.assertIn('profile: [native, asan]', section)
+        self.assertIn('runs-on: ubuntu-latest', section)
+        self.assertIn("matrix.profile == 'asan' && '--asan' || ''", section)
+        self.assertIn('run: make check-pvm-experimental', section)
+        self.assertIn('if: always()', section)
+        self.assertIn('build/pvm-interpreter-experiment/results-*.json', section)
+        self.assertIn('build/pvm-interpreter-experiment/*.log', section)
+        for context, wanted in (
+                (event_context(), True),
+                (event_context('workflow_dispatch', suite='unit'), True),
+                (event_context('workflow_dispatch', suite='full'), True),
+                (event_context('pull_request', 'labeled', 'ci:unit'), True),
+                (event_context('pull_request', 'labeled', 'ci:full'), True),
+                (event_context('pull_request', 'synchronize'), False),
+                (event_context('pull_request', 'labeled', 'ci:perf'), False),
+                (event_context('workflow_dispatch', suite='smoke'), False)):
+            # Ordinary updates remain lightweight; requested unit runs must include this engine.
+            self.assertEqual(bool(expression(job_condition(text, 'pvm-experimental'), context)), wanted)
 
     # Every contract partition is scheduled, and its stable aggregate rejects failure, cancellation and skip.
     def test_ci_contract_partition_gate(self):

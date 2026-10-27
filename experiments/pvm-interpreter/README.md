@@ -3,7 +3,7 @@
 This branch preserves the latest locally qualified handler-stream interpreter and its supporting
 memory publication implementation. Future findings can be committed here before deciding which
 changes belong in the production engine. It is a learning experiment with no default-engine or
-public application API change. No PR or CI job is part of this checkpoint.
+public application API change. Linux CI now qualifies this overlay; the application backend remains unchanged.
 
 The execution organization was initially informed by the pinned PolkaVM interpreter. Complete
 instruction semantics, unsigned gas, source-attempt budgets, exact exit PCs, checked memory,
@@ -32,7 +32,9 @@ The manual checks cover all 139 opcodes, aliases, high unsigned gas, source budg
 state, fragmented checked regions, memory pairs, host reentry/repair, immutable publication epochs,
 dirty bitmap boundaries, entry accounting and ARC lifetime. Assertions execute natively; source
 hashes, compiler commands and complete logs stay under the dedicated ignored build directory.
-These checks are opt-in and have no automatic CI wiring.
+CI runs every witness in separate Linux native and AddressSanitizer jobs on master pushes,
+`ci:unit` / `ci:full` requests and manual unit/full runs. Both jobs gate the aggregate Unit
+result and retain source hashes and diagnostic logs. Benchmarks remain explicit local runs.
 
 Benchmark drivers are built only with `--benchmarks` and never run implicitly. They consume the
 same explicit frozen input/reference files as the existing local comparisons. Kernel/lifecycle
@@ -67,7 +69,8 @@ variants passed with the pinned compiler, ARC, Clang ThinLTO and runtime checks 
 published benchmark drivers compile. These are fresh builds from the materialized tracked overlay;
 they do not establish new performance figures. Source hashes remain unchanged through the final
 sanitizer/build run. Repository inventory, Python syntax, pinned formatting for all 14 experimental
-Nim files and `git diff --check` passed. Full Linux CI and application integration are not claimed.
+Nim files and `git diff --check` passed. That checkpoint has no Linux qualification claim; the new CI jobs provide fresh exact-head
+Linux evidence. Application integration remains separate work.
 
 ## Ongoing comparisons
 
@@ -97,3 +100,17 @@ All ten native/sanitizer groups pass; the final paired cohort has 208 timed proc
 negative controls. [Follow-up evidence](findings/resource-bounds.md) records the measured small
 runtime cost, cold confirmation and both process orders. The memory/register composition trial
 was rejected. Production backend wiring and deployment policy are still separate work.
+
+## CI qualification
+
+The PR reconciles the overlay with master `c75794e9` without changing production PVM files.
+Fresh local qualification after that reconciliation passed all ten native and ten AddressSanitizer
+witness groups, eight harness contracts and 47 CI safeguards. The new Linux jobs run through the
+same Make entry point with ARC, Clang ThinLTO and runtime checks enabled; their actual remote
+verdict remains pending until the exact PR head completes. Every requested Unit gate now requires
+both profiles, including on failure, cancellation or skip.
+
+This PR publishes the experimental engine and accumulated measurements for review. It does not
+select the engine through the application backend, establish current-master performance ratios,
+or make local timing drivers portable CI benchmarks. Deployment budgets, backend ownership and
+application integration remain the gates described in [resource admission](RESOURCES.md).
