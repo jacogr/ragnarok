@@ -304,6 +304,42 @@ when defined(pvmArm64Jit):
   echo "ARM_HIGH_CASES,", highCases
   echo "ARM_COMPARE_CASES,", compareCases
 
+  var moveCases = 0
+  for opcode in [218'u8, 219]:
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 1) == 0
+    for alias in [[0, 1, 2], [0, 1, 0], [0, 1, 1], [0, 0, 2], [0, 0, 0], [12, 11, 12]]:
+      for value in [0'u64, 1, 0xffffffff'u64, 0x8000000000000000'u64, high(uint64)]:
+        for condition in [0'u64, 1, 0x100000000'u64, high(uint64)]:
+          for previous in [0'u64, 17, 0x8000000000000000'u64, high(uint64)]:
+            # Decode genuine coordinates; independent expected values use the actual original alias state.
+            let source = owner([@[opcode, byte(alias[0]+alias[1]*16), byte(alias[2])], @[0'u8]])
+            let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+            var native = default(ArmBlock)
+            emitArmOperation(native, opcode, slots, 0)
+            var words = armInstructions(native)
+            let published = publishArmEntry(jit, 0, 1, 1, words)
+            when defined(pvmArm64JitRefuse):
+              assert not published
+            else:
+              assert published
+              var registers = default(RegisterFile)
+              for slot in 0..<13: registers[slot] = RegisterValue(0xdead000000000000'u64+uint64(slot))
+              registers[slots.destinationIndex] = RegisterValue(previous)
+              registers[slots.aIndex] = RegisterValue(value)
+              registers[slots.bIndex] = RegisterValue(condition)
+              let original = registers
+              let selected = if opcode == 218: uint64(original[slots.bIndex]) == 0
+                else: uint64(original[slots.bIndex]) != 0
+              let expected = if selected: original[slots.aIndex] else: original[
+                  slots.destinationIndex]
+              assert callArmEntry(jit, 0, registers) == 1
+              for slot in 0..<13:
+                let wanted = if slot == int(slots.destinationIndex): expected else: original[slot]
+                assert registers[slot] == wanted, "conditional move preserves aliases, old destination and untouched registers"
+            inc moveCases
+  echo "ARM_CMOV_CASES,", moveCases
+
   var nativeCases = 0
   for opcode in 0..255:
     if not supportedArmOpcode(byte(opcode)): continue
@@ -755,8 +791,8 @@ echo "ARM_HEAD_HOST_MAP,1"
 var registerBoundaryCases = 0
 for pattern in [0'u8, 17, 128, 255]:
   var parts: seq[seq[byte]] = @[]
-  for opcode in [136'u8, 137, 142, 143, 213, 214, 215, 216, 217]:
-    # Interleave all new comparisons/products so resident results feed later aliases before a partial-prefix exit.
+  for opcode in [136'u8, 137, 142, 143, 213, 214, 215, 216, 217, 218, 219]:
+    # Interleave comparisons/products/moves so resident and preserved destinations feed later aliases before partial exits.
     var part = @[opcode]
     for position in 0..<24: part.add(pattern)
     parts.add(part)
@@ -770,7 +806,7 @@ for pattern in [0'u8, 17, 128, 255]:
   verifyControl(frame, program, input, 100)
   for paid in [false, true]:
     for gas in [0'u64, 1, 8, 9, 10, 1000]:
-      for budget in 0'u64..11'u64:
+      for budget in 0'u64..13'u64:
         # Every attempt boundary and exact whole-block price retains the independent single-step CPU/PC/gas result.
         var bounded = input
         bounded.gas = MachineGas(gas)

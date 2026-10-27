@@ -49,7 +49,7 @@ proc newArmJit*(): ArmJit =
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
   opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
-      190..192, 197..202, 207..217, 222..226}
+      190..192, 197..202, 207..219, 222..226}
 
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
@@ -107,6 +107,15 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     let original = left
     left = right
     right = original
+  if opcode in [218'u8, 219]:
+    # The false arm reads the original destination even when it aliases A/B; mark that live-in before its write.
+    let previous = armRead(fragment, slots.destinationIndex)
+    let destination = armWrite(fragment, slots.destinationIndex)
+    fragment.words.add(0xf100001f'u32 or (right shl 5)) # CMP Xcondition,#0.
+    let condition = if opcode == 218: 0'u32 else: 1'u32 # EQ / NE.
+    fragment.words.add(0x9a800000'u32 or (previous shl 16) or (condition shl 12) or
+        (left shl 5) or destination) # CSEL Xd,Xvalue,Xprevious,cond.
+    return
   let destination = armWrite(fragment, slots.destinationIndex)
   if opcode in {136'u8, 137, 142, 143, 216, 217}:
     # CMP consumes both original operands before CSET zero-extends a literal Boolean into an aliased destination.
