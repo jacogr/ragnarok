@@ -1437,20 +1437,21 @@ when defined(pvmArm64Jit):
     if jit == nil: return offset
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
     if entry != 0: return offset
-    var words: seq[uint32] = @[]
+    var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32
-    while int(ending) < f.handlers.len and count < 32:
+    while int(ending) < f.handlers.len and count < 64:
       # Headers share their source site with the immediately following operation; never bypass charging.
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      emitArmOperation(words, fact.opcode, fact.args.slots, fact.args.x)
+      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
       inc ending
       inc count
-    if count < 2:
+    if count < 4:
       refuseArmEntry(jit, offset)
       return offset
+    var words = armInstructions(native)
     let published = publishArmEntry(jit, offset, ending, count, words)
     if not published: return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)

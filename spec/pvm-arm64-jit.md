@@ -135,3 +135,99 @@ preserving commit; documentation-only updates do not change those source identit
   binding, resource bounds and retirement witnesses; never retain mutable invocation state.
 - Add native memory-access lowering, additional platforms and distribution/entitlement policy only
   as separate reviewed increments. No current merge recommendation or default switch.
+
+## Resident register fragments, paired with the initial draft
+
+The next bounded increment expands native arithmetic from six to 44 opcodes, with fragments of
+4–64 operations. A leaf keeps the thirteen guest registers in volatile X4–X16; X0 remains the
+borrowed register-file base and X1 is immediate scratch. A read-before-write mask loads only
+original values the fragment needs, and a dirty mask publishes only modified slots. No SP, LR,
+callee-saved register, guest-memory pointer, host callback or frame field enters generated code.
+All source coordinates still come from sealed decoder facts. Word arithmetic explicitly sign
+extends the low 32-bit result; shifts/rotations retain the GP masked count, including aliases.
+Division/remainder and unsupported operations stay interpreted.
+
+Whole-block pricing, exact source reservations/partial barriers, checked memory, host exits,
+source snapshots and publication remain unchanged. The OS arena and admission ceilings remain
+unchanged. At most 64 operations emit at most six body words each plus thirteen input loads,
+thirteen result stores and RET: 411 words, below the existing 1,024-word publisher ceiling.
+Source-bound stream transfer still restores original handlers and retires all native ownership.
+
+Native register evaluation passes 1,760 cases over all 44 opcodes, saturated/aliased coordinates
+and ten boundary-value seeds, independently checked against the non-code-generating register
+evaluator. The matrix caught an incorrect initial assignment of 32-bit multiplication to opcode
+196; the corrected opcode is 192 and signed remainder remains interpreted. The full cohort was
+rerun after correction. Another 1,536 quota/gas/reuse cases include boundaries around 64 operations,
+with 13,824 native mutations; forced executable-storage refusal passes the same matrices with
+zero native execution. Stream retirement now explicitly proves four operations executed natively
+before transfer; a separate two-operation positive execution proves deliberate short-run fallback.
+Full existing opcode/ARC1000 and fragmented-memory/host tests, 1,000 OS storage lifecycles, five
+parser checks, formatting and all 453 production modules plus the peer pass.
+
+The initial two-operation admission policy for resident fragments had a separately paired
+2.5–3.1% minimal slowdown against the initial draft. A four-operation floor was then measured in
+a fresh complete cohort. The two cohorts are retained separately, without dividing times across
+runs. The final same-runner table below compares the exact initial draft
+`3b8b2e36a60537c57d61a9eec6188c765d0cf92f`, current resident fragments and the plain interpreter.
+All three use canonical source/output paths, fresh private compiler caches and one M1 Max host,
+with unchanged pinned October 26 Nimony/ARC/checked-release/Clang ThinLTO.
+
+The final cohort verifies all 42 timed processes / 546 complete-state calls, 63 positive/refusal
+controls, six fresh builds / three equal-image pairs, 703 sealed input/helper/compiler/image
+identities and 1,434 exact captured source/header/driver hashes. Baseline sources are checked
+against the immutable commit; current measured sources are checked against the preserving commit.
+Every sample has equal source-attempt and stream-node observations across all three modes.
+No hardware counters were collected, and no PolkaVM timing was collected in this cohort.
+
+CPU ms, forward / reverse. Retained frames; cold includes compilation and publication.
+
+| Case | Interpreter reused | Previous JIT | Current JIT | Current / previous | Current / interpreter | JIT cold | Compilation | Native operations / 13 calls |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sieve 1000 | 0.038 / 0.040 | 0.041 / 0.042 | 0.041 / 0.041 | 0.988 / 0.964 | 1.066 / 1.012 | 0.912 / 0.907 | 0.204 / 0.198 | 6019 / 6019 |
+| sieve 100000 | 3.247 / 3.277 | 3.447 / 3.465 | 3.239 / 3.272 | 0.940 / 0.944 | 0.998 / 0.998 | 8.018 / 8.219 | 0.676 / 0.705 | 48724 / 48724 |
+| minimal 1000 | 0.049 / 0.049 | 0.050 / 0.051 | 0.050 / 0.049 | 1.010 / 0.970 | 1.020 / 1.000 | 0.090 / 0.082 | 0.006 / 0.004 | 0 / 0 |
+| minimal 100000 | 4.990 / 4.930 | 4.946 / 4.913 | 4.904 / 4.930 | 0.991 / 1.003 | 0.983 / 1.000 | 5.001 / 5.034 | 0.006 / 0.005 | 0 / 0 |
+| memset 1000 | 0.045 / 0.043 | 0.046 / 0.046 | 0.045 / 0.044 | 0.968 / 0.957 | 1.000 / 1.023 | 0.280 / 0.285 | 0.069 / 0.078 | 442 / 442 |
+| memset 100000 | 3.747 / 3.704 | 3.854 / 3.873 | 3.676 / 3.689 | 0.954 / 0.952 | 0.981 / 0.996 | 3.876 / 3.998 | 0.069 / 0.075 | 494 / 494 |
+| pinky 1 | 85.870 / 85.945 | 87.316 / 87.519 | 79.990 / 80.359 | 0.916 / 0.918 | 0.932 / 0.935 | 83.844 / 85.340 | 0.638 / 0.768 | 95633044 / 95633044 |
+
+### Cold and constructor scopes for the resident-register cohort
+
+CPU milliseconds, forward / reverse. Constructors, reset and immutable publication remain outside
+the retained-frame call. Cold calls include all lazy stream and compiler work; compilation is the
+complete extra compiler phase, including cache construction, declined runs and OS publication.
+
+| Case | Current plan / frame constructors | Interpreter cold call | Previous JIT cold call | Current JIT cold call | Current cold reset + call + publication |
+|---|---:|---:|---:|---:|---:|
+| sieve 1000 | 1.549 / 0.153 ; 1.555 / 0.151 | 0.626 ; 0.623 | 0.837 ; 0.823 | 0.912 ; 0.907 | 0.970 ; 0.964 |
+| sieve 100000 | 1.516 / 0.161 ; 1.548 / 0.160 | 7.266 ; 7.117 | 8.134 ; 8.007 | 8.018 ; 8.219 | 8.079 ; 8.280 |
+| minimal 1000 | 0.010 / 0.021 ; 0.012 / 0.023 | 0.075 ; 0.075 | 0.085 ; 0.086 | 0.090 ; 0.082 | 0.098 ; 0.087 |
+| minimal 100000 | 0.010 / 0.018 ; 0.011 / 0.019 | 4.963 ; 4.968 | 4.926 ; 4.961 | 5.001 ; 5.034 | 5.008 ; 5.039 |
+| memset 1000 | 0.051 / 1.221 ; 0.049 / 1.194 | 0.163 ; 0.164 | 0.264 ; 0.277 | 0.280 ; 0.285 | 0.508 ; 0.570 |
+| memset 100000 | 0.049 / 1.121 ; 0.048 / 1.161 | 3.881 ; 3.849 | 4.088 ; 4.132 | 3.876 ; 3.998 | 4.119 ; 4.368 |
+| pinky 1 | 0.478 / 0.203 ; 0.474 / 0.179 | 88.670 ; 87.522 | 90.604 ; 89.724 | 83.844 ; 85.340 | 84.016 ; 85.530 |
+
+**Keep this increment in the draft.** Final Pinky reused CPU improves 8.2–8.4% against the initial
+JIT and 6.5–6.8% against the interpreter in both process orders. Sieve regains interpreter parity;
+minimal is effectively unchanged; large memory fill has no material interpreter regression and
+improves 4.6–4.8% against the initial JIT. Small-input differences of about 1–3 microseconds remain
+visible rather than being called wins. No overall public-API or application-speed claim follows
+from these retained-frame results.
+
+For Pinky, the previous JIT makes 10,260,848 native entries for 22,807,447 guest mutations across
+thirteen calls; current resident fragments make 17,181,853 entries for 95,633,044 mutations.
+These are guest coverage/transition observations, not host instruction counts. The data supports
+longer resident work per entry as a useful direction; it does not isolate hardware causes or
+attribute the total timing delta to one instruction change.
+
+Final receipts replace `build/tests/pvm-arm64-jit/results.json`, `summary.md` and
+`independent-verification.json`; initial-draft and two-operation resident cohorts remain under
+`build/pvm-arm64-jit/first-prototype` and `resident-minimum-two`. The command now marks outputs
+incomplete before work so a failed new invocation cannot leave a stale successful verdict.
+Master CI run 40487163010 completed successfully for the merged interpreter; this draft remains
+local-only native evidence and has no new JIT CI job or default activation.
+
+The next bounded target is checked native block entry/branch continuation, with explicit source
+budget, gas, target and exact-exit witnesses. Guest memory and host boundaries remain on the
+current checked paths until separately qualified. Prepared-owner code retention, DOOM/public API
+integration, more native opcodes and other CPU/OS targets remain outstanding.

@@ -3,7 +3,9 @@
 ## Local JIT alias/overflow and reservation witness against the engine's bounded single-step adapter.
 import std/[assertions, syncio]
 import ../../src/codec/natural
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine, gas, step, registers]
+when defined(pvmArm64Jit):
+  import ../../src/pvm/internal/arm64_jit
 import ../../src/pvm/internal/handler_stream
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
@@ -44,11 +46,49 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
   decoded.value
 
 
+when defined(pvmArm64Jit):
+  var nativeCases = 0
+  for opcode in 0..255:
+    if not supportedArmOpcode(byte(opcode)): continue
+    for pattern in [0'u8, 17, 128, 255]:
+      var part = @[byte(opcode)]
+      for position in 0..<24: part.add(pattern)
+      let source = owner([part, part, part, part, @[0'u8]])
+      let prepared = newFlatPlan(source, GasCycleLimit(100000))
+      for seed in [0'u64, 31, 32, 63, 64, 127, 0x80000000'u64, 0xffffffff'u64,
+          0x8000000000000000'u64, high(uint64)]:
+        # The independent register evaluator has no code-generation path or resident-register analysis.
+        var original = default(RegisterFile)
+        for slot in 0..<13: original[slot] = RegisterValue(seed xor uint64(slot))
+        let first = evaluateRegisters(source, CodeAddress(0), original)
+        assert first.error == RegisterError.None
+        let second = evaluateRegisters(source, CodeAddress(25), first.value)
+        assert second.error == RegisterError.None
+        let third = evaluateRegisters(source, CodeAddress(50), second.value)
+        assert third.error == RegisterError.None
+        let fourth = evaluateRegisters(source, CodeAddress(75), third.value)
+        assert fourth.error == RegisterError.None
+        let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: original)
+        var frame = newFlatFrame(prepared, [], info)
+        runFlat(frame, 100)
+        assert frame.reason == StepError.None and frame.exit == StepExit.Panic
+        for slot in 0..<13:
+          if frame.info.registers[slot] != fourth.value[slot]:
+            echo "NATIVE_MISMATCH,", opcode, ",", pattern, ",", seed, ",", slot
+            assert false, "native register lowering differs from evaluator"
+        let coverage = flatArmStatistics(frame)
+        when defined(pvmArm64JitRefuse):
+          assert coverage[2] == 0
+        else:
+          assert coverage[2] == 4
+        inc nativeCases
+  echo "ARM_REGISTER_CASES,", nativeCases
+
 var nativeOperations = 0'u64
 var cases = 0
 for pattern in [0'u8, 17, 128, 255]:
   var parts: seq[seq[byte]] = @[]
-  for index in 0..<36:
+  for index in 0..<72:
     # Mixed destinations include full aliases and saturated IDs; large padding admits exact decoder-selected immediates.
     let opcodes = [132'u8, 133, 134, 149, 200, 201]
     var part = @[opcodes[index mod 6]]
@@ -67,7 +107,7 @@ for pattern in [0'u8, 17, 128, 255]:
             blockCharged: paid)
         let source = captureMachine(program, empty, initial).value
         var frame = newFlatFrame(plan, [], initial)
-        for budget in [0'u64, 1, 2, 7, 35, 36, 37, 38, 100]:
+        for budget in [0'u64, 1, 2, 7, 35, 36, 37, 38, 63, 64, 65, 71, 72, 73, 74, 100]:
           # Reuse compiled fragments around partial barriers and zero/low gas, without retaining mutable registers.
           var current = source
           var expectedExit = StepExit.Continued
@@ -107,11 +147,17 @@ else:
   echo "INTERPRETER_WITNESS,", cases
 
 # Stream transfer drops native entries before changing emission history; the restored checked stream remains reusable.
-let transferProgram = owner([@[200'u8, 0, 0], @[201'u8, 0, 0], @[0'u8]])
+let transferProgram = owner([@[200'u8, 0, 0], @[201'u8, 0, 0], @[200'u8, 0, 0], @[201'u8, 0, 0], @[0'u8]])
 let transferPlan = newFlatPlan(transferProgram, GasCycleLimit(100000))
 let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
 var first = newFlatFrame(transferPlan, [], initial)
 runFlat(first, 100)
+when defined(pvmArm64Jit):
+  let live = flatArmStatistics(first)
+  when defined(pvmArm64JitRefuse):
+    assert live[0] == 0 and live[1] == 0
+  else:
+    assert live[0] == 1 and live[1] == 1 and live[2] == 4
 var stream = takeFlatStream(first)
 var second = newFlatFrame(transferPlan, [], initial)
 restoreFlatStream(second, stream)
@@ -130,3 +176,12 @@ when defined(pvmArm64Jit):
 let truncatedProgram = captureOwner([@[200'u8, 0, 0], @[201'u8, 0, 0]])
 echo "TRUNCATED_ADMISSION,", truncatedProgram.error
 assert truncatedProgram.error == ProgramError.InvalidProgram
+
+# Two-operation runs now deliberately remain interpreted; admission still preserves their exact values and exit.
+let shortProgram = owner([@[200'u8, 0, 0], @[201'u8, 0, 0], @[0'u8]])
+var shortFrame = newFlatFrame(newFlatPlan(shortProgram, GasCycleLimit(100000)), [], initial)
+runFlat(shortFrame, 100)
+assert shortFrame.reason == StepError.None and shortFrame.exit == StepExit.Panic
+when defined(pvmArm64Jit):
+  let short = flatArmStatistics(shortFrame)
+  assert short[0] == 0 and short[1] == 0

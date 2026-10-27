@@ -6,6 +6,10 @@
 This compares retained frames only. Public invocation ownership and DOOM host integration are
 separate future increments. Compilation/publication, including rejected-fragment scans and cache construction, remains inside the cold execution clock.
 """
+import argparse
+import io
+import tarfile
+import subprocess
 import json
 import os
 from pathlib import Path
@@ -40,10 +44,23 @@ def main():
     """Build serially before all timing, keep complete receipts and refuse incomplete cohorts."""
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
         raise SystemExit('This local experiment requires Darwin ARM64')
+    args = argparse.ArgumentParser(description=__doc__)
+    args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE', '3b8b2e36a60537c57d61a9eec6188c765d0cf92f'))
+    baseline = args.parse_args().baseline
+    if len(baseline)!=40 or any(x not in '0123456789abcdef' for x in baseline):
+        raise SystemExit('Baseline must be an exact lowercase commit SHA')
+    subprocess.run(['git','cat-file','-e',baseline+'^{commit}'],cwd=ROOT,check=True)
     BUILD.mkdir(parents=True,exist_ok=True)
     checks = NativeChecks(BUILD)
     compiler, _ = installed()
     report = dict(status='incomplete',platform=platform.platform(),toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),builds=[],controls=[],runs=[])
+    report['baseline'] = baseline
+    report['sources'] = {}
+    result_path = BUILD/'results.json'
+    # A failed new invocation must never leave a prior successful report masquerading as this run.
+    result_path.write_text(json.dumps(report,indent=2)+'\n')
+    summary_path = BUILD/'summary.md'
+    summary_path.write_text('Comparison incomplete; no current timing verdict.\n')
     report['qualification'] = []
     memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
         ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',BUILD/'memory-check'],'memory-build')
@@ -73,32 +90,55 @@ def main():
     for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c']:
         identities[path] = digest(path)
     images = {}
-    for mode in ('interpreter','jit'):
+    for mode in ('interpreter','baseline','jit'):
+        canonical = BUILD/'snapshot'
+        if canonical.exists(): shutil.rmtree(canonical)
+        canonical.mkdir()
+        if mode=='baseline':
+            # Read only the exact accepted runtime/header tree; never execute helpers from a revision being compared.
+            raw=subprocess.check_output(['git','archive',baseline,'src','native/pvm_jit'],cwd=ROOT)
+            with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+                for member in archive.getmembers():
+                    if not member.isfile(): continue
+                    target=canonical/member.name
+                    if not target.resolve().is_relative_to(canonical.resolve()): raise ValueError('Foreign archive path')
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    target.write_bytes(archive.extractfile(member).read())
+        else:
+            # Current uncommitted trial bytes are sealed below and later matched to their preserving commit.
+            shutil.copytree(ROOT/'src',canonical/'src')
+            shutil.copytree(ROOT/'native/pvm_jit',canonical/'native/pvm_jit')
+        driver=canonical/'benchmarks/kernel.nim'
+        driver.parent.mkdir()
+        driver.write_text(DRIVER.read_text().replace('../../src/','../src/'))
+        report['sources'][mode]={str(path.relative_to(canonical)):digest(path)
+            for path in sorted(canonical.rglob('*')) if path.is_file()}
         pair = []
         for repeat in range(2):
             # The same source/output coordinates and wholly private fresh cache control path-dependent images.
             cache = cache_directory(compiler,BUILD,'engine')
             if cache.exists(): shutil.rmtree(cache)
-            row,binary = checks.build(compiler,DRIVER,'engine',defines=['pvmArm64Jit'] if mode=='jit' else [],
-                cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(ROOT/'native/pvm_jit')])
+            row,binary = checks.build(compiler,driver,'engine',defines=['pvmArm64Jit'] if mode!='interpreter' else [],
+                cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
             report['builds'].append(dict(mode=mode,repeat=repeat,build={k:v for k,v in row.items() if k!='output'}))
             if row['exit_code']: raise RuntimeError(row['output'][-3000:])
             saved = BUILD/f'{mode}-{repeat}'
             shutil.copy2(binary,saved)
             pair.append(saved)
             identities[saved] = digest(saved)
+        if any(digest(canonical/path)!=h for path,h in report['sources'][mode].items()): raise ValueError('Canonical sources changed')
         if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
         images[mode] = pair[0]
     for order in range(2):
         for guest,limit,data,expected in fixtures['inputs']:
-            for mode in (('interpreter','jit') if order==0 else ('jit','interpreter')):
+            for mode in (('interpreter','baseline','jit') if order==0 else ('jit','baseline','interpreter')):
                 env = dict(os.environ,RAGNAROK_PVM_GUEST=guest,RAGNAROK_PVM_SIEVE_INPUT=str(data),
                     RAGNAROK_PVM_SIEVE_EXPECTED=str(expected),RAGNAROK_PVM_SIEVE_SAMPLES='13',RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
                 if order==0:
                     # Both unchanged positive execution and active assertion/state refusal controls precede timing.
                     positive = checks.command([images[mode]],f'{guest}-{limit}-{mode}-positive',environment=env)
                     if positive['exit_code']: raise RuntimeError(positive['output'][-2000:])
-                    parse(positive['output'],guest,mode=='jit')
+                    parse(positive['output'],guest,mode!='interpreter')
                     report['controls'].append(dict(case=guest,limit=limit,mode=mode,kind='positive',run=positive))
                     for kind in ('assertions','state'):
                         probe = dict(env)
@@ -115,26 +155,28 @@ def main():
                 unchanged(identities)
                 run=checks.command([images[mode]],f'{guest}-{limit}-{order}-{mode}',environment=env)
                 if run['exit_code']: raise RuntimeError(run['output'][-2000:])
-                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode=='jit')))
+                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode!='interpreter')))
                 unchanged(identities)
-    if len(report['runs'])!=28 or len(report['controls'])!=42: raise ValueError('Incomplete cohort')
+    if len(report['runs'])!=42 or len(report['controls'])!=63: raise ValueError('Incomplete cohort')
     if sum(r['parsed']['native']['operations'] for r in report['runs'] if r['mode']=='jit')==0:
         raise ValueError('No compiled execution observed')
     report['identities']={str(p.relative_to(ROOT)):h for p,h in identities.items()}
     report['status']='passed'
     (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     lines=['CPU ms, forward / reverse. Retained frames; cold includes compilation and publication.','',
-        '| Case | Interpreter reused | JIT reused | JIT / interpreter | JIT cold | Compilation | Native operations / 13 calls |',
-        '|---|---:|---:|---:|---:|---:|---:|']
+        '| Case | Interpreter reused | Previous JIT | Current JIT | Current / previous | Current / interpreter | JIT cold | Compilation | Native operations / 13 calls |',
+        '|---|---:|---:|---:|---:|---:|---:|---:|---:|']
     for guest,limit,_,_ in fixtures['inputs']:
-        columns=[[],[],[],[],[],[]]
+        columns=[[] for _ in range(8)]
         for order in range(2):
             selected=[r for r in report['runs'] if (r['case'],r['limit'],r['order'])==(guest,limit,order)]
             old=next(r['parsed'] for r in selected if r['mode']=='interpreter')
+            prior=next(r['parsed'] for r in selected if r['mode']=='baseline')
             new=next(r['parsed'] for r in selected if r['mode']=='jit')
             old_ns=statistics.median(s['cpu_ns'] for s in old['execution']['samples'][3:])
             new_ns=statistics.median(s['cpu_ns'] for s in new['execution']['samples'][3:])
-            values=[f'{old_ns/1e6:.3f}',f'{new_ns/1e6:.3f}',f'{new_ns/old_ns:.3f}',
+            prior_ns=statistics.median(s['cpu_ns'] for s in prior['execution']['samples'][3:])
+            values=[f'{old_ns/1e6:.3f}',f'{prior_ns/1e6:.3f}',f'{new_ns/1e6:.3f}',f'{new_ns/prior_ns:.3f}',f'{new_ns/old_ns:.3f}',
                 f"{new['execution']['samples'][0]['cpu_ns']/1e6:.3f}",f"{new['native']['compilation_ns']/1e6:.3f}",str(new['native']['operations'])]
             for column,value in zip(columns,values): column.append(value)
         lines.append('| '+guest+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
