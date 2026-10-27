@@ -1737,3 +1737,37 @@ Repeated public CPU ms: ten independent processes per role, five balanced ABBA b
 Verdict:reject and restore the five isolated runtime/control/helper files byte-for-byte from the accepted parent. Public sieve/Pinky are effectively flat; fill's1.9% median improvement is inconsistent across balanced blocks and overlaps substantially; gameplay improves0.7% with overlapping ranges. Retained-core sieve regresses3.2% in both orders. This does not justify expanding the private entry/lifetime machinery. Counts alone do not identify a CPU cause. All seven workload groups have identical native operation/call/length counts across both versions.
 
 Mac correctness:all nine native gates,1,000 executable-storage lifetimes and new owner/base/alignment/append/full-arena controls passed. Kernel42processes/546calls/63controls/6fresh builds/3equal-image pairs; public70/910/115/16/8; another140balanced public processes/1,820calls. Independent706/710sealed identities, raw logs, exact parent sources and preserving-commit proofs684/667tracked files passed. No Linux run was requested for this rejected implementation; the retained parent already has Linux qualification. Ignored evidence:`build/pvm-arm64-jit/sealed-entry-capabilities/`.
+
+## Complete native block accounting
+
+Measured runtime `efece20b92d915915211a710aeb672041510f5f9` against accepted parent `087c018850d5d58ac9ce481af71f295b5d4d1593`. Only an already sealed complete pure arithmetic/conditional suffix receives the private whole-block entry. Full unpaid calls debit the same gas/span and retain the exact reservation endpoint, without the transient paid=true/paid=false pair. Partial budgets, already-paid resumes, insufficient gas and active barriers call the original entry. Native code cannot observe the omitted flag writes because it has no host, memory fault or genuine exit inside this complete suffix. The shared static call helper retains the old result/error/bounds checks. No pricing/cache/ISA/ownership/default/CI change.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.668 (2.638–2.711) | 2.596 (2.543–2.655) | 0.973 | 0.968, 0.962, 0.995, 0.968, 0.958 |
+| minimal 100000 | 4.953 (4.931–4.975) | 4.973 (4.924–5.011) | 1.004 | 1.008, 0.995, 1.005, 1.005, 1.006 |
+| memset 100000 | 3.409 (3.380–3.512) | 3.414 (3.380–3.453) | 1.002 | 1.001, 0.992, 0.999, 0.999, 1.000 |
+| pinky 1 | 71.616 (71.320–72.479) | 71.209 (70.794–71.856) | 0.994 | 0.991, 0.994, 0.995, 0.993, 0.991 |
+| sieve 10000000 | 257.567 (256.666–266.854) | 247.757 (247.131–257.899) | 0.962 | 0.969, 0.962, 0.964, 0.948, 0.962 |
+| init 0 | 210.221 (209.536–215.244) | 209.856 (209.164–213.938) | 0.998 | 0.997, 0.992, 0.996, 0.998, 1.000 |
+| tick 0 | 36.826 (36.627–37.142) | 37.420 (37.336–37.636) | 1.016 | 1.015, 1.019, 1.014, 1.025, 1.014 |
+
+Retain the measured tradeoff:short sieve2.7% and long sieve3.8% faster, all five balanced block medians favoring each. Short-sieve process ranges overlap; long-sieve ranges overlap slightly at their tails but every balanced block favors the trial. Pinky0.6% faster with overlap. Gameplay is consistently1.6% slower, with non-overlapping process ranges; this is a real small cost, not a no-regression claim. Minimal/fill/init differ by at most0.4% with overlapping ranges. Native operations/calls/branches/headers/lengths are identical in all seven groups across versions. Counts do not establish the CPU cause of either change.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.416 / 3.414 | 2.628 / 2.755 | 2.603 / 2.635 | 2.421 / 2.429 | 5.896 / 5.918 | 0.762 / 0.772 | 0.441 / 0.445 |
+| minimal 100000 | 4.885 / 4.902 | 4.870 / 4.868 | 4.991 / 4.893 | 4.925 / 4.854 | 6.001 / 5.997 | 1.022 / 0.998 | 0.832 / 0.816 |
+| memset 100000 | 4.309 / 4.322 | 3.348 / 3.344 | 3.339 / 3.340 | 2.646 / 2.738 | 3.939 / 3.928 | 0.775 / 0.773 | 0.848 / 0.850 |
+| pinky 1 | 84.483 / 84.933 | 70.207 / 70.287 | 70.342 / 69.710 | 70.621 / 69.912 | 94.139 / 93.426 | 0.833 / 0.821 | 0.747 / 0.746 |
+| sieve 10000000 | 336.207 / 339.277 | 257.205 / 259.076 | 249.774 / 254.299 | 254.881 / 253.643 | 366.704 / 366.861 | 0.743 / 0.750 | 0.681 / 0.693 |
+| init 0 | 319.425 / 319.753 | 211.788 / 209.957 | 209.402 / 209.231 | 208.567 / 209.499 | 675.041 / 672.826 | 0.656 / 0.654 | 0.310 / 0.311 |
+| tick 0 | 40.222 / 39.632 | 36.794 / 36.643 | 37.246 / 37.411 | 34.046 / 33.969 | 44.212 / 44.111 | 0.926 / 0.944 | 0.842 / 0.848 |
+
+All9Mac native gates pass, including10,560 warm-cache paid/gas/source/pricing cases and full host/CPU/gas/page/permission/source checks. Kernel42processes/546calls/63controls/6freshbuilds/3equal-image pairs; public70/910/115/16/8; another140balanced processes/1,820calls. Independent706/710seals, exact parent sources, raw receipts and preserving runtime proofs684/667tracked files pass. An ignored source snapshot with a deliberate assertion immediately inside the admitted complete path fails at exactly ARM_WHOLE_PATH_REACHED under the same witness; this proves the path executes, while its clocks are discarded. Production has no trace/assertion hook.
+
+Linux ARM64 also passes9shared gates,4public builds,14processes/182calls/32refusal controls,2,863sealed identities and2,846tracked source files bound to measured runtime `efece20b92d915915211a710aeb672041510f5f9`. Official pinned compiler binary, image/architecture/network isolation and copied raw logs/states verify independently. Docker timings are diagnostic only. No hardware counters were collected. Evidence:`build/pvm-arm64-jit/whole-native-header/`, including the explicit gameplay tradeoff.
