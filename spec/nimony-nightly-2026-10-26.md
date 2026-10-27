@@ -54,7 +54,7 @@ heap table without that stack temporary. Old/new compiler controls both return s
 and verify default entries at both ends; the real disk-download scenario passes after this change.
 Retain the spill threshold, capacity, lookup/replacement rules and original cache ownership.
 
-## Remaining report drafts
+## Report outcomes
 
 Generic `SomeInteger` formatting and nullable refinement across successive var-pointee calls
 still fail on the actual archive. Each minimal reproducer fails 5/5 times from independent empty
@@ -63,7 +63,7 @@ workarounds compile and run. Refreshed [integer](nimony-reports-2026-10-27/integ
 and [callback](nimony-reports-2026-10-27/nullable-var-call.md) drafts include the final output,
 current pin/environment, private-path redactions and checks not performed. Preserve the concrete
 integer overloads, explicitly typed nonnull callback bindings and retained-ref index loops.
-The maintainer will submit the reports; no new issue or comment was posted from this task.
+The maintainer submitted both reports. Upstream [closed integer formatting as not a bug](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445): `SomeInteger` does not guarantee a `$` operator. The concrete overloads are a supported implementation choice, not an outstanding compiler defect. Nullable refinement is tracked separately as [#2809](https://github.com/nim-lang/nimony/issues/2809). No issue or comment was posted by the agent.
 
 ## Qualification
 
