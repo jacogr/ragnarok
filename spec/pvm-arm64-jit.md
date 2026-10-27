@@ -1694,3 +1694,26 @@ All2,863staged seals,2,846tracked files bound to this commit, official compiler 
 and copied logs independently verify. Docker architecture/network isolation and successful exit
 pass; its clocks remain diagnostic only. Raw receipts, lowering proof and distributions:`build/pvm-arm64-jit/entry-records/`
 and sealed current kernel/application folders. No defaults,CLI,CI or pins change.
+
+
+## Master maintenance reconciliation (October 27)
+
+Normal merge of master `1a768c26879c14965e4e37bf2ee9ce89bcbb1abd` is recorded at
+`37661556abc39532c7e977971ac0c8267cbb1b2d`. Exact Git object identities prove the complete
+runtime tree,native bridge,four benchmark drivers and toolchain file are unchanged from the
+qualified record layout. Top-level parser helper ASTs are identical; master changes affect CI,
+maintenance tooling and documentation. No dependency upgrade or JIT CI job is introduced.
+
+Full Python discovery ran1,552tests in1,459.618seconds:one failure,two skips. The failed release
+matrix safeguard already existed before reconciliation:it equated all available compiler archives
+with the two qualified CI binary-release hosts. The draft's same-version Linux ARM64 compiler
+pin is for local qualification and does not automatically add a qualified release runner. The fix
+retains exact Linux/macOS release-platform assertions and validates each selected platform's
+pinned OS/architecture; it permits additional available compiler platforms. No workflow expands.
+All50focused Nimony/CI safeguards pass after this fix. The full failed receipt remains retained;
+a new complete green discovery is not claimed here. Final qualification may rerun discovery after
+the remaining runtime experiment; unchanged tests need not be duplicated while iterating.
+
+Evidence:`build/pvm-arm64-jit/master-reconciliation/identity.json`,full failed Python logs/report
+and focused`nimony-ci.log`. Previously qualified runtime measurements remain tied to their
+preserved exact heads; forthcoming comparisons use the reconciled source/tooling cohort.
