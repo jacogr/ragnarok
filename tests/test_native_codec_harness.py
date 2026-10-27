@@ -41,7 +41,7 @@ class NativeCodecWorkers(unittest.TestCase):
                     """Require real overlap and record the worker's complete compiler profile."""
                     name = Path(command[-1]).stem
                     calls.append((name, command))
-                    if name in ('a', 'c'):
+                    if name in ('a', 'b'):
                         barrier.wait(timeout=5)
                     return SimpleNamespace(returncode=1 if name == failed else 0,
                                            stdout=name+'\n', stderr='')
@@ -58,7 +58,7 @@ class NativeCodecWorkers(unittest.TestCase):
                 self.assertFalse((previous/'worker-99.json').exists())
                 self.assertFalse((previous/'old.log').exists())
                 self.assertEqual([row['active'] for row in receipts],[None,None])
-                self.assertEqual([row['suite'] for receipt in receipts for row in receipt['completed']],list(names))
+                self.assertEqual(sorted(row['suite'] for receipt in receipts for row in receipt['completed']),list(names))
                 for receipt in receipts:
                     # The receipt records the actual child result; sibling success cannot hide its failure.
                     for row in receipt['completed']:
@@ -69,9 +69,9 @@ class NativeCodecWorkers(unittest.TestCase):
                 self.assertCountEqual([name for name, _ in calls], names)
                 caches = {name: next(arg for arg in command if arg.startswith('--cachedir:'))
                           for name, command in calls}
-                self.assertEqual(caches['a'], caches['b'])
-                self.assertEqual(caches['c'], caches['d'])
-                self.assertNotEqual(caches['a'], caches['c'])
+                self.assertEqual(caches['a'], caches['c'])
+                self.assertEqual(caches['b'], caches['d'])
+                self.assertNotEqual(caches['a'], caches['b'])
                 for _, command in calls:
                     self.assertIn('--jobs:1', command)
                     self.assertIn('--joined:off', command)

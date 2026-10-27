@@ -220,3 +220,12 @@ fixtures passes in 166.206 seconds under the original 180-second deadline. Compl
 worker is 40.66/165.92/126.47/127.07 seconds. These are local whole-build/test scheduling figures,
 not interpreter execution-speed measurements or a passing Linux receipt. The imbalance motivates
 redistribution across the existing four workers before the next exact-head Linux request.
+
+Codec mains are now assigned in strided source order across the same bounded serial workers.
+Each worker still owns one private compiler cache and executes its assigned mains serially;
+aggregate diagnostics are emitted in the original source order. Complete, unique result coverage
+is checked before publication. A fresh-cache full 87-main local run passes in 136.200 seconds,
+with worker totals 108.25/122.65/135.89/126.67 seconds, versus the 166.206-second contiguous run.
+This is a local scheduling observation, not an engine speed claim. Both runs retain the same
+sources, flags, independent fixtures and 180-second deadline. The 89 runner/CI safeguards pass;
+Linux must still qualify the redistributed batch.
