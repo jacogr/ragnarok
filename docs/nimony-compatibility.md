@@ -8,7 +8,7 @@ These observations came from the structured JSON refactor, CE 128 stream integra
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
 The October 21–23 nightly review and retained-workaround decisions are recorded in
 [the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
-The October 26 nightly `358b9bce4` fixes sequence slicing ([#2782](https://github.com/nim-lang/nimony/issues/2782), [#2789](https://github.com/nim-lang/nimony/pull/2789)). Generic-integer formatting and nullable mutable-callback refinement still fail; refreshed [integer](../spec/nimony-reports-2026-10-27/integer-generic.md) and [callback](../spec/nimony-reports-2026-10-27/nullable-var-call.md) drafts record five clean reproductions and successful alternatives. See the [October 26 upgrade audit](../spec/nimony-nightly-2026-10-26.md) for current qualification.
+The October 26 nightly `358b9bce4` fixes sequence slicing ([#2782](https://github.com/nim-lang/nimony/issues/2782), [#2789](https://github.com/nim-lang/nimony/pull/2789)). Generic-integer formatting ([#2808](https://github.com/nim-lang/nimony/issues/2808)) and nullable mutable-callback refinement ([#2809](https://github.com/nim-lang/nimony/issues/2809)) still fail on this pin; refreshed [integer](../spec/nimony-reports-2026-10-27/integer-generic.md) and [callback](../spec/nimony-reports-2026-10-27/nullable-var-call.md) drafts record five clean reproductions and successful alternatives. See the [October 26 upgrade audit](../spec/nimony-nightly-2026-10-26.md) for current qualification.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |

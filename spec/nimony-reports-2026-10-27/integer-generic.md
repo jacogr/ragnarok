@@ -1,5 +1,7 @@
 # SomeInteger-constrained formatting is rejected at the dollar call
 
+Filed by the maintainer as [nim-lang/nimony#2808](https://github.com/nim-lang/nimony/issues/2808) on October 27, 2026.
+
 ## Nim Version
 
 ```text
@@ -63,4 +65,4 @@ The October 23 draft records the earlier failure on `4724f66c2e01b17810c844f2657
 
 Related but different triggers: https://github.com/nim-lang/nimony/issues/1026 (SomeFloat equality), https://github.com/nim-lang/nimony/issues/1974 (phased when checking), and https://github.com/nim-lang/nimony/issues/1905 (generic default parameters).
 
-Private project and transient directory paths in Current Output are redacted as `/Users/<user>/Projects/<project>` and `/tmp/<reproducer>`; all other output is copied from the final observed run. This is a draft for maintainer submission; no issue was posted from this task. No root cause is asserted.
+Private project and transient directory paths in Current Output are redacted as `/Users/<user>/Projects/<project>` and `/tmp/<reproducer>`; all other output is copied from the final observed run. The maintainer submitted the issue linked above; no issue was posted by the agent. No root cause is asserted.
