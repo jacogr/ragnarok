@@ -1,0 +1,7 @@
+PASS plan admission reasons / code-facts-jumps-policy / result consumption
+PASS exact six-node suffix ceiling / folded noops / sticky local refusal
+PASS independent preparation span ceiling / full-cache reuse / reset and replacement preservation
+PASS zero attempts precede zero-node admission
+PASS jump preparation refusal stays separate from guest panic
+PASS page admission and refused replacement preserve complete frame
+PASS typed plan/frame limits / consumed results / exact suffix nodes / sticky refusal / jump policy / preparation spans / host retry

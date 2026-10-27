@@ -9,6 +9,7 @@
 ## programOf/memoryOf child access, copied state
 ## updates, writable-page range counting/mapping, atomic zero/remap/free ranges and terminal-state capture.
 
+import std/assertions
 import ./program
 
 type
@@ -279,6 +280,42 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
   MachineResult[PageImage](status: MachineError.None, completed: PageImage(index: index,
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
+proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
+  ## Laboratory copied delta: equal immutable page identity proves equal bytes, never mutable storage.
+  ## Different mappings/permissions refuse this fast path; callers can use complete copied images.
+  let left = before.data
+  let right = after.data
+  if left == nil or right == nil: return MachineResult[seq[PageImage]](
+      status: MachineError.InvalidOwner)
+  if left == right: return MachineResult[seq[PageImage]](status: MachineError.None, completed: @[])
+  if left.pages.len != right.pages.len:
+    return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
+  for i in 0..<left.pages.len:
+    # An identical immutable page owner already proves its index and access are unchanged.
+    if left.pages[i] == right.pages[i]: continue
+    # Still validate the complete mapping before allocating or returning any copied delta.
+    if left.pages[i].index != right.pages[i].index or left.pages[i].access != right.pages[i].access:
+      return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
+  var changed: seq[PageImage] = @[]
+  for i in 0..<left.pages.len:
+    # Immutable shared pages require neither byte extraction nor comparison.
+    if left.pages[i] != right.pages[i]: changed.add(imageFromPage(right.pages[i]))
+  MachineResult[seq[PageImage]](status: MachineError.None, completed: changed)
+
+func memoryPageCount*(memory: Memory): MachineResult[PageCount] =
+  ## Inspect a genuine owner's mapping size without copying page payloads, for local admission before host deltas.
+  let data = memory.data
+  if data == nil: return MachineResult[PageCount](status: MachineError.InvalidOwner)
+  MachineResult[PageCount](status: MachineError.None, completed: PageCount(uint32(data.pages.len)))
+
+proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
+  ## Copy every retained page for a genuine mapping/permission replacement; no private reference escapes.
+  let data = memory.data
+  if data == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
+  var images = newSeqOfCap[PageImage](data.pages.len)
+  for i in 0..<data.pages.len: images.add(imageFromPage(data.pages[i]))
+  MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
+
 proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   ## Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
   ## This is setup/remapping, not a guest write: it may change read-only/inaccessible page contents.
@@ -300,6 +337,44 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   # Insertion shifts the suffix; replacement leaves its positions unchanged.
   for i in at + int(replacing)..<data.pages.len:
     pages.add(data.pages[i])
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
+proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): MachineResult[Memory] =
+  ## Local experiment: atomically replace sorted existing pages without changing mapping, access or limit.
+  ## Validate the whole input before allocation; copy page bytes and publish one new immutable root.
+  let data = memory.data
+  if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  var cursor = 0
+  for i in 0..<replacements.len:
+    # Validate physical ordinals and strict order even when an earlier page would be absent.
+    if uint32(replacements[i].index) >= 0x100000'u32:
+      return MachineResult[Memory](status: MachineError.InvalidPage)
+    if i > 0 and uint32(replacements[i-1].index) >= uint32(replacements[i].index):
+      return MachineResult[Memory](status: MachineError.UnsortedPages)
+  for i in 0..<replacements.len:
+    # Monotone matching proves replacements cannot insert pages, alter access, or exceed the ceiling.
+    while cursor < data.pages.len and uint32(data.pages[cursor].index) < uint32(replacements[i].index):
+      inc cursor
+    if cursor >= data.pages.len:
+      return MachineResult[Memory](status: MachineError.InvalidRange)
+    if data.pages[cursor].index != replacements[i].index or data.pages[cursor].access !=
+        replacements[i].access:
+      return MachineResult[Memory](status: MachineError.InvalidRange)
+    inc cursor
+  if replacements.len == 0:
+    # An empty observation retains its original owner and exact local ceiling without allocation.
+    return MachineResult[Memory](status: MachineError.None, completed: memory)
+  var pages = newSeqOfCap[PageData](data.pages.len)
+  var replacement = 0
+  for i in 0..<data.pages.len:
+    # Both validated streams are sorted; untouched immutable chunks/pages are shared, never mutated.
+    if replacement < replacements.len and data.pages[i].index == replacements[replacement].index:
+      pages.add(pageFromImage(replacements[replacement]))
+      inc replacement
+    else:
+      pages.add(data.pages[i])
+  assert replacement == replacements.len
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 

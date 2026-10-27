@@ -19,6 +19,19 @@ def report(steps, ops, pairs):
     return '\n'.join([*lines, 'census,end'])+'\n'
 
 
+def legacy_source():
+    """Synthetic historical injection sites test fail-closed rewriting without retaining an old evaluator."""
+    return '\n'.join((
+        'import ./[program, machine, registers, gas, gas_plan, gas_memo]',
+        '  ExecutionCache = object\n    targets: array[256, DynamicTargetEntry]',
+        '  ExecutionCache(valid: false,',
+        'proc cachedSecondaryCharge(',
+        '  if not info.blockCharged:',
+        '      return published\n  StepResult(status: StepError.StepLimitExceeded)',
+        '    if applied.effect.kind != StepExit.Continued:\n      return publishInstruction(cursor.program, cursor.memory, cursor.info, applied.effect, true)',
+        '      if applied.effect.kind != StepExit.Continued:\n        return executionResult[Reason](publishInstruction(cursor.program, cursor.memory,'))
+
+
 class OpcodeCensusTests(unittest.TestCase):
     """Counts are diagnostic data, never a fallback performance or partial-state success."""
 
@@ -49,10 +62,13 @@ class OpcodeCensusTests(unittest.TestCase):
     def test_instrumentation_sites(self):
         """Missing/duplicated/previously injected sites fail before compilation; the production file stays byte-identical."""
         path = ROOT/'src/pvm/step.nim'
-        source = path.read_text()
+        original = path.read_text()
+        source = legacy_source()
+        with self.assertRaises(ValueError):
+            instrument_step(original) # Removed production evaluator must not receive invented counters.
         generated = instrument_step(source)
         self.assertIn('recordCensus(cache, item.opcode)', generated)
-        self.assertEqual(path.read_text(), source)
+        self.assertEqual(path.read_text(), original)
         for capacity in (4, 256, 1024):
             # Production cache tuning must neither remove diagnostic fields nor alter the tuned array.
             tuned = source.replace('array[256, DynamicTargetEntry]', f'array[{capacity}, DynamicTargetEntry]')

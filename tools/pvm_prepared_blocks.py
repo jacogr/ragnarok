@@ -38,7 +38,7 @@ def integers(fields):
 
 
 def parse_output(text, engine, limit, samples, guest, clocked):
-    """Only exact complete output can publish sample or cache observations; unknown/partial rows fail."""
+    """Only exact complete output can publish sample or node/work observations; unknown/partial rows fail."""
     rows, caches, preparation = [], [], []
     families = 0
     for line in text.splitlines():
@@ -56,10 +56,10 @@ def parse_output(text, engine, limit, samples, guest, clocked):
                 raise ValueError('invalid preparation metadata')
             preparation.append(fields)
         elif fields[0] == 'PREPARED_CACHE':
-            if engine != 'ragnarok_prepared' or len(fields) != 10:
+            if engine != 'ragnarok_prepared' or len(fields) != 6:
                 raise ValueError('foreign cache observation')
             values = integers(fields[1:])
-            if values[0] != len(caches) or min(values) < 0 or values[1] > 64*1024*1024 or values[4] < 1 or values[5] < 1:
+            if values[0] != len(caches) or min(values) < 0 or values[1] < 1 or values[1] > values[3] or values[2] > values[4]:
                 raise ValueError('invalid prepared cache observation')
             caches.append(values)
         elif fields[0] == 'SIEVE':
@@ -88,7 +88,7 @@ def summary(report):
         return 'Prepared execution: '+report['status']+'. '+report.get('error', '')+'\n'
     lines = ['| Guest | Size | Order | Existing dynamic CPU | Existing planned CPU | Prepared CPU | PolkaVM interpreted CPU | Prepared / reference |',
              '|---|---:|---:|---:|---:|---:|---:|---:|'] if report['timings'] else [
-             '| Guest | Size | Complete-state checks | Prepared retained bytes |', '|---|---:|---|---:|']
+             '| Guest | Size | Complete-state checks | Prepared logical node bytes |', '|---|---:|---|---:|']
     for guest, limit in CASES:
         selected = [row for row in report['runs'] if row['guest'] == guest and row['limit'] == limit and row['engine'] != 'ragnarok_prepared_baseline']
         engines = ('ragnarok', 'ragnarok_planned', 'ragnarok_prepared', 'polkavm_interpreter') if report['timings'] else ('ragnarok', 'ragnarok_planned', 'ragnarok_prepared')
@@ -108,7 +108,7 @@ def summary(report):
                 d, a, b, c = (medians[engine] for engine in engines)
                 lines.append(f'| {guest} | {limit} | {order+1} | {d/1e6:.3f} ms | {a/1e6:.3f} ms | {b/1e6:.3f} ms | {c/1e6:.3f} ms | {b/c:.2f}× |')
         else:
-            resident = max(row['caches'][-1][1] for row in prepared)
+            resident = max(row['caches'][-1][1]*28 for row in prepared)
             lines.append(f'| {guest} | {limit} | passed, both orders | {resident:,} |')
     if report.get('baseline'):
         lines += ['', '| Guest | Size | Order | Baseline prepared CPU | Candidate prepared CPU | Change |',

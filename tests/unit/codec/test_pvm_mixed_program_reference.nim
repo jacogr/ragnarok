@@ -74,8 +74,8 @@ proc runReply(source: Machine, context: var HostContext, mode: PricingMode,
       executeWithHost(source, context, respond, steps, hosts, memo)
     of PricingMode.Prepared:
       # The same frozen program/state/host oracle qualifies the independently prepared operation stream.
-      let prepared = newPreparedProgram(programOf(source).value, PreparedLimits(
-          bytes: PreparedByteLimit(1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(cycles)))
+      let prepared = newPreparedProgram(programOf(source).value, defaultPreparedLimits(
+          GasCycleLimit(cycles)))
       assert prepared.error == PreparationError.None
       executeWithHost(source, context, respond, steps, hosts, prepared.value)
   assert checked.error == StepError.None
@@ -95,8 +95,8 @@ proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
       executeWithHost(source, context, respondFallible, steps, hosts, memo)
     of PricingMode.Prepared:
       # Typed callback selection and complete post-state use the same independent expectations.
-      let prepared = newPreparedProgram(programOf(source).value, PreparedLimits(
-          bytes: PreparedByteLimit(1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(cycles)))
+      let prepared = newPreparedProgram(programOf(source).value, defaultPreparedLimits(
+          GasCycleLimit(cycles)))
       assert prepared.error == PreparationError.None
       executeWithHost(source, context, respondFallible, steps, hosts, prepared.value)
   assert checked.error == HostExecutionError.None

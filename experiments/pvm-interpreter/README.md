@@ -1,5 +1,12 @@
 # Interpreter execution experiment
 
+The third stack layer promotes this engine into production and removes the predecessor completely.
+The [current contract](../../spec/pvm-handler-stream.md) owns implementation/API details. This
+directory preserves historical measurements and explicit diagnostic drivers. Its `experimental.nim`
+is now only an import shim for the production core; the duplicate runtime and memory overlays are
+removed. Ordinary native discovery and calibrated sanitizer CI qualify the promoted witnesses.
+Earlier checkpoint statements below remain historical, not current backend/CI selection claims.
+
 This branch preserves the latest locally qualified handler-stream interpreter and its supporting
 memory publication implementation. Future findings can be committed here before deciding which
 changes belong in the production engine. It is a learning experiment with no default-engine or

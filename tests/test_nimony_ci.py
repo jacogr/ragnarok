@@ -65,7 +65,7 @@ class NimonyCISafeguards(unittest.TestCase):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
         self.assertEqual(text.count('needs:'), 8)
-        self.assertIn('needs: [unit, pvm-experimental]', text)
+        self.assertIn('needs: [unit, pvm-sanitizers]', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
         self.assertNotIn('nimony-trial', text)
@@ -249,40 +249,28 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(selected_families(text, 'unit', event_context(event='pull_request')), [])
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Unit', gate)
-        self.assertIn('needs: [unit, pvm-experimental]', gate)
+        self.assertIn('needs: [unit, pvm-sanitizers]', gate)
         self.assertIn('if: ${{ always() && (', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:
-            for experimental in ['success', 'failure', 'cancelled', 'skipped']:
-                # Either matrix refusing completion must keep the actual aggregate command red.
-                with self.subTest(result=result, experimental=experimental):
+            for sanitized in ['success','failure','cancelled','skipped']:
+                # Either native discovery or calibrated sanitizer refusal keeps the aggregate red.
+                with self.subTest(result=result,sanitized=sanitized):
                     status = subprocess.run(['bash', '-c', command], env={
-                        'SHARDS_RESULT': result, 'EXPERIMENTAL_RESULT': experimental}).returncode
-                    self.assertEqual(status == 0, result == experimental == 'success')
+                        'SHARDS_RESULT': result,'SANITIZERS_RESULT': sanitized}).returncode
+                    self.assertEqual(status == 0,result == sanitized == 'success')
 
-    def test_experimental_interpreter_request_scope(self):
-        """Both isolated native profiles share ordinary unit requests and retain failure diagnostics."""
+    def test_promoted_interpreter_has_one_native_ci_path(self):
+        """The production engine is qualified through discovered native suites, with no duplicate overlay job."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = job_section(text, 'pvm-experimental')
-        self.assertIn('profile: [native, asan]', section)
-        self.assertIn('runs-on: ubuntu-latest', section)
-        self.assertIn("matrix.profile == 'asan' && '--asan' || ''", section)
-        self.assertIn('run: make check-pvm-experimental', section)
-        self.assertIn('if: always()', section)
-        self.assertIn('build/pvm-interpreter-experiment/results-*.json', section)
-        self.assertIn('build/pvm-interpreter-experiment/*.log', section)
-        for context, wanted in (
-                (event_context(), True),
-                (event_context('workflow_dispatch', suite='unit'), True),
-                (event_context('workflow_dispatch', suite='full'), True),
-                (event_context('pull_request', 'labeled', 'ci:unit'), True),
-                (event_context('pull_request', 'labeled', 'ci:full'), True),
-                (event_context('pull_request', 'synchronize'), False),
-                (event_context('pull_request', 'labeled', 'ci:perf'), False),
-                (event_context('workflow_dispatch', suite='smoke'), False)):
-            # Ordinary updates remain lightweight; requested unit runs must include this engine.
-            self.assertEqual(bool(expression(job_condition(text, 'pvm-experimental'), context)), wanted)
+        self.assertNotIn('  pvm-experimental:',text)
+        self.assertIn('run: make check-pvm-asan',job_section(text,'pvm-sanitizers'))
+        self.assertIn('run: make check-unit',text)
+        for path in (ROOT/'tests/unit/codec').glob('test_pvm_stream_*.nim'):
+            # Inventory validates every ordinary witness's requirements and exact output contract.
+            self.assertTrue(path.with_suffix('.output').is_file())
+            self.assertTrue((ROOT/'tools/native_requirements/codec'/(path.stem[5:]+'.json')).is_file())
 
     # Every contract partition is scheduled, and its stable aggregate rejects failure, cancellation and skip.
     def test_ci_contract_partition_gate(self):

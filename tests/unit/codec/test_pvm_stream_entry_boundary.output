@@ -1,0 +1,7 @@
+PASS direct entry /10560/ full and partial reservations / leading noops / first host-fault-panic-halt / unsigned gas / paid suffix / failed prices / restored barriers
+PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU
+PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU
+PASS charged cycles /12096cases / concrete rotations-wrong edges-two-block exits / different records-same shape / every gas and quota boundary
+PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas
+PASS sealed source counts /3456interior suffix cases / containing-block gas distinct from entered source count
+PASS checked store/register composition /1680 prefix and fault cases

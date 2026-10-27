@@ -1,5 +1,9 @@
 # Lazy prepared-block execution
 
+This document preserves historical experiments and their measured source identities. The old
+LRU execution implementation has been replaced by the sole [checked handler-stream engine](pvm-handler-stream.md).
+Its former byte/block cache API and comparison figures do not describe the current implementation.
+
 Current CI: historical experiment workflow choices described below were retired in favor of
 regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
 remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).

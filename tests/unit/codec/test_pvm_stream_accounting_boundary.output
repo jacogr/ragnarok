@@ -1,0 +1,2 @@
+CASE_TOTAL,18432
+PASS exit accounting /18432/ independent stepOnce attempts / full-partial-zero reuse / interior paid-unpaid / folded noops / host-fault-halt-panic / gas and local limits through uint64 max

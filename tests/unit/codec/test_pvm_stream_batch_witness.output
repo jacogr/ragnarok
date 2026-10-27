@@ -1,0 +1,2 @@
+PASS delta identity / distinct equal-byte owners / six metadata refusals / shared-prefix and retained-source checks
+PASS batch replacements /256 subset-epoch cases / sequential oracle / all bytes and access / retained owners / caller mutation / ceilings / atomic refusals

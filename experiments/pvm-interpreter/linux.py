@@ -225,7 +225,7 @@ class Comparison:
             else:
                 for driver, source in (('kernel', ROOT/'tests/performance/pvm_sieve.nim'), ('doom', ROOT/'tests/performance/pvm_doom.nim')):
                     # The same checked public driver is imported from one-level-up source coordinates.
-                    text = source.read_text().replace('../../src/', '../src/')
+                    text = subprocess.check_output(['git','show',commit+':'+str(source.relative_to(ROOT))],cwd=ROOT,text=True).replace('../../src/', '../src/')
                     if driver == 'doom':
                         # Expose additional master preparation without changing its measured host loop.
                         needle = 'let created = newGasPlan(owner,'

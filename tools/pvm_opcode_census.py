@@ -71,7 +71,9 @@ proc censusCapacityControl*() =
 
 
 def instrument_step(source, pair_capacity=512):
-    """Every named mutation must match exactly once before any generated source can be compiled."""
+    """Historical evaluator injection only; the current engine must fail closed rather than invent counters."""
+    if 'handler_stream' in source:
+        raise ValueError('legacy opcode census does not support the handler-stream engine')
     if pair_capacity not in (512, 4096):
         raise ValueError('unsupported opcode census pair capacity')
     # Diagnostic fields belong to the cache object, independently of tuned production field capacities.

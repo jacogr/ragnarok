@@ -234,42 +234,35 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
-  # Qualify the isolated interpreter overlay without selecting it as the application backend.
-  pvm-experimental:
+  # The promoted engine uses ordinary source-owned witnesses with calibrated sanitizer controls.
+  pvm-sanitizers:
     if: *requested
-    name: Unit / PVM Experimental (${{ matrix.profile }})
+    name: Unit / PVM Sanitizers
     timeout-minutes: *ci-job-timeout
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [native, asan]
     runs-on: ubuntu-latest
     steps:
       - *checkout
       - *python
-      - name: Check complete interpreter witnesses
-        env:
-          PVM_EXPERIMENTAL_FLAGS: ${{ matrix.profile == 'asan' && '--asan' || '' }}
-        run: make check-pvm-experimental
-      # Retain diagnostics and source seals, never binaries or compiler caches.
-      - name: Retain interpreter qualification evidence
+      - name: Qualify checked PVM execution with calibrated AddressSanitizer
+        run: make check-pvm-asan
+      - name: Retain sanitizer source, image and diagnostic evidence
         if: always()
         uses: *upload-artifact
         with:
-          name: pvm-experimental-${{ matrix.profile }}-${{ github.run_attempt }}
+          name: pvm-sanitizers-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
-            build/ci/setup.log
-            build/ci/host-tools*.log
-            build/pvm-interpreter-experiment/results-*.json
-            build/pvm-interpreter-experiment/*.log
+            build/ci/*.log
+            build/tests/pvm-asan/*.log
+            build/tests/pvm-asan/results.json
+            build/tests/pvm-asan/evidence/*.json
 
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   unit-status:
     name: Unit
     timeout-minutes: *ci-job-timeout
-    needs: [unit, pvm-experimental]
+    needs: [unit, pvm-sanitizers]
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -277,8 +270,8 @@ jobs:
       - name: Require every unit shard and corpus
         env:
           SHARDS_RESULT: ${{ needs.unit.result }}
-          EXPERIMENTAL_RESULT: ${{ needs.pvm-experimental.result }}
-        run: test "$SHARDS_RESULT" = success && test "$EXPERIMENTAL_RESULT" = success
+          SANITIZERS_RESULT: ${{ needs.pvm-sanitizers.result }}
+        run: test "$SHARDS_RESULT" = success && test "$SANITIZERS_RESULT" = success
 
   failures:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
