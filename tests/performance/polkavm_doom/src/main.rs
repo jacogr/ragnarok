@@ -314,10 +314,14 @@ fn main() {
     let requested = std::env::var("RAGNAROK_PVM_DOOM_TIMING").unwrap_or_default();
     assert!(matches!(requested.as_str(), "" | "0" | "1"));
     let timing = requested == "1";
+    let lifecycle_requested = std::env::var("RAGNAROK_PVM_DOOM_LIFECYCLE").unwrap_or_default();
+    assert!(matches!(lifecycle_requested.as_str(), "" | "0" | "1"));
+    let lifecycle = timing && lifecycle_requested == "1";
     let samples = if timing { 13 } else { 1 };
     let expected_events = fs::read(folder.join(format!("{}.events", args[5]))).unwrap();
     for sample in 0..samples {
-        // Restore complete mutable memory before every sample, outside the measured call.
+        // Keep call-only timing unchanged; optionally account for private instance construction and restoration separately.
+        let restore_start = if lifecycle { cpu_nanoseconds() } else { 0 };
         let mut instance = guest.module.instantiate().unwrap();
         guest.reset(&mut instance, phase);
         let mut cursor = 152 + guest.wire.len();
@@ -335,6 +339,12 @@ fn main() {
             }
             cursor += 4101;
         }
+        // Complete independent input-state validation stays outside both execution and restoration accounting.
+        let restore_elapsed = if lifecycle {
+            cpu_nanoseconds() - restore_start
+        } else {
+            0
+        };
         assert!(
             guest.input(&mut instance, phase) == input,
             "DOOM initial state mismatch"
@@ -353,6 +363,15 @@ fn main() {
             events.encode() == fs::read(folder.join(format!("{}.events", args[5]))).unwrap(),
             "DOOM event mismatch"
         );
+        let teardown_elapsed = if lifecycle {
+            // Dispose the exclusive instance after validation; keep teardown outside call-only timing but inside lifecycle accounting.
+            let teardown_start = cpu_nanoseconds();
+            drop(instance);
+            cpu_nanoseconds() - teardown_start
+        } else {
+            // Ordinary call-only runs retain their original automatic end-of-iteration cleanup.
+            0
+        };
         if timing {
             // Validation precedes publication of every measured CPU/wall duration.
             assert!(cpu_elapsed > 0 && wall_elapsed > 0);
@@ -360,6 +379,15 @@ fn main() {
                 "DOOM_SAMPLE,reference,{},{sample},{cpu_elapsed},{wall_elapsed}",
                 args[5]
             );
+            if lifecycle {
+                // Publish paired phases only after complete final-state and ordered-event checks pass.
+                assert!(restore_elapsed > 0);
+                println!(
+                    "DOOM_LIFECYCLE,reference,{},{sample},{restore_elapsed},{cpu_elapsed},{teardown_elapsed},{}",
+                    args[5],
+                    restore_elapsed + cpu_elapsed + teardown_elapsed
+                );
+            }
         }
     }
     println!("DOOM_OK,reference,{},{}", args[5], expected_events.len());

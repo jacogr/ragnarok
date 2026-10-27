@@ -29,12 +29,23 @@ from pvm_guest_inputs import prepare_inputs, digest
 from pvm_guest_compare import revision, unchanged
 from pvm_sieve_report import parse_process_output
 from pvm_prepared_blocks import parse_output as parse_prepared_output
-from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples
+from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
 from pvm_benchmark import cpu_model
 from setup_nimony import installed, cache_directory
 
 ROLES = ('master', 'public', 'prepared', 'candidate', 'reference')
 CASES = (('pinky', 1), ('sieve', 100000), ('minimal', 100000), ('memset', 100000))
+
+
+def comparison_roles(baseline=None):
+    """An explicit immutable prior prepared head adds one paired role without replacing current master."""
+    if baseline is None:
+        # The normal qualification retains its original complete five-role matrix.
+        return ROLES
+    if type(baseline) is not str or len(baseline)!=40 or any(c not in '0123456789abcdef' for c in baseline):
+        # Mutable refs and option-like selectors cannot certify an immutable paired source snapshot.
+        raise ValueError('Prepared baseline must be a full lowercase commit SHA')
+    return ('master','public','baseline','prepared','candidate','reference')
 
 
 def integers(fields):
@@ -160,23 +171,35 @@ def summary(report):
         return 'Interpreter comparison incomplete: '+report['status']+'\n'
     identities = [(row['case'],row['order'],row['role']) for row in report['runs']]
     expected = {(case,order,role) for case in [x[0] for x in CASES]+['init','tick']
-                for order in range(2) for role in ROLES}
+                for order in range(2) for role in comparison_roles(report.get('prepared_baseline'))}
     if len(identities) != len(expected) or set(identities) != expected:
         raise ValueError('Incomplete or duplicate public/core timing matrix')
     lines = ['Exact master: `'+report['master']+'`; candidate: `'+report['candidate']+'`.', '',
         'CPU milliseconds. Both process orders; reused medians exclude the first three calls.',
         'Master and ordinary public calls use complete pricing. Prepared API reuses source facts and stream,',
         'but still creates private invocation memory and publishes an immutable result inside every call.', '',
-        '| Workload | Order | Master API | Ours ordinary API | Ours prepared API | PolkaVM | Ordinary / ref | Prepared / ref |',
+        '| Workload | Order | Master API | Ours prepared API | PolkaVM | Prepared / ref | Ours ordinary API (diagnostic) | Ordinary / ref |',
         '|---|---|---:|---:|---:|---:|---:|---:|']
     for case in [x[0] for x in CASES]+['init', 'tick']:
         for order in range(2):
             rows = {r['role']: r for r in report['runs'] if r['case'] == case and r['order'] == order}
-            if set(rows) != set(ROLES):
+            if set(rows) != set(comparison_roles(report.get('prepared_baseline'))):
                 raise ValueError('Incomplete timing matrix')
             ns = {role: statistics.median(s['cpu_ns'] for s in row['parsed']['samples'][3:])
                   for role, row in rows.items()}
-            lines.append(f"| {case} | {order} | {ns['master']/1e6:.3f} | {ns['public']/1e6:.3f} | {ns['prepared']/1e6:.3f} | {ns['reference']/1e6:.3f} | {ns['public']/ns['reference']:.3f} | {ns['prepared']/ns['reference']:.3f} |")
+            lines.append(f"| {case} | {order} | {ns['master']/1e6:.3f} | {ns['prepared']/1e6:.3f} | {ns['reference']/1e6:.3f} | {ns['prepared']/ns['reference']:.3f} | {ns['public']/1e6:.3f} | {ns['public']/ns['reference']:.3f} |")
+    if report.get('prepared_baseline'):
+        # Paired prior/current public owners include private invocation memory and immutable publication in both calls.
+        lines += ['', 'Prior prepared baseline: `'+report['prepared_baseline']+'`.', '',
+                  '| Workload | Order | Prior prepared API | Current prepared API | Current / prior |',
+                  '|---|---|---:|---:|---:|']
+        for case in [x[0] for x in CASES]+['init','tick']:
+            for order in range(2):
+                previous = next(r for r in report['runs'] if (r['case'],r['order'],r['role'])==(case,order,'baseline'))
+                current = next(r for r in report['runs'] if (r['case'],r['order'],r['role'])==(case,order,'prepared'))
+                before = statistics.median(x['cpu_ns'] for x in previous['parsed']['samples'][3:])
+                after = statistics.median(x['cpu_ns'] for x in current['parsed']['samples'][3:])
+                lines.append(f'| {case} | {order} | {before/1e6:.3f} | {after/1e6:.3f} | {after/before:.3f} |')
     lines += ['', 'Retained-frame core is a separate scope: invocation reset and publication are outside its call.', '',
               '| Workload | Order | Core call | Core reset + call + publication | Core / reference |',
               '|---|---|---:|---:|---:|']
@@ -189,11 +212,28 @@ def summary(report):
         reference = next(r for r in report['runs'] if (r['case'],r['order'],r['role']) == (row['case'],row['order'],'reference'))
         ref = statistics.median(s['cpu_ns'] for s in reference['parsed']['samples'][3:])
         lines.append(f"| {row['case']} | {row['order']} | {call/1e6:.3f} | {life/1e6:.3f} | {call/ref:.3f} |")
+    lines += ['', 'DOOM invocation lifecycle: reference instance construction/restoration, call and teardown versus our prepared public call.',
+              'Reference module construction and independent full-state validation remain outside; ours includes immutable publication.', '',
+              '| Phase | Order | Reference instance + restore | Reference call | Reference teardown | Reference lifecycle | Ours prepared call | Ours / reference lifecycle |',
+              '|---|---|---:|---:|---:|---:|---:|---:|']
+    for row in report['runs']:
+        if row['role']!='reference' or row['case'] not in ('init','tick'):
+            continue
+        phases = row['parsed'].get('lifecycle',[])
+        if len(phases)!=13:
+            raise ValueError('Missing reference lifecycle accounting')
+        restored = statistics.median(x['restore_ns'] for x in phases[3:])
+        teardown = statistics.median(x['teardown_ns'] for x in phases[3:])
+        total = statistics.median(x['lifecycle_ns'] for x in phases[3:])
+        call = statistics.median(x['cpu_ns'] for x in phases[3:])
+        ours = next(r for r in report['runs'] if (r['case'],r['order'],r['role'])==(row['case'],row['order'],'prepared'))
+        public = statistics.median(x['cpu_ns'] for x in ours['parsed']['samples'][3:])
+        lines.append(f"| {row['case']} | {row['order']} | {restored/1e6:.3f} | {call/1e6:.3f} | {teardown/1e6:.3f} | {total/1e6:.3f} | {public/1e6:.3f} | {public/total:.3f} |")
     lines += ['', 'Public API owner construction and cold first call (CPU ms). No reference-equivalent constructor claim.', '',
               '| Workload | Order | API | Owner constructor | Cold call | Constructor + cold call |',
               '|---|---|---|---:|---:|---:|']
     for row in report['runs']:
-        if row['role'] not in ('master','public','prepared'):
+        if row['role'] not in ('master','public','prepared','baseline'):
             continue
         parsed = row['parsed']
         preparation = parsed.get('preparation_ns')
@@ -226,15 +266,21 @@ def summary(report):
 
 class Comparison:
     """Own one private canonical build coordinate and strict complete comparison report."""
-    def __init__(self, master):
+    def __init__(self, master, prepared_baseline=None):
+        self.roles = comparison_roles(prepared_baseline)
         BUILD.mkdir(parents=True, exist_ok=True)
         self.checks = NativeChecks(BUILD)
         self.report = dict(status='running', scopes=dict(public='ordinary public API with complete pricing', prepared='public prepared owner, fresh invocation memory', candidate='retained-frame core'), master=revision(master), candidate=revision('HEAD'),
             cpu=cpu_model(), platform=platform.platform(), builds=[], controls=[], runs=[])
+        if prepared_baseline is not None:
+            # Resolve the prior image once and preserve its exact identity in all later tables and controls.
+            self.report['prepared_baseline'] = revision(prepared_baseline)
+        self.report['roles'] = self.roles
         self.identities = {p:digest(p) for p in [
             *sorted((ROOT/'src/pvm').rglob('*.nim')), *DRIVERS.values(), Path(__file__).resolve(),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_doom.nim',
-            ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tools/native_checks.py',
+            ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/polkavm_doom/src/main.rs',
+            ROOT/'tools/native_checks.py',
             ROOT/'tools/pvm_prepared_blocks.py',ROOT/'tools/pvm_sieve_report.py',
             ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_guest_inputs.py',
             ROOT/'tools/setup_nimony.py',ROOT/'spec/toolchain.json']}
@@ -266,7 +312,10 @@ class Comparison:
         canonical = BUILD/'snapshot'
         self.images = {}
         # Each role uses its exact committed production sources; the candidate exposes separate lifecycle clocks.
-        for role, commit in (('master', self.report['master']), ('candidate', self.report['candidate']), ('public', self.report['candidate'])):
+        sources = [('master', self.report['master']), ('candidate', self.report['candidate']), ('public', self.report['candidate'])]
+        if self.report.get('prepared_baseline'):
+            sources.append(('baseline', self.report['prepared_baseline']))
+        for role, commit in sources:
             if canonical.exists():
                 shutil.rmtree(canonical)
             raw = subprocess.check_output(['git', 'archive', commit, 'src'], cwd=ROOT)
@@ -317,12 +366,13 @@ class Comparison:
 
     def execute(self, role, case, order, prepared, doom=False):
         """Validate both CPU/memory/source state and exact host events before accepting each timing."""
-        env = dict(os.environ, RAGNAROK_PVM_PRICING='prepared' if role=='prepared' else 'planned', RAGNAROK_PVM_GUEST=case,
+        env = dict(os.environ, RAGNAROK_PVM_PRICING='prepared' if role in ('prepared','baseline') else 'planned', RAGNAROK_PVM_GUEST=case,
             RAGNAROK_PVM_SIEVE_SAMPLES='13', RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',
             RAGNAROK_PVM_SIEVE_CLOCK='1', RAGNAROK_PVM_DOOM_TIMING='1',
             RAGNAROK_PVM_DOOM_ASSERT='0', RAGNAROK_PVM_LOCAL_ONECALL='0',
-            RAGNAROK_PVM_DOOM_PRICING='prepared' if role=='prepared' else 'planned',
-            RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('public','prepared') else '0')
+            RAGNAROK_PVM_DOOM_PRICING='prepared' if role in ('prepared','baseline') else 'planned',
+            RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('public','prepared','baseline') else '0',
+            RAGNAROK_PVM_DOOM_LIFECYCLE='1' if doom and role=='reference' else '0')
         if doom:
             rom = ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'
             env.update(RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'), RAGNAROK_PVM_DOOM_PHASE=case,
@@ -368,8 +418,8 @@ class Comparison:
         event_bytes = len((DOOM/'prepared'/(case+'.events')).read_bytes()) if doom else 0
         if role == 'candidate':
             parsed = parse_candidate(output,case,doom,event_bytes)
-        elif role in ('public','prepared'):
-            parsed = parse_public(output,case,None if doom else limit,role=='prepared',doom,event_bytes)
+        elif role in ('public','prepared','baseline'):
+            parsed = parse_public(output,case,None if doom else limit,role in ('prepared','baseline'),doom,event_bytes)
         elif doom:
             preparation = None
             if role == 'master':
@@ -380,7 +430,8 @@ class Comparison:
                 if len(preparation) != 1:
                     raise ValueError('Malformed master constructor')
                 output = '\n'.join(lines)+'\n'
-            parsed = dict(samples=timing_samples(output,'reference' if role=='reference' else 'native',case,event_bytes), preparation_ns=preparation)
+            parsed = reference_lifecycle_samples(output,case,event_bytes) if role=='reference' else dict(
+                samples=timing_samples(output,'native',case,event_bytes), preparation_ns=preparation)
         else:
             parsed = parse_process_output(output,'polkavm_interpreter' if role=='reference' else 'ragnarok_planned',limit,guest=case)
         unchanged(self.identities)
@@ -409,10 +460,10 @@ class Comparison:
             for order in range(2):
                 for case,limit in CASES:
                     prepared = next(x for x in guests['inputs'] if x[:2]==(case,limit))
-                    for role in (ROLES if order==0 else ROLES[::-1]):
+                    for role in (self.roles if order==0 else self.roles[::-1]):
                         self.execute(role,case,order,prepared)
                 for phase in ('init','tick'):
-                    for role in (ROLES if order==0 else ROLES[::-1]):
+                    for role in (self.roles if order==0 else self.roles[::-1]):
                         self.execute(role,phase,order,None,True)
             self.report['status'] = 'passed'
             unchanged(self.identities)
@@ -428,10 +479,11 @@ def main():
     """Resolve master once before building; timing is restricted to the explicitly requested Linux CI job."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--master', default=os.environ.get('PVM_COMPARE_BASE','origin/master'))
+    parser.add_argument('--prepared-baseline', default=os.environ.get('PVM_COMPARE_PREPARED_BASE') or None)
     args = parser.parse_args()
     if (platform.system(),platform.machine()) != ('Linux','x86_64') or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise RuntimeError('Linux timing comparison requires its isolated CI runner')
-    Comparison(args.master).run()
+    Comparison(args.master,args.prepared_baseline).run()
 
 
 if __name__ == '__main__':

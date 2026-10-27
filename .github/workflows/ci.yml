@@ -20,6 +20,11 @@ name: CI
         options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]
         default: full
         required: true
+      pvm_prepared_baseline:
+        description: Optional full commit SHA for a paired prior prepared interpreter
+        type: string
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -722,11 +727,22 @@ jobs:
     name: Perf / PVM Interpreter Comparison
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-latest
+    env:
+      PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
     steps:
       - *checkout
       - *python
-      - name: Resolve current master
-        run: git fetch --no-tags origin master:refs/remotes/origin/master
+      - name: Resolve current master and optional prepared baseline
+        run: |
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          python3 - <<'PYBASE'
+          import os,re,subprocess
+          baseline=os.environ.get('PVM_COMPARE_PREPARED_BASE','')
+          if baseline:
+              if re.fullmatch(r'[0-9a-f]{40}',baseline) is None:
+                  raise ValueError('Prepared baseline must be a full lowercase commit SHA')
+              subprocess.run(['git','fetch','--no-tags','origin',baseline],check=True)
+          PYBASE
       - name: Install DOOM asset decompressor
         run: |
           sudo apt-get update

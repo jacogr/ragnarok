@@ -5,6 +5,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import textwrap
+from unittest.mock import patch
 from workflow_fixtures import event_context, expression, job_condition, job_section
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,17 +98,64 @@ class InterpreterLinuxTests(unittest.TestCase):
                 for role in comparison.ROLES:
                     # Constant inert clocks make only the role/scoping obligations relevant here.
                     samples = [dict(cpu_ns=100,lifecycle_ns=103,attempts=1,nodes=2) for _ in range(13)]
-                    runs.append(dict(case=case,order=order,role=role,
-                        parsed=dict(preparation_ns=[10,20],samples=samples)))
+                    parsed=dict(preparation_ns=[10,20],samples=samples)
+                    if role=='reference' and case in ('init','tick'):
+                        # Reference call-only scores cannot stand in for an invocation lifecycle comparison.
+                        parsed['lifecycle']=[dict(restore_ns=2,cpu_ns=100,teardown_ns=1,lifecycle_ns=103) for _ in range(13)]
+                    runs.append(dict(case=case,order=order,role=role,parsed=parsed))
         report = dict(status='passed',master='master',candidate='candidate',runs=runs)
         rendered = comparison.summary(report)
         self.assertIn('Ours ordinary API',rendered)
         self.assertIn('Ours prepared API',rendered)
         self.assertIn('Retained-frame core is a separate scope',rendered)
+        self.assertIn('Reference instance + restore',rendered)
+        lifecycle=next(row['parsed']['lifecycle'] for row in runs if row['role']=='reference' and row['case']=='tick')
+        dropped=lifecycle.pop()
+        with self.assertRaises(ValueError):
+            comparison.summary(report)
+        lifecycle.append(dropped)
         for incomplete in (runs[1:],runs+[runs[0]],
                            [row for row in runs if row['role']!='public']):
             with self.assertRaises(ValueError):
                 comparison.summary(dict(report,runs=incomplete))
+
+    def test_prior_prepared_role_requires_exact_immutable_head(self):
+        """Optional paired baselines require a complete distinct role and an immutable full commit identity."""
+        self.assertEqual(comparison.comparison_roles(),comparison.ROLES)
+        self.assertEqual(set(comparison.comparison_roles('a'*40)),set(comparison.ROLES)|{'baseline'})
+        for bad in ('','HEAD','--all','a'*39,'A'*40,'g'*40,True,42):
+            with self.subTest(baseline=bad),self.assertRaises(ValueError):
+                comparison.comparison_roles(bad)
+        runs=[]
+        for case in [row[0] for row in comparison.CASES]+['init','tick']:
+            for order in range(2):
+                for role in comparison.comparison_roles('a'*40):
+                    # Every source role retains full call samples; the reference also retains complete lifecycle phases.
+                    samples=[dict(cpu_ns=100,lifecycle_ns=103,attempts=1,nodes=2) for _ in range(13)]
+                    parsed=dict(samples=samples,preparation_ns=[10,20])
+                    if role=='reference' and case in ('init','tick'):
+                        parsed['lifecycle']=[dict(restore_ns=2,cpu_ns=100,teardown_ns=1,lifecycle_ns=103) for _ in range(13)]
+                    runs.append(dict(case=case,order=order,role=role,parsed=parsed))
+        report=dict(status='passed',master='master',candidate='candidate',prepared_baseline='a'*40,runs=runs)
+        self.assertIn('Current / prior',comparison.summary(report))
+        with self.assertRaises(ValueError):
+            comparison.summary(dict(report,runs=[row for row in runs if row['role']!='baseline']))
+
+    def test_optional_baseline_fetch_rejects_non_commit_input(self):
+        """The dispatch input never becomes a Git option or executable shell fragment."""
+        section=job_section((ROOT/'.github/workflows/ci.yml').read_text(),'pvm-interpreter-comparison')
+        block=section.split("python3 - <<'PYBASE'\n",1)[1].split('          PYBASE',1)[0]
+        source=textwrap.dedent(block)
+        for value in ('','a'*40,'HEAD','--upload-pack=bad','a'*40+'; command','A'*40):
+            with self.subTest(value=value),patch.dict('os.environ',PVM_COMPARE_PREPARED_BASE=value),patch('subprocess.run') as fetch:
+                if value and value!='a'*40:
+                    # Invalid selectors fail before the only allowed, argument-vector fetch.
+                    with self.assertRaises(ValueError):exec(source,{})
+                    fetch.assert_not_called()
+                else:
+                    exec(source,{})
+                    if value:fetch.assert_called_once_with(['git','fetch','--no-tags','origin',value],check=True)
+                    else:fetch.assert_not_called()
 
     def test_explicit_comparison_job_and_evidence(self):
         """The architecture comparison is explicitly requested and never adds a master experiment."""
