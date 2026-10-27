@@ -34,6 +34,9 @@ extern int memfd_create(const char *name, unsigned int flags);
 /* Each exclusive arena owns fixed executable and writable mappings; published bytes never change. */
 typedef struct { void *memory; void *writable; uint32_t used; uint32_t capacity; } pvm_arm64_arena;
 static void *pvm_arm64_arena_create(void) {
+    /* Native instruction words use little-endian byte order; unsupported ordering refuses before allocation. */
+    const uint16_t little_endian = 1;
+    if (*(const unsigned char *)&little_endian != 1) return NULL;
 #if defined(__APPLE__) && defined(__aarch64__)
     const uint32_t capacity = 1024 * 1024;
     pvm_arm64_arena *owner = calloc(1, sizeof(*owner));

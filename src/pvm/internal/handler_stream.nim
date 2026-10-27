@@ -1614,6 +1614,8 @@ when defined(pvmArm64Jit):
     if f.handlers.len > 262144: return false
     discard armEntry(jit, first, uint32(f.handlers.len))
     let headers = [first, middle, last]
+    # Include successful regional body emission in the diagnostic bracket; full cold-call clocks already include it.
+    let before = armClock()
     var blocks = default(array[3, ArmRegionBlock])
     for index in 0..<3:
       let header = headers[index]
@@ -1640,7 +1642,6 @@ when defined(pvmArm64Jit):
         emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
         inc current
       if not terminal: return false
-    let before = armClock()
     let admitted = publishArmRegion(jit, blocks)
     jit.compilationNs+=armClock()-before
     if not admitted: return false

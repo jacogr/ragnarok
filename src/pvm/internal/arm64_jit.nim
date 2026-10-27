@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Experimental leaf register compiler; checked handler-stream facts are the sole caller authority.
-## Generated code borrows only thirteen invocation registers and owns no guest/source pointers.
+## Experimental ARM64 compiler for sealed register fragments and guarded connected blocks.
+## Code borrows invocation registers and a bounded scalar context, never guest/source pointers.
 import std/assertions
 import ../[program, machine]
 
@@ -42,6 +42,7 @@ type
     branchCalls*, headerCalls*: uint64
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
+    unavailable: bool
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
 proc `=dup`(source: ArenaOwner): ArenaOwner {.error.}
@@ -58,7 +59,8 @@ proc newArmJit*(): ArmJit =
   ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
-  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[])
+  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[],
+      unavailable: false)
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -251,7 +253,7 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
 
 proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
   ## Zero is unexamined, one refused, and code offsets are stored plus two; maps have a hard local ceiling.
-  if extent > 262144'u32: return 1
+  if jit.unavailable or extent > 262144'u32: return 1
   if jit.entries.len < int(extent):
     # Zero-initialized records grow together; no independently sized metadata columns can diverge.
     jit.entries.setLen(int(extent))
@@ -266,11 +268,22 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =
   ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
+  if jit.unavailable:
+    # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
+    refuseArmEntry(jit, offset)
+    return false
   let ceiling = if region: 1024'u64 else: 1023'u64
   if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
     refuseArmEntry(jit, offset)
     return false
-  if jit.arena.handle == nil: jit.arena.handle = createArena()
+  if jit.arena.handle == nil:
+    # A new owner may retry OS availability; this refused owner avoids repeated allocation and map growth.
+    let created = createArena()
+    if created == nil:
+      jit.unavailable = true
+      refuseArmEntry(jit, offset)
+      return false
+    jit.arena.handle = created
   instructions.add(0xd65f03c0'u32) # RET; the leaf never changes SP, LR or any callee-saved register.
   let address = publishArena(jit.arena.handle, addr instructions[0], uint32(instructions.len))
   if address < 0:

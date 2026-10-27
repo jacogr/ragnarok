@@ -84,6 +84,10 @@ when defined(pvmArm64Jit):
         emitArmOperation(fragment, 20, slots, value)
         var words = armInstructions(fragment)
         assert words.len >= 2 and words.len <= 5, "constant word extent"
+        if not compact: assert words.len == 5
+        elif value in [0'u64, 1, 65535, 65536, 0x8000000000000000'u64,
+            0x0000123400000000'u64, high(uint64), high(uint64)-1]:
+          assert words.len == 2
         let published = publishArmEntry(jit, 0, 1, 1, words)
         when defined(pvmArm64JitRefuse):
           assert not published
@@ -535,6 +539,13 @@ when defined(pvmArm64Jit):
   let admitted = publishArmEntry(capacity, 0, 77, 1, initialWords)
   when defined(pvmArm64JitRefuse):
     assert not admitted
+    # A different, previously unmapped coordinate refuses without growing this failed owner's entry map.
+    assert armEntry(capacity, 1, 2) == 1
+    var retriedWords = @[0xd65f03c0'u32]
+    assert not publishArmEntry(capacity, 1, 0, 0, retriedWords)
+    let fresh = newArmJit()
+    assert armEntry(fresh, 1, 2) == 0
+    echo "ARM_REFUSAL_CACHE,1"
   else:
     assert admitted
     var successes = 1
