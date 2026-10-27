@@ -16,7 +16,7 @@ from harness_fixtures import temporary_folder
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from native_fixture_contracts import load_fixture_contracts
+from native_fixture_contracts import load_fixture_contracts, validate_fixture_contracts
 import native_requirements
 import native_tests
 
@@ -32,6 +32,25 @@ class NativeFixtureContractsHarness(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(record))
         return path, record
+
+    def test_selected_members_are_revalidated(self):
+        """Check every explicit member and detect edits after a successful check without caching pins."""
+        with temporary_folder() as folder:
+            first, second = folder/'first', folder/'second'
+            first.write_bytes(b'one'); second.write_bytes(b'two')
+            contracts = {'sample': ('RAGNAROK_SAMPLE', folder, (
+                (first, hashlib.sha256(b'one').hexdigest()),
+                (second, hashlib.sha256(b'two').hexdigest())))}
+            with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts):
+                validate_fixture_contracts(('sample',))
+                second.write_bytes(b'changed')
+                with self.assertRaisesRegex(AssertionError, 'sample'):
+                    validate_fixture_contracts(('sample',))
+                second.unlink()
+                with self.assertRaises(FileNotFoundError):
+                    validate_fixture_contracts(('sample',))
+                with self.assertRaises(KeyError):
+                    validate_fixture_contracts(('unknown',))
 
     # A new descriptor is discovered without adding its identity to a Python registry.
     def test_new_descriptor(self):

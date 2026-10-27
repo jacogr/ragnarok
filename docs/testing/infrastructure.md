@@ -282,6 +282,15 @@ Each group owns a unique numeric `order` preserving shared-build dependencies, p
 `resources` names when it needs generated fixtures. Discovery rejects empty groups, duplicate
 orders/task names and unknown/repeated resources before execution; adding a feature needs no
 central import or scheduling-list entry.
+Corpus runners share request serialization and exact comparison through `corpus_checks.run_corpus`.
+Additional positional fixture inputs precede the request file; callers retain their historical
+request-evidence fields, build options and complete-output predicates. Uniform guest scenarios
+share `corpus_state.guest_scenario`, while specialized materialization and coverage checks remain
+explicit in their owning tasks. `native_fixture_contracts.validate_fixture_contracts` checks every
+selected pinned member afresh at the owning task's validation boundary; successful checks are
+not memoized. Fixture identities, independent equations and source-owned registrations remain
+with each case.
+
 Registration runs no oracle or native process. Expected corpus identities exist before execution;
 missing/duplicate verdicts and duplicate task/report keys are errors. All independent expected
 values, trace coverage predicates, build refusals and exact output/hash comparisons remain in

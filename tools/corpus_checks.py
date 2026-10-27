@@ -31,16 +31,21 @@ def compare_corpus(corpus, command, arguments, name, expected, *, complete=True)
 # Execute the standard request-file corpus path; callers retain independent generation and coverage rules.
 # Metadata describes corpus-specific evidence. expected_hash preserves hashes historically emitted even
 # for a failed build; successful execution always records both expected and actual output hashes.
+# arguments precede the request path; request_evidence=False preserves compact historical reports.
 def run_corpus(build, command, compiler, driver, build_name, source, lines, expected, run_name,
-               *, metadata=None, expected_hash=False, complete=True, **build_options):
+               *, metadata=None, expected_hash=False, complete=True, arguments=(),
+               request_evidence=True, **build_options):
     source.write_text('\n'.join(lines)+'\n')
     compiled, binary = build(compiler, driver, build_name, **build_options)
-    corpus = dict(build=compiled, requests=len(lines), passed=False,
-                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(), **(metadata or {}))
+    requests = {}
+    if request_evidence:
+        # Existing callers retain request counts/hashes, including failed builds; compact reports opt out.
+        requests = dict(requests=len(lines), requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    corpus = dict(build=compiled, passed=False, **requests, **(metadata or {}))
     if expected_hash:
         # Some historical reports retain independent expected evidence when compilation fails.
         corpus['expected_sha256'] = hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()
-    compare_corpus(corpus, command, [binary, source], run_name, expected, complete=complete)
+    compare_corpus(corpus, command, [binary, *arguments, source], run_name, expected, complete=complete)
     return corpus
 
 

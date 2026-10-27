@@ -11,13 +11,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from corpus_checks import compare_corpus, run_corpus
 from corpus_crypto import run_crypto
 from corpus_checks import CorpusGroup
+from corpus_state import guest_scenario
 
 
 # Exercise the shared process boundary independently of any protocol oracle or native compiler.
@@ -113,6 +114,91 @@ class CorpusHarness(unittest.TestCase):
             self.assertEqual(corpus['requests_sha256'], hashlib.sha256(source.read_bytes()).hexdigest())
             self.assertEqual(corpus['published_checks'], 7)
             self.assertEqual(metadata, dict(published_checks=7, scope='independent fixture'))
+
+    def test_arguments_and_compact_report(self):
+        """Prefix inputs retain positional order and compact reports never invent historical request fields."""
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'requests.txt'
+            for code in (0, 1):
+                # A failed new build must not execute the old output even with additional positional inputs.
+                with self.subTest(build=code):
+                    build = Mock(return_value=({'exit_code': code}, Path('/binary')))
+                    command = Mock(return_value=dict(exit_code=0, output='ok\n'))
+                    metadata = dict(transitions=3)
+                    corpus = run_corpus(build, command, 'compiler', 'driver', 'build', source,
+                        ['request'], ['ok'], 'run', metadata=metadata, request_evidence=False,
+                        arguments=(Path('/fixture'), 'profile'))
+                    self.assertEqual(source.read_bytes(), b'request\n')
+                    self.assertEqual(corpus['passed'], code == 0)
+                    self.assertEqual(corpus['transitions'], 3)
+                    self.assertNotIn('requests', corpus)
+                    self.assertNotIn('requests_sha256', corpus)
+                    self.assertEqual(metadata, dict(transitions=3))
+                    if code:
+                        command.assert_not_called()
+                    else:
+                        command.assert_called_once_with(
+                            [Path('/binary'), Path('/fixture'), 'profile', source], 'run')
+
+    def test_metadata_cannot_replace_build_verdict(self):
+        """Untrusted evidence cannot substitute a successful build or overwrite the initial failure verdict."""
+        with tempfile.TemporaryDirectory() as folder:
+            for field in ('build', 'passed', 'requests', 'requests_sha256'):
+                # Reserved report fields remain exclusive to the runner, as with the original dict constructor.
+                with self.subTest(field=field):
+                    command = Mock()
+                    with self.assertRaises(TypeError):
+                        run_corpus(Mock(return_value=({'exit_code': 1}, '/stale')), command,
+                            'compiler', 'driver', 'build', Path(folder)/'requests', [], [], 'run',
+                            metadata={field: 'replacement'})
+                    command.assert_not_called()
+
+    def test_guest_scenario_independent_order_and_failures(self):
+        """Pins and independent answers precede native work; bad builds, process exits and partial rows fail."""
+        from native_fixture_contracts import FIXTURE_CONTRACTS
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            pinned = folder/'pin'
+            pinned.write_bytes(b'fixture')
+            contracts = {'sample': ('SAMPLE', pinned, (
+                (pinned, hashlib.sha256(b'fixture').hexdigest()),)),
+                'state_report': FIXTURE_CONTRACTS['state_report']}
+            evidence = dict(transitions=2)
+            for build_code, run_code, output, passed in (
+                    (1, 0, 'one\ntwo\n', False), (0, 1, 'one\ntwo\n', False),
+                    (0, 0, 'one\n', False), (0, 0, 'one\ntwo\nextra\n', False),
+                    (0, 0, 'one\ntwo\n', True)):
+                # The build callback witnesses that independent derivation and exact request serialization completed.
+                with self.subTest(build=build_code, run=run_code, output=output):
+                    oracle = Mock(return_value=(['α', 'input'], ['one', 'two'], evidence))
+                    def build(*args, **kwargs):
+                        """Observe the completed oracle and request file before accepting the native build."""
+                        oracle.assert_called_once_with()
+                        self.assertEqual((folder/'sample-requests.txt').read_bytes(), 'α\ninput\n'.encode())
+                        return dict(exit_code=build_code), folder/'binary'
+                    checks = SimpleNamespace(folder=folder, build=Mock(side_effect=build),
+                        command=Mock(return_value=dict(exit_code=run_code, output=output)))
+                    with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts), patch('corpus_state.announce'):
+                        result = guest_scenario('compiler', checks, {'crypto': '/crypto', 'bandersnatch': '/bs'},
+                            oracle, ('sample',), name='sample', reference='independent', message='sample')
+                    self.assertEqual(result['passed'], passed)
+                    self.assertEqual(result['transitions'], 2)
+                    self.assertEqual(evidence, dict(transitions=2))
+                    if build_code:
+                        checks.command.assert_not_called()
+                    else:
+                        self.assertEqual(checks.command.call_args.args[0],
+                            [folder/'binary', contracts['state_report'][1], folder/'sample-requests.txt'])
+            pinned.write_bytes(b'tampered')
+            oracle = Mock()
+            checks = SimpleNamespace(build=Mock(), command=Mock())
+            with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts):
+                with self.assertRaises(AssertionError):
+                    guest_scenario('compiler', checks, {}, oracle, ('sample',),
+                        name='sample', reference='independent', message='sample')
+            oracle.assert_not_called()
+            checks.build.assert_not_called()
+            checks.command.assert_not_called()
 
     # Failed builds retain request evidence and only the expected hashes historically emitted by that corpus.
     def test_setup_failed_build_hash_policy(self):
