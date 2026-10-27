@@ -14,6 +14,11 @@ import ./app/[options, download_command, current_download_command, trace_check_c
 import ./version
 import ./lib/logging
 
+proc writeFailure(logger: var Logger, message: string) =
+  ## Command producers have retired; drain and join stderr logging before its final CLI line.
+  close(logger)
+  stderr.writeLine(message)
+
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   var logger = default(Logger)
@@ -86,7 +91,7 @@ proc main(): int =
           root.add(toHex(int(octet), 2).toLowerAscii) # Emit the actual verified final commitment after full-map agreement.
         stdout.writeLine("TRACE_CHECK_OK checked=" & $outcome.checkedBlocks & " root=" & root)
         return 0
-      stderr.writeLine("TRACE_CHECK_FAILED " & $outcome.error & " checked=" &
+      writeFailure(logger, "TRACE_CHECK_FAILED " & $outcome.error & " checked=" &
           $outcome.checkedBlocks & " " & outcome.detail)
       return 2 # The private ephemeral chain and every owned file/candidate retire before command exit.
     if options.argumentCount() >= 1 and options.argument(1) == "download":
@@ -97,7 +102,7 @@ proc main(): int =
       if outcome.error == DownloadCommandResult.Adopted:
         stdout.writeLine("DOWNLOAD_ADOPTED")
         return 0 # Command owners have already retired callbacks and canonical Services.
-      stderr.writeLine("DOWNLOAD_FAILED " & $outcome.error)
+      writeFailure(logger, "DOWNLOAD_FAILED " & $outcome.error)
       return 2 # Invalid/unavailable/exhausted downloads never imply an adopted child.
     if options.argumentCount() >= 1 and options.argument(1) == "download-current":
       let outcome = runCurrentDownloads(options)
@@ -107,7 +112,7 @@ proc main(): int =
       if outcome.error == CurrentDownloadCommandResult.Adopted:
         stdout.writeLine("CURRENT_DOWNLOAD_ADOPTED")
         return 0 # Native streams, current execution and durable/RPC leases have already retired.
-      stderr.writeLine("CURRENT_DOWNLOAD_FAILED " & $outcome.error)
+      writeFailure(logger, "CURRENT_DOWNLOAD_FAILED " & $outcome.error)
       return 2 # A refused/exhausted current run does not imply successful adoption.
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":
@@ -172,7 +177,7 @@ proc main(): int =
     0
   except:
     # Setup/OS/control errors become bounded process failures after all native owners have retired.
-    stderr.writeLine("Application setup, filesystem or CLI control failed")
+    writeFailure(logger, "Application setup, filesystem or CLI control failed")
     2
 
   finally:
