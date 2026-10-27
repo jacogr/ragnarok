@@ -1884,3 +1884,78 @@ CPU ms, forward / reverse. Public calls include fresh invocation memory and immu
 | sieve 10000000 | 339.213 / 336.276 | 245.631 / 245.684 | 245.745 / 245.502 | 244.756 / 244.702 | 366.863 / 366.678 | 0.724 / 0.730 | 0.670 / 0.670 |
 | init 0 | 319.861 / 319.858 | 199.262 / 200.095 | 194.340 / 194.539 | 193.438 / 193.755 | 671.861 / 671.513 | 0.608 / 0.608 | 0.289 / 0.290 |
 | tick 0 | 40.113 / 40.404 | 36.360 / 36.613 | 36.756 / 36.245 | 34.275 / 34.423 | 44.538 / 44.813 | 0.916 / 0.897 | 0.825 / 0.809 |
+
+## Qualified autonomous ARM64 JIT session
+
+Public runtime434270d13d0a3efef57f429c9fa0aedfc56ce119 versus session start01f9c6742e18cb87b97545417c85a734dddf3350, Apple M1 Max, pinned October26Nimony358b9bce4dd855453f57a80a0c499b0b2e27d7ee, checked ARC release/Clang ThinLTO. Later tooling63eeaa3c04e9f3471306c8ffd51b9e6a6877b6c6 has identical runtime/header/driver/toolchain objects and identical public parser/revision APIs. Only kernel diagnostic flags were normalized afterward. Measured source provenance remains attached to434270d1, independently bound across667tracked files.
+
+CPU ms, forward / reverse. Reused complete public PreparedProgram calls.
+
+| Workload | Ours interpreted | Ours JIT | PolkaVM interpreted | JIT / reference |
+|---|---:|---:|---:|---:|
+| Sieve100k | 3.391 / 3.400 | 2.595 / 2.538 | 6.091 / 5.873 | 0.426 / 0.432 |
+| Minimal100k | 4.964 / 4.872 | 4.902 / 4.910 | 6.024 / 6.024 | 0.814 / 0.815 |
+| Memory fill100k | 4.454 / 4.322 | 3.325 / 3.314 | 3.909 / 3.925 | 0.851 / 0.845 |
+| Pinky | 84.705 / 84.468 | 70.234 / 69.472 | 93.543 / 94.204 | 0.751 / 0.737 |
+| Sieve10m | 332.930 / 333.580 | 247.456 / 248.380 | 367.651 / 366.829 | 0.673 / 0.677 |
+| DOOM initialization | 320.086 / 319.064 | 194.958 / 195.561 | 678.008 / 677.702 | 0.288 / 0.289 |
+| DOOM gameplay | 40.064 / 41.193 | 36.794 / 37.320 | 43.941 / 43.941 | 0.837 / 0.849 |
+
+
+Our table uses complete reusable PreparedProgram calls with fresh invocation memory and immutable publication; reference raw-call clocks exclude its restoration/teardown. Samples3–12 determine each process median; forward/reverse orders remain separate. No hardware counters.
+
+### Balanced session-start pairing
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.777 (2.767–2.890) | 2.547 (2.525–2.616) | 0.917 | 0.919, 0.907, 0.910, 0.920, 0.924 |
+| minimal 100000 | 4.873 (4.838–4.998) | 4.884 (4.856–5.595) | 1.002 | 0.997, 1.079, 1.002, 0.999, 1.005 |
+| memset 100000 | 3.436 (3.418–3.463) | 3.337 (3.315–3.411) | 0.971 | 0.969, 0.976, 0.981, 0.963, 0.970 |
+| pinky 1 | 71.688 (71.436–71.818) | 69.771 (69.591–69.891) | 0.973 | 0.972, 0.974, 0.975, 0.971, 0.973 |
+| sieve 10000000 | 271.360 (270.809–275.764) | 247.657 (247.087–248.236) | 0.913 | 0.913, 0.913, 0.913, 0.905, 0.912 |
+| init 0 | 226.821 (226.291–229.150) | 195.234 (194.223–198.987) | 0.861 | 0.858, 0.865, 0.858, 0.862, 0.864 |
+| tick 0 | 37.487 (36.962–37.845) | 36.654 (36.274–37.451) | 0.978 | 0.978, 0.980, 0.984, 0.974, 0.991 |
+
+
+Retain the observed aggregate gains:initialization13.9%,long sieve8.7%,short sieve8.3%,fill2.9%,Pinky2.7%, with all five balanced blocks favoring each. Gameplay2.2% overlaps process ranges but all five block medians favor the result. Minimal has overlapping ranges and an untrimmed candidate outlier; no useful gain is claimed. This is a separate repeated-process cohort using reused samples1–12; do not mix its absolute medians into the forward/reverse pairing.
+
+### Construction, cold calls and reference lifecycle
+
+Our prepared-owner constructor is outside its call clock and shown separately. The cold call is sample0 and includes all lazy code emission/publication. Reference module construction is outside these clocks and was not measured by this cohort; its cold raw call is not a full reference startup cost.
+
+| Workload | Our prepared owner | Our cold public call | Reference cold raw call |
+|---|---:|---:|---:|
+| Sieve100k | 1.642 / 1.606 | 7.799 / 7.504 | 6.303 / 6.164 |
+| Minimal100k | 0.013 / 0.010 | 4.966 / 5.060 | 6.017 / 6.032 |
+| Memory fill100k | 0.049 / 0.051 | 5.155 / 4.708 | 3.996 / 3.956 |
+| Pinky | 0.458 / 0.457 | 73.482 / 72.320 | 93.436 / 94.208 |
+| Sieve10m | 1.650 / 1.601 | 252.231 / 253.589 | 366.692 / 366.934 |
+| DOOM initialization | 7.679 / 7.609 | 214.549 / 212.832 | 675.199 / 680.235 |
+| DOOM gameplay | 7.880 / 7.574 | 48.261 / 47.030 | 44.256 / 43.950 |
+
+Short sieve is a clear startup tradeoff:the cold public call is about7.8ms before its owner-construction cost, versus about6.3ms for the reference raw call. Warm wins do not imply universal cold/startup wins. Production caller-lifetime integration/default activation remains a separate decision.
+
+CPU ms, forward / reverse; each component median is independent, so displayed component medians need not sum exactly to the median total. Each of the13underlying records satisfies restoration+call+teardown=total and matches its paired raw call clock.
+
+| Phase | Restoration | Raw call | Teardown | Full invocation |
+|---|---:|---:|---:|---:|
+| init | 2.288 / 2.166 | 678.008 / 677.702 | 0.006 / 0.007 | 680.354 / 679.753 |
+| tick | 2.083 / 2.247 | 43.941 / 43.941 | 0.005 / 0.004 | 45.912 / 46.431 |
+
+### Final qualification and harness normalization
+
+Main public70processes/910calls/115controls/16fresh builds/eight equal-image pairs; balanced140/1820; independent710sealed identities and667tracked source files. Complete CPU/gas/register/page/permission/source snapshots and ordered host events verify. Calibrated AddressSanitizer passes the C arena1,000lifetime controls and native/refused VM witnesses; generated machine bytes remain covered by independent literal/state witnesses rather than sanitizer instrumentation. Forced unavailable-storage execution passes28processes/364calls/46controls/eight builds/four pairs/702sealed files, with native execution/publication counts all zero and667tracked files bound to63eeaa3c04e9f3471306c8ffd51b9e6a6877b6c6.
+
+Both helpers now freeze current HEAD by default and accept explicit exact commit IDs that must resolve to themselves. Clean checkouts no longer depend on an unreachable draft object. The kernel pair now uses identical native/control-receipt defines and parsing. Its fresh current-HEAD A/A control passes nine native gates,42processes/546calls/63controls/six fresh builds/three equal-image pairs and byte-identical baseline/current binaries, with706sealed identities/684tracked source files. Earlier kernel-only ratios used different diagnostic receipt defines and are not isolated runtime-only measurements; the matched public cohorts remain the performance-verdict evidence. An ignored-normalizer assertion accidentally allowed a shell to continue an unwanted unmatched-wrapper run, overwriting the earlier final-readiness kernel receipt. That diagnostic is retained without a runtime speed claim; the fresh matched A/A cohort replaces it. The primary public, repeated and profile receipts were unaffected.
+
+Final LinuxARM64 passes nine shared native gates, four public builds,14processes/182calls,32refusal controls,2,863staged seals and2,846tracked files bound to63eeaa3c04e9f3471306c8ffd51b9e6a6877b6c6. Official compiler/archive identity, image/architecture/network isolation and copied state/protocol records independently verify. Container clocks are diagnostic only. Fresh broad Python discovery passes1556tests(2skipped), exit0. Production smoke passes all453modules and peer entry point. The latest published source head Compile / Smoke check passed.
+
+### Readiness and next boundary
+
+I am comfortable with a first merge of this opt-in slice. The PR stays draft and unmerged; defaults/backend/CLI activation and production caller-lifetime integration remain separate decisions. Native generation is qualified for macOS/LinuxARM64; x86-64 generation remains future work. Cold costs and reference-constructor scope above prevent a universal startup-speed claim.
+
+Twelve separate full-state profile processes/156calls retain hashes and discard their clocks. Full-process sampling includes construction, inlined driver checks and validation outside the invocation clock, so it does not give invocation CPU percentages. A timed-scope profile should guide larger native-block-linking and checked native-memory/fault-prefix work. Initialization reaches1,024physical publications at82,972of1,048,576arena bytes; avoiding an arithmetic publication immediately replaced by a branch-complete version is another bounded future idea, not a measured change here.
+
+All eight retained speed increments and the rejected publication-sealed-entry implementation remain in history. Local full report:build/pvm-arm64-jit/session-final/report.md; immutable receipts:build/tests/pvm-arm64-applications and build/pvm-arm64-jit/refusal-quality. The final local readiness receipt is bound by SHA25684d11de97d3cc4ff23a67ed7202f6604c4af69fe64b8303bd07f0d7f1c2877a6.
