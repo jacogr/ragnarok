@@ -47,7 +47,7 @@ env:
 
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
-  # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
+  # Keep PR Smoke independent; source and rejection checks share one full-CI runner.
   compile:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
     name: Compile / ${{ matrix.family.name }}
@@ -56,7 +56,7 @@ jobs:
       fail-fast: false
       matrix:
         os: &ci-os [ubuntu-latest]
-        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke"},{"name":"Source","group":"modules"},{"name":"Reference & Tooling","group":"python"},{"name":"Rejection Guards","group":"guards"}]' || '[{"name":"Smoke","group":"smoke"}]') }}
+        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke"},{"name":"Source","group":"modules"},{"name":"Reference & Tooling","group":"python"}]' || '[{"name":"Smoke","group":"smoke"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - &checkout
@@ -123,14 +123,15 @@ jobs:
             build/tests/python/*.log
             build/tests/python/results.json
       - name: Compile rejection guards
-        if: ${{ matrix.family.group == 'guards' }}
+        # A failed source check must not suppress the independent rejection checks.
+        if: ${{ !cancelled() && matrix.family.group == 'modules' }}
         run: make check-guards
       - name: Show verification coverage
-        if: ${{ always() && matrix.family.group == 'guards' }}
-        run: make summary-${{ matrix.family.group }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+        if: ${{ always() && matrix.family.group == 'modules' }}
+        run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
-        if: ${{ always() && matrix.family.group == 'guards' }}
+        if: ${{ always() && matrix.family.group == 'modules' }}
         uses: *upload-artifact
         with:
           name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
@@ -198,10 +199,10 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 21
       matrix:
         os: *ci-os
-        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/3)","shard":"","group":"corpus","corpus_shard":"1/3"},{"name":"Corpus (2/3)","shard":"","group":"corpus","corpus_shard":"2/3"},{"name":"Corpus (3/3)","shard":"","group":"corpus","corpus_shard":"3/3"},{"name":"PVM Sanitizers","shard":"","group":"pvm-asan","corpus_shard":""}]') }}
+        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"},{"name":"PVM Sanitizers","shard":"","group":"pvm-asan","corpus_shard":""}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
       CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
@@ -327,9 +328,7 @@ jobs:
       matrix:
         os: *ci-os
         family:
-          - {group: application, name: Application}
           - {group: current, name: Current Downloads}
-          - {group: offload, name: Offload}
           - {group: telemetry, name: Telemetry}
           - {group: testnet, name: Testnet}
           - {group: transport, name: Transport}
@@ -557,7 +556,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM DOOM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm"},{"name":"PVM DOOM","group":"bench-doom"},{"name":"Storage","group":"bench-storage"},{"name":"Storage Growth","group":"bench-storage-growth"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm-all"},{"name":"Storage","group":"bench-storage"},{"name":"Storage Growth","group":"bench-storage-growth"}]') }}
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -565,19 +564,19 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: Measure validated PVM workloads
-        if: ${{ matrix.family.group == 'bench-pvm' }}
+        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         run: make bench-pvm
       - name: Measure validated real sieve
-        if: ${{ matrix.family.group == 'bench-pvm' }}
+        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         run: make bench-pvm-sieve
       - name: Measure validated minimal, memory-fill and Pinky guests
-        if: ${{ matrix.family.group == 'bench-pvm' }}
+        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         run: make bench-pvm-guests
       - name: Show speed comparison table
-        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
+        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         run: make summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Show real-guest speed comparison tables
-        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
+        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         run: |
           for report in build/tests/pvm-sieve/summary.md build/tests/pvm-guests/summary.md; do
             # Missing reports follow a failed/skipped runner; never substitute old successful evidence.
@@ -586,7 +585,7 @@ jobs:
             fi
           done
       - name: Retain raw benchmark evidence
-        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
+        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
         uses: *upload-artifact
         with:
           name: bench-pvm-${{ github.run_attempt }}
@@ -611,21 +610,21 @@ jobs:
             build/pvm-benchmark/native-build.log
             build/ci/*.log
       - name: Install DOOM asset decompressor
-        if: ${{ matrix.family.group == 'bench-doom' }}
+        if: ${{ !cancelled() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
       - name: Compare complete DOOM calls with PolkaVM interpreted
-        if: ${{ matrix.family.group == 'bench-doom' }}
+        if: ${{ !cancelled() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
         run: make bench-pvm-doom
       - name: Show DOOM initialization and gameplay CPU comparison
-        if: ${{ always() && matrix.family.group == 'bench-doom' }}
+        if: ${{ always() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
         run: |
           if test -f build/tests/pvm-doom/summary.md; then
             cat build/tests/pvm-doom/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Retain validated DOOM samples and source identities
-        if: ${{ always() && matrix.family.group == 'bench-doom' }}
+        if: ${{ always() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
         uses: *upload-artifact
         with:
           name: bench-doom-${{ github.run_attempt }}

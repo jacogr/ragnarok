@@ -98,7 +98,7 @@ def quic_peer_controls(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def rpc(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -139,7 +139,7 @@ def testnet_tiny_devnet(context):
     return observed
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def application_state(context):
     """Verify explicit executable policy selection in both peer shapes and enabled RPC."""
     compiled, binary = context.peer
@@ -155,7 +155,7 @@ def application_state(context):
     return observed
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def application_checkpoint_import(context):
     """Verify explicit trusted checkpoint imports in the production executable and both retained peer shapes."""
     compiled, binary = context.peer
@@ -171,7 +171,7 @@ def application_checkpoint_import(context):
     return observed
 
 
-@PLAN.workload(group='application')
+@PLAN.workload(group='testnet')
 def application_download_load(context):
     """Repeat authenticated signed download cancellation and native reset progress before real adoption."""
     import hashlib
@@ -381,7 +381,7 @@ def application_current_rotated(context):
     return observed
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def application_download_sequence(context):
     """Verify actual executable multi-child success, later refusal and timeout against independent native TLS/maps."""
     import hashlib
@@ -446,13 +446,13 @@ def ancestor_executable(context, *, discovery=False):
     return observed
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def application_remote_ancestors(context):
     """Verify explicit up-front acquisition through the shared actual executable/map witness."""
     return ancestor_executable(context)
 
 
-@PLAN.workload(group='application', requires=('prepare_peer',))
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def application_discovery_ancestors(context):
     """Verify child-driven acquisition, deadline/refusal, managed restart and successive-child reconnect."""
     return ancestor_executable(context, discovery=True)
@@ -715,10 +715,10 @@ def run_offload_selftest(function, context):
 
 
 PLAN.include_selftests(OFFLOAD_SELFTESTS, run_offload_selftest,
-                      group='offload', requires=('prepare_offload_peer',))
+                      group='transport', requires=('prepare_offload_peer',))
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload(group='offload', requires=('prepare_offload_peer',))
+@PLAN.workload(group='transport', requires=('prepare_offload_peer',))
 def quic_offload(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
