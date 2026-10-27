@@ -579,6 +579,37 @@ when defined(pvmArm64Jit):
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
     echo "ARM_REGION_CAPACITY,1024"
 
+    # Price width and source-budget width are independent: exercise both sides of the immediate boundary and full u64.
+    var priceCases = 0
+    for price in [0'u64, 1, 4095, 4096, 0x100000000'u64, high(uint64)]:
+      let charged = newArmJit()
+      assert armEntry(charged, 0, 3) == 0
+      var pricedBlocks = default(array[3, ArmRegionBlock])
+      for index in 0..<3:
+        # A literal ninety-nine-increment exit bounds even zero-price execution with a maximal source budget.
+        var body = default(ArmBlock)
+        emitArmOperation(body, 131, slots, 1)
+        emitArmBranch(body, 81, slots, 99, 77, uint32((index+1) mod 3))
+        pricedBlocks[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
+            price: price, yes: 77, no: uint32((index+1) mod 3), body: move(body))
+      assert publishArmRegion(charged, pricedBlocks)
+      for gas in [0'u64, 1, 4094, 4095, 4096, 8190, 8192, 0x100000000'u64, high(uint64)]:
+        for budget in [0'u64, 1, 2, 5, 197, 198, 199, 0x100000000'u64, high(uint64)]:
+          # Literal arithmetic independently predicts guarded work, with division proving the charge product cannot wrap.
+          var registers = default(RegisterFile)
+          var state = [gas, budget, 0'u64, 0'u64, 0'u64]
+          let affordable = if price == 0: 99'u64 else: min(99'u64, gas div price)
+          let count = min(affordable, budget div 2)
+          let target = if count == 99: 77'u32 else: uint32(count mod 3)
+          assert callArmRegion(charged, registers, state) == target
+          assert uint64(registers[0]) == count
+          for slot in 1..<13: assert uint64(registers[slot]) == 0
+          assert state[0] == gas-count*price and state[1] == budget-count*2
+          for index in 0..<3:
+            assert state[index+2] == count div 3+uint64(uint64(index) < count mod 3)
+          inc priceCases
+    echo "ARM_REGION_PRICE_CASES,", priceCases
+
 proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, budget: uint64,
     images: openArray[PageImage] = []) =
   ## Bounded single-step execution independently checks charged prefixes, target PCs and terminal normalization.

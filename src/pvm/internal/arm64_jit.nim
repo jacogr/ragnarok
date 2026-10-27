@@ -320,10 +320,17 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     labels[index] = words.len
     words.add(0xf100007f'u32 or (item.span shl 10)) # CMP Xremaining,#wholeSourceSpan.
     armRegionEdge(words, fixes, item.header, 3, true) # LO returns before charging a partial block.
-    armImmediate(words, 1, item.price)
-    words.add(0xeb01005f'u32) # CMP Xgas,Xprice.
-    armRegionEdge(words, fixes, item.header, 3, true) # LO leaves the unpaid block entirely untouched.
-    words.add(0xcb010042'u32) # SUB Xgas,Xgas,Xprice after the unsigned sufficiency check.
+    if item.price <= 4095:
+      # A sealed twelve-bit charge fits the ISA immediate field without materializing a scratch constant per visit.
+      words.add(0xf100005f'u32 or (uint32(item.price) shl 10)) # CMP Xgas,#price, including zero.
+      armRegionEdge(words, fixes, item.header, 3, true) # LO leaves the unpaid block entirely untouched.
+      words.add(0xd1000042'u32 or (uint32(item.price) shl 10)) # SUB Xgas,Xgas,#price.
+    else:
+      # Wider prices keep the full unsigned 64-bit guard and subtraction with no truncation or sign extension.
+      armImmediate(words, 1, item.price)
+      words.add(0xeb01005f'u32) # CMP Xgas,Xprice.
+      armRegionEdge(words, fixes, item.header, 3, true)
+      words.add(0xcb010042'u32) # SUB Xgas,Xgas,Xprice after the unsigned sufficiency check.
     words.add(0xd1000063'u32 or (item.span shl 10)) # SUB Xremaining,Xremaining,#wholeSourceSpan.
     # Invocation-local visits preserve exact lowered-operation counts without retaining mutable counters in code.
     words.add(0xf9400221'u32 or (uint32(index+2) shl 10))
