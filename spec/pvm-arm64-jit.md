@@ -39,13 +39,11 @@ The first retained-frame prototype and its local evidence follow below. This doe
 ## Intended platform matrix
 
 The JIT targets Linux x86-64, Linux ARM64 and macOS ARM64. All other CPU/OS combinations are
-unsupported for JIT; this does not change interpreter availability. Only macOS ARM64 currently
-has native execution evidence. Linux ARM64 is the next platform qualification, using an ARM64
-Docker environment with its own executable-memory publication path, instruction-cache checks,
-refusal/lifetime witnesses and unchanged full-state comparisons. Remove the Apple-only execution
-guard only together with that implementation and passing evidence. Keep architecture selection
-separate from OS allocation/publication policy. Container timings must be identified separately
-from native macOS timings; x86-64 code generation remains future work.
+unsupported for JIT; this does not change interpreter availability. The local experiment now has
+native correctness/lifetime evidence on macOS ARM64 and Linux ARM64 in Docker; see the
+[Linux qualification](#linux-arm64-platform-qualification). Architecture selection remains separate
+from OS allocation/publication policy. Container clocks remain separate from native macOS timing
+evidence, and x86-64 code generation remains future work.
 
 ## Platform reference
 
