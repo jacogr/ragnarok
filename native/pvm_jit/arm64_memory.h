@@ -116,6 +116,21 @@ static int pvm_arm64_arena_call(void *handle, uint32_t offset, void *registers) 
     return 0;
 #endif
 }
+/* The checked Nim caller lends one readable word only for this invocation; no pointer is retained. */
+static int pvm_arm64_arena_load(void *handle, uint32_t offset, void *registers,
+                                const void *word) {
+#if PVM_ARM64_JIT_HOST
+    pvm_arm64_arena *owner = handle;
+    if (!owner || !registers || !word || offset >= owner->used || (offset & 3)) return 0;
+    void (*entry)(void *, const void *) =
+        (void (*)(void *, const void *))((unsigned char *)owner->memory + offset);
+    entry(registers, word);
+    return 1;
+#else
+    (void)handle; (void)offset; (void)registers; (void)word;
+    return 0;
+#endif
+}
 /* Conditional leaves return only a previously validated scalar stream offset, never a host address. */
 static uint32_t pvm_arm64_arena_next(void *handle, uint32_t offset, void *registers) {
 #if PVM_ARM64_JIT_HOST

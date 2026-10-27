@@ -675,3 +675,58 @@ Full native compile mode and execution selection are tracked in
 [#1733](https://github.com/jacogr/ragnarok/issues/1733): Linux x86-64 and Linux/macOS ARM64,
 eventual qualified default JIT with explicit opt-out, independently selectable full compile mode,
 and separate compilation/cold/reused/reference-compiled measurements. No new default is enabled.
+
+
+## Checked head-load fusion: rejected
+
+An isolated opcode-130 head-load experiment was measured against accepted head
+`95841b75cf69d4179b38161b7057407f648069cb`. An ignored diagnostic source copy counted
+memory visits on all seven workloads; its clocks were discarded. All accesses used existing
+contiguous-region fast checks, with zero slow load/store fallback hits. Long sieve performed
+15,475,522 memory accesses, including 9,132,792 unsigned indirect 64-bit loads; one source site
+accounted for 5,000,000 loads followed by three register operations and a static jump. These
+counts identify a candidate boundary; no CPU sampling or hardware-counter cause is claimed.
+
+The trial preserved address/protected-prefix/extent/permission checks in Nim and borrowed one
+fully admitted word for a native head load plus at least three register operations. It cached no
+guest pointer. Partial whole-block reservations, fragmented/refused extents and conditional-ending
+shapes retained canonical handlers. Existing pricing, code-cache caps, memory ownership and
+source/host semantics were unchanged. The trial is rejected: its retained-core improvement did
+not establish a useful public-call improvement across the application cohort.
+
+### Same-cohort public CPU medians
+
+Apple M1 Max, pinned checked release/ARC/Clang ThinLTO. CPU ms, forward / reverse. Our public
+calls include fresh invocation memory and immutable result publication. Reference raw calls exclude
+restoration/teardown; separate DOOM lifecycle records were checked.
+
+| Case | Accepted JIT | Trial JIT | PolkaVM interpreted | Trial / accepted |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 2.853 / 2.816 | 2.814 / 2.794 | 5.981 / 5.960 | 0.986 / 0.992 |
+| sieve 10000000 | 272.537 / 272.798 | 273.620 / 276.108 | 377.584 / 369.159 | 1.004 / 1.012 |
+| minimal 100000 | 4.936 / 4.906 | 4.938 / 4.910 | 6.038 / 6.040 | 1.000 / 1.001 |
+| memset 100000 | 3.591 / 3.452 | 3.504 / 3.456 | 3.945 / 3.940 | 0.976 / 1.001 |
+| pinky 1 | 78.733 / 76.373 | 78.918 / 76.509 | 96.374 / 94.065 | 1.002 / 1.002 |
+| init 0 | 323.207 / 324.560 | 320.041 / 322.659 | 671.381 / 671.688 | 0.990 / 0.994 |
+| tick 0 | 37.075 / 37.143 | 36.513 / 37.373 | 44.209 / 45.321 | 0.985 / 1.006 |
+
+The separate paired retained-frame kernel cohort improves sieve100k from 2.767 / 2.751 to
+2.524 / 2.486 ms (about 9–10%). Public sieve100k improves only 0.8–1.3%, while long sieve
+is 0.4–1.2% slower. Other public changes do not show a consistent useful gain in both orders.
+These scopes are not interchangeable; the runtime experiment is restored rather than retained
+on the strength of a core-only result. No Linux qualification is claimed for this rejected trial.
+
+Qualification passed nine shared native gates, including 4,800 added load/address/permission/
+pricing/budget cases and explicit host remap/unmap replay. The kernel cohort has 42 processes /
+546 calls / 63 controls / six fresh builds (three equal-image pairs); the public/core/reference
+cohort has 70 processes / 910 calls / 115 controls / sixteen fresh builds (eight equal-image pairs).
+Independent re-parsing verified every call, control, source/input/compiler/image seal and exact
+accepted-parent source identity (706 kernel and 710 application seals). Records remain under
+`build/pvm-arm64-jit/head-load` and the corresponding sealed application/kernel receipts.
+
+The host witness initially expected native work under a partial whole-block reservation. The
+trace confirmed correct interpreted fallback; the witness now checks that boundary and a separate
+full-reservation replay before unmapping. A compiler alias rejection was fixed by hoisting scalar
+gas/register values before a mutable resume call. No runtime check was weakened. The next
+question is why retained-frame gains fail to survive public execution, before expanding memory
+lowering further.
