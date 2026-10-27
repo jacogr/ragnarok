@@ -22,6 +22,8 @@ proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer):
     importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
 
 type
+  ArmEntryRecord = object ## One scalar record binds a published code offset to its hot operation count and cold successor.
+    code, operations, ending: uint32
   ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
     headers, spans, operations: array[3, uint32]
@@ -35,7 +37,7 @@ type
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
     arena: ArenaOwner
     region: ArmRegionCache
-    entries, ends, counts: seq[uint32]
+    entries: seq[ArmEntryRecord]
     branchCalls*, headerCalls*: uint64
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
@@ -53,8 +55,9 @@ proc createArena(): nil pointer =
 
 proc newArmJit*(): ArmJit =
   ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
-  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[], ends: @[],
-      counts: @[])
+  # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
+  assert sizeof(ArmEntryRecord) == 12
+  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[])
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -210,14 +213,15 @@ proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
   ## Zero is unexamined, one refused, and code offsets are stored plus two; maps have a hard local ceiling.
   if extent > 262144'u32: return 1
   if jit.entries.len < int(extent):
+    # Zero-initialized records grow together; no independently sized metadata columns can diverge.
     jit.entries.setLen(int(extent))
-    jit.ends.setLen(int(extent))
-    jit.counts.setLen(int(extent))
-  jit.entries[int(offset)]
+  jit.entries[int(offset)].code
 
 proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
   ## A source-bound refusal avoids repeated compilation attempts without changing interpreted semantics.
-  if int(offset) < jit.entries.len and jit.entries[int(offset)] < 2: jit.entries[int(offset)] = 1
+  if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
+    # An unsuccessful replacement never disturbs a previously published tuple.
+    jit.entries[int(offset)].code = 1
 
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =
@@ -232,9 +236,8 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
   if address < 0:
     refuseArmEntry(jit, offset)
     return false
-  jit.entries[int(offset)] = uint32(address)+2
-  jit.ends[int(offset)] = ending
-  jit.counts[int(offset)] = count
+  jit.entries[int(offset)] = ArmEntryRecord(code: uint32(address)+2, operations: count,
+      ending: ending)
   inc jit.fragments
   jit.codeBytes+=uint64(instructions.len)*4
   true
@@ -242,27 +245,29 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
 proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): uint32 =
   ## Borrow the current invocation's exact fixed register array; native code cannot access the rest of its frame.
   assert sizeof(RegisterFile) == 104
+  # A deliberate twelve-byte value copy keeps immutable facts stable without retaining a view across the native call.
   let entry = jit.entries[int(offset)]
-  assert entry >= 2
-  let completed = callArena(jit.arena.handle, entry-2, addr registers)
+  assert entry.code >= 2
+  let completed = callArena(jit.arena.handle, entry.code-2, addr registers)
   assert completed == 1
   inc jit.calls
-  jit.operations+=uint64(jit.counts[int(offset)])
-  jit.ends[int(offset)]
+  jit.operations+=uint64(entry.operations)
+  entry.ending
 
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
-  jit.ends[int(offset)]
+  jit.entries[int(offset)].ending
 
 proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): uint32 =
   ## Native branches may select only their two captured positive scalar offsets; the checked adapter validates the result extent.
   assert sizeof(RegisterFile) == 104
+  # A deliberate twelve-byte value copy keeps immutable facts stable without retaining a view across the native call.
   let entry = jit.entries[int(offset)]
-  assert entry >= 2
-  result = nextArena(jit.arena.handle, entry-2, addr registers)
+  assert entry.code >= 2
+  result = nextArena(jit.arena.handle, entry.code-2, addr registers)
   inc jit.calls
   inc jit.branchCalls
-  jit.operations+=uint64(jit.counts[int(offset)])
+  jit.operations+=uint64(entry.operations)
 
 
 type
@@ -413,11 +418,11 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
   ## Borrow registers and a fresh scalar context for one complete connected run; all pointers expire on return.
   assert jit.region.status == 2 and sizeof(RegisterFile) == 104
   let entry = jit.entries[int(jit.region.headers[0])]
-  assert entry >= 2
+  assert entry.code >= 2
   let available = state[1]
   let gas = state[0]
   assert state[2] == 0 and state[3] == 0 and state[4] == 0
-  let destination = regionArena(jit.arena.handle, entry-2, addr registers, addr state)
+  let destination = regionArena(jit.arena.handle, entry.code-2, addr registers, addr state)
   assert state[1] <= available and state[0] <= gas
   let consumed = available-state[1]
   var accounted = 0'u64

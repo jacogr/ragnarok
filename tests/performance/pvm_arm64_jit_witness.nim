@@ -537,6 +537,12 @@ when defined(pvmArm64Jit):
     assert successes == 256
     var capacityRegisters = default(RegisterFile)
     assert callArmEntry(capacity, 0, capacityRegisters) == 77
+    # A failed replacement with different metadata must preserve the old code, successor and exact operation count together.
+    let beforeOperations = capacity.operations
+    var rejectedWords = pages
+    assert not publishArmEntry(capacity, 0, 99999, 123, rejectedWords)
+    assert callArmEntry(capacity, 0, capacityRegisters) == 77
+    assert capacity.operations-beforeOperations == 1
     echo "ARM_REPLACEMENT_REFUSAL,", successes
 
   when not defined(pvmArm64JitRefuse):
