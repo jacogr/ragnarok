@@ -506,3 +506,204 @@ baseline roles or reference lifecycle phases cannot publish a complete table.
 Local qualification passes all 19 calibrated native memory suites and controls, the fragmented
 regions/host witness, 452 production modules plus peer entry point, inventory and 75 affected
 comparison/CI checks. Exact-head Linux parent pairing remains required before acceptance.
+
+## Qualified Linux region-allocation verdict
+
+[Comparison run 40483727387](https://github.com/jacogr/ragnarok/actions/runs/40483727387)
+passes at measured candidate `e50f7413b7cecdca943cbbde0be43282f667a472`, paired with
+accepted prepared parent `665d6a9fb49e2070c9d29bd095a53a7027a6371c` and resolved master
+`5bbe2a44b7b2cc4c6e0be58a1a8eebdb8abe1e32` on one AMD EPYC 7763 runner.
+All sides use October 26 Nimony `358b9bce4dd855453f57a80a0c499b0b2e27d7ee`.
+The independent artifact verification reparses all 72 process transcripts / 936 checked calls,
+120 positive/refusal controls, sixteen fresh builds / eight equal-image pairs and six shared
+DOOM admission controls. It matches 1,814 exact committed source hashes and 38 tracked
+helper/input hashes. Complete gas/register/page/permission/source snapshots and ordered host
+events pass. Every reference DOOM process supplies thirteen exact call/lifecycle pairs with
+matching call clocks and additive restoration/call/teardown totals. Raw executable images are
+not downloaded artifacts: their hashes and fresh-cache equal-image checks are sealed runner
+receipts. The compiler version banner is empty; pinned manifests, compiler image identity and
+all build command paths agree. No hardware counters were collected.
+
+**Keep the bounded allocation change.** Both process orders show useful parent-paired gains:
+sieve 12.5–19.3%, large memory fill 25.2–27.3%, gameplay 5.5–8.6%. Pinky moves +1.2%/+0.2%,
+minimal +2.1%/−0.9%, initialization −0.2%/+0.8%; these small or mixed differences do not support
+material regression claims. The isolated production change remains final-size region allocation;
+no memory checks, quotas, pricing, cache policy or host semantics changed.
+
+Gameplay is still 18.8–25.6% above reference call-only timing and 7.4–13.7% above its measured
+invocation lifecycle. The retained core is −3.4%/+2.4% versus reference call-only timing, while
+reset/call/publication totals 45.512/47.507 ms. This supports investigating remaining invocation
+construction/reset/publication overhead before changing the dispatch architecture; it does not
+establish an exact additive decomposition across separate process samples. Preparation and cold
+calls remain separate below. Ordinary calls are diagnostic compatibility wrappers over the same
+engine; production callers retaining prepared owners remains separate caller-lifetime work.
+
+Artifacts are retained locally under `build/pr-1724-region-linux/tests/pvm-interpreter-linux`,
+including `independent-verification.json`, raw transcripts, controls and the complete result.
+The following exact-head table supersedes provisional Linux qualification for this runtime trial;
+previous runner/toolchain tables remain historical evidence. Documentation-only follow-up commits
+do not change this measured-head provenance.
+
+Exact master: `5bbe2a44b7b2cc4c6e0be58a1a8eebdb8abe1e32`; candidate: `e50f7413b7cecdca943cbbde0be43282f667a472`.
+
+CPU milliseconds. Both process orders; reused medians exclude the first three calls.
+Master and ordinary public calls use complete pricing. Prepared API reuses source facts and stream,
+but still creates private invocation memory and publishes an immutable result inside every call.
+
+| Workload | Order | Master API | Ours prepared API | PolkaVM | Prepared / ref | Ours ordinary API (diagnostic) | Ordinary / ref |
+|---|---|---:|---:|---:|---:|---:|---:|
+| pinky | 0 | 348.632 | 187.568 | 188.891 | 0.993 | 189.123 | 1.001 |
+| pinky | 1 | 341.646 | 185.496 | 183.747 | 1.010 | 185.748 | 1.011 |
+| sieve | 0 | 10.235 | 3.986 | 5.563 | 0.717 | 6.363 | 1.144 |
+| sieve | 1 | 10.232 | 4.007 | 5.544 | 0.723 | 6.431 | 1.160 |
+| minimal | 0 | 20.534 | 7.923 | 7.463 | 1.062 | 7.643 | 1.024 |
+| minimal | 1 | 20.538 | 7.832 | 7.484 | 1.046 | 8.424 | 1.126 |
+| memset | 0 | 10.740 | 5.044 | 4.177 | 1.208 | 5.073 | 1.215 |
+| memset | 1 | 10.738 | 4.899 | 4.190 | 1.169 | 5.070 | 1.210 |
+| init | 0 | 1912.556 | 591.124 | 776.309 | 0.761 | 606.637 | 0.781 |
+| init | 1 | 1865.448 | 596.640 | 774.028 | 0.771 | 603.691 | 0.780 |
+| tick | 0 | 119.192 | 48.108 | 40.484 | 1.188 | 62.542 | 1.545 |
+| tick | 1 | 121.089 | 50.824 | 40.457 | 1.256 | 62.507 | 1.545 |
+
+Prior prepared baseline: `665d6a9fb49e2070c9d29bd095a53a7027a6371c`.
+
+| Workload | Order | Prior prepared API | Current prepared API | Current / prior |
+|---|---|---:|---:|---:|
+| pinky | 0 | 185.317 | 187.568 | 1.012 |
+| pinky | 1 | 185.136 | 185.496 | 1.002 |
+| sieve | 0 | 4.939 | 3.986 | 0.807 |
+| sieve | 1 | 4.580 | 4.007 | 0.875 |
+| minimal | 0 | 7.763 | 7.923 | 1.021 |
+| minimal | 1 | 7.905 | 7.832 | 0.991 |
+| memset | 0 | 6.745 | 5.044 | 0.748 |
+| memset | 1 | 6.740 | 4.899 | 0.727 |
+| init | 0 | 592.035 | 591.124 | 0.998 |
+| init | 1 | 591.908 | 596.640 | 1.008 |
+| tick | 0 | 52.663 | 48.108 | 0.914 |
+| tick | 1 | 53.790 | 50.824 | 0.945 |
+
+Retained-frame core is a separate scope: invocation reset and publication are outside its call.
+
+| Workload | Order | Core call | Core reset + call + publication | Core / reference |
+|---|---|---:|---:|---:|
+| pinky | 0 | 189.294 | 189.517 | 1.002 |
+| sieve | 0 | 4.078 | 4.140 | 0.733 |
+| minimal | 0 | 8.208 | 8.216 | 1.100 |
+| memset | 0 | 3.941 | 4.311 | 0.944 |
+| init | 0 | 594.767 | 601.285 | 0.766 |
+| tick | 0 | 39.127 | 45.512 | 0.966 |
+| pinky | 1 | 190.598 | 190.809 | 1.037 |
+| sieve | 1 | 4.104 | 4.178 | 0.740 |
+| minimal | 1 | 7.998 | 8.006 | 1.069 |
+| memset | 1 | 3.910 | 4.338 | 0.933 |
+| init | 1 | 594.873 | 601.941 | 0.769 |
+| tick | 1 | 41.438 | 47.507 | 1.024 |
+
+DOOM invocation lifecycle: reference instance construction/restoration, call and teardown versus our prepared public call.
+Reference module construction and independent full-state validation remain outside; ours includes immutable publication.
+
+| Phase | Order | Reference instance + restore | Reference call | Reference teardown | Reference lifecycle | Ours prepared call | Ours / reference lifecycle |
+|---|---|---:|---:|---:|---:|---:|---:|
+| init | 0 | 4.117 | 776.309 | 0.156 | 780.774 | 591.124 | 0.757 |
+| tick | 0 | 4.129 | 40.484 | 0.171 | 44.807 | 48.108 | 1.074 |
+| init | 1 | 4.028 | 774.028 | 0.161 | 778.314 | 596.640 | 0.767 |
+| tick | 1 | 4.057 | 40.457 | 0.153 | 44.692 | 50.824 | 1.137 |
+
+Public API owner construction and cold first call (CPU ms). No reference-equivalent constructor claim.
+
+| Workload | Order | API | Owner constructor | Cold call | Constructor + cold call |
+|---|---|---|---:|---:|---:|
+| pinky | 0 | master | 3.088 | 359.965 | 363.052 |
+| pinky | 0 | public | 3.106 | 191.471 | 194.577 |
+| pinky | 0 | baseline | 0.884 | 194.066 | 194.949 |
+| pinky | 0 | prepared | 0.892 | 196.542 | 197.433 |
+| sieve | 0 | master | 14.708 | 10.633 | 25.342 |
+| sieve | 0 | public | 14.705 | 8.755 | 23.459 |
+| sieve | 0 | baseline | 3.996 | 11.436 | 15.432 |
+| sieve | 0 | prepared | 3.200 | 10.944 | 14.144 |
+| minimal | 0 | master | 0.037 | 20.967 | 21.003 |
+| minimal | 0 | public | 0.036 | 7.779 | 7.816 |
+| minimal | 0 | baseline | 0.016 | 7.976 | 7.993 |
+| minimal | 0 | prepared | 0.015 | 7.975 | 7.990 |
+| memset | 0 | master | 0.252 | 10.845 | 11.096 |
+| memset | 0 | public | 0.265 | 6.496 | 6.761 |
+| memset | 0 | baseline | 0.070 | 10.112 | 10.182 |
+| memset | 0 | prepared | 0.083 | 6.836 | 6.920 |
+| init | 0 | master | 47.819 | 1916.765 | 1964.583 |
+| init | 0 | public | 46.600 | 609.273 | 655.874 |
+| init | 0 | baseline | 10.847 | 601.300 | 612.148 |
+| init | 0 | prepared | 12.201 | 601.796 | 613.997 |
+| tick | 0 | master | 47.396 | 117.232 | 164.627 |
+| tick | 0 | public | 46.707 | 67.140 | 113.847 |
+| tick | 0 | baseline | 10.830 | 60.006 | 70.836 |
+| tick | 0 | prepared | 11.750 | 54.880 | 66.630 |
+| pinky | 1 | prepared | 1.034 | 188.336 | 189.370 |
+| pinky | 1 | baseline | 0.859 | 191.903 | 192.762 |
+| pinky | 1 | public | 3.079 | 195.815 | 198.894 |
+| pinky | 1 | master | 3.035 | 340.563 | 343.599 |
+| sieve | 1 | prepared | 3.663 | 10.999 | 14.661 |
+| sieve | 1 | baseline | 3.180 | 11.427 | 14.607 |
+| sieve | 1 | public | 14.626 | 8.818 | 23.445 |
+| sieve | 1 | master | 14.493 | 11.048 | 25.541 |
+| minimal | 1 | prepared | 0.023 | 7.816 | 7.839 |
+| minimal | 1 | baseline | 0.024 | 8.148 | 8.172 |
+| minimal | 1 | public | 0.047 | 8.329 | 8.376 |
+| minimal | 1 | master | 0.046 | 21.397 | 21.443 |
+| memset | 1 | prepared | 0.085 | 8.283 | 8.368 |
+| memset | 1 | baseline | 0.084 | 9.952 | 10.037 |
+| memset | 1 | public | 0.266 | 6.676 | 6.942 |
+| memset | 1 | master | 0.252 | 10.761 | 11.014 |
+| init | 1 | prepared | 10.854 | 604.289 | 615.144 |
+| init | 1 | baseline | 10.723 | 609.399 | 620.122 |
+| init | 1 | public | 46.804 | 609.997 | 656.800 |
+| init | 1 | master | 47.308 | 1868.706 | 1916.014 |
+| tick | 1 | prepared | 12.026 | 58.130 | 70.156 |
+| tick | 1 | baseline | 10.769 | 60.082 | 70.851 |
+| tick | 1 | public | 46.766 | 66.064 | 112.830 |
+| tick | 1 | master | 47.818 | 118.685 | 166.503 |
+
+Constructors and first execution (CPU ms). Master calls include their immutable final publication;
+ours publishes separately. PolkaVM has call-only timing; no equivalent constructor claim.
+
+| Workload | Order | Ours plan / frame | Ours cold call | Ours cold lifecycle + constructors | Master cold call |
+|---|---|---:|---:|---:|---:|
+| pinky | 0 | 1.003 / 0.501 | 195.431 | 197.529 | 359.965 |
+| sieve | 0 | 3.148 / 0.361 | 9.719 | 13.300 | 10.633 |
+| minimal | 0 | 0.010 / 0.095 | 8.101 | 8.224 | 20.967 |
+| memset | 0 | 0.067 / 1.728 | 4.130 | 6.301 | 10.845 |
+| init | 0 | 10.703 / 6.945 | 605.721 | 631.030 | 1916.765 |
+| tick | 0 | 12.011 / 6.948 | 44.814 | 72.556 | 117.232 |
+| pinky | 1 | 1.005 / 0.549 | 194.151 | 196.273 | 340.563 |
+| sieve | 1 | 3.290 / 0.680 | 9.664 | 13.716 | 11.048 |
+| minimal | 1 | 0.013 / 0.097 | 8.276 | 8.407 | 21.397 |
+| memset | 1 | 0.069 / 1.623 | 4.096 | 6.147 | 10.761 |
+| init | 1 | 10.698 / 6.796 | 604.694 | 630.011 | 1868.706 |
+| tick | 1 | 10.843 / 7.019 | 45.830 | 71.228 | 118.685 |
+
+Fixtures, decoding and complete-state validation are outside these scopes. All samples,
+master gas-plan constructors, image/source hashes and controls remain in results.json.
+These are adapted checked workloads, not upstream stock benchmark scores. No hardware-counter claim.
+
+| Workload | Order | Source attempts | Cold / reused nodes |
+|---|---|---:|---:|
+| pinky | 0 | 32055270 | 7852 / 7852 |
+| sieve | 0 | 1166742 | 13938 / 13938 |
+| minimal | 0 | 2000035 | 68 / 68 |
+| memset | 0 | 1200349 | 487 / 487 |
+| init | 0 | 203298231 | 36204 / 36204 |
+| tick | 0 | 12180040 | 10759 / 10759 |
+| pinky | 1 | 32055270 | 7852 / 7852 |
+| sieve | 1 | 1166742 | 13938 / 13938 |
+| minimal | 1 | 2000035 | 68 / 68 |
+| memset | 1 | 1200349 | 487 / 487 |
+| init | 1 | 203298231 | 36204 / 36204 |
+| tick | 1 | 12180040 | 10759 / 10759 |
+
+### Merge readiness after the allocation trial
+
+The performance gate for retaining this trial passes. Current exact-head Unit run
+[40484013910](https://github.com/jacogr/ragnarok/actions/runs/40484013910) remains in progress
+without a reported failure at recording time. Its pending state does not establish complete
+Linux qualification, so the merge hold remains. Parent Unit run 40473624906 passed completely;
+its result does not substitute for the candidate run. No merge is performed. Remaining gameplay
+cost and unused private single-mode forwarding are explicitly separate follow-up work.
