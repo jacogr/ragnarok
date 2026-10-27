@@ -721,10 +721,10 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
-  # Explicit core/lifecycle comparison against exact master; regular Perf owns public API timings.
-  pvm-interpreter-comparison:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}
-    name: Perf / PVM Interpreter Comparison
+  # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
+  pvm-comparison:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf / PVM Comparison
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-latest
     env:
@@ -773,7 +773,7 @@ jobs:
   perf-status:
     name: Perf
     timeout-minutes: *ci-job-timeout
-    needs: perf
+    needs: [perf, pvm-comparison]
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -781,7 +781,8 @@ jobs:
       - name: Require every Perf family
         env:
           SHARDS_RESULT: ${{ needs.perf.result }}
-        run: test "$SHARDS_RESULT" = success
+          COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}
+        run: test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success
 
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
