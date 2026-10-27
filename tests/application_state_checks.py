@@ -14,6 +14,7 @@ import subprocess
 import time
 from rpc_checks import run as rpc_run, ready
 from test_quic_mesh import ports, observe
+from test_quic import THREAD_BASELINES
 
 
 # Choose an unused local UDP endpoint without fixed machine-wide test ports.
@@ -68,12 +69,14 @@ def mesh(binary, certificates, chain, folder, policy):
                 processes[role] = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
                     env={**os.environ, 'RAGNAROK_MESH_ROUNDS': '1', 'RAGNAROK_MESH_FALLBACK': '0',
                          'RAGNAROK_MESH_DISRUPT': '0'})
-            observe(processes, logs, 'MESH_READY ', peaks)
+            # The shared baseline includes the dispatcher and the enabled bounded logging writer.
+            thread_limits = {role: THREAD_BASELINES['nim'] for role in processes}
+            observe(processes, logs, 'MESH_READY ', peaks, thread_limits=thread_limits)
             (gate/'start-0').touch()
-            texts = observe(processes, logs, 'MESH_EXCHANGED 0 ', peaks)
+            texts = observe(processes, logs, 'MESH_EXCHANGED 0 ', peaks, thread_limits=thread_limits)
             assert all('MESH_EXCHANGED 0 8' in text.splitlines() for text in texts.values())
             (gate/'close-0').touch()
-            observe(processes, logs, 'MESH_IDLE 0 ', peaks)
+            observe(processes, logs, 'MESH_IDLE 0 ', peaks, thread_limits=thread_limits)
             (gate/'stop').touch()
             for role, process in processes.items():
                 assert process.wait(timeout=5) == 0, logs[role].read_text()

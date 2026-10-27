@@ -15,6 +15,7 @@ import threading
 import time
 from telemetry_checks import EventCapture, frame, listener, stop
 from test_quic_resilience import watch
+from test_quic import THREAD_BASELINES
 
 
 # Own one IPv4 relay and joined worker; hold bounded server replies until the caller opens the gate.
@@ -95,7 +96,7 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
         owners.callback(stop, server)
         watch({'server': server}, {'server': folder/'server.log'},
               {'server': lambda text: 'READY' in text.splitlines()}, {'server': {}},
-              seconds=5, thread_limits={'server': 1})
+              seconds=5, thread_limits={'server': THREAD_BASELINES['nim']})
         connection, _ = collector.accept()
         owners.enter_context(connection)
         connection.settimeout(12)
@@ -155,7 +156,7 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
                     # Native idle counters establish retirement before the next listener generation starts.
                     watch({'server': server}, {'server': folder/'server.log'},
                           {'server': lambda text: f'SERVICE_IDLE {closes} {closes} ' in text},
-                          {'server': {}}, seconds=5, thread_limits={'server': 1})
+                          {'server': {}}, seconds=5, thread_limits={'server': THREAD_BASELINES['nim']})
         shutdown.touch()
         capture.end() # No extra failure, loss, success or close may hide after either terminal outcome.
         # The service's separate three-peer peak gate is intentionally unmet by this sequential case.

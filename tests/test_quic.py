@@ -20,7 +20,8 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from build_quic import ROOT, BUILD, PINS
 
-THREAD_BASELINES = {'nim': 1}
+# The shipped application owns one dispatcher and one bounded logging writer by default.
+THREAD_BASELINES = {'nim': 2}
 # The original bounded authentication and framing matrix is shared by the Nimony migration runner.
 SCENARIOS = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
              'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')

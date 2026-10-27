@@ -8,6 +8,7 @@ capacity behavior.
 """
 from contextlib import ExitStack
 import hashlib
+from test_quic import THREAD_BASELINES
 import os
 import time
 import json
@@ -170,7 +171,7 @@ def pending_reconnect(binary, certificates, chain, folder):
         # Establish listener readiness before consuming any of the client handshake deadline.
         watch({'server': server}, {'server': folder/'server.log'},
               {'server': lambda text: 'READY' in text.splitlines()}, {'server': {}},
-              seconds=5, thread_limits={'server': 1})
+              seconds=5, thread_limits={'server': THREAD_BASELINES['nim']})
         client = subprocess.Popen([str(binary), 'client', str(gate.getsockname()[1]),
             str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
             'jamnp-s/1/245becfe', '30000', 'clean', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint],
@@ -496,7 +497,7 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup
                                and bool(states(text)) and states(text)[-1][0] == 1,
                                'client': lambda text: 'AUTH_OK' in text.splitlines()},
                               {'server': {}, 'client': {}}, seconds=5,
-                              thread_limits={'server': 1, 'client': 1})
+                              thread_limits={role: THREAD_BASELINES['nim'] for role in ('server', 'client')})
                         if remote_loss:
                             # Kill an admitted connection whose actual expiry must produce a close observation.
                             children[-1].kill()
@@ -646,7 +647,8 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
                          'RAGNAROK_MESH_DISRUPT': '0'})
             if not silent:
                 # Leave the close gate absent after healthy exchange; both owners time out with a live peer.
-                observe(processes, logs, 'MESH_EXCHANGED 0 8', {role: {} for role in roles})
+                observe(processes, logs, 'MESH_EXCHANGED 0 8', {role: {} for role in roles},
+                        thread_limits={role: THREAD_BASELINES['nim'] for role in roles})
             for role, process in processes.items():
                 assert process.wait(timeout=20) == 2, logs[role].read_text()
             hello, events = completed_capture(collector)
@@ -701,7 +703,7 @@ def capacity_refusal(binary, certificates, chain, folder):
             # Observe native admission counters before creating the excess connection.
             def state(predicate):
                 return watch({'server': server}, {'server': server_log}, {'server': predicate},
-                             {'server': {}}, thread_limits={'server': 1})
+                             {'server': {}}, thread_limits={'server': THREAD_BASELINES['nim']})
             state(lambda text: 'READY' in text.splitlines())
             for index in range(17):
                 output = (folder/f'client-{index}.log').open('w'); handles.append(output)
