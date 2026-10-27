@@ -1418,6 +1418,39 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   takeValue(prepared)
 
 when defined(pvmArm64Jit):
+  proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool
+    ## A positive original branch cache is required before any native continuation is published.
+
+  proc flatArmRunNext(f: var FlatFrame, offset: uint32): uint32 =
+    ## A complete checked reservation precedes native arithmetic/branch work; no native path can exit mid-prefix.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let destination = callArmBranch(jit, offset, f.info.registers)
+    assert int(destination) < f.handlers.len
+    f.info.blockCharged = false
+    destination
+
+  proc flatArmBranch(f: var FlatFrame, offset: uint32): uint32 =
+    ## Partial source prefixes always reenter the original checked operations and exact temporary barrier.
+    if f.barrier != flatStop:
+      let original = f.armOriginal[int(offset)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    flatArmRunNext(f, offset)
+
+  proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
+    ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
+    flatReserve(f, offset)
+    if f.barrier != flatStop:
+      let selected = f.handlers[int(offset+1)]
+      return selected(f, offset+1)
+    let jit = f.armJit
+    assert jit != nil
+    if jit != nil: inc jit.headerCalls
+    flatArmRunNext(f, offset+1)
+
   proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial budgets retain original atomic handler behaviour, including a second-node barrier.
     if f.barrier != flatStop:
@@ -1429,6 +1462,69 @@ when defined(pvmArm64Jit):
     assert jit != nil
     if jit != nil: return callArmEntry(jit, offset, f.info.registers)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
+    ## First execution retains original branch resolution; only subsequent positive cached capability enables promotion.
+    if f.barrier != flatStop: return flatArmExecute(f, offset)
+    if flatArmUpgrade(f, offset): return flatArmBranch(f, offset)
+    flatArmExecute(f, offset)
+
+  func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool =
+    ## Exact original handler identity certifies both arms already passed genuine source and preparation checks.
+    let code = f.plan.facts[int(f.sites[int(offset)])].opcode
+    case code
+    of 81: f.handlers[int(offset)] == flatBranch[81]
+    of 82: f.handlers[int(offset)] == flatBranch[82]
+    of 83: f.handlers[int(offset)] == flatBranch[83]
+    of 84: f.handlers[int(offset)] == flatBranch[84]
+    of 85: f.handlers[int(offset)] == flatBranch[85]
+    of 86: f.handlers[int(offset)] == flatBranch[86]
+    of 87: f.handlers[int(offset)] == flatBranch[87]
+    of 88: f.handlers[int(offset)] == flatBranch[88]
+    of 89: f.handlers[int(offset)] == flatBranch[89]
+    of 90: f.handlers[int(offset)] == flatBranch[90]
+    of 170: f.handlers[int(offset)] == flatBranch[170]
+    of 171: f.handlers[int(offset)] == flatBranch[171]
+    of 172: f.handlers[int(offset)] == flatBranch[172]
+    of 173: f.handlers[int(offset)] == flatBranch[173]
+    of 174: f.handlers[int(offset)] == flatBranch[174]
+    of 175: f.handlers[int(offset)] == flatBranch[175]
+    else: false
+
+  proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool =
+    ## Rebuild immutable arithmetic facts only after both existing scalar branch arms are admitted; no pricing/resolve is moved.
+    let jit = f.armJit
+    if jit == nil: return false
+    let ending = armEnding(jit, offset)
+    if not flatArmCachedBranch(f, ending): return false
+    let before = armClock()
+    var native = default(ArmBlock)
+    var current = offset
+    while current < ending:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      inc current
+    let args = f.arguments[int(ending)]
+    let fact = f.plan.facts[int(f.sites[int(ending)])]
+    emitArmBranch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
+        uint32(args.x shr 32), args.y)
+    var words = armInstructions(native)
+    let promoted = publishArmEntry(jit, offset, ending, ending-offset+1, words)
+    jit.compilationNs+=armClock()-before
+    if not promoted:
+      # A full arena retains the already published arithmetic leaf; never replace a valid entry with a refusal marker.
+      f.handlers[int(offset)] = flatArmExecute
+      return false
+    f.handlers[int(offset)] = flatArmBranch
+    if offset > 0:
+      let header = offset-1
+      let plain: FlatHandler = flatCharge
+      # Only an exact ordinary header owning this complete source suffix can fuse. Memo/errors/special shapes remain original.
+      if f.handlers[int(header)] == plain and
+          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
+        f.armOriginal[int(header)] = plain
+        f.handlers[int(header)] = flatArmEnter
+    true
 
   proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
     ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
@@ -1456,7 +1552,9 @@ when defined(pvmArm64Jit):
     if not published: return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmExecute
+    let terminal = f.plan.facts[int(f.sites[int(ending)])].opcode
+    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
+        170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
@@ -1474,6 +1572,12 @@ when defined(pvmArm64Jit):
     if f.armJit == nil: default(array[5, uint64])
     else: [f.armJit.fragments, f.armJit.calls, f.armJit.operations, f.armJit.codeBytes,
         f.armJit.compilationNs]
+
+when defined(pvmArm64Jit):
+  proc flatArmControlStatistics*(f: FlatFrame): array[2, uint64] =
+    ## Native branch and checked-header entries prove the new control path executed.
+    if f.armJit == nil: default(array[2, uint64])
+    else: [f.armJit.branchCalls, f.armJit.headerCalls]
 
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The hot loop is the offset-returning dispatch; budgets are reserved only at synthetic block entries.

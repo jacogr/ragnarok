@@ -54,6 +54,27 @@ class Arm64JitReportTests(unittest.TestCase):
             with self.subTest(output=output[-80:]), self.assertRaises(ValueError):
                 parse(output+'ARM_JIT,sieve,1,13,26,36,100\n', 'sieve', True)
 
+class Arm64ControlReceiptTests(unittest.TestCase):
+    def test_complete_current_and_older_baseline_protocols(self):
+        """New branch/header evidence is required only for the current role; old exact baselines keep their framing."""
+        native = transcript()+'ARM_JIT,sieve,1,13,26,36,100\n'
+        parsed = parse(native+'ARM_CONTROL,sieve,12,10\n', 'sieve', True, True)
+        self.assertEqual(parsed['control'], {'branches': 12, 'headers': 10})
+        self.assertIsNone(parse(native, 'sieve', True)['control'])
+        with self.assertRaises(ValueError):
+            parse(native, 'sieve', True, True)
+        with self.assertRaises(ValueError):
+            parse(native+'ARM_CONTROL,sieve,12,10\n', 'sieve', True)
+
+    def test_foreign_negative_overflow_and_detached_control_records(self):
+        """Control coverage cannot be inferred from foreign or impossible branch/header relationships."""
+        native = transcript()+'ARM_JIT,sieve,1,13,26,36,100\n'
+        for receipt in ('ARM_CONTROL,pinky,12,10\n', 'ARM_CONTROL,sieve,-1,0\n',
+                        f'ARM_CONTROL,sieve,{2**63},0\n', 'ARM_CONTROL,sieve,1,2\n',
+                        'ARM_CONTROL,sieve,12,10\nARM_CONTROL,sieve,12,10\n'):
+            with self.subTest(receipt=receipt), self.assertRaises(ValueError):
+                parse(native+receipt, 'sieve', True, True)
+
 
 if __name__ == '__main__':
     unittest.main()

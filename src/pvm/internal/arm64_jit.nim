@@ -15,15 +15,19 @@ proc publishArena(arena: nil pointer, words: pointer,
 proc callArena(arena: nil pointer, offset: uint32,
     registers: pointer): cint {.cdecl, importc: "pvm_arm64_arena_call", header: "arm64_memory.h".}
 
+proc nextArena(arena: nil pointer, offset: uint32,
+    registers: pointer): uint32 {.cdecl, importc: "pvm_arm64_arena_next", header: "arm64_memory.h".}
+
 type
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
-    words: seq[uint32]
+    words, terminal: seq[uint32]
     reads, writes: uint32
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
     arena: ArenaOwner
     entries, ends, counts: seq[uint32]
+    branchCalls*, headerCalls*: uint64
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
 
@@ -130,6 +134,37 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     # ARM word operations zero high bits; GP requires sign extension of the low 32-bit result.
     fragment.words.add(0x93407c00'u32 or (destination shl 5) or destination)
 
+proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
+    immediate: uint64, yes, no: uint32) =
+  ## Only positive cached branch capabilities supply scalar destinations; flags survive MOV/STR publication.
+  assert opcode in {81'u8..90'u8, 170'u8..175'u8}
+  assert yes < 2147483646'u32 and no < 2147483646'u32
+  let left = armRead(fragment, slots.aIndex)
+  var right = 1'u32
+  if opcode <= 90:
+    # Branch immediates retain GP signed low-word extension before full 64-bit comparison.
+    armImmediate(fragment.terminal, 1, immediate)
+  else:
+    right = armRead(fragment, slots.bIndex)
+  fragment.terminal.add(0xeb00001f'u32 or (right shl 16) or (left shl 5)) # CMP Xn,Xm
+  let condition = case opcode
+    of 81, 170: 0'u32  # EQ
+    of 82, 171: 1'u32  # NE
+    of 83, 172: 3'u32  # CC, unsigned less
+    of 84: 9'u32       # LS, unsigned less or equal
+    of 85, 174: 2'u32  # CS, unsigned greater or equal
+    of 86: 8'u32       # HI, unsigned greater
+    of 87, 173: 11'u32 # LT, signed less
+    of 88: 13'u32      # LE, signed less or equal
+    of 89, 175: 10'u32 # GE, signed greater or equal
+    else: 12'u32       # GT, signed greater
+                   # Comparison precedes scratch reuse; these instructions do not change NZCV. X0 is overwritten only after stores.
+  fragment.terminal.add(0x52800001'u32 or ((yes and 65535) shl 5))
+  fragment.terminal.add(0x72a00001'u32 or ((yes shr 16) shl 5))
+  fragment.terminal.add(0x52800002'u32 or ((no and 65535) shl 5))
+  fragment.terminal.add(0x72a00002'u32 or ((no shr 16) shl 5))
+  fragment.terminal.add(0x1a820020'u32 or (condition shl 12)) # CSEL W0,W1,W2,cond
+
 proc armInstructions*(fragment: ArmBlock): seq[uint32] =
   ## Prologue loads only original values needed by this fragment; epilogue publishes every changed guest slot.
   result = @[]
@@ -140,6 +175,7 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
   for slot in 0..<13:
     if (fragment.writes and (1'u32 shl int(slot))) != 0:
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  for word in fragment.terminal: result.add(word)
 
 proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
   ## Zero is unexamined, one refused, and code offsets are stored plus two; maps have a hard local ceiling.
@@ -152,7 +188,7 @@ proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
 
 proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
   ## A source-bound refusal avoids repeated compilation attempts without changing interpreted semantics.
-  if int(offset) < jit.entries.len: jit.entries[int(offset)] = 1
+  if int(offset) < jit.entries.len and jit.entries[int(offset)] < 2: jit.entries[int(offset)] = 1
 
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32]): bool =
@@ -183,3 +219,17 @@ proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): ui
   inc jit.calls
   jit.operations+=uint64(jit.counts[int(offset)])
   jit.ends[int(offset)]
+
+proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
+  ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
+  jit.ends[int(offset)]
+
+proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): uint32 =
+  ## Native branches may select only their two captured positive scalar offsets; the checked adapter validates the result extent.
+  assert sizeof(RegisterFile) == 104
+  let entry = jit.entries[int(offset)]
+  assert entry >= 2
+  result = nextArena(jit.arena.handle, entry-2, addr registers)
+  inc jit.calls
+  inc jit.branchCalls
+  jit.operations+=uint64(jit.counts[int(offset)])

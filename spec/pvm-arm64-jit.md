@@ -36,6 +36,17 @@ availability result. Hardened application entitlement/distribution support is ou
 
 The first retained-frame prototype and its local evidence follow below. This does not establish a complete or competitive JIT backend; the draft preserves each subsequent increment.
 
+## Intended platform matrix
+
+The JIT targets Linux x86-64, Linux ARM64 and macOS ARM64. All other CPU/OS combinations are
+unsupported for JIT; this does not change interpreter availability. Only macOS ARM64 currently
+has native execution evidence. Linux ARM64 is the next platform qualification, using an ARM64
+Docker environment with its own executable-memory publication path, instruction-cache checks,
+refusal/lifetime witnesses and unchanged full-state comparisons. Remove the Apple-only execution
+guard only together with that implementation and passing evidence. Keep architecture selection
+separate from OS allocation/publication policy. Container timings must be identified separately
+from native macOS timings; x86-64 code generation remains future work.
+
 ## Platform reference
 
 Executable publication follows Apple's [JIT guidance](https://developer.apple.com/documentation/apple-silicon/porting-just-in-time-compilers-to-apple-silicon),
@@ -231,3 +242,113 @@ The next bounded target is checked native block entry/branch continuation, with 
 budget, gas, target and exact-exit witnesses. Guest memory and host boundaries remain on the
 current checked paths until separately qualified. Prepared-owner code retention, DOOM/public API
 integration, more native opcodes and other CPU/OS targets remain outstanding.
+
+
+## Conditional continuations and checked entry
+
+This increment compares against the exact accepted resident-register parent
+`e6382bc6e5e75ec40edea25d3000df1a4aa5dd6a`. It adds the sixteen GP conditional branches
+81–90 and 170–175 to eligible arithmetic leaves. Generated CMP/CSEL returns one of two sealed
+scalar stream offsets. It does not embed host addresses or recursively call another block.
+Both arms must first have been admitted by the existing branch resolver, witnessed by the exact
+original cached handler identity; promotion neither resolves targets nor prices new blocks.
+
+A matching ordinary block header can hand its fully reserved prefix directly to the promoted
+leaf. The canonical checked Nim reservation/charge template still performs all gas and source
+budget checks, in its original order. Native code does not charge gas. Partial quotas retain
+original handlers and temporary barriers, including folded no-op source boundaries. Memo,
+error and special header shapes cannot be promoted unless they have already become a genuine
+ordinary charge header. All guest memory access and host behavior remain checked interpreter work.
+
+Register publication precedes the scalar return. Immediate comparisons use the full sign-extended
+GP value; signed and unsigned conditions remain distinct. Failed replacement publication preserves
+the previous valid arithmetic leaf. Transfer restores promoted headers and entries and retires code
+ownership. The same arena, map, operation-count and publication ceilings remain in force.
+
+Qualification includes 3,136 direct native branch cases across all sixteen predicates, alias/saturated
+register coordinates and signed/unsigned boundary values, using full-width scalar destinations;
+2,640 checked engine cases across dynamic, complete and lazy pricing, paid/unpaid blocks, gas,
+source quotas and folded no-ops; and 434 host/fault boundary cases with exact identifiers, pages,
+remaining attempts and PCs. The host witness distinguishes Psi_1's advanced published PC from the
+recursive suspension's attempted instruction PC. A full-arena replacement refusal retains and
+executes its last valid publication. Forced storage refusal repeats the engine boundaries with
+zero native execution. Existing register, quota, opcode, ARC, memory and host suites remain active.
+
+The final cohort passes 42 timed processes / 546 full-state calls, 63 positive/assertion/state
+controls, six fresh private-cache builds / three equal-image pairs, 703 sealed identities and
+1,434 captured source/helper/header/driver hashes. The exact parent is read from Git; measured
+current source bytes are checked against the preserving commit. Source attempts and stream-node
+observations agree for every sample across all three modes. The unchanged default-runtime smoke
+passes 453 modules plus peer; the final formatter and seven receipt-parser checks pass.
+No hardware counters or PolkaVM timings were collected in this cohort.
+
+Compilation totals include later deferred branch promotion, which can occur after the first cold
+sample. Each such cost remains inside its actual call clock; reused medians exclude the first
+three calls. Constructors, reset and immutable snapshot publication remain separately measured.
+Do not interpret the aggregate compilation diagnostic as work exclusively in the first call.
+
+**Keep this increment in the draft.** Pinky reused CPU improves 2.8–3.0% versus the accepted parent
+and 9.2–9.3% versus the interpreter in both orders. Large sieve and minimal remain at parity;
+large memory fill is 0.5–1.2% slower than the parent but 0.4–1.9% faster than the interpreter,
+below useful timing confidence. Small sieve varies by up to five microseconds and small fill by
+up to three microseconds versus the interpreter; retain these costs rather than claiming wins.
+Pinky executes 7,384,016 native conditional branches and 2,644,383 checked direct-header entries
+across thirteen calls. Subtracting branch counts gives exactly the parent's native arithmetic
+coverage on every case/order. This supports the combined control mechanism; it does not isolate
+hardware causes or establish public invocation speed.
+
+The final complete cohort follows; its ratios use only this same runner. Earlier cohorts remain
+historical evidence. The earlier branch cohort before the additional host/fault witnesses is
+preserved at `build/pvm-arm64-jit/control-before-host-boundaries`, and the resident-register parent
+cohort at `build/pvm-arm64-jit/resident-accepted`.
+
+
+CPU ms, forward / reverse. Retained frames; cold includes compilation and publication.
+
+| Case | Interpreter reused | Previous JIT | Current JIT | Current / previous | Current / interpreter | JIT cold | Compilation | Native operations / 13 calls |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sieve 1000 | 0.041 / 0.040 | 0.040 / 0.038 | 0.045 / 0.040 | 1.125 / 1.026 | 1.111 / 0.988 | 0.907 / 0.891 | 0.213 / 0.188 | 6067 / 6067 |
+| sieve 100000 | 3.254 / 3.256 | 3.232 / 3.281 | 3.254 / 3.265 | 1.007 / 0.995 | 1.000 / 1.003 | 8.318 / 8.438 | 0.702 / 0.806 | 48772 / 48772 |
+| minimal 1000 | 0.049 / 0.050 | 0.049 / 0.050 | 0.049 / 0.050 | 1.000 / 1.000 | 1.000 / 1.000 | 0.097 / 0.085 | 0.007 / 0.006 | 0 / 0 |
+| minimal 100000 | 4.926 / 4.903 | 4.926 / 4.878 | 4.918 / 4.875 | 0.998 / 0.999 | 0.998 / 0.994 | 4.917 / 4.891 | 0.011 / 0.010 | 0 / 0 |
+| memset 1000 | 0.043 / 0.043 | 0.045 / 0.046 | 0.044 / 0.046 | 0.989 / 0.989 | 1.035 / 1.070 | 0.270 / 0.263 | 0.090 / 0.080 | 466 / 466 |
+| memset 100000 | 3.771 / 3.699 | 3.658 / 3.668 | 3.700 / 3.686 | 1.012 / 1.005 | 0.981 / 0.996 | 3.948 / 3.906 | 0.083 / 0.082 | 518 / 518 |
+| pinky 1 | 85.580 / 85.497 | 79.934 / 79.948 | 77.703 / 77.531 | 0.972 / 0.970 | 0.908 / 0.907 | 80.447 / 80.277 | 0.683 / 0.619 | 103017060 / 103017060 |
+
+| Case | Order | Native conditional branches | Checked direct-header entries |
+|---|---:|---:|---:|
+| sieve 1000 | 0 | 48 | 11 |
+| sieve 100000 | 0 | 48 | 11 |
+| minimal 1000 | 0 | 0 | 0 |
+| minimal 100000 | 0 | 0 | 0 |
+| memset 1000 | 0 | 24 | 11 |
+| memset 100000 | 0 | 24 | 11 |
+| pinky 1 | 0 | 7384016 | 2644383 |
+| sieve 1000 | 1 | 48 | 11 |
+| sieve 100000 | 1 | 48 | 11 |
+| minimal 1000 | 1 | 0 | 0 |
+| minimal 100000 | 1 | 0 | 0 |
+| memset 1000 | 1 | 24 | 11 |
+| memset 100000 | 1 | 24 | 11 |
+| pinky 1 | 1 | 7384016 | 2644383 |
+
+### Constructor and cold lifecycle scopes
+
+CPU milliseconds, forward / reverse. Each constructor pair is plan / frame; cold lifecycle is
+reset + call + immutable publication. All initialization/publication costs stay visible.
+
+| Case | Plan / frame constructors (F ; R) | Cold lifecycle F / R |
+|---|---:|---:|
+| sieve 1000 | 1.585 / 0.164 ; 1.606 / 0.177 | 0.966 / 0.949 |
+| sieve 100000 | 1.598 / 0.149 ; 1.530 / 0.169 | 8.377 / 8.544 |
+| minimal 1000 | 0.013 / 0.025 ; 0.011 / 0.021 | 0.103 / 0.091 |
+| minimal 100000 | 0.010 / 0.023 ; 0.011 / 0.020 | 4.926 / 4.903 |
+| memset 1000 | 0.051 / 1.228 ; 0.047 / 1.225 | 0.515 / 0.461 |
+| memset 100000 | 0.047 / 1.194 ; 0.049 / 1.236 | 4.192 / 4.191 |
+| pinky 1 | 0.457 / 0.191 ; 0.460 / 0.186 | 80.626 / 80.516 |
+
+Next priorities are native coverage of hot long-sieve blocks, prepared-owner code lifetime and
+DOOM execution with genuine host transitions. Long execution alone does not guarantee benefit:
+this sieve cohort executes only 48 native conditional branches across thirteen calls, while
+minimal has no qualifying native fragments. Keep small cases as regression checks. Linux ARM64
+Docker qualification follows the platform matrix above; no other target is claimed supported yet.

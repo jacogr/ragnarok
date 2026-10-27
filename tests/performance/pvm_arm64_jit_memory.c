@@ -12,6 +12,7 @@ int main(void) {
     assert(pvm_arm64_jit_cpu_ns() > 0);
     assert(pvm_arm64_arena_publish(NULL, words, 1) == -1);
     assert(pvm_arm64_arena_call(NULL, 0, registers) == 0);
+    assert(pvm_arm64_arena_next(NULL, 0, registers) == UINT32_MAX);
     pvm_arm64_arena_destroy(NULL);
     for (unsigned cycle = 0; cycle < 1000; ++cycle) {
         /* Each mapping is retired before the next is created; successful calls borrow only registers. */
@@ -28,6 +29,16 @@ int main(void) {
         assert(pvm_arm64_arena_call(arena, 0, NULL) == 0);
         pvm_arm64_arena_destroy(arena);
     }
+    /* Returning leaves preserve their scalar ABI; invalid offsets refuse before entering generated code. */
+    void *continuation = pvm_arm64_arena_create();
+    assert(continuation != NULL);
+    uint32_t returning[] = { UINT32_C(0x528000e0), UINT32_C(0xd65f03c0) }; /* MOV W0,#7; RET */
+    assert(pvm_arm64_arena_publish(continuation, returning, 2) == 0);
+    assert(pvm_arm64_arena_next(continuation, 0, registers) == 7);
+    assert(pvm_arm64_arena_next(continuation, 1, registers) == UINT32_MAX);
+    assert(pvm_arm64_arena_next(continuation, 8, registers) == UINT32_MAX);
+    assert(pvm_arm64_arena_next(continuation, 0, NULL) == UINT32_MAX);
+    pvm_arm64_arena_destroy(continuation);
     /* Exact final capacity is admitted; subsequent publication refuses without extending the mapping. */
     void *arena = pvm_arm64_arena_create();
     assert(arena != NULL);

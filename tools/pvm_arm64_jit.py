@@ -26,10 +26,18 @@ BUILD = ROOT/'build/tests/pvm-arm64-jit'
 DRIVER = ROOT/'tests/performance/pvm_stream_lifecycle.nim'
 
 
-def parse(output, guest, native):
+def parse(output, guest, native, control=False):
     """Separate the one declared native receipt from the existing strict thirteen-call protocol."""
     lines = output.splitlines()
     receipt = None
+    control_receipt = None
+    if control:
+        fields = lines.pop().split(',') if lines else []
+        if len(fields)!=4 or fields[:2]!=['ARM_CONTROL',guest]: raise ValueError('Missing native control receipt')
+        if any(not x.isascii() or not x.isdecimal() or int(x)>=2**63 for x in fields[2:]):
+            raise ValueError('Malformed native control receipt')
+        control_receipt=dict(zip(('branches','headers'),map(int,fields[2:])))
+        if control_receipt['headers']>control_receipt['branches']: raise ValueError('More native headers than branches')
     if native:
         fields = lines.pop().split(',') if lines else []
         if len(fields) != 7 or fields[:2] != ['ARM_JIT', guest]:
@@ -37,7 +45,7 @@ def parse(output, guest, native):
         if any(not x.isascii() or not x.isdecimal() or int(x) >= 2**63 for x in fields[2:]):
             raise ValueError('Malformed native coverage receipt')
         receipt = dict(zip(('fragments','calls','operations','code_bytes','compilation_ns'),map(int,fields[2:])))
-    return dict(execution=parse_candidate('\n'.join(lines)+'\n',guest), native=receipt)
+    return dict(execution=parse_candidate('\n'.join(lines)+'\n',guest), native=receipt, control=control_receipt)
 
 
 def main():
@@ -45,7 +53,7 @@ def main():
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
         raise SystemExit('This local experiment requires Darwin ARM64')
     args = argparse.ArgumentParser(description=__doc__)
-    args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE', '3b8b2e36a60537c57d61a9eec6188c765d0cf92f'))
+    args.add_argument('--baseline', default=os.environ.get('PVM_JIT_BASELINE', 'e6382bc6e5e75ec40edea25d3000df1a4aa5dd6a'))
     baseline = args.parse_args().baseline
     if len(baseline)!=40 or any(x not in '0123456789abcdef' for x in baseline):
         raise SystemExit('Baseline must be an exact lowercase commit SHA')
@@ -118,7 +126,7 @@ def main():
             # The same source/output coordinates and wholly private fresh cache control path-dependent images.
             cache = cache_directory(compiler,BUILD,'engine')
             if cache.exists(): shutil.rmtree(cache)
-            row,binary = checks.build(compiler,driver,'engine',defines=['pvmArm64Jit'] if mode!='interpreter' else [],
+            row,binary = checks.build(compiler,driver,'engine',defines=(['pvmArm64Jit','pvmArm64JitControlReceipt'] if mode=='jit' else ['pvmArm64Jit'] if mode=='baseline' else []),
                 cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
             report['builds'].append(dict(mode=mode,repeat=repeat,build={k:v for k,v in row.items() if k!='output'}))
             if row['exit_code']: raise RuntimeError(row['output'][-3000:])
@@ -138,7 +146,7 @@ def main():
                     # Both unchanged positive execution and active assertion/state refusal controls precede timing.
                     positive = checks.command([images[mode]],f'{guest}-{limit}-{mode}-positive',environment=env)
                     if positive['exit_code']: raise RuntimeError(positive['output'][-2000:])
-                    parse(positive['output'],guest,mode!='interpreter')
+                    parse(positive['output'],guest,mode!='interpreter',mode=='jit')
                     report['controls'].append(dict(case=guest,limit=limit,mode=mode,kind='positive',run=positive))
                     for kind in ('assertions','state'):
                         probe = dict(env)
@@ -155,7 +163,7 @@ def main():
                 unchanged(identities)
                 run=checks.command([images[mode]],f'{guest}-{limit}-{order}-{mode}',environment=env)
                 if run['exit_code']: raise RuntimeError(run['output'][-2000:])
-                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode!='interpreter')))
+                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode!='interpreter',mode=='jit')))
                 unchanged(identities)
     if len(report['runs'])!=42 or len(report['controls'])!=63: raise ValueError('Incomplete cohort')
     if sum(r['parsed']['native']['operations'] for r in report['runs'] if r['mode']=='jit')==0:
@@ -180,6 +188,11 @@ def main():
                 f"{new['execution']['samples'][0]['cpu_ns']/1e6:.3f}",f"{new['native']['compilation_ns']/1e6:.3f}",str(new['native']['operations'])]
             for column,value in zip(columns,values): column.append(value)
         lines.append('| '+guest+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
+    lines += ['', '| Case | Order | Native conditional branches | Checked direct-header entries |', '|---|---:|---:|---:|']
+    for row in report['runs']:
+        if row['mode']=='jit':
+            counters=row['parsed']['control']
+            lines.append(f"| {row['case']} {row['limit']} | {row['order']} | {counters['branches']} | {counters['headers']} |")
     (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 

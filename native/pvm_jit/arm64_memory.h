@@ -75,4 +75,17 @@ static int pvm_arm64_arena_call(void *handle, uint32_t offset, void *registers) 
     return 0;
 #endif
 }
+/* Conditional leaves return only a previously validated scalar stream offset, never a host address. */
+static uint32_t pvm_arm64_arena_next(void *handle, uint32_t offset, void *registers) {
+#if defined(__APPLE__) && defined(__aarch64__)
+    pvm_arm64_arena *owner = handle;
+    if (!owner || !registers || offset >= owner->used || (offset & 3)) return UINT32_MAX;
+    uint32_t (*entry)(void *) = (uint32_t (*)(void *))((unsigned char *)owner->memory + offset);
+    return entry(registers);
+#else
+    (void)handle; (void)offset; (void)registers;
+    return UINT32_MAX;
+#endif
+}
+
 #endif
