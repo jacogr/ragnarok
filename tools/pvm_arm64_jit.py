@@ -112,6 +112,7 @@ def main():
     compiler, _ = installed()
     report = dict(status='incomplete',platform=platform.platform(),toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),builds=[],controls=[],runs=[])
     report['baseline'] = baseline
+    report['comparison_protocol'] = 'matched-control-v1'
     report['sources'] = {}
     result_path = BUILD/'results.json'
     # A failed new invocation must never leave a prior successful report masquerading as this run.
@@ -157,7 +158,7 @@ def main():
             # The same source/output coordinates and wholly private fresh cache control path-dependent images.
             cache = cache_directory(compiler,BUILD,'engine')
             if cache.exists(): shutil.rmtree(cache)
-            row,binary = checks.build(compiler,driver,'engine',defines=(['pvmArm64Jit','pvmArm64JitControlReceipt'] if mode=='jit' else ['pvmArm64Jit'] if mode=='baseline' else []),
+            row,binary = checks.build(compiler,driver,'engine',defines=(['pvmArm64Jit','pvmArm64JitControlReceipt'] if mode!='interpreter' else []),
                 cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
             report['builds'].append(dict(mode=mode,repeat=repeat,build={k:v for k,v in row.items() if k!='output'}))
             if row['exit_code']: raise RuntimeError(row['output'][-3000:])
@@ -168,6 +169,12 @@ def main():
         if any(digest(canonical/path)!=h for path,h in report['sources'][mode].items()): raise ValueError('Canonical sources changed')
         if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
         images[mode] = pair[0]
+    report['equal_source_control'] = report['sources']['baseline'] == report['sources']['jit']
+    if report['equal_source_control']:
+        # The diagnostic receipt is identical in both native roles; equal sources must also yield the same executable bytes.
+        if images['baseline'].read_bytes()!=images['jit'].read_bytes():
+            raise ValueError('Equal native kernel sources produced different role images')
+
     for order in range(2):
         for guest,limit,data,expected in fixtures['inputs']:
             for mode in (('interpreter','baseline','jit') if order==0 else ('jit','baseline','interpreter')):
@@ -177,7 +184,7 @@ def main():
                     # Both unchanged positive execution and active assertion/state refusal controls precede timing.
                     positive = checks.command([images[mode]],f'{guest}-{limit}-{mode}-positive',environment=env)
                     if positive['exit_code']: raise RuntimeError(positive['output'][-2000:])
-                    parse(positive['output'],guest,mode!='interpreter',mode=='jit')
+                    parse(positive['output'],guest,mode!='interpreter',mode!='interpreter')
                     report['controls'].append(dict(case=guest,limit=limit,mode=mode,kind='positive',run=positive))
                     for kind in ('assertions','state'):
                         probe = dict(env)
@@ -194,7 +201,7 @@ def main():
                 unchanged(identities)
                 run=checks.command([images[mode]],f'{guest}-{limit}-{order}-{mode}',environment=env)
                 if run['exit_code']: raise RuntimeError(run['output'][-2000:])
-                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode!='interpreter',mode=='jit')))
+                report['runs'].append(dict(case=guest,limit=limit,order=order,mode=mode,run=run,parsed=parse(run['output'],guest,mode!='interpreter',mode!='interpreter')))
                 unchanged(identities)
     if len(report['runs'])!=42 or len(report['controls'])!=63: raise ValueError('Incomplete cohort')
     if sum(r['parsed']['native']['operations'] for r in report['runs'] if r['mode']=='jit')==0:
