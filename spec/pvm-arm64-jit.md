@@ -1626,3 +1626,71 @@ bytes, images and copied logs independently verify; Docker architecture/network 
 successful exit pass. Its clocks remain diagnostic only. Records:`build/pvm-arm64-jit/adapter-borrows/`, pre-trial samples
 in`accepted-sampling/`, and the sealed current kernel/application folders. No defaults/CI/pins
 change; no hardware counter or microarchitectural-cause claim is made.
+
+
+## Scalar native entry records — retained (October 27)
+
+Measured runtime `51368a6925949f5daa358d087e37c1258f6645b2` against accepted borrow parent
+`e4eebf0e406a1957b8d4d99e2a2999f9c03a7257`, same Apple M1 Max and pinned checked
+ARC/Clang ThinLTO. Replace three private parallel code/count/successor arrays with one sequence
+of12-byte scalar records:code,operation count,successor. Hot code/count fields are adjacent;
+the native caller deliberately copies a small plain value before calling non-host native code.
+No record reference spans a possible sequence reallocation. The frame retains its cache owner.
+
+All fields commit together only after successful executable publication; a failed replacement
+preserves the prior complete tuple. A new witness proposes successor99999/count123 after filling
+the arena and verifies the old successor77/count1 remains callable. Fresh refusal/default records
+remain0/1coded. The map still has262,144coordinates; publication ceilings and one-MiB arena are
+unchanged. Native generation, instruction words, ABI, gas/source checks, memory/hosts and metrics
+are unchanged. The constructor checks the natural record size is exactly12bytes.
+
+Generated C independently confirms metadata index paths drop3→1for arithmetic and2→1for
+conditional entries; regions remain1→1. There are no record refcount/copy hooks. Complete before/
+after functions and generated-file hashes are retained. This supports the chosen mechanism,
+not a claim about hardware misses or all CPU causes. An initial inspection assumed identical
+module filename hashes across kernel/DOOM namespaces; correcting that discovery completed the
+proof. No compile/runtime failure occurred.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.571 / 3.514 | 2.719 / 2.800 | 2.631 / 2.708 | 2.530 / 2.522 | 5.894 / 6.071 | 0.737 / 0.771 | 0.446 / 0.446 |
+| minimal 100000 | 4.885 / 4.991 | 4.896 / 4.972 | 4.899 / 4.970 | 4.845 / 5.002 | 5.993 / 6.169 | 1.003 / 0.996 | 0.817 / 0.806 |
+| memset 100000 | 4.330 / 4.468 | 3.312 / 3.446 | 3.352 / 3.481 | 2.654 / 2.721 | 4.032 / 4.040 | 0.774 / 0.779 | 0.831 / 0.862 |
+| pinky 1 | 85.522 / 86.522 | 71.745 / 73.327 | 70.955 / 71.604 | 71.022 / 73.343 | 93.976 / 96.010 | 0.830 / 0.828 | 0.755 / 0.746 |
+| sieve 10000000 | 336.062 / 340.447 | 269.870 / 269.819 | 259.345 / 266.940 | 258.175 / 263.404 | 366.616 / 374.945 | 0.772 / 0.784 | 0.707 / 0.712 |
+| init 0 | 319.409 / 328.687 | 210.411 / 210.474 | 209.206 / 212.071 | 208.643 / 209.946 | 684.864 / 675.136 | 0.655 / 0.645 | 0.305 / 0.314 |
+| tick 0 | 40.702 / 39.935 | 37.553 / 36.923 | 37.465 / 36.783 | 35.079 / 34.264 | 44.977 / 44.261 | 0.920 / 0.921 | 0.833 / 0.831 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.747 (2.728–2.760) | 2.652 (2.643–2.672) | 0.966 | 0.966, 0.965, 0.968, 0.971, 0.962 |
+| minimal 100000 | 4.917 (4.848–4.960) | 4.908 (4.864–4.925) | 0.998 | 0.991, 1.003, 0.995, 0.999, 1.003 |
+| memset 100000 | 3.362 (3.329–3.418) | 3.396 (3.350–3.496) | 1.010 | 1.008, 1.003, 1.027, 1.025, 1.006 |
+| pinky 1 | 71.720 (71.611–72.259) | 70.865 (70.468–71.394) | 0.988 | 0.983, 0.989, 0.988, 0.992, 0.985 |
+| sieve 10000000 | 266.490 (265.909–268.267) | 257.151 (256.890–259.355) | 0.965 | 0.963, 0.972, 0.966, 0.966, 0.964 |
+| init 0 | 210.366 (208.826–214.093) | 210.865 (209.572–211.717) | 1.002 | 1.003, 1.006, 1.001, 0.992, 1.006 |
+| tick 0 | 36.763 (36.495–37.026) | 36.638 (36.471–37.754) | 0.997 | 0.989, 1.001, 0.998, 1.014, 0.994 |
+
+Retain:repeated public sieve100k improves3.4%,long sieve3.5%,Pinky1.2%; all five balanced
+blocks favor each and process ranges do not overlap. Memory fill costs1.0% with overlapping
+ranges (all five block medians favor the parent); this is a recorded small tradeoff, not a
+universal gain. Other workload medians differ by at most0.3% and overlap. Native work/call
+counts and emitted lengths remain identical. No hardware counters were collected.
+
+All nine native/opcode/host/exclusive-owner gates and prior region/price/orientation/capacity
+witnesses pass. Kernel42/546/63/6/3 and application70/910/115/16/8cohorts independently reparse
+with706/710sealed identities, exact accepted-parent sources and fresh equal-image controls.
+Repeated140processes/1,820calls independently reparse with stable native counters in14groups.
+Measured tracked sources match this runtime commit:684kernel and667application files.
+
+Constructor,cold,reused public and core reset/publication scopes remain separate; reference
+DOOM lifecycle remains separate from raw call CPU. Linux qualification passes at this exact
+staged runtime:nine shared gates,four public builds,14processes/182calls and32refusal controls.
+All2,863staged seals,2,846tracked files bound to this commit, official compiler bytes, images
+and copied logs independently verify. Docker architecture/network isolation and successful exit
+pass; its clocks remain diagnostic only. Raw receipts, lowering proof and distributions:`build/pvm-arm64-jit/entry-records/`
+and sealed current kernel/application folders. No defaults,CLI,CI or pins change.
