@@ -74,6 +74,8 @@ int main(void) {
         /* Each mapping is retired before the next is created; successful calls borrow only registers. */
         void *arena = pvm_arm64_arena_create();
         assert(arena != NULL);
+        void *base = pvm_arm64_arena_base(arena);
+        assert(base != NULL && !pvm_arm64_arena_seal(arena, base, 0));
 #if defined(__linux__) && defined(__aarch64__)
         mapping_permissions(((pvm_arm64_arena *)arena)->memory, 0, 1);
         mapping_permissions(((pvm_arm64_arena *)arena)->writable, 1, 0);
@@ -83,6 +85,8 @@ int main(void) {
         assert(pvm_arm64_arena_publish(arena, words, 1025) == -1);
         int32_t offset = pvm_arm64_arena_publish(arena, words, 1);
         assert(offset == 0);
+        assert(pvm_arm64_arena_seal(arena, base, 0));
+        assert(pvm_arm64_entry_call(base, 0, registers) == 1);
         assert(pvm_arm64_arena_call(arena, 0, registers) == 1);
         assert(pvm_arm64_arena_call(arena, 1, registers) == 0);
         assert(pvm_arm64_arena_call(arena, 4, registers) == 0);
@@ -107,11 +111,42 @@ int main(void) {
     assert(pvm_arm64_arena_region(continuation, 0, NULL, context) == UINT32_MAX);
     assert(pvm_arm64_arena_region(continuation, 0, registers, NULL) == UINT32_MAX);
     for (unsigned slot = 0; slot < 5; ++slot) assert(context[slot] == 11 * (slot + 1));
+    /* A seal couples the borrowed fixed base to its owner and a real aligned publication, without invocation data. */
+    assert(pvm_arm64_arena_base(NULL) == NULL);
+    void *old_base = pvm_arm64_arena_base(continuation);
+    assert(old_base != NULL);
+    assert(!pvm_arm64_arena_seal(NULL, old_base, 0));
+    assert(!pvm_arm64_arena_seal(continuation, NULL, 0));
+    assert(!pvm_arm64_arena_seal(continuation, old_base, 1));
+    assert(!pvm_arm64_arena_seal(continuation, old_base, 8));
+    assert(!pvm_arm64_arena_seal(continuation, old_base, UINT32_MAX));
+    assert(pvm_arm64_arena_seal(continuation, old_base, 0));
+    void *other_owner = pvm_arm64_arena_create();
+    assert(other_owner != NULL);
+    void *other_base = pvm_arm64_arena_base(other_owner);
+    assert(other_base != old_base && !pvm_arm64_arena_seal(continuation, other_base, 0));
+    pvm_arm64_arena_destroy(other_owner);
+    assert(pvm_arm64_entry_call(NULL, 0, registers) == 0);
+    assert(pvm_arm64_entry_call(old_base, 0, NULL) == 0);
+    assert(pvm_arm64_entry_call(old_base, 0, registers) == 1);
+    assert(pvm_arm64_entry_next(NULL, 0, registers) == UINT32_MAX);
+    assert(pvm_arm64_entry_next(old_base, 0, NULL) == UINT32_MAX);
+    assert(pvm_arm64_entry_next(old_base, 0, registers) == 7);
+    assert(pvm_arm64_entry_region(NULL, 0, registers, context) == UINT32_MAX);
+    assert(pvm_arm64_entry_region(old_base, 0, NULL, context) == UINT32_MAX);
+    assert(pvm_arm64_entry_region(old_base, 0, registers, NULL) == UINT32_MAX);
+    assert(pvm_arm64_entry_region(old_base, 0, registers, context) == 7);
+    for (unsigned slot = 0; slot < 5; ++slot) assert(context[slot] == 11 * (slot + 1));
     /* Appending code preserves the prior publication and makes the new instruction bytes executable. */
     uint32_t appended[] = { UINT32_C(0x52800120), UINT32_C(0xd65f03c0) }; /* MOV W0,#9; RET */
     assert(pvm_arm64_arena_publish(continuation, appended, 2) == 8);
     assert(pvm_arm64_arena_next(continuation, 0, registers) == 7);
     assert(pvm_arm64_arena_next(continuation, 8, registers) == 9);
+    assert(pvm_arm64_arena_base(continuation) == old_base);
+    assert(pvm_arm64_arena_seal(continuation, old_base, 0));
+    assert(pvm_arm64_arena_seal(continuation, old_base, 8));
+    assert(pvm_arm64_entry_next(old_base, 0, registers) == 7);
+    assert(pvm_arm64_entry_next(old_base, 8, registers) == 9);
     pvm_arm64_arena_destroy(continuation);
     /* SIMD scalar ADD is integer arithmetic: exact carries beyond 2^53 and modular 64-bit wrap must survive execution. */
     void *integer_arena = pvm_arm64_arena_create();
@@ -149,11 +184,15 @@ int main(void) {
     for (unsigned fragment = 0; fragment < 256; ++fragment) {
         assert(pvm_arm64_arena_publish(arena, words, 1024) == (int32_t)(fragment * 4096));
     }
+    void *last_base = pvm_arm64_arena_base(arena);
+    assert(last_base != NULL && pvm_arm64_arena_seal(arena, last_base, 255 * 4096));
     assert(pvm_arm64_arena_publish(arena, words, 1) == -1);
+    assert(pvm_arm64_arena_seal(arena, last_base, 255 * 4096));
+    assert(pvm_arm64_entry_call(last_base, 255 * 4096, registers) == 1);
     pvm_arm64_arena_destroy(arena);
 #if defined(__linux__) && defined(__aarch64__)
     assert(descriptor_count() == descriptors);
 #endif
-    puts("ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64");
+    puts("ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64,sealed-entries");
     return 0;
 }
