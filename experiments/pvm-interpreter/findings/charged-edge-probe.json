@@ -20,25 +20,15 @@
     "exit_code": 0,
     "elapsed_seconds": 8.316294,
     "log": "build/pvm-interpreter-experiment/charged-edge-probe/self-probe-build.log",
-    "output": ""
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "output_excerpt": "",
+    "output_chars": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "rows": [
     {
       "phase": "init",
-      "counts": [
-        0,
-        0,
-        21295000,
-        0,
-        21294999,
-        0,
-        0,
-        9032,
-        0,
-        21303765,
-        0,
-        0
-      ],
+      "counts": [0, 0, 21295000, 0, 21294999, 0, 0, 9032, 0, 21303765, 0, 0],
       "run": {
         "command": [
           "/Users/jacogr/Projects/jacogr/ragnarok-pvm-comp/build/pvm-interpreter-experiment/charged-edge-probe/self-probe"
@@ -46,25 +36,15 @@
         "exit_code": 0,
         "elapsed_seconds": 1.213375,
         "log": "build/pvm-interpreter-experiment/charged-edge-probe/init-run.log",
-        "output": "DOOM_PREPARE,init,8157000,21549000,630305,4285\nCHARGED_EDGE,init,0,0\nCHARGED_EDGE,init,1,0\nCHARGED_EDGE,init,2,21295000\nCHARGED_EDGE,init,3,0\nCHARGED_EDGE,init,4,21294999\nCHARGED_EDGE,init,5,0\nCHARGED_EDGE,init,6,0\nCHARGED_EDGE,init,7,9032\nCHARGED_EDGE,init,8,0\nCHARGED_EDGE,init,9,21303765\nCHARGED_EDGE,init,10,0\nCHARGED_EDGE,init,11,0\nDOOM_RESIDENT,init,0,1621,0,2026\nDOOM_OK,prepared,init,1030107\n"
+        "output_sha256": "13c8ead9447a02ba306ca4c749364db03199ab9c8f5bd9849a3ee89cb4ab5853",
+        "output_excerpt": "DOOM_PREPARE,init,8157000,21549000,630305,4285\nCHARGED_EDGE,init,0,0\nCHARGED_EDGE,init,1,0\nCHARGED_EDGE,init,2,21295000\nCHARGED_EDGE,init,3,0\nCHARGED_EDGE,init,4,21294999\nCHARGED_EDGE,init,5,0\nCHARGED_EDGE,init,6,0\nCHARGED_EDGE,init,7,9032\nCHARGED_EDGE,init,8,0\nCHARGED_EDGE,init,9,21303765\nCHARGED_EDGE,init,10,0\nCHARGED_EDGE,init,11,0\nDOOM_RESIDENT,init,0,1621,0,2026\nDOOM_OK,prepared,init,1030107\n",
+        "output_chars": 400,
+        "log_sha256": "13c8ead9447a02ba306ca4c749364db03199ab9c8f5bd9849a3ee89cb4ab5853"
       }
     },
     {
       "phase": "tick",
-      "counts": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
+      "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       "run": {
         "command": [
           "/Users/jacogr/Projects/jacogr/ragnarok-pvm-comp/build/pvm-interpreter-experiment/charged-edge-probe/self-probe"
@@ -72,7 +52,10 @@
         "exit_code": 0,
         "elapsed_seconds": 0.121107,
         "log": "build/pvm-interpreter-experiment/charged-edge-probe/tick-run.log",
-        "output": "DOOM_PREPARE,tick,7169000,17814000,630305,4285\nCHARGED_EDGE,tick,0,0\nCHARGED_EDGE,tick,1,0\nCHARGED_EDGE,tick,2,0\nCHARGED_EDGE,tick,3,0\nCHARGED_EDGE,tick,4,0\nCHARGED_EDGE,tick,5,0\nCHARGED_EDGE,tick,6,0\nCHARGED_EDGE,tick,7,0\nCHARGED_EDGE,tick,8,0\nCHARGED_EDGE,tick,9,0\nCHARGED_EDGE,tick,10,0\nCHARGED_EDGE,tick,11,0\nDOOM_RESIDENT,tick,0,1,0,0\nDOOM_OK,prepared,tick,1024005\n"
+        "output_sha256": "3e9ec33182e0be0f67fd4339d2b4285edfab2af2d7a4c8a72059d35e3a0c6497",
+        "output_excerpt": "DOOM_PREPARE,tick,7169000,17814000,630305,4285\nCHARGED_EDGE,tick,0,0\nCHARGED_EDGE,tick,1,0\nCHARGED_EDGE,tick,2,0\nCHARGED_EDGE,tick,3,0\nCHARGED_EDGE,tick,4,0\nCHARGED_EDGE,tick,5,0\nCHARGED_EDGE,tick,6,0\nCHARGED_EDGE,tick,7,0\nCHARGED_EDGE,tick,8,0\nCHARGED_EDGE,tick,9,0\nCHARGED_EDGE,tick,10,0\nCHARGED_EDGE,tick,11,0\nDOOM_RESIDENT,tick,0,1,0,0\nDOOM_OK,prepared,tick,1024005\n",
+        "output_chars": 370,
+        "log_sha256": "3e9ec33182e0be0f67fd4339d2b4285edfab2af2d7a4c8a72059d35e3a0c6497"
       }
     }
   ],

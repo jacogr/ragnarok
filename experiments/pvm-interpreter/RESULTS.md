@@ -1,3 +1,5 @@
+> For the later cumulative comparison, see [the campaign report](CAMPAIGN.md).
+
 > Historical local measurement record, captured before this branch checkpoint. Statements about
 > no commit/PR describe those experiments. Artifact paths name the preserved local laboratory;
 > published-source qualification is recorded separately in README.md.

@@ -11,170 +11,38 @@
   "duration_seconds": 3,
   "interval_ms": 1,
   "collapsed_leaves": [
-    {
-      "symbol": "flatCharge_0_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 619
-    },
-    {
-      "symbol": "runFlat_0_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 355
-    },
-    {
-      "symbol": "flatFusedRegisters_0_Isi30lp1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 170
-    },
-    {
-      "symbol": "flatFusedRegisters_0_Icwwbmk1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 137
-    },
-    {
-      "symbol": "flatBranch_0_Izgriiy_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 121
-    },
-    {
-      "symbol": "flatRegisterPair_0_Ivohp4r1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 121
-    },
-    {
-      "symbol": "flatBranch_0_Iz8f0bn_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 110
-    },
-    {
-      "symbol": "flatBranch_0_Ins84uu1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 108
-    },
-    {
-      "symbol": "_platform_memmove",
-      "image": "libsystem_platform.dylib",
-      "hits": 53
-    },
-    {
-      "symbol": "withReplacedPages_0_maclxn2l31",
-      "image": "candidate-doom",
-      "hits": 43
-    },
-    {
-      "symbol": "eQdestroyQ_SX4demory0maclxn2l31_0_maclxn2l31",
-      "image": "candidate-doom",
-      "hits": 41
-    },
-    {
-      "symbol": "X60Qini_0_doo3s94xu1",
-      "image": "candidate-doom",
-      "hits": 32
-    },
-    {
-      "symbol": "add_0_Ilj6mli1_maclxn2l31",
-      "image": "candidate-doom",
-      "hits": 30
-    },
-    {
-      "symbol": "writeBytes_0_maclxn2l31",
-      "image": "candidate-doom",
-      "hits": 30
-    },
-    {
-      "symbol": "flatPublishMemory_0_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 27
-    },
-    {
-      "symbol": "newFlatFrame_0_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 24
-    },
-    {
-      "symbol": "changedMemoryPages_0_maclxn2l31",
-      "image": "candidate-doom",
-      "hits": 23
-    },
-    {
-      "symbol": "flatStore_0_Izo13os1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 16
-    },
-    {
-      "symbol": "flatMemoryPair_0_Ir00bfn_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 14
-    },
-    {
-      "symbol": "flatMemory_0_Iosx28i1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 14
-    },
-    {
-      "symbol": "flatMemoryPair_0_Ihx5v401_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 10
-    },
-    {
-      "symbol": "flatStore_0_Iu6itvu1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 9
-    },
-    {
-      "symbol": "getrusage",
-      "image": "libsystem_kernel.dylib",
-      "hits": 9
-    },
-    {
-      "symbol": "_platform_memset",
-      "image": "libsystem_platform.dylib",
-      "hits": 8
-    },
-    {
-      "symbol": "flatRegisterPair_0_Itdq2ge1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 8
-    },
-    {
-      "symbol": "flatRegisterPair_0_Ixn3iw9_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 8
-    },
-    {
-      "symbol": "flatRegister_0_I5rhc2o1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 8
-    },
-    {
-      "symbol": "flatRegisterPair_0_Iv7zi3i_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 7
-    },
-    {
-      "symbol": "flatBranch_0_Iuim8lb_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 6
-    },
-    {
-      "symbol": "flatMemory_0_I0yzg8f_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 6
-    },
-    {
-      "symbol": "flatBranch_0_Iplrcpm_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 5
-    },
-    {
-      "symbol": "flatCachedJump_0_Iggki93_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 5
-    },
-    {
-      "symbol": "flatMemoryPair_0_Izs2m2h1_exped5h9u",
-      "image": "candidate-doom",
-      "hits": 5
-    }
+    {"symbol": "flatCharge_0_exped5h9u", "image": "candidate-doom", "hits": 619},
+    {"symbol": "runFlat_0_exped5h9u", "image": "candidate-doom", "hits": 355},
+    {"symbol": "flatFusedRegisters_0_Isi30lp1_exped5h9u", "image": "candidate-doom", "hits": 170},
+    {"symbol": "flatFusedRegisters_0_Icwwbmk1_exped5h9u", "image": "candidate-doom", "hits": 137},
+    {"symbol": "flatBranch_0_Izgriiy_exped5h9u", "image": "candidate-doom", "hits": 121},
+    {"symbol": "flatRegisterPair_0_Ivohp4r1_exped5h9u", "image": "candidate-doom", "hits": 121},
+    {"symbol": "flatBranch_0_Iz8f0bn_exped5h9u", "image": "candidate-doom", "hits": 110},
+    {"symbol": "flatBranch_0_Ins84uu1_exped5h9u", "image": "candidate-doom", "hits": 108},
+    {"symbol": "_platform_memmove", "image": "libsystem_platform.dylib", "hits": 53},
+    {"symbol": "withReplacedPages_0_maclxn2l31", "image": "candidate-doom", "hits": 43},
+    {"symbol": "eQdestroyQ_SX4demory0maclxn2l31_0_maclxn2l31", "image": "candidate-doom", "hits": 41},
+    {"symbol": "X60Qini_0_doo3s94xu1", "image": "candidate-doom", "hits": 32},
+    {"symbol": "add_0_Ilj6mli1_maclxn2l31", "image": "candidate-doom", "hits": 30},
+    {"symbol": "writeBytes_0_maclxn2l31", "image": "candidate-doom", "hits": 30},
+    {"symbol": "flatPublishMemory_0_exped5h9u", "image": "candidate-doom", "hits": 27},
+    {"symbol": "newFlatFrame_0_exped5h9u", "image": "candidate-doom", "hits": 24},
+    {"symbol": "changedMemoryPages_0_maclxn2l31", "image": "candidate-doom", "hits": 23},
+    {"symbol": "flatStore_0_Izo13os1_exped5h9u", "image": "candidate-doom", "hits": 16},
+    {"symbol": "flatMemoryPair_0_Ir00bfn_exped5h9u", "image": "candidate-doom", "hits": 14},
+    {"symbol": "flatMemory_0_Iosx28i1_exped5h9u", "image": "candidate-doom", "hits": 14},
+    {"symbol": "flatMemoryPair_0_Ihx5v401_exped5h9u", "image": "candidate-doom", "hits": 10},
+    {"symbol": "flatStore_0_Iu6itvu1_exped5h9u", "image": "candidate-doom", "hits": 9},
+    {"symbol": "getrusage", "image": "libsystem_kernel.dylib", "hits": 9},
+    {"symbol": "_platform_memset", "image": "libsystem_platform.dylib", "hits": 8},
+    {"symbol": "flatRegisterPair_0_Itdq2ge1_exped5h9u", "image": "candidate-doom", "hits": 8},
+    {"symbol": "flatRegisterPair_0_Ixn3iw9_exped5h9u", "image": "candidate-doom", "hits": 8},
+    {"symbol": "flatRegister_0_I5rhc2o1_exped5h9u", "image": "candidate-doom", "hits": 8},
+    {"symbol": "flatRegisterPair_0_Iv7zi3i_exped5h9u", "image": "candidate-doom", "hits": 7},
+    {"symbol": "flatBranch_0_Iuim8lb_exped5h9u", "image": "candidate-doom", "hits": 6},
+    {"symbol": "flatMemory_0_I0yzg8f_exped5h9u", "image": "candidate-doom", "hits": 6},
+    {"symbol": "flatBranch_0_Iplrcpm_exped5h9u", "image": "candidate-doom", "hits": 5},
+    {"symbol": "flatCachedJump_0_Iggki93_exped5h9u", "image": "candidate-doom", "hits": 5},
+    {"symbol": "flatMemoryPair_0_Izs2m2h1_exped5h9u", "image": "candidate-doom", "hits": 5}
   ]
 }

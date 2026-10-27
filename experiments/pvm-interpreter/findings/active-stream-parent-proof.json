@@ -23,7 +23,10 @@
     "exit_code": 0,
     "elapsed_seconds": 8.632484,
     "log": "build/pvm-interpreter-experiment/barrier-parent-proof/accepted-parent-build.log",
-    "output": ""
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "output_excerpt": "",
+    "output_chars": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "run": {
     "command": [
@@ -32,6 +35,9 @@
     "exit_code": 1,
     "elapsed_seconds": 0.217313,
     "log": "build/pvm-interpreter-experiment/barrier-parent-proof/accepted-parent-run.log",
-    "output": "PASS publication immutable epochs /64resets / frame destruction / RO replacement / empty memory / full bytes\nACTIVE_STREAM_REPRO,None,Halt,0\n[Assertion Failure] active stream cached-suffix quota\n"
+    "output_sha256": "8f55d4aafc4a8a5f56b082b2dd36ee1e172563675151d750d017a75c68dd8d89",
+    "output_excerpt": "PASS publication immutable epochs /64resets / frame destruction / RO replacement / empty memory / full bytes\nACTIVE_STREAM_REPRO,None,Halt,0\n[Assertion Failure] active stream cached-suffix quota\n",
+    "output_chars": 195,
+    "log_sha256": "8f55d4aafc4a8a5f56b082b2dd36ee1e172563675151d750d017a75c68dd8d89"
   }
 }

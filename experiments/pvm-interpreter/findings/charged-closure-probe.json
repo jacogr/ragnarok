@@ -20,16 +20,15 @@
     "exit_code": 0,
     "elapsed_seconds": 9.683315,
     "log": "build/pvm-interpreter-experiment/charged-closure-probe/closure-probe-build.log",
-    "output": ""
+    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "output_excerpt": "",
+    "output_chars": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "rows": [
     {
       "phase": "init",
-      "counts": [
-        9033,
-        21294999,
-        21294999
-      ],
+      "counts": [9033, 21294999, 21294999],
       "run": {
         "command": [
           "/Users/jacogr/Projects/jacogr/ragnarok-pvm-comp/build/pvm-interpreter-experiment/charged-closure-probe/closure-probe"
@@ -37,16 +36,15 @@
         "exit_code": 0,
         "elapsed_seconds": 1.216009,
         "log": "build/pvm-interpreter-experiment/charged-closure-probe/init-run.log",
-        "output": "DOOM_PREPARE,init,7650000,23503000,630305,4285\nCHARGED_CLOSURE,init,9033,21294999,21294999\nDOOM_RESIDENT,init,0,1621,0,2026\nDOOM_OK,prepared,init,1030107\n"
+        "output_sha256": "640d009a6a6b60282316ad98bdcf8f40f3817f939df7f99dc87cede9324d3f9e",
+        "output_excerpt": "DOOM_PREPARE,init,7650000,23503000,630305,4285\nCHARGED_CLOSURE,init,9033,21294999,21294999\nDOOM_RESIDENT,init,0,1621,0,2026\nDOOM_OK,prepared,init,1030107\n",
+        "output_chars": 154,
+        "log_sha256": "640d009a6a6b60282316ad98bdcf8f40f3817f939df7f99dc87cede9324d3f9e"
       }
     },
     {
       "phase": "tick",
-      "counts": [
-        0,
-        0,
-        0
-      ],
+      "counts": [0, 0, 0],
       "run": {
         "command": [
           "/Users/jacogr/Projects/jacogr/ragnarok-pvm-comp/build/pvm-interpreter-experiment/charged-closure-probe/closure-probe"
@@ -54,7 +52,10 @@
         "exit_code": 0,
         "elapsed_seconds": 0.13791,
         "log": "build/pvm-interpreter-experiment/charged-closure-probe/tick-run.log",
-        "output": "DOOM_PREPARE,tick,7542000,19908000,630305,4285\nCHARGED_CLOSURE,tick,0,0,0\nDOOM_RESIDENT,tick,0,1,0,0\nDOOM_OK,prepared,tick,1024005\n"
+        "output_sha256": "60d63c925a8c4d27ef14f2b747b3799b73b1c1ebb8265d0cfa9ed8ebaa76fffd",
+        "output_excerpt": "DOOM_PREPARE,tick,7542000,19908000,630305,4285\nCHARGED_CLOSURE,tick,0,0,0\nDOOM_RESIDENT,tick,0,1,0,0\nDOOM_OK,prepared,tick,1024005\n",
+        "output_chars": 131,
+        "log_sha256": "60d63c925a8c4d27ef14f2b747b3799b73b1c1ebb8265d0cfa9ed8ebaa76fffd"
       }
     }
   ],

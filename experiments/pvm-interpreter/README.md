@@ -54,11 +54,10 @@ revisions. This published copy changes names, comments and output labels. Prior 
 the original qualified binaries; newly linked images must earn their own timing evidence. The
 local raw state checks, seals, load observations and rejected-trial evidence remain preserved.
 
-The latest saved DOOM gameplay calls were 29.465/29.295 ms versus PolkaVM interpreted
-35.019/35.092 ms; reused initialization was 753.236/739.498 ms versus 679.618/681.236 ms.
-Those are call-only forward/reverse observations from the original images, not whole-client or
-new-checkout measurements. Preparation, reset and final publication are separately recorded.
-Next investigation: initialization block-charge/dispatch work, one hypothesis at a time.
+The [latest campaign report](CAMPAIGN.md) contains a fresh cumulative comparison against the
+starting checkpoint, both process orders against frozen master and PolkaVM interpreted,
+constructor/cold/reused costs, retained changes, rejected trials and remaining production gates.
+The older [results](RESULTS.md) remain a historical record of the initial checkpoint.
 
 ## Published-source checkpoint verification
 

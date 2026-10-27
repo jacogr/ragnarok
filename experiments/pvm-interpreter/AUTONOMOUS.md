@@ -375,3 +375,19 @@ Stop isolated runtime trials here. Next: direct cumulative comparison against st
 checkpoint72c79e4d, then evidence cleanup and a qualified campaign summary. No PR/default change.
 
 Restored runtime passes the expanded entry-boundary suite natively and with AddressSanitizer; scoped reports/logs archived under static-count/qualification-restored.
+
+## Final cumulative cohort and wrap-up
+
+Direct comparisonagainst72c79e4d, acceptedruntime80350f56, full200timed/4negative, stable
+source/fixtures/images and six fresh equal-image pairs allpass. DOOMinit call about-56%,
+tickcallabout-3.1%,ticklifecycleabout-22.6%. Small medians Pinky-3.64/sieve-1.84/
+Minimal-6.22/fill-0.53%. Full both-order rawms, cold/constructor/host/publication scopes,
+ratios and limits in CAMPAIGN.md and findings/cumulative-final.md/json. No multiplied gains.
+Final added suffix tests pass natively/ASan on restoredacceptedruntime; existing complete
+native/ASan qualifications remain valid for unchanged covered runtime/source subsets.
+
+Evidence compaction preserves every numeric/bool/null field at its original JSON path;
+duplicate textual logs replaced by hashes/excerpts, byte-exactoriginalJSONs retainedignored.
+Manifest and script archived. Stop runtime investigation early after qualified useful gains;
+next larger memory-bearing block/context design deserves review rather than hurried work
+within the remaining ceiling. No PR/merge/default/production-source/pin/CI changes.
