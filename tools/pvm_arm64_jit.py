@@ -88,6 +88,20 @@ def main():
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
         report['qualification'].append(checked)
+    for owner, extra in (('stream', []), ('frame', ['pvmArm64JitFrameOwner'])):
+        for moving in (True, False):
+            # Lowering must reject the intended duplicate, while an explicit move has an executable positive control.
+            name = 'ownership-'+owner+('-move' if moving else '-copy')
+            built, binary = checks.build(compiler, ROOT/'tests/performance/pvm_arm64_jit_ownership.nim', name,
+                defines=['pvmArm64Jit', *extra, *(['pvmArm64JitMoveOwner'] if moving else [])],
+                cflags=['-I'+str(ROOT/'native/pvm_jit')])
+            if moving:
+                if built['exit_code']: raise RuntimeError(built['output'][-2000:])
+                checked = checks.command([binary], name+'-run')
+                if checked['exit_code'] or checked['output'] != '0\n0\n': raise ValueError('Owner move control failed')
+            elif built['exit_code']==0 or "'=dup' is not available for type <Flat" not in built['output']:
+                raise ValueError('Missing intended exclusive-owner lowering refusal')
+            report['qualification'].append(dict(owner=owner, moving=moving, build=built))
     fixtures = prepare_inputs(checks,BUILD/'inputs')
     identities = dict(fixtures['identities'])
     identities[compiler] = digest(compiler)
@@ -95,7 +109,7 @@ def main():
     for parent in ('src','native/pvm_jit'):
         for path in sorted((ROOT/parent).rglob('*')):
             if path.is_file(): identities[path] = digest(path)
-    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c']:
+    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c',ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
         identities[path] = digest(path)
     images = {}
     for mode in ('interpreter','baseline','jit'):

@@ -570,3 +570,10 @@ bench-pvm-interpreter: toolchain sources rust-tools
 bench-pvm-arm64-jit: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_arm64_jit.py
+
+# Local real-application qualification reuses pinned reference preparation; no CI selection changes.
+.PHONY: bench-pvm-arm64-applications
+bench-pvm-arm64-applications: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_arm64_jit_applications.py

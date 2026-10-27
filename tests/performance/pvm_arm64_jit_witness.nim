@@ -168,7 +168,30 @@ checkFlatSource(second)
 when defined(pvmArm64Jit):
   let transferred = flatArmStatistics(second)
   echo "TRANSFER_STATS,", transferred[0], ",", transferred[1]
-  assert transferred[0] == 0 and transferred[1] == 0
+  when defined(pvmArm64JitRefuse):
+    assert transferred[0] == 0 and transferred[1] == 0
+  else:
+    assert transferred[0] == 1 and transferred[1] == 2
+    assert transferred[2] == 8
+  var retained = takeFlatStream(second)
+  let retainedNodes = streamNodes(retained)
+  var foreign = newFlatFrame(newFlatPlan(transferProgram, GasCycleLimit(100000)), [], initial)
+  restoreFlatStream(foreign, retained)
+  runFlat(foreign, 100)
+  assert foreign.reason == StepError.InvalidPreparedProgram
+  assert streamNodes(retained) == retainedNodes
+  restoreFlatStream(second, retained)
+  resetFlatFrame(second, initial)
+  runFlat(second, 100)
+  assert second.exit == StepExit.Panic and second.reason == StepError.None
+  when not defined(pvmArm64JitRefuse):
+    assert flatArmStatistics(second)[1] == 3
+  # Whole-memory replacement keeps exact-plan native entries while discarding invocation-local bytes and registers.
+  replaceFlatMemory(second, [], initial)
+  runFlat(second, 100)
+  assert second.exit == StepExit.Panic and second.reason == StepError.None
+  when not defined(pvmArm64JitRefuse):
+    assert flatArmStatistics(second)[0] == 1 and flatArmStatistics(second)[1] == 4
   let retired = flatArmStatistics(first)
   echo "RETIRED_STATS,", retired[0], ",", retired[1]
   assert retired[0] == 0 and retired[1] == 0
@@ -372,14 +395,18 @@ for folded in [false, true]:
           verifyControl(priced, program, input, budget)
           inc controlCases
     if policy == 1: assert gasMemoInfo(lazy.value).value.pricedBlocks == 2
-  # Transfer retires promoted header and branch handlers, not just their earlier arithmetic leaf.
+  # Transfer retains promoted headers and leaves with their exact plan; a new frame owns fresh CPU and budgets.
   var transferred = takeFlatStream(frame)
   var fresh = newFlatFrame(plan, [], warm)
   restoreFlatStream(fresh, transferred)
   verifyControl(fresh, program, warm, 100)
   when defined(pvmArm64Jit):
     let retired = flatArmControlStatistics(fresh)
-    assert retired[0] == 0 and retired[1] == 0
+    when defined(pvmArm64JitRefuse):
+      assert retired[0] == 0 and retired[1] == 0
+    else:
+      assert retired[0] >= 9 and retired[1] >= 7
+    assert flatArmControlStatistics(frame) == default(array[2, uint64])
 
 echo "ARM_CONTROL_CASES,", controlCases
 
@@ -413,3 +440,36 @@ for boundary in [0, 1]:
       verifyControl(frame, program, input, budget)
       inc boundaryCases
 echo "ARM_HOST_FAULT_CASES,", boundaryCases
+
+# A genuine host mapping replacement takes the slow reentry path without losing its live code capability.
+let mappingProgram = owner([@[149'u8, 0, 1], @[149'u8, 0, 1], @[149'u8, 0, 1],
+  @[149'u8, 0, 1], @[10'u8, 7], @[0'u8]])
+var mappingFrame = newFlatFrame(newFlatPlan(mappingProgram, GasCycleLimit(100000)), [], initial)
+runFlat(mappingFrame, 100)
+assert mappingFrame.reason == StepError.None and mappingFrame.exit == StepExit.Host
+let suspended = observeFlatHostMemory(mappingFrame)
+var mapped = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+  bytes: default(array[4096, byte]))
+mapped.bytes[17] = 123
+let posterior = captureMemory([mapped], PageLimit(2))
+assert posterior.error == MachineError.None
+let resumedGas = mappingFrame.info.gas
+let resumedRegisters = mappingFrame.info.registers
+assert resumeFlatHostMemory(mappingFrame, posterior.value, resumedGas,
+  resumedRegisters) == StepError.None
+assert flatHostStats(mappingFrame)[1] == 1
+runFlat(mappingFrame, 100)
+assert mappingFrame.reason == StepError.None and mappingFrame.exit == StepExit.Panic
+let published = flatMemorySnapshot(mappingFrame)
+assert pageImage(published, mapped.index).value.bytes == mapped.bytes
+assert memoryPageCount(suspended).value == PageCount(0)
+resetFlatFrame(mappingFrame, initial)
+runFlat(mappingFrame, 100)
+assert mappingFrame.reason == StepError.None and mappingFrame.exit == StepExit.Host
+when defined(pvmArm64Jit):
+  let kept = flatArmStatistics(mappingFrame)
+  when defined(pvmArm64JitRefuse):
+    assert kept[0] == 0 and kept[1] == 0
+  else:
+    assert kept[0] == 1 and kept[1] == 2 and kept[2] == 8
+echo "ARM_MAPPING_REENTRY,1"

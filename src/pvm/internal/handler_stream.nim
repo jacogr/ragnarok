@@ -91,7 +91,7 @@ type
     pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit):
       armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
-      armJit: nil ArmJit # Frame-owned code cache never retains CPU/memory or transfers into public prepared owners.
+      armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
     pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
 
 
@@ -100,6 +100,10 @@ type FlatPublication = object
   ## One owned immutable observation and the copied writable pages that differ from its source base.
   memory: Memory
   changed: seq[PageImage]
+
+when defined(pvmArm64Jit):
+  proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
+  proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
 
 const flatStop = high(uint32)
 
@@ -1756,6 +1760,10 @@ proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
   replacement.arguments = move(f.arguments)
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
+  when defined(pvmArm64Jit):
+    # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
+    replacement.armOriginal = move(f.armOriginal)
+    replacement.armJit = move(f.armJit)
   f = move(replacement)
 
   FlatError.None
@@ -1895,32 +1903,50 @@ type FlatStream* = object
   sites, compiledForPc: seq[uint32]
   failure: FlatError
   preparation: uint64
+  when defined(pvmArm64Jit):
+    armPlan: nil FlatPlan # Exact immutable source/emission owner; offsets alone never authorize code reuse.
+    armOriginal: seq[nil FlatHandler]
+    armJit: nil ArmJit
+
+when defined(pvmArm64Jit):
+  proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
+  proc `=dup`*(source: FlatStream): FlatStream {.error.}
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
-  ## Move only immutable executable facts back to the exclusively leased prepared owner.
-  when defined(pvmArm64Jit):
-    # Native entries are frame-owned in this first slice; transferred streams carry only original checked handlers.
-    for offset in 0..<f.armOriginal.len:
-      let original = f.armOriginal[offset]
-      if original != nil: f.handlers[offset] = original
-    f.armOriginal = @[]
-    f.armJit = nil
-  FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
+  ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.
+  result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
     compiledForPc: move(f.compiledForPc), failure: f.preparationFailure,
     preparation: f.preparationUsed)
+  when defined(pvmArm64Jit):
+    # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
+    result.armPlan = f.plan
+    result.armOriginal = move(f.armOriginal)
+    result.armJit = move(f.armJit)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
-  ## Exact-source binding belongs to the opaque public owner; invocation memory remains newly captured.
+  ## Lease only exact-source code; CPU, memory, budgets and callbacks remain freshly captured by the frame.
   when defined(pvmArm64Jit):
-    # A different emission history must never inherit code keyed only by a previous frame's scalar offsets.
-    f.armOriginal = @[]
-    f.armJit = nil
+    if stream.armPlan != nil and stream.armPlan != f.plan:
+      # Refuse before consuming another owner's executable capability or changing its scalar coordinates.
+      f.preparationFailure = FlatError.InvalidProgram
+      return
+    f.armOriginal = move(stream.armOriginal)
+    f.armJit = move(stream.armJit)
+    stream.armPlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
   f.sites = move(stream.sites)
   f.compiledForPc = move(stream.compiledForPc)
   if stream.failure != FlatError.Uninitialized: f.preparationFailure = stream.failure
   f.preparationUsed = stream.preparation
+
+when defined(pvmArm64JitOwnerReceipt):
+  func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
+    ## Local experiment diagnostics copy counters only; no code pointer, mutable storage or invocation state escapes.
+    let jit = stream.armJit
+    if jit == nil: return default(array[7, uint64])
+    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs,
+      jit.branchCalls, jit.headerCalls]
 
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.

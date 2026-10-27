@@ -352,3 +352,107 @@ DOOM execution with genuine host transitions. Long execution alone does not guar
 this sieve cohort executes only 48 native conditional branches across thirteen calls, while
 minimal has no qualifying native fragments. Keep small cases as regression checks. Linux ARM64
 Docker qualification follows the platform matrix above; no other target is claimed supported yet.
+
+
+## Prepared-owner and host-memory lifetimes
+
+The next increment moves JIT ownership together with the executable stream across public
+`PreparedProgram` leases. It retains only code, exact immutable plan identity, scalar offsets,
+original checked fallback handlers and diagnostic counters. Every invocation still creates fresh
+registers, memory regions, attempt budgets and host state. A different plan is refused before the
+stream is consumed. JIT-enabled frames and streams explicitly reject compiler-generated copies;
+positive move controls and intended lowering diagnostics are retained by the local runner.
+
+A same-plan whole-memory replacement now moves the native cache with its handlers. The first
+real-application cohort exposed the missing move: retained DOOM initialization passed its first
+sample, then stopped on a checked invariant when the next replacement left native handlers without
+their cache. The failed cohort is retained under
+`build/pvm-arm64-jit/retention/failed-first-application` and supplies no timing verdict. A focused
+witness now covers whole-memory replacement and genuine host fallback into an independently owned
+mapping, source immutability, fresh CPU state and continued native execution. No guest-memory or
+host pointer enters generated code, so memory replacement requires no new machine-code operands.
+
+`make bench-pvm-arm64-applications` is a local-only comparison of public interpreted execution,
+the exact parent JIT, current public JIT, retained-frame JIT and pinned PolkaVM interpreted.
+It includes normal and ten-million-element sieve, Pinky, minimal, memory fill and DOOM init/gameplay.
+All cases retain complete CPU/gas/register/memory/permission/source checks; DOOM also checks every
+ordered output event. Constructors, cold calls, reused calls and core reset/publication are separate.
+Reference DOOM restoration/call/teardown records are validated separately from raw call ratios.
+No CI selection, default backend, dependency revision or compiler upgrade changes in this increment.
+
+### Qualified local application evidence
+
+Both cohorts are independently verified at the preserving commit: native kernels have 42 timed
+processes / 546 full-state calls, 63 controls, six fresh builds / three equal-image pairs, 705
+sealed identities and 1,434 source hashes; applications have 70 timed processes / 910 full-state
+calls, 115 controls, sixteen fresh builds / eight equal-image pairs, 709 sealed identities and
+1,916 source hashes. Application inputs include a freshly reference-produced ten-million sieve.
+All complete DOOM admission checks, ordered host events and exact expected CPU/memory states pass.
+The final native witness includes explicit same-plan whole-memory replacement and independent
+host mapping fallback. Eleven parser tests, formatting and default smoke across 453 modules plus
+peer pass. Lowering refuses both frame and stream duplication with the intended diagnostic, and
+both explicit move controls execute successfully. No hardware counters were collected.
+
+**Keep the lifetime increment.** It enables actual public prepared-owner code reuse and fixes a
+real host/memory replacement defect. Pinky public reused CPU improves about 7–8% against the
+previous public JIT and interpreted API. Long sieve changes versus our interpreter are small;
+there is no claim that its main loops are compiled. DOOM initialization has a small improvement.
+The original gameplay reverse order was slower; three further paired repetitions of the same
+sealed images do not reproduce that slowdown and show essentially no parent delta. The draft
+retains that original result rather than replacing it with the more favorable repeat.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.536 / 3.490 | 3.461 / 3.449 | 3.523 / 3.438 | 3.225 / 3.236 | 5.945 / 6.064 | 0.996 / 0.985 | 0.593 / 0.567 |
+| minimal 100000 | 4.994 / 4.957 | 5.035 / 4.942 | 4.848 / 4.933 | 5.079 / 4.893 | 6.300 / 6.056 | 0.971 / 0.995 | 0.770 / 0.814 |
+| memset 100000 | 4.550 / 4.410 | 4.473 / 4.418 | 4.428 / 4.435 | 3.723 / 3.665 | 3.995 / 3.933 | 0.973 / 1.006 | 1.109 / 1.128 |
+| pinky 1 | 85.807 / 85.177 | 85.377 / 85.212 | 79.094 / 78.049 | 78.632 / 77.234 | 94.459 / 94.421 | 0.922 / 0.916 | 0.837 / 0.827 |
+| sieve 10000000 | 338.943 / 340.343 | 335.210 / 335.397 | 334.151 / 332.057 | 336.342 / 333.303 | 367.098 / 367.127 | 0.986 / 0.976 | 0.910 / 0.904 |
+| init 0 | 327.652 / 323.995 | 324.045 / 319.780 | 319.573 / 318.625 | 323.391 / 317.921 | 677.080 / 677.554 | 0.975 / 0.983 | 0.472 / 0.470 |
+| tick 0 | 41.356 / 40.291 | 39.875 / 40.380 | 39.572 / 42.358 | 37.944 / 35.980 | 44.508 / 44.291 | 0.957 / 1.051 | 0.889 / 0.956 |
+
+Each row is a distinct scope: public calls include invocation construction and immutable publication;
+core reset/publication are outside its call; reference call time excludes restoration/teardown.
+The ratios above are raw call ratios, not equivalent end-to-end lifecycle ratios. The reference
+module constructor is not timed here. Current public constructor and first cold call, plus the
+separate retained-core cold lifecycle, follow in milliseconds, forward / reverse.
+
+| Case | Public prepared constructor | Public cold call | Core plan / frame (F ; R) | Core cold reset + call + publication |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.688 / 1.626 | 8.682 / 8.631 | 1.515 / 0.156 ; 1.596 / 0.188 | 8.144 / 8.140 |
+| minimal 100000 | 0.011 / 0.014 | 5.178 / 4.969 | 0.010 / 0.019 ; 0.009 / 0.020 | 5.161 / 4.913 |
+| memset 100000 | 0.052 / 0.052 | 5.921 / 5.843 | 0.048 / 1.243 ; 0.053 / 1.223 | 4.212 / 4.057 |
+| pinky 1 | 0.459 / 0.461 | 81.302 / 80.854 | 0.461 / 0.186 ; 0.478 / 0.191 | 80.380 / 80.409 |
+| sieve 10000000 | 1.617 / 1.632 | 340.210 / 337.581 | 1.537 / 0.146 ; 1.573 / 0.179 | 341.918 / 338.248 |
+| init 0 | 7.615 / 7.870 | 343.162 / 334.978 | 7.853 / 5.813 ; 7.568 / 6.446 | 342.894 / 341.807 |
+| tick 0 | 7.881 / 7.835 | 49.436 / 50.903 | 7.894 / 6.271 ; 7.825 / 6.624 | 48.630 / 48.142 |
+
+Reference DOOM reused lifecycle medians, milliseconds, forward / reverse:
+
+| Phase | Restoration | Call | Teardown | Total |
+|---|---:|---:|---:|---:|
+| init | 2.103 / 2.095 | 677.080 / 677.554 | 0.006 / 0.006 | 679.245 / 679.641 |
+| tick | 2.095 / 2.099 | 44.508 / 44.291 | 0.005 / 0.005 | 46.566 / 46.367 |
+
+The separate gameplay repeat uses the same sealed images and inputs: thirty processes / 390 checked
+calls, three complete forward/reverse pairs. Public JIT reused medians range 39.444–39.945 ms,
+public interpreter 40.180–40.760 ms, parent JIT 39.603–39.912 ms and reference call 44.090–44.667 ms.
+Current/interpreter ranges 0.970–0.986; current/parent 0.994–1.001; current/reference 0.883–0.899.
+These are separate paired evidence, not replacements mixed into the original cohort.
+
+### Long-sieve coverage diagnosis
+
+An ignored, separately compiled interpreter source copy counts actual block entries on the same
+complete ten-million fixture. All state checks pass; every instrumented clock is discarded.
+The busiest seven-operation block at source PC 156868 executes five million times and contains
+opcodes `[151,200,130,133,208,132,40]`: indirect 64-bit load opcode 130 splits native arithmetic.
+Another block at 156840 executes 9,999,999 times with `[149,200,170]`; 156849 executes 9,999,999
+with `[132,81]`; 156855 and 156861 each execute five million times with `[152,174]`. These short
+arithmetic/conditional blocks fall below the four-operation admission floor. This identifies
+checked memory lowering and short-block control execution as bounded future targets; it does
+not justify globally lowering the floor without measurements. Source copy, trace and decoded
+block observations remain under `build/pvm-arm64-jit/hot-blocks`. Native public counters and full
+constructor/cold samples remain in the application receipts. No native-memory or full-JIT claim
+is made by this lifetime increment.
