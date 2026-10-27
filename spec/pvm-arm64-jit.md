@@ -1356,3 +1356,66 @@ The next structural extension should connect further validated blocks without re
 per-block interpreter calls. Memory-heavy loops still require precise native checked-memory
 and fault-prefix accounting; this register-only region does not solve that boundary. Conditional
 moves remain a separately measured deferred addition rather than a presumed performance gain.
+
+
+## Immediate connected-block charges — retained (October 27)
+
+Measured runtime `131779257f5db4f9826feba51dd178e5be9617fe` against accepted connected-loop
+parent `01f9c6742e18cb87b97545417c85a734dddf3350`, Apple M1 Max, unchanged October26
+Nimony, checked release, ARC and Clang ThinLTO. The sole runtime change encodes sealed gas
+prices0..4095 directly in 64-bit CMP/SUB immediate instructions inside connected regions.
+Wider unsigned prices retain the original four-halfword materialization and register comparison.
+Every gas guard and source-attempt guard remains in place, including zero-price blocks.
+No leaf lowering, admission, cache policy, memory access or host transition changes.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.449 / 3.469 | 2.788 / 2.796 | 2.801 / 2.812 | 2.830 / 2.821 | 5.934 / 5.992 | 0.812 / 0.811 | 0.472 / 0.469 |
+| minimal 100000 | 4.904 / 4.944 | 4.893 / 4.927 | 4.888 / 4.941 | 4.896 / 4.946 | 6.048 / 6.059 | 0.997 / 0.999 | 0.808 / 0.815 |
+| memset 100000 | 4.403 / 4.404 | 3.557 / 3.550 | 3.575 / 3.500 | 2.784 / 2.789 | 3.954 / 3.963 | 0.812 / 0.795 | 0.904 / 0.883 |
+| pinky 1 | 85.603 / 85.800 | 72.306 / 72.257 | 72.371 / 72.678 | 73.173 / 73.581 | 94.496 / 94.762 | 0.845 / 0.847 | 0.766 / 0.767 |
+| sieve 10000000 | 339.152 / 338.200 | 280.152 / 278.538 | 279.513 / 279.561 | 293.489 / 294.510 | 369.964 / 369.983 | 0.824 / 0.827 | 0.756 / 0.756 |
+| init 0 | 324.474 / 321.361 | 232.761 / 228.417 | 221.015 / 220.672 | 219.145 / 218.732 | 673.874 / 673.664 | 0.681 / 0.687 | 0.328 / 0.328 |
+| tick 0 | 40.075 / 40.288 | 37.281 / 37.567 | 37.068 / 37.714 | 33.749 / 33.817 | 44.418 / 44.395 | 0.925 / 0.936 | 0.835 / 0.849 |
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.854 (2.830–3.106) | 2.869 (2.822–2.910) | 1.005 | 0.996, 0.958, 1.018, 1.015, 1.003 |
+| minimal 100000 | 4.954 (4.906–4.976) | 4.929 (4.875–4.996) | 0.995 | 0.997, 0.995, 1.006, 1.002, 0.988 |
+| memset 100000 | 3.558 (3.503–3.571) | 3.554 (3.494–3.576) | 0.999 | 0.997, 0.992, 0.996, 1.002, 1.011 |
+| pinky 1 | 72.497 (71.835–73.893) | 72.532 (71.788–73.364) | 1.000 | 0.997, 0.996, 1.003, 1.001, 1.000 |
+| sieve 10000000 | 272.589 (270.987–273.504) | 271.051 (270.793–272.964) | 0.994 | 0.999, 0.996, 0.996, 0.995, 0.995 |
+| init 0 | 229.960 (227.998–235.774) | 221.701 (219.623–225.412) | 0.964 | 0.963, 0.962, 0.967, 0.964, 0.960 |
+| tick 0 | 37.817 (37.452–38.440) | 38.029 (37.384–39.193) | 1.006 | 1.007, 0.998, 1.011, 1.024, 0.995 |
+
+Retain this isolated lowering: initialization improves3.6% in the repeated public cohort,
+229.960→221.701ms. All five balanced blocks improve3.3–4.0%, with non-overlapping process
+ranges. Other workload medians differ by at most0.6%, with overlapping ranges; no benefit or
+regression is claimed for those. The native work/call counts are identical to the parent;
+initialization code shrinks83,092→83,044bytes. Four constant-building instructions disappear
+per qualifying native block visit. No hardware counters or hardware-cause claim is made.
+
+Independent literal486price/quota cases cover zero,1,4095,4096,2^32 and maximum64-bit prices,
+including maximum64-bit source budgets, exact gas exhaustion, partial blocks and natural exits.
+They check every register, remaining gas/source budget, per-block counts and scalar destination.
+The previous3,546connected-region cases and1,024-publication cap still pass. All nine native
+gates pass, including complete opcode/mixed/host states, refusal and exclusive owner controls.
+
+Kernel42processes/546calls/63controls/6freshbuilds/3equal-image pairs and public-application
+70processes/910calls/115controls/16freshbuilds/8equal-image pairs passed. Independent parsers
+verified706/710seals, exact accepted-parent sources and all raw logs. The extra repeated cohort
+passed140processes/1,820calls; all14workload/role native-counter groups remain stable.
+Measured tracked source files match the preserving runtime commit:684kernel and667application.
+
+Constructor, first call, reused public call and retained core remain distinct scopes. Reference
+DOOM calls exclude its separately recorded restoration/teardown lifecycle. Full raw receipts
+and clocks remain under `build/pvm-arm64-jit/region-immediates/` and current sealed kernel/app
+folders; no Docker clocks establish bare-metal Linux performance. Linux ARM64 qualification passes at the exact staged runtime commit: nine shared native gates,
+four public builds,14processes/182calls and32refusal controls. Independent verification checks
+all2,863staged seals, the official compiler binary, executable images and copied logs;2,846
+tracked staged source files match that runtime commit. Docker architecture/network isolation
+and successful container state are verified. Its clocks remain diagnostic only.
