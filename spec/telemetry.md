@@ -10,9 +10,9 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 Production and collector E2E runs use the shared `src/ragnarok.nim` entry point.
 Application configuration/startup lives under `src/app/`; see the [application contract](application.md).
 
-Append `--with-telemetry --telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
+Append `--with-telemetry --telemetry-endpoint HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
 accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
-`--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
+`--telemetry-endpoint '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
 unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
 matching the existing peer mode and actual bound UDP port.
 
@@ -347,7 +347,7 @@ claim pre-TLS refusal detection, and it adds no new production event or admissio
 ### IPv6 collector transport
 
 The same CI target requires a separate outgoing restart scenario with
-`--telemetry '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
+`--telemetry-endpoint '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
 bind IPv6 loopback. The report records the actual accepted and upstream socket addresses
 for both connections and requires `::1`, so an IPv4 fallback cannot satisfy this case.
 The collector's HTTP/WebSocket observation API and the QUIC peer exchange remain IPv4;

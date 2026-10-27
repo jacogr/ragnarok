@@ -1,4 +1,4 @@
 Invalid RPC listener or --chain parameters
-Invalid UI listener or --dev-ui-dir
+Invalid UI listener or --ui-dev-dir
 Application service state lifecycles passed
 ARC_RELEASE cycles=1000 unchanged

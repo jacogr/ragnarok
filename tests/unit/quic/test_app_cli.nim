@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Named CLI witnesses verify help/default agreement, ordered groups, compatibility, failures and owner release.
+## Named CLI witnesses verify help/default agreement, ordered groups, canonical names, failures and owner release.
 # @@Verification={"arc": "app_cli_arc_release"}
 
 import std/[assertions, syncio, strutils]
@@ -99,23 +99,31 @@ normalized(@["serve-fuzz", "--fuzz-policy", "policy", "--fuzz-parameters", "para
 normalized(@["serve-fuzz-preset", "--fuzz-state-write-bytes", "0", "--fuzz-policy", "policy"],
   @["serve-fuzz-preset", "policy", "1000", "0"])
 
-# Both old spelling and named form select the same state; alias collisions are still duplicate options.
-var oldInput = peer()
-for word in ["--node-mode", "full", "--dev-ui-dir", "public", "--telemetry",
-    "collector"]: oldInput.add(word)
-var freshInput = peer()
+# Canonical spellings work; removed aliases are unknown at both process and component boundaries.
+var canonicalInput = peer()
 for word in ["--state-mode", "full", "--ui-dev-dir", "public", "--telemetry-endpoint",
-    "collector"]: freshInput.add(word)
-let old = parsed(oldInput)
-let fresh = parsed(freshInput)
-assert old.nodeMode == fresh.nodeMode and old.devUiDirectory == fresh.devUiDirectory, "CLI invariant: old.nodeMode == fresh.nodeMode and old.devUiDirectory == fresh.devUiDirectory"
-assert old.telemetryEndpoint == fresh.telemetryEndpoint, "CLI invariant: old.telemetryEndpoint == fresh.telemetryEndpoint"
+    "collector"]: canonicalInput.add(word)
+let canonical = parsed(canonicalInput)
+assert canonical.nodeMode == NodeMode.Full and canonical.devUiDirectory == "public"
+assert canonical.telemetryEndpoint == "collector"
+for alias in ["--telemetry", "--dev-ui-dir", "--node-mode"]:
+  var input = peer()
+  input.add(alias)
+  input.add("value")
+  var output = default(Options)
+  var diagnostic = ""
+  assert not parseOptions(input, output, diagnostic), "Removed alias accepted: " & alias
+  assert diagnostic == "Unknown option: " & alias, diagnostic
+  assert not output.valid and output.argumentCount == 0
+  assert not parseCanonicalOptions(@["server", "--ui-port", "9000", alias, "value"], output,
+      diagnostic), "Removed alias accepted in service controls: " & alias
+  assert diagnostic == "Unknown option: " & alias, diagnostic
 for input in [@["server", "4000", "node.pem", "node.key", "-", "network", "10000"],
     @["server", "--net-port"], @["server", "--net-port", "4000"],
     @["server", "4000", "--net-port", "4001"], @["server", "--typo"],
     @["server", "--with-ui=1"], @["server", "--ui-port", "0"],
-    @["server", "--ui-dev-dir", "a", "--dev-ui-dir", "b"],
-    @["server", "--telemetry", "a", "--telemetry-endpoint", "b"],
+    @["server", "--ui-dev-dir", "a", "--ui-dev-dir", "b"],
+    @["server", "--telemetry-endpoint", "a", "--telemetry-endpoint", "b"],
     @["server", "--net-peer", "1:key"], @["server", "--with-ui", "4000"],
     @["check-traces", "--trace-policy", "policy", "--trace-genesis", "genesis"],
     @["tiny-devnet", "identity", "--devnet-index", "6"], @["serve-fuzz", "--fuzz-policy", "policy"],

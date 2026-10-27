@@ -239,7 +239,7 @@ def run_restart(binary, collector, report, folder, ipv6=False):
         report['registrations'] = relay.registrations
         report['relay_connections'] = relay.connections
         report['identities'] = identities
-        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', f'{cli_host}:{relay.port}']
+        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry-endpoint', f'{cli_host}:{relay.port}']
         gate = owners.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
         gate.bind(('127.0.0.1', 0))
         gate.settimeout(0.1)
@@ -261,7 +261,7 @@ def run_restart(binary, collector, report, folder, ipv6=False):
         # A separate telemetry-enabled exchange must finish while the collector remains stopped.
         _, _, outage_port = ports()
         outage_controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json',
-                           '--with-telemetry', '--telemetry', f'{cli_host}:{telemetry_port}']
+                           '--with-telemetry', '--telemetry-endpoint', f'{cli_host}:{telemetry_port}']
         outage_server = launch('outage-server', [binary, 'server', '--net-port', outage_port, '--net-cert', certificates/'a.cert.pem',
             '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/'b.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *outage_controls])
         ready(outage_server, 'outage-server')

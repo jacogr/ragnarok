@@ -12,7 +12,7 @@ peer observations.
 | [`client.nim`](client.nim) | Nonblocking TCP delivery, bounded queues and reconnect lifecycle |
 | [`observer.nim`](observer.nim) | Translation of transport/peer events into copied telemetry observations |
 
-Append `--with-telemetry --telemetry HOST:PORT --chain PATH` to a supported proof-peer invocation
+Append `--with-telemetry --telemetry-endpoint HOST:PORT --chain PATH` to a supported proof-peer invocation
 with an explicit JIP-4 chain file. Delivery reports local node information, periodic peer/status
 observations, handshake outcomes and disconnections. Telemetry is disabled without
 `--with-telemetry`; endpoint configuration alone does not enable it.

@@ -88,7 +88,7 @@ proc configured(port = 0'u16, withState = false, disk = false): Options =
     for value in ["--with-state", "--state-writes", "1000", "--state-write-bytes", "1000000"]:
       arguments.add(value) # Canonical ownership is explicit even with all listeners disabled.
   if port == 0 and not withState:
-    for value in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
+    for value in ["--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"]:
       arguments.add(value) # The pinned sequence API appends individual owned values.
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
@@ -231,7 +231,7 @@ proc refusals(context: SeedFixture) {.raises.} =
   assert owner.stateSnapshot.error == StateStoreError.Uninitialized
   var ui = default(Options)
   assert parseCanonicalOptions(@["server", "--with-ui", "--chain", SeedPath,
-    "--dev-ui-dir", "missing-application-services-ui"], ui)
+    "--ui-dev-dir", "missing-application-services-ui"], ui)
   assert not owner.start(ui, "test", policy())
   assert owner.stateSnapshot.error == StateStoreError.Uninitialized
   assert owner.start(options, "test", policy())

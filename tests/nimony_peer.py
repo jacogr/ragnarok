@@ -33,15 +33,15 @@ def controls(binary, fixtures):
     base = ['client', '--net-port', '1', '--net-cert', str(fixtures/'b.cert.pem'), '--net-key', str(fixtures/'b.key.pem'),
             '--net-peer-key', str(fixtures/'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '900']
     cases = [('arity', ['client']), ('role', ['other', *base[1:]]),
-             ('telemetry-missing-endpoint', ['server', *base[1:], '--telemetry']),
-             ('telemetry-nontrailing', ['--with-telemetry', '--telemetry', '127.0.0.1:9000', *base]),
-             ('telemetry-duplicate', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000', '--telemetry', '127.0.0.1:9001']),
-             ('chain-missing-value', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000', '--chain']),
-             ('chain-missing-option', [*base, '--with-telemetry', '--telemetry', '127.0.0.1:9000']),
+             ('telemetry-missing-endpoint', ['server', *base[1:], '--telemetry-endpoint']),
+             ('telemetry-nontrailing', ['--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000', *base]),
+             ('telemetry-duplicate', [*base, '--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000', '--telemetry-endpoint', '127.0.0.1:9001']),
+             ('chain-missing-value', [*base, '--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000', '--chain']),
+             ('chain-missing-option', [*base, '--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000']),
              ('chain-without-telemetry', [*base, '--chain', 'unused.json']),
              ('chain-duplicate', [*base, '--chain', 'a.json', '--chain', 'b.json']),
-             ('chain-option-as-value', [*base, '--chain', '--chain', '--with-telemetry', '--telemetry', '127.0.0.1:9000']),
-             ('telemetry-selftest', ['--selftest', '--with-telemetry', '--telemetry', '127.0.0.1:9000'])]
+             ('chain-option-as-value', [*base, '--chain', '--chain', '--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000']),
+             ('telemetry-selftest', ['--selftest', '--with-telemetry', '--telemetry-endpoint', '127.0.0.1:9000'])]
     # Host/native port narrowing and deadline validation must precede opening any endpoint.
     for text in ('0', '-1', '65536', 'not-a-port'):
         args = base.copy()
@@ -65,7 +65,7 @@ def controls(binary, fixtures):
               ('ui-duplicate', [*base, '--with-ui', '--with-ui']),
               ('ui-port-collision', [*base, '--with-ui', '--ui-port', '19800']),
               ('ui-selftest', ['--selftest', '--with-ui']),
-              ('ui-dir-missing', [*base, '--with-ui', '--dev-ui-dir']),
+              ('ui-dir-missing', [*base, '--with-ui', '--ui-dev-dir']),
               ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]
     download = ['download', '--net-port', '1', '--net-cert', str(fixtures/'a.cert.pem'), '--net-key', str(fixtures/'a.key.pem'),
                 '--net-peer-key', str(fixtures/'b.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '10', '--download-policy', 'missing-download-policy.conf']
@@ -75,7 +75,7 @@ def controls(binary, fixtures):
     cases += [('download-missing-state', download),
               ('download-policy-preflight', [*download, *state]),
               ('download-outgoing-telemetry', [*download, *state, '--with-telemetry',
-                                               '--telemetry', '127.0.0.1:1'])]
+                                               '--telemetry-endpoint', '127.0.0.1:1'])]
     rows = []
     for name, args in cases:
         result = subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=4)

@@ -16,8 +16,8 @@ refused for this command.
 
 
 Commands use the [named CLI](../docs/cli.md). `cli_catalog.nim` owns the shared option
-metadata, grouping and aliases; `cli_defaults.nim` owns typed defaults and bounds; `cli_commands.nim` admits strict named
-inputs and supplies an owned normalized representation to existing bounded handlers.
+metadata and grouping; `cli_defaults.nim` owns typed defaults and bounds.
+`cli_commands.nim` admits strict named inputs and supplies an owned normalized representation to existing bounded handlers.
 `cli_help.nim` renders overview and command-specific help from the same catalog.
 Long positional command forms are rejected. Networking fields use `--net-*`;
 download, trace, devnet and conformance fields use their own descriptive prefixes.
@@ -25,7 +25,7 @@ Dedicated conformance budgets retain separate defaults. Syntax inspection preced
 file IO, logging and service startup; explicit help wins over conformance environment activation.
 
 `app/options.nim` parses shared controls atomically. Its output is cleared on any failure;
-ports are bounded before narrowing and nonrepeatable controls are unique across aliases.
+ports are bounded before narrowing and nonrepeatable controls are unique.
 `--with-telemetry` requires `--telemetry-endpoint HOST:PORT --chain FILE`; `--with-rpc`
 enables RPC; `--with-ui` enables UI and RPC together. Each enable switch precedes its
 related settings in help, and configuration alone never enables a service. Named flags
@@ -137,3 +137,12 @@ passed in a focused rerun. The original full-run failure is preserved in
 
 Next bounded work is to design the long-running node configuration/lifecycle as real import
 and consensus become available without adding competing app entry points.
+
+
+The canonical-only follow-up removes option alias metadata and lookup entirely. Former
+spellings are tested as unknown options; all executable callers, component fixtures and
+documentation use the advertised names. The checked production build, four selected native
+suites (`app_cli`, `app_options`, `light_runtime_options`, `application_services`), 50 focused
+Python regressions, changed-source formatting/syntax checks and real canonical RPC,
+development UI and telemetry startup passed. The public executable also refused all three
+removed spellings. Evidence remains under `build/cli-no-alias-*`.

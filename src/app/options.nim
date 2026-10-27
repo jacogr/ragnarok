@@ -460,7 +460,7 @@ proc extractLoggingOptions*(arguments: seq[string], remaining: var seq[string],
   true
 
 proc parseOptions*(arguments: seq[string], options: var Options, diagnostic: var string): bool =
-  ## Normalize named commands and compatibility aliases, then commit only fully validated service configuration.
+  ## Normalize named commands, then commit only fully validated service configuration.
   options = default(Options)
   var normalized: seq[string] = @[]
   if not normalizeCommand(arguments, normalized, diagnostic): return false

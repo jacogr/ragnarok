@@ -90,7 +90,7 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
         pin = str(certificates/'b.pub') if rejected else '-'
         server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
             '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'service',
-            '--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+            '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{collector.getsockname()[1]}'],
             stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         owners.callback(stop, server)

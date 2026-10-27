@@ -74,7 +74,7 @@ proc fixture(): Fixture {.raises.} =
       result.policy.ingestion.wireBytes).value
 proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false): Options =
   ## Real CLI parsing selects memory or explicit paged disk independently of current checkpoint authority.
-  var arguments = @["server", "--node-mode", "light", "--with-state", "--chain", getEnv(
+  var arguments = @["server", "--state-mode", "light", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-trust", if foreign: fixed.foreignTrust else: fixed.trust,
     "--state-header", if foreign: fixed.foreignHeader else: fixed.header]

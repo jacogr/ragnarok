@@ -78,7 +78,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
                        '--net-local-key', str(folder / f'{role}.pub'), '--net-peer-key', str(folder / f'{remote_pin}.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(gate)]
             if telemetry is not None:
                 # Optional collector controls exercise the real trailing CLI without changing mesh policy.
-                command += ['--chain', str(telemetry['chain']), '--with-telemetry', '--telemetry', telemetry[role]]
+                command += ['--chain', str(telemetry['chain']), '--with-telemetry', '--telemetry-endpoint', telemetry[role]]
             handles[role] = logs[role].open('w')
             processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
                 env={**os.environ, 'RAGNAROK_MESH_ROUNDS': str(rounds), 'RAGNAROK_MESH_FALLBACK': '0' if bad_pin else '1'})

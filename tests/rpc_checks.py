@@ -125,14 +125,14 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
         command += ['--with-ui', '--ui-port', str(ui_port)]
         if dev_ui:
-            command += ['--dev-ui-dir', str(static)]
+            command += ['--ui-dev-dir', str(static)]
     if chain is not None:
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
     if state_policy is not None:
         # Explicit executable mutation budgets activate the same canonical service seed as component callers.
         command += ['--with-state', '--state-writes', str(state_policy[0]), '--state-write-bytes', str(state_policy[1])]
     if telemetry:
-        command += ['--with-telemetry', '--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
+        command += ['--with-telemetry', '--telemetry-endpoint', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
     expected_genesis = None
     if chain is not None and 'genesis_state' in json.loads(chain.read_text()):
         # This harness uses the frozen synthetic genesis for every configured chain view.
@@ -148,7 +148,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             occupied.listen()
             port = str(occupied.getsockname()[1])
             inactive = command[:command.index('--net-mode')+2] + ['--rpc-port', port, '--ui-port', port,
-                                      '--dev-ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
+                                      '--ui-dev-dir', str(folder/'missing'), '--telemetry-endpoint', 'invalid']
             child = subprocess.Popen(inactive,
                                      env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(disabled_stop)},
                                      stdout=output, stderr=subprocess.STDOUT)

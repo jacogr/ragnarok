@@ -13,7 +13,7 @@ import ../../../src/codec/bounded
 var disabled = default(Options)
 assert not disabled.valid()
 assert parseCanonicalOptions(@["server", "8000", "--rpc-port", "1234", "--ui-port", "4321",
-    "--dev-ui-dir", "missing", "--telemetry", "invalid"], disabled)
+    "--ui-dev-dir", "missing", "--telemetry-endpoint", "invalid"], disabled)
 assert disabled.valid() and disabled.argumentCount() == 2
 assert disabled.argument(1) == "server" and disabled.argument(2) == "8000"
 assert not disabled.telemetryEnabled() and disabled.rpcPort() == 0 and disabled.uiPort() == 0
@@ -24,7 +24,7 @@ assert parseCanonicalOptions(@["server", "--with-ui"], ui)
 assert ui.uiPort() == 8888 and ui.rpcPort() == 19800
 var custom = default(Options)
 assert parseCanonicalOptions(@["mesh", "--ui-port", "9001", "--with-ui", "--with-rpc", "--rpc-port",
-    "9002", "--chain", "chain.json", "--with-telemetry", "--telemetry", "127.0.0.1:9003"], custom)
+    "9002", "--chain", "chain.json", "--with-telemetry", "--telemetry-endpoint", "127.0.0.1:9003"], custom)
 assert custom.uiPort() == 9001 and custom.rpcPort() == 9002 and custom.telemetryEnabled()
 assert custom.chainPath() == "chain.json" and custom.telemetryEndpoint() == "127.0.0.1:9003"
 assert ui.rpcPort() == 19800 and not ui.telemetryEnabled() # Independent invocations never share mutable state.
@@ -34,8 +34,8 @@ for arguments in [@["server", "--with-ui", "--ui-port", "19800"],
     @["server", "--with-ui", "--with-ui"], @["server", "--rpc-port", "65536"],
     @["server", "--rpc-port", "0"], @["server", "--rpc-port", "no"],
     @["server", "--with-rpc", "--unknown"], @["server", "--with-telemetry"],
-    @["server", "--with-telemetry", "--telemetry", "127.0.0.1:1"],
-    @["server", "--chain", "chain.json"], @["server", "--dev-ui-dir", "--with-ui"],
+    @["server", "--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"],
+    @["server", "--chain", "chain.json"], @["server", "--ui-dev-dir", "--with-ui"],
     @["server", "--rpc-port"], @["--selftest", "--with-ui"], @["--with-rpc"]]:
   assert parseCanonicalOptions(@["server", "--with-ui"], ui)
   assert not parseCanonicalOptions(arguments, ui)

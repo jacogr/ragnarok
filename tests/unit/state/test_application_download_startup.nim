@@ -311,7 +311,7 @@ proc main() {.raises.} =
   var selected = default(Options)
   assert not parseCanonicalOptions(@["download"], selected), "state must be selected"
   var telemetry = arguments(1, peer)
-  for control in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
+  for control in ["--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"]:
     telemetry.add(control) # Append explicit controls without relying on unsupported sequence concatenation.
   assert not parseCanonicalOptions(telemetry, selected), "unwired outgoing telemetry refused"
   peerPreflight(peer)

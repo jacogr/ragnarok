@@ -22,7 +22,7 @@ proc main() =
   for extra in [@["--with-rpc"], @["--rpc-port", "9001"], @["--with-ui"],
       @["--state-storage", "memory"], @["--state-storage", "disk", "--state-db", "db"],
       @["--with-management", "--management-socket", "management.sock"],
-      @["--with-telemetry", "--telemetry", "127.0.0.1:9000"],
+      @["--with-telemetry", "--telemetry-endpoint", "127.0.0.1:9000"],
       @["--download-blocks", "2"], @["--download-ancestor", "old-header.bin"]]:
     var arguments = base
     for item in extra: arguments.add(item) # Every unrelated explicit control must be refused before file or service activity.

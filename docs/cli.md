@@ -43,15 +43,13 @@ shared diagnostic threshold owned by `src/lib/logging.nim`. Conformance has its 
 write budgets rather than borrowing execution defaults.
 
 Repeat `--trace-file FILE` in execution order, `--download-ancestor FILE` newest
-first, and `--net-peer PORT:KEY_FILE` for additional peers. Other flags are unique,
-including when a spelling alias is used. `--name=value` is accepted for value
-options. Required files, identities, protocols and policies have no inferred
-substitutes. Unknown flags, missing values, wrong-command flags and mixed bare
+first, and `--net-peer PORT:KEY_FILE` for additional peers. Other flags are unique.
+`--name=value` is accepted for value options. Required files, identities, protocols
+and policies have no inferred substitutes. Unknown flags, missing values, wrong-command flags and mixed bare
 values are refused before networking or file IO.
 
-The prior service spellings `--telemetry`, `--dev-ui-dir` and `--node-mode` remain
-aliases for `--telemetry-endpoint`, `--ui-dev-dir` and `--state-mode`. They do not
-restore positional command forms. Internal component fixtures receive normalized
+Only the advertised canonical option names are accepted; legacy aliases and
+positional command forms are rejected. Internal component fixtures receive normalized
 command values through `parseCanonicalOptions`; process input must go through the
 strict `parseOptions` boundary.
 

@@ -178,7 +178,7 @@ def run(binary, collector, report, scenario, folder):
         stream.send(json.dumps({'type': 'Subscribe', 'filter': {'type': 'All'}}))
         while receive(stream, messages, deadline)['type'] != 'subscribed':
             pass # Wait for the subscription barrier before producing any telemetry events.
-        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', endpoint]
+        controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry-endpoint', endpoint]
         events, children = [], {}
         if scenario != 'outgoing-timeout':
             # Reject b's certificate by pinning a instead; success retains the original eight-request case.
