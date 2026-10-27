@@ -146,3 +146,22 @@ suites (`app_cli`, `app_options`, `light_runtime_options`, `application_services
 Python regressions, changed-source formatting/syntax checks and real canonical RPC,
 development UI and telemetry startup passed. The public executable also refused all three
 removed spellings. Evidence remains under `build/cli-no-alias-*`.
+
+
+CI run 40539775711 exposed an accidentally committed `{}` in `rpc-genesis.json`: the
+local RPC retention check had been passed the tracked fixture and deliberately rewrote it.
+All sixteen native test shards stopped at its pinned checksum, and the application startup
+checks consumed the same invalid input. The fixture is restored byte-for-byte. The RPC
+harness now copies supplied chains into a unique owned directory before retention mutation;
+a regression test checks both the actual launch path and unchanged caller bytes.
+
+The separate JAM Network failure was its obsolete unknown-command diagnostic expectation.
+Its negative controls now require the exact public CLI rejection before listener startup;
+missing conformance environment fields still require `FUZZ_START_FAILED`.
+
+The repair passed all static fixture checks across 978 suites (54 unique files), native
+`application_checkpoint_transfer` and `disk_chain`, thirteen focused RPC/network tooling
+tests, and the previously failed live RPC/browser, development UI, canonical-state,
+checkpoint-import and JAM Network socket checks. The live replay verifies the tracked
+fixture hash after every workload. Evidence is in `build/cli-ci-*`; these local results do
+not replace the new Linux CI run.

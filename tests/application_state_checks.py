@@ -102,7 +102,7 @@ def run(binary, certificates, folder):
     mesh(binary, certificates, chain, folder/'mesh', policy)
     rpc = rpc_run(binary, certificates, folder/'rpc', chain, state_policy=(1000, 1000000))
     assert rpc['passed']
-    # The RPC harness mutates its input after startup; restore the complete seed before negative cases.
+    # Keep malformed-input cases independent of the preceding RPC workload.
     chain.write_text(seed)
     base = [str(binary), 'server', '--net-port', peer_port(), '--net-cert', str(certificates/'a.cert.pem'),
             '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid']

@@ -70,3 +70,30 @@ class RpcSessionBudget(unittest.TestCase):
                     launch.assert_not_called()
                 spawn.return_value.kill.assert_called_once()
                 spawn.return_value.wait.assert_called_once()
+
+
+# Live retention checks must own the file they deliberately corrupt after startup.
+class RpcChainOwnership(unittest.TestCase):
+    def test_retention_mutation_preserves_supplied_chain(self):
+        """Run the actual launcher boundary and mutate its selected chain without touching caller bytes."""
+        with temporary_folder() as folder:
+            supplied = folder/'supplied.json'
+            original = b'{"id":"caller-owned"}\n'
+            supplied.write_bytes(original)
+            with patch.object(rpc_checks.subprocess, 'Popen') as spawn:
+                spawn.return_value.poll.return_value = None
+                def mutate_selected_chain(process, log):
+                    # Simulate the retention witness on exactly the file passed to the executable.
+                    arguments = spawn.call_args.args[0]
+                    selected = Path(arguments[arguments.index('--chain')+1])
+                    self.assertNotEqual(selected, supplied)
+                    self.assertEqual(selected.read_bytes(), original)
+                    selected.write_text('{}')
+                    raise RuntimeError('retention mutation reached')
+                with patch.object(rpc_checks, 'ready', side_effect=mutate_selected_chain):
+                    with self.assertRaisesRegex(RuntimeError, 'retention mutation reached'):
+                        rpc_checks.run(Path('/fixture/ragnarok'), folder/'certificates',
+                                       folder/'peer', chain=supplied)
+                self.assertEqual(supplied.read_bytes(), original)
+                spawn.return_value.kill.assert_called_once()
+                spawn.return_value.wait.assert_called_once()

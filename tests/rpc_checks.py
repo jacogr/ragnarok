@@ -5,6 +5,7 @@
 
 Exposes socket helpers and run for live protocol checks; parameter_checks verifies configured
 parameters and service queries, shared telemetry startup, immutable configuration and rejected invalid inputs.
+Retention checks mutate private chain copies and preserve caller-owned fixture bytes.
 """
 import base64
 import hashlib
@@ -15,6 +16,7 @@ import os
 import socket
 import struct
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -92,6 +94,11 @@ def ready(process, log):
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
 def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False, browser=False, state_policy=None):
     folder.mkdir(parents=True, exist_ok=True)
+    if chain is not None:
+        # Retention tests deliberately mutate this file; own a copy instead of changing caller fixtures.
+        supplied = chain.read_bytes()
+        chain = Path(tempfile.mkdtemp(prefix='rpc-chain-', dir=folder))/'chain.json'
+        chain.write_bytes(supplied)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
     with socket.socket() as reservation:
