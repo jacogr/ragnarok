@@ -413,4 +413,14 @@ singleExpected.pc = CodeAddress(48003)
 singleExpected.registers[1] = RegisterValue(41)
 sameCpu(machineInfo(singleAnswer.value.machine).value, singleExpected)
 sameCpu(machineInfo(singleSource).value, singleCpu)
+# Empty mappings must not reserve a full guest-address-space dirty directory for one attempted instruction.
+let singleHeapBefore = getOccupiedMem()
+var singleCreated = prepareFlatMemoryFrame(singlePlan, singleMemory, singleCpu)
+assert singleCreated.error == FlatError.None
+var singleFrame = takeValue(singleCreated)
+let singleHeapAfter = getOccupiedMem()
+assert singleHeapAfter >= singleHeapBefore
+assert singleHeapAfter-singleHeapBefore < 65536, "empty invocation scratch must stay below 64 KiB"
+runFlatSingle(singleFrame)
+sameCpu(singleFrame.info, singleExpected)
 echo "PASS bounded single-step /17001 instruction source /one admitted fact /prepaid interior /immutable source"

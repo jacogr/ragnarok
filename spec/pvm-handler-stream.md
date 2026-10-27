@@ -229,3 +229,21 @@ with worker totals 108.25/122.65/135.89/126.67 seconds, versus the 166.206-secon
 This is a local scheduling observation, not an engine speed claim. Both runs retain the same
 sources, flags, independent fixtures and 180-second deadline. The 89 runner/CI safeguards pass;
 Linux must still qualify the redistributed batch.
+
+All 87 linked native images are byte-identical between the contiguous and strided worker runs;
+redistribution changes scheduling, not the measured workload or build configuration.
+
+## Empty invocation scratch
+
+A genuinely empty guest map now omits the address-space dirty bitmap. No checked store can
+succeed in that map; a host remap rebuilds the frame with its ordinary bitmap. Nonempty maps,
+checked access, publication and cache policy are unchanged. A boundary witness enforces less
+than 64 KiB of live frame scratch and checks the same one-step posterior state. It fails before
+the change and passes afterward. The isolated checked local heap probe measures 135,168 bytes
+before and zero additional live bytes afterward.
+
+Six complete execution-cache witness runs per image, split across both process orders, retain
+the original golden output and balanced 1,000-cycle ARC observation. Local ARM64 median process
+CPU is 3.149 seconds before and 1.269 seconds afterward. This is an allocation-heavy single-step
+witness, not a claim about Linux throughput or ordinary sieve/DOOM execution. Exact-head CI and
+matched-toolchain performance qualification remain required.

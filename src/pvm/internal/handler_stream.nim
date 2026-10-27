@@ -1328,7 +1328,8 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
   result = FlatFrame(plan: plan, preparationFailure: FlatError.None, preparationUsed: 0,
       hostSnapshot: default(Memory), hostChanges: @[], hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
-    dirtyPages: newSeq[uint64](16384),
+    # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
+    dirtyPages: (if images.len == 0: @[] else: newSeq[uint64](16384)),
         info: info, reason: oracle.StepError.None,
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
