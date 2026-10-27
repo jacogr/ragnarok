@@ -8,6 +8,24 @@ import ./step as oracle
 import ./internal/register_ops
 
 type
+  FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
+  FlatNodeLimit* = distinct uint64 ## Ceiling on emitted header/operation nodes in one exclusive frame.
+  FlatPreparationLimit* = distinct uint64 ## Total source span admitted for suffix emission plus containing-block pricing.
+  FlatLimits* = object ## Copied local policies; later caller changes cannot change an admitted plan.
+    codeBytes*: ProgramByteLimit
+    facts*: FlatFactLimit
+    jumps*: JumpCountLimit
+    pages*: PageLimit
+    nodes*: FlatNodeLimit
+    preparation*: FlatPreparationLimit
+  FlatError* {.pure.} = enum ## Local preparation refusals never masquerade as successful guest exits.
+    Uninitialized, None, InvalidPolicy, InvalidProgram, CodeLimitExceeded,
+    FactLimitExceeded, JumpLimitExceeded, PageLimitExceeded, StreamLimitExceeded,
+      PreparationLimitExceeded, InvalidMemory
+  FlatResult*[T] = object ## Private alternatives publish only completely admitted owners.
+    case status: FlatError
+    of None: completed: T
+    else: discard
   FlatArgs = object ## Exactly sixteen bytes: full immediate, secondary low word and genuine sealed register coordinates.
     x: uint64
     y: uint32
@@ -16,7 +34,7 @@ type
   FlatFact = object ## Decoded/priced boundary outside execution, captured from the independently validated program owner.
     args: FlatArgs
     handler: nil FlatHandler
-    pc, next, sourceCount, priceIndex: uint32
+    pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
     ending, fallthrough: bool
   FlatTarget = object ## Only genuine jump-table and block-membership validation supplies positive target facts.
@@ -29,6 +47,7 @@ type
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
+    limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
   FlatRegion = ref object ## Additional fragmented regions retain private bytes and immutable access metadata.
     first: uint64
     access: PageAccess
@@ -63,6 +82,8 @@ type
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
     dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.
+    preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
+    preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
 
 
 type FlatPublication = object
@@ -71,6 +92,36 @@ type FlatPublication = object
   changed: seq[PageImage]
 
 const flatStop = high(uint32)
+
+func defaultFlatLimits*(): FlatLimits =
+  ## Compatibility policy is finite; application callers should choose explicit deployment limits.
+  FlatLimits(codeBytes: ProgramByteLimit(4194304), facts: FlatFactLimit(4194304),
+    jumps: JumpCountLimit(1048576), pages: PageLimit(1048576), nodes: FlatNodeLimit(8388608),
+        preparation: FlatPreparationLimit(67108864))
+
+func error*[T](outcome: FlatResult[T]): FlatError =
+  ## Inspect a default/refused result without exposing a partial owner.
+  outcome.status
+
+proc takeValue*[T](outcome: var FlatResult[T]): T {.inline, requires: outcome.status ==
+    FlatError.None.} =
+  ## Transfer an admitted owner once without deep-copying frame regions; consumed results lose success authority.
+  result = move(outcome.completed)
+  outcome = FlatResult[T](status: FlatError.Uninitialized)
+
+func validFlatLimits(limits: FlatLimits): bool =
+  ## Representation ceilings are checked before narrowing, indexing or allocating; zero budgets deliberately refuse work.
+  uint64(limits.codeBytes) <= 4194304 and uint64(limits.facts) <= 4194304 and
+    uint64(limits.jumps) <= 1048576 and uint32(limits.pages) <= 1048576 and
+    uint64(limits.nodes) <= 2147483646
+
+func preparationError*(frame: FlatFrame): FlatError =
+  ## A stream-admission failure is sticky for this frame; no successful guest snapshot is claimed.
+  frame.preparationFailure
+
+func flatPreparationUnits*(frame: FlatFrame): uint64 =
+  ## Copied cumulative source-span reservations; these are neither actual decoder visits nor CPU instructions/cycles.
+  frame.preparationUsed
 
 func flatSext32(x: uint32): uint64 {.inline.} =
   ## Preserve GP sign extension with unsigned bit operations.
@@ -461,12 +512,18 @@ proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   f.info.blockCharged = false
   a.y
 
+proc flatResolutionFailure(f: var FlatFrame, off: uint32): uint32 =
+  ## Invalid guest destinations panic; local policy exhaustion has no successful guest outcome.
+  if f.preparationFailure != FlatError.None: return flatLocal(f, off,
+      oracle.StepError.InvalidPreparedProgram)
+  flatStopExit(f, off, oracle.StepExit.Panic)
+
 proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Resolve a source-owned sealed static target once and patch only this frame's private stream.
   let a = f.arguments[int(off)]
   when Code == 80: f.info.registers[a.slots.aIndex] = RegisterValue(a.x)
   let target = flatResolve(f, a.y)
-  if target == flatStop: return flatStopExit(f, off, oracle.StepExit.Panic)
+  if target == flatStop: return flatResolutionFailure(f, off)
   f.arguments[int(off)].y = target
   let patched: FlatHandler = flatCachedJump[Code]
   f.handlers[int(off)] = patched
@@ -485,7 +542,7 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   let a = f.arguments[int(off)]
   let yes = flatResolve(f, uint32(a.x shr 32))
   let no = flatResolve(f, a.y)
-  if yes == flatStop or no == flatStop: return flatStopExit(f, off, oracle.StepExit.Panic)
+  if yes == flatStop or no == flatStop: return flatResolutionFailure(f, off)
   f.arguments[int(off)].x = (a.x and 0xffffffff'u64) or (uint64(yes) shl 32)
   f.arguments[int(off)].y = no
   let patched: FlatHandler = flatBranch[Code]
@@ -650,7 +707,7 @@ proc flatDynamic[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   let target = f.plan.jumps[int(index)]
   if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
-  if resolved == flatStop: return flatStopExit(f, off, oracle.StepExit.Panic)
+  if resolved == flatStop: return flatResolutionFailure(f, off)
   f.dynamicOffsets[slot] = ((index+1) shl 32) or uint64(resolved+1)
   f.info.blockCharged = false
   resolved
@@ -943,25 +1000,36 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 130: flatMemoryPair[8, true, false, true, false]
   else: nil
 
-proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
+proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits): FlatResult[FlatPlan] =
   ## Capture genuine complete instruction facts and containing-block pricing inputs before execution, preserving the explicit preparation boundary.
+  if not validFlatLimits(limits): return FlatResult[FlatPlan](status: FlatError.InvalidPolicy)
   let extent = codeLength(source)
-  assert extent.error == ProgramError.None and extent.value > 0 and extent.value <= 4194304'u64
+  if extent.error != ProgramError.None or extent.value == 0:
+    return FlatResult[FlatPlan](status: FlatError.InvalidProgram)
+  if extent.value > uint64(limits.codeBytes): return FlatResult[FlatPlan](
+      status: FlatError.CodeLimitExceeded)
   assert sizeof(FlatArgs) == 16
-  result = FlatPlan(source: source, facts: @[], factAt: newSeq[int](int(extent.value)), pricePcs: @[
+  # The admission count occupies existing alignment padding on the supported 64-bit targets.
+  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
+  var owner = FlatPlan(source: source, limits: limits, facts: @[], factAt: newSeq[int](int(
+      extent.value)), pricePcs: @[
     ], cycles: cycles, jumps: @[])
-  for i in 0..<result.factAt.len: result.factAt[i] = -1
+  for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
   while pc < extent.value:
+    if uint64(owner.facts.len) >= uint64(limits.facts):
+      return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
     let decoded = instruction(source, CodeAddress(pc))
-    assert decoded.error == ProgramError.None
+    if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
+        status: FlatError.InvalidProgram)
     let item = decoded.value
     let begins = basicBlockStart(source, item.address)
-    assert begins.error == ProgramError.None
+    if begins.error != ProgramError.None: return FlatResult[FlatPlan](
+        status: FlatError.InvalidProgram)
     if begins.value:
-      priceIndex = uint32(result.pricePcs.len)
-      result.pricePcs.add(item.address)
+      priceIndex = uint32(owner.pricePcs.len)
+      owner.pricePcs.add(item.address)
     let next = pc+1+uint64(item.skip)
     var target = 0'u64
     if item.opcode == 1: target = next
@@ -976,28 +1044,43 @@ proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
     elif item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
       args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
       args.y = uint32(next)
-    result.factAt[int(pc)] = result.facts.len
-    result.facts.add(FlatFact(args: args, handler: flatHandler(item.opcode, valid, fallthrough),
+    owner.factAt[int(pc)] = owner.facts.len
+    owner.facts.add(FlatFact(args: args, handler: flatHandler(item.opcode, valid, fallthrough),
       pc: uint32(pc), next: uint32(next), sourceCount: 0, priceIndex: priceIndex,
       opcode: item.opcode, ending: terminatesBlock(item.opcode), fallthrough: fallthrough))
     pc = next
   var count = 0'u32
-  var at = result.facts.len
+  var nodes = 0'u32
+  var at = owner.facts.len
   while at > 0:
     dec at
-    if result.facts[at].ending: count = 1
+    if owner.facts[at].ending:
+      # A genuine terminator begins the next reverse suffix; folded noops occupy no executable node.
+      count = 1
+      nodes = 0
     else: inc count
-    result.facts[at].sourceCount = count
+    if owner.facts[at].opcode != 2: inc nodes
+    owner.facts[at].sourceCount = count
+    owner.facts[at].nodeCount = nodes
   var ordinal = 0'u64
   while true:
     let resolved = jumpTarget(source, JumpIndex(ordinal))
     if resolved.error != ProgramError.None: break
-    assert ordinal < 1048576'u64
+    if ordinal >= uint64(limits.jumps): return FlatResult[FlatPlan](
+        status: FlatError.JumpLimitExceeded)
     let target = resolved.value
     let valid = basicBlockStart(source, target)
-    result.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
+    owner.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
       valid: valid.error == ProgramError.None and valid.value))
     inc ordinal
+
+  FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+
+proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
+  ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
+  var prepared = prepareFlatPlan(source, cycles, defaultFlatLimits())
+  assert prepared.error == FlatError.None
+  takeValue(prepared)
 
 proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint32) =
   ## Parallel contiguous arrays preserve a 24-byte handler/argument payload plus a source index for rare exits.
@@ -1008,6 +1091,7 @@ proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## A dense positive map and monotone stream preserve stable offset links; interior resume creates a prepaid suffix header once.
+  if f.preparationFailure != FlatError.None: return flatStop
   if uint64(pc) >= uint64(f.plan.factAt.len): return flatStop
   if f.compiledForPc.len > 0:
     let packed = f.compiledForPc[int(pc)]
@@ -1016,6 +1100,28 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       if (value and 0x80000000'u32) != 0: return value and 0x7fffffff'u32
   let start = f.plan.factAt[int(pc)]
   if start < 0: return flatStop
+  # Stable offset links forbid eviction inside execution. Refuse a whole suffix before its first allocation/map write.
+  let ceiling = uint64(f.plan.limits.nodes)
+  let occupied = uint64(f.handlers.len)
+  assert occupied <= ceiling
+  let available = ceiling-occupied
+  # Sealed non-noop suffix counts make admission constant-time, independently of guest source quotas.
+  let required = 1'u64+uint64(f.plan.facts[start].nodeCount)
+  if required > available:
+    f.preparationFailure = FlatError.StreamLimitExceeded
+    return flatStop
+  # Node folding does not erase preparation cost: reserve both the emitted suffix span and its whole containing price span.
+  let pricePc = f.plan.pricePcs[int(f.plan.facts[start].priceIndex)]
+  let priceFact = f.plan.factAt[int(uint64(pricePc))]
+  assert priceFact >= 0
+  let neededWork = uint64(f.plan.facts[start].sourceCount)+uint64(f.plan.facts[
+      priceFact].sourceCount)
+  let workLimit = uint64(f.plan.limits.preparation)
+  assert f.preparationUsed <= workLimit
+  if neededWork > workLimit-f.preparationUsed:
+    f.preparationFailure = FlatError.PreparationLimitExceeded
+    return flatStop
+  f.preparationUsed+=neededWork
   if f.compiledForPc.len == 0: f.compiledForPc = newSeq[uint32](f.plan.factAt.len)
   let origin = uint32(f.handlers.len)
   var index = start
@@ -1111,21 +1217,21 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
           break
       assert found
 
-proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
+proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo,
+    memory: Memory): FlatFrame =
   ## Own checked private region copies without borrowing caller byte storage; arbitrary fragmented layouts retain a genuine slow preflight owner.
   assert plan != nil
-  let memory = captureMemory(images, PageLimit(1048576))
-  assert memory.error == MachineError.None
   # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
   assert images.len <= high(int) div sizeof(PageImage)
-  result = FlatFrame(plan: plan, hostSnapshot: default(Memory), hostChanges: @[], hostReady: false,
+  result = FlatFrame(plan: plan, preparationFailure: FlatError.None, preparationUsed: 0,
+      hostSnapshot: default(Memory), hostChanges: @[], hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     dirtyPages: newSeq[uint64](16384),
         info: info, reason: oracle.StepError.None,
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory.value, sourceImages: newSeqOfCap[PageImage](
+    compiledForPc: @[], sourceMemory: memory, sourceImages: newSeqOfCap[PageImage](
         images.len),
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
         stack: @[], extra: @[],
@@ -1172,6 +1278,21 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
       result.stack = move(region.bytes)
     else: result.extra.add(region)
 
+proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
+  ## Validate complete page admission before private region copies; a refusal contains no partial frame.
+  if uint64(images.len) > uint64(uint32(plan.limits.pages)):
+    return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
+  let memory = captureMemory(images, plan.limits.pages)
+  if memory.error != MachineError.None: return FlatResult[FlatFrame](
+      status: FlatError.InvalidMemory)
+  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, images, info, memory.value))
+
+proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
+  ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
+  var prepared = prepareFlatFrame(plan, images, info)
+  assert prepared.error == FlatError.None
+  takeValue(prepared)
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The hot loop is the offset-returning dispatch; budgets are reserved only at synthetic block entries.
   f.hostReady = false
@@ -1189,10 +1310,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if f.plan == nil:
     f.reason = oracle.StepError.InvalidMachine
     return
+  if f.preparationFailure != FlatError.None:
+    f.reason = oracle.StepError.InvalidPreparedProgram
+    return
   f.dynamicOffsets = default(array[256, uint64]) # Invocation reset remains inside execution timing.
   var offset = flatResolve(f, uint32(uint64(f.info.pc) and 0xffffffff'u64))
   if offset == flatStop:
-    f.reason = oracle.StepError.InvalidMachine
+    f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
   while offset != flatStop:
     assert int(offset) < f.handlers.len
@@ -1297,14 +1421,26 @@ proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
         else: flatByte(f, uint64(uint32(original.index))*4096+uint64(at))
       assert current == byte(expected[offset+page*4096+at])
 
-proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: MachineInfo) =
+proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
+    info: MachineInfo): FlatError =
   ## Trusted observation/reentry replaces memory capabilities wholesale; code cache offsets never retain memory or register owners.
-  var replacement = newFlatFrame(f.plan, images, info)
+  var prepared = prepareFlatFrame(f.plan, images, info)
+  if prepared.error != FlatError.None: return prepared.error
+  var replacement = takeValue(prepared)
+  replacement.preparationFailure = f.preparationFailure
+  replacement.preparationUsed = f.preparationUsed
   replacement.handlers = move(f.handlers)
   replacement.arguments = move(f.arguments)
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
   f = move(replacement)
+
+  FlatError.None
+
+proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: MachineInfo) =
+  ## Local witness convenience only; the checked boundary preserves a refused frame intact.
+  let error = replaceFlatMemoryChecked(f, images, info)
+  assert error == FlatError.None
 
 proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: MachineGas,
     registers: RegisterFile) =
@@ -1368,6 +1504,10 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
   let fact = f.plan.factAt[int(pc)]
   if fact < 0: return oracle.StepError.InvalidHostSuspension
+  # Reject oversized host mappings before extracting a copied delta or any complete page array.
+  let count = memoryPageCount(posterior)
+  if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
+    return oracle.StepError.InvalidHostResponse
   let delta = changedMemoryPages(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var info = f.info
@@ -1413,7 +1553,8 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let fast = f.fastResumes
   let fallbacks = f.fallbackResumes
   let pages = f.hostCopiedPages
-  replaceFlatMemory(f, complete.value, info)
+  if replaceFlatMemoryChecked(f, complete.value, info) != FlatError.None:
+    return oracle.StepError.InvalidHostResponse
   f.sourceMemory = posterior # Preserve the host snapshot's local mapping policy as well as bytes/permissions.
   f.fastResumes = fast
   f.fallbackResumes = fallbacks+1

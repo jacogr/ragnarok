@@ -407,3 +407,57 @@ mixedpairs(-3.37..+0.19%), otherworkloadsflat, coldtickbothpairs+2.10/+2.50%. In
 broad benefit; runtime restoredexact00c09d98. Retain1680new gas/quota/noop/fault witnesses.
 Proceed to resource admission: explicit typed construction refusals and preflighted cache cap;
 no guest-gas/panic substitution, no mid-execution cache eviction or stale target coordinates.
+
+Trial18parent59d017f2(runtime00c09d98): explicit FlatLimits/FlatError/private tagged FlatResult
+with consuming extraction. prepareFlatPlan/prepareFlatFrame and checked replacement validate
+caller-selected code/fact/jump/page/node budgets. Legacy constructors remain local-witness
+asserting conveniences, not the application admission surface. Cache exhaustion is sticky and
+maps to local InvalidPreparedProgram with an explicit StreamLimitExceeded diagnostic; it never
+selects a successful guest panic/gas outcome. Admission counts non-noop suffix nodes plus header
+before map/stream mutation; count fits existing48-byte fact padding on64-bit targets and is
+sealed during the existing reverse fact pass. No cold extra scan, eviction, stale offsets, or
+inner per-op cap check. Host posterior page count refuses before extracting deltas/images and
+preserves the suspension for retry. Focused typed-limit/take/exact cap/foldednoop/cached reuse/
+zeroquota/jump/page replacement/hostretry witnesses; partial-quota private-memory comparisons
+strengthened. Allocation ceilings bound logical admitted components, not exact allocator RSS;
+environmental allocator failure is not claimed to be a recoverable policy refusal.
+
+Initial resource-admission cohort passes9native/9ASan,200timed/4negative,freshsource/image/
+fullstate controls. Reusedinit+0.35%,tick-0.28%,Pinky+0.70%,fill+2.81%median(retainedmixed
+-3.44..+3.23%pairs). Preserve findings/resource-admission.md/json and exact initial patch.
+Final variant moves only new cold limits/error metadata behind existing plan/frame fields,
+keeping original hot coordinates. Measure afresh; no hardware cause inferred from layout.
+Suspected terminal-noop stream edge is ruledout: genuine Program decoding requires a final
+terminator. The standalone helper's rejection assertion fired before entering either engine;
+it is not evidence of an engine defect. Add explicit raw decoder negative witness instead.
+
+Hot-layout node/page variant resource-admission-final passes9native/9ASan and200timed/
+4negative/freshfullstatecontrols. Medians all kernels within+0.47%,fill+0.20%,init+0.13%,
+tick-0.06%. Prior+2.81%fill is not retained. Layout comparison supports retaining old hot
+field coordinates; no particular hardwarecause proved. Preserve both complete cohorts.
+
+Complete resource variant adds cumulative frame preparation source-span allowance. Reserve
+suffix.sourceCount + containingBlock.sourceCount before pricing/emitting a new suffix;
+source spans are not actual decoder visits, CPU cycles or guest gas. GasCycleLimit independently
+bounds each pricing call. Default64Mi source-span units, caller-selected uint64 policy.
+Cold count and sticky refusal live after old hot fields; no per-operation counter. Reset,
+checked replacement and both host paths must preserve reservations with the code cache.
+Extra witnesses isolate work exhaustion with node room remaining, exact budget, cached reuse,
+refused-prefix immutability, and replacement/reset preservation. Final complete paired cohort
+required before retaining this full model.
+
+Finalresource-bounds verdict: keep typed bounded admission, small measured cost.208timed/
+4negative includes fixed4additional coldtickpairs and all originals. ReusedPinky+0.98%,
+sieve-0.09%,Minimal+0.41%,fill-0.04%,init+0.40%,tick+1.15%. Coldtickmedian+1.11%range
+-0.43..+7.69%allkept;life+1.37%. No speedgain claim. Diagnostic6processes/78checkedcalls
+use byte-identical core with copied occupancy getters; all clocks excluded. MaxDOOMinit
+36204nodes/63162source-span units, defaults8388608/67108864. Nodepayload1013712bytes
+excludes all other owners/capacity. Usage is fixture evidence, not deployment sizing.
+
+Expanded transfer-only witness covers both conditional outcomes/arm refusals and valid dynamic
+target exhaustion for both node/work policies. No runtime source changed after timing. Full10
+native+10ASan archived separately in qualification-transfers-full. Pinned16Nim formatting,
+8Python harness tests,inventory/diff/source/image checks are final gates. Memory trial remains
+reverted; sourcequota private-prefix witnesses retained. Deployment/global/RSS/allocator/error
+adapter,larger module ceilings and backend wiring remain explicit integration gates. No PR.
+Stop within two-hour cap after final publication; do not start another runtime experiment.

@@ -302,6 +302,12 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
     if left.pages[i] != right.pages[i]: changed.add(imageFromPage(right.pages[i]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: changed)
 
+func memoryPageCount*(memory: Memory): MachineResult[PageCount] =
+  ## Inspect a genuine owner's mapping size without copying page payloads, for local admission before host deltas.
+  let data = memory.data
+  if data == nil: return MachineResult[PageCount](status: MachineError.InvalidOwner)
+  MachineResult[PageCount](status: MachineError.None, completed: PageCount(uint32(data.pages.len)))
+
 proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   ## Copy every retained page for a genuine mapping/permission replacement; no private reference escapes.
   let data = memory.data

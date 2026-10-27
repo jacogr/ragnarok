@@ -1,0 +1,46 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Observe admission occupancy after full reference checks; all clocks from these instrumented builds are excluded."""
+import hashlib,json,shutil,sys
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0,str(Path('experiments/pvm-interpreter').resolve()))
+from compare import Comparison,ROOT
+from setup_nimony import installed
+qualified=ROOT/'build/pvm-interpreter-experiment/comparisons/resource-bounds'
+original=json.loads((qualified/'results.json').read_text());assert original['status']=='passed'
+large=ROOT/'build/pvm-port-lab/large-app-qualification'
+subject=Comparison(SimpleNamespace(name='resource-usage',deadline='2026-10-27T03:35:00Z',baseline=original['baseline'],fixtures=ROOT/'build/tests/pvm-prepared-blocks',doom_fixtures=large/'prepared',rom=ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
+subject.report['policy']='Diagnostic admission counts only. All CPU/wall clocks from these instrumented images are excluded from performance results.'
+canonical=subject.folder/'canonical';assert not canonical.exists()
+shutil.copytree(qualified/'canonical',canonical)
+for name in ['experimental.nim','machine.nim']:
+    # Query builds must use byte-identical qualified core sources, not a modified counter implementation.
+    p=canonical/'src/pvm'/name
+    expected=original['source_sha256']['experiments/pvm-interpreter/overlay/src/pvm/'+name]
+    assert hashlib.sha256(p.read_bytes()).hexdigest()==expected
+compiler,_=installed()
+for driver,label,owner in [('kernel','guest','decoded.value'),('doom','phase','owner')]:
+    # Append only a copied observation after all ordinary benchmark reference checks.
+    p=canonical/'benchmarks'/(driver+'.nim')
+    p.write_text(p.read_text()+f'\nlet usageCode = codeLength({owner})\nassert usageCode.error == ProgramError.None\nassert preparationError(frame) == FlatError.None\necho "ADMISSION_USAGE,", {label}, ",", flatNodes(frame), ",", flatPreparationUnits(frame), ",", usageCode.value, ",", pages\n')
+    build,image=subject.checks.build(compiler,p,'candidate-'+driver,cflags=['-I'+str(ROOT/'tests/performance')])
+    assert build['exit_code']==0,build['log']
+    subject.report['builds'].append(dict(driver=driver,build=build));subject.seal([p,image])
+subject.seal([Path(__file__).resolve()]+list((canonical/'src').rglob('*.nim')))
+usage=[]
+for guest,limit in [('pinky',1),('sieve',100000),('minimal',100000),('memset',100000),('init',0),('tick',0)]:
+    # Existing parsers retain strict full-state/source/host-output checks; instrumented durations are never timing evidence.
+    row=subject.doom('candidate',guest,0) if not limit else subject.small('candidate',guest,limit,0)
+    subject.record(row)
+    lines=(ROOT/row['log']).read_text().splitlines();tags=[x.split(',') for x in lines if x.startswith('ADMISSION_USAGE,')]
+    assert len(tags)==1 and tags[0][1]==guest
+    nodes,units,code,pages=map(int,tags[0][2:]);assert nodes<=8388608 and units<=67108864 and code<=4194304 and pages<=1048576
+    expectedNodes=row['phases'][-1][-1] if not limit else row['samples'][-1][1]
+    assert nodes==expectedNodes
+    usage.append(dict(workload=guest,nodes=nodes,node_payload_bytes=nodes*28,preparation_source_span_units=units,code_bytes=code,input_pages=pages,log=row['log']))
+    print('PASS admission usage',guest,nodes,units,flush=True)
+subject.verify();subject.report.update(status='passed',all_inputs_stable=True,usage=usage);subject.save()
+raw=subject.folder/'results.json'
+summary=dict(policy=subject.report['policy'],qualified_raw_report_sha256=hashlib.sha256((qualified/'results.json').read_bytes()).hexdigest(),diagnostic_raw_report_sha256=hashlib.sha256(raw.read_bytes()).hexdigest(),core_sources_identical_to_qualified=True,all_reference_state_source_host_checks_pass=True,usage=usage,probe_script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+(ROOT/'experiments/pvm-interpreter/findings/resource-usage.json').write_text(json.dumps(summary,indent=2)+'\n')

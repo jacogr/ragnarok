@@ -1,9 +1,9 @@
 # Interpreter campaign, 26–27 October 2026
 
 Local macOS arm64 investigation on `codex/pvm-interpreter-lab`. The starting checkpoint is
-`72c79e4d36ae9b51f5d3f971477f0bb4b144df7d`; the final runtime is the accepted store-splice
-model at `80350f56`, with later commits preserving rejection evidence and more accounting
-witnesses. Production source, default selection, CI and dependency pins remain unchanged.
+`72c79e4d36ae9b51f5d3f971477f0bb4b144df7d`; the initial campaign ended with the accepted store-splice
+model at `80350f56`. The later resource follow-up below adds bounded admission; the original
+cumulative table remains evidence for the initial campaign. Production source, default selection, CI and dependency pins remain unchanged.
 No PR or merge is part of this campaign.
 
 ## Direct cumulative comparison
@@ -125,3 +125,70 @@ JSON files remain under ignored `build/pvm-interpreter-experiment/evidence-origi
 [cleanup script](findings/compact-evidence.py.txt) records the equality checks. Existing raw-report
 hashes continue to identify the untouched ignored comparison reports. A local log hash is added
 only if its current bytes still match the original output, avoiding overwritten-log ambiguity.
+
+## Two-hour follow-up: memory execution, then resources
+
+The memory-bearing experiment combined a checked store-u8 with its following add-immediate
+operation. Native code removed the second indirect handoff and all state checks passed, but
+memory fill's −1.05% median had mixed pairs, other workloads were flat and both cold gameplay
+calls regressed about 2.3%. The runtime trial was reverted. The new 1,680 prefix/fault witnesses
+remain; private memory is now also checked against independently executed quota prefixes.
+See [the rejected trial](findings/store-register.md). A broader memory-context design remains
+open; removing one dispatch handoff alone did not earn a useful gain.
+
+The retained resource change provides [explicit admission APIs and limits](RESOURCES.md):
+code/fact/jump/page policy, finite emitted nodes, and a separate cumulative preparation source-span
+allowance. Exact suffix counts occupy existing fact padding. A refusal happens before that
+suffix's map/allocation/stream writes; source quotas and guest gas remain independent. Execution
+cache refusal is sticky and local. Host mapping refusal preserves the suspension for repair.
+Cached execution needs no additional preparation allowance, and resets/reentry preserve usage.
+
+An initial layout changed hot field coordinates and measured a +2.81% fill median. Keeping the
+old hot fields before the new cold admission state reduced that in a fresh paired cohort to
++0.20%; no particular hardware cause is established. Both [initial](findings/resource-admission.md)
+and [layout](findings/resource-admission-final.md) cohorts remain. The final independent
+preparation allowance was then qualified in a separate complete cohort.
+
+[Final resource results](findings/resource-bounds.md) retain all 208 timed processes, four negative
+controls and all six cold gameplay pairs, including the original slower observations. Reused
+call medians versus the accepted parent: Pinky +0.98%, sieve −0.09%, Minimal +0.41%, fill −0.04%,
+DOOM initialization +0.40%, gameplay +1.15%. Cold gameplay call median +1.11%, range −0.43% to
++7.69%; cold lifecycle median +1.37%. This is an explicit small measured cost for admission,
+not a speed improvement. Constructors/cold/reset/publication remain separately visible.
+
+Latest call-only CPU milliseconds, forward/reverse; master remains the frozen image:
+
+| Workload | Before bounds | With bounds | Frozen master | PolkaVM interpreted | Candidate/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pinky | 82.490 / 83.860 | 83.555 / 84.319 | 118.201 / 119.195 | 93.080 / 92.939 | 0.898x / 0.907x |
+| sieve | 3.172 / 3.171 | 3.168 / 3.170 | 3.359 / 3.333 | 5.825 / 5.846 | 0.544x / 0.542x |
+| minimal | 4.779 / 4.783 | 4.798 / 4.801 | 7.224 / 7.246 | 5.919 / 5.910 | 0.811x / 0.812x |
+| memset | 3.650 / 3.650 | 3.644 / 3.642 | 3.413 / 3.414 | 3.864 / 3.861 | 0.943x / 0.943x |
+| init | 316.040 / 313.005 | 317.861 / 314.500 | 1323.709 / 1312.609 | 661.771 / 657.857 | 0.480x / 0.478x |
+| tick | 27.646 / 27.645 | 28.113 / 27.891 | 83.590 / 83.868 | 33.492 / 34.044 | 0.839x / 0.819x |
+
+Ten native and ten AddressSanitizer groups pass, including all three control-transfer families
+when node/work admission refuses, both host reentry paths, exact emitted-node boundaries and
+consuming typed results. The transfer-only witness was added after timing; runtime hashes remain
+identical to the qualified images. [Exact provenance](findings/resource-bounds-provenance.json)
+binds code/compiler/fixtures/images and the final ten-group manifest. All declared samples stay
+included; this remains local macOS arm64 evidence.
+
+Separate source-identical diagnostic builds passed complete reference/source/host checks for
+all six workloads. Their clocks are excluded. [Admission usage](findings/resource-usage.json):
+
+| Workload | Emitted nodes | Preparation source-span units | Logical stream payload bytes |
+| --- | ---: | ---: | ---: |
+| pinky | 7,852 | 14,356 | 219,856 |
+| sieve | 13,938 | 27,482 | 390,264 |
+| minimal | 68 | 122 | 1,904 |
+| memset | 487 | 854 | 13,636 |
+| init | 36,204 | 63,162 | 1,013,712 |
+| tick | 10,759 | 19,167 | 301,252 |
+
+These payloads exclude capacity, plan maps/facts, private memory and allocator overhead. They
+show headroom for these fixtures, not a deployment recommendation. Defaults retain the lab's
+existing code/fact/jump range; larger application profiles still need qualification. Production
+integration means the adapter from this engine to the normal backend selection and host/state
+interface. Selecting deployment budgets, bounding concurrent owners, allocator-failure handling,
+tracing and Linux/x86-64 validation remain before a production rollout. No PR/default switch.

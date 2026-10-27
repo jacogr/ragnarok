@@ -112,6 +112,13 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64, warm: bo
       # Budget boundaries retain exact PC, registers, gas and paid state even after combined-handler warmup.
       sameCpu(frame.info, machineInfo(expectedPrefix).value)
       assert frame.remaining == 0
+      let actualMemory = flatMemorySnapshot(frame)
+      let prefixMemory = memoryOf(expectedPrefix).value
+      for page in [16'u32, 17'u32]:
+        # Hidden local-refusal state must include exactly the independently executed store prefix, never a later write.
+        let actualPage = pageImage(actualMemory, PageIndex(page)).value
+        let expectedPage = pageImage(prefixMemory, PageIndex(page)).value
+        assert actualPage.access == expectedPage.access and actualPage.bytes == expectedPage.bytes
     sameCpu(machineInfo(input).value, info)
 
 proc immediate(bytes: var seq[byte], value: uint64) =

@@ -9,7 +9,8 @@ The execution organization was initially informed by the pinned PolkaVM interpre
 instruction semantics, unsigned gas, source-attempt budgets, exact exit PCs, checked memory,
 immutable host snapshots and publication use our implementations and independent interpreter
 cross-checks. It remains an experimental architecture with dense input-sized maps and a monotone
-handler stream; bounded total cache admission and production integration remain open gates.
+handler stream. [Explicit local admission limits](RESOURCES.md) now bound its components;
+production deployment limits, global ownership and backend integration remain open gates.
 
 ## Source and checks
 
@@ -90,3 +91,9 @@ lifecycle while leaving calls essentially flat. See the investigation record for
 The [active-stream quota fix](findings/active-stream-barrier.md) corrects cached overlapping
 suffix reentry after resets. Its exact-parent regression and minimal independent-step oracle
 are preserved; this is a correctness change with no claimed timing benefit.
+
+The 27 October follow-up retains [bounded preparation and typed admission](RESOURCES.md).
+All ten native/sanitizer groups pass; the final paired cohort has 208 timed processes and four
+negative controls. [Follow-up evidence](findings/resource-bounds.md) records the measured small
+runtime cost, cold confirmation and both process orders. The memory/register composition trial
+was rejected. Production backend wiring and deployment policy are still separate work.
