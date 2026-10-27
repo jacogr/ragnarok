@@ -391,3 +391,19 @@ duplicate textual logs replaced by hashes/excerpts, byte-exactoriginalJSONs reta
 Manifest and script archived. Stop runtime investigation early after qualified useful gains;
 next larger memory-bearing block/context design deserves review rather than hurried work
 within the remaining ceiling. No PR/merge/default/production-source/pin/CI changes.
+
+## Two-hour follow-up, 27 October 02:01:44–04:01:44 UTC
+
+Authorized items in order: memory-bearing execution, then production resource bounds.
+No integration/PR/default change. Stop new work03:51UTC, finish by04:01:44UTC.
+Trial17parent00c09d98: share the checked memory equation through a template and combine
+only observed120/149store-u8/add-immediate, retaining original second nodes and quota barrier.
+Full checked fast/slow memory semantics and first-fault source PC unchanged. Add interior
+noops/paid/gas/quota/fault witnesses, qualify full matrices and serial paired cohort.
+
+Trial17reject: all200timed/4negative/full8native+8ASan/fresh image/source/fullstate controls
+pass. Native combined worker removes the second indirect call, but fillmedian-1.05% has
+mixedpairs(-3.37..+0.19%), otherworkloadsflat, coldtickbothpairs+2.10/+2.50%. Insufficient
+broad benefit; runtime restoredexact00c09d98. Retain1680new gas/quota/noop/fault witnesses.
+Proceed to resource admission: explicit typed construction refusals and preflighted cache cap;
+no guest-gas/panic substitution, no mid-execution cache eviction or stale target coordinates.

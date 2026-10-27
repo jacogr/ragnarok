@@ -355,3 +355,27 @@ for family in [0, 1, 2]:
             inc suffixCases
 assert suffixCases == 3456
 echo "PASS sealed source counts /3456interior suffix cases / containing-block gas distinct from entered source count"
+
+# Memory/register composition must retain real store faults and the second instruction's budget boundary.
+var memoryRegisterCases = 0
+for address in [0'u64, 65535, 65536, 69631, 73727, 73728, 0xffffffff'u64]:
+  for noops in [0, 1, 7]:
+    var parts: seq[seq[byte]] = @[]
+    for i in 0..<noops: parts.add(@[2'u8])
+    parts.add(@[120'u8, 0x11, 0])
+    parts.add(@[149'u8, 0x11, 1])
+    parts.add(@[50'u8, 0])
+    let source = owner(parts)
+    let prepared = cache(source)
+    var selected = registers
+    selected[1] = RegisterValue(address)
+    for paid in [false, true]:
+      for gas in [0'u64, 1, 2, 3, 1000, high(uint64)]:
+        let input = captureMachine(source, mapped, MachineInfo(gas: MachineGas(gas),
+          blockCharged: paid, registers: selected)).value
+        for budget in 0'u64..uint64(noops+3):
+          compare(input, prepared, budget, 100000)
+          compare(input, prepared, budget, 100000, true)
+          inc memoryRegisterCases
+assert memoryRegisterCases == 1680
+echo "PASS checked store/register composition /1680 prefix and fault cases"
