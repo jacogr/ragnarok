@@ -3,9 +3,11 @@
 
 """Discover checked-in native fixture contracts beside their independently authored data.
 
-Exposes FIXTURE_CONTRACTS and load_fixture_contracts; suite requirements own all consumer links.
+Exposes FIXTURE_CONTRACTS, load_fixture_contracts and validate_fixture_contracts;
+suite requirements own all consumer links.
 Paths and hashes are explicit expectations, never inferred from the fixture bytes being checked.
 """
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -69,3 +71,12 @@ def load_fixture_contracts(folder):
 
 # Runtime provenance discovers both these descriptors and their data under tests/fixtures/.
 FIXTURE_CONTRACTS = load_fixture_contracts(Path(__file__).resolve().parents[1]/'tests/fixtures')
+
+
+def validate_fixture_contracts(identities):
+    """Check every selected pinned member afresh before deriving expectations or executing native code."""
+    for identity in identities:
+        # Keep each caller's explicit fixture order and reject missing identities or unreadable members.
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            # Do not cache successful hashes: later edits must fail even within the same invocation.
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, (identity, str(path))
