@@ -20,6 +20,11 @@ name: CI
         options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]
         default: full
         required: true
+      pvm_prepared_baseline:
+        description: Optional full commit SHA for a paired prior prepared interpreter
+        type: string
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -193,10 +198,10 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 19
+      max-parallel: 20
       matrix:
         os: *ci-os
-        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/3)","shard":"","group":"corpus","corpus_shard":"1/3"},{"name":"Corpus (2/3)","shard":"","group":"corpus","corpus_shard":"2/3"},{"name":"Corpus (3/3)","shard":"","group":"corpus","corpus_shard":"3/3"}]') }}
+        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/3)","shard":"","group":"corpus","corpus_shard":"1/3"},{"name":"Corpus (2/3)","shard":"","group":"corpus","corpus_shard":"2/3"},{"name":"Corpus (3/3)","shard":"","group":"corpus","corpus_shard":"3/3"},{"name":"PVM Sanitizers","shard":"","group":"pvm-asan","corpus_shard":""}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
       CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
@@ -209,9 +214,13 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: Native unit or corpus tests
+        if: ${{ matrix.family.group != 'pvm-asan' }}
         run: make check-unit
+      - name: Qualify checked PVM execution with calibrated AddressSanitizer
+        if: ${{ matrix.family.group == 'pvm-asan' }}
+        run: make check-pvm-asan
       - name: Show verification coverage
-        if: always()
+        if: ${{ always() && matrix.family.group != 'pvm-asan' }}
         run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
@@ -225,60 +234,33 @@ jobs:
             build/ci/*.log
             build/tests/runtime/*.log
             build/tests/runtime/results.json
+            build/tests/native/**/codec-diagnostics/*.json
+            build/tests/native/**/codec-diagnostics/*.log
             build/tests/corpus/*.log
             build/tests/corpus/results.json
             build/tests/corpus/*/*.log
             build/tests/corpus/*/results.json
+            build/tests/pvm-asan/*.log
+            build/tests/pvm-asan/results.json
+            build/tests/pvm-asan/evidence/*.json
             build/crypto/build.log
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
-  # Qualify the isolated interpreter overlay without selecting it as the application backend.
-  pvm-experimental:
-    if: *requested
-    name: Unit / PVM Experimental (${{ matrix.profile }})
-    timeout-minutes: *ci-job-timeout
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [native, asan]
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - name: Check complete interpreter witnesses
-        env:
-          PVM_EXPERIMENTAL_FLAGS: ${{ matrix.profile == 'asan' && '--asan' || '' }}
-        run: make check-pvm-experimental
-      # Retain diagnostics and source seals, never binaries or compiler caches.
-      - name: Retain interpreter qualification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-experimental-${{ matrix.profile }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/setup.log
-            build/ci/host-tools*.log
-            build/pvm-interpreter-experiment/results-*.json
-            build/pvm-interpreter-experiment/*.log
-
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   unit-status:
     name: Unit
     timeout-minutes: *ci-job-timeout
-    needs: [unit, pvm-experimental]
+    needs: unit
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every unit shard and corpus
+      - name: Require every Unit family
         env:
           SHARDS_RESULT: ${{ needs.unit.result }}
-          EXPERIMENTAL_RESULT: ${{ needs.pvm-experimental.result }}
-        run: test "$SHARDS_RESULT" = success && test "$EXPERIMENTAL_RESULT" = success
+        run: test "$SHARDS_RESULT" = success
 
   failures:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
@@ -739,23 +721,34 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
-  # Explicit architecture qualification before application integration; no extra master-push experiment.
+  # Explicit core/lifecycle comparison against exact master; regular Perf owns public API timings.
   pvm-interpreter-comparison:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}
     name: Perf / PVM Interpreter Comparison
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-latest
+    env:
+      PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
     steps:
       - *checkout
       - *python
-      - name: Resolve current master
-        run: git fetch --no-tags origin master:refs/remotes/origin/master
+      - name: Resolve current master and optional prepared baseline
+        run: |
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          python3 - <<'PYBASE'
+          import os,re,subprocess
+          baseline=os.environ.get('PVM_COMPARE_PREPARED_BASE','')
+          if baseline:
+              if re.fullmatch(r'[0-9a-f]{40}',baseline) is None:
+                  raise ValueError('Prepared baseline must be a full lowercase commit SHA')
+              subprocess.run(['git','fetch','--no-tags','origin',baseline],check=True)
+          PYBASE
       - name: Install DOOM asset decompressor
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
       - name: Compare complete states on one runner
-        run: make bench-pvm-experimental
+        run: make bench-pvm-interpreter
       - name: Show complete comparison
         if: always()
         run: |

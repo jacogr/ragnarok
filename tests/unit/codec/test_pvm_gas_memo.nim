@@ -294,6 +294,15 @@ proc ownershipCycle() =
   assert refused.error == GasMemoError.None
   assert blockGas(refused.value, CodeAddress(0)).error == GasMemoError.CycleLimitExceeded
   assert gasMemoInfo(refused.value).value.pricedBlocks == 0
+# A prepaid entry must not populate the caller's observable lazy price memo.
+let prepaidProgram = code([@[0'u8]])
+let prepaidMemo = newGasMemo(prepaidProgram, limits()).value
+let prepaidInput = captureMachine(prepaidProgram, empty, MachineInfo(pc: CodeAddress(0),
+  gas: MachineGas(0), blockCharged: true)).value
+let prepaidAnswer = execute(prepaidInput, ExecutionStepLimit(1), prepaidMemo)
+assert prepaidAnswer.error == StepError.None and prepaidAnswer.value.exit == StepExit.Panic
+assert gasMemoInfo(prepaidMemo).value.pricedBlocks == 0, "prepaid execution must not populate lazy prices"
+
 ownershipCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000: ownershipCycle()

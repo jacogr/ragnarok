@@ -7,6 +7,10 @@ Source of truth is Gray Paper **0.8.0**, commit
 “Instructions with Arguments of One Immediate”. Its source hash remains in
 `spec/pins.json`; no upstream pins change.
 
+The current implementation uses one [checked handler-stream engine](pvm-handler-stream.md) for
+both recursive and single-step execution; the earlier evaluator is removed. The adapter contracts
+below remain unchanged, with explicit local preparation admission as documented there.
+
 ## APIs and scope
 
 `stepOnce(machine, gasLimit)` implements the single-step opcode capability for

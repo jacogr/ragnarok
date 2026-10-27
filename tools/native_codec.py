@@ -9,6 +9,8 @@ ARC observations. Every test still compiles and executes independently through p
 """
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import json
+import time
 import subprocess
 import sys
 
@@ -25,6 +27,12 @@ def run_codec_batch(arguments):
     caches = [arg.removeprefix('--cachedir:') for arg in arguments if arg.startswith('--cachedir:')]
     if len(jobs) != 1 or jobs[0] not in ('1', '2', '3', '4') or len(caches) != 1:
         raise ValueError('Expected one bounded worker count and private codec cache')
+    diagnostics = Path(caches[0])/'codec-diagnostics'
+    diagnostics.mkdir(parents=True, exist_ok=True)
+    for path in diagnostics.iterdir():
+        # This private directory contains only this batch adapter's receipts/logs; no earlier attempt may look active.
+        if path.is_file() and path.suffix in ('.json','.tmp','.log'):
+            path.unlink()
     members = unit_batches()[0][1]
     if not members:
         raise ValueError('Empty codec batch')
@@ -34,8 +42,8 @@ def run_codec_batch(arguments):
         if not source.is_file() or not source.with_suffix('.output').is_file():
             raise FileNotFoundError('Missing codec source or expected output: '+name)
     count = min(int(jobs[0]), len(members))
-    batches = [(index, members[index*len(members)//count:(index+1)*len(members)//count])
-               for index in range(count)]
+    # Stride across lexical families so adjacent heavy PVM mains do not all wait behind one private cache.
+    batches = [(index, members[index::count]) for index in range(count)]
 
     def worker(batch):
         """Serialize one private cache while retaining one Hastur invocation per native main."""
@@ -45,23 +53,45 @@ def run_codec_batch(arguments):
                    '--cachedir:'+str(cache) if arg.startswith('--cachedir:') else arg
                    for arg in arguments]
         rows = []
+        receipt = dict(worker=index,scheduled=list(names),completed=[],active=None)
+        path = diagnostics/('worker-'+str(index)+'.json')
+        def record():
+            """Atomic worker-local progress survives an outer deadline without claiming a completed suite."""
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(receipt,indent=2)+'\n')
+            temporary.replace(path)
         for name in names:
+            # Record the actual child before launch; a killed parent leaves this active identity visible.
+            child_arguments = [*command[:-1], str(unit_source(name))]
+            started = time.monotonic()
+            receipt['active'] = dict(suite=name,command=child_arguments,started_monotonic=started)
+            record()
             # Even cached binaries execute again; the parent retires and validates each suite's ARC evidence.
-            result = subprocess.run([*command[:-1], str(unit_source(name))],
-                                    capture_output=True, text=True)
+            result = subprocess.run(child_arguments, capture_output=True, text=True)
+            log = diagnostics/(name+'.log')
+            log.write_text(result.stdout+result.stderr)
+            receipt['completed'].append(dict(suite=name,exit_code=result.returncode,
+                elapsed_seconds=round(time.monotonic()-started,6),log=log.name))
+            receipt['active'] = None
+            record()
             rows.append((name, result))
         return rows
 
-    passed = True
     with ThreadPoolExecutor(max_workers=count) as executor:
-        # Wait for every selected main and publish lexical diagnostics without interleaving worker output.
-        for rows in executor.map(worker, batches):
-            for name, result in rows:
-                print(result.stdout, end='', flush=True)
-                print(result.stderr, end='', file=sys.stderr, flush=True)
-                if result.returncode != 0:
-                    passed = False
-                    print('FAIL codec '+name, flush=True)
+        # Each cache stays serial; collect every result before publishing the original source order.
+        rows = [row for completed in executor.map(worker, batches) for row in completed]
+    results = dict(rows)
+    if len(rows) != len(members) or len(results) != len(members) or set(results) != set(members):
+        raise RuntimeError('Incomplete or duplicate codec worker outcomes')
+    passed = True
+    for name in members:
+        # Worker assignment cannot reorder diagnostics, omit a selected main or hide a sibling's failure.
+        result = results[name]
+        print(result.stdout, end='', flush=True)
+        print(result.stderr, end='', file=sys.stderr, flush=True)
+        if result.returncode != 0:
+            passed = False
+            print('FAIL codec '+name, flush=True)
     return 0 if passed else 1
 
 

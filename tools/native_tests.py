@@ -230,8 +230,11 @@ def unit_batches():
 def unit_dependency_weights():
     """Derive each batch's unique imported project-module count from its discovered source members."""
     dependencies = transitive_dependencies(UNIT_SOURCES.values(), ROOT)
-    return {name: len(set().union(*(dependencies[unit_source(member).resolve()] for member in members)))
-            for name, members, _ in unit_batches()}
+    # CI can schedule pure codec mains independently; the unsharded local directory remains one reusable batch.
+    weights = {name: len(dependencies[unit_source(name).resolve()]) for name in UNIT_SUITES}
+    weights.update({name: len(set().union(*(dependencies[unit_source(member).resolve()] for member in members)))
+                    for name, members, _ in unit_batches()})
+    return weights
 
 
 # Partition discovered batches without registering suite names or compiling any test twice.
@@ -254,6 +257,17 @@ def unit_partition(shard=None, seed=None, scope='all'):
         # Invalid or empty partition declarations must fail before setup or verdict calculation.
         raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 16')
     index, count = shard
+    if count > 1:
+        # Each codec main is already independent; spread it across CI runners instead of timing all mains as one child.
+        expanded = []
+        for name, members, target in batches:
+            if target is None:
+                # Existing single-suite commands preserve checked flags, private profile caches, fixtures and fresh ARC evidence.
+                expanded.extend((member, (member,), member) for member in members)
+            else:
+                # Linked/resource profiles retain their original isolated scheduling and dependency order.
+                expanded.append((name, members, target))
+        batches = expanded
     # Stratify unit batches by current source dependencies; bundle internals keep their dependency order.
     if seed is not None:
         weights = unit_dependency_weights()
@@ -264,8 +278,8 @@ def unit_partition(shard=None, seed=None, scope='all'):
         work = partitions[index-1]
         return [batch for batch in work if batch is not None], None in work
     else:
-        # Unseeded local partitions retain the historical lexical plan for existing reproductions.
-        selected = ([batches[0]] if index == 1 else []) + batches[index::count]
+        # Unseeded local partitions use a balanced lexical stride over the same complete discovered plan.
+        selected = batches[index-1::count]
     return selected, scope == 'all' and index == count
 
 

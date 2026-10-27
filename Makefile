@@ -220,7 +220,7 @@ bench-pvm-pricing: setup
 
 # Calibrated optional AddressSanitizer qualification reuses frozen native corpus contracts.
 .PHONY: check-pvm-asan
-check-pvm-asan: setup
+check-pvm-asan: toolchain check-inventory
 	$(PYTHON) tools/pvm_sanitizers.py
 
 # Prepared execution stays optional; local qualification disables clocks and CI owns calibrated measurements.
@@ -233,16 +233,8 @@ profile-pvm-prepared: setup check-inventory
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_prepared_blocks.py --counts --timings
 
-# Diagnostic opcode/pair counts use ignored snapshots and discard all instrumented timings.
-.PHONY: census-pvm
-census-pvm: setup
-	$(PYTHON) tools/pvm_opcode_census.py
-
-# Maintained real guests share calibrated counters and full-state interpreted inputs; timings are discarded.
-.PHONY: census-pvm-guests
-census-pvm-guests: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	$(PYTHON) tools/pvm_guest_census.py
+# The retired evaluator's opcode-injection targets are removed. Historical parsers remain for
+# archived measurements; current guest attempts/stream occupancy come from the sole checked engine.
 
 # Explicit Linux Callgrind diagnostics use one state-checked invocation per selected guest/policy, without timing claims.
 .PHONY: profile-pvm-guests
@@ -553,11 +545,6 @@ compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 compare-pvm-doom: check-pvm-doom
 	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)
 
-# Isolated interpreter qualification; CI verifies the overlay without changing the default backend.
-.PHONY: check-pvm-experimental
-check-pvm-experimental: toolchain
-	$(PYTHON) experiments/pvm-interpreter/run.py $(PVM_EXPERIMENTAL_FLAGS)
-
 # Six real Tiny validators author and consume blocks with the pinned six-second slot clock.
 .PHONY: devnet check-devnet check-devnet-smoke
 devnet: build
@@ -572,8 +559,8 @@ check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
 
 # Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
-.PHONY: bench-pvm-experimental
-bench-pvm-experimental: toolchain sources rust-tools
+.PHONY: bench-pvm-interpreter
+bench-pvm-interpreter: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
-	$(PYTHON) experiments/pvm-interpreter/linux.py
+	$(PYTHON) tools/pvm_interpreter_compare.py

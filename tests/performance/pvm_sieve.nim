@@ -161,20 +161,18 @@ if memoMode:
       ",", uint64(info.cycleLimit)
 var prepared = default(reference.PreparedProgram)
 if preparedMode:
-  # Construction reserves only a bounded empty index; sample zero includes actual lazy operation/price preparation.
+  # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
-  let created = reference.newPreparedProgram(owner, reference.PreparedLimits(
-      bytes: reference.PreparedByteLimit(64*1024*1024), blocks: reference.PreparedBlockLimit(16384),
-      cycles: GasCycleLimit(1000000)))
+  let created = reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)))
   let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
   let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == reference.PreparationError.None
   prepared = created.value
   let observed = reference.preparedInfo(prepared).value
-  assert observed.preparedOperations == 0
+  assert observed.streamNodes == 0
   echo "PREPARED_PROGRAM,", prepareCpuNs, ",", prepareWallNs, ",", observed.codeBytes, ",",
-      observed.residentBytes
+      observed.decodedInstructions
 let engine = if preparedMode: "ragnarok_prepared" elif memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
 let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
 assert requestedSamples in ["1", "4", "13"]
@@ -197,10 +195,10 @@ for sample in 0..<samples:
   if preparedMode:
     # Cache occupancy and preparation progress remain explicit for cold and reused executions.
     let observed = reference.preparedInfo(prepared).value
-    assert observed.residentBytes <= uint64(observed.byteLimit) and observed.preparedOperations > 0
-    echo "PREPARED_CACHE,", sample, ",", observed.residentBytes, ",", observed.residentBlocks, ",",
-        observed.residentOperations, ",", observed.preparedBlocks, ",", observed.preparedOperations,
-        ",", observed.hits, ",", observed.evictions, ",", observed.peakBytes
+    assert observed.streamNodes*28 <= uint64(observed.limits.resources.nodes)*28 and
+        observed.streamNodes > 0
+    echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",", observed.preparationUnits, ",",
+        uint64(observed.limits.resources.nodes), ",", uint64(observed.limits.resources.preparation)
   checkMemory(memory, indices, access, originalBytes, 0)
   let original = machineInfo(source).value
   assert uint64(original.pc) == entry and uint64(original.gas) == uint64(info.gas)

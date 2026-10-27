@@ -5,10 +5,12 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import textwrap
+from unittest.mock import patch
 from workflow_fixtures import event_context, expression, job_condition, job_section
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'experiments/pvm-interpreter/linux.py')
+spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'tools/pvm_interpreter_compare.py')
 comparison = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(comparison)
 
@@ -55,16 +57,116 @@ class InterpreterLinuxTests(unittest.TestCase):
                 with self.subTest(case=case,output=variant[:100]), self.assertRaises(ValueError):
                     comparison.parse_candidate(variant,case,large,1024005)
 
+    def test_public_prepared_constructor_and_cache_framing(self):
+        """Reusable public owners must retain cold construction and every ordered cache/sample record."""
+        output = 'PREPARED_PROGRAM,10,20,100,30\n'+''.join(
+            f'SIEVE,ragnarok_prepared,100000,{i},101,100\nPREPARED_CACHE,{i},3,6,100,200\n'
+            for i in range(13))
+        parsed = comparison.parse_public(output,'sieve',100000,True)
+        self.assertEqual(parsed['preparation_ns'],[10])
+        self.assertEqual(len(parsed['samples']),13)
+        self.assertEqual(len(parsed['caches']),13)
+        for altered in (output.replace('PREPARED_PROGRAM','GAS_PLAN'),
+                        output.replace(',3,6,100,200',',101,6,100,200',1),
+                        output.replace('PREPARED_CACHE,0,','PREPARED_CACHE,1,',1),
+                        '\n'.join(output.splitlines()[1:])):
+            # Missing construction or inadmissible occupancy cannot be disguised as a valid reused call.
+            with self.subTest(output=altered[:90]), self.assertRaises(ValueError):
+                comparison.parse_public(altered,'sieve',100000,True)
+
+    def test_public_doom_constructor_role_and_complete_calls(self):
+        """Public host loops retain their own constructor, complete calls and events with exact role identity."""
+        calls = ''.join(f'DOOM_SAMPLE,native,tick,{i},100,101\n' for i in range(13))
+        for prepared in (False,True):
+            mode = 'prepared' if prepared else 'planned'
+            output = f'API_PREPARE,{mode},10\n'+calls+'DOOM_OK,native,tick,1024005\n'
+            parsed = comparison.parse_public(output,'tick',None,prepared,True,1024005)
+            self.assertEqual(parsed['preparation_ns'],[10])
+            self.assertEqual(len(parsed['samples']),13)
+            for altered in (output.replace(',10\n',',0\n',1),
+                            output.replace(mode,'foreign',1),output+'unexpected\n',
+                            output.replace('DOOM_SAMPLE,native,tick,0,100,101\n','')):
+                # Neither core phase output nor a partial host run can stand in for a public API observation.
+                with self.subTest(output=altered[:90]), self.assertRaises(ValueError):
+                    comparison.parse_public(altered,'tick',None,prepared,True,1024005)
+
+    def test_summary_requires_distinct_public_and_core_roles(self):
+        """A core-only or duplicated cohort cannot publish an integrated-public-API performance table."""
+        runs = []
+        for case in [row[0] for row in comparison.CASES]+['init','tick']:
+            for order in range(2):
+                for role in comparison.ROLES:
+                    # Constant inert clocks make only the role/scoping obligations relevant here.
+                    samples = [dict(cpu_ns=100,lifecycle_ns=103,attempts=1,nodes=2) for _ in range(13)]
+                    parsed=dict(preparation_ns=[10,20],samples=samples)
+                    if role=='reference' and case in ('init','tick'):
+                        # Reference call-only scores cannot stand in for an invocation lifecycle comparison.
+                        parsed['lifecycle']=[dict(restore_ns=2,cpu_ns=100,teardown_ns=1,lifecycle_ns=103) for _ in range(13)]
+                    runs.append(dict(case=case,order=order,role=role,parsed=parsed))
+        report = dict(status='passed',master='master',candidate='candidate',runs=runs)
+        rendered = comparison.summary(report)
+        self.assertIn('Ours ordinary API',rendered)
+        self.assertIn('Ours prepared API',rendered)
+        self.assertIn('Retained-frame core is a separate scope',rendered)
+        self.assertIn('Reference instance + restore',rendered)
+        lifecycle=next(row['parsed']['lifecycle'] for row in runs if row['role']=='reference' and row['case']=='tick')
+        dropped=lifecycle.pop()
+        with self.assertRaises(ValueError):
+            comparison.summary(report)
+        lifecycle.append(dropped)
+        for incomplete in (runs[1:],runs+[runs[0]],
+                           [row for row in runs if row['role']!='public']):
+            with self.assertRaises(ValueError):
+                comparison.summary(dict(report,runs=incomplete))
+
+    def test_prior_prepared_role_requires_exact_immutable_head(self):
+        """Optional paired baselines require a complete distinct role and an immutable full commit identity."""
+        self.assertEqual(comparison.comparison_roles(),comparison.ROLES)
+        self.assertEqual(set(comparison.comparison_roles('a'*40)),set(comparison.ROLES)|{'baseline'})
+        for bad in ('','HEAD','--all','a'*39,'A'*40,'g'*40,True,42):
+            with self.subTest(baseline=bad),self.assertRaises(ValueError):
+                comparison.comparison_roles(bad)
+        runs=[]
+        for case in [row[0] for row in comparison.CASES]+['init','tick']:
+            for order in range(2):
+                for role in comparison.comparison_roles('a'*40):
+                    # Every source role retains full call samples; the reference also retains complete lifecycle phases.
+                    samples=[dict(cpu_ns=100,lifecycle_ns=103,attempts=1,nodes=2) for _ in range(13)]
+                    parsed=dict(samples=samples,preparation_ns=[10,20])
+                    if role=='reference' and case in ('init','tick'):
+                        parsed['lifecycle']=[dict(restore_ns=2,cpu_ns=100,teardown_ns=1,lifecycle_ns=103) for _ in range(13)]
+                    runs.append(dict(case=case,order=order,role=role,parsed=parsed))
+        report=dict(status='passed',master='master',candidate='candidate',prepared_baseline='a'*40,runs=runs)
+        self.assertIn('Current / prior',comparison.summary(report))
+        with self.assertRaises(ValueError):
+            comparison.summary(dict(report,runs=[row for row in runs if row['role']!='baseline']))
+
+    def test_optional_baseline_fetch_rejects_non_commit_input(self):
+        """The dispatch input never becomes a Git option or executable shell fragment."""
+        section=job_section((ROOT/'.github/workflows/ci.yml').read_text(),'pvm-interpreter-comparison')
+        block=section.split("python3 - <<'PYBASE'\n",1)[1].split('          PYBASE',1)[0]
+        source=textwrap.dedent(block)
+        for value in ('','a'*40,'HEAD','--upload-pack=bad','a'*40+'; command','A'*40):
+            with self.subTest(value=value),patch.dict('os.environ',PVM_COMPARE_PREPARED_BASE=value),patch('subprocess.run') as fetch:
+                if value and value!='a'*40:
+                    # Invalid selectors fail before the only allowed, argument-vector fetch.
+                    with self.assertRaises(ValueError):exec(source,{})
+                    fetch.assert_not_called()
+                else:
+                    exec(source,{})
+                    if value:fetch.assert_called_once_with(['git','fetch','--no-tags','origin',value],check=True)
+                    else:fetch.assert_not_called()
+
     def test_explicit_comparison_job_and_evidence(self):
         """The architecture comparison is explicitly requested and never adds a master experiment."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = job_section(text,'pvm-interpreter-comparison')
-        self.assertIn('run: make bench-pvm-experimental',section)
+        self.assertIn('run: make bench-pvm-interpreter',section)
         self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
         self.assertIn('if: always()',section)
         for context,wanted in ((event_context(),False),
                 (event_context('pull_request','synchronize'),False),
                 (event_context('workflow_dispatch',suite='bench-pvm'),True),
                 (event_context('workflow_dispatch',suite='full'),False)):
-            # Normal monitoring stays separate from this bounded pre-integration qualification.
+            # Normal monitoring stays separate from this explicit core/lifecycle qualification.
             self.assertEqual(bool(expression(job_condition(text,'pvm-interpreter-comparison'),context)),wanted)

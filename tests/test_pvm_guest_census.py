@@ -10,7 +10,7 @@ from unittest.mock import patch
 from pvm_guest_census import observation, run
 from pvm_opcode_census import ROOT, instrument_step, parse_reports
 from pvm_sieve_report import parse_process_output
-from test_pvm_opcode_census import report
+from test_pvm_opcode_census import report, legacy_source
 
 
 class GuestCensusTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class GuestCensusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_reports(text)
         self.assertEqual(parse_reports(text, 4096)[0][0]['steps'], len(walk))
-        generated = instrument_step((ROOT/'src/pvm/step.nim').read_text(), 4096)
+        generated = instrument_step(legacy_source(), 4096)
         self.assertIn('censusPairs: array[4096, CensusPair]', generated)
         self.assertIn('shr 52', generated)
         for capacity in (0, 513, 65536):

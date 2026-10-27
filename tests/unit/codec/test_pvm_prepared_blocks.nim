@@ -41,14 +41,13 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
   assert decoded.error == ProgramError.None
   decoded.value
 
-proc cache(program: Program, cycles: uint64 = 100000, bytes: uint64 = 1048576,
-    blocks: uint32 = 128): PreparedProgram =
-  ## Tests choose explicit bounded policies; creation must not prepare any instruction or block price.
-  let created = newPreparedProgram(program, PreparedLimits(
-      bytes: PreparedByteLimit(bytes),
-    blocks: PreparedBlockLimit(blocks), cycles: GasCycleLimit(cycles)))
+proc cache(program: Program, cycles: uint64 = 100000, nodes: uint64 = 1048576): PreparedProgram =
+  ## Explicit node/work bounds replace the removed byte/LRU cache; admitted facts do not emit executable nodes.
+  var limits = defaultPreparedLimits(GasCycleLimit(cycles))
+  limits.resources.nodes = ExecutionNodeLimit(nodes)
+  let created = newPreparedProgram(program, limits)
   assert created.error == PreparationError.None
-  assert preparedInfo(created.value).value.preparedOperations == 0
+  assert preparedInfo(created.value).value.streamNodes == 0
   created.value
 
 proc sameCpu(left, right: MachineInfo) =
@@ -92,7 +91,7 @@ proc memory(): Memory =
 
 proc compare(input: Machine, prepared: PreparedProgram, steps: uint64,
     cycles: uint64) =
-  ## Cold and reused execution compare against the unchanged interpreter, retaining the original source snapshot.
+  ## Cold and reused execution compare fresh and retained-cache calls, retaining the original source snapshot.
   let before = machineInfo(input).value
   let expected = execute(input, ExecutionStepLimit(steps), GasCycleLimit(cycles))
   for repeat in 0..<2:
@@ -101,8 +100,8 @@ proc compare(input: Machine, prepared: PreparedProgram, steps: uint64,
     same(actual, expected)
     sameCpu(machineInfo(input).value, before)
   let observed = preparedInfo(prepared).value
-  assert observed.residentBytes <= uint64(observed.byteLimit)
-  assert observed.residentBlocks <= uint64(uint32(observed.blockLimit))
+  assert observed.streamNodes <= uint64(observed.limits.resources.nodes)
+  assert observed.preparationUnits <= uint64(observed.limits.resources.preparation)
 
 let mapped = memory()
 var registers = default(RegisterFile)
@@ -149,7 +148,7 @@ proc registerPrefixMatrix() =
             first.add(17'u8)
             second.add(17'u8)
           let program = owner([first, second, @[0'u8]])
-          let prepared = cache(program, blocks = 2)
+          let prepared = cache(program, nodes = 4096)
           let source = captureMachine(program, mapped, MachineInfo(gas: MachineGas(100000),
             blockCharged: true, registers: initial)).value
           for steps in [1'u64, 2, 3]:
@@ -160,11 +159,11 @@ proc registerPrefixMatrix() =
 registerPrefixMatrix()
 
 proc registerPrefixBytePressure() =
-  ## A tight retained-byte policy splits adjacent add/load cells; aliasing and mapped-page endpoints expose premature pairing.
+  ## Bounded node profiles cover adjacent add/load cells; aliasing and mapped-page endpoints expose premature pairing.
   let program = owner([@[149'u8, 0x77, 1], @[130'u8, 0x77, 0], @[0'u8]])
-  for bytes in [192'u64, 1048576]:
-    # Both byte-pressure fallback and ordinary two-cell dispatch preserve the same checked memory and attempt semantics.
-    let prepared = cache(program, bytes = bytes, blocks = 2)
+  for nodes in [32'u64, 1048576]:
+    # Both both node profiles and ordinary two-cell dispatch preserve the same checked memory and attempt semantics.
+    let prepared = cache(program, nodes = nodes)
     for address in [65536'u64, 69630, 73726]:
       var initial = default(RegisterFile)
       initial[7] = RegisterValue(address)
@@ -207,22 +206,22 @@ for index in 0..<700:
   longParts.add(@[51'u8, 7, byte(index mod 127)])
 longParts.add(@[0'u8])
 let longProgram = owner(longParts)
-let longCache = cache(longProgram, blocks = 2)
+let longCache = cache(longProgram, nodes = 4096)
 let longPrice = uint64(blockGas(longProgram, CodeAddress(0), GasCycleLimit(100000)).value)
 for gas in [longPrice-1, longPrice, longPrice+1, 1'u64 shl 63, high(uint64)]:
   let source = captureMachine(longProgram, mapped, MachineInfo(pc: CodeAddress(0),
     gas: MachineGas(gas), registers: registers)).value
   compare(source, longCache, 701, 100000)
-assert preparedInfo(longCache).value.evictions > 0
-assert preparedInfo(longCache).value.preparedOperations >= 701
-# A tiny byte ceiling forces replacement even when the sparse slot index has unused entries.
-let byteBounded = cache(longProgram, bytes = 2048, blocks = 128)
-let byteSource = captureMachine(longProgram, mapped, MachineInfo(
-    pc: CodeAddress(0),
+assert preparedInfo(longCache).value.streamNodes >= 701
+assert preparedInfo(longCache).value.decodedInstructions >= 701
+# A stable-offset stream refuses a whole suffix before emission; local refusal publishes no partial machine.
+let bounded = cache(longProgram, nodes = 8)
+let boundedSource = captureMachine(longProgram, mapped, MachineInfo(pc: CodeAddress(0),
   gas: MachineGas(longPrice), registers: registers)).value
-compare(byteSource, byteBounded, 701, 100000)
-assert preparedInfo(byteBounded).value.evictions > 0
-assert preparedInfo(byteBounded).value.residentBlocks < 128
+assert execute(boundedSource, ExecutionStepLimit(701), bounded).error ==
+    StepError.InvalidPreparedProgram
+assert preparedInfo(bounded).value.streamNodes == 0
+assert uint64(machineInfo(boundedSource).value.gas) == longPrice
 let longSource = captureMachine(longProgram, mapped, MachineInfo(
     pc: CodeAddress(0),
   gas: MachineGas(longPrice), registers: registers)).value
@@ -249,10 +248,12 @@ assert preparedInfo(default(PreparedProgram)).error ==
     PreparationError.InvalidProgram
 assert newPreparedProgram(default(Program), PreparedLimits()).error ==
     PreparationError.InvalidProgram
-assert newPreparedProgram(first, PreparedLimits(bytes: PreparedByteLimit(high(uint64)),
-  blocks: PreparedBlockLimit(0))).error == PreparationError.LimitExceeded
-assert newPreparedProgram(first, PreparedLimits(bytes: PreparedByteLimit(1),
-  blocks: PreparedBlockLimit(1))).error == PreparationError.LimitExceeded
+var refusedLimits = defaultPreparedLimits()
+refusedLimits.resources.codeBytes = ProgramByteLimit(0)
+assert newPreparedProgram(first, refusedLimits).error == PreparationError.LimitExceeded
+refusedLimits = defaultPreparedLimits()
+refusedLimits.resources.facts = ExecutionFactLimit(0)
+assert newPreparedProgram(first, refusedLimits).error == PreparationError.LimitExceeded
 let firstSource = captureMachine(first, mapped, MachineInfo(gas: MachineGas(1000))).value
 compare(firstSource, cache(first, cycles = 0), 5, 0)
 let prepaid = captureMachine(first, mapped, MachineInfo(
@@ -335,7 +336,7 @@ proc memoryPrefixMatrix(initialRegisters: RegisterFile) =
         for index in 0..<24: second.add(17'u8)
         for address in [65536'u64, 69631, 73727]:
           let program = owner([firstMemoryPart(firstCode, address), second, @[0'u8]])
-          let prepared = cache(program, blocks = 2)
+          let prepared = cache(program, nodes = 4096)
           for access in [PageAccess.ReadWrite, PageAccess.ReadOnly]:
             # A fresh owner changes permissions without changing any retained code fact or scalar memory window.
             var images = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
@@ -525,9 +526,9 @@ proc memoryPrefixHostBudgets() =
   ## A first fault cannot reach the callback; a successful pair debits exactly two attempts before host continuation.
   for address in [65536'u64, 73727]:
     let program = owner([firstMemoryPart(58, address), @[10'u8, 13], @[51'u8, 7, 22], @[0'u8]])
-    for bytes in [192'u64, 1048576]:
-      # Byte-pressure fallback and ordinary retained pairing share all observable callback/budget boundaries.
-      let prepared = cache(program, bytes = bytes, blocks = 2)
+    for nodes in [32'u64, 1048576]:
+      # Both node profiles and ordinary retained pairing share all observable callback/budget boundaries.
+      let prepared = cache(program, nodes = nodes)
       for gas in [0'u64, 1, 100000]:
         let source = captureMachine(program, mapped, MachineInfo(gas: MachineGas(gas))).value
         for steps in 0'u64..5'u64:
@@ -582,7 +583,7 @@ positionParts.add(@[51'u8, 7, 22])
 positionParts.add(@[10'u8, 14])
 positionParts.add(@[0'u8])
 let positionProgram = owner(positionParts)
-let positionCache = cache(positionProgram, blocks = 2)
+let positionCache = cache(positionProgram, nodes = 4096)
 let positionSource = captureMachine(positionProgram, mapped,
   MachineInfo(gas: MachineGas(100000))).value
 for steps in [0'u64, 1, 255, 256, 257, 258, 259, 260, 261, 262]:
@@ -608,7 +609,7 @@ var faultPositionParts = positionPrefix()
 faultPositionParts.add(@[58'u8, 8, 0, 16, 1, 0])
 faultPositionParts.add(@[0'u8])
 let faultPositionProgram = owner(faultPositionParts)
-let faultPositionCache = cache(faultPositionProgram, blocks = 2)
+let faultPositionCache = cache(faultPositionProgram, nodes = 4096)
 let faultPositionSource = captureMachine(faultPositionProgram, absent,
   MachineInfo(gas: MachineGas(100000))).value
 for steps in [255'u64, 256, 257, 258, 259]:
@@ -630,7 +631,7 @@ gasPositionParts.add(@[1'u8])
 gasPositionParts.add(@[51'u8, 7, 22])
 gasPositionParts.add(@[0'u8])
 let gasPositionProgram = owner(gasPositionParts)
-let gasPositionCache = cache(gasPositionProgram, blocks = 1)
+let gasPositionCache = cache(gasPositionProgram, nodes = 4096)
 let entryPrice = uint64(blockGas(gasPositionProgram, CodeAddress(0), GasCycleLimit(100000)).value)
 let gasPositionSource = captureMachine(gasPositionProgram, mapped,
   MachineInfo(gas: MachineGas(entryPrice))).value
@@ -644,23 +645,23 @@ assert uint64(gasPosition.pc) == 772 and uint64(gasPosition.gas) == 0
 assert not gasPosition.blockCharged and uint64(gasPosition.registers[7]) == 11
 
 proc successorEvictionCycle() =
-  ## A learned predecessor stays resident while its destination slot is reused for different register results.
+  ## Stable source offsets retain the correct destination across distinct entry points and repeated leases.
   let program = owner([@[40'u8, 3], @[0'u8], @[51'u8, 7, 99], @[0'u8],
     @[51'u8, 7, 55], @[0'u8]])
-  let prepared = cache(program, blocks = 2)
+  let prepared = cache(program, nodes = 4096)
   let entry = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
     gas: MachineGas(100))).value
   let replacement = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(7),
     gas: MachineGas(100))).value
   for repeat in 0..<4:
-    # Marked entries0/3/7 exercise two slots; the displaced target must be validated by PC before reuse.
+    # Marked entries0/3/7 exercise distinct entries; every retained target remains bound to the exact source PC.
     compare(entry, prepared, 4, 100000)
     compare(replacement, prepared, 4, 100000)
     compare(entry, prepared, 4, 100000)
     let final = execute(entry, ExecutionStepLimit(4), prepared)
     assert final.error == StepError.None and final.value.exit == StepExit.Panic
     assert uint64(machineInfo(final.value.machine).value.registers[7]) == 99
-  assert preparedInfo(prepared).value.evictions > 0
+  assert preparedInfo(prepared).value.streamNodes > 0
   for gas in [0'u64, 1, 2, 3, 4]:
     # Budget and gas exits keep their exact precharge and causing-PC semantics even with learned links.
     let source = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(0),
@@ -670,7 +671,7 @@ proc successorEvictionCycle() =
 proc sealedTerminatorCycle() =
   ## A genuine branch jumps over a mutating instruction to the block following a trap; no sealed array runs past its terminator.
   let program = owner([@[51'u8, 7, 1], @[40'u8, 6], @[51'u8, 7, 99], @[0'u8], @[0'u8]])
-  let prepared = cache(program, blocks = 2)
+  let prepared = cache(program, nodes = 4096)
   for paid in [false, true]:
     for gas in [0'u64, 1, 2, 3, 4, 10, 100000]:
       # Exact charge and attempt boundaries must preserve the selected path on both cold and reused arrays.
@@ -688,7 +689,7 @@ successorEvictionCycle()
 
 proc lifecycle(input: Machine) =
   ## Prepared owners release their arrays and program references without retaining invocation snapshots or callbacks.
-  let prepared = cache(programOf(input).value, blocks = 2)
+  let prepared = cache(programOf(input).value, nodes = 4096)
   let first = execute(input, ExecutionStepLimit(5), prepared)
   let second = execute(input, ExecutionStepLimit(5), prepared)
   same(first, second)

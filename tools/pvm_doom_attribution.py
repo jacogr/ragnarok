@@ -116,6 +116,30 @@ def timing_samples(output, engine, phase, event_bytes):
     return samples
 
 
+def reference_lifecycle_samples(output, phase, event_bytes):
+    """Require exact paired call/restoration records; immutable publication has no reference equivalent."""
+    lines = output.splitlines()
+    if len(lines) != 27:
+        raise ValueError('incomplete reference lifecycle process')
+    calls, lifecycle = [], []
+    for index in range(13):
+        # Every phase record belongs to the immediately preceding ordered checked call.
+        calls.append(lines[index*2])
+        fields = lines[index*2+1].split(',')
+        if len(fields) != 8 or fields[:4] != ['DOOM_LIFECYCLE','reference',phase,str(index)]:
+            raise ValueError('foreign reference lifecycle sample')
+        if any(re.fullmatch(r'0|[1-9][0-9]*',value) is None or int(value) > 2**63-1 for value in fields[4:]):
+            raise ValueError('invalid reference lifecycle duration')
+        restore, call, teardown, total = map(int,fields[4:])
+        if restore <= 0 or call <= 0 or restore+call+teardown != total:
+            raise ValueError('inconsistent reference lifecycle sum')
+        lifecycle.append(dict(restore_ns=restore,cpu_ns=call,teardown_ns=teardown,lifecycle_ns=total))
+    samples = timing_samples('\n'.join([*calls,lines[-1]])+'\n','reference',phase,event_bytes)
+    if any(call['cpu_ns'] != phases['cpu_ns'] for call,phases in zip(samples,lifecycle)):
+        raise ValueError('reference lifecycle call mismatch')
+    return dict(samples=samples,lifecycle=lifecycle)
+
+
 def summary_lines(report):
     """Publish CPU medians for both process orders; optional profiles never masquerade as timings."""
     lines=['# DOOM interpreted comparison','',f"Warmup ticks: {report['warmup_ticks']}; measured ticks: 1. Initialization is separate.",'']

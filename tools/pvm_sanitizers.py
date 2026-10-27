@@ -9,11 +9,13 @@ import os
 import platform
 
 from native_checks import NativeChecks, ROOT
-from native_tests import NATIVE_REQUIREMENTS, unit_environment, unit_source, unit_static_fixtures
+from native_tests import NATIVE_REQUIREMENTS, unit_environment, unit_source, unit_static_fixtures, UNIT_SUITES
 from setup_nimony import installed
 
 SUITES = ('pvm_conditional_control_reference', 'pvm_jump_table_reference',
-          'pvm_memory_access_reference', 'pvm_register_chain_reference', 'pvm_registers')
+          'pvm_memory_access_reference', 'pvm_register_chain_reference', 'pvm_registers',
+          'pvm_execution','pvm_prepared_blocks','pvm_host_execution','pvm_host_response',
+          *tuple(name for name in UNIT_SUITES if name.startswith('pvm_stream_')))
 CONTROLS = (('positive', None), ('heap', 'heap-use-after-free'), ('stack', 'stack-buffer-overflow'))
 CFLAGS = ('-fsanitize=address', '-fno-omit-frame-pointer', '-g')
 LFLAGS = ('-fsanitize=address',)
@@ -60,6 +62,11 @@ def main():
     version = checks.command(['clang', '--version'], 'clang-version', environment=environment)
     if version['exit_code']:
         raise RuntimeError('cannot identify sanitizer C compiler')
+    # Promoted public suites retain numeric ARC observations as well as in-process assertions.
+    evidence = folder/'evidence'
+    evidence.mkdir(exist_ok=True)
+    for path in evidence.glob('*.json'):
+        path.unlink() # This analyzer run owns these files; a fresh refusal cannot reuse old observations.
     builds, controls, suites, sources = [], [], [], {}
     control_source = ROOT/'tests/support/pvm_sanitizer_control.nim'
     row, binary = build(checks, compiler, control_source, 'control', ('-I'+str(control_source.parent),))

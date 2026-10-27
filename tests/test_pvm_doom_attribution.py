@@ -11,7 +11,7 @@ from unittest.mock import patch
 from copy import deepcopy
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from pvm_doom_attribution import event_hashes,tga_rgba,timing_samples,scope_entries,summary_lines,run
+from pvm_doom_attribution import event_hashes,tga_rgba,timing_samples,reference_lifecycle_samples,scope_entries,summary_lines,run
 from pvm_instruction_profile import collect
 from workflow_fixtures import event_context,expression,job_condition,job_section
 
@@ -57,6 +57,28 @@ class DoomAttributionTests(unittest.TestCase):
         self.assertEqual(scope_entries(raw,'reference'),0)
         reference='cfn=_RNvMCsample_17ragnarok_pvm_doomNtB2_5Guest3run\ncalls=1 0\ncfn=ragnarok_pvm_doom::Guest::run::{closure}\ncalls=8 0\n'
         self.assertEqual(scope_entries(reference,'reference'),1)
+
+    def test_reference_lifecycle_framing(self):
+        """Reject partial, foreign, reordered, inconsistent or detached reference restoration records."""
+        rows=[]
+        for index in range(13):
+            # Distinct call and restoration fields independently expose accidental phase substitution.
+            rows += [f'DOOM_SAMPLE,reference,tick,{index},{100+index},{200+index}',
+                     f'DOOM_LIFECYCLE,reference,tick,{index},50,{100+index},5,{155+index}']
+        complete='\n'.join(rows+['DOOM_OK,reference,tick,1024005'])+'\n'
+        parsed=reference_lifecycle_samples(complete,'tick',1024005)
+        self.assertEqual(parsed['lifecycle'][0],dict(restore_ns=50,cpu_ns=100,teardown_ns=5,lifecycle_ns=155))
+        for bad in (complete+'extra\n','\n'.join(rows[:-1]),
+                    complete.replace('tick,0,50,100,5,155','tick,1,50,100,5,155'),
+                    complete.replace('tick,0,50,100,5,155','init,0,50,100,5,155'),
+                    complete.replace('tick,0,50,100,5,155','tick,0,0,100,5,105'),
+                    complete.replace('tick,0,50,100,5,155','tick,0,50,100,5,156'),
+                    complete.replace('tick,0,50,100,5,155','tick,0,49,101,5,155'),
+                    complete.replace('tick,0,50,100,5,155','tick,0,50,100,-1,149'),
+                    complete.replace('DOOM_OK,reference','DOOM_OK,native'),
+                    complete.replace('tick,0,50,100,5,155','tick,0,9223372036854775808,100,5,9223372036854775913')):
+            with self.subTest(output=bad[:60]),self.assertRaises(ValueError):
+                reference_lifecycle_samples(bad,'tick',1024005)
 
     def test_deep_collection_preserves_diagnostic_options(self):
         """Source/cache attribution requests do not alter ordinary collection defaults."""

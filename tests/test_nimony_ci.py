@@ -65,7 +65,7 @@ class NimonyCISafeguards(unittest.TestCase):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
         self.assertEqual(text.count('needs:'), 8)
-        self.assertIn('needs: [unit, pvm-experimental]', text)
+        self.assertIn('needs: unit', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
         self.assertNotIn('nimony-trial', text)
@@ -223,7 +223,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'unit', event_context())
-        self.assertEqual(len(families), 19)
+        self.assertEqual(len(families), 20)
         corpus = [row for row in families if row['group'] == 'corpus']
         self.assertEqual(corpus, [dict(name=f'Corpus ({index}/3)', shard='', group='corpus',
                                      corpus_shard=f'{index}/3') for index in (1, 2, 3)])
@@ -234,7 +234,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
-        self.assertIn('max-parallel: 19', unit)
+        self.assertIn('max-parallel: 20', unit)
         self.assertIn('CORPUS_SHARD: ${{ matrix.family.corpus_shard }}', unit)
         self.assertIn('build/tests/corpus/*/results.json', unit)
         self.assertIn('name: Unit / ${{ matrix.family.name }}', unit)
@@ -249,40 +249,41 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(selected_families(text, 'unit', event_context(event='pull_request')), [])
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Unit', gate)
-        self.assertIn('needs: [unit, pvm-experimental]', gate)
+        self.assertIn('needs: unit', gate)
         self.assertIn('if: ${{ always() && (', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
         command = re.search(r'        run: ([^\n]+)', gate).group(1)
         for result in ['success', 'failure', 'cancelled', 'skipped']:
-            for experimental in ['success', 'failure', 'cancelled', 'skipped']:
-                # Either matrix refusing completion must keep the actual aggregate command red.
-                with self.subTest(result=result, experimental=experimental):
-                    status = subprocess.run(['bash', '-c', command], env={
-                        'SHARDS_RESULT': result, 'EXPERIMENTAL_RESULT': experimental}).returncode
-                    self.assertEqual(status == 0, result == experimental == 'success')
+            # The matrix result includes calibrated sanitizers; any non-success keeps Unit red.
+            with self.subTest(result=result):
+                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
+                self.assertEqual(status == 0,result == 'success')
 
-    def test_experimental_interpreter_request_scope(self):
-        """Both isolated native profiles share ordinary unit requests and retain failure diagnostics."""
+    def test_promoted_interpreter_has_one_native_ci_path(self):
+        """The production engine is qualified through discovered native suites, with no duplicate overlay job."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = job_section(text, 'pvm-experimental')
-        self.assertIn('profile: [native, asan]', section)
-        self.assertIn('runs-on: ubuntu-latest', section)
-        self.assertIn("matrix.profile == 'asan' && '--asan' || ''", section)
-        self.assertIn('run: make check-pvm-experimental', section)
-        self.assertIn('if: always()', section)
-        self.assertIn('build/pvm-interpreter-experiment/results-*.json', section)
-        self.assertIn('build/pvm-interpreter-experiment/*.log', section)
-        for context, wanted in (
-                (event_context(), True),
-                (event_context('workflow_dispatch', suite='unit'), True),
-                (event_context('workflow_dispatch', suite='full'), True),
-                (event_context('pull_request', 'labeled', 'ci:unit'), True),
-                (event_context('pull_request', 'labeled', 'ci:full'), True),
-                (event_context('pull_request', 'synchronize'), False),
-                (event_context('pull_request', 'labeled', 'ci:perf'), False),
-                (event_context('workflow_dispatch', suite='smoke'), False)):
-            # Ordinary updates remain lightweight; requested unit runs must include this engine.
-            self.assertEqual(bool(expression(job_condition(text, 'pvm-experimental'), context)), wanted)
+        self.assertNotIn('  pvm-experimental:',text)
+        self.assertNotIn('  pvm-sanitizers:',text)
+        families = selected_families(text,'unit',event_context())
+        self.assertEqual([row for row in families if row['group']=='pvm-asan'],
+            [dict(name='PVM Sanitizers',shard='',group='pvm-asan',corpus_shard='')])
+        sanitized = family_section(text,'unit','pvm-asan')
+        self.assertIn('run: make check-pvm-asan',sanitized)
+        self.assertNotIn('run: make check-unit',sanitized)
+        self.assertNotIn('run: make summary-',sanitized)
+        for group in ('suites','corpus'):
+            # Each family owns exactly one verifier; moving the sanitizer cannot duplicate native runs.
+            native = family_section(text,'unit',group)
+            self.assertIn('run: make check-unit',native)
+            self.assertNotIn('run: make check-pvm-asan',native)
+        for evidence in ('build/tests/pvm-asan/*.log','build/tests/pvm-asan/results.json',
+                         'build/tests/pvm-asan/evidence/*.json'):
+            self.assertIn(evidence,sanitized)
+        self.assertIn('run: make check-unit',text)
+        for path in (ROOT/'tests/unit/codec').glob('test_pvm_stream_*.nim'):
+            # Inventory validates every ordinary witness's requirements and exact output contract.
+            self.assertTrue(path.with_suffix('.output').is_file())
+            self.assertTrue((ROOT/'tools/native_requirements/codec'/(path.stem[5:]+'.json')).is_file())
 
     # Every contract partition is scheduled, and its stable aggregate rejects failure, cancellation and skip.
     def test_ci_contract_partition_gate(self):

@@ -47,8 +47,7 @@ proc exerciseUpstreamFrame*(data: openArray[byte], preparedMode: bool = false): 
   assert source.error == MachineError.None
   let answer = if preparedMode:
       # Optional prepared execution consumes the exact same decoder owner, inputs and frozen reference observations.
-      let created = newPreparedProgram(decoded.value, PreparedLimits(bytes: PreparedByteLimit(
-          1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(100000)))
+      let created = newPreparedProgram(decoded.value, defaultPreparedLimits(GasCycleLimit(100000)))
       assert created.error == PreparationError.None
       execute(source.value, ExecutionStepLimit(100000), created.value)
     else: execute(source.value, ExecutionStepLimit(100000), GasCycleLimit(100000))

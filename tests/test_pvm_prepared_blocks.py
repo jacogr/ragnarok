@@ -12,7 +12,7 @@ def observed(engine='ragnarok_prepared', samples=1, clocked=False):
     if engine == 'ragnarok_planned': rows = [f'GAS_PLAN,{2 if clocked else 0},{3 if clocked else 0},100,5,800,1000000']
     for index in range(samples):
         rows.append(f'SIEVE,{engine},1000,{index},{200 if clocked else 0},{100 if clocked else 0}')
-        if engine == 'ragnarok_prepared': rows.append(f'PREPARED_CACHE,{index},131200,1,2,1,2,10,0,152000')
+        if engine == 'ragnarok_prepared': rows.append(f'PREPARED_CACHE,{index},131200,262400,1048576,67108864')
     return '\n'.join(rows)+'\n'
 
 

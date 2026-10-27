@@ -1,0 +1,3 @@
+PASS all 30 memory opcodes / fragmented RO-RW-inaccessible regions / wrap and fault precedence
+PASS adjacent host reentry / paid suffix / decoder successor / changed memory permissions
+PASS early fault budget refund / restored barrier / repaired memory without double charge
