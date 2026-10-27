@@ -129,4 +129,18 @@ static uint32_t pvm_arm64_arena_next(void *handle, uint32_t offset, void *regist
 #endif
 }
 
+/* Connected leaves borrow a fresh scalar invocation context; no invocation address is retained. */
+static uint32_t pvm_arm64_arena_region(void *handle, uint32_t offset, void *registers, void *state) {
+#if PVM_ARM64_JIT_HOST
+    pvm_arm64_arena *owner = handle;
+    if (!owner || !registers || !state || offset >= owner->used || (offset & 3)) return UINT32_MAX;
+    uint32_t (*entry)(void *, void *) =
+        (uint32_t (*)(void *, void *))((unsigned char *)owner->memory + offset);
+    return entry(registers, state);
+#else
+    (void)handle; (void)offset; (void)registers; (void)state;
+    return UINT32_MAX;
+#endif
+}
+
 #endif

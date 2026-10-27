@@ -539,6 +539,46 @@ when defined(pvmArm64Jit):
     assert callArmEntry(capacity, 0, capacityRegisters) == 77
     echo "ARM_REPLACEMENT_REFUSAL,", successes
 
+  when not defined(pvmArm64JitRefuse):
+    # One connected publication fits after ordinary leaves exhaust their reserved 1,023-slot budget; total stays 1,024.
+    let bounded = newArmJit()
+    assert armEntry(bounded, 0, 3) == 0
+    for slot in 0..<1023:
+      var words = @[0xd503201f'u32]
+      assert publishArmEntry(bounded, 0, 0, 1, words)
+    var refused = @[0xd503201f'u32]
+    assert not publishArmEntry(bounded, 0, 0, 1, refused)
+    let source = owner([@[131'u8, 0, 1], @[0'u8]])
+    let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+    var blocks = default(array[3, ArmRegionBlock])
+    for index in 0..<3:
+      # Independent fixed-cost increment blocks select the next internal header until a quota or gas guard returns.
+      var body = default(ArmBlock)
+      emitArmOperation(body, 131, slots, 1)
+      emitArmBranch(body, 81, slots, 99, 77, uint32((index+1) mod 3))
+      blocks[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
+          price: 1, yes: 77, no: uint32((index+1) mod 3), body: move(body))
+    assert publishArmRegion(bounded, blocks)
+    assert bounded.fragments == 1024
+    for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
+      for gas in [0'u64, 1, 2, 3, 100]:
+        # Literal expected counts do not use the emitter or guest evaluator; all unexecuted registers remain unchanged.
+        var registers = default(RegisterFile)
+        for slot in 0..<13: registers[slot] = RegisterValue(uint64(slot)*0x100000001'u64)
+        let original = registers
+        var state = [gas, budget, 0'u64, 0'u64, 0'u64]
+        let count = min(gas, budget div 2)
+        assert callArmRegion(bounded, registers, state) == uint32(count mod 3)
+        assert uint64(registers[0]) == count
+        for slot in 1..<13: assert registers[slot] == original[slot]
+        assert state[0] == gas-count and state[1] == budget-count*2
+        for index in 0..<3:
+          let visits = count div 3+uint64(uint64(index) < count mod 3)
+          assert state[index+2] == visits
+    var finalRefusal = @[0xd503201f'u32]
+    assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
+    echo "ARM_REGION_CAPACITY,1024"
+
 proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, budget: uint64,
     images: openArray[PageImage] = []) =
   ## Bounded single-step execution independently checks charged prefixes, target PCs and terminal normalization.
@@ -779,6 +819,72 @@ for pattern in [0'u8, 17, 128, 255]:
         inc registerBoundaryCases
   checkFlatSource(frame)
 echo "ARM_REGISTER_BOUNDARIES,", registerBoundaryCases
+
+# Three independently decoded charged shapes form a closed loop; each untaken arm exits through a real panic block.
+let regionProgram = owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 8, 0, 0, 0], @[0'u8],
+  @[151'u8, 0x22, 1], @[152'u8, 0x22, 1], @[173'u8, 0x43, 7, 0, 0, 0], @[0'u8],
+  @[200'u8, 0x65, 5], @[139'u8, 0x77, 1], @[82'u8, 0x18, 0, 0xe2, 0xff, 0xff, 0xff], @[0'u8]])
+var regionCases = 0
+for start in [0'u64, 11, 24]:
+  let plan = newFlatPlan(regionProgram, GasCycleLimit(100000))
+  var info = MachineInfo(pc: CodeAddress(start), gas: MachineGas(100000), registers: default(RegisterFile))
+  info.registers[2] = RegisterValue(high(uint64))
+  info.registers[4] = RegisterValue(1)
+  info.registers[6] = RegisterValue(0x8000000000000000'u64)
+  info.registers[7] = RegisterValue(high(uint64))
+  info.registers[8] = RegisterValue(1)
+  var frame = newFlatFrame(plan, [], info)
+  verifyControl(frame, regionProgram, info, 1000)
+  when defined(pvmArm64Jit):
+    let connected = flatArmRegionStatistics(frame)
+    when defined(pvmArm64JitRefuse): assert connected[0] == 0 and connected[1] == 0
+    else: assert connected[0] > 0 and connected[1] > 3
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 2, 3, 4, 5, 8, 13, 21, 31, 127, 128, 129, 249, 250, 251, 252, 1000, high(uint64)]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 31, 32, 33,
+          63, 64, 65, 127, 128, 129, 249, 250, 251, 252, 1000]:
+        # Every guarded block exit retains independent source-attempt/gas precedence, exact PC/paid flags and all registers.
+        var bounded = info
+        bounded.gas = MachineGas(gas)
+        bounded.blockCharged = paid
+        verifyControl(frame, regionProgram, bounded, budget)
+        inc regionCases
+  for exitArm in [0, 1]:
+    # Both non-root branch exits publish the resident state before the original panic block executes.
+    var outside = info
+    if exitArm == 0: outside.registers[4] = RegisterValue(0)
+    else: outside.registers[8] = RegisterValue(0)
+    verifyControl(frame, regionProgram, outside, 1000)
+    inc regionCases
+  var cache = takeFlatStream(frame)
+  var replacement = info
+  replacement.registers[0] = RegisterValue(17)
+  replacement.registers[5] = RegisterValue(high(uint64))
+  var fresh = newFlatFrame(plan, [], replacement)
+  restoreFlatStream(fresh, cache)
+  verifyControl(fresh, regionProgram, replacement, 1000)
+  when defined(pvmArm64Jit):
+    # Code-only ownership transfer must execute against the replacement invocation, never its previous registers or budget.
+    let transferred = flatArmRegionStatistics(fresh)
+    when defined(pvmArm64JitRefuse): assert transferred[0] == 0
+    else: assert transferred[0] > 1
+  for policy in [0, 1]:
+    # Cached connected code cannot bypass a different complete/lazy pricing owner selected on this same frame.
+    let complete = newGasPlan(regionProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+        blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+    assert complete.error == GasPlanError.None
+    let lazy = newGasMemo(regionProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+        cycles: GasCycleLimit(100000)))
+    assert lazy.error == GasMemoError.None
+    if policy == 0: assert selectFlatPrices(fresh, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(fresh, default(GasPlan), lazy.value) == StepError.None
+    when defined(pvmArm64Jit):
+      let before = flatArmRegionStatistics(fresh)
+    verifyControl(fresh, regionProgram, info, 1000)
+    when defined(pvmArm64Jit): assert flatArmRegionStatistics(fresh) == before
+    inc regionCases
+  checkFlatSource(fresh)
+echo "ARM_REGION_CASES,", regionCases
 
 var controlCases = 0
 # Both formerly excluded short suffixes and the accepted four-operation shape retain all boundary checks.

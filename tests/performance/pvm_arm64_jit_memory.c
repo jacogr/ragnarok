@@ -98,6 +98,15 @@ int main(void) {
     assert(pvm_arm64_arena_next(continuation, 1, registers) == UINT32_MAX);
     assert(pvm_arm64_arena_next(continuation, 8, registers) == UINT32_MAX);
     assert(pvm_arm64_arena_next(continuation, 0, NULL) == UINT32_MAX);
+    /* Connected-call ABI borrows a separate context and refuses incomplete pointers before native entry. */
+    uint64_t context[5] = {11, 22, 33, 44, 55};
+    assert(pvm_arm64_arena_region(NULL, 0, registers, context) == UINT32_MAX);
+    assert(pvm_arm64_arena_region(continuation, 0, registers, context) == 7);
+    assert(pvm_arm64_arena_region(continuation, 1, registers, context) == UINT32_MAX);
+    assert(pvm_arm64_arena_region(continuation, 8, registers, context) == UINT32_MAX);
+    assert(pvm_arm64_arena_region(continuation, 0, NULL, context) == UINT32_MAX);
+    assert(pvm_arm64_arena_region(continuation, 0, registers, NULL) == UINT32_MAX);
+    for (unsigned slot = 0; slot < 5; ++slot) assert(context[slot] == 11 * (slot + 1));
     /* Appending code preserves the prior publication and makes the new instruction bytes executable. */
     uint32_t appended[] = { UINT32_C(0x52800120), UINT32_C(0xd65f03c0) }; /* MOV W0,#9; RET */
     assert(pvm_arm64_arena_publish(continuation, appended, 2) == 8);
