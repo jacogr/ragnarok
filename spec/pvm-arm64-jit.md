@@ -1959,3 +1959,66 @@ I am comfortable with a first merge of this opt-in slice. The PR stays draft and
 Twelve separate full-state profile processes/156calls retain hashes and discard their clocks. Full-process sampling includes construction, inlined driver checks and validation outside the invocation clock, so it does not give invocation CPU percentages. A timed-scope profile should guide larger native-block-linking and checked native-memory/fault-prefix work. Initialization reaches1,024physical publications at82,972of1,048,576arena bytes; avoiding an arithmetic publication immediately replaced by a branch-complete version is another bounded future idea, not a measured change here.
 
 All eight retained speed increments and the rejected publication-sealed-entry implementation remain in history. Local full report:build/pvm-arm64-jit/session-final/report.md; immutable receipts:build/tests/pvm-arm64-applications and build/pvm-arm64-jit/refusal-quality. The final local readiness receipt is bound by SHA25684d11de97d3cc4ff23a67ed7202f6604c4af69fe64b8303bd07f0d7f1c2877a6.
+
+
+## Scoped invocation profiling after merge (October 28)
+
+Merged baseline `31c7a998cf679de9bd0e9b38707313ae56b1d485`, Apple M1 Max, unchanged
+October 26 compiler, checked release/ARC/Clang ThinLTO. `make profile-pvm-arm64-jit` first
+produces a fresh matched application cohort and then samples its sealed images serially. No
+production source or benchmark driver changes are required. The pure parser partitions exclusive
+self weights by invocation ancestry, excluding benchmark construction and result checking and
+avoiding inclusive-parent double counting. It refuses absent scopes and inconsistent trees.
+
+Compiler inlining preserves `executeSelected` in the interpreted sieve image and
+`runPreparedFrame` in its JIT image; both cover invocation memory construction, execution and
+immutable publication. The latter excludes the outer prepared-owner lease flag operations. DOOM
+uses its existing `runPreparedDoom` wrapper, including host handling. These are scopes inside the
+public call clock, not a claim to account for every thin API instruction. No generated frame or
+missing marker is silently attributed to a named worker. Profiles aggregate cold and reused calls;
+they do not provide a warm-only breakdown, hardware counters or exact CPU percentages.
+
+| Case/mode | Inside | Outside | Leading exclusive self samples |
+|---|---:|---:|---|
+| sieve/interpreter | 2481 | 10 | flatCharge: 689, flatRegisterPair: 529, runFlat: 337, flatMemoryPair: 287, flatBranch: 284, flatRegister: 232 |
+| sieve/jit | 2494 | 12 | flatArmWhole: 1194, runFlat: 288, flatMemoryPair: 218, ???: 192, flatRegisterPair: 185, flatMemory: 159 |
+| init/interpreter | 2377 | 83 | flatChargedShape: 1261, flatMemoryPair: 135, flatCharge: 111, flatRegisterPair: 102, eQdestroyQ_SX4demory0mace7sn0l: 86, withReplacedPages: 81 |
+| init/jit | 2220 | 161 | ???: 387, flatCharge: 177, eQdestroyQ_SX4demory0mace7sn0l: 169, flatMemoryPair: 154, _platform_memmove: 150, withReplacedPages: 147 |
+| tick/interpreter | 1276 | 480 | flatCharge: 217, flatRegisterPair: 203, flatMemory: 173, flatMemoryPair: 166, runFlat: 160, _platform_memmove: 90 |
+| tick/jit | 1137 | 444 | flatCharge: 161, flatMemoryPair: 157, flatMemory: 153, flatRegisterPair: 130, runFlat: 117, _platform_memmove: 102 |
+
+The fresh unchanged-source A/A application receipt passes 70 processes / 910 checked calls,
+115 controls, sixteen fresh builds and eight equal-image pairs. Scoped sampling adds eighteen
+processes / 234 completely checked calls, three per case/mode, with all clocks discarded. Every
+raw trace/output hash, exclusive partition and complete-state parser is independently rechecked.
+The final sampling adapter is separately hashed; its marker adaptation occurred after application
+compilation and does not change any compiled runtime, driver, input or image.
+
+Long sieve's largest named JIT self weight is the full native-header adapter, supporting a
+bounded experiment in broader native continuations. Gameplay still emphasizes checked charging,
+memory and dispatch. Initialization also exposes immutable publication and memory retirement;
+more native arithmetic alone cannot remove those lifecycle costs.
+
+A separate ignored diagnostic records exact emitted images while validating two DOOM processes /
+26 calls and their complete state/events. Initialization publishes 1,024 images, of which 917
+are byte-distinct: 107 exact duplicates consume 7,016 bytes. Gameplay publishes 736 images, with
+701 distinct: 35 duplicates consume 1,312 bytes. This supports testing cold-only exact-image
+sharing under the existing physical publication/arena bounds. It is distinct from delaying
+conditional admission, whose rejected small-handoff regression remains documented above. The
+instrumented diagnostic clocks are discarded and it makes no performance claim.
+
+The initial run was invalidated by a Makefile edit during collection; two earlier scope attempts
+refused missing compiler-elided markers. All failed receipts remain under
+`build/pvm-arm64-jit/post-merge/`; none supplies a speed verdict. Completed scoped receipts:
+`build/pvm-arm64-jit/scoped-profile/`. Publication diagnostic:
+`build/pvm-arm64-jit/post-merge/publication-diagnostic/`.
+
+
+### Scoped profiler reconciliation with owner policies (October 28)
+
+The sampling adapter now replays the sealed cohort's protocol and selects its explicit runtime
+owner policy for same-image v2 comparisons. Without that selection, profiling the image named
+interpreter would use the new default JIT policy. Historical v1 images retain an empty override
+and their existing framing. Unknown roles/protocols are refused before launching a child. Existing
+sampled receipts remain historical evidence for their recorded pre-policy images. This tooling
+change affects no production execution or previously compiled application image.
