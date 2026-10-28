@@ -1,0 +1,8 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": ["quic"],
+  "libraries": ["quic"],
+  "observers": [],
+  "prepared": false
+}

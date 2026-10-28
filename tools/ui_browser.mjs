@@ -46,6 +46,8 @@ try {
   await page.goto(uiUrl);
   await page.locator('#app-state').waitFor({state: 'visible'});
   await page.waitForFunction(() => document.getElementById('app-state').textContent === 'Ready');
+  // The compiled default follows the application RPC port before a user supplies an override.
+  assert.equal(await page.locator('#endpoint').inputValue(), `ws://${new URL(uiUrl).hostname}:9418/`);
   await page.locator('#endpoint').fill(rpcUrl);
   await page.locator('#connect').click();
   await responseCount(1);

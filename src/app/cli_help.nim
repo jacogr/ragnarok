@@ -64,7 +64,7 @@ proc commandHelp*(topic = ""): string =
       for spec in OptionSpecs:
         if spec.group != group or not visible(spec, topic): continue
         section.add("  " & spec.name & (if spec.value.len == 0: "" else: " " & spec.value))
-        let fallback = spec.defaultValue
+        let fallback = spec.defaultValue(topic)
         if fallback.len > 0: section.add("  [default: " & fallback & "]")
         elif spec.commands.len > 0: section.add("  [required]")
         if spec.repeatable: section.add("  [repeatable]")
@@ -74,11 +74,11 @@ proc commandHelp*(topic = ""): string =
     result.add("\nInformation:\n  --help, -h     Show this overview.\n  --version      Show build and compiler identity.\n")
     result.add("  help COMMAND   Show command help (also COMMAND --help).\n  help diagnostics  List development selftests.\n")
     result.add("\nNamed command flags may be interleaved with service options.\n")
-    result.add("Configuration options do not enable a service; use its --with-* flag.\n")
+    result.add("Configuration options do not enable a service; use its --with-* flag.\nBare server uses UDP 34100 and generates a persistent identity under --data-dir/network.\n")
     result.add("\nExamples:\n  ragnarok server --net-port 4000 --net-cert node.pem --net-key node.key --net-peer-key - \\\n    --net-alpn NETWORK --with-ui\n  ragnarok check-traces --trace-policy policy.conf --trace-genesis genesis.bin \\\n    --trace-file step.bin --with-state --chain chain.json\n")
     result.add("\nConformance environment:\n  JAM_FUZZ=1 JAM_FUZZ_SPEC=tiny|full|fuzz JAM_FUZZ_DATA_PATH=DIR\n  JAM_FUZZ_SOCK_PATH=PATH; optional JAM_FUZZ_LOG_LEVEL.\n  Or use ragnarok fuzz with --fuzz-* overrides (flags take precedence).\n")
   elif topic == "server" or topic == "client":
-    result.add("\nWorkload modes:\n  valid (ordinary exchange), clean, mixed, integrated, holder, idle, probe,\n  proof, light, invalid-proof, proof-cancel; server also accepts service,\n  integration, overload, offload and soak (harness-controlled).\n")
+    result.add("\nWorkload modes:\n  listen (server default; persistent until interrupted), valid (bounded exchange), clean, mixed, integrated, holder, idle, probe,\n  proof, light, invalid-proof, proof-cancel; server also accepts service,\n  integration, overload, offload and soak (harness-controlled).\n")
   elif topic in ["download", "download-current"]:
     result.add("\nRequires --with-state --chain FILE; telemetry is unavailable.\n")
     result.add("Repeat --net-peer PORT:KEY_FILE for additional peers.\n")

@@ -56,6 +56,7 @@ let
   NoFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
   OpenCloseExec {.importc: "O_CLOEXEC", header: "<fcntl.h>".}: cint
   SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
+  ReuseAddress {.importc: "SO_REUSEADDR", header: "<sys/socket.h>".}: cint
 when defined(macosx):
   let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint # Prevent process-wide SIGPIPE.
 else:
@@ -113,6 +114,10 @@ proc start*(server: var UiServer, port: uint16, directory = ""): bool =
     server.close() # Root ownership must also retire on socket creation failure.
     return false
   server.opened = true
+  var reuse = 1.cint
+  if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
+    server.close() # Failed restart policy setup must retire the newly acquired descriptor.
+    return false
   var address = default(Sockaddr_in)
   address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
   address.sin_port = networkPort(port)

@@ -8,7 +8,7 @@
 ## transport sessions.
 
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
-import ../lib/logging
+import ../lib/[logging, stop_signal]
 import ./transport
 import ./protocol
 import ./integration
@@ -488,20 +488,26 @@ proc runPeer*(options: Options): bool {.raises.} =
   let timeoutLimit = if options.argumentCount() == 8 and options.argument(8) ==
       "offload": MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
   # Guard host-to-native conversions before any endpoint is created.
-  if port < 1 or port > 65535 or timeout < 1 or timeout > timeoutLimit: return false
+  if port < 1 or port > 65535 or timeout < 0 or timeout > timeoutLimit: return false
   let server = options.argument(1) == "server"
   if not server and options.argument(1) != "client": return false # Never infer an unknown role.
   let mode = if options.argumentCount() == 8: options.argument(8) else: DefaultPeerMode
+  let listening = server and mode == DefaultServerMode
+  if timeout == 0 and not listening: return false
+  var signals = default(StopSignals)
+  if listening: signals.start()
+  defer: signals.close()
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
-  if mode in ["service", "integration", "overload", "offload"] and not server: return false
+  if mode in ["listen", "service", "integration", "overload", "offload"] and
+      not server: return false
   let integrated = mode in ["integration", "integrated"]
-  let service = mode in ["service", "integration", "overload", "offload"]
+  let service = listening or mode in ["service", "integration", "overload", "offload"]
   let load = mode in ["overload", "holder", "idle", "probe", "offload", "proof", "light",
       "invalid-proof", "proof-cancel"]
   let target = if mode in ["probe", "proof", "light", "invalid-proof", "proof-cancel"]: 1 else: 8
   var attack = mode
   # Existing service/integration workloads keep their mixed failure schedules.
-  if (service and mode != "offload") or integrated or mode == "mixed":
+  if (service and not listening and mode != "offload") or integrated or mode == "mixed":
     attack = "soak"
   elif mode in ["clean", "probe", "proof", "light", "invalid-proof", "offload"]:
     attack = "valid" # These one-query fixtures use normal request bytes and FIN.
@@ -564,6 +570,10 @@ proc runPeer*(options: Options): bool {.raises.} =
         if transportStatus(peer.transport) == 1 and peerMetric(peer.transport, 0) >
             0: 1'u32 else: 0'u32)
     services.telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
+  if server and listening:
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Listening on UDP port " & $localPort(
+        peer.transport))
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "TLS certificate: " & options.argument(3))
   if server:
     progress "READY" # Announce only after listener binding and native setup.
   else:
@@ -576,7 +586,7 @@ proc runPeer*(options: Options): bool {.raises.} =
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
   let cancelFile = getEnv("RAGNAROK_OFFLOAD_CANCEL")
   # An externally gated service must have a concrete stop path before entering its bounded loop.
-  if peer.service and stopFile.len == 0: return false
+  if peer.service and not listening and stopFile.len == 0: return false
   var lastActive = -1
   var lastLive, lastCapacity = -1
   var lastLoadActive = -1
@@ -585,8 +595,8 @@ proc runPeer*(options: Options): bool {.raises.} =
   var serviceStopped = false
   var authenticated, opened = false # Neither authentication nor application admission has happened at startup.
  # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
-  while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
-      started).inMilliseconds < timeout:
+  while not peer.failed and not signals.stopping and (listening or peer.service or peer.completed < target):
+    if timeout > 0 and (getMonoTime() - started).inMilliseconds >= timeout: break
     # Server metrics count authenticated peers; client status also requires a live slot after a close.
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
@@ -615,7 +625,7 @@ proc runPeer*(options: Options): bool {.raises.} =
       if active == 0 and live == 0 and accepted > lastIdle:
         progress "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
         lastIdle = accepted
-      if fileExists(stopFile):
+      if not listening and fileExists(stopFile):
         serviceStopped = peer.offloading or (active == 0 and live == 0)
         if peer.offloading: progress "OFFLOAD_SHUTDOWN_PENDING ",
             live # Explicit test shutdown also exercises pending jobs.
@@ -655,6 +665,10 @@ proc runPeer*(options: Options): bool {.raises.} =
           if peer.mixed: 1200 else: 650):
         for index in 0..<3: openStream(peer.transport)
     if not pollTransport(peer.transport): break # Selector/UDP failure cannot become a successful exchange.
+  if listening:
+    # Only interruption or a selected deadline is a successful foreground shutdown; native IO failure still refuses.
+    let stopped = signals.stopping or (timeout > 0 and (getMonoTime() - started).inMilliseconds >= timeout)
+    return stopped and not peer.failed
   # A final receive cycle can authenticate, finish requests and close; preserve handshake evidence without reopening work.
   if peerMetric(peer.transport, 4) > 0 and not authenticated:
     progress "AUTH_OK"

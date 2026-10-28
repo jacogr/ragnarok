@@ -16,14 +16,21 @@ type
 
 const
   DefaultMcpPort* = 14141'u16                 ## Default loopback agent query endpoint.
-  DefaultRpcPort* = 19800'u16                 ## Default loopback WebSocket listener port.
-  DefaultUiPort* = 8888'u16                   ## Default loopback HTTP listener port.
+  DefaultDataDirectory* = "./data"            ## Persistent local identity and default storage root.
+  DefaultChainFile* = "./chain.json"          ## Conventional operator-supplied chain specification.
+  DefaultServerTimeoutMs* = 0                 ## Zero means an interrupted foreground server has no deadline.
+  DefaultNetworkPort* = 34100'u16             ## Ordinary JAM peer listener/dial port.
+  DefaultDevelopmentAlpn* = "jamnp-s/1/00000000" ## Isolated development domain unless explicitly selected.
+  DefaultServerMode* = "listen" ## Serve until interrupted instead of executing a bounded test workload.
+  DefaultCertificateDays* = 3650              ## Persistent self-signed transport certificate lifetime.
+  DefaultRpcPort* = 9418'u16                  ## Default loopback WebSocket listener port.
+  DefaultUiPort* = 8418'u16                   ## Default loopback HTTP listener port.
   MaxPeerTimeoutMs* = 120000                  ## Maximum ordinary bounded peer deadline.
   MaxOffloadTimeoutMs* = 300000               ## Separate maximum for the server offload workload.
   DefaultTimeoutMs* = 10000                   ## Named peer commands use one finite default deadline.
   DefaultPeerMode* = "valid"                  ## Existing bounded peer workload without service fixture behavior.
   DefaultNodeMode* = NodeMode.Full            ## Complete-state startup remains the default mode.
-  DefaultStateStorage* = StateStorage.Memory  ## Disk startup always requires an explicit path.
+  DefaultStateStorage* = StateStorage.Memory  ## Disk startup uses a mode/layout-specific path when omitted.
   DefaultStateLayout* = StateDiskLayout.Journal ## Full-state disk layout when no explicit layout is selected.
   DefaultStateWrites* = 1000'u64              ## Independent per-batch mutation-count ceiling.
   DefaultStateWriteBytes* = 100000'u64        ## Independent per-batch mutation-byte ceiling.
@@ -37,3 +44,11 @@ const
   MaxTraceSteps* = 256                        ## Maximum consecutive offline trace files per run.
   MaxDownloadBlocks* = 64                     ## Finite whole-command adoption cap.
   MaxDownloadAncestors* = 64                  ## Finite explicit/acquired ancestor cap.
+
+func defaultDatabase*(directory: string, light: bool, layout: StateDiskLayout): string =
+  ## Full/light and physical schemas never share an inferred database namespace.
+  let base = directory & (if light: "/light/" else: "/full/")
+  case layout
+  of StateDiskLayout.Journal: base & "state.db"
+  of StateDiskLayout.Managed: base & "managed"
+  of StateDiskLayout.Paged: base & "paged"

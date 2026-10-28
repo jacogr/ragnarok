@@ -184,7 +184,7 @@ def run(binary, collector, report, scenario, folder):
             # Reject b's certificate by pinning a instead; success retains the original eight-request case.
             pin = 'a.pub' if scenario == 'incoming-rejection' else 'b.pub'
             children['server'] = launch('server', [binary, 'server', '--net-port', udp_port, '--net-cert', certificates/'a.cert.pem',
-                '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *controls])
+                '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *controls, '--net-mode', 'valid'])
             while True:
                 # A decoded status proves registration acceptance and an active listener before the dial.
                 value = receive(stream, messages, deadline)

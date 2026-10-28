@@ -139,6 +139,22 @@ def mcp(context):
 
 
 @PLAN.workload(group='testnet', requires=('prepare_peer',))
+def startup_defaults(context):
+    """Bare startup must provide stable identity, usable path defaults and graceful foreground cleanup."""
+    from startup_checks import run as startup_checks
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        try:
+            observed = startup_checks(binary, context.checks.folder/'startup-defaults')
+        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+            # No failed startup or cleanup can be converted into a successful default-configuration verdict.
+            observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+    announce('Default foreground startup and persistent identity', observed['passed'])
+    return observed
+
+
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def testnet_tiny_devnet(context):
     """Fourteen blocks on six native validators must cross an epoch and recover a stopped node with independent maps."""
     compiled, binary = context.peer

@@ -75,7 +75,7 @@ implicitly enable RPC, UI or telemetry.
 
 ## Observe the selected head
 
-Enable ordinary RPC explicitly with `--with-rpc --rpc-port 19800` if needed.
+Enable ordinary RPC explicitly with `--with-rpc --rpc-port 9418` if needed.
 `bestBlock`, `stateRoot` and `ragnarok_header` expose the imported head, posterior
 root and exact sealed bytes. A best-block subscription begins from that head.
 The provider initially retains one block: parent lookup and finalized-block

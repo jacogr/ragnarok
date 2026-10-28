@@ -12,7 +12,7 @@ This folder contains the Nimony browser prototype and the native server that emb
 | [`server.nim`](server.nim) | Bounded loopback HTTP server for immutable embedded gzip assets or an explicit development directory |
 
 Append `--with-ui` to a supported proof-peer invocation to serve the browser at
-`http://127.0.0.1:8888/`; `--ui-port NUMBER` changes the port. This also enables
+`http://127.0.0.1:8418/`; `--ui-port NUMBER` changes the port. This also enables
 [WebSocket RPC](../rpc/README.md). The prototype displays `ragnarok_clientInfo`; the browser's
 RPC URL is editable for nondefault endpoints.
 

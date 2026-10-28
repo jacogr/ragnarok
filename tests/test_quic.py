@@ -128,7 +128,7 @@ def attempt(case, folder, binaries=None, logs=None):
     client_alpn = 'jamnp-s/1/11111111' if scenario == 'wrong-alpn' else alpn
     cert = lambda name: str(folder / f'{name}.cert.pem')
     key = lambda name: str(folder / f'{name}.key.pem')
-    server = [str(binaries[server_language]), 'server', '--net-port', '0', '--net-cert', cert(server_identity), '--net-key', key(server_identity), '--net-peer-key', '-', '--net-alpn', alpn, '--net-timeout-ms', '900']
+    server = [str(binaries[server_language]), 'server', '--net-port', '0', '--net-cert', cert(server_identity), '--net-key', key(server_identity), '--net-peer-key', '-', '--net-alpn', alpn, '--net-timeout-ms', '900', '--net-mode', 'valid']
     client = [str(binaries[client_language]), 'client', '--net-port', '0',
               '--net-cert', '-' if scenario == 'missing-cert' else cert(client_identity),
               '--net-key', '-' if scenario == 'missing-cert' else key(client_identity), '--net-peer-key', str(folder / f'{expected}.pub'), '--net-alpn', client_alpn, '--net-timeout-ms', '900']

@@ -244,7 +244,7 @@ def run_restart(binary, collector, report, folder, ipv6=False):
         gate.bind(('127.0.0.1', 0))
         gate.settimeout(0.1)
         server = launch('server', [binary, 'server', '--net-port', udp_port, '--net-cert', certificates/'a.cert.pem', '--net-key', certificates/'a.key.pem',
-                                  '--net-peer-key', certificates/'b.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000'])
+                                  '--net-peer-key', certificates/'b.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'valid'])
         ready(server, 'server')
         client = launch('client', [binary, 'client', '--net-port', gate.getsockname()[1], '--net-cert', certificates/'b.cert.pem',
                                   '--net-key', certificates/'b.key.pem', '--net-peer-key', certificates/'a.pub', '--net-alpn', 'jamnp-s/1/245becfe',
@@ -263,7 +263,7 @@ def run_restart(binary, collector, report, folder, ipv6=False):
         outage_controls = ['--chain', ROOT/'tests/fixtures/telemetry-dev.json',
                            '--with-telemetry', '--telemetry-endpoint', f'{cli_host}:{telemetry_port}']
         outage_server = launch('outage-server', [binary, 'server', '--net-port', outage_port, '--net-cert', certificates/'a.cert.pem',
-            '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/'b.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *outage_controls])
+            '--net-key', certificates/'a.key.pem', '--net-peer-key', certificates/'b.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000', *outage_controls, '--net-mode', 'valid'])
         ready(outage_server, 'outage-server')
         outage_client = launch('outage-client', [binary, 'client', '--net-port', outage_port, '--net-cert', certificates/'b.cert.pem',
             '--net-key', certificates/'b.key.pem', '--net-peer-key', certificates/'a.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '6000', '--net-mode', 'clean', *outage_controls])
