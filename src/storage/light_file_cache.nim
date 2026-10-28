@@ -32,6 +32,10 @@ proc `=dup`*(source: LightFileCache): LightFileCache {.error.}
 proc requireClosed(owner: LightFileCache) {.requires: owner.data == nil.} =
   ## Close errors must remain observable instead of silently retiring a lock in destruction.
   discard
+proc `=wasMoved`*(owner: var LightFileCache) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(owner.data)
+
 proc `=destroy`*(owner: LightFileCache) =
   ## Compiler-generated moves leave a nil sentinel; destruction of an unclosed owner is misuse.
   requireClosed(owner)

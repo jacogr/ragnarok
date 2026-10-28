@@ -15,6 +15,10 @@ proc `=copy`*(destination: var CheckpointWriter, source: CheckpointWriter) {.err
   ## Composite state owners must reject duplication independently of their field's hook lifting.
 proc `=dup`*(source: CheckpointWriter): CheckpointWriter {.error.}
   ## Actual ARC lowering checks the state-facing resource contract too.
+proc `=wasMoved`*(writer: var CheckpointWriter) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(writer.native)
+
 proc `=destroy`*(writer: CheckpointWriter) =
   ## The child's checked destruction requires explicit close and retires its managed path bytes.
   `=destroy`(writer.native)

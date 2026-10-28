@@ -112,6 +112,24 @@ proc `=dup`*(source: Server): Server {.error.}
 proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
   ## Retiring shared canonical aliases during worker execution is a host lifecycle defect.
   discard
+proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(server.opened)
+  `=wasMoved`(server.proofs)
+  `=wasMoved`(server.proofCursor)
+  `=wasMoved`(server.lease)
+  `=wasMoved`(server.fd)
+  `=wasMoved`(server.connections)
+  `=wasMoved`(server.started)
+  `=wasMoved`(server.port)
+  `=wasMoved`(server.uiPort)
+  `=wasMoved`(server.role)
+  `=wasMoved`(server.light)
+  `=wasMoved`(server.lightDisk)
+  `=wasMoved`(server.chain)
+  `=wasMoved`(server.identity)
+  `=wasMoved`(server.parameters)
+
 proc `=destroy`*(server: Server) =
   ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
   requireChainReleased(server)

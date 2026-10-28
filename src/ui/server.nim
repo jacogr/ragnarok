@@ -64,6 +64,14 @@ else:
 
 # Copying a composite owner would duplicate root, socket and streaming-file ownership.
 proc `=copy`*(destination: var UiServer, source: UiServer) {.error: "UI Server owns descriptors".}
+proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(server.opened)
+  `=wasMoved`(server.rootOpened)
+  `=wasMoved`(server.fd)
+  `=wasMoved`(server.root)
+  `=wasMoved`(server.connections)
+
 proc `=destroy`*(server: UiServer) =
   ## Retire partial startup, live requests and ARC strings even when explicit close is skipped.
   if server.opened: discard posix.close(server.fd)

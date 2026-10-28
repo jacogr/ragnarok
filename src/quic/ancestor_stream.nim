@@ -26,6 +26,22 @@ type
     received, started, timeout: uint64
     readFin, writeFin, stopping: bool
 
+proc `=wasMoved`*(route: var AncestorStream) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(route.handle)
+  `=wasMoved`(route.receiver)
+  `=wasMoved`(route.id)
+  `=wasMoved`(route.request)
+  `=wasMoved`(route.offset)
+  `=wasMoved`(route.readLimit)
+  `=wasMoved`(route.writeLimit)
+  `=wasMoved`(route.received)
+  `=wasMoved`(route.started)
+  `=wasMoved`(route.timeout)
+  `=wasMoved`(route.readFin)
+  `=wasMoved`(route.writeFin)
+  `=wasMoved`(route.stopping)
+
 proc `=destroy`*(route: AncestorStream) =
   ## Verify explicit callback retirement; destruction must never call through a borrowed native handle.
   assert route.handle == NativeStream(nil), "AncestorStream must receive native close before destruction"

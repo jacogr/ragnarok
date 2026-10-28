@@ -14,6 +14,10 @@ proc `=copy`*(destination: var ApplicationCheckpointWriter,
   ## Composite ownership independently rejects duplicate native retirement obligations.
 proc `=dup`*(source: ApplicationCheckpointWriter): ApplicationCheckpointWriter {.error.}
   ## Actual ARC lowering must reject copying even when the child is noncopyable.
+proc `=wasMoved`*(writer: var ApplicationCheckpointWriter) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(writer.native)
+
 proc `=destroy`*(writer: ApplicationCheckpointWriter) =
   ## Explicit close must retire the inherited cooperative lock before managed paths disappear.
   `=destroy`(writer.native)

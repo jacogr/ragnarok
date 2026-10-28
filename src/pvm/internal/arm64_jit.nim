@@ -53,6 +53,10 @@ type
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
 proc `=dup`(source: ArenaOwner): ArenaOwner {.error.}
+proc `=wasMoved`(owner: var ArenaOwner) {.nodestroy, inline.} =
+  ## A moved native handle has no allocation left to release.
+  owner.handle = nil
+
 proc `=destroy`(owner: ArenaOwner) =
   ## A default or moved-from owner has no executable mapping to release.
   if owner.handle != nil: destroyArena(owner.handle)

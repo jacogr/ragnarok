@@ -50,6 +50,20 @@ proc `=dup`*(source: ManagedRepository): ManagedRepository {.error.}
 proc requireClosed(repository: ManagedRepository) {.requires: not repository.active.} =
   ## Close remains explicit while native failures can be reported.
   discard
+proc `=wasMoved`*(repository: var ManagedRepository) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(repository.directory)
+  `=wasMoved`(repository.journal)
+  `=wasMoved`(repository.memory)
+  `=wasMoved`(repository.context)
+  `=wasMoved`(repository.chain)
+  `=wasMoved`(repository.schema)
+  `=wasMoved`(repository.epoch)
+  `=wasMoved`(repository.snapshotBytes)
+  `=wasMoved`(repository.limits)
+  `=wasMoved`(repository.active)
+  `=wasMoved`(repository.poisoned)
+
 proc `=destroy`*(repository: ManagedRepository) =
   ## Native owners enforce their own retirement even after a failed initialization.
   requireClosed(repository)
