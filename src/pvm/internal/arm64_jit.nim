@@ -544,7 +544,7 @@ func armRegionSlot(jit: ArmJit, root: uint32): range[0..armRegionLimit-1] =
   assert int(root) < jit.entries.len
   let entry = jit.entries[int(root)]
   let slot = entry.ending
-  assert entry.code >= 2 and entry.operations == 0 and slot >= 1 and slot <= armRegionLimit
+  assert entry.code >= 2 and entry.operations == 0 and slot >= 1 and slot <= uint32(armRegionLimit)
   let index = range[0..armRegionLimit-1](slot-1)
   assert jit.regions[index].status == 2 and jit.regions[index].headers[0] == root
   index
