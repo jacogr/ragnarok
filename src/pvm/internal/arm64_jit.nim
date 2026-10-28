@@ -34,6 +34,12 @@ type
     words, terminal: seq[uint32]
     reads, writes: uint32
     compact: bool
+  ArmReadGuard = object ## A code-relative refusal edge publishes no speculative register prefix.
+    at: int
+    conditional: bool
+  ArmReadSpan* = object ## Cold-only builder; all reads and arithmetic commit their guest registers together.
+    body: ArmBlock
+    guards: seq[ArmReadGuard]
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
@@ -251,6 +257,70 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
     if (fragment.writes and (1'u32 shl int(slot))) != 0:
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for word in fragment.terminal: result.add(word)
+
+proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
+  ## Every failed address/extent check branches to one final return without register stores.
+  span.guards.add(ArmReadGuard(at: span.body.words.len, conditional: conditional))
+  span.body.words.add(word)
+
+proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+  ## Address aliases consume the current resident value before the load writes its destination.
+  let source = armRead(span.body, slots.bIndex)
+  let destination = armWrite(span.body, slots.aIndex)
+  span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots modulo-2^32 base.
+  span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+  span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+  span.body.words.add(0x0b020063'u32) # ADD W3,W3,W2 wraps the effective address exactly once.
+  span.body.words.add(0xf140407f'u32) # CMP X3,#65536 rejects the protected prefix.
+  armReadRefusal(span, 0x54000003'u32, true) # LO exits before accessing a descriptor pointer.
+  span.body.words.add(0x12800102'u32) # MOV W2,#0xfffffff7 preserves the existing conservative bound.
+  span.body.words.add(0xeb02007f'u32) # CMP X3,X2.
+  armReadRefusal(span, 0x54000008'u32, true) # HI retains canonical top-address handling.
+  var accepted = default(array[3, int])
+  for region in 0..<3:
+    # X17 preserves the descriptor base across arithmetic's X1 scratch; X3 retains the address across region misses.
+    span.body.words.add(0xa9400a21'u32 or (uint32(region*3) shl 15)) # LDP X1,X2,[X17,#region*24].
+    span.body.words.add(0xcb010061'u32) # SUB X1,X3,X1 computes an unsigned region offset.
+    span.body.words.add(0xeb02003f'u32) # CMP X1,X2 proves offset < extent-minus-seven.
+    span.body.words.add(0x54000082'u32) # HS skips exactly the pointer, load and accepted branch.
+    span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR X2,[X17,#region*24+16].
+    span.body.words.add(0xf8616840'u32 or destination) # LDR Xdestination,[X2,X1], permitting unaligned words.
+    accepted[region] = span.body.words.len
+    span.body.words.add(0x14000000'u32)
+  armReadRefusal(span, 0x14000000'u32, false) # Missing/fragmented memory replays the complete original prefix.
+  let after = span.body.words.len
+  for index in accepted:
+    # Each admitted region rejoins immediately after this load's guards, never bypassing a later load.
+    assert index >= 0 and index < after
+    span.body.words[index] = span.body.words[index] or uint32(after-index)
+
+proc emitArmReadArithmetic*(span: var ArmReadSpan, opcode: byte, slots: RegisterSlots,
+    immediate: uint64) =
+  ## Existing pure operations share the same resident register bank and original wrapping/alias rules.
+  emitArmOperation(span.body, opcode, slots, immediate)
+
+proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
+  ## No guest register store precedes a successful complete read sequence; refused speculation has no visible prefix.
+  assert span.body.terminal.len == 0
+  result = @[0xaa0103f1'u32] # MOV X17,X1 retains only this invocation's borrowed descriptors.
+  var leading = 0
+  for slot in 0..<13:
+    # armInstructions prefixes exactly one original-value load for each live-in guest slot.
+    if (span.body.reads and (1'u32 shl slot)) != 0: inc leading
+  for word in armInstructions(span.body): result.add(word)
+  result.add(0x52800000'u32 or ((ending and 65535) shl 5))
+  result.add(0x72a00000'u32 or ((ending shr 16) shl 5))
+  result.add(0xd65f03c0'u32) # Success returns after the sole complete register publication.
+  let failure = result.len
+  result.add(0x12800000'u32) # Refusal returns flatStop; arena publication appends RET.
+  assert result.len < 8192 # Sixty-four admitted source operations fit every forward refusal displacement.
+  for guard in span.guards:
+    # The initial context move and live-in loads shift every body-relative branch equally.
+    let at = guard.at+leading+1
+    assert at >= 1 and at < failure
+    let distance = uint32(failure-at)
+    result[at] = result[at] or (if guard.conditional: distance shl 5 else: distance)
+
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32): seq[uint32] =

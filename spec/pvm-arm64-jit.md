@@ -2448,3 +2448,143 @@ The retained runtime equals parent `b1171011350b044f78523b659842ab859ba366f4` by
 pass507/0literal cases and30,144complete-state load cases each. Twelve focused Python checks
 pass; a separate26-call replay on the sealed identical images verifies explicit interpreted
 zero-native and JIT-positive profiling policies, with all clocks discarded.
+
+
+## Transactional native read spans — retained (October 28)
+
+Scope: combine multiple opcode130 reads and existing pure arithmetic inside one reserved source
+block, with at least four operations and the existing64-operation/1,024-word publication bounds.
+Single-read leaves, all other widths, stores, branches, hosts and connected-block rules retain
+the accepted implementation. No protocol, pin, default, cache capacity or memory policy changes.
+
+The cold builder computes live-ins across the whole span. Native code keeps registers private
+until every load guard succeeds; a failed later guard returns without any guest mutation, then
+the original checked node replays the read/arithmetic prefix and reports its exact fault. Loads
+read only exclusively owned invocation bytes. X17 retains the invocation descriptor pointer
+across arithmetic's X1 scratch, without touching Apple's reserved X18 or callee-saved registers.
+Code caches retain no invocation pointer. Partial reservations use original handlers throughout.
+Oversized mixed code falls back to the accepted first-load path.
+
+Measured candidate:`fe630daf0fa7951930b39142b20e626ad9574e1c`, parent
+`6c91c7f5bec817f36e310b39992d4dac55b8fb8d`; AppleM1Max, pinned Nimony358b9bce,
+checked release/ARC/Clang ThinLTO. The full paired receipt passes70processes/910calls,
+115controls,16fresh builds/eight equal-image pairs and721 sealed identities. Every raw log,
+state verdict, source revision, input/image hash and forced-interpreter zero-native receipt is
+independently verified. Full report SHA256:
+`d61dfcbaf087f1028b3c29b830de7e8d22c5e6e9f746d9025ba5c15200f2abe3`.
+
+Balanced repeated CPU medians in milliseconds: ten independent processes per version, twelve
+post-cold calls per process, five alternating ABBA blocks. The additional140processes/1,820calls
+are independently reparsed; receipt SHA256:
+`f40ec82e4787845bd465bdcfe843da08437160da0c43983a038e4fe5a72573ae`.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.313 (2.292–2.333) | 2.248 (2.231–2.280) | 0.972 | 0.968, 0.978, 0.971, 0.967, 0.983 |
+| minimal 100000 | 4.877 (4.853–4.898) | 4.553 (4.529–4.568) | 0.934 | 0.930, 0.939, 0.934, 0.930, 0.933 |
+| memset 100000 | 3.367 (3.312–3.409) | 3.386 (3.332–3.469) | 1.006 | 1.009, 1.012, 1.001, 1.003, 1.009 |
+| pinky 1 | 71.446 (70.379–72.040) | 70.167 (69.681–71.340) | 0.982 | 0.993, 0.991, 0.983, 0.981, 0.986 |
+| sieve 10000000 | 221.390 (220.219–224.218) | 213.631 (212.406–215.974) | 0.965 | 0.965, 0.966, 0.963, 0.965, 0.961 |
+| init 0 | 194.915 (194.349–195.548) | 194.871 (193.760–196.771) | 1.000 | 0.998, 0.997, 1.002, 1.001, 1.006 |
+| tick 0 | 35.804 (35.230–36.334) | 33.284 (33.086–34.017) | 0.930 | 0.930, 0.936, 0.937, 0.939, 0.931 |
+
+Retain:gameplay improves7.0%, long sieve3.5%, short sieve2.8% and minimal6.6%, with all five
+balanced blocks favoring the trial and non-overlapping process ranges. Pinky improves1.8% in
+all five blocks, although its whole-process ranges overlap. Initialization is flat. Fill costs
+about0.6% with overlapping ranges, a small explicit tradeoff rather than a claimed improvement.
+
+Public reused CPU medians, forward/reverse, exclude the cold call and two warmups. Public
+execution includes fresh invocation memory and immutable publication. Retained-core reset/
+publication and reference raw calls remain separate scopes.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.381 / 3.478 | 2.308 / 2.308 | 2.228 / 2.233 | 2.055 / 2.067 | 5.957 / 5.950 | 0.659 / 0.642 | 0.374 / 0.375 |
+| minimal 100000 | 4.865 / 4.872 | 4.856 / 4.867 | 4.541 / 4.549 | 4.521 / 4.505 | 5.994 / 6.013 | 0.933 / 0.934 | 0.758 / 0.757 |
+| memset 100000 | 4.367 / 4.356 | 3.361 / 3.324 | 3.375 / 3.468 | 2.674 / 2.672 | 3.927 / 3.913 | 0.773 / 0.796 | 0.859 / 0.886 |
+| pinky 1 | 85.329 / 84.885 | 70.637 / 70.502 | 69.837 / 69.544 | 69.746 / 69.171 | 94.192 / 93.994 | 0.818 / 0.819 | 0.741 / 0.740 |
+| sieve 10000000 | 332.657 / 337.123 | 220.763 / 223.773 | 213.093 / 214.995 | 216.489 / 218.733 | 367.238 / 368.582 | 0.641 / 0.638 | 0.580 / 0.583 |
+| init 0 | 343.511 / 349.377 | 194.204 / 198.612 | 194.166 / 196.883 | 194.196 / 196.742 | 671.390 / 680.288 | 0.565 / 0.564 | 0.289 / 0.289 |
+| tick 0 | 39.507 / 39.456 | 35.614 / 35.389 | 33.428 / 33.371 | 30.270 / 29.919 | 43.816 / 44.001 | 0.846 / 0.846 | 0.763 / 0.758 |
+
+Constructor and cold CPU milliseconds, forward/reverse. Owner construction is outside the
+first call; lazy compilation and executable publication stay inside that cold call. Our
+prepared-owner constructor is not equated with the reference module constructor.
+
+| Workload | Parent owner | Candidate owner | Parent cold | Candidate cold |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.587 / 1.547 | 1.544 / 1.561 | 7.363 / 7.393 | 8.089 / 7.816 |
+| minimal 100000 | 0.012 / 0.011 | 0.010 / 0.010 | 4.868 / 4.944 | 4.629 / 4.550 |
+| memset 100000 | 0.058 / 0.052 | 0.047 / 0.053 | 4.725 / 4.770 | 4.804 / 4.888 |
+| pinky 1 | 0.459 / 0.460 | 0.453 / 0.456 | 73.728 / 73.968 | 73.418 / 72.903 |
+| sieve 10000000 | 1.622 / 2.593 | 1.692 / 1.570 | 226.220 / 265.853 | 219.022 / 221.537 |
+| init 0 | 7.797 / 7.851 | 7.585 / 7.920 | 214.790 / 221.008 | 214.690 / 217.974 |
+| tick 0 | 7.533 / 7.651 | 7.719 / 7.675 | 47.615 / 45.829 | 45.179 / 44.397 |
+
+Balanced cold medians include the same tradeoff: short sieve7.562→7.931ms, long sieve
+227.583→219.142ms, minimal4.935→4.622ms, Pinky74.757→73.323ms, fill4.880→4.856ms,
+initialization215.946→215.850ms and gameplay46.497→44.242ms. More cold compilation and
+publication cost about0.37ms on short sieve; the warm speedup is not a universal startup claim.
+
+Reference lifecycle medians for samples3–12, milliseconds; restoration and teardown are excluded
+from the raw-call ratios above and remain visible here.
+
+| Phase/order | Restore | Raw call | Teardown | Total lifecycle |
+|---|---:|---:|---:|---:|
+| init 0 | 2.205 | 671.390 | 0.006 | 673.542 |
+| init 1 | 2.232 | 680.288 | 0.005 | 682.554 |
+| tick 0 | 2.095 | 43.816 | 0.005 | 45.901 |
+| tick 1 | 2.346 | 44.001 | 0.005 | 46.426 |
+
+Coverage across thirteen calls, parent→candidate; these are lowered guest operations and
+Nim/native handoffs, not hardware instruction/branch measurements.
+
+| Workload | Publications | Native bytes | Native calls | Lowered operations |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 399 → 723 | 63,516 → 362,120 | 2,648,157 → 2,699,169 | 11,877,412 → 12,479,481 |
+| minimal 100000 | 3 → 5 | 316 → 1,076 | 26 → 1,300,039 | 77 → 5,200,129 |
+| memset 100000 | 47 → 54 | 3,656 → 6,620 | 3,900,273 → 3,900,351 | 9,101,061 → 9,101,412 |
+| pinky 1 | 525 → 606 | 50,064 → 85,604 | 32,354,595 → 36,282,987 | 168,521,851 → 184,616,372 |
+| sieve 10000000 | 426 → 750 | 68,840 → 367,444 | 266,580,709 → 271,619,743 | 1,191,218,731 → 1,250,782,976 |
+| init 0 | 1,024 → 1,024 | 100,312 → 174,636 | 21,420,711 → 14,936,467 | 2,287,897,715 → 2,272,368,979 |
+| tick 0 | 758 → 887 | 64,924 → 145,448 | 26,300,313 → 24,869,221 | 83,240,962 → 93,369,909 |
+
+Gameplay native handoffs fall5.4% while more work is lowered. Minimal now lowers5.2million
+operations rather than77, so its improvement has genuine new coverage. Long sieve and Pinky
+also gain coverage but add calls; fewer handoffs is not a universal explanation of the speedup.
+Initialization remains at the1,024publication cap and below the unchanged one-MiB arena bound.
+No CPU cause is inferred solely from these counters.
+
+All nine native gates and both owner-policy suites pass. The final native/refused witnesses
+include1,521/0independent literal transaction cases and51,424source-state cases each, plus the
+accepted load/register/region/control/ownership cases. They cover derived-address aliases, X1
+scratch survival, later guard rollback, protected/top/split/fragmented maps, gas/paid states,
+every attempted prefix, depths2/3/16/32/63/64/65, oversized-code fallback, all pricing modes,
+fresh-frame stream transfer and host remap/unmap. No source-budget or memory check is weakened.
+
+Eighteen scoped sampling processes/234checked calls pass exact output/trace hashes and exclusive
+weight re-parsing. All profiled clocks are discarded. These are current interpreter/JIT samples,
+not a parent-vs-candidate CPU accounting experiment or hardware counters. Top current JIT self
+weights across three repetitions:
+
+| Case | Inside / outside samples | Leading exclusive self samples |
+|---|---:|---|
+| long sieve | 2485 / 13 | unknown470; flatArmWhole429; flatArmRegion371; callArmRegion335; runFlat182; flatArmMemory158 |
+| init | 2208 / 163 | unknown388; flatCharge174; withReplacedPages161; memory retirement145; memmove143; add134 |
+| gameplay | 1018 / 449 | flatCharge145; flatMemory137; flatRegisterPair123; flatMemoryPair114; flatArmBranch106; runFlat88 |
+
+Checked memory, charging and dispatch remain visible gameplay boundaries; initialization still
+contains immutable publication/retirement. Wider isolated leaves remain rejected. A future
+bounded candidate is reusing a proven readable window for repeated reads whose source base
+stays unchanged, retaining transactional fallback; that optimization is not implemented here.
+
+Isolated LinuxARM64 qualification passes the same nine native gates, four fresh builds,
+14public processes/182checked calls,32refusal controls and2,882staged seals. Exact committed
+sources, official compiler archive/binary, image architecture, network isolation and every raw
+state/control output are independently verified. Image:
+`sha256:3d83326d227121156caa8e97d0eb9daef24b1c937e9e8779451f82efcdabbb60`.
+Container clocks are diagnostic only; no native Linux performance claim is made.
+
+Evidence:`build/pvm-arm64-jit/post-merge/read-spans/`, including main/repeated independent
+proofs, scoped traces and Linux receipts. The existing historical scoped-profile folder was
+preserved and restored; the new traces belong to this candidate alone.
