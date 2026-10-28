@@ -43,7 +43,8 @@ def qualify(checks, compiler, rows=None):
         run = checks.command([binary], name+'-run', timeout=900)
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
-                'X86_PREFIX_CASES,2984\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
+                'X86_PREFIX_CASES,2984\n' not in run['output'] or
+                'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         rows.append(dict(name=name, build=build, run=run))
     for frame in (False, True):

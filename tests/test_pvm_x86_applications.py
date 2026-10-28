@@ -4,7 +4,7 @@
 import unittest
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
-from pvm_x86_jit_profile import selected_symbol, profile_environment
+from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -64,3 +64,11 @@ class X86ProfileScopeTests(unittest.TestCase):
             self.assertEqual(left, right)
             self.assertEqual(left['RAGNAROK_PVM_SIEVE_SAMPLES'], '13')
             self.assertEqual(left['RAGNAROK_PVM_LOCAL_ONECALL'], '0')
+
+
+    def test_native_activity_cannot_turn_into_fallback(self):
+        """Identical source/output alone cannot certify that an instrumented JIT actually executed native code."""
+        measured = dict(fragments=2,calls=10,operations=40,code_bytes=128,branches=0,headers=0,compilation_ns=1)
+        matching_native_activity(measured, dict(measured,compilation_ns=999))
+        for key in ('fragments','calls','operations','code_bytes','branches','headers'):
+            with self.assertRaises(ValueError): matching_native_activity(measured, dict(measured,**{key:measured[key]+1}))

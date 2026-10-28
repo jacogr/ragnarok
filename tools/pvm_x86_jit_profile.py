@@ -53,6 +53,13 @@ def profile_environment(case, limit, role):
     return env
 
 
+def matching_native_activity(measured, profiled):
+    """Instrumentation must retain actual native execution and its exact code working set; only clocks may differ."""
+    fields = ('fragments', 'calls', 'operations', 'code_bytes', 'branches', 'headers')
+    if any(measured[key] != profiled[key] for key in fields):
+        raise ValueError('Profile changed native execution or code working set')
+
+
 def run():
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -105,6 +112,7 @@ def run():
                     raise RuntimeError('Profile process failed: '+name)
                 events = (ROOT/'build/tests/pvm-doom/prepared/tick.events').stat().st_size if case == 'tick' else 0
                 parsed = parse_run(executed['output'], role, case, limit, events, cohort['comparison_protocol'])
+                matching_native_activity(row['parsed']['native'], parsed['native'])
                 if len(parsed['execution']['samples']) != 13:
                     raise ValueError('Incomplete checked profile calls')
                 cold = final.parent/(name+'.callgrind.1')
