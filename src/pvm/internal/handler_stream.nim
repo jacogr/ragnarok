@@ -1748,25 +1748,52 @@ when defined(pvmArm64Jit):
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return offset
-    var native = default(ArmReadSpan)
     var ending = offset
     var count = 0'u32
     var reads = 0'u32
+    var written = 0'u32
+    var window = true
+    let base = f.plan.facts[int(f.sites[int(offset)])].args.slots.bIndex
+    var first = high(uint32)
+    var last = 0'u32
     while int(ending) < f.sites.len and count < 64:
       # Headers, stores, narrower reads, branches, hosts and every observable exit end the speculative prefix.
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough: break
       if fact.opcode == 130:
-        emitArmRead(native, fact.args.slots, uint32(fact.args.x and 0xffffffff'u64))
+        let displacement = uint32(fact.args.x and 0xffffffff'u64)
+        if fact.args.slots.bIndex != base or (written and (1'u32 shl int(base))) != 0:
+          window = false # Derived or overwritten address bases retain the accepted individual guards.
+        if displacement < first: first = displacement
+        if displacement > last: last = displacement
+        written = written or (1'u32 shl int(fact.args.slots.aIndex))
         inc reads
       elif supportedArmOpcode(fact.opcode):
-        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+        written = written or (1'u32 shl int(fact.args.slots.destinationIndex))
       else:
         break # Unsupported semantics remain their original checked source node.
       inc ending
       inc count
     if reads < 2 or count < 4: return offset
+    if last-first > 4088: window = false
+    var native = default(ArmReadSpan)
+    if window:
+      # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
+      for current in offset..<ending:
+        let fact = f.plan.facts[int(f.sites[int(current)])]
+        if fact.opcode == 130 and (uint32(fact.args.x and 0xffffffff'u64)-first) mod 8 != 0:
+          window = false
+    if window: beginArmReadWindow(native, base, first, last)
+    for current in offset..<ending:
+      # Only a proved stable base uses the shared window; all other mixed spans preserve their original lowering.
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      if fact.opcode == 130:
+        let displacement = uint32(fact.args.x and 0xffffffff'u64)
+        if window: emitArmWindowRead(native, fact.args.slots.aIndex, displacement-first)
+        else: emitArmRead(native, fact.args.slots, displacement)
+      else:
+        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
     var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
