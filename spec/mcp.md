@@ -18,6 +18,17 @@ The endpoint follows the bounded lifetime of the underlying command, not a new n
 
 ## Protocol and tools
 
+Tool discovery accepts standard request `_meta` objects, including string/numeric `progressToken`
+and inert extension fields, independently of pagination ([MCP 2025-11-25 schema](https://modelcontextprotocol.io/specification/2025-11-25/schema#listtoolsrequest)).
+The fixed catalog always returns all seven tools without `nextCursor`; an explicit `cursor` remains
+an invalid-params error. Malformed metadata and progress tokens are invalid parameters too.
+Native boundary cases and official SDK discovery with empty/string/numeric-token metadata cover
+this contract; SDK cursor rejection must leave subsequent requests usable.
+Observed on 2026-10-28 (macOS ARM64): the added official SDK regression first failed against the
+unchanged server with `This fixed catalog has no cursor`. After the fix, `make unit SUITE=mcp`,
+`make check-mcp-interop` (three scenarios, six sessions, 116 messages and 110 correlated replies),
+68 focused Python safeguards and pinned formatting passed locally. Linux CI remains separate.
+
 The server supports `initialize`, `ping`, `tools/list` and `tools/call`. Initialization negotiates
 2025-11-25, declares only tools, and returns shared build version metadata. It does not request
 sampling, roots or elicitation. Transport is stateless: no session IDs or per-client initialization

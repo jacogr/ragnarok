@@ -43,6 +43,16 @@ assert "\"result\":{}" in respond(request("ping", id = "\"α\""), empty)
 assert "get_storage" in respond(request("tools/list"), empty)
 assert "readOnlyHint" in respond(request("tools/list"), empty)
 assert "-32602" in respond(request("tools/list", "{\"cursor\":\"invalid\"}"), empty)
+# Metadata is inert discovery context, separate from the fixed catalog's unsupported pagination.
+for params in ["{}", "{\"_meta\":{}}", "{\"_meta\":{\"progressToken\":\"list-1\"}}",
+    "{\"_meta\":{\"progressToken\":7}}",
+    "{\"_meta\":{\"example/context\":{\"cursor\":\"nested\"}}}"]:
+  assert respond(request("tools/list", params), empty) == respond(request("tools/list"), empty)
+for params in ["{\"_meta\":null}", "{\"_meta\":[]}", "{\"_meta\":1}",
+    "{\"_meta\":{\"progressToken\":true}}", "{\"_meta\":{\"progressToken\":{}}}",
+    "{\"cursor\":\"invalid\",\"_meta\":{}}", "{\"cursor\":\"\"}"]:
+  assert "-32602" in respond(request("tools/list", params), empty) # Reject malformed metadata and cursors.
+
 for wire in ["[]", "null", "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"ping\"}"]:
   assert "-32600" in respond(wire, empty) # Batches and wrong-version messages cannot enter tool dispatch.
 for wire in ["{", "{\"x\":1,\"x\":2}", "\xff", repeat("x", MaxMcpBody+1)]:

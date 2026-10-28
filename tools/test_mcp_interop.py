@@ -134,6 +134,18 @@ async def sdk_session(port, folder, index, expected):
                     listing = await session.list_tools()
                     assert listing.nextCursor is None
                     assert {tool.name for tool in listing.tools} == TOOLS
+                    # Standard request metadata must not be mistaken for an unsupported page cursor.
+                    for metadata in ({}, {'progressToken': 'discovery-1'}, {'progressToken': 7}):
+                        discovered = await session.list_tools(params=types.PaginatedRequestParams(_meta=metadata))
+                        assert discovered == listing
+                    try:
+                        # A fixed catalog still rejects actual pagination, even alongside valid metadata.
+                        await session.list_tools(params=types.PaginatedRequestParams(
+                            cursor='invalid', _meta={'progressToken': 'invalid-page'}))
+                    except McpError as error:
+                        assert error.error.code == -32602
+                    else:
+                        raise AssertionError('Unexpected cursor accepted')
                     for tool in listing.tools:
                         # The SDK models validate envelopes; independently validate the advertised JSON Schemas too.
                         assert tool.annotations.readOnlyHint is True
