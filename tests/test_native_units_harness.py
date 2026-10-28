@@ -62,7 +62,7 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), int(count == 1))
             lengths = [sum(target is not None for _, _, target in batches) for batches, _ in partitions]
             self.assertLessEqual(max(lengths)-min(lengths), 1)
-        self.assertEqual(native_tests.unit_partition(), (native_tests.unit_batches(), True))
+        self.assertEqual(native_tests.unit_partition(), (native_tests.unit_tasks(), True))
         self.assertEqual(native_tests.unit_partition((1, 1)), native_tests.unit_partition())
 
     # A shared seed changes assignment without losing suites, duplicating batches or touching global RNG.
@@ -85,9 +85,13 @@ class NativeUnitHarness(unittest.TestCase):
                 if count > 1:
                     # Every CI batch is one original source main; no aggregate codec deadline hides unfinished siblings.
                     for name, members, target in batches:
-                        self.assertEqual(members, (name,))
                         self.assertEqual(target, name)
-                        self.assertIn(name, native_tests.unit_dependency_weights())
+                        if name.startswith('asan:'):
+                            self.assertEqual(members, ())
+                            self.assertIn(name[5:], native_tests.unit_dependency_weights())
+                        else:
+                            self.assertEqual(members, (name,))
+                            self.assertIn(name, native_tests.unit_dependency_weights())
                 sizes = [len(selected)+int(corpora) for selected, corpora in partitions]
                 self.assertLessEqual(max(sizes)-min(sizes), 1)
         self.assertNotEqual(native_tests.unit_partition((1, 16), '40080775112'),
@@ -367,16 +371,17 @@ class NativeUnitHarness(unittest.TestCase):
                         if profile is not None:
                             # Native-free socket/disabled-provider cases must not acquire an accidental crypto dependency.
                             self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
-                            include = 'bandersnatch' if name == 'bandersnatch_owners' else 'quic' if profile == 'quic' else 'crypto'
-                            self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
                             # Combined service suites intentionally select observed primitives and QUIC together.
                             selected = native_tests.NATIVE_REQUIREMENTS[name]
                             for library, path in libraries.items():
                                 self.assertEqual('--forward:--passL:'+str(path.resolve()) in args,
                                                  library in selected['libraries'])
 
-                        else:
-                            self.assertFalse(any('--passC:-I' in arg for arg in args))
+                        # Header-only JIT profiles also declare includes without selecting a library.
+                        selected = native_tests.NATIVE_REQUIREMENTS[name]
+                        self.assertEqual({arg for arg in args if arg.startswith('--forward:--passC:-I')},
+                                         {'--forward:--passC:-I'+str(ROOT/'native'/include)
+                                          for include in selected['includes']})
                         self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
                         if name in ('validator_state', 'ticket_admission', 'ticket_state'):
                             # Rotation combines real ring primitives with independent setup/commit/hash refusal observers.

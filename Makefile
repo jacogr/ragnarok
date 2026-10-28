@@ -445,7 +445,7 @@ summary-corpus: override UNIT_SCOPE := corpus
 summary-corpus: summary-unit
 summary-unit:
 	mkdir -p build/ci
-	$(PYTHON) tools/summarize_tests.py --kind runtime --report build/tests/$(if $(filter corpus,$(UNIT_SCOPE)),corpus,runtime)/results.json --output "$(SUMMARY_OUTPUT)"
+	$(PYTHON) tools/summarize_tests.py --kind runtime --report build/tests/$(if $(filter corpus,$(UNIT_SCOPE)),corpus,runtime)/results.json --output "$(SUMMARY_OUTPUT)" --artifact build/tests/$(if $(filter corpus,$(UNIT_SCOPE)),corpus,runtime)/summary.md
 summary-models:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind models --report build/tests/models/results.json --output "$(SUMMARY_OUTPUT)"

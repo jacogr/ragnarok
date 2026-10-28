@@ -1,12 +1,13 @@
 # Calibrated AddressSanitizer qualification for PVM reference suites
 
-## Opt-in profile and source authority
+## Unit profile and source authority
 
 `make check-pvm-asan` provisions the maintained tools, then builds and runs the existing conditional
 control, jump-table, scalar-memory, dependent-register-chain and scalar-register reference suites
 under AddressSanitizer. Sources, fixture hashes, expected output and native assertions remain those
-of the ordinary suite contracts. This analyzer job neither replaces their normal unit verdicts nor
-launches Python discovery. It runs no fuzzing and changes no fixture, dependency or protocol pin.
+of the ordinary suite contracts. The instrumented profile has separate verdicts from the ordinary native runs and launches no
+Python discovery. `make check-unit` schedules its selected replays across the ordinary unit shards;
+`make check-pvm-asan` retains a complete local instrumented run. It runs no fuzzing and changes no fixture, dependency or protocol pin.
 
 The shared NativeChecks builder retains checked ARC/Clang ThinLTO and adds only
 `-fsanitize=address`, `-fno-omit-frame-pointer` and C debug information, with the corresponding
@@ -29,8 +30,11 @@ byte before execution. Each binary must exit successfully, emit its complete gol
 contain no sanitizer diagnostic. Native case assertions keep full CPU, gas, memory, permission,
 source preservation and refusal checks; a partial output cannot become a passing result.
 
-An earlier aggregate success is retired before setup/profile checks. A new aggregate is written
-only after all controls and selected suites pass. The report retains exact build/run commands,
+An earlier aggregate success is retired before setup/profile checks. Every completed invocation
+writes current evidence, including partial controls/suites and a failed verdict after a build,
+fixture, calibration, ARC observation or timeout failure. The unit aggregate requires the exact
+seeded selection and all controls on each receiving worker. Its Markdown summary lists observed
+controls and selected suites, including unfinished work and artifact paths. The report retains exact build/run commands,
 Clang version, compiler path/profile, binary hashes, source/output/fixture identities and logs.
 The harness has focused positive, wrong-class/site, generic-crash, partial-output and stale-report
 rejection tests.
