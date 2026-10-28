@@ -29,7 +29,7 @@ and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 transcripts; see [MCP verification](../spec/mcp.md#official-sdk-interoperability).
 
 The **Build / Linux & Docker** job packages the Linux x86-64 [binary archive](binaries.md) and
-then builds/smoke-tests the [container image](containers.md) on one `ubuntu-latest` runner.
+then builds/smoke-tests the [container image](containers.md) on one `ubuntu-26.04` runner.
 **Build / macOS** packages the ARM64 archive separately. Master pushes, full requests and manual
 `build` requests run both jobs. `ci:docker` and manual `docker` requests run only the container
 check. Separate archives and native/Docker diagnostics are retained; no image is published.
