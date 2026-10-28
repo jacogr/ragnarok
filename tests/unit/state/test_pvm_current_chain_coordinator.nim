@@ -5,7 +5,7 @@
 ## Current composed state and chain view install together only after exact ownership/profile and all private child stages succeed.
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, header, report_owned]
+import ../../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../../src/state/[accumulation_current_chain, accumulation_current_publication,
   accumulation_current_consensus, report_admission, block_transition, block_admission, store]
 import ../../support/[accumulation_current_chain_context, arc_evidence]
@@ -16,7 +16,7 @@ proc unchanged(state: StateStore, view: ChainView, prior: StateStoreSnapshot, ol
   assert sameStateSnapshot(state.snapshot.value, prior)
   assert sameChainView(view, old)
 proc witness(context: CurrentChainFixture) =
-  ## Independently spell private adoption, sealed-header capture and direct-child append without guest replay.
+  ## Independently spell private adoption, header/body capture and direct-child append without guest replay.
   let parent = context.parent.value.stateSnapshot
   let original = context.currentChainSeeded
   let binding = context.source.currentChainAdmission.reportBlockStage.value.value.admitted
@@ -27,7 +27,11 @@ proc witness(context: CurrentChainFixture) =
   let child = captureBlockSnapshot(currentChainBytes(binding.admittedHeader),
       expectedState.snapshot.value, currentChainSettings())
   assert child.error == GenesisError.None
-  let expected = original.advanceView(child).value
+  let headerHashes = hashCalls()
+  let retained = withBlockBody(child.value, binding.admittedBlock)
+  assert retained.error == GenesisError.None
+  assert hashCalls() == headerHashes + 1, "retaining the exact admitted body adds one digest"
+  let expected = original.advanceView(retained).value
   let expectedHashes = hashCalls()
   assert expectedHashes > 0, "child identity requires sealed-header hashing"
   var state = forkStateStore(parent).value
@@ -37,6 +41,9 @@ proc witness(context: CurrentChainFixture) =
   let applied = applyCurrentAccumulationChain(state, view, context.source, ByteLimit(100000))
   assert applied.error == CurrentAccumulationChainError.None, $applied.error
   assert hashCalls() == expectedHashes, "coordinator never reruns current guests or state composition"
+  var admittedWire = newSeq[byte](blockInfo(binding.admittedBlock).value.consumed)
+  assert encodeOwnedBlock(binding.admittedBlock, admittedWire).error == FrameError.None
+  assert applied.value.hasBlockBody and applied.value.blockBody == admittedWire
   assert sameStateSnapshot(applied.value.stateSnapshot, context.source.currentConsensusState.value)
   assert sameStateSnapshot(state.snapshot.value, applied.value.stateSnapshot)
   assert sameStateSnapshot(view.bestBlock.value.stateSnapshot, applied.value.stateSnapshot)
