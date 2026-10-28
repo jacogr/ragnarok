@@ -478,8 +478,8 @@ class NimonyCISafeguards(unittest.TestCase):
             _, system, machine = archive_hosts[row['name']]
             self.assertEqual(selected['system'], system)
             self.assertIn(machine, selected['machines'])
-        self.assertEqual([(row['name'], row['os']) for row in binary],
-                         [('Linux & Docker', 'ubuntu-latest'), ('macOS', 'macos-15')])
+        self.assertEqual([(row['name'], row.get('os') or re.search(r'&ubuntu-x86-version ([\w.-]+)', text).group(1)) for row in binary],
+                         [('Linux & Docker', 'ubuntu-26.04'), ('macOS', 'macos-15')])
         self.assertIn('fail-fast: false', section)
         self.assertIn('name: Build / ${{ matrix.family.name }}', section)
         self.assertIn('run: make package-binary', section)
@@ -508,7 +508,7 @@ class NimonyCISafeguards(unittest.TestCase):
                         event_context('pull_request', 'labeled', 'ci:docker')):
             # The pre-existing Docker-only selector never expands into either native archive build.
             rows = selected_families(text, 'build', context)
-            self.assertEqual(rows, [dict(name='Docker', group='docker', os='ubuntu-latest', platform='')])
+            self.assertEqual(rows, [dict(name='Docker', group='docker', platform='')])
             focused = family_section(text, 'build', 'docker', context=context)
             self.assertEqual(focused.count('run: make check-docker\n'), 1)
             self.assertNotIn('run: make package-binary', focused)

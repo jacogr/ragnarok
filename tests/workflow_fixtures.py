@@ -82,6 +82,18 @@ def selected_families(text, job, context):
     if matrix is not None:
         # Dynamic matrices select scoped workloads from event inputs.
         return expression(matrix.group(1), context)
+    # Native host records use YAML aliases so runner upgrades have one definition per architecture.
+    records = re.search(r'^        family:\n((?:          .+\n|            .+\n)+)', section, re.MULTILINE)
+    if records is not None and '          - name:' in records.group(1):
+        rows = []
+        for record in records.group(1).split('          - ')[1:]:
+            row = {}
+            for key, item in re.findall(r'^\s*([\w-]+): (.+)$', record, re.MULTILINE):
+                if item.startswith('*'):
+                    item = re.search(r'&'+re.escape(item[1:])+r' ([\w.-]+)', text).group(1)
+                row[key] = re.sub(r'^&[\w-]+ ', '', item)
+            rows.append(row)
+        return rows
     # Static E2E families retain their readable source-owned YAML declarations.
     return [dict(group=group, name=name) for group, name in re.findall(
         r'^          - \{group: ([a-z_]+), name: ([^}\n]+)\}$', section, re.MULTILINE)]
@@ -93,7 +105,7 @@ def family_section(text, job, group, name=None, context=None):
     request = event_context() if context is None else context
     family = next(row for row in selected_families(text, job, request)
                   if row['group'] == group and (name is None or row['name'] == name))
-    context = dict(request, matrix=dict(family=family, os='ubuntu-latest'))
+    context = dict(request, matrix=dict(family=family, os=re.search(r'&ubuntu-x86-version ([\w.-]+)', text).group(1)))
     header, steps = section.split('    steps:\n', 1)
     kept = []
     for step in re.findall(r'^      - .*?(?=^      - |\Z)', steps, re.MULTILINE | re.DOTALL):
