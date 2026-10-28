@@ -45,7 +45,8 @@ is a failure, not evidence of coverage.
 Master pushes and PR opening, reopening and source updates automatically run **Build / Smoke**:
 complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
-locally. The **Build** aggregate requires every selected family. Automatic PR updates and manual
+locally. Each named workload reports its own result, without separate aggregate jobs.
+Automatic PR updates and manual
 `smoke` requests run Smoke alone. Master/full requests add Tooling, Linux & Docker and macOS.
 Linux & Docker reuses native packaging setup for the checked-release every-source audit. Tooling
 runs Python references, lifecycle model verification and compiler rejection guards, retaining separate

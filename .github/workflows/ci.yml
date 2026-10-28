@@ -55,6 +55,7 @@ env:
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
   # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
+  # Build group: named workloads report their own results.
   build:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
     name: Build / ${{ matrix.family.name }}
@@ -214,22 +215,7 @@ jobs:
             build/ci/docker-build.log
             build/ci/docker-smoke.log
 
-  build-status:
-    name: Build
-    timeout-minutes: *ci-job-timeout
-    needs: build
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
-    strategy: &os-strategy
-      fail-fast: false
-      matrix:
-        os: &ci-os [*ubuntu-x86-version]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Build family
-        env:
-          SHARDS_RESULT: ${{ needs.build.result }}
-        run: test "$SHARDS_RESULT" = success
-
+  # Unit group: named workloads report their own results.
   unit:
     if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     name: Unit / ${{ matrix.family.name }}
@@ -238,7 +224,7 @@ jobs:
       fail-fast: false
       max-parallel: 20
       matrix:
-        os: *ci-os
+        os: &ci-os [*ubuntu-x86-version]
         family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
@@ -286,19 +272,7 @@ jobs:
             build/quic/build.log
 
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
-  unit-status:
-    name: Unit
-    timeout-minutes: *ci-job-timeout
-    needs: unit
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Unit family
-        env:
-          SHARDS_RESULT: ${{ needs.unit.result }}
-        run: test "$SHARDS_RESULT" = success
-
+  # Contract group: named workloads report their own results.
   failures:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
     name: Contract / Test (${{ matrix.shard }})
@@ -342,19 +316,7 @@ jobs:
             build/quic/build.log
 
   # Preserve the stable contract gate and require every partition, including specialized controls.
-  failures-status:
-    name: Contract
-    timeout-minutes: *ci-job-timeout
-    needs: failures
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every contract shard
-        env:
-          SHARDS_RESULT: ${{ needs.failures.result }}
-        run: test "$SHARDS_RESULT" = success
-
+  # E2E group: named workloads report their own results.
   e2e:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
     name: E2E / ${{ matrix.family.name }}
@@ -446,21 +408,7 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
-  e2e-status:
-    name: E2E
-    timeout-minutes: *ci-job-timeout
-    needs: e2e
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every E2E family
-        env:
-          SHARDS_RESULT: ${{ needs.e2e.result }}
-        run: test "$SHARDS_RESULT" = success
-
-  # Keep Interop jobs adjacent; group requests run every implementation comparison.
-  # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
+  # Interop group: named workloads report their own results.
   interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
     name: Interop / ${{ matrix.family.name }}
@@ -575,21 +523,7 @@ jobs:
             build/polkavm-build.log
             build/ci/*.log
 
-  interop-status:
-    name: Interop
-    timeout-minutes: *ci-job-timeout
-    needs: [interop, pvm-doom-backends]
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Interop family
-        env:
-          SHARDS_RESULT: ${{ needs.interop.result }}
-          BACKENDS_RESULT: ${{ needs.pvm-doom-backends.result }}
-          FOCUSED: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'pvm-backends' }}
-        run: test "$BACKENDS_RESULT" = success && (test "$SHARDS_RESULT" = success || (test "$FOCUSED" = true && test "$SHARDS_RESULT" = skipped))
-
+  # Perf group: named workloads report their own results.
   perf:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / ${{ matrix.family.name }}
@@ -837,20 +771,7 @@ jobs:
             build/tests/pvm-doom/*.log
             build/ci/*.log
 
-  perf-status:
-    name: Perf
-    timeout-minutes: *ci-job-timeout
-    needs: [perf, pvm-comparison]
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Perf family
-        env:
-          SHARDS_RESULT: ${{ needs.perf.result }}
-          COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}
-        run: test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success
-
+  # Fuzz group: named workloads report their own results.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
     name: Fuzz / ${{ matrix.family.name }}
@@ -940,19 +861,3 @@ jobs:
             build/tests/jam-network/*.log
             build/tests/jam-network/*.json
             build/tests/jam-network/summary.md
-
-  # Future subsystem campaigns join this aggregate so one green child cannot conceal another failure.
-  fuzz-status:
-    name: Fuzz
-    timeout-minutes: *ci-job-timeout
-    needs: [pvm-fuzz]
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Fuzz job
-        env:
-          PVM_FUZZ_RESULT: ${{ needs.pvm-fuzz.result }}
-        run: test "$PVM_FUZZ_RESULT" = success
-
-  # Experimental execution-tier qualification is manual and independent of production performance gates.

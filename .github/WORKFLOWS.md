@@ -27,8 +27,7 @@ checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
 Label requests apply only while a PR is open. Closed/merged PR label events schedule no jobs
 and use isolated concurrency keys, so they cannot cancel active CI. Label removal is not a trigger.
-The workflow also supports manual dispatch with a selected scope. Every job, including aggregate
-checks, uses the shared `ci-job-timeout` anchor set to 60 minutes; families have no timeout overrides.
+The workflow also supports manual dispatch with a selected scope. Every workload job uses the shared `ci-job-timeout` anchor set to 60 minutes; families have no timeout overrides.
 
 **Perf / PVM DOOM** runs alongside **Perf / PVM** on master pushes and full/Perf requests.
 A standalone manual `bench-doom` scope runs DOOM alone. It checks the pinned frame-1320
@@ -42,10 +41,11 @@ See [the performance monitoring contract](../spec/pvm-ci-performance.md).
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
 
-The **Build** aggregate requires every selected Build family. Automatic PR updates and manual
+Automatic PR updates and manual
 `smoke` requests select **Build / Smoke** alone. Master/full requests select **Smoke**, **Tooling**,
-**Linux & Docker** and **macOS**. Complete group checks are **Build**, **Unit**, **Contract**,
-**E2E**, **Interop**, **Perf** and **Fuzz**; unexpected failures, skips and cancellations stay red.
+**Linux & Docker** and **macOS**. Workloads retain **Build**, **Unit**, **Contract**, **E2E**, **Interop**, **Perf** and **Fuzz**
+name prefixes and adjacent in-file group sections. There are no separate aggregate runners;
+individual workload checks report their own results.
 
 **Build / Linux & Docker** runs native packaging, the checked-release audit of every production
 module, then isolated Docker validation. Checks retain independent
@@ -55,11 +55,11 @@ model verification and compiler rejection guards, with independent verdicts, sum
 Model checks and rejection guards still run after earlier Tooling failures.
 `unit` / `ci:unit` requests select Smoke, Tooling and **Linux Checks**, running the same source/guard
 checks without adding archive packaging or Docker. Manual `build` selects Linux & Docker and
-macOS; manual `docker` / `ci:docker` selects Docker alone and omits the complete-group gate.
+macOS; manual `docker` / `ci:docker` selects Docker alone.
 
 Build, Interop and Perf each use one matrix job with `Group / ${{ matrix.family.name }}` display
 names. Job conditions run before matrix expansion. Standalone manual workload scopes such as
-`ref-pvm` or `bench-storage` select only their workload and omit the complete-group gate.
+`ref-pvm` or `bench-storage` select only their workload.
 
 **Build / Linux & Docker** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
 for Linux x86-64 and macOS ARM64. The complete Build group runs on master/full requests and
