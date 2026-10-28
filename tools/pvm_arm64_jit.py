@@ -88,6 +88,15 @@ def qualify(checks, compiler, *, native=True):
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
                 raise ValueError('Missing complete one-block region boundary witness')
+            pool_receipts = [line for line in checked['output'].splitlines()
+                             if line.startswith('ARM_REGION_POOL_STREAM_CASES,')]
+            if pool_receipts != ['ARM_REGION_POOL_STREAM_CASES,264']:
+                raise ValueError('Missing complete multi-region stream witness')
+            if name == 'witness' and native:
+                capacity = [line for line in checked['output'].splitlines()
+                            if line.startswith('ARM_REGION_POOL_CASES,')]
+                if capacity != ['ARM_REGION_POOL_CASES,320']:
+                    raise ValueError('Missing complete region-pool capacity witness')
         checked['build'] = {key:value for key,value in built.items() if key != 'output'}
         if name == 'witness-refused' or (native and name == 'witness'):
             # The existing independent witness must prove real publication/calls or an exact zero-count refusal.
