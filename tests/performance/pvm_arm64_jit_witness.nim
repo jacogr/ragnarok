@@ -821,75 +821,76 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
       assert actual.value.access == image.access and actual.value.bytes == image.bytes
 
 var loadCases = 0
-for layout in 0..<8:
-  var images: seq[PageImage] = @[]
-  if layout != 0:
-    # Adjacent RO/RW, split permissions, a missing page, an inaccessible page, fragmented RO and the final page.
-    var first = PageImage(index: PageIndex(if layout == 7: 1048575'u32 else: 16'u32),
-        access: (if layout == 2 or layout == 7: PageAccess.ReadWrite else: PageAccess.ReadOnly),
-        bytes: default(array[4096, byte]))
-    for at in 0..<4096: first.bytes[at] = byte((at*17+layout) mod 256)
-    images.add(first)
-    if layout in [1, 2, 3, 4, 6]:
-      var second = PageImage(index: PageIndex(if layout == 6: 18'u32 else: 17'u32),
-          access: (if layout == 4: PageAccess.Inaccessible elif layout in [2,
-              3]: PageAccess.ReadWrite else: PageAccess.ReadOnly),
+for opcode in 124'u8..130'u8:
+  for layout in 0..<8:
+    var images: seq[PageImage] = @[]
+    if layout != 0:
+      # Adjacent RO/RW, split permissions, a missing page, an inaccessible page, fragmented RO and the final page.
+      var first = PageImage(index: PageIndex(if layout == 7: 1048575'u32 else: 16'u32),
+          access: (if layout == 2 or layout == 7: PageAccess.ReadWrite else: PageAccess.ReadOnly),
           bytes: default(array[4096, byte]))
-      if second.access != PageAccess.Inaccessible:
-        for at in 0..<4096: second.bytes[at] = byte((at*29+layout+91) mod 256)
-      images.add(second)
-  for destination in [0, 1]:
-    for displacement in [0'u32, 7'u32, 0xfffffff8'u32]:
-      # A aliases B in one shape; source address calculation must finish before the loaded destination changes.
-      var load = @[130'u8, byte(0x10+destination)]
-      for shift in 0..<4: load.add(byte((uint64(displacement) shr (shift*8)) and 255))
-      let program = owner([load, @[149'u8, byte(destination*16+2), 1],
-          @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[0'u8]])
-      let plan = newFlatPlan(program, GasCycleLimit(100000))
-      let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
-      var frame = newFlatFrame(plan, images, initial)
-      for address in [0'u64, 65535, 65536, 65537, 69624, 69625, 69631, 69632, 73720, 73721,
-          73728, 0xfffffff7'u64, 0xfffffff8'u64, 0xffffffff'u64, 0x100010000'u64, high(uint64)]:
+      for at in 0..<4096: first.bytes[at] = byte((at*17+layout) mod 256)
+      images.add(first)
+      if layout in [1, 2, 3, 4, 6]:
+        var second = PageImage(index: PageIndex(if layout == 6: 18'u32 else: 17'u32),
+            access: (if layout == 4: PageAccess.Inaccessible elif layout in [2,
+                3]: PageAccess.ReadWrite else: PageAccess.ReadOnly),
+            bytes: default(array[4096, byte]))
+        if second.access != PageAccess.Inaccessible:
+          for at in 0..<4096: second.bytes[at] = byte((at*29+layout+91) mod 256)
+        images.add(second)
+    for destination in [0, 1]:
+      for displacement in [0'u32, 7'u32, 0xfffffff8'u32]:
+        # A aliases B in one shape; source address calculation must finish before the loaded destination changes.
+        var load = @[opcode, byte(0x10+destination)]
+        for shift in 0..<4: load.add(byte((uint64(displacement) shr (shift*8)) and 255))
+        let program = owner([load, @[149'u8, byte(destination*16+2), 1],
+            @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[0'u8]])
+        let plan = newFlatPlan(program, GasCycleLimit(100000))
+        let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+        var frame = newFlatFrame(plan, images, initial)
+        for address in [0'u64, 65535, 65536, 65537, 69624, 69625, 69631, 69632, 73720, 73721,
+            73728, 0xfffffff7'u64, 0xfffffff8'u64, 0xffffffff'u64, 0x100010000'u64, high(uint64)]:
+          var input = initial
+          for slot in 0..<13: input.registers[slot] = RegisterValue(0x923456789abcdef0'u64+uint64(slot))
+          input.registers[1] = RegisterValue(address)
+          verifyControl(frame, program, input, 9, images)
+          inc loadCases
+        for paid in [false, true]:
+          for gas in [0'u64, 1, 4, 5, 1000]:
+            for budget in 0'u64..6'u64:
+              # Reuse an already emitted cache around exact out-of-gas and every partial reservation boundary.
+              var input = initial
+              input.registers[1] = RegisterValue(if layout == 7: 0xfffff003'u64 else: 65539'u64)
+              input.gas = MachineGas(gas)
+              input.blockCharged = paid
+              verifyControl(frame, program, input, budget, images)
+              inc loadCases
+        when defined(pvmArm64Jit):
+          let stats = flatArmStatistics(frame)
+          when defined(pvmArm64JitRefuse):
+            assert stats[2] == 0
+          else:
+            # Valid private maps execute the guarded load plus its three-operation suffix; absent maps preserve checked faults.
+            if layout == 0 or opcode != 130: assert stats[2] == 0
+            else: assert stats[2] > 0
+        # Same-plan replacement and a transferred stream must read the new invocation's word.
+        var changed: seq[PageImage] = @[]
+        for original in images:
+          var image = original
+          if image.access != PageAccess.Inaccessible:
+            for at in 0..<4096: image.bytes[at] = byte((at*31+layout+7) mod 256)
+          changed.add(image)
+        let accepted = replaceFlatMemoryChecked(frame, changed, initial)
+        assert accepted == FlatError.None
         var input = initial
-        for slot in 0..<13: input.registers[slot] = RegisterValue(0x923456789abcdef0'u64+uint64(slot))
-        input.registers[1] = RegisterValue(address)
-        verifyControl(frame, program, input, 9, images)
-        inc loadCases
-      for paid in [false, true]:
-        for gas in [0'u64, 1, 4, 5, 1000]:
-          for budget in 0'u64..6'u64:
-            # Reuse an already emitted cache around exact out-of-gas and every partial reservation boundary.
-            var input = initial
-            input.registers[1] = RegisterValue(if layout == 7: 0xfffff003'u64 else: 65539'u64)
-            input.gas = MachineGas(gas)
-            input.blockCharged = paid
-            verifyControl(frame, program, input, budget, images)
-            inc loadCases
-      when defined(pvmArm64Jit):
-        let stats = flatArmStatistics(frame)
-        when defined(pvmArm64JitRefuse):
-          assert stats[2] == 0
-        else:
-          # Valid private maps execute the guarded load plus its three-operation suffix; absent maps preserve checked faults.
-          if layout == 0: assert stats[2] == 0
-          else: assert stats[2] > 0
-      # Same-plan replacement and a transferred stream must read the new invocation's word.
-      var changed: seq[PageImage] = @[]
-      for original in images:
-        var image = original
-        if image.access != PageAccess.Inaccessible:
-          for at in 0..<4096: image.bytes[at] = byte((at*31+layout+7) mod 256)
-        changed.add(image)
-      let accepted = replaceFlatMemoryChecked(frame, changed, initial)
-      assert accepted == FlatError.None
-      var input = initial
-      input.registers[1] = RegisterValue(if layout == 7: 0xfffff003'u64 else: 65539'u64)
-      verifyControl(frame, program, input, 9, changed)
-      var cache = takeFlatStream(frame)
-      var fresh = newFlatFrame(plan, images, input)
-      restoreFlatStream(fresh, cache)
-      verifyControl(fresh, program, input, 9, images)
-      loadCases+=2
+        input.registers[1] = RegisterValue(if layout == 7: 0xfffff003'u64 else: 65539'u64)
+        verifyControl(frame, program, input, 9, changed)
+        var cache = takeFlatStream(frame)
+        var fresh = newFlatFrame(plan, images, input)
+        restoreFlatStream(fresh, cache)
+        verifyControl(fresh, program, input, 9, images)
+        loadCases+=2
 
 # Folded source instructions and all three price policies retain the same exact head-load reservation semantics.
 for folded in [false, true]:

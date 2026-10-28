@@ -2347,3 +2347,104 @@ execution receipt remains interpreted. Completed operations still require a publ
 a call; forced interpretation and unavailable native policies still require every native counter
 to be zero. Parser tests cover both the honest refusal and forged activity claims. Earlier timing
 tables remain evidence for their recorded source heads, not measurements of this reconciled tree.
+
+
+## Guarded scalar read-width trial — rejected (October 28)
+
+Scope: extend the existing first-read/pure-suffix leaf from opcode130 to indirect loads124–130,
+including signed8/16/32-bit extension. GP source/width/sign semantics remain those of the existing
+checked memory handlers; pinned specification/toolchain inputs are unchanged. Native code uses
+the same three invocation-owned descriptors and conservative complete-eight-byte guard for every
+width. Narrow loads near a region end deliberately retain the canonical fallback rather than
+introduce new descriptors or relax any bound. Source budgets, pricing, faults, host invalidation,
+cache limits and transactional register publication are unchanged.
+
+The trial passed7,098 independent literal width/sign/alias cases,30,144 complete-state memory
+cases in both native and refused profiles, all nine native gates and both backend-policy suites.
+The full cohort passed70processes/910calls,115controls,16fresh builds/eight equal-image pairs,
+and721 sealed identities. Every raw process was independently reparsed, including strict
+forced-interpreter zero-native receipts and current policy binary equality. Another140balanced
+processes/1,820checked calls resolved the small timing differences. No hardware counters were collected.
+
+Measured trial:`b5b8ee3e589a011664f9708d7d92cbc72cb1b258`; reconciled parent:
+`9673f7a66b902a6f6783bd64c1d23947e75a8b4a`. AppleM1Max, pinned Nimony358b9bce, checked
+release/ARC/Clang ThinLTO. Full receipt SHA256:
+`f8cad2cc6decfe9e9a54c2fbead25e50fb163f68a2ea3bfaa93430e1b01c3a12`; balanced receipt:
+`e36afea06fe367ed3a3850cefbd5452c2155f250718122d96c80d8f25560f77f`.
+
+Balanced repeated CPU medians in milliseconds: ten separate processes per version, twelve
+post-cold calls per process, five alternating ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.322 (2.299–2.361) | 2.319 (2.287–2.361) | 0.999 | 0.998, 0.998, 0.996, 0.991, 1.006 |
+| minimal 100000 | 4.894 (4.865–4.907) | 4.852 (4.820–4.861) | 0.991 | 0.986, 0.990, 0.996, 0.990, 0.996 |
+| memset 100000 | 3.397 (3.365–3.472) | 3.439 (3.374–3.528) | 1.013 | 1.019, 1.006, 1.023, 1.000, 0.994 |
+| pinky 1 | 71.073 (70.057–71.888) | 70.296 (69.689–71.886) | 0.989 | 1.009, 0.982, 0.980, 0.988, 0.993 |
+| sieve 10000000 | 222.553 (220.403–225.072) | 224.259 (222.108–225.948) | 1.008 | 1.008, 1.009, 1.005, 1.007, 1.007 |
+| init 0 | 195.808 (195.367–196.112) | 195.740 (195.184–198.115) | 1.000 | 1.006, 1.000, 0.999, 1.002, 0.998 |
+| tick 0 | 35.368 (35.229–35.748) | 35.651 (35.535–35.780) | 1.008 | 1.008, 1.009, 1.001, 1.007, 1.011 |
+
+Verdict:restore both runtime modules byte-for-byte from the accepted parent. Long sieve and
+gameplay regress about0.8% in all five balanced blocks. Pinky's1.1% improvement overlaps the
+parent range and loses one block. Minimal's0.9% change executes identical native operations/code
+and is a whole-image effect, not useful evidence for wider-load lowering. This mix does not
+justify expanding production native coverage. Retain the expanded full-source width/budget/fault/
+replacement matrix; narrow operations intentionally exercise the existing canonical fallback.
+Native literal coverage returns to the accepted64-bit family.
+
+Complete-cohort reused CPU medians, forward/reverse, exclude the cold call and two warmups.
+Public calls include fresh invocation memory and immutable publication; the reference column
+contains raw interpreted calls and excludes restoration/teardown.
+
+| Workload | Accepted JIT | Rejected trial | PolkaVM interpreted | Accepted / reference |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 2.336 / 2.365 | 2.366 / 2.327 | 5.918 / 5.994 | 0.395 / 0.395 |
+| minimal 100000 | 4.888 / 4.888 | 4.929 / 4.889 | 6.040 / 6.059 | 0.809 / 0.807 |
+| memset 100000 | 3.417 / 3.486 | 3.478 / 3.530 | 3.969 / 3.966 | 0.861 / 0.879 |
+| pinky 1 | 70.766 / 72.318 | 69.511 / 71.050 | 94.302 / 96.374 | 0.750 / 0.750 |
+| sieve 10000000 | 224.007 / 221.476 | 223.189 / 223.510 | 369.092 / 367.240 | 0.607 / 0.603 |
+| init 0 | 196.459 / 200.831 | 196.913 / 199.685 | 676.639 / 680.169 | 0.290 / 0.295 |
+| tick 0 | 35.619 / 36.835 | 36.855 / 36.150 | 44.208 / 44.108 | 0.806 / 0.835 |
+
+Constructor/cold CPU milliseconds, forward/reverse. The owner constructor is separate from
+the first public invocation; cold includes lazy compilation/publication. Reference module
+construction has a different scope and is not equated to our prepared-owner construction.
+
+| Workload | Accepted owner | Trial owner | Accepted cold | Trial cold |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.598 / 1.572 | 1.676 / 1.576 | 7.755 / 7.824 | 7.851 / 7.485 |
+| minimal 100000 | 0.015 / 0.010 | 0.010 / 0.011 | 4.979 / 5.038 | 4.928 / 4.974 |
+| memset 100000 | 0.053 / 0.052 | 0.049 / 0.053 | 4.839 / 5.034 | 5.003 / 5.119 |
+| pinky 1 | 0.457 / 0.519 | 0.518 / 0.483 | 73.710 / 74.740 | 72.999 / 73.863 |
+| sieve 10000000 | 1.623 / 1.607 | 1.578 / 1.592 | 239.763 / 227.465 | 228.031 / 228.048 |
+| init 0 | 7.787 / 7.538 | 7.633 / 8.256 | 218.040 / 220.301 | 215.668 / 222.896 |
+| tick 0 | 8.080 / 8.133 | 8.329 / 7.773 | 50.071 / 46.411 | 54.462 / 47.678 |
+
+Reference lifecycle retained separately (median call3–12, milliseconds):
+
+| Phase/order | Restore | Raw call | Teardown | Total lifecycle |
+|---|---:|---:|---:|---:|
+| init 0 | 2.207 | 676.639 | 0.005 | 678.760 |
+| init 1 | 2.224 | 680.169 | 0.007 | 682.516 |
+| tick 0 | 2.115 | 44.208 | 0.006 | 46.358 |
+| tick 1 | 2.139 | 44.108 | 0.005 | 46.264 |
+
+Coverage explains the tradeoff without identifying a CPU cause: gameplay lowered operations
+rise83,240,962→92,157,218, but native handoffs also rise26,300,313→28,276,092. Pinky rises
+168,521,851→176,702,092operations and32,354,595→33,411,690handoffs. Initialization still reaches
+the1,024publication cap; its native bytes grow100,312→105,004. Long sieve adds only5,409lowered
+operations over its thirteen calls, with identical266,580,709handoffs. This favors investigating
+longer mixed fragments/continuations rather than indiscriminately adding short native leaves.
+
+Receipts:`build/pvm-arm64-jit/post-merge/read-widths/`, with the complete cohort archived under
+`measured-applications`; original report paths retain their pre-archive locations. No Linux timing
+or correctness claim is made for the rejected runtime; the retained runtime is byte-identical to
+the reconciled parent, whose native qualification passed.
+
+Native restacking after the tooling reconciliation preserves measured source identity: rebased
+trial `27a9c1cd2600999419faa671b3d74ab74a70385b` has identical production/native/witness bytes to measured `b5b8ee3e`.
+The retained runtime equals parent `b1171011350b044f78523b659842ab859ba366f4` byte-for-byte. Restored native/refused witnesses
+pass507/0literal cases and30,144complete-state load cases each. Twelve focused Python checks
+pass; a separate26-call replay on the sealed identical images verifies explicit interpreted
+zero-native and JIT-positive profiling policies, with all clocks discarded.
