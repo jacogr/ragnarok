@@ -6,10 +6,20 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from pvm_arm64_jit_profile import invocation_samples
+from pvm_arm64_jit_profile import invocation_samples, profile_policy
 
 
 class InvocationSampleTests(unittest.TestCase):
+    def test_explicit_owner_policy_and_historical_images(self):
+        """Byte-identical images must profile distinct requested policies; historical compiled modes keep no override."""
+        self.assertEqual(profile_policy('matched-owner-policy-v2', 'interpreter'), 'interpreted')
+        self.assertEqual(profile_policy('matched-owner-policy-v2', 'jit'), 'jit')
+        for role in ('interpreter', 'jit'):
+            self.assertEqual(profile_policy('matched-owner-v1', role), '')
+        for protocol, role in [('unknown', 'jit'), ('matched-owner-policy-v2', 'baseline')]:
+            with self.subTest(protocol=protocol, role=role), self.assertRaises(ValueError):
+                profile_policy(protocol, role)
+
     def test_excludes_setup_and_validation_without_double_counting(self):
         """Nested inclusive weights become self weights only inside the selected public call."""
         trace = '''Call graph:

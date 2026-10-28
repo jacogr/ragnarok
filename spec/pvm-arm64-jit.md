@@ -2012,3 +2012,13 @@ refused missing compiler-elided markers. All failed receipts remain under
 `build/pvm-arm64-jit/post-merge/`; none supplies a speed verdict. Completed scoped receipts:
 `build/pvm-arm64-jit/scoped-profile/`. Publication diagnostic:
 `build/pvm-arm64-jit/post-merge/publication-diagnostic/`.
+
+
+### Scoped profiler reconciliation with owner policies (October 28)
+
+The sampling adapter now replays the sealed cohort's protocol and selects its explicit runtime
+owner policy for same-image v2 comparisons. Without that selection, profiling the image named
+interpreter would use the new default JIT policy. Historical v1 images retain an empty override
+and their existing framing. Unknown roles/protocols are refused before launching a child. Existing
+sampled receipts remain historical evidence for their recorded pre-policy images. This tooling
+change affects no production execution or previously compiled application image.

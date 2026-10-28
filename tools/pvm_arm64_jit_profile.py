@@ -59,6 +59,17 @@ def invocation_samples(trace, marker):
                 self_samples=dict(inside.most_common()), outside_self_samples=dict(outside.most_common()))
 
 
+def profile_policy(protocol, role):
+    """Same-image profiles select the captured owner policy; historical images retain their original defaults."""
+    if role not in ('interpreter', 'jit'):
+        raise ValueError('Unknown scoped profile role')
+    if protocol == 'matched-owner-v1':
+        return ''
+    if protocol == 'matched-owner-policy-v2':
+        return 'interpreted' if role == 'interpreter' else 'jit'
+    raise ValueError('Unknown scoped comparison protocol')
+
+
 def run():
     """Sample sealed images serially, revalidate every call, and retain all raw diagnostic evidence."""
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
@@ -67,11 +78,13 @@ def run():
     report = json.loads(report_path.read_text())
     if report['status'] != 'passed':
         raise ValueError('Application cohort is incomplete')
+    protocol = report.get('comparison_protocol', 'matched-owner-v1')
     identities = {ROOT/name: value for name, value in report['identities'].items()}
     unchanged(identities)
     folder = ROOT/'build/pvm-arm64-jit/scoped-profile'
     folder.mkdir(parents=True, exist_ok=True)
     result = dict(status='incomplete', clocks='discarded', hardware_counters=False,
+                  comparison_protocol=protocol,
                   cohort_sha256=hashlib.sha256(report_path.read_bytes()).hexdigest(),
                   adapter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   source_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
@@ -89,6 +102,7 @@ def run():
                 original = next(row for row in report['runs'] if
                     (row['case'], row['limit'], row['role'], row['order']) == (case, limit, role, 0))
                 environment = dict(os.environ, RAGNAROK_PVM_GUEST=case,
+                    RAGNAROK_PVM_BACKEND=profile_policy(protocol, role),
                     RAGNAROK_PVM_PRICING='prepared', RAGNAROK_PVM_SIEVE_SAMPLES='13',
                     RAGNAROK_PVM_SIEVE_CLOCK='1', RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',
                     RAGNAROK_PVM_DOOM_PRICING='prepared', RAGNAROK_PVM_DOOM_PREPARATION='1',
@@ -118,7 +132,7 @@ def run():
                 if code or sampled.returncode or not trace.is_file():
                     raise RuntimeError('Profile process failed: '+name)
                 parsed = parse_run(output.read_text(), role, case, limit,
-                    (prepared/(case+'.events')).stat().st_size if doom else 0)
+                    (prepared/(case+'.events')).stat().st_size if doom else 0, protocol)
                 if len(parsed['execution']['samples']) != 13:
                     raise ValueError('Incomplete checked profile process')
                 scoped = invocation_samples(trace.read_text(), marker)
