@@ -7,6 +7,13 @@ update their feature contract rather than appending progress here.
 shapes. The `src/ragnarok.nim` entry point parses flags once; feature modules do not read
 process arguments. A single bounded startup chain snapshot feeds RPC and telemetry.
 
+An independently optional `src/mcp/` Streamable HTTP listener exposes a fixed read-only tool catalog
+through the existing synchronous RPC query implementation. Services passes one temporary selected
+query context; the MCP owner retains only bounded socket bytes. Canonical worker leases return
+retryable busy tool results without touching state aliases. Light queries use the actor's detached
+header metadata, never its proof graph or a fabricated complete view. MCP activation enables no
+other listener. See [MCP scope](../../spec/mcp.md).
+
 An independent `src/ui/` static HTTP listener shares the peer dispatcher and owns bounded
 connections plus an optional pinned development root. Release assets are embedded in the binary;
 `--ui-dev-dir` explicitly selects disk serving. UI activation enables RPC; RPC's

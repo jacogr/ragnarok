@@ -18,6 +18,25 @@ assert disabled.valid() and disabled.argumentCount() == 2
 assert disabled.argument(1) == "server" and disabled.argument(2) == "8000"
 assert not disabled.telemetryEnabled() and disabled.rpcPort() == 0 and disabled.uiPort() == 0
 
+# MCP is opt-in independently of WS/UI, with strict port validation and enabled-only collisions.
+var mcp = default(Options)
+assert parseCanonicalOptions(@["server", "--mcp-port", "19800"], mcp)
+assert mcp.mcpPort == 0 and mcp.rpcPort == 0
+assert parseCanonicalOptions(@["server", "--with-mcp"], mcp)
+assert mcp.mcpPort == 14141 and mcp.rpcPort == 0 and mcp.uiPort == 0
+assert parseCanonicalOptions(@["mesh", "--with-mcp", "--mcp-port", "65535", "--chain",
+    "chain.json"], mcp)
+assert mcp.mcpPort == 65535 and mcp.chainPath == "chain.json"
+for arguments in [@["server", "--with-mcp", "--with-mcp"],
+    @["server", "--mcp-port", "0"], @["server", "--mcp-port", "65536"],
+    @["server", "--mcp-port", "-1"], @["server", "--mcp-port", "abc"],
+    @["server", "--mcp-port"], @["server", "--mcp-port", "1", "--mcp-port", "2"],
+    @["server", "--with-mcp", "--with-rpc", "--mcp-port", "19800"],
+    @["server", "--with-mcp", "--with-ui", "--mcp-port", "8888"],
+    @["check-traces", "--with-mcp"]]:
+  assert not parseCanonicalOptions(arguments, mcp)
+  assert not mcp.valid and mcp.mcpPort == 0 # No failed parse retains earlier activation.
+
 # UI implies RPC, with defaults or independently configured ports in any trailing order.
 var ui = default(Options)
 assert parseCanonicalOptions(@["server", "--with-ui"], ui)

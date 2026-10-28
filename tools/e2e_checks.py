@@ -123,6 +123,22 @@ def rpc(context):
 
 
 @PLAN.workload(group='testnet', requires=('prepare_peer',))
+def mcp(context):
+    """Exercise the real MCP-only CLI endpoint using independent HTTP client lifecycle messages."""
+    from mcp_checks import run as mcp_checks
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        try:
+            observed = mcp_checks(binary, context.certificates, context.checks.folder/'mcp')
+        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+            # Startup, protocol or cleanup failures remain an independent required E2E verdict.
+            observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+    announce('MCP lifecycle and configured chain queries', observed['passed'])
+    return observed
+
+
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def testnet_tiny_devnet(context):
     """Fourteen blocks on six native validators must cross an epoch and recover a stopped node with independent maps."""
     compiled, binary = context.peer

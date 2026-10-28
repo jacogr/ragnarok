@@ -12,10 +12,10 @@ export cli_defaults
 
 type
   OptionGroup* {.pure.} = enum ## Ordered help sections keep activation flags beside their dependent settings.
-    General, PVM, Network, Ui, Rpc, Management, Telemetry, State, Storage, Recovery, Download,
+    General, PVM, Network, Ui, Rpc, Mcp, Management, Telemetry, State, Storage, Recovery, Download,
       Trace, Devnet, Fuzz
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
-    Required, None, Disabled, Embedded, RpcPort, UiPort, Timeout, PeerMode, Mode, Storage,
+    Required, None, Disabled, Embedded, RpcPort, McpPort, UiPort, Timeout, PeerMode, Mode, Storage,
     Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
       Logging, PvmBackend
   OptionSpec* = object ## Immutable catalog row; an empty commands string denotes shared service controls.
@@ -33,6 +33,7 @@ const
     "Network and TLS",
     "Browser UI",
     "WebSocket RPC",
+    "Agent MCP",
     "Local management",
     "Telemetry",
     "State execution",
@@ -158,6 +159,14 @@ const
       description: "Loopback WebSocket port (1..65535); must differ from UI.",
       fallback: OptionDefault.RpcPort, commands: "",
       repeatable: false),
+
+    # Agent queries are independently optional and share no privileged registry.
+    OptionSpec(name: "--with-mcp", value: "", group: OptionGroup.Mcp,
+      description: "Enable read-only MCP queries over loopback HTTP.",
+      fallback: OptionDefault.Disabled, commands: "", repeatable: false),
+    OptionSpec(name: "--mcp-port", value: "NUMBER", group: OptionGroup.Mcp,
+      description: "Loopback MCP port (1..65535); must differ from enabled RPC/UI.",
+      fallback: OptionDefault.McpPort, commands: "", repeatable: false),
 
     # Local management options. Keep additions in this group.
     OptionSpec(name: "--with-management", value: "", group: OptionGroup.Management,
@@ -381,6 +390,7 @@ proc defaultValue*(spec: OptionSpec): string =
   of OptionDefault.Disabled: "disabled"
   of OptionDefault.Embedded: "embedded assets"
   of OptionDefault.RpcPort: $DefaultRpcPort
+  of OptionDefault.McpPort: $DefaultMcpPort
   of OptionDefault.UiPort: $DefaultUiPort
   of OptionDefault.Timeout: $DefaultTimeoutMs
   of OptionDefault.PeerMode: DefaultPeerMode

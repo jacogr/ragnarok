@@ -21,6 +21,7 @@ import ../../../src/state/[store, accumulation_state, accumulation_chain, accumu
 import ../../support/[accumulation_activity_context, accumulation_completion_context,
   accumulation_execution_context, accumulation_runner_context, arc_evidence]
 import ../../support/report_admission_context as report_fixture
+import ../../support/mcp_socket
 import ../../support/rpc_socket
 
 # Backend faults begin after all authored source/context bytes are independently retained.
@@ -80,7 +81,7 @@ proc execution(owner: var Services, context: SeedFixture): PreparedFinalAccumula
 const SeedPath = "application-services-chain.json"
 const DiskPath = "application-services-state.db" # Every mode chooses one explicit isolated fixture journal.
 
-proc configured(port = 0'u16, withState = false, disk = false): Options =
+proc configured(port = 0'u16, withState = false, disk = false, mcpPort = 0'u16): Options =
   ## Telemetry-only options exercise disabled RPC without making a collector connection.
   result = default(Options)
   var arguments = @["server", "--chain", SeedPath]
@@ -93,16 +94,19 @@ proc configured(port = 0'u16, withState = false, disk = false): Options =
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
+  if mcpPort != 0:
+    for value in ["--with-mcp", "--mcp-port", $mcpPort]: arguments.add(value)
   if disk:
     for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
   assert parseCanonicalOptions(arguments, result)
 
-proc listener(owner: var Services, viaCli = false, withDisk = false): uint16 {.raises.} =
+proc listener(owner: var Services, viaCli = false, withDisk = false,
+    mcpPort = 0'u16): uint16 {.raises.} =
   ## Retry only the bounded release/bind race; each successful listener uses explicit state policy.
   for attempt in 0..<8:
     let reserved = reservation()
     discard posix.close(reserved.fd)
-    let options = configured(reserved.port, viaCli, withDisk)
+    let options = configured(reserved.port, viaCli, withDisk, mcpPort)
     let started = if viaCli: owner.start(options, "test") else: owner.start(options, "test", policy())
     if started: return reserved.port # Return only the port owned by the successful startup path.
   assert false, "ephemeral Services startup failed"
@@ -158,9 +162,13 @@ proc rpc(context: SeedFixture) {.raises.} =
   discard initApplicationChain(context.text, policy()).value
   let cost = hashCalls()
   failHash(0)
-  let port = listener(owner, true)
+  let mcpReservation = reservation()
+  discard posix.close(mcpReservation.fd)
+  let port = listener(owner, true, mcpPort = mcpReservation.port)
   assert hashCalls() == cost, "RPC reuses the seed without another map/header hash"
   let before = owner.stateSnapshot.value
+  let initialMcp = mcpTool(owner, mcpReservation.port, "get_chain_status")
+  assert "\"slot\":\"1\"" in initialMcp
   let peer = client(port)
   defer: discard posix.close(peer)
   var pending = ""
@@ -174,6 +182,9 @@ proc rpc(context: SeedFixture) {.raises.} =
   assert applied.error == ApplicationChainError.None
   assert sameStateSnapshot(owner.stateSnapshot.value, owner.chainView.bestBlock.value.stateSnapshot)
   assert "\"slot\":2" in readPacket(owner.rpc, peer, pending)
+  let advancedMcp = mcpTool(owner, mcpReservation.port, "get_chain_status")
+  assert "\"slot\":\"2\"" in advancedMcp
+  assert base64.encode(array[32, byte](applied.value.blockHash)) in advancedMcp
   sendText(peer, """{"jsonrpc":"2.0","method":"bestBlock","id":1}""")
   assert "\"slot\":2" in readPacket(owner.rpc, peer, pending)
   # Publication advances best state while the fixed configured genesis identity remains unchanged.

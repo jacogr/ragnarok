@@ -83,6 +83,13 @@ proc chainIdentity*(genesis: GenesisResult): ChainIdentity =
   ChainIdentity(known: true, headerHash: genesis.value.blockHash,
       stateRoot: genesis.value.stateRoot)
 
+proc chainIdentityJson*(identity: ChainIdentity): JsonValue =
+  ## Serialize fixed configured-genesis identity for independent read-only transports, without state aliases.
+  if identity.known:
+    jsonObject([("genesisHash", json(base64.encode(array[32, byte](identity.headerHash)))),
+      ("genesisStateRoot", json(base64.encode(array[32, byte](identity.stateRoot))))])
+  else: jsonNull() # A selected head alone does not establish configured genesis identity.
+
 proc quote*(text: string): string =
   ## Compatibility helper for callers needing a quoted JSON string.
   $json(text)
@@ -760,10 +767,7 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
     descriptor(info.chain.bestBlock.value) else: jsonNull()
   let finalized = if info.chain.finalizedBlock.error == GenesisError.None:
     descriptor(info.chain.finalizedBlock.value) else: jsonNull()
-  let identity = if info.identity.known:
-    jsonObject([("genesisHash", json(base64.encode(array[32, byte](info.identity.headerHash)))),
-      ("genesisStateRoot", json(base64.encode(array[32, byte](info.identity.stateRoot))))])
-    else: jsonNull() # A selected view alone does not establish configured genesis identity.
+  let identity = chainIdentityJson(info.identity)
   let usage = if stateful: subscriptionUsage(session) else: jsonNull()
   jsonObject([("name", json("Ragnarok")), ("version", json(AppVersion)),
     ("revision", json(AppRevision)), ("implementation", json("Nimony")),

@@ -15,6 +15,7 @@ type
     Journal, Managed, Paged
 
 const
+  DefaultMcpPort* = 14141'u16                 ## Default loopback agent query endpoint.
   DefaultRpcPort* = 19800'u16                 ## Default loopback WebSocket listener port.
   DefaultUiPort* = 8888'u16                   ## Default loopback HTTP listener port.
   MaxPeerTimeoutMs* = 120000                  ## Maximum ordinary bounded peer deadline.
