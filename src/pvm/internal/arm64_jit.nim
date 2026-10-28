@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Experimental ARM64 compiler for sealed register fragments and guarded connected blocks.
-## Code borrows invocation registers and a bounded scalar context, never guest/source pointers.
+## ARM64 scalar, guarded-memory and connected-block lowering with prepared source proofs.
+## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
 import std/assertions
 import ../[program, machine]
 
@@ -133,6 +133,18 @@ proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uin
   ## Arithmetic constants define all bits independently of the fixed conditional return selector.
   if fragment.compact: armCompactImmediate(fragment.words, destination, value)
   else: armImmediate(fragment.words, destination, value)
+
+proc emitArmShiftPair*(fragment: var ArmBlock, first, second: RegisterSlots,
+    firstImmediate, secondImmediate: uint64): bool =
+  ## Decline without mutation unless LSL64/LSR64 overwrite one destination with equal masked counts; full-block admission hides the intermediate value.
+  if first.destinationIndex != second.destinationIndex or second.bIndex != first.destinationIndex or
+      (firstImmediate and 63) != (secondImmediate and 63): return false
+  let source = armRead(fragment, first.bIndex)
+  let destination = armWrite(fragment, first.destinationIndex)
+  let amount = uint32(firstImmediate and 63)
+  # UBFM extracts exactly the low64-k bits; k=0 is a full-width copy and no instruction changes NZCV.
+  fragment.words.add(0xd3400000'u32 or ((63'u32-amount) shl 10) or (source shl 5) or destination)
+  true
 
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
