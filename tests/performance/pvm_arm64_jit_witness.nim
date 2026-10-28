@@ -1545,9 +1545,12 @@ var selfInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers:
 var selfRegion = newFlatFrame(selfRegionPlan, [], selfInfo)
 for visit in 0..<3:
   # The existing independent source-step oracle checks both cold discovery and actual reused connected execution.
+  echo "ARM_SELF_WARM_BEGIN,", visit
   verifyControl(selfRegion, selfRegionProgram, selfInfo, 1000)
+  echo "ARM_SELF_WARM_END,", visit
 when defined(pvmArm64Jit):
   let observed = flatArmRegionStatistics(selfRegion)
+  echo "ARM_SELF_NATIVE,", observed[0], ",", observed[1]
   when defined(pvmArm64JitRefuse): assert observed == default(array[2, uint64])
   else: assert observed[0] > 0 and observed[1] > observed[0]
 var selfRegionCases = 0
