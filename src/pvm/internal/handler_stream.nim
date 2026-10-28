@@ -1675,8 +1675,9 @@ when defined(pvmX86Jit):
     var blocks = default(array[2, X86RegionBlock])
     for index in 0..<active:
       let header = headers[index]
-      if int(header) >= f.handlers.len or f.handlers[int(header)] notin [flatX86Whole,
-          flatX86ProbeWhole]: return false
+      if int(header) >= f.handlers.len: return false
+      if f.handlers[int(header)] != flatX86Whole and f.handlers[int(header)] !=
+          flatX86ProbeWhole: return false
       let charge = f.arguments[int(header)]
       var native = default(X86Block)
       var current = header+1

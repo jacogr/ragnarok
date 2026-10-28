@@ -262,8 +262,9 @@ proc x86FinishProbe*(jit: X86Jit, header: uint32): bool =
 
 func x86RegionCount*(jit: X86Jit): range[1..2] =
   ## Only published proof records expose active block coordinates.
-  assert jit.region.status == 2 and jit.region.count in 1'u32..2'u32
-  range[1..2](jit.region.count)
+  let count = jit.region.count
+  assert jit.region.status == 2 and count >= 1 and count <= 2
+  range[1..2](count)
 
 func x86RegionHeader*(jit: X86Jit, index: range[0..1]): uint32 =
   ## The region retains exact-source headers rather than host-code addresses.
