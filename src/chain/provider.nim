@@ -140,7 +140,8 @@ func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
 func sameRetainedBlock(left, right: BlockSnapshot): bool =
   left.fuzzSeedOnly == right.fuzzSeedOnly and
     array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
-    sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right)
+    sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right) and
+    sameBlockBody(left, right)
 
 func sameChainView*(left, right: ChainView): bool =
   ## Require initialized identical ordered history and explicit finality; equal best roots alone do not match.

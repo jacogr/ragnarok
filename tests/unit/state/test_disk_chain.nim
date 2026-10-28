@@ -9,7 +9,7 @@ import ../../../src/app/[chain, disk_chain, disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
 import ../../../src/storage/[file_repository, node_repository, node_records, record_codec, database_identity]
-import ../../../src/codec/[bounded, state_trie, report_owned]
+import ../../../src/codec/[block_codec, bounded, state_trie, report_owned]
 import ../../../src/rpc/server
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.
@@ -61,6 +61,14 @@ proc publicationWitness() {.raises.} =
   let prepared = original.prepareAccumulation(fixture.source, completionLimits().composition).value
   let limits = journalLimits()
   let chain = default(StorageChainId)
+  var accepted = newSeq[byte](blockInfo(fixture.candidate).value.consumed)
+  assert encodeOwnedBlock(fixture.candidate, accepted).error == FrameError.None
+  assert not fixture.parent.value.hasBlockBody # Legacy/header-only seeds cannot fabricate raw accepted bytes.
+  assert prepared.child.hasBlockBody and prepared.child.blockBody == accepted
+  var detached = prepared.child.blockBody
+  detached[0] = detached[0] xor 1
+  assert prepared.child.blockBody == accepted # Mutating a read copy cannot alter durable publication bytes.
+  assert withBlockBody(prepared.child, detached).error == GenesisError.Invalid
   for enabled in [false, true]:
     var owner = original
     var path = if enabled: "disk-chain-rpc.db" else: "disk-chain-canonical.db"
@@ -135,6 +143,9 @@ proc publicationWitness() {.raises.} =
     assert array[32, byte](restored.stateSnapshot.value.commitment.root) == array[32, byte](
         source.commitment.root)
     assert sameStateSnapshot(restored.stateSnapshot.value, disk.snapshot.value)
+    assert restored.chainView.bestBlock.value.hasBlockBody
+    assert restored.chainView.bestBlock.value.blockBody == accepted
+    assert not restored.chainView.retainedBlockAt(RetainedBlockIndex(0)).value.hasBlockBody
 try:
   historyWitness()
   publicationWitness()

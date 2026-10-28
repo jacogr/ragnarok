@@ -21,11 +21,13 @@ type
 
 const
   HeadMagic = "RAGNAROK-DISK-HEAD-V1\n"
+  BodyHeadMagic = "RAGNAROK-DISK-HEAD-V2\n"
   ChainOffset = HeadMagic.len
   GenerationOffset = ChainOffset+32
   IdentityOffset = GenerationOffset+8
   LengthOffset = IdentityOffset+ApplicationCheckpointIdentityBytes
-  DiskHeadPrefixBytes* = LengthOffset+8 ## All fixed facts precede one exact bounded sealed-header encoding.
+  DiskHeadPrefixBytes* = LengthOffset+8 ## V1 header-only prefix; also the smallest permitted local-head entry.
+  DiskBodyHeadPrefixBytes* = LengthOffset+16 ## V2 adds an E8 complete-block length before header and body bytes.
 
 func error*[T](outcome: DiskHeadResult[T]): DiskHeadError =
   ## Read a typed stage refusal without exposing a default payload.
@@ -56,13 +58,17 @@ proc encodeDiskHead*(owner: ApplicationChain, chain: StorageChainId,
   let info = selected.header.headerInfo
   if info.error != HeaderError.None:
     return DiskHeadResult[seq[byte]](status: DiskHeadError.HeaderFailure)
-  if uint64(info.value.consumed) > maximum-uint64(DiskHeadPrefixBytes):
+  let bodyLength = if selected.hasBlockBody: selected.blockBodyLength else: 0
+  let prefix = if selected.hasBlockBody: DiskBodyHeadPrefixBytes else: DiskHeadPrefixBytes
+  if uint64(prefix) > maximum or uint64(info.value.consumed) > maximum-uint64(prefix) or
+      uint64(bodyLength) > maximum-uint64(prefix)-uint64(info.value.consumed):
     return DiskHeadResult[seq[byte]](status: DiskHeadError.LimitExceeded)
   let encoded = encodeApplicationCheckpointIdentity(identity.value, ByteLimit(ApplicationCheckpointIdentityBytes))
   if encoded.error != ApplicationCheckpointIdentityError.None:
     return DiskHeadResult[seq[byte]](status: DiskHeadError.IdentityFailure)
-  var bytes = newSeq[byte](DiskHeadPrefixBytes+info.value.consumed)
-  for index, character in HeadMagic: bytes[index] = byte(
+  var bytes = newSeq[byte](prefix+info.value.consumed+bodyLength)
+  let magic = if selected.hasBlockBody: BodyHeadMagic else: HeadMagic
+  for index, character in magic: bytes[index] = byte(
       character) # Exact version has no fallback interpretation.
   let chainBytes = array[32, byte](chain)
   for index in 0..<32: bytes[ChainOffset+index] = chainBytes[index]
@@ -70,9 +76,15 @@ proc encodeDiskHead*(owner: ApplicationChain, chain: StorageChainId,
   let metadata = encoded.value
   for index, octet in metadata: bytes[IdentityOffset+index] = octet
   putNumber(bytes, LengthOffset, uint64(info.value.consumed))
-  let header = encodeOwnedHeader(selected.header, bytes.toOpenArray(DiskHeadPrefixBytes, bytes.high))
+  if selected.hasBlockBody:
+    putNumber(bytes, LengthOffset+8, uint64(bodyLength)) # V2 explicitly distinguishes complete bytes from a header-only seed.
+  let header = encodeOwnedHeader(selected.header, bytes.toOpenArray(prefix,
+      prefix+info.value.consumed-1))
   if header.error != HeaderError.None:
     return DiskHeadResult[seq[byte]](status: DiskHeadError.HeaderFailure)
+  if selected.hasBlockBody:
+    let body = selected.blockBody # Extent was admitted before copying immutable bytes.
+    for index, octet in body: bytes[prefix+info.value.consumed+index] = octet
   DiskHeadResult[seq[byte]](status: DiskHeadError.None, completed: bytes)
 proc restoreDiskHead*(bytes: openArray[byte], chain: StorageChainId,
     generation: RepositoryGeneration, configuration: Parameters, state: StateStoreSnapshot,
@@ -83,16 +95,27 @@ proc restoreDiskHead*(bytes: openArray[byte], chain: StorageChainId,
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.LimitExceeded)
   if bytes.len <= DiskHeadPrefixBytes:
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.InvalidFormat)
-  for index, character in HeadMagic:
+  var withBody = true
+  for index, character in BodyHeadMagic:
+    if bytes[index] != byte(character): withBody = false # Version choice is exact; malformed V2 never decodes as V1.
+  let prefix = if withBody: DiskBodyHeadPrefixBytes else: DiskHeadPrefixBytes
+  let magic = if withBody: BodyHeadMagic else: HeadMagic
+  for index, character in magic:
     if bytes[index] != byte(character):
       return DiskHeadResult[ApplicationChain](status: DiskHeadError.InvalidFormat)
+  if bytes.len <= prefix:
+    return DiskHeadResult[ApplicationChain](status: DiskHeadError.InvalidFormat)
   let chainBytes = array[32, byte](chain)
   for index in 0..<32:
     if bytes[ChainOffset+index] != chainBytes[index]:
       return DiskHeadResult[ApplicationChain](status: DiskHeadError.WrongChain)
   if uint64(generation) == 0 or number(bytes, GenerationOffset) != uint64(generation):
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.GenerationMismatch)
-  if number(bytes, LengthOffset) != uint64(bytes.len-DiskHeadPrefixBytes):
+  let headerLength = number(bytes, LengthOffset)
+  let bodyLength = if withBody: number(bytes, LengthOffset+8) else: 0'u64
+  let remaining = uint64(bytes.len-prefix)
+  if headerLength == 0 or headerLength > remaining or bodyLength != remaining-headerLength or
+      (withBody and bodyLength == 0):
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.InvalidFormat)
   let identity = decodeApplicationCheckpointIdentity(bytes.toOpenArray(IdentityOffset,
       LengthOffset-1),
@@ -104,10 +127,15 @@ proc restoreDiskHead*(bytes: openArray[byte], chain: StorageChainId,
   if configuration.encodeParameters != identity.value.parameters.encodeParameters or
       array[32, byte](state.commitment.root) != array[32, byte](identity.value.stateRoot):
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.ContextMismatch)
-  let captured = captureBlockSnapshot(bytes.toOpenArray(DiskHeadPrefixBytes, bytes.high), state, configuration)
+  let headerEnd = prefix+int(headerLength) # Input extents prove host conversion and addition.
+  let captured = captureBlockSnapshot(bytes.toOpenArray(prefix, headerEnd-1), state, configuration)
   if captured.error != GenesisError.None:
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.CaptureFailure)
-  let restored = initApplicationChain(genesisView(captured))
+  let complete = if withBody: withBlockBody(captured.value, bytes.toOpenArray(headerEnd, bytes.high))
+    else: captured # Legacy contexts retain explicit body unavailability.
+  if complete.error != GenesisError.None:
+    return DiskHeadResult[ApplicationChain](status: DiskHeadError.CaptureFailure)
+  let restored = initApplicationChain(genesisView(complete))
   if restored.error != ApplicationChainError.None:
     return DiskHeadResult[ApplicationChain](status: DiskHeadError.ApplicationFailure)
   let checked = captureApplicationCheckpointIdentity(restored.value)

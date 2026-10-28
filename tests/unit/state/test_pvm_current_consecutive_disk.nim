@@ -6,7 +6,7 @@ import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[current_download_command, services]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded]
+import ../../../src/codec/[block_codec, report_owned, bounded]
 import ../../../src/storage/managed_manifest
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
@@ -58,6 +58,14 @@ proc check(fixture: CurrentConsecutiveFixture, managed, rpc, short: bool) {.rais
     assert array[32, byte](actual.parentHash) == array[32, byte](wanted.parentHash)
     assert uint32(actual.slot) == uint32(wanted.slot)
     equalCurrentDiskMap(actual.stateSnapshot, wanted.stateSnapshot) # Every retained map is checked, not just the best-head root.
+    if index == 0:
+      assert not actual.hasBlockBody # Configured genesis/checkpoint header supplies no fabricated original body.
+    else:
+      let candidate = fixture.children[index-1]
+      var bytes = newSeq[byte](blockInfo(candidate).value.consumed)
+      assert encodeOwnedBlock(candidate, bytes).error == FrameError.None
+      assert actual.hasBlockBody and actual.blockBody ==
+          bytes # Exact accepted transport payload survives restart and rotation.
   equalCurrentDiskMap(reopened.stateSnapshot.value, fixture.heads[adopted].stateSnapshot)
   reopened.close()
 
