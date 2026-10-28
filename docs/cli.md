@@ -141,3 +141,14 @@ to our engine: missing builds/platform/sandbox capabilities produce a startup re
 compiler currently requires qualified Linux x86-64; its interpreter also supports ARM64. CI
 comparisons use PolkaVM interpreted only for now. Startup logs state the requested mode and
 fallback policy; prepared-owner diagnostics expose actual native activity without hot-loop logging.
+
+## Node logging
+
+The default `info` level prints timestamped startup identity/version/platform and selected role,
+chain, database and service endpoints, followed by network/import/rejection activity and shutdown.
+A foreground server reports peers, known local head, traffic and request counts every five seconds.
+An unknown peer tip is shown as unknown; this is never a claim that the node is caught up.
+
+`--log-level warn` keeps warnings and errors; `--log-level off` disables queued diagnostics.
+Component filters remain available, for example `--log-level info,network=warn`.
+Times use UTC (`Z`). Command results and the stdout readiness marker remain independently observable.

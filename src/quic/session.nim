@@ -13,7 +13,7 @@ import ./transport
 import ./protocol
 import ./integration
 import ./offload
-import ../app/[options, services]
+import ../app/[options, services, node_logging]
 import ../telemetry/observer
 
 template progress*() {.varargs.} =
@@ -84,6 +84,11 @@ proc verifyPeer(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdec
 proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
     port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
+  if event == HandshakeFailed:
+    log(peer.logging, LogTarget.Network, LogLevel.Warn,
+        "Peer authentication rejected, remote port=" & $port)
+  elif event == AdmissionRefused:
+    log(peer.logging, LogTarget.Network, LogLevel.Warn, "Peer admission refused, remote port=" & $port)
   let exporter = peer.telemetry
   if exporter != nil: # Only explicitly configured server telemetry installs this callback.
     exporter[].observeIncoming(peer.incoming, slot, event, address, port, der, length)
@@ -93,6 +98,10 @@ proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   let peer = cast[ptr Peer](user)
   log(peer.logging, LogTarget.Network, LogLevel.Debug, "Peer event=" & $event & " slot=" & $slot)
+  if event == PeerAccepted:
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Peer connected")
+  elif event == PeerClosed:
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Peer disconnected")
   let exporter = peer.telemetry
   if exporter != nil: # Disabled runs install no observer or retained identity table entries.
     exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
@@ -289,6 +298,7 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
     let extent = frameExtent(peer, state)
     # Protocol failures cannot leave a read handler or reply buffer pending.
     if not extent.valid:
+      log(peer.logging, LogTarget.Network, LogLevel.Warn, "Rejected stream: invalid framing or unavailable preimage")
       finishStream(peer, state, false)
       streamAbort(state.handle)
       return
@@ -431,7 +441,8 @@ proc streamTick(peer: ptr Peer) {.raises: [].} =
     if peer.server:
       # A complete hash without request FIN must not retain its handler indefinitely.
       if not state.readFin and elapsed > (if peer.overload: 30000 else: 500):
-        progress "REQUEST_TIMEOUT"
+        log(peer.logging, LogTarget.Network, LogLevel.Warn, "Request rejected: timed out before FIN")
+        if not peer.listening: progress "REQUEST_TIMEOUT"
         finishStream(peer, state, false)
         streamAbort(state.handle)
       elif state.sendLength > 65536 and state.sendOffset < state.sendLength and
@@ -536,9 +547,11 @@ proc runPeer*(options: Options): bool {.raises.} =
   var services = default(Services)
   defer: services.close() # Transport teardown below ends every borrow before service retirement.
   if not services.start(options, options.argument(1)):
+    log(options.logWriter, LogTarget.Startup, LogLevel.Error, "Service startup failed")
     return false # Shared startup reports the owning service and retires partial listeners.
   # Cleanup must also run after poll/setup failures; both stack owners remain alive until final native callbacks finish.
   defer:
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Stopping peer networking")
     peer.stopping = true
     closeTransport(peer.transport)
     if peer.telemetry != nil: # SSL destruction can settle unfinished incoming attempts.
@@ -552,10 +565,12 @@ proc runPeer*(options: Options): bool {.raises.} =
   if not services.configureTelemetry(options, options.argument(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
     return false
-  if server and options.telemetryEnabled(): # Install before processing the first UDP packet.
-    peer.telemetry = addr services.telemetry
-    if not observeHandshakes(peer.transport, onHandshake) or
-        not observePeers(peer.transport, onPeer): return false # Startup retires any partial observer setup.
+  if server:
+    if options.telemetryEnabled(): peer.telemetry = addr services.telemetry
+    # Logging and telemetry independently need the same bounded primitive observation callbacks.
+    if options.telemetryEnabled() or peer.logging.enabled(LogTarget.Network, LogLevel.Warn):
+      if not observeHandshakes(peer.transport, onHandshake) or
+          not observePeers(peer.transport, onPeer): return false # Register before any UDP processing.
   var telemetryAttempt = EventId(0)
   var telemetryPending = false
   # Settle a still-pending dial on timeout, synchronous failure, cancellation or an early return.
@@ -572,6 +587,9 @@ proc runPeer*(options: Options): bool {.raises.} =
             0: 1'u32 else: 0'u32)
     services.telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
   if server and listening:
+    log(peer.logging, LogTarget.Storage, LogLevel.Info, "Local head: " & services.describeHead)
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Network: JAMNP-S over QUIC; protocol=" &
+        options.argument(6))
     log(peer.logging, LogTarget.Network, LogLevel.Info, "Listening on UDP port " & $localPort(
         peer.transport))
     log(peer.logging, LogTarget.Network, LogLevel.Info, "TLS certificate: " & options.argument(3))
@@ -581,9 +599,13 @@ proc runPeer*(options: Options): bool {.raises.} =
     services.telemetry.observe(0) # Queue registration before any lifecycle frame on the new collector stream.
     telemetryAttempt = services.telemetry.startDial(peer.expected, uint16(port), load)
     telemetryPending = true
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Connecting to peer on " &
+      (if load: "[::1]:" else: "127.0.0.1:") & $port)
     if not connectTransport(peer.transport, uint16(port)): return false # Defer records this failed attempt.
 
   let started = getMonoTime()
+  var lastStatus = started
+  var lastTraffic = peer.transport.trafficBytes
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
   let cancelFile = getEnv("RAGNAROK_OFFLOAD_CANCEL")
   # An externally gated service must have a concrete stop path before entering its bounded loop.
@@ -602,13 +624,28 @@ proc runPeer*(options: Options): bool {.raises.} =
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
     services.telemetry.observe(telemetryPeers)
+    if listening and (getMonoTime()-lastStatus).inMilliseconds >= NodeStatusIntervalMs:
+      let now = getMonoTime()
+      let elapsed = uint64(max(1'i64, (now-lastStatus).inMilliseconds))
+      let traffic = peer.transport.trafficBytes
+      let incoming = min(traffic.received-lastTraffic.received, high(uint64) div 1000) *
+          1000 div elapsed
+      let outgoing = min(traffic.sent-lastTraffic.sent, high(uint64) div 1000) * 1000 div elapsed
+      log(peer.logging, LogTarget.Startup, LogLevel.Info,
+        (if telemetryPeers == 0: "Waiting for peers" else: "Sync target unknown") & " (" &
+            $telemetryPeers & " peers), " &
+        services.describeHead & ", sync target: unknown, in: " & $incoming & " B/s, out: " &
+        $outgoing & " B/s, requests: " & $peer.healthy & " accepted / " & $peer.rejected & " rejected")
+      lastStatus = now
+      lastTraffic = traffic
+
     services.tick(telemetryPeers) # Attempt one finalized handoff before bounded RPC/UI work.
     if peer.offloading: offloadTick(addr peer) # Poll completions without blocking UDP or native deadlines.
     # Observe retirement while keeping the same socket, dispatcher and native engine throughout every wave.
     if peer.service:
       let active = int(peerMetric(peer.transport, 0))
       if active != lastActive:
-        progress "PEERS ", active
+        if not listening: progress "PEERS ", active
         lastActive = active
       var live = 0
       # Only final native close releases application buffer ownership.
@@ -623,7 +660,7 @@ proc runPeer*(options: Options): bool {.raises.} =
         lastLive = live; lastCapacity = peer.capacityRejected; lastCapacityConnections = int(
             peerMetric(peer.transport, 5))
       let accepted = peerMetric(peer.transport, 1)
-      if active == 0 and live == 0 and accepted > lastIdle:
+      if not listening and active == 0 and live == 0 and accepted > lastIdle:
         progress "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
         lastIdle = accepted
       if not listening and fileExists(stopFile):
@@ -642,7 +679,8 @@ proc runPeer*(options: Options): bool {.raises.} =
       break # No stream callback exists if admission was refused before any request opened.
     if status < 0: break # Authentication or persistent UDP failure settles this bounded attempt.
     if status == 1 and not authenticated:
-      progress "AUTH_OK"
+      if not server: log(peer.logging, LogTarget.Network, LogLevel.Info, "Peer authenticated")
+      if not listening: progress "AUTH_OK"
       authenticated = true
     if authenticated and not server and not opened and mode != "idle":
       # Open concurrent requests before waiting for replies; the soak introduces three later healthy siblings.
@@ -892,6 +930,7 @@ proc runMesh*(options: Options): bool {.raises.} =
   var services = default(Services)
   defer: services.close() # The single service owner outlives both retained engines.
   if not services.start(options, options.argument(1)):
+    log(options.logWriter, LogTarget.Startup, LogLevel.Error, "Service startup failed")
     return false # Shared startup reports the owning service and retires partial listeners.
   defer:
     observeMeshDial(outgoing) # Observe real closes before destruction can change native counters.

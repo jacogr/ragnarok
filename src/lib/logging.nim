@@ -4,7 +4,7 @@
 ## Explicit application-owned diagnostic logging: immutable filters and one bounded native writer.
 ## Producers never wait for the queue or perform output IO. Close joins after all producers retire;
 ## draining close can wait for a blocked output sink. Handles borrow their fixed-address owner.
-import std/[assertions, strutils, locks, rawthreads, atomics]
+import std/[assertions, strutils, locks, rawthreads, atomics, times]
 
 type
   LogLevel* {.pure.} = enum ## Increasing verbosity; Off admits no records.
@@ -21,7 +21,7 @@ type
 const
   DefaultLogLevel* = LogLevel.Info ## One application-default threshold also displayed by CLI help.
   LogQueueCapacity* = 256          ## Fixed records, independent of guest rate or sink latency.
-  LogRecordBytes* = 2048           ## Includes level, component, escaped message and newline.
+  LogRecordBytes* = 2048           ## Includes timestamp, level, component, escaped message and newline.
   LogBatchRecords = 16
 
 type
@@ -111,6 +111,20 @@ proc parseLogPolicy*(text: string, policy: var LogPolicy): bool =
   policy = candidate
   true
 
+func shortHash*(hash: array[32, byte]): string =
+  ## A bounded display abbreviation retains both ends; it is never a protocol identifier.
+  const digits = "0123456789abcdef"
+  result = "0x"
+  for index in 0..<4:
+    result.add(digits[int(hash[index] shr 4)]); result.add(digits[int(hash[index] and 15)])
+  result.add("...")
+  for index in 28..<32:
+    result.add(digits[int(hash[index] shr 4)]); result.add(digits[int(hash[index] and 15)])
+
+func active*(logger: Logger): bool =
+  ## Lifecycle checks permit safe diagnostics at process failure boundaries before/after startup.
+  logger.started
+
 func configured*(writer: LogWriter): bool =
   ## Default handles select no shared application sink.
   writer.owner != nil
@@ -129,11 +143,33 @@ proc append(record: var LogRecord, text: string) =
       record.bytes[record.used] = character
       inc record.used
 
+type Calendar {.importc: "struct tm", header: "<time.h>", bycopy.} = object
+  ## libc owns the complete platform layout; conversion writes only worker-independent local storage.
+  tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst: cint
+proc utcTime(seconds: ptr clong, calendar: ptr Calendar): nil ptr Calendar {.
+    importc: "gmtime_r", header: "<time.h>".}
+  ## Thread-safe UTC conversion never reads process timezone state.
+proc formatTime(output: ptr char, capacity: csize_t, pattern: cstring,
+    calendar: ptr Calendar): csize_t {.importc: "strftime", header: "<time.h>".}
+  ## Bound native date formatting to caller-owned bytes.
+proc timestamp(): string =
+  ## Capture event time before queueing; disabled records never query the wall clock.
+  var seconds = clong(getTime().toUnix)
+  var calendar = default(Calendar)
+  var buffer = default(array[32, char])
+  if utcTime(addr seconds, addr calendar) == nil: return "[time unavailable] "
+  let length = formatTime(addr buffer[0], csize_t(buffer.len), "%Y-%m-%d %H:%M:%SZ", addr calendar)
+  if length == 0 or length >= csize_t(buffer.len): return "[time unavailable] "
+  result = ""
+  for index in 0..<int(length): result.add(buffer[index])
+  result.add(' ')
+
 proc encode(target: LogTarget, level: LogLevel, message: string): LogRecord =
   ## Escape guest/remote controls, preserve one physical line and visibly truncate within the cap.
   const hex = "0123456789abcdef"
   const suffix = "...[truncated]"
   result = default(LogRecord)
+  append(result, timestamp())
   append(result, "[" & $level & "][" & $target & "] ")
   var index = 0
   while index < message.len:
@@ -211,7 +247,10 @@ proc run(raw: pointer) =
       if lost > 0 and ord(owner.policy.levels[ord(LogTarget.Startup)]) >= ord(LogLevel.Warn):
         let sink = owner.sink
         assert sink != nil
-        sink(owner.context, "[warn][startup] logging dropped=" & $lost & "\n")
+        let warning = encode(LogTarget.Startup, LogLevel.Warn, "logging dropped=" & $lost)
+        var text = ""
+        for index in 0..<warning.used: text.add(warning.bytes[index])
+        sink(owner.context, text)
       return
     let taken = min(owner.count, LogBatchRecords)
     for index in 0..<taken:

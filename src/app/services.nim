@@ -11,6 +11,8 @@ import ../lib/logging
 import std/[syncio, strutils, base64, assertions, monotimes, times]
 import ../state/logical_continuation
 import ./options
+import ./node_logging
+import ../rpc/light_source
 import ./light_runtime as light_actor
 import ./[light_head, light_policy]
 import ./[checkpoint_recovery, checkpoint_trust]
@@ -52,7 +54,7 @@ import ../storage/[file_repository, node_repository, node_records, record_codec,
     managed_repository, managed_manifest, full_paged_store, history_index]
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
-import ../quic/transport
+import ../quic/[transport, protocol]
 import ../rpc/[server, protocol, proof_requests]
 import ../chain/[parameters, genesis]
 import ../ui/server
@@ -124,6 +126,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   rpcLease: nil RpcChainLease
   preparing: bool
   started, chainRpc: bool
+  rpcStarted, uiStarted, managementStarted, telemetryStarted,
+    storageStarted: bool            # Successful listener setup controls shutdown messages.
   disk: DiskStateStore
   diskWorker: DiskPublicationWorker
   diskMaintenance: PreparedDiskMaintenance
@@ -418,21 +422,29 @@ proc stopCheckpointExport*(services: var Services) =
 
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
+  if services.started:
+    log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping service workers and listeners")
   services.light.close() # Distinct light workers join before the borrowed RPC owner or partial evidence retires.
   services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
+  if services.mcp.enabled: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping MCP listener")
   services.mcp.close()
   services.mcpInfo = default(ClientInfo)
+  if services.managementStarted: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping management listener")
   services.management.close()
+  if services.uiStarted: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping UI listener")
   services.ui.close()
+  if services.rpcStarted: log(services.historyLog, LogTarget.Rpc, LogLevel.Info, "Stopping RPC listener")
   services.rpc.close()
+  if services.telemetryStarted: log(services.historyLog, LogTarget.Telemetry, LogLevel.Info, "Stopping telemetry exporter")
   services.telemetry.close()
   services.rpc = default(Server) # Server.close retires sockets; replacement also releases its retained history/configuration.
   services.adoption = default(AccumulationHandoff) # Retire pending or unacknowledged immutable owners on shutdown.
   services.currentAdoption = default(CurrentAccumulationHandoff) # Native workers joined before current graph retirement.
-  if services.disk.opened: discard services.disk.close
+  var storageClose = FileError.None
+  if services.disk.opened: storageClose = services.disk.close
   services.diskEnabled = false
   services.diskManaged = false
   services.compactBytes = ByteLimit(0)
@@ -441,7 +453,17 @@ proc close*(services: var Services) =
   services.diskTicket = default(DiskPublicationTicket)
   services.canonical = default(ApplicationChain)
   services.historyLimits = default(StateStoreLimits)
+  if services.storageStarted:
+    if storageClose == FileError.None:
+      log(services.historyLog, LogTarget.Storage, LogLevel.Info, "Storage closed")
+    else:
+      log(services.historyLog, LogTarget.Storage, LogLevel.Error, "Storage close failed: " & $storageClose)
   services.historyLog = default(LogWriter)
+  services.rpcStarted = false
+  services.uiStarted = false
+  services.managementStarted = false
+  services.telemetryStarted = false
+  services.storageStarted = false
   services.started = false
   services.chainRpc = false
   services.chainText = ""
@@ -474,6 +496,30 @@ proc setupRpc(rpc: var Server, options: Options, role: string, text: string,
     mcpInfo = ClientInfo(role: role, parameters: parameters, chain: genesisView(genesis),
       identity: chainIdentity(genesis)) # No canonical worker exists in this legacy listener-only path.
   rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort(), chainIdentity(genesis))
+
+proc logCertificateIdentity(writer: LogWriter, certificate: string) =
+  ## Read only bounded public certificate bytes; unavailable diagnostics never affect transport acceptance.
+  if not writer.enabled(LogTarget.Network, LogLevel.Info): return
+  try:
+    let pem = boundedFile(certificate, 16384).strip()
+    const first = "-----BEGIN CERTIFICATE-----"
+    const last = "-----END CERTIFICATE-----"
+    if not pem.startsWith(first) or not pem.endsWith(last) or pem.len < first.len+last.len: return
+    var body = ""
+    for character in pem[first.len..<pem.len-last.len]:
+      if character notin {' ', '\t', '\r', '\n'}: body.add(character)
+    var der = base64.decode(body)
+    if der.len == 0 or der.len > 8192: return
+    var fields {.noinit.}: CertFields
+    if parseCert(cast[ptr byte](der.toCString()), csize_t(der.len), addr fields) != 1 or
+        fields.edKey != 1 or fields.keyLength != 32: return
+    var key = default(array[32, byte])
+    for index in 0..<key.len: key[index] = fields.key[index]
+    var name = ""
+    for character in peerName(key): name.add(char(character))
+    log(writer, LogTarget.Network, LogLevel.Info, "Local node identity: " & name)
+  except:
+    log(writer, LogTarget.Network, LogLevel.Warn, "Local certificate identity is unavailable for logging")
 
 proc setupTelemetry(client: var Client, options: Options, certificate: string, port: uint16,
     ipv6: bool, text: string): bool {.raises.} =
@@ -738,7 +784,14 @@ proc startServices(services: var Services, options: Options, role: string,
     stderr.writeLine("Invalid management socket; select an absent path in an owned private directory")
     services.close() # A refused management listener rolls back every previously started service.
     return false
+  services.historyLog = options.logWriter
   services.started = true
+  services.rpcStarted = options.rpcPort != 0
+  services.uiStarted = options.uiPort != 0
+  services.managementStarted = options.managementSocket.len > 0
+  services.telemetryStarted = options.telemetryEnabled
+  services.storageStarted = options.stateEnabled
+  logServiceStartup(options)
   true
 
 type LightStartup = object ## Fixed configured/trusted metadata retains no complete genesis StateStore or ChainView.
@@ -804,7 +857,14 @@ proc startLightServices(services: var Services, options: Options, role: string):
       info): return false # Static management remains separate from complete-map execution controls.
   if not options.telemetryEnabled: services.chainText = "" # No raw configured genesis is retained during ordinary light runtime.
   services.chainRpc = options.rpcPort != 0
+  services.historyLog = options.logWriter
   services.started = true
+  services.rpcStarted = options.rpcPort != 0
+  services.uiStarted = options.uiPort != 0
+  services.managementStarted = options.managementSocket.len > 0
+  services.telemetryStarted = options.telemetryEnabled
+  services.storageStarted = options.stateEnabled
+  logServiceStartup(options)
   ready = true
   true
 proc lightHead*(services: Services): light_actor.LightRuntimeResult[LightApplicationHead] =
@@ -875,6 +935,18 @@ func chainView*(services: Services): ChainView {.requires: not (services.proofin
     services.preparing or services.publishing).} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
+
+proc describeHead*(services: Services): string =
+  ## Busy workers exclude every graph read; diagnostics cannot extend an RPC/canonical lease.
+  if services.proofing or services.preparing or services.publishing or services.light.busy:
+    return "best: busy, finalized: unavailable"
+  if services.light.active:
+    let metadata = services.light.queryMetadata
+    if metadata.len == 0: return "best: unavailable, finalized: unavailable"
+    let identity = metadata.current.identity
+    return "best: light slot " & $identity.slot & " (" &
+      shortHash(array[32, byte](identity.blockHash)) & "), finalized: unavailable"
+  services.canonical.describeHead
 
 proc historicalSnapshot*(services: var Services, hash: BlockHash): HistoryResult[ApplicationChain] =
   ## Synchronous startup/offline or explicitly excluded IO only; never call from a dispatcher callback.
@@ -1027,7 +1099,12 @@ proc takeCurrentAccumulation*(services: var Services): CurrentHandoffResult {.re
     not (services.proofing or services.preparing or services.publishing) and
       services.currentAdoption.phase == CurrentHandoffPhase.Finished.} =
   ## Acknowledge only the retained current installation result after every native lease ends.
-  services.currentAdoption.take()
+  result = services.currentAdoption.take()
+  if result.error == CurrentHandoffError.None:
+    log(services.historyLog, LogTarget.Application, LogLevel.Info, "Imported block, " &
+        services.describeHead)
+  else:
+    log(services.historyLog, LogTarget.Application, LogLevel.Warn, "Block import rejected: " & $result.error)
 
 proc cancelCurrentAccumulation*(services: var Services): bool =
   ## Cancellation cannot revoke publication or release a preparation/proof/disk borrow.
@@ -1298,7 +1375,12 @@ proc refreshCollectedLogical*(services: Services, completion: PreparationComplet
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =
   ## Acknowledge the exact retained outcome before accepting another candidate.
-  services.adoption.take()
+  result = services.adoption.take()
+  if result.error == ApplicationChainError.None:
+    log(services.historyLog, LogTarget.Application, LogLevel.Info, "Imported block, " &
+        services.describeHead)
+  else:
+    log(services.historyLog, LogTarget.Application, LogLevel.Warn, "Block import rejected: " & $result.error)
 
 proc cancelAccumulation*(services: var Services): bool =
   ## Cancel only unattempted work; finished outcomes still require acknowledgement or explicit shutdown.
@@ -1615,6 +1697,7 @@ proc tick*(services: var Services, peers: uint32) =
 proc configureTelemetry*(services: var Services, options: Options, certificate: string,
     port: uint16, ipv6: bool): bool {.raises.} =
   ## Register the actual transport identity/address after binding, using the captured chain bytes.
+  logCertificateIdentity(options.logWriter, certificate)
   let configured = setupTelemetry(services.telemetry, options, certificate, port, ipv6,
       services.chainText)
   if services.light.active and configured: services.chainText = "" # Telemetry registration owns only bounded metadata before the peer loop starts.

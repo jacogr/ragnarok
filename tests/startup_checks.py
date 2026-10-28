@@ -130,13 +130,13 @@ def run(binary, folder):
             str(isolated/'data/network/public.key'), '--net-timeout-ms', '2000']
     try:
         for mode in ['bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin']:
-            before = log.read_text().count('REQUEST_TIMEOUT')
+            before = log.read_text().count('Request rejected: timed out before FIN')
             rejected = subprocess.run([*base, '--net-mode', mode], cwd=isolated,
                                       env=environment, capture_output=True, text=True, timeout=10)
             assert rejected.returncode == 2 and 'AUTH_OK' in rejected.stdout, rejected
             assert process.poll() is None, log.read_text()
             if mode == 'no-fin':
-                assert log.read_text().count('REQUEST_TIMEOUT') > before, log.read_text()
+                assert log.read_text().count('Request rejected: timed out before FIN') > before, log.read_text()
             healthy = subprocess.run(base, cwd=isolated, env=environment,
                                      capture_output=True, text=True, timeout=10)
             assert healthy.returncode == 0 and 'EXCHANGE_OK 8' in healthy.stdout, healthy
@@ -169,6 +169,43 @@ def run(binary, folder):
                             capture_output=True, text=True, timeout=10)
     assert result.returncode == 0 and 'READY' in result.stdout.splitlines(), result
     results.append('finite listener deadline')
+
+    # Normal output must show runtime identity, honest unknown sync state and joined shutdown.
+    logged = folder/'logging'
+    logged.mkdir()
+    result = subprocess.run([str(binary), 'server', '--net-port', port(),
+                             '--net-timeout-ms', '5600'], cwd=logged, env=environment,
+                            capture_output=True, text=True, timeout=15)
+    (logged/'node.log').write_text(result.stderr)
+    assert result.returncode == 0, result
+    for message in ['Ragnarok ', 'Platform:', 'Role: FULL; block production: disabled',
+                    'Local node identity:', 'JAMNP-S over QUIC', 'Waiting for peers',
+                    'sync target: unknown', 'Stopping peer networking', 'Shutdown complete']:
+        assert message in result.stderr, (message, result.stderr)
+    assert 'Idle' not in result.stderr and 'Caught up' not in result.stderr, result.stderr
+    for line in result.stderr.splitlines():
+        assert len(line) > 21 and line[4] == '-' and line[19:21] == 'Z ', line
+    for level in ['warn', 'off']:
+        quiet = subprocess.run([str(binary), 'server', '--net-port', port(),
+                                '--net-timeout-ms', '100', '--log-level', level], cwd=logged,
+                               env=environment, capture_output=True, text=True, timeout=10)
+        assert quiet.returncode == 0 and quiet.stderr == '', quiet
+    # Warning verbosity must retain a real rejection without Info/Debug chatter.
+    warning_port = port()
+    warning_dir = folder/'warning-rejection'
+    process, output, log = start(warning_dir, ['--net-port', warning_port, '--log-level', 'warn'])
+    try:
+        invalid = subprocess.run([str(binary), 'client', '--net-port', warning_port,
+                                  '--net-peer-key', str(warning_dir/'data/network/public.key'),
+                                  '--net-mode', 'bad-kind', '--net-timeout-ms', '2000'],
+                                 cwd=warning_dir, env=environment, capture_output=True,
+                                 text=True, timeout=10)
+        assert invalid.returncode == 2, invalid
+    finally:
+        stop(process, output, log)
+    messages = log.read_text()
+    assert '[warn][network]' in messages and '[info]' not in messages and '[debug]' not in messages, messages
+    results.append('timestamped node identity, periodic sync status, shutdown and quiet levels')
 
     # Each real layout owner must create and reopen its own inferred namespace.
     fixture = root/'tests/fixtures/rpc-genesis.json'

@@ -4,6 +4,8 @@
 ## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
 ## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
+import ../lib/logging
+
 import std/[syncio, monotimes, times]
 import std/posix/posix
 import ./[options, services, chain, current_handoff, current_download_policy,
@@ -248,6 +250,8 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
           return CurrentDownloadCommandResult.DispatchFailure # A raw/unqualified receipt cannot update the source file.
         lastLogical = retained.value # Copy only after matching adoption retired every native graph lease.
       inc adopted
+      log(options.logWriter, LogTarget.Application, LogLevel.Info, "Imported block at slot " &
+        $selected.value.slot & ", download progress " & $adopted & "/" & $requested)
       observed = ObservedDownloadHead(initialized: true, hash: array[32, byte](child.blockHash),
           slot: uint32(child.slot))
       if owner.diskMaintenanceFailed: return CurrentDownloadCommandResult.StorageMaintenanceFailure
@@ -456,7 +460,13 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
 proc runCurrentDownloads*(options: Options): CurrentDownloadCommandOutcome {.raises.} =
   ## Report confirmed scalar progress after Services/worker teardown; failure does not imply rollback of its prefix.
   var adopted = 0
+  log(options.logWriter, LogTarget.Network, LogLevel.Info, "Syncing requested download: target=" &
+      $options.downloadBlocks & " blocks")
   let terminal = performDownloads(options, adopted)
+  log(options.logWriter, LogTarget.Application, (if terminal ==
+      CurrentDownloadCommandResult.Adopted: LogLevel.Info else: LogLevel.Warn),
+    "Download " & $terminal & ": imported=" & $adopted & ", requested=" & $options.downloadBlocks &
+    "; network sync target remains unknown")
   CurrentDownloadCommandOutcome(status: terminal, requested: options.downloadBlocks,
       adopted: adopted)
 

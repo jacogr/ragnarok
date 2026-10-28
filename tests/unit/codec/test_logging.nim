@@ -72,7 +72,9 @@ assert not disabled.enabled(LogTarget.Pvm, LogLevel.Fatal) # Prior-generation ha
 let output = logger.writer
 accepted(output, "hello\n\x1b" & repeat("x", 8192))
 close(logger)
-assert observed.text.startsWith("[info][pvm] hello\\x0a\\x1b")
+assert observed.text.len > 21 and observed.text[4] == '-' and observed.text[10] == ' ' and
+    observed.text[19] == 'Z'
+assert observed.text.substr(21).startsWith("[info][pvm] hello\\x0a\\x1b")
 assert observed.text.endsWith("...[truncated]\n")
 assert observed.text.len <= LogRecordBytes and lines(observed.text) == 1
 assert logger.stats.processed == 1

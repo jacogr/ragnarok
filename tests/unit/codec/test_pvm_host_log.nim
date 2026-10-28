@@ -3,7 +3,7 @@
 
 ## JIP-1 witnesses bind gas, atomic diagnostic output, full-width memory and real guest continuation.
 
-import std/[assertions, syncio, os]
+import std/[assertions, syncio, os, strutils]
 import ../../../src/lib/logging
 import ../../../src/pvm/[machine, program, step, gas, host_log]
 
@@ -170,7 +170,8 @@ for attempt in 0..<1000:
   sleep(1)
 logger.close()
 assert logger.stats.accepted == 1 and received.len == 1
-assert received[0] == "[warn][pvm] JIP1 level=1 target=\"t\" message=\"ab\"\n"
+assert received[0].len > 21 and received[0][19] == 'Z'
+assert received[0].substr(21) == "[warn][pvm] JIP1 level=1 target=\"t\" message=\"ab\"\n"
 assert guestLogLevel(0) == LogLevel.Fatal and guestLogLevel(1) == LogLevel.Warn
 assert guestLogLevel(2) == LogLevel.Info and guestLogLevel(3) == LogLevel.Debug
 assert guestLogLevel(4) == LogLevel.Trace and guestLogLevel(high(uint64)) == LogLevel.Trace

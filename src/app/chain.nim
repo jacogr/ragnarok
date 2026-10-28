@@ -9,6 +9,7 @@ import ../state/[store, accumulation_chain, accumulation_finalization, accumulat
   accumulation_publication, accumulation_current_consensus, accumulation_current_update,
   accumulation_storage_history, service_identity_history, request_identity_history]
 import ../codec/bounded
+import ../lib/logging
 import ../state/parent_profile
 import ../rpc/server as rpc_server
 from ../rpc/protocol import configuredParameters, configuredGenesis
@@ -69,6 +70,18 @@ func genesisFailure*[T](outcome: ApplicationChainResult[T]): GenesisError {.inli
 func chainView*(chain: ApplicationChain): ChainView =
   ## Retain an immutable request/history view; default owners retain an explicitly uninitialized view.
   chain.view
+proc describeHead*(chain: ApplicationChain): string =
+  ## Format selected best/finalized observations without granting chain or finality authority.
+  if chain.view.retainedCount == 0: return "best: unavailable, finalized: unavailable"
+  let context = chain.view.bestBlockContext
+  result = "best: slot " & $context.slot & " (" & shortHash(array[32, byte](context.hash)) & ")"
+  let finalized = chain.view.finalizedBlock
+  if finalized.error == GenesisError.None:
+    result.add(", finalized: slot " & $finalized.value.slot & " (" &
+      shortHash(array[32, byte](finalized.value.blockHash)) & ")")
+  else:
+    result.add(", finalized: unavailable")
+
 proc captureParentProfile*(chain: ApplicationChain,
     limits: ParentProfileLimits): ParentProfileResult[SelectedParentProfile] =
   ## Borrow the original private view directly so profile admission precedes its whole-view/index copy.
