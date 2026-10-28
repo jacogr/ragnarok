@@ -2022,3 +2022,57 @@ interpreter would use the new default JIT policy. Historical v1 images retain an
 and their existing framing. Unknown roles/protocols are refused before launching a child. Existing
 sampled receipts remain historical evidence for their recorded pre-policy images. This tooling
 change affects no production execution or previously compiled application image.
+
+
+## Exact-image sharing trial rejected (October 28)
+
+Prototype `cf4dea960886550e404a30348955320a90d8129e` against accepted profiling parent
+`040671cc1725789f263d5609e4e660ec41535dd2`, Apple M1 Max, pinned October 26 compiler,
+checked release/ARC/Clang ThinLTO. A cold-only word fingerprint followed by full word equality
+shared immutable code across independent source tuples; canonical bodies were copied into a
+private bounded pool. The native ABI, entry record layout, source/gas/budget/memory/host checks,
+one-MiB arena and 1,024 physical-publication limit were unchanged.
+
+The complete public cohort passed all 70 processes / 910 checked calls / 115 controls, sixteen
+fresh builds / eight equal-image pairs. Independent verification reparses every measured output
+and refusal, verifies 715 sealed identities, and binds both runtime source snapshots to their
+exact commits. Nine native gates also passed, including shared-code count/successor isolation,
+caller-buffer mutation, independent invocation registers, replacement, full-arena reuse,
+forced refusal and exclusive owner controls. Correctness did not justify keeping the cost.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.415 / 3.394 | 2.535 / 2.550 | 2.519 / 2.538 | 2.537 / 2.477 | 5.984 / 5.936 | 0.738 / 0.748 | 0.421 / 0.428 |
+| minimal 100000 | 4.873 / 4.894 | 4.907 / 4.878 | 4.902 / 4.899 | 4.884 / 4.897 | 5.994 / 6.011 | 1.006 / 1.001 | 0.818 / 0.815 |
+| memset 100000 | 4.341 / 4.369 | 3.380 / 3.417 | 3.427 / 3.368 | 2.703 / 2.701 | 3.905 / 3.957 | 0.789 / 0.771 | 0.877 / 0.851 |
+| pinky 1 | 85.004 / 85.509 | 72.479 / 70.260 | 69.874 / 69.944 | 70.210 / 70.162 | 94.203 / 94.042 | 0.822 / 0.818 | 0.742 / 0.744 |
+| sieve 10000000 | 333.481 / 333.746 | 247.437 / 248.111 | 246.240 / 246.184 | 257.663 / 258.310 | 368.261 / 367.300 | 0.738 / 0.738 | 0.669 / 0.670 |
+| init 0 | 320.031 / 321.757 | 195.319 / 196.007 | 196.621 / 197.435 | 196.053 / 196.996 | 678.122 / 678.116 | 0.614 / 0.614 | 0.290 / 0.291 |
+| tick 0 | 40.340 / 40.328 | 36.949 / 36.739 | 37.099 / 36.953 | 33.296 / 33.252 | 43.953 / 43.874 | 0.920 / 0.916 | 0.844 / 0.842 |
+
+
+DOOM initialization cold calls were 215.940 / 215.676 ms before and 242.644 / 239.971 ms
+with interning. Gameplay cold calls were 47.681 / 46.641 versus 50.954 / 50.359 ms. These are
+observations in both process orders, not a statistical confidence estimate. Reused results offer
+no convincing useful benefit; the inconsistent Pinky baseline is retained. No speed win is claimed,
+and no additional balanced cohort or Linux qualification is needed to reject this implementation.
+
+Pinky's physical images decreased 518 to 385 and executable bytes 47,884 to 37,248, with
+identical native call/operation counts. Gameplay decreased 736 to 701 publications and 55,504
+to 54,192 bytes, again with identical native work. Initialization still reached 1,024 physical
+publications; admitting more source entries increased native calls 21,370,154 to 22,112,142
+across thirteen calls without a useful timing benefit. Diagnostic compilation CPU increased
+3.979 to 27.947 ms there. Canonical words also add retained storage, so executable-byte savings
+alone are not an overall memory reduction. These observations do not establish a hardware cause.
+
+Reject the runtime pool and restore `arm64_jit.nim` exactly to the parent. Sharing-specific
+witnesses are removed with the feature. Keep stronger physical-capacity witnesses: unique
+unreachable tail words exhaust actual arena bytes, distinct scratch-only bodies exhaust actual
+publication slots, and a bounded success count catches a broken exhaustion loop. The existing
+reserved connected publication and failed-replacement preservation remain exercised.
+
+Evidence: `build/pvm-arm64-jit/post-merge/shared-images/`, including the prototype, exact-head
+qualification, complete measured receipts and independent verification. The next bounded
+investigation is broader native continuations, not more coverage through extra tiny handoffs.
