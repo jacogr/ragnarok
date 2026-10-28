@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       pvm_prepared_baseline:
@@ -25,6 +25,13 @@ name: CI
         type: string
         default: ""
         required: false
+
+      pvm_doom_calls:
+        description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
+        required: false
+        type: choice
+        default: "2"
+        options: ["1", "2"]
 
 permissions:
   contents: read
@@ -468,18 +475,65 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
+  # Real shared-adapter gameplay parity belongs to Interop; each native architecture must execute DOOM.
+  pvm-doom-backends:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    name: Interop / PVM Backends (${{ matrix.family.name }})
+    timeout-minutes: *ci-job-timeout
+    strategy:
+      fail-fast: false
+      matrix:
+        family: ${{ fromJSON('[{"name":"Linux ARM64","arch":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","arch":"x86_64","os":"ubuntu-26.04"}]') }}
+    runs-on: ${{ matrix.family.os }}
+    env:
+      PVM_CI_SYSTEM: Linux
+      PVM_CI_ARCH: ${{ matrix.family.arch }}
+      PVM_DOOM_CALLS: ${{ inputs.pvm_doom_calls || '2' }}
+    steps:
+      - *checkout
+      - *python
+      - name: Install DOOM asset decompressor
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Compare continuing DOOM through CLI-selected shared backends
+        run: make check-pvm-doom-backends
+      - name: Show per-frame parity and first mismatch
+        if: always()
+        run: |
+          if test -f build/tests/pvm-doom-backends/summary.md; then
+            cat build/tests/pvm-doom-backends/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain bounded shared-backend receipts
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-doom-backends-${{ matrix.family.arch }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-doom-backends/*.json
+            build/tests/pvm-doom-backends/*.md
+            build/tests/pvm-doom-backends/*.log
+            build/tests/pvm-doom/*.json
+            build/tests/pvm-doom/*.log
+            build/polkavm-build.log
+            build/ci/*.log
+
   interop-status:
     name: Interop
     timeout-minutes: *ci-job-timeout
-    needs: interop
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
+    needs: [interop, pvm-doom-backends]
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
       - name: Require every Interop family
         env:
           SHARDS_RESULT: ${{ needs.interop.result }}
-        run: test "$SHARDS_RESULT" = success
+          BACKENDS_RESULT: ${{ needs.pvm-doom-backends.result }}
+          FOCUSED: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'pvm-backends' }}
+        run: test "$BACKENDS_RESULT" = success && (test "$SHARDS_RESULT" = success || (test "$FOCUSED" = true && test "$SHARDS_RESULT" = skipped))
 
   build:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) }}

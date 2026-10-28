@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -420,16 +420,17 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group in ('compile', 'interop', 'perf', 'build'):
             gate = job_section(text, group+'-status')
-            dependencies = '[perf, pvm-comparison]' if group == 'perf' else group
+            dependencies = {'perf':'[perf, pvm-comparison]', 'interop':'[interop, pvm-doom-backends]'}.get(group, group)
             self.assertIn('needs: '+dependencies+'\n', gate)
             self.assertIn('if: ${{ always() && (', gate)
             self.assertIn('SHARDS_RESULT: ${{ needs.'+group+'.result }}', gate)
             command = re.search(r'        run: ([^\n]+)', gate).group(1)
             results = ('success', 'failure', 'cancelled', 'skipped')
             for result in results:
-                for comparison_result in (results if group == 'perf' else ('success',)):
+                for comparison_result in (results if group in ('perf', 'interop') else ('success',)):
                     # Execute all Perf dependency combinations; a missing or failed comparison stays red.
-                    environment = dict(SHARDS_RESULT=result, COMPARISON_RESULT=comparison_result)
+                    environment = dict(SHARDS_RESULT=result, COMPARISON_RESULT=comparison_result,
+                                       BACKENDS_RESULT=comparison_result, FOCUSED="false")
                     status = subprocess.run(['bash', '-c', command], env=environment).returncode
                     self.assertEqual(status == 0, result == comparison_result == 'success')
             for suite in ('smoke', 'ref-pvm', 'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker'):
