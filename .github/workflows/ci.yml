@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, jit-x86, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       pvm_prepared_baseline:
@@ -777,19 +777,13 @@ jobs:
 
   # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
   pvm-comparison:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'jit-x86' || inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / PVM Comparison (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family:
-          - name: Linux ARM64
-            group: arm64
-            os: *ubuntu-arm-version
-          - name: Linux x86-64
-            group: x86_64
-            os: *ubuntu-x86-version
+        family: ${{ fromJSON(inputs.suite == 'jit-x86' && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
@@ -799,7 +793,7 @@ jobs:
       - *checkout
       - *python
       - name: Resolve current master and optional prepared baseline
-        if: ${{ matrix.family.group == 'x86_64' }}
+        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' }}
         run: |
           git fetch --no-tags origin master:refs/remotes/origin/master
           python3 - <<'PYBASE'
@@ -810,14 +804,19 @@ jobs:
                   raise ValueError('Prepared baseline must be a full lowercase commit SHA')
               subprocess.run(['git','fetch','--no-tags','origin',baseline],check=True)
           PYBASE
+      - name: Qualify opt-in Linux x86-64 JIT
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make check-pvm-x86-jit
       - name: Install DOOM asset decompressor
+        if: ${{ inputs.suite != 'jit-x86' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
       - name: Qualify PVM on the native Linux architecture
+        if: ${{ inputs.suite != 'jit-x86' }}
         run: make check-pvm-native
       - name: Compare checked interpreters on Linux x86-64
-        if: ${{ matrix.family.group == 'x86_64' }}
+        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' }}
         run: make bench-pvm-interpreter
       - name: Compare public ARM64 JIT and checked interpreters
         if: ${{ matrix.family.group == 'arm64' }}
@@ -825,7 +824,7 @@ jobs:
       - name: Show complete comparison
         if: always()
         run: |
-          for summary in build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
+          for summary in build/tests/pvm-x86-jit/summary.md build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
             if test -f "$summary"; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
             fi
@@ -838,6 +837,9 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
           path: |
+            build/tests/pvm-x86-jit/*.json
+            build/tests/pvm-x86-jit/*.log
+            build/tests/pvm-x86-jit/summary.md
             build/tests/pvm-interpreter-linux/*.json
             build/tests/pvm-interpreter-linux/*.log
             build/tests/pvm-interpreter-linux/summary.md

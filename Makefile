@@ -630,3 +630,8 @@ check-pvm-doom-backends: check-inventory toolchain sources rust-tools
 	$(PYTHON) tools/native_tests.py --suite app_cli
 	$(PYTHON) tools/native_tests.py --suite app_options
 	$(PYTHON) tools/pvm_doom_backends.py
+
+# Initial x86 native qualification is deliberately CI-only and opt-in until measured.
+.PHONY: check-pvm-x86-jit
+check-pvm-x86-jit: toolchain check-inventory
+	$(PYTHON) tools/pvm_x86_jit.py

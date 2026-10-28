@@ -44,7 +44,10 @@ proc backendSummary*(selected: PvmBackend): string =
   ## Startup observes requested policy and supported architecture without promising native execution of every opcode.
   result = "PVM_BACKEND requested=" & $selected
   if selected == PvmBackend.Jit:
-    when defined(pvmArm64Jit) and defined(arm64) and (defined(linux) or defined(macosx)):
+    when defined(pvmX86Jit) and defined(amd64) and defined(linux):
+      result &= " native-platform=x86-64 checked-fallback=enabled"
+    elif defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(arm64) and (defined(linux) or
+        defined(macosx)):
       result &= " native-platform=arm64 checked-fallback=enabled"
     else:
       result &= " native-platform=unavailable actual=interpreted checked-fallback=enabled"

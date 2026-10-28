@@ -37,7 +37,8 @@ proc respond(context: var Context, suspension: StepOutcome): HostResponse {.rais
   inc context.calls
   if context.forced: assert suspension.backend == PvmBackend.Interpreted
   else:
-    when defined(arm64) and not defined(pvmArm64JitRefuse):
+    when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
+        amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
       assert suspension.backend == PvmBackend.Jit
     else:
       assert suspension.backend == PvmBackend.Interpreted
@@ -71,13 +72,15 @@ for invocation in 0..<3:
   let info = preparedInfo(forced).value
   assert info.nativeFragments == 0 and info.nativeCalls == 0 and info.nativeOperations == 0, "policy: info.nativeFragments == 0 and info.nativeCalls == 0 and info.nativeOperations == 0"
   assert left.value.backend == PvmBackend.Interpreted, "policy: left.value.backend == PvmBackend.Interpreted"
-  when defined(arm64) and not defined(pvmArm64JitRefuse):
+  when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
+      amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
     assert right.value.backend == PvmBackend.Jit
   else:
     assert right.value.backend == PvmBackend.Interpreted
 
 let nativeInfo = preparedInfo(accelerated).value
-when defined(arm64) and not defined(pvmArm64JitRefuse):
+when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
+    amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
   assert nativeInfo.jitBuilt and nativeInfo.jitPlatformSupported, "policy: nativeInfo.jitBuilt and nativeInfo.jitPlatformSupported"
   assert nativeInfo.nativeFragments > 0 and nativeInfo.nativeCalls > 0 and
       nativeInfo.nativeOperations > 0, "policy: nativeInfo.nativeFragments > 0 and nativeInfo.nativeCalls > 0 and nativeInfo.nativeOperations > 0"
