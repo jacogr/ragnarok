@@ -536,3 +536,77 @@ when not defined(pvmX86JitRefuse):
             assert state == expected
             inc contextCases
 stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)
+
+
+# Native-only full-bit literals cover every signed immediate encoding boundary and its mandatory fallback neighbors.
+var compactCases = 0
+when not defined(pvmX86JitRefuse):
+  const literals = [0'u64, 1, 127, 128, 255, 0x7fffffff'u64, 0x80000000'u64,
+    0xffffffff'u64, 0x100000000'u64, 0x7fffffffffffffff'u64, 0x8000000000000000'u64,
+    0xffffffff7fffffff'u64, 0xffffffff80000000'u64, 0xffffffffffffff7f'u64,
+    0xffffffffffffff80'u64, high(uint64)]
+  const seeds = [0'u64, 1, 127, 128, 0x7fffffff'u64, 0x80000000'u64,
+    0xffffffff'u64, 0x8000000000000000'u64, high(uint64)]
+  for opcode in [132'u8, 133, 134, 149]:
+    for alias in [0x10'u8, 0x00, 0xcc]:
+      # Genuine decoded slots cover distinct sources, self aliases and the highest guest register.
+      let source = owner([@[opcode, alias, 0], @[0'u8]])
+      let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+      for value in literals:
+        let jit = newX86Jit()
+        discard x86Entry(jit, 0, 4)
+        var fragment = default(X86Block)
+        emitX86Operation(fragment, opcode, slots, value)
+        for index in 0..<3: emitX86Operation(fragment, 100, identitySlots, 0)
+        assert publishX86Entry(jit, 0, 4, 4, fragment)
+        for seed in seeds:
+          # Wrapping equations use the full original constants, independently of emitter width selection.
+          var registers = default(RegisterFile)
+          for index in 0..<13: registers[index] = RegisterValue(uint64(index)+100)
+          registers[slots.bIndex] = RegisterValue(seed)
+          var expected = registers
+          let wanted = case opcode
+            of 132: seed and value
+            of 133: seed xor value
+            of 134: seed or value
+            else: seed+value
+          expected[slots.destinationIndex] = RegisterValue(wanted)
+          assert callX86Entry(jit, 0, registers) == 4
+          assert registers == expected
+          inc compactCases
+  for opcode in 81'u8..90'u8:
+    let source = owner([@[opcode, 0x10, 0, 0], @[0'u8]])
+    let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+    for right in literals:
+      let jit = newX86Jit()
+      discard x86Entry(jit, 0, 8)
+      var warm = default(X86Block)
+      for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
+      assert publishX86Entry(jit, 0, 4, 4, warm)
+      var control = default(X86Block)
+      for index in 0..<4: emitX86Operation(control, 100, identitySlots, 0)
+      emitX86Branch(control, opcode, slots, right, 6, 7)
+      assert publishX86Entry(jit, 0, 4, 5, control, conditional = true)
+      for left in seeds:
+        # XOR of the sign bit orders signed values without a narrowing cast or host signed-overflow dependency.
+        let signedLeft = left xor 0x8000000000000000'u64
+        let signedRight = right xor 0x8000000000000000'u64
+        let taken = case opcode
+          of 81: left == right
+          of 82: left != right
+          of 83: left < right
+          of 84: left <= right
+          of 85: left >= right
+          of 86: left > right
+          of 87: signedLeft < signedRight
+          of 88: signedLeft <= signedRight
+          of 89: signedLeft >= signedRight
+          else: signedLeft > signedRight
+        var registers = default(RegisterFile)
+        for index in 0..<13: registers[index] = RegisterValue(uint64(index)+100)
+        registers[slots.aIndex] = RegisterValue(left)
+        let original = registers
+        assert callX86Branch(jit, 0, registers) == (if taken: 6'u32 else: 7'u32)
+        assert registers == original
+        inc compactCases
+stdout.writeLine("X86_COMPACT_IMMEDIATE_CASES," & $compactCases)
