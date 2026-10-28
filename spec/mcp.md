@@ -96,10 +96,16 @@ using fresh HTTP client connections. A source-owned compiler guard rejects socke
 these checks establish implemented scope, not full MCP-client ecosystem interoperability.
 
 Observed on 2026-10-28 with pinned Nimony 0.6.3 `358b9bce4`, ARC, Clang, checked release,
-on macOS ARM64: all six scoped native suites above passed; application_services retained its
+on macOS ARM64 at initial implementation `67fc9a65`: all six scoped native suites above passed; application_services retained its
 1000-cycle unchanged-allocation witness. `make build`, the registered real-process MCP workload,
 format/inventory checks and the 462-module/entry-point smoke compilation passed. The owner guard
 failed lowering with the exact expected `'=dup' is not available for type <McpServer>` diagnostic.
 The 26 targeted Python E2E/inventory/native-requirement safeguards passed. Linux CI remains
 separate exact-head evidence. Archive lookup extensions remain dependent on the supported storage
 query boundary from #1731; they are not provided by this tranche.
+
+After merging master `a0dcebe4`, the CLI default conflict was resolved by preserving both standalone
+PVM settings and MCP port 14141. The CLI suite, formatting/inventory, 464 production modules plus
+the entry point, executable build and real-process MCP workload passed again. MCP transport,
+query adapter, canonical service integration and light metadata code are unchanged from the native
+suite evidence above; unchanged suites were not repeated.
