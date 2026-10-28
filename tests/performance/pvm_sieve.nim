@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
-import std/[assertions, syncio, monotimes, envvars]
-import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo]
-import ../../src/pvm/step as reference
+import std/assertions
+import std/syncio
+import std/monotimes
+import std/envvars
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/gas_plan as pvm_gas_plan
+import ../../src/pvm/gas_memo as pvm_gas_memo
+import ../../src/pvm/step as pvm_step
 
 type GuestKind {.pure.} = enum ## One immutable process selection binds the frozen guest to an independent expected result.
   Sieve, Minimal, Memset, Pinky
@@ -128,9 +135,9 @@ let preparedMode = pricing == "prepared"
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
 when declared(DefaultPvmBackend):
-  var selectedBackend = reference.DefaultPvmBackend
+  var selectedBackend = pvm_step.DefaultPvmBackend
   if requestedBackend.len > 0:
-    assert reference.parsePvmBackend(requestedBackend, selectedBackend)
+    assert pvm_step.parsePvmBackend(requestedBackend, selectedBackend)
 else:
   # Archived runtimes retain their original constructor and cannot honor current policy overrides.
   assert requestedBackend.len == 0
@@ -169,22 +176,22 @@ if memoMode:
   assert info.pricedBlocks == 0
   echo "GAS_MEMO,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",", info.payloadBytes,
       ",", uint64(info.cycleLimit)
-var prepared = default(reference.PreparedProgram)
+var prepared = default(pvm_step.PreparedProgram)
 if preparedMode:
   # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
   let created = when declared(DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
-    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
+    pvm_step.newPreparedProgram(owner, pvm_step.defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
   else:
     # Historical source snapshots preserve their original public API and engine policy.
-    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)))
+    pvm_step.newPreparedProgram(owner, pvm_step.defaultPreparedLimits(GasCycleLimit(1000000)))
   let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
   let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
-  assert created.error == reference.PreparationError.None
+  assert created.error == pvm_step.PreparationError.None
   prepared = created.value
-  let observed = reference.preparedInfo(prepared).value
+  let observed = pvm_step.preparedInfo(prepared).value
   assert observed.streamNodes == 0
   echo "PREPARED_PROGRAM,", prepareCpuNs, ",", prepareWallNs, ",", observed.codeBytes, ",",
       observed.decodedInstructions
@@ -197,19 +204,19 @@ for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
   let wallStart = if clocked: getMonoTime().ticks else: 0'i64
   let cpuStart = if clocked: cpuNanoseconds() else: 0'i64
-  let done = if preparedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
-    elif memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
-    elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
-    else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
+  let done = if preparedMode: pvm_step.execute(source, pvm_step.ExecutionStepLimit(1000000000), prepared)
+    elif memoMode: pvm_step.execute(source, pvm_step.ExecutionStepLimit(1000000000), memo)
+    elif plannedMode: pvm_step.execute(source, pvm_step.ExecutionStepLimit(1000000000), plan)
+    else: pvm_step.execute(source, pvm_step.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
   let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
   let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
-  assert done.error == reference.StepError.None, "current sieve execution"
-  assert done.value.exit == reference.StepExit.Halt
+  assert done.error == pvm_step.StepError.None, "current sieve execution"
+  assert done.value.exit == pvm_step.StepExit.Halt
   check(done.value.machine, indices, access, expected, limit, guest)
   echo "SIEVE,", engine, ",", limit, ",", sample, ",", elapsed, ",", cpuElapsed
   if preparedMode:
     # Cache occupancy and preparation progress remain explicit for cold and reused executions.
-    let observed = reference.preparedInfo(prepared).value
+    let observed = pvm_step.preparedInfo(prepared).value
     assert observed.streamNodes*28 <= uint64(observed.limits.resources.nodes)*28 and
         observed.streamNodes > 0
     echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",", observed.preparationUnits, ",",
@@ -228,7 +235,7 @@ when declared(DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode
-    let policy = reference.preparedInfo(prepared).value
+    let policy = pvm_step.preparedInfo(prepared).value
     assert policy.backend == selectedBackend
     let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
     echo "PVM_POLICY,1,", requestedBackend, ",", int(policy.jitBuilt), ",",
@@ -238,6 +245,6 @@ when declared(DefaultPvmBackend):
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
   assert preparedMode
-  let native = reference.preparedArmStatistics(prepared).value
+  let native = pvm_step.preparedArmStatistics(prepared).value
   echo "ARM_OWNER,", getEnv("RAGNAROK_PVM_GUEST"), ",", native[0], ",", native[1], ",",
     native[2], ",", native[3], ",", native[4], ",", native[5], ",", native[6]

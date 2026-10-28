@@ -3,8 +3,13 @@
 
 ## Replay executed pinned PolkaVM last-byte witnesses without linking or running Rust.
 
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
 
 proc word(data: string, at, width: int): uint64 =
   ## Read a little-endian field only after the complete fixed corpus extent is checked.

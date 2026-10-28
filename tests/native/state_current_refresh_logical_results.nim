@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict plan/stage result guards with an actual fully matched current logical positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/current_logical_refresh_context
-import ../../src/state/current_logical_refresh
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_logical_refresh_context
+import ../../src/state/current_logical_refresh as state_current_logical_refresh
+import ../../src/codec/report_owned as codec_report_owned
 proc planned(value: LogicalRefreshPlanResult[CurrentLogicalRefreshPlan]) {.noinline.} =
   ## No default/failed admission exposes an executable complete-current plan.
   discard value.value

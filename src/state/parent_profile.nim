@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded selected-chain parent profile retains the original full view, parameters and exact physical head without inventing an execution certificate.
-import ../chain/[genesis, provider, parameters]
-import ../codec/[bounded, assurances, state_composition, state_layout, state_safrole, state_consensus]
-import ./store
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ./store as state_store
 type
   ParentProfileLimits* = object ## Rolling/finalized owners, view/index bytes and previous-roster decode resources have independent admission.
     blocks*, validators*: ElementLimit

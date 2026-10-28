@@ -3,8 +3,8 @@
 
 ## Fuzzer-v1 session ordering and bounded incremental frames are independent of sockets and STF execution.
 import std/assertions
-import ./fuzz_protocol
-import ../codec/bounded
+import ./fuzz_protocol as state_fuzz_protocol
+import ../codec/bounded as codec_bounded
 
 type
   FuzzSessionError* {.pure.} = enum ## Protocol and host failures terminate locally without manufacturing consensus Error replies.

@@ -3,8 +3,14 @@
 
 ## Independent GP jump-table width/count witnesses, including zero-width runtime behavior.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/gas_plan as pvm_gas_plan
+import ../../../src/pvm/gas_memo as pvm_gas_memo
+import ../../../src/pvm/step as pvm_step
 
 type
   Reason = enum ## The typed callback path has its own local error domain, distinct from all guest outcomes.

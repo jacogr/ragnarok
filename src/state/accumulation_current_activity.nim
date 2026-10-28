@@ -4,14 +4,36 @@
 ## Bind complete C13 to genuine current validator/terminal statistics and privately replace the complete activity entry.
 ## Retain original-parent preimage admission for later integration; no canonical block or nested preimage publication occurs here.
 
-import ../codec/[bounded, composite, block_codec, owned, report_owned, assurances,
-  state_statistics, state_trie]
-import ./[accumulation_activity, accumulation_current_validators, validator_projection,
-  core_service_activity, preimages, accumulation_current_recent, accumulation_current_ready,
-  accumulation_current_finalization, accumulation_current_accounts, accumulation_current_statistics,
-  accumulation_current_driver, accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, report_admission,
-  guarantee_credentials, block_transition, block_admission, availability, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/block_codec as codec_block_codec
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/assurances as codec_assurances
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./validator_projection as state_validator_projection
+import ./core_service_activity as state_core_service_activity
+import ./preimages as state_preimages
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./availability as state_availability
+import ./store as state_store
 
 type
   CurrentAccumulationActivityError* {.pure.} = enum ## Refusals/defaults never retain a usable source, partial activity entry or successor.

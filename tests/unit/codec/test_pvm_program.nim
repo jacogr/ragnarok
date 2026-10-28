@@ -7,9 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/program
-import ../../../src/codec/natural
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/codec/natural as codec_natural
 
 # Encode one natural for independent framing construction; decoder logic is never reused.
 proc appendNatural(bytes: var seq[byte], value: uint64) =

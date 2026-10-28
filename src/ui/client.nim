@@ -6,7 +6,7 @@
 ## source checker skips this target-specific body; make ui-assets compiles it with ragnarokBrowser.
 
 when defined(ragnarokBrowser):
-  import ./rpc
+  import ./rpc as ui_rpc
 
   # Browser bindings touch textContent only; backend strings never become executable HTML.
   proc text(id, value: string) {.importjs: "document.getElementById(#).textContent = #".}

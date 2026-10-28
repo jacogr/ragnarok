@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Manifest epochs, snapshot identities and journal pairs remain exact across all byte corruption.
-import std/[assertions, syncio]
-import ../../../src/storage/[managed_manifest, database_identity, node_repository]
-import ../../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 let chain = default(StorageChainId)
 let schema = StorageSchema.FullStateV1
 let limit = ByteLimit(ManagedManifestBytes)

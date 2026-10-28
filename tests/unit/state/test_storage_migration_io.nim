@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Destination syscall refusals never change a locked legacy source, retained maps or detached context.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_samples, managed_storage_samples, storage_io, storage_bootstrap_faults]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, file_migration, database_identity]
+import ../../support/storage_samples
+import ../../support/app_managed_storage_samples
+import ../../support/storage_io
+import ../../support/storage_bootstrap_faults
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/managed_repository as storage_managed_repository
+import ../../../src/storage/file_migration as storage_file_migration
+import ../../../src/storage/database_identity as storage_database_identity
 proc scenario(writeFault: bool, skip, failures: cint, permanent = false): uint64 {.raises.} =
   ## Capture one exact contextual source revision and independently observe every destination boundary.
   resetIo()

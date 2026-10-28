@@ -4,9 +4,11 @@
 ## Exact managed manifests select one snapshot/journal epoch without pathname or fallback authority.
 ## Epochs identify files independently of durable state generations; journal headers bind the manifest checksum.
 import std/assertions
-import ./[database_identity, node_repository]
-import ../codec/[bounded, state_trie]
-import ../crypto/primitives
+import ./database_identity as storage_database_identity
+import ./node_repository as storage_node_repository
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 const
   Magic = "RAGNAROK-MANIFEST-V1\n"
   JournalMagic = "RAGNAROK-JOURNAL-V1\n"

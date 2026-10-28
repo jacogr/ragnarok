@@ -3,11 +3,24 @@
 
 ## Real durable quota eviction matches manual frames, binds policy/position and survives witnessed append deaths through explicit recovery.
 # @@Verification={"arc":"storage_light_retained_journal_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[arc_evidence, storage_io, storage_crash, storage_light_root, storage_light_journal]
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, light_journal_cache,
-  light_journal_replay, light_delta, managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/storage_crash
+import ../../support/storage_light_root
+import ../../support/storage_light_journal
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation/publication observations distinguish verified proof work from durable IO.
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}

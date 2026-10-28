@@ -4,9 +4,16 @@
 ## Plan the transfer-aware initial accseq continuation after an admitted completed initial round.
 ## Retains source and original queue without copying prior reports, executing guests or publishing state.
 
-import ../codec/[bounded, work_digest, report_owned]
-import ./[accumulation_execution, accumulation_round, accumulation_queue, accumulation_operands,
-  accumulation_round_transfers, accumulation_transfers, accumulation_pending_transfers]
+import ../codec/bounded as codec_bounded
+import ../codec/work_digest as codec_work_digest
+import ../codec/report_owned as codec_report_owned
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_round_transfers as state_accumulation_round_transfers
+import ./accumulation_transfers as state_accumulation_transfers
+import ./accumulation_pending_transfers as state_accumulation_pending_transfers
 
 type
   AccumulationContinuationLimits* = object ## Independent traversal ceilings include inspected but unaffordable work.

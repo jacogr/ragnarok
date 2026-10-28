@@ -3,12 +3,28 @@
 
 ## Derive current/prior guarantor tables only from authenticated posterior computed-report context.
 
-import ../chain/parameters
-import ../codec/[bounded, assurances, header, guarantees, state_safrole, state_layout,
-    state_disputes, work_report]
-import ./[computed_roster, computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, computed_guarantee, computed_report, block_transition,
-  block_admission, guarantors, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/header as codec_header
+import ../codec/guarantees as codec_guarantees
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/work_report as codec_work_report
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./computed_recent as state_computed_recent
+import ./computed_state as state_computed_state
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./guarantors as state_guarantors
+import ./store as state_store
 
 type
   ComputedGuarantorError* {.pure.} = enum ## Refusals expose no partial tables or usable query payload.

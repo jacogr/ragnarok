@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## External code cannot forge the retained ancestry, discovery or prepared admission certificate.
-import ../../../src/state/ancestor_context
+import ../../../src/state/ancestor_context as state_ancestor_context
 let owner = default(AncestorContextResult[int])
 discard owner.status

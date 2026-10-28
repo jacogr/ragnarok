@@ -4,14 +4,32 @@
 ## Genuine singleton exporters and importing packages for computational lookup correspondence.
 
 import std/assertions
-import ../../src/codec/[bounded, work_package, work_report]
-import ../../src/pvm/host_fetch
-import ../../src/state/[computed_report, computed_guarantee, availability_specifier, export_erasure,
-  bundle_erasure, erasure_layout, erasure_words, auditable_bundle, input_refinement,
-  extrinsic_inputs, import_inputs, import_justification]
-import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome,
-  pvm_extrinsic_inputs, pvm_import_inputs, pvm_import_justification, pvm_export_erasure,
-  pvm_computed_report, pvm_export_erasure_vectors, pvm_export_vectors]
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ./pvm_input_refinement
+import ./pvm_report_results
+import ./pvm_refinement_outcome
+import ./pvm_extrinsic_inputs
+import ./pvm_import_inputs
+import ./pvm_import_justification
+import ./pvm_export_erasure
+import ./pvm_computed_report
+import ./pvm_export_erasure_vectors
+import ./pvm_export_vectors
 
 proc linksReport(execution: InputRefinement): ComputedWorkReport =
   ## Run the full original bundle/export/availability pipeline with a small valid six-validator geometry.

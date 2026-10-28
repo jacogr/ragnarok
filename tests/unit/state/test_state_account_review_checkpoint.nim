@@ -3,16 +3,34 @@
 
 ## Explicit-root restored reviews preserve phase refusal, selected parameters, detached input and composite owner retirement.
 # @@Verification={"arc": "state_account_review_checkpoint_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_review_checkpoint_context,
-    economic_profile_context, arc_evidence]
-import ../../../src/chain/parameters
-import ../../../src/state/[account_review_checkpoint, account_review, planned_account_checkpoint,
-  validated_checkpoint, checkpoint,
-  store, manifest, inventory, economic_profile, service_directory, footprint_audit,
-  supervision_table, economics_table, service_deposit, account_deposit]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_review_checkpoint_context
+import ../../support/state_economic_profile_context
+import ../../support/testing_arc_evidence
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/state/account_review_checkpoint as state_account_review_checkpoint
+import ../../../src/state/account_review as state_account_review
+import ../../../src/state/planned_account_checkpoint as state_planned_account_checkpoint
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/state/service_directory as state_service_directory
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/supervision_table as state_supervision_table
+import ../../../src/state/economics_table as state_economics_table
+import ../../../src/state/service_deposit as state_service_deposit
+import ../../../src/state/account_deposit as state_account_deposit
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and optionally reject all hashes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

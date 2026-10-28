@@ -4,13 +4,27 @@
 ## Fulfill the exact original-parent admitted lookup extrinsic on its genuine current activity successor.
 ## Source-derived slot and cached original-parent admission authorize only a private complete-map candidate.
 
-import ../codec/[bounded, header]
-import ./[accumulation_preimages, accumulation_current_activity, accumulation_current_validators,
-  accumulation_current_recent, accumulation_current_ready, accumulation_current_finalization,
-  accumulation_current_accounts, accumulation_current_statistics, accumulation_current_driver,
-  accumulation_current_sequence, accumulation_current_round, accumulation_block_guests,
-  accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
-  preimages, store]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ./accumulation_preimages as state_accumulation_preimages
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./preimages as state_preimages
+import ./store as state_store
 
 type
   CurrentAccumulationPreimageError* {.pure.} = enum ## Refusals retain neither a source nor any partially fulfilled candidate.

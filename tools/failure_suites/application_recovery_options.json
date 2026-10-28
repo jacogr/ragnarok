@@ -106,5 +106,5 @@
       "name": "application-recovery-options-disabled-bytes"
     }
   ],
-  "source": "tests/native/application_recovery_options_results.nim"
+  "source": "tests/native/app_recovery_options_results.nim"
 }

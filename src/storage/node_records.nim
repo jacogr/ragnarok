@@ -4,7 +4,9 @@
 ## Detached physical trie records carry complete child identities independently of JAM B encoding.
 ## These mutable transport objects own copied bytes and confer no validation or chain authority.
 
-import ../codec/[state_trie, state_layout, bounded]
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/bounded as codec_bounded
 
 type
   TrieRecordKind* {.pure.} = enum ## Explicit physical leaf/branch forms; codecs must validate tags.

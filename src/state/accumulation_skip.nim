@@ -4,8 +4,11 @@
 ## GP 0.8.0 Psi_A code-unavailable/oversized alternative after incoming transfer credit.
 ## Exposes immutable zero-gas/empty-effect outcomes and pure/block-bound source extraction; never executes or republishes credit.
 
-import ../codec/[composite, header, work_digest]
-import ./[accumulation_service, store]
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_service as state_accumulation_service
+import ./store as state_store
 
 type
   AccumulationSkipError* {.pure.} = enum ## A refusal cannot expose a completed no-execution outcome or silently swallow a service preparation error.

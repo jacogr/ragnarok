@@ -40,9 +40,9 @@ class NativeUnitHarness(unittest.TestCase):
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
-        self.assertIn("natural", batches[0][1])
-        self.assertNotIn("rpc", batches[0][1])
-        self.assertEqual(native_tests.UNIT_LINKS["rpc"], "crypto")
+        self.assertIn("codec_natural", batches[0][1])
+        self.assertNotIn("rpc_protocol", batches[0][1])
+        self.assertEqual(native_tests.UNIT_LINKS["rpc_protocol"], "crypto")
         self.assertIsNone(batches[0][2])
         for name, members, target in batches[1:]:
             # Every profile with special linking or runtime resources remains a single-file invocation.
@@ -179,7 +179,7 @@ class NativeUnitHarness(unittest.TestCase):
             for system in ('Linux', 'Darwin'):
                 # Compare semantic flags and resolved tool identity, not one platform's temporary path spelling.
                 with self.subTest(system=system), patch.object(native_tests.platform, 'system', return_value=system):
-                    args = native_tests.unit_command(folder/'nimony', 'natural')
+                    args = native_tests.unit_command(folder/'nimony', 'codec_natural')
                     self.assertEqual(Path(args[0]), (folder/'hastur').resolve())
                     self.assertIn('--bindir:'+str(folder.resolve()), args)
                     for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
@@ -188,7 +188,7 @@ class NativeUnitHarness(unittest.TestCase):
                         self.assertIn('--forward:'+flag, args)
                     self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
                     self.assertIn('--joined:off', args)
-                    self.assertEqual(args[-1], str(native_tests.unit_source('natural')))
+                    self.assertEqual(args[-1], str(native_tests.unit_source('codec_natural')))
 
     # The quick plan discovers pure codecs once and links each state case with its explicit native profile.
     def test_unit_entrypoint(self):
@@ -225,21 +225,21 @@ class NativeUnitHarness(unittest.TestCase):
     # Selection executes exactly one suite and reads only its fresh ARC observation.
     def test_selected_suite_scope(self):
         with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
-                native_tests, 'unit_command', return_value=['hastur', 'bits']) as command, patch.object(
+                native_tests, 'unit_command', return_value=['hastur', 'codec_bits']) as command, patch.object(
                 native_tests, 'unit_environment', return_value={'fixture': 'checked'}) as environment, patch.object(
                 native_tests, 'unit_work_directory', return_value=folder), patch.object(
                 native_tests.subprocess, 'run') as run, patch.object(
                 native_tests, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch('sys.stdout', new_callable=io.StringIO):
             compiler = folder/'nimony'
-            native_tests.run_units(compiler, {}, {}, 'bits')
-            command.assert_called_once_with(compiler, 'bits', {})
-            environment.assert_called_once_with(compiler, name='bits', fixtures={})
+            native_tests.run_units(compiler, {}, {}, 'codec_bits')
+            command.assert_called_once_with(compiler, 'codec_bits', {})
+            environment.assert_called_once_with(compiler, name='codec_bits', fixtures={})
             self.assertEqual(run.call_count, 1)
-            self.assertEqual(run.call_args.args[0], ['hastur', 'bits'])
+            self.assertEqual(run.call_args.args[0], ['hastur', 'codec_bits'])
             self.assertTrue(run.call_args.kwargs['check'])
             self.assertEqual(run.call_args.kwargs['env'], {'fixture': 'checked'})
-            evidence.assert_called_once_with(compiler, 'bits')
-            self.assertTrue((folder/'build/tests/native/selected/bits.log').is_file())
+            evidence.assert_called_once_with(compiler, 'codec_bits')
+            self.assertTrue((folder/'build/tests/native/selected/codec_bits.log').is_file())
 
     # Quiet output must preserve a failing child status and retain diagnostics beyond its excerpt.
     def test_selected_suite_failure(self):
@@ -248,25 +248,25 @@ class NativeUnitHarness(unittest.TestCase):
             kwargs['stdout'].write(''.join('diagnostic-'+str(index)+'\n' for index in range(60)))
             raise subprocess.CalledProcessError(7, arguments)
         with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
-                native_tests, 'unit_command', return_value=['hastur', 'natural']), patch.object(
+                native_tests, 'unit_command', return_value=['hastur', 'codec_natural']), patch.object(
                 native_tests, 'unit_environment', return_value={}), patch.object(
                 native_tests, 'unit_work_directory', return_value=folder), patch.object(
                 native_tests.subprocess, 'run', side_effect=fail), patch('sys.stdout', new_callable=io.StringIO) as output:
             with self.assertRaises(subprocess.CalledProcessError) as raised:
-                native_tests.run_units(folder/'nimony', {}, {}, 'natural')
+                native_tests.run_units(folder/'nimony', {}, {}, 'codec_natural')
             self.assertEqual(raised.exception.returncode, 7)
             self.assertIn('diagnostic-59', output.getvalue())
             self.assertNotIn('diagnostic-0\n', output.getvalue())
             self.assertNotIn('PASS natural', output.getvalue())
-            self.assertEqual(len((folder/'build/tests/native/selected/natural.log').read_text().splitlines()), 60)
+            self.assertEqual(len((folder/'build/tests/native/selected/codec_natural.log').read_text().splitlines()), 60)
 
     # Pure selected suites bypass unrelated native and integration preparation entirely.
     def test_selected_pure_entrypoint(self):
-        with patch.object(sys, 'argv', ['native_tests.py', '--suite', 'natural']), patch(
+        with patch.object(sys, 'argv', ['native_tests.py', '--suite', 'codec_natural']), patch(
                 'setup_nimony.installed', return_value=(Path('/fixture/nimony'), None)), patch.object(
                 native_tests, 'run_units') as run, patch('native_preparation.prepare_libraries') as prepare:
             native_tests.main()
-            run.assert_called_once_with(Path('/fixture/nimony'), {}, {}, 'natural')
+            run.assert_called_once_with(Path('/fixture/nimony'), {}, {}, 'codec_natural')
             prepare.assert_not_called()
 
     # Linked selection prepares only its declared libraries and never invokes aggregate fixtures or CE setup.
@@ -383,11 +383,11 @@ class NativeUnitHarness(unittest.TestCase):
                                          {'--forward:--passC:-I'+str(ROOT/'native'/include)
                                           for include in selected['includes']})
                         self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
-                        if name in ('validator_state', 'ticket_admission', 'ticket_state'):
+                        if name in ('state_validator_state', 'state_ticket_admission', 'state_ticket_state'):
                             # Rotation combines real ring primitives with independent setup/commit/hash refusal observers.
                             for key in ('bandersnatch', 'bandersnatch_observer'):
                                 self.assertIn('--forward:--passL:'+str(libraries[key].resolve()), args)
-                            for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('ticket_admission', 'ticket_state') else 'commit'):
+                            for function in ('setup_new', 'setup_free', 'ring_verify' if name in ('state_ticket_admission', 'state_ticket_state') else 'commit'):
                                 self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
                         if name == 'bandersnatch_owners':
                             # Both real and observed Rust ABIs plus exact call-site defines are required.
@@ -412,8 +412,8 @@ class NativeUnitHarness(unittest.TestCase):
     def test_compatible_serial_cache_reuse(self):
         with temporary_folder('hastur') as folder:
             libraries = native_libraries(folder)
-            first = native_tests.unit_command(folder/'nimony', 'accumulation_assign_publication', libraries)
-            second = native_tests.unit_command(folder/'nimony', 'accumulation_complete_batch', libraries)
+            first = native_tests.unit_command(folder/'nimony', 'state_accumulation_assign_publication', libraries)
+            second = native_tests.unit_command(folder/'nimony', 'state_accumulation_complete_batch', libraries)
             cache = lambda args: next(arg for arg in args if arg.startswith('--cachedir:'))
             self.assertEqual(cache(first), cache(second))
             self.assertNotEqual(first[-1], second[-1])
@@ -424,7 +424,7 @@ class NativeUnitHarness(unittest.TestCase):
             other.mkdir()
             (other/'hastur').touch()
             self.assertNotEqual(cache(first), cache(native_tests.unit_command(
-                other/'nimony', 'accumulation_assign_publication', libraries)))
+                other/'nimony', 'state_accumulation_assign_publication', libraries)))
 
     # Exceptional exits release the cache lock; another process must not acquire it during a run.
     def test_cache_lock_lifetime(self):
@@ -452,7 +452,7 @@ class NativeUnitHarness(unittest.TestCase):
             header.write_text('first header')
             with patch.object(native_tests, 'ROOT', folder):
                 cache = lambda: next(arg for arg in native_tests.unit_command(
-                    folder/'nimony', 'accumulation_complete_batch', libraries)
+                    folder/'nimony', 'state_accumulation_complete_batch', libraries)
                     if arg.startswith('--cachedir:'))
                 first = cache()
                 libraries['observer'].write_bytes(b'changed native library')
@@ -472,25 +472,25 @@ class NativeUnitHarness(unittest.TestCase):
     # A codec batch in a shard neither requires another partition's fixtures nor clears its observations.
     def test_batch_environment_scope(self):
         with temporary_folder() as folder, patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
-            sibling = folder/'accumulation_context.json'
+            sibling = folder/'state_accumulation_context.json'
             sibling.write_text('sibling observation')
-            environment = native_tests.unit_environment(Path('/fixture/nimony'), base={}, suites=('natural',))
+            environment = native_tests.unit_environment(Path('/fixture/nimony'), base={}, suites=('codec_natural',))
             self.assertEqual(environment, {'RAGNAROK_TEST_EVIDENCE': str(folder)})
             self.assertEqual(sibling.read_text(), 'sibling observation')
             with self.assertRaisesRegex(ValueError, 'environment scope'):
-                native_tests.unit_environment(Path('/fixture/nimony'), 'natural', suites=('bits',))
+                native_tests.unit_environment(Path('/fixture/nimony'), 'codec_natural', suites=('codec_bits',))
             with self.assertRaisesRegex(ValueError, 'environment scope'):
-                native_tests.unit_environment(Path('/fixture/nimony'), suites=('natural', 'natural'))
+                native_tests.unit_environment(Path('/fixture/nimony'), suites=('codec_natural', 'codec_natural'))
 
     # Generated certificates/CE inputs must be explicitly prepared; inherited variables alone cannot satisfy them.
     def test_runtime_fixture_required(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
-                for name in ('application_block_download', 'application_download_loop', 'application_download_peers', 'application_download_session', 'application_download_startup', 'pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
-                             'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
-                             'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
-                             'extrinsic_commitment', 'block_admission', 'disputes_transition',
-                             'availability_transition', 'guarantor_assignments'):
+                for name in ('app_block_download', 'app_download_loop', 'app_download_peers', 'app_download_session', 'app_download_startup', 'pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'state_authorization_transition', 'state_history_transition', 'codec_signing_domains', 'state_entropy_transition', 'state_validator_rotation', 'state_validator_state', 'state_ticket_admission', 'state_ticket_state',
+                             'state_sealer_schedule', 'state_sealer_state', 'state_safrole_markers', 'state_marker_state',
+                             'state_safrole_authentication', 'state_safrole_auth_state', 'state_safrole_transition',
+                             'crypto_extrinsic_commitment', 'state_block_admission', 'codec_disputes_transition',
+                             'state_availability_transition', 'state_guarantor_assignments'):
                     # An old environment path is insufficient without a newly supplied required-file manifest.
                     with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
                         native_tests.unit_environment(Path('/fixture/nimony'), name, {'RAGNAROK_TEST_CERT': '/old'})
@@ -518,17 +518,17 @@ class NativeUnitHarness(unittest.TestCase):
     # Fresh runs must remove their own old observation while preserving unrelated completed suite data.
     def test_fresh_arc_observations(self):
         with temporary_folder() as folder:
-            owner = folder/'ownership.json'
-            report = folder/'report_snapshots.json'
+            owner = folder/'codec_ownership.json'
+            report = folder/'state_report_snapshots.json'
             owner.write_text('{}')
             report.write_text('{}')
             with patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
-                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'ownership', {'KEPT': 'yes'})
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'codec_ownership', {'KEPT': 'yes'})
                 self.assertFalse(owner.exists())
                 self.assertTrue(report.exists())
                 self.assertEqual(environment['RAGNAROK_TEST_EVIDENCE'], str(folder))
                 self.assertEqual(environment['KEPT'], 'yes')
-                native_tests.unit_environment(Path('/fixture/nimony'), 'report_snapshots')
+                native_tests.unit_environment(Path('/fixture/nimony'), 'state_report_snapshots')
                 self.assertFalse(report.exists())
 
     # A successful native verdict cannot substitute missing, partial or malformed numeric evidence.
@@ -542,26 +542,26 @@ class NativeUnitHarness(unittest.TestCase):
                 for observed in invalid:
                     # Reject every malformed alternative, including booleans that Python otherwise treats as integers.
                     with self.subTest(observed=observed):
-                        (folder/'ownership.json').write_text(json.dumps(observed))
+                        (folder/'codec_ownership.json').write_text(json.dumps(observed))
                         with self.assertRaises(ValueError):
-                            native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
-                (folder/'ownership.json').write_text(json.dumps(valid))
-                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership'), valid)
+                            native_tests.unit_evidence(Path('/fixture/nimony'), 'codec_ownership')
+                (folder/'codec_ownership.json').write_text(json.dumps(valid))
+                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'codec_ownership'), valid)
                 report = {key: value for key, value in valid.items() if key != 'schemas'}
-                (folder/'report_snapshots.json').write_text(json.dumps(report))
-                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'report_snapshots'), report)
+                (folder/'state_report_snapshots.json').write_text(json.dumps(report))
+                self.assertEqual(native_tests.unit_evidence(Path('/fixture/nimony'), 'state_report_snapshots'), report)
 
     # A file removed before execution must be produced again; a previous green run is not evidence.
     def test_missing_arc_observation(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
                 with self.assertRaises(FileNotFoundError):
-                    native_tests.unit_evidence(Path('/fixture/nimony'), 'ownership')
+                    native_tests.unit_evidence(Path('/fixture/nimony'), 'codec_ownership')
 
     # The committed report snapshot must equal the pre-existing independent oracle, not production output.
     def test_guarantee_fixture_reference(self):
         from guarantees_oracle import record
-        variable, path, required = native_tests.unit_static_fixtures('guarantees')[0]
+        variable, path, required = native_tests.unit_static_fixtures('codec_guarantees')[0]
         self.assertEqual(len(required), 1)
         self.assertEqual(required[0][0], path)
         expected = required[0][1]
@@ -577,19 +577,19 @@ class NativeUnitHarness(unittest.TestCase):
             with patch.dict(native_tests.FIXTURE_CONTRACTS, {'guarantee_report': fixture}, clear=True), patch.object(
                     native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
                 with self.assertRaises(FileNotFoundError):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'codec_guarantees')
                 path.write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'codec_guarantees')
                 path.write_bytes(b'fixture')
-                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees',
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'codec_guarantees',
                     {'RAGNAROK_GUARANTEE_FIXTURE': '/stale/fixture'})
                 self.assertEqual(environment['RAGNAROK_GUARANTEE_FIXTURE'], str(path))
 
     # Every saved tiny child must match the original independently authored canonical input.
     def test_block_fixture_reference(self):
         from block_oracle import published
-        variable, target, required = native_tests.unit_static_fixtures('block')[0]
+        variable, target, required = native_tests.unit_static_fixtures('codec_block')[0]
         expected = dict(zip(('tickets', 'preimages', 'guarantees', 'assurances', 'disputes'),
                             published('tiny', 'E', canonical=True)))
         expected['header'] = published('tiny', 'B', canonical=True)[0]
@@ -601,7 +601,7 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), expected[path.stem])
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
-        sources = {path for path, _ in required} | {native_tests.unit_static_fixtures('guarantees')[0][1]}
+        sources = {path for path, _ in required} | {native_tests.unit_static_fixtures('codec_guarantees')[0][1]}
         self.assertTrue(sources <= set(native_tests.unit_fixture_sources()))
 
     # State report consumers must retain the same independently authored byte fixture and checksum.
@@ -634,12 +634,12 @@ class NativeUnitHarness(unittest.TestCase):
             with patch.dict(native_tests.FIXTURE_CONTRACTS, {'block_tiny': fixture}, clear=True), patch.object(
                     native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
                 with self.assertRaises(FileNotFoundError):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'block')
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'codec_block')
                 last.write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'block')
+                    native_tests.unit_environment(Path('/fixture/nimony'), 'codec_block')
                 last.write_bytes(b'last')
-                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'block',
+                environment = native_tests.unit_environment(Path('/fixture/nimony'), 'codec_block',
                     {'RAGNAROK_BLOCK_FIXTURES': '/stale/directory'})
                 self.assertEqual(environment['RAGNAROK_BLOCK_FIXTURES'], str(folder))
 

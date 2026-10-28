@@ -5,11 +5,18 @@
 
 ## Exact original execution/admission map ownership, equal-root/stale refusal and fixed acyclic lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_state, computed_links, computed_guarantee, computed_report,
-  block_admission, store]
-import ../../../src/codec/[state_trie, header]
-import ../../support/[pvm_computed_state, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/computed_links as state_computed_links
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/header as codec_header
+import ../../support/pvm_computed_state
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all new hashes only after completing original execution and genuine block commitment admissions.

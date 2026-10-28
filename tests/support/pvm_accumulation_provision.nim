@@ -5,11 +5,28 @@
 ## Exposes literal full-width register calls, requested source maps and bounded dispatcher invocation.
 
 import std/assertions
-import ../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context, accumulation_effects]
-import ../../src/codec/[bounded, assurances, composite, state_accounts, state_requests,
-  state_service_values, state_authorization, state_safrole, state_privileges, state_layout, state_trie]
-import ../../src/crypto/primitives
-import ../../src/pvm/[initialize, machine, program, host_fetch, step, gas]
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/state/accumulation_context as state_accumulation_context
+import ../../src/state/accumulation_effects as state_accumulation_effects
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_authorization as codec_state_authorization
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_privileges as codec_state_privileges
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/gas as pvm_gas
 import ./pvm_accumulation_context
 
 type

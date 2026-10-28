@@ -10,7 +10,7 @@
 ## instructionHasFallthrough/TargetStartsBlock and instructionRegisters/instructionMemoryOperands
 ## without publishing mutable validation metadata.
 
-import ../codec/natural
+import ../codec/natural as codec_natural
 
 const
   jamCodeBytes = 32'u64 * 1024 * 1024 # GP-PVM-007: pinned PolkaVM's instruction-byte ceiling.
@@ -193,10 +193,10 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # Bound even a fully present input before scanning or copying it.
   if uint64(input.len) > uint64(byteLimit):
     return ProgramResult[Program](status: ProgramError.LimitExceeded)
-  let count = natural.decode(input)
+  let count = codec_natural.decode(input)
   # A failed natural publishes neither its value nor consumed extent.
   if not count.ok:
-    return ProgramResult[Program](status: (if count.error == natural.truncated:
+    return ProgramResult[Program](status: (if count.error == codec_natural.truncated:
       ProgramError.Truncated else: ProgramError.NonCanonical))
   let jumps = uint64(count.value)
   # Zero-width tables also need a logical count ceiling despite consuming no payload bytes.
@@ -211,10 +211,10 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # The current deblob equation limits every jump-table element width to four bytes.
   if width > 4:
     return ProgramResult[Program](status: ProgramError.InvalidProgram)
-  let codeCount = natural.decode(input.toOpenArray(cursor, input.len - 1))
+  let codeCount = codec_natural.decode(input.toOpenArray(cursor, input.len - 1))
   # Canonical naturals give a unique framing; overlong lengths are not alternate formats.
   if not codeCount.ok:
-    return ProgramResult[Program](status: (if codeCount.error == natural.truncated:
+    return ProgramResult[Program](status: (if codeCount.error == codec_natural.truncated:
       ProgramError.Truncated else: ProgramError.NonCanonical))
   cursor += int(codeCount.consumed)
   let codeSize = uint64(codeCount.value)

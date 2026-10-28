@@ -3,13 +3,29 @@
 
 ## Admit an authenticated computed successor and derive its actual assurance-fed accumulation queue through maintained planners.
 
-import ../chain/parameters
-import ../codec/[header, bounded]
-import ./[computed_assurances, computed_chain, computed_state_publication, computed_composition,
-    computed_finalization, computed_execution, computed_round, computed_publication,
-    computed_admission, computed_inclusion, computed_batch, computed_envelope, computed_credentials,
-    computed_guarantors, computed_roster, computed_transition, computed_profile, computed_lookup,
-    report_admission, accumulation_queue]
+import ../chain/parameters as chain_parameters
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ./computed_assurances as state_computed_assurances
+import ./computed_chain as state_computed_chain
+import ./computed_state_publication as state_computed_state_publication
+import ./computed_composition as state_computed_composition
+import ./computed_finalization as state_computed_finalization
+import ./computed_execution as state_computed_execution
+import ./computed_round as state_computed_round
+import ./computed_publication as state_computed_publication
+import ./computed_admission as state_computed_admission
+import ./computed_inclusion as state_computed_inclusion
+import ./computed_batch as state_computed_batch
+import ./computed_envelope as state_computed_envelope
+import ./computed_credentials as state_computed_credentials
+import ./computed_guarantors as state_computed_guarantors
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./report_admission as state_report_admission
+import ./accumulation_queue as state_accumulation_queue
 
 type
   AssuredQueueConfig* = object ## Semantic admission controls stay original; queue and ancestor resources remain independently bounded.

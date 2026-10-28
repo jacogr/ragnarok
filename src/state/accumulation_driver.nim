@@ -4,10 +4,14 @@
 ## Drive genuine completed initial accumulation through bounded report-only rounds to an actual stopped certificate.
 ## Exposes explicit per-entry/depth policy and guarded terminal alternatives/reasons; never publishes caller state.
 
-import ../chain/parameters
-import ./[accumulation_execution, accumulation_continuation, accumulation_continuation_inputs,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_runner,
-  accumulation_later_runner]
+import ../chain/parameters as chain_parameters
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_continuation_execution as state_accumulation_continuation_execution
+import ./accumulation_reentry as state_accumulation_reentry
+import ./accumulation_runner as state_accumulation_runner
+import ./accumulation_later_runner as state_accumulation_later_runner
 
 type
   AccumulationDriverLimits* = object ## One continuation plus depth-bounded reentries, with independent local ceilings per entry.

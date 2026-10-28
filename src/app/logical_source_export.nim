@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Export original qualified raw identities to the existing logical startup source syntax without materializing service payload values.
-import ./current_logical_startup
-import ../state/[current_logical, supplied_logical_inventory, inventory]
-import ../codec/[bounded, state_layout]
+import ./current_logical_startup as app_current_logical_startup
+import ../state/current_logical as state_current_logical
+import ../state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../state/inventory as state_inventory
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
 type
   LogicalSourceExportLimits* = object ## Whole identity traversal, each detached raw-key copy and output-plus-largest-key storage have independent ceilings.
     services*, facts*: ElementLimit

@@ -3,6 +3,6 @@
 
 ## Prepared program ownership and its selected operation arrays are never writable public state.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/pvm/step
+import ../../../src/pvm/step as pvm_step
 let prepared = default(PreparedProgram)
 discard prepared.data

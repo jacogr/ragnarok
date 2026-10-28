@@ -3,6 +3,6 @@
 
 ## Opaque RawState ownership cannot be replaced by caller-authored wire or map storage.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/state/trace_state
+import ../../../src/state/trace_state as state_trace_state
 let state = default(TraceState)
 discard state.data

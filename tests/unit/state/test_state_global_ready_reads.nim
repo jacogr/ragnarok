@@ -2,10 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Ready-ring evidence retains full report children and owner-bound dependency sets with exact framing.
-import std/[assertions, syncio]
-import ../../support/[proof_global_helpers, proof_global_report]
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_workqueues, state_layout, state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../support/state_proof_global_report
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() {.raises.} =
   ## Validate one nonempty ready slot and all independent child/outer resource policies.
   let config = WorkQueueConfig(epochSlots: EpochSlots(2), cores: CoreCount(2),

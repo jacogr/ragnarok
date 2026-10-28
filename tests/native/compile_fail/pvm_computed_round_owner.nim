@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_round
+import ../../../src/state/computed_round as state_computed_round
 var candidate: ComputedAccumulationRound
 discard candidate.data

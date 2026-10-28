@@ -3,8 +3,11 @@
 
 ## Published vector RawState wire: root, compact record count, then31-byte keys and compact blobs.
 ## Opaque complete maps are root-checked, never promoted to logical identities or selected-chain authority.
-import ./store
-import ../codec/[bounded, natural, state_trie, state_layout]
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
 
 type
   TraceStateError* {.pure.} = enum ## Refusals expose neither partial owners nor consumed-prefix coordinates.

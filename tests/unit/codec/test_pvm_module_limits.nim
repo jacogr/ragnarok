@@ -3,8 +3,13 @@
 
 ## The current paper and PolkaVM share exact module code, jump-count and width limits.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, inner_machines, step]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/step as pvm_step
 import ../../support/pvm_inner_lifecycle
 
 for row in [(@[224'u8, 255, 255, 255], 16777215'u64),

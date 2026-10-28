@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/safrole_transition_results.nim",
+  "source": "tests/native/state_safrole_transition_results.nim",
   "build_name": "safrole-transition-results",
   "crypto_library": "crypto",
   "native_libraries": [

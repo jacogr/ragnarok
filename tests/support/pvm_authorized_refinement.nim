@@ -4,12 +4,24 @@
 ## Original combined authorizer/refinement source fixtures bind all code and package fields before authorization executes.
 
 import std/assertions
-import ../../src/state/[authorized_refinement, authorization_invocation, refinement_dispatch, store]
-import ../../src/codec/[bounded, composite, work_package, work_digest, work_report,
-  state_accounts, state_service_values, state_requests, state_trie]
-import ../../src/chain/parameters
-import ../../src/pvm/host_fetch
-import ./[pvm_authorization_invoke, pvm_report_results, pvm_work_digests]
+import ../../src/state/authorized_refinement as state_authorized_refinement
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/chain/parameters as chain_parameters
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ./pvm_authorization_invoke
+import ./pvm_report_results
+import ./pvm_work_digests
 
 type
   AuthorizedFixture* = object ## Caller-visible test handles permit source-replacement witnesses without production setter APIs.

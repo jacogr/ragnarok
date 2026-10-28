@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic codec payload guards retain default/failed reasons and genuine valid controls.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[record_codec, node_records]
-import ../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/record_codec as storage_record_codec
+import ../../src/storage/node_records as storage_node_records
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 
 proc main() =
   ## Dynamic selection prevents constant folding from replacing native precondition evidence.

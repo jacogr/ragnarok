@@ -20,7 +20,7 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
     requests, expected, evidence = oracle.expected_observations()
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
-    built, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_scenarios_driver.nim',
+    built, binary = checks.build(compiler, ROOT/'tests/native/state_current_stf_reporting_scenarios_driver.nim',
         'current-stf-reporting-scenarios'+('-late-histories' if 'lateHistories' in defines else '-late-retention' if 'lateRetention' in defines else '-rotation-incarnations' if 'rotationIncarnations' in defines else '-rotation-requests' if 'rotationRequests' in defines else '-rotation-code' if 'rotationCode' in defines else '-rotation-lifecycle' if 'rotationLifecycle' in defines else '-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -71,7 +71,7 @@ def current_stf_late_command_corpus(compiler, report, checks, libraries):
         assert manifest['files'][prefix+'chain.json']==job['config_sha256']
         assert manifest['files'][prefix+'genesis.bin']==job['genesis_sha256']
         assert [manifest['files'][prefix+'step-'+str(i).zfill(4)+'.bin'] for i in range(len(job['steps_sha256']))]==job['steps_sha256']
-    built,binary=checks.build(compiler,ROOT/'tests/native/current_stf_trace_command_driver.nim',
+    built,binary=checks.build(compiler,ROOT/'tests/native/state_current_stf_trace_command_driver.nim',
         'current-stf-trace-command-late',defines=oracle.NATIVE_DEFINES,crypto_library=libraries['crypto'],native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
     result=dict(build=built,passed=False,**evidence,requests=len(jobs),
         bundle_manifest_sha256=hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
@@ -426,7 +426,7 @@ def current_stf_rotation_command_corpus(compiler, report, checks, libraries):
         assert manifest['files'][prefix+'chain.json']==job['config_sha256']
         assert manifest['files'][prefix+'genesis.bin']==job['genesis_sha256']
         assert [manifest['files'][prefix+'step-'+str(i).zfill(4)+'.bin'] for i in range(len(job['steps_sha256']))]==job['steps_sha256']
-    built,binary=checks.build(compiler,ROOT/'tests/native/current_stf_trace_command_driver.nim',
+    built,binary=checks.build(compiler,ROOT/'tests/native/state_current_stf_trace_command_driver.nim',
         'current-stf-trace-command-rotation',defines=oracle.NATIVE_DEFINES,crypto_library=libraries['crypto'],native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
     result=dict(build=built,passed=False,**evidence,requests=len(jobs),
         bundle_manifest_sha256=hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
@@ -454,7 +454,7 @@ def current_stf_population_command_corpus(compiler, report, checks, libraries):
         assert manifest['files'][prefix+'chain.json']==job['config_sha256']
         assert manifest['files'][prefix+'genesis.bin']==job['genesis_sha256']
         assert [manifest['files'][prefix+'step-'+str(i).zfill(4)+'.bin'] for i in range(len(job['steps_sha256']))]==job['steps_sha256']
-    built,binary=checks.build(compiler,ROOT/'tests/native/current_stf_trace_command_driver.nim',
+    built,binary=checks.build(compiler,ROOT/'tests/native/state_current_stf_trace_command_driver.nim',
         'current-stf-trace-command',crypto_library=libraries['crypto'],native_libraries=(libraries['bandersnatch'],),quic_library=libraries['quic'])
     result=dict(build=built,passed=False,**evidence,requests=len(jobs),
         bundle_manifest_sha256=hashlib.sha256(json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()).hexdigest(),

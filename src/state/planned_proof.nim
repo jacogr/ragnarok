@@ -4,8 +4,12 @@
 ## Exact generic plan authentication and existing RPV1 transport under independent root authority.
 ## No encoded root, service selector or partial map can substitute for caller-selected trust.
 import std/assertions
-import ./[proof_plan, proof_view, trie_proof]
-import ../codec/[bounded, state_layout, state_trie]
+import ./proof_plan as state_proof_plan
+import ./proof_view as state_proof_view
+import ./trie_proof as state_trie_proof
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type PlannedProofResult*[T] = object ## Private plan-scoped outcomes preserve existing view/proof reasons without public success forgery.
   case status: ProofViewError

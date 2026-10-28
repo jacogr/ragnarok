@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/safrole_authentication_results.nim",
+  "source": "tests/native/state_safrole_authentication_results.nim",
   "build_name": "safrole-authentication-results",
   "crypto_library": "crypto",
   "native_libraries": [

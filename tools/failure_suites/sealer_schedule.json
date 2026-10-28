@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/sealer_schedule_results.nim",
+  "source": "tests/native/state_sealer_schedule_results.nim",
   "build_name": "sealer-schedule-results",
   "crypto_library": "crypto",
   "native_libraries": [],

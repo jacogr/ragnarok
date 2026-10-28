@@ -6,9 +6,16 @@
 
 # @@Verification={"arc": "pvm_step_arc_release"}
 
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers, gas, gas_plan, step]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/registers as pvm_registers
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/gas_plan as pvm_gas_plan
+import ../../../src/pvm/step as pvm_step
+import ../../support/testing_arc_evidence
 
 # Read independently serialized little-endian fixture integers after checking their enclosing extent.
 proc word(data: string, at, width: int): uint64 =

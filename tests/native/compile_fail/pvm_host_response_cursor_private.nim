@@ -3,5 +3,5 @@
 
 ## Only invocation-owned genuine host suspensions may use the private response cursor.
 # @@Verification={"group": "privacy", "expected": "applyCursorResponse"}
-import ../../../src/pvm/step
-discard step.applyCursorResponse
+import ../../../src/pvm/step as pvm_step
+discard pvm_step.applyCursorResponse

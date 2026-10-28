@@ -4,10 +4,16 @@
 ## One fixed-address native worker serializes distinct full/light publication and retirement or full maintenance under an exclusive ARC graph lease.
 ## The host pauses RPC and all aliases, collects the actual IO outcome, then installs canonical/RPC state.
 ## There is no cancel-as-rollback operation: joined shutdown preserves every operation that entered IO.
-import std/[assertions, locks, rawthreads]
-import ./[disk_chain, light_store]
-import ../state/disk_store
-import ../storage/[node_repository, managed_repository, full_paged_store, paged_store]
+import std/assertions
+import std/locks
+import std/rawthreads
+import ./disk_chain as app_disk_chain
+import ./light_store as app_light_store
+import ../state/disk_store as state_disk_store
+import ../storage/node_repository as storage_node_repository
+import ../storage/managed_repository as storage_managed_repository
+import ../storage/full_paged_store as storage_full_paged_store
+import ../storage/paged_store as storage_paged_store
 
 type
   DiskWorkerPhase* {.pure.} = enum ## Done retains capacity and exclusive graph borrowing until collection or joined close.

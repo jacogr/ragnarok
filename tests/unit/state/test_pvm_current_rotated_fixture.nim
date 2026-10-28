@@ -2,13 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Separate candidate preparation reproduces every complete phase-composed successor of genuine consecutive signed blocks.
-import std/[assertions, syncio, envvars]
-import ../../../src/app/[chain, candidate]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, header, state_layout, state_safrole, bounded]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus]
-import ../../support/[current_consecutive_context, current_rotated_sequence_context,
-    accumulation_current_chain_context, current_services_disk_samples]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_rotated_sequence_context
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_services_disk_samples
 
 proc main() {.raises.} =
   ## Three current successors preserve parent authority, exact full maps and original aliases while refusing old-child replay.

@@ -3,11 +3,22 @@
 
 ## Independent byte/proof oracles exercise streamed construction, strict admission and bounded authenticated search.
 # @@Verification={"arc":"storage_paged_stream_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, paged_reference]
-import ../../../src/storage/[paged_stream, paged_codec, database_identity, state_proof,
-  light_state_cache, full_state_trie, light_snapshot, managed_manifest, light_delta]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_paged_reference
+import ../../../src/storage/paged_stream as storage_paged_stream
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Independent primitive failure controls leave production IO/proof algorithms intact.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

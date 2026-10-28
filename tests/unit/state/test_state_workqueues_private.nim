@@ -9,8 +9,10 @@
 
 # @@Verification={"arc": "workqueues_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, envvars, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/envvars
+import std/syncio
 include ../../../src/codec/state_workqueues
 var fixture: seq[byte] = @[]
 # Fixture bytes come from the independent Python report equations and must be available before testing.

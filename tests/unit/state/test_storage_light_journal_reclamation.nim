@@ -3,12 +3,22 @@
 
 ## Explicit journal reclamation validates selected authority, preserves unknown candidates and synchronizes idempotent absence.
 # @@Verification={"arc":"storage_light_journal_reclamation_arc_release"}
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[arc_evidence, storage_io, storage_light_journal]
-import ../../../src/storage/[light_journal_cache, light_journal_manifest, light_journal_replay,
-  light_delta, light_snapshot, database_identity, managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/storage_light_journal
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selected-head provider refusal must poison fresh authority before any namespace deletion.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

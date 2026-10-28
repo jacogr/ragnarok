@@ -3,6 +3,7 @@
 
 ## Local codec results must not expose mutable alternatives.
 # @@Verification={"group":"privacy","expected":"status"}
-import ../../../src/storage/[record_codec, node_records]
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_records as storage_node_records
 let hidden = default(RecordResult[TrieExport])
 discard hidden.status

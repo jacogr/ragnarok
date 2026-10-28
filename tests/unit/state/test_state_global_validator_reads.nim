@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Staging/active/previous roster evidence retains its namespace and opaque fixed record order.
-import std/[assertions, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_layout, state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 let config = ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
     maxBytes: ByteLimit(3000))
 for chapter in [ValidatorChapter.Staging, ValidatorChapter.Active, ValidatorChapter.Previous]:

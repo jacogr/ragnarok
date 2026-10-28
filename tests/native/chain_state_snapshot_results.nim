@@ -3,10 +3,12 @@
 
 ## Runtime-selected default block owners and invalid key results cannot expose usable snapshots or keys.
 
-import std/[cmdline, syncio]
-import ../../src/chain/genesis
-import ../../src/state/store
-import ../../src/codec/[state_trie, bounded]
+import std/cmdline
+import std/syncio
+import ../../src/chain/genesis as chain_genesis
+import ../../src/state/store as state_store
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 
 let selected = paramStr(1)
 if selected == "block":

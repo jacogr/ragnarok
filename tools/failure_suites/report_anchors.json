@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/report_anchor_results.nim",
+  "source": "tests/native/state_report_anchor_results.nim",
   "build_name": "report-anchor-results",
   "crypto_library": "crypto",
   "native_libraries": [],

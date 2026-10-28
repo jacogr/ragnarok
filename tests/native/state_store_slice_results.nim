@@ -4,8 +4,10 @@
 ## Runtime-selected invalid slice results cannot expose an owned byte payload.
 
 import std/cmdline
-import ../../src/state/store
-import ../../src/codec/[bounded, state_trie, state_layout]
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_layout as codec_state_layout
 let state = newStateStore([StateEntry(key: default(StateKey), value: @[1'u8])],
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(1),
     totalValueBytes: ByteLimit(1), nodes: TrieNodeLimit(1000)))).value

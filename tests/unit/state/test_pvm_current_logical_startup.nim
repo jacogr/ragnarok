@@ -2,26 +2,51 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete explicit CLI logical files drive actual authenticated adoption and disk restart; malformed syntax and incomplete identities grant no source prefix.
-import std/[assertions, syncio, envvars, strutils, os]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/strutils
+import std/os
 import std/posix/posix
-import ../../support/[current_logical_cli_context, current_namespace_policy_context,
-    current_namespace_execution_context, current_service_replacement_context,
-    current_application_context, current_consecutive_context,
-    current_consecutive_download_context,
-    current_services_disk_samples, managed_storage_samples, current_namespace_transition_context,
-    current_download_command_context, block_download_transport]
+import ../../support/state_current_logical_cli_context
+import ../../support/state_current_namespace_policy_context
+import ../../support/state_current_namespace_execution_context
+import ../../support/state_current_service_replacement_context
+import ../../support/state_current_application_context
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/state_current_namespace_transition_context
+import ../../support/state_current_download_command_context
+import ../../support/app_block_download_transport
 import ../../support/pvm_accumulation_program
-import ../../../src/pvm/machine
-import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
-    current_download_command, options, services, chain]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts,
-    composite, state_service_values]
-import ../../../src/chain/[provider, genesis]
-import ../../support/accumulation_current_candidate_context
-import ../../../src/state/service_identity_history
-import ../../../src/state/[accumulation_effects, store, parent_logical, accumulation_current_update,
-    block_admission, report_admission]
-import ../../../src/storage/managed_manifest
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/app/current_logical_startup as app_current_logical_startup
+import ../../../src/app/current_logical_download as app_current_logical_download
+import ../../../src/app/current_download_policy as app_current_download_policy
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/app/options as app_options
+import ../../../src/app/services as app_services
+import ../../../src/app/chain as app_chain
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/genesis as chain_genesis
+import ../../support/state_accumulation_current_candidate_context
+import ../../../src/state/service_identity_history as state_service_identity_history
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/store as state_store
+import ../../../src/state/parent_logical as state_parent_logical
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/storage/managed_manifest as storage_managed_manifest
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Canonical lexical failures must perform no primitive work.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

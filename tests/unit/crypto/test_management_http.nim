@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent registry, strict HTTP boundaries and real private local-socket lifecycle checks.
-import std/[assertions, syncio]
-import ../../../src/rpc/protocol as public_protocol
+import std/assertions
+import std/syncio
+import ../../../src/rpc/protocol as rpc_protocol
 include ../../../src/management/server
 
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
@@ -29,7 +30,7 @@ for name in ["ragnarok_clientInfo", "bestBlock", "subscribeBestBlock",
   let reply = respond("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" & name & "\"}", admin)
   assert "-32601" in reply # The management registry cannot reach any public method.
 let publicInfo = ClientInfo(role: "server")
-assert "-32601" in public_protocol.respond(request, publicInfo) # WS cannot reach management.
+assert "-32601" in rpc_protocol.respond(request, publicInfo) # WS cannot reach management.
 for suffix in ["[]", "{}"]:
   assert "\"result\"" in respond(request.substr(0, request.len - 2) & ",\"params\":" & suffix & "}", admin)
 assert "-32602" in respond(request.substr(0, request.len - 2) & ",\"params\":[1]}", admin)

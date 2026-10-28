@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical backend CLI defaults, all explicit modes, strict refusals and dedicated-command extraction.
-import std/[assertions, syncio, strutils]
-import ../../../src/app/[options, cli_help]
+import std/assertions
+import std/syncio
+import std/strutils
+import ../../../src/app/options as app_options
+import ../../../src/app/cli_help as app_cli_help
 
 proc peer(): seq[string] =
   ## A complete named service command isolates backend parsing from missing transport arguments.

@@ -4,9 +4,15 @@
 ## Explicit light-file owners bind a separate locked namespace to independently expected chain/root.
 ## Only synchronized atomic publication changes the immutable view; uncertain IO requires reopen.
 import std/assertions
-import ./[light_snapshot, light_state_cache, managed_io, managed_manifest, database_identity,
-  file_errors, durability]
-import ../codec/[state_trie, state_layout]
+import ./light_snapshot as storage_light_snapshot
+import ./light_state_cache as storage_light_state_cache
+import ./managed_io as storage_managed_io
+import ./managed_manifest as storage_managed_manifest
+import ./database_identity as storage_database_identity
+import ./file_errors as storage_file_errors
+import ./durability as storage_durability
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
 
 type
   LightFileConfig* = object ## Caller-selected trust and resource policy never come from on-disk metadata.

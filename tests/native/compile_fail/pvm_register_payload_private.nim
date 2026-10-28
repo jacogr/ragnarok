@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/registers
+import ../../../src/pvm/registers as pvm_registers
 let r = default(RegisterResult)
 discard r.completed

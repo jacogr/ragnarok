@@ -3,8 +3,10 @@
 
 ## Authored cross-page byte patterns and real allocated inner maps for transfer witnesses and guards.
 
-import ../../src/pvm/[inner_machines, machine]
-import ./[pvm_inner_lifecycle, pvm_inner_pages]
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
+import ./pvm_inner_lifecycle
+import ./pvm_inner_pages
 
 proc transferRegisters*(caller = 69630'u64, inner = 69631'u64, size = 4'u64,
     id = 0'u64): RegisterFile =

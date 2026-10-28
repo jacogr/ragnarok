@@ -6,9 +6,13 @@
 ## Provides a standalone measurement executable; reported timings are performance observations,
 ## not correctness verdicts.
 
-import std/[assertions, syncio]
-import ./src/codec/[natural, fixed_unsigned, bounded, owned]
-import ./src/crypto/primitives
+import std/assertions
+import std/syncio
+import ./src/codec/natural as codec_natural
+import ./src/codec/fixed_unsigned as codec_fixed_unsigned
+import ./src/codec/bounded as codec_bounded
+import ./src/codec/owned as codec_owned
+import ./src/crypto/primitives as crypto_primitives
 
 # Opaque non-LTO observation keeps complete operation results visible without altering their bytes.
 proc observe(data: pointer, size: csize_t) {.importc: "rb_observe", cdecl.}
@@ -37,7 +41,7 @@ proc step(item: var Workload): uint64 {.noinline.} =
     return mark
   of 1:
     # Successful compact decoding must expose its exact copied value and consumed extent.
-    var parsed = natural.decode(item.naturalWire)
+    var parsed = codec_natural.decode(item.naturalWire)
     observe(addr parsed, csize_t(sizeof(parsed)))
     assert parsed.ok
     return uint64(parsed.value) xor uint64(parsed.consumed)
@@ -96,7 +100,7 @@ proc prepare(kind: int): Workload =
   result.payload = newSeq[byte](65536)
   for i in 0..<result.payload.len: result.payload[i] = byte(
       i mod 251) # Public fixed fixture, independent of compiler layout.
-  let compact = natural.encode(JamNatural(high(uint64) - 17))
+  let compact = codec_natural.encode(JamNatural(high(uint64) - 17))
   result.naturalWire = newSeq[byte](compact.len)
   for i in 0..<compact.len: result.naturalWire[i] = compact.bytes[i] # Retain only the actual wire prefix.
   result.values = newSeq[FixedUnsigned](4096)

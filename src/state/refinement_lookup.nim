@@ -4,10 +4,15 @@
 ## GP 0.8.0 refinement host 7: read-only historical preimage lookup at a retained anchor time.
 ## Captures complete-state ownership and returns atomic guest responses; no block publication or invocation certification.
 
-import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests,
-  work_report]
-import ../pvm/[machine, step]
-import ./store
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../codec/work_report as codec_work_report
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ./store as state_store
 
 type
   HistoricalLookupError* {.pure.} = enum ## Local refusals carry no response or captured context.

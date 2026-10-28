@@ -5,10 +5,19 @@
 ## Exposes immutable bootstrap handles and a bound adapter deriving posterior entropy from the block stage.
 ## Mutable implications/checkpoints, PVM execution and state publication remain separate.
 
-import ../codec/[natural, bounded, composite, header, state_safrole, state_layout]
-import ../crypto/primitives
-import ./[accumulation_service, accumulation_round, accumulation_queue, report_admission,
-  block_transition, store]
+import ../codec/natural as codec_natural
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../crypto/primitives as crypto_primitives
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   AccumulationArgumentCount* = distinct uint64 ## Invocation input count is not a gas amount, service identity or byte ceiling.
@@ -62,15 +71,15 @@ proc accumulationArguments*(slot: HeaderSlot, service: ServiceIndex,
   result = @[]
   # Three fixed scalar encodings require at most 5+5+9 octets; no count-dependent allocation occurs.
   for scalar in [uint64(uint32(slot)), uint64(uint32(service)), uint64(count)]:
-    let encoded = natural.encode(JamNatural(scalar))
+    let encoded = codec_natural.encode(JamNatural(scalar))
     for i in 0..<encoded.len: result.add(encoded.bytes[
         i]) # Concatenate exact compact bytes, without extra framing.
 
 proc initialAccumulationService*(service: ServiceIndex, entropy: StateEntropyWord,
     slot: HeaderSlot): AccumulationInvocationResult[ServiceIndex] =
   ## Hash compact service, raw posterior entropy and compact slot; decode only the first four LE digest bytes.
-  let id = natural.encode(JamNatural(uint64(uint32(service))))
-  let time = natural.encode(JamNatural(uint64(uint32(slot))))
+  let id = codec_natural.encode(JamNatural(uint64(uint32(service))))
+  let time = codec_natural.encode(JamNatural(uint64(uint32(slot))))
   var seed = default(array[42, byte])
   var cursor = 0
   for i in 0..<id.len: seed[cursor] = id.bytes[i]; inc cursor # Leading service has no E4 override.

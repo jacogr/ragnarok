@@ -5,5 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "TransitionBoundComputedReport", "early": ["checkComputedRoster(", "[1] expected: TransitionBoundComputedReport but got: BlockTransitionResult"]}
 
-import ../../../src/state/[computed_roster, computed_transition, computed_profile, block_transition, store]
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/store as state_store
 discard checkComputedRoster(default(BlockTransitionResult), ComputedRosterLimits())

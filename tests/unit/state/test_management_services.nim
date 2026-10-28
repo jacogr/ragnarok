@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Disabled-by-default Services wiring, independent HTTP operation and partial startup rollback.
-import std/[assertions, syncio, strutils]
+import std/assertions
+import std/syncio
+import std/strutils
 import std/posix/posix
-import ../../../src/app/[services, options]
-import ../../../src/management/[server, protocol]
-import ../../support/[management_socket, rpc_socket]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/management/server as management_server
+import ../../../src/management/protocol as management_protocol
+import ../../support/management_socket
+import ../../support/rpc_socket
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Fixture paths belong to this test process only.

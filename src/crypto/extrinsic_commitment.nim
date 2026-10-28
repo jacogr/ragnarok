@@ -8,8 +8,14 @@
 ## Exposes extrinsicCommitment over immutable extrinsic components and a checked owned digest
 ## result.
 
-import ../codec/[block_codec, header, owned, report_owned, guarantees, natural, bounded]
-import ./primitives
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/guarantees as codec_guarantees
+import ../codec/natural as codec_natural
+import ../codec/bounded as codec_bounded
+import ./primitives as crypto_primitives
 
 type
   ExtrinsicCommitmentError* {.pure.} = enum ## Default/refused commitments contain no digest, partial family hashes or consumed progress.
@@ -55,7 +61,7 @@ func charge(total: var int, count, width: int, limit: ByteLimit): ExtrinsicCommi
 
 ## Write canonical natural prefix octets into an already preflighted private destination.
 proc prefix(value: uint64, destination: var seq[byte], cursor: var int) =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   for i in 0..<int(encoded.len):
     destination[cursor] = encoded.bytes[i] # No outer sequence count is added to the fixed five hashes.
     inc cursor
@@ -104,7 +110,7 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
       return ExtrinsicCommitmentResult[ExtrinsicRoot](
           status: reason) # Plain families also count toward projected bytes.
   let preimageCount = ownedInfo(images.value).value.blobCount
-  let imagePrefix = natural.encode(JamNatural(uint64(preimageCount)))
+  let imagePrefix = codec_natural.encode(JamNatural(uint64(preimageCount)))
   var imageSize = 0
   var reason = charge(imageSize, int(imagePrefix.len), 1, maxBytes)
   if reason == ExtrinsicCommitmentError.None:
@@ -117,11 +123,11 @@ proc extrinsicCommitment*(owner: OwnedExtrinsic, maxBytes: ByteLimit):
     return ExtrinsicCommitmentResult[ExtrinsicRoot](
         status: reason) # Prove aggregate before allocating projection storage.
   let guaranteeCount = reports.value.count
-  let guaranteePrefix = natural.encode(JamNatural(uint64(guaranteeCount)))
+  let guaranteePrefix = codec_natural.encode(JamNatural(uint64(guaranteeCount)))
   var guaranteeSize = int(guaranteePrefix.len)
   for i in 0..<guaranteeCount:
     let record = guaranteeAt(reports.value.owner, i).value
-    let countPrefix = natural.encode(JamNatural(uint64(record.credentialCount)))
+    let countPrefix = codec_natural.encode(JamNatural(uint64(record.credentialCount)))
     reason = charge(guaranteeSize, 36+int(countPrefix.len), 1, maxBytes)
     if reason == ExtrinsicCommitmentError.None:
       reason = charge(guaranteeSize, record.credentialCount, 66,

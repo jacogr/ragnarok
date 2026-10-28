@@ -3,10 +3,19 @@
 
 ## Verify proposed guarantee credentials against the exact original computed transcript and authenticated assignments.
 
-import ../codec/[guarantees, state_safrole]
-import ../crypto/[primitives, guarantee]
-import ./[computed_guarantors, computed_roster, computed_transition, computed_profile,
-  computed_lookup, computed_recent, computed_state, computed_links, computed_guarantee]
+import ../codec/guarantees as codec_guarantees
+import ../codec/state_safrole as codec_state_safrole
+import ../crypto/primitives as crypto_primitives
+import ../crypto/guarantee as crypto_guarantee
+import ./computed_guarantors as state_computed_guarantors
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./computed_recent as state_computed_recent
+import ./computed_state as state_computed_state
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
 
 type
   ComputedCredentialError* {.pure.} = enum ## Refusals contain no partial verified credentials or substituted transcript.

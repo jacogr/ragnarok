@@ -3,10 +3,12 @@
 
 ## Raw native ownership cannot leak read payloads or silently abandon a live cooperative lock.
 
-import std/[cmdline, assertions]
+import std/cmdline
+import std/assertions
 import std/posix/posix
-import ../../src/lib/[atomic_file_writer, atomic_file]
-import ../../src/codec/bounded
+import ../../src/lib/atomic_file_writer as lib_atomic_file_writer
+import ../../src/lib/atomic_file as lib_atomic_file
+import ../../src/codec/bounded as codec_bounded
 
 proc forgotten() =
   ## A live raw resource reaches its own explicit-close destructor contract.

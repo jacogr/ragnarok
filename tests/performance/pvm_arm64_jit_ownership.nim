@@ -1,9 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Local lowering witness: exclusive frame/stream owners can move but cannot be duplicated for a later read.
-import std/[assertions, syncio]
-import ../../src/pvm/internal/handler_stream
-import ../../src/pvm/[program, gas, machine]
+import std/assertions
+import std/syncio
+import ../../src/pvm/internal/handler_stream as pvm_handler_stream
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/machine as pvm_machine
 
 when defined(pvmArm64JitFrameOwner):
   proc consume(owner: sink FlatFrame): int =

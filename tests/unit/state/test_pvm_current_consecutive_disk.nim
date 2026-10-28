@@ -2,16 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Consecutive current commands persist every exact history map, with atomic retained-prefix refusal across both layouts and RPC modes.
-import std/[assertions, syncio, envvars]
+import std/assertions
+import std/syncio
+import std/envvars
 import std/posix/posix
-import ../../../src/app/[current_download_command, services]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded]
-import ../../../src/storage/managed_manifest
-import ../../support/[current_consecutive_context, current_rotated_sequence_context,
-  current_consecutive_download_context,
-  current_download_command_context, current_services_disk_samples, managed_storage_samples,
-  block_download_transport, rpc_socket]
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/app/services as app_services
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_rotated_sequence_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_download_command_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/app_block_download_transport
+import ../../support/rpc_socket
 const
   ChainPath = "pvm-current-consecutive-disk-chain"
   PolicyPath = "pvm-current-consecutive-disk-policy"

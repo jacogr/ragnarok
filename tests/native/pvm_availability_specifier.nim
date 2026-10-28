@@ -3,10 +3,14 @@
 
 ## Optimized availability result guards with genuine independent completed-root controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[availability_specifier, export_erasure, erasure_words]
-import ../../src/codec/bounded
-import ../support/[pvm_export_erasure, pvm_availability_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/codec/bounded as codec_bounded
+import ../support/pvm_export_erasure
+import ../support/pvm_availability_vectors
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse the real primitive backend after all original source construction.

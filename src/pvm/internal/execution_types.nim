@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared execution domains; private interpreter workers never import public snapshot adapters.
-import ../machine
+import ../machine as pvm_machine
 
 type
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.

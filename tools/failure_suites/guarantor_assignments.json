@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/guarantor_results.nim",
+  "source": "tests/native/state_guarantor_results.nim",
   "build_name": "guarantor-results",
   "crypto_library": "crypto",
   "native_libraries": [],

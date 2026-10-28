@@ -3,10 +3,11 @@
 
 ## Stable directory-relative managed storage IO keeps one persistent LOCK inode across file epochs.
 ## Callers own the directory namespace; no child name comes from untrusted manifest strings.
-import std/[assertions]
+import std/assertions
 import std/posix/posix
-import ./[file_errors, managed_manifest]
-import ../codec/bounded
+import ./file_errors as storage_file_errors
+import ./managed_manifest as storage_managed_manifest
+import ../codec/bounded as codec_bounded
 type
   ManagedFileKind* {.pure.} = enum ## The managed namespace exposes only exact fixed or epoch-derived names.
     Current, Snapshot, Journal

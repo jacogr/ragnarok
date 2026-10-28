@@ -6,9 +6,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
-import ../../src/quic/integration
-import ../../src/codec/owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/quic/integration as quic_integration
+import ../../src/codec/owned as codec_owned
 
 # Only the isolated observer-linked probe can inject a primitive refusal.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

@@ -3,9 +3,13 @@
 
 ## Check the content-hash half of GP accounts eq:preimageconstraints on an exact complete inventory.
 ## This independent certificate does not imply request linkage, root trust or application validity.
-import ../codec/[bounded, state_accounts, state_service_values]
-import ../crypto/primitives
-import ./[inventory, manifest, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ../crypto/primitives as crypto_primitives
+import ./inventory as state_inventory
+import ./manifest as state_manifest
+import ./store as state_store
 
 type
   PreimageContentLimits* = object ## Bound rows, hashes, detached individual values and aggregate input bytes before hashing.

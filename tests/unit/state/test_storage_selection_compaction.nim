@@ -3,10 +3,18 @@
 
 ## Exact selected inventories preserve disjoint historical roots, empty maps, permutations and independent ownership.
 # @@Verification={"arc": "storage_selection_compaction_arc_release"}
-import std/[algorithm, assertions, syncio]
-import ../../support/[arc_evidence, storage_snapshot_samples]
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/algorithm
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_snapshot_samples
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc policy(): RepositoryLimits =
   ## Each historical graph is a single complete leaf; physical history has its own fixed higher ceilings.

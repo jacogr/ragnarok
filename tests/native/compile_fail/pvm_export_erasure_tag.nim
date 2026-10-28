@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/export_erasure
+import ../../../src/state/export_erasure as state_export_erasure
 var candidate: ExportErasureResult[ExportErasure]
 discard candidate.status

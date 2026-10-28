@@ -3,10 +3,15 @@
 
 ## Scoped complete snapshots, path/set/batch witnesses and decoded envelopes release every ARC owner.
 # @@Verification={"arc": "state_proof_lifecycle_arc_release"}
-import std/[assertions, syncio]
-import ../../../src/state/[store, trie_proof, snapshot_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/store as state_store
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/snapshot_proof as state_snapshot_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/testing_arc_evidence
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer between success/refusal recovery stages.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

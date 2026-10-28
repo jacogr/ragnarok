@@ -3,11 +3,20 @@
 
 ## Complete StateStore snapshot transport adopts the paged full backend with explicit resident/export budgets.
 ## Native owners remain caller-owned; no light evidence, application context or root trust is inferred.
-import std/[algorithm, assertions]
-import ./store
-import ../storage/[full_paged_codec, full_paged_stream, full_paged_store, full_paged_build,
-  full_state_trie, node_records, paged_codec, durability]
-import ../codec/[bounded, state_layout, state_trie]
+import std/algorithm
+import std/assertions
+import ./store as state_store
+import ../storage/full_paged_codec as storage_full_paged_codec
+import ../storage/full_paged_stream as storage_full_paged_stream
+import ../storage/full_paged_store as storage_full_paged_store
+import ../storage/full_paged_build as storage_full_paged_build
+import ../storage/full_state_trie as storage_full_state_trie
+import ../storage/node_records as storage_node_records
+import ../storage/paged_codec as storage_paged_codec
+import ../storage/durability as storage_durability
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   PagedStateLimits* = object ## Count all input snapshots and staging records/values before deduplication; final geometry has its own ceiling.

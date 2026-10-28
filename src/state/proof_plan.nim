@@ -3,8 +3,10 @@
 
 ## Root-free immutable global/service query identities, with bounded capture and exact union.
 ## A plan requests evidence; it is neither verified partial state nor a complete-map snapshot.
-import std/[algorithm, assertions]
-import ../codec/[bounded, state_layout]
+import std/algorithm
+import std/assertions
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
 
 type
   ProofPlanError* {.pure.} = enum ## Defaults, malformed selectors and exhausted budgets grant no plan authority.

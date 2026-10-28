@@ -22,9 +22,9 @@ component tests. These projections do not provide another whole-block entry.
 
 ## Shared fixture boundary
 
-`SignedBlockFixtureConfig` in `tests/support/report_admission_context.nim` owns
+`SignedBlockFixtureConfig` in `tests/support/state_report_admission_context.nim` owns
 original-parent entries and signed-block inputs. `authored` accepts that one value.
-`ExecutionFixtureConfig` in `tests/support/accumulation_execution_context.nim` owns
+`ExecutionFixtureConfig` in `tests/support/state_accumulation_execution_context.nim` owns
 PVM guest/allowance/role inputs and embeds the exact signed configuration. It passes
 that value to the signer, overriding code and merging extra entries before signing.
 Construct configurations with `signedBlockFixtureConfig()` / `executionFixtureConfig()`;

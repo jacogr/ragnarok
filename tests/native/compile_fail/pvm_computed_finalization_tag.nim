@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_finalization
+import ../../../src/state/computed_finalization as state_computed_finalization
 var candidate: ComputedFinalizationResult[FinalizedComputedAccumulation]
 discard candidate.status

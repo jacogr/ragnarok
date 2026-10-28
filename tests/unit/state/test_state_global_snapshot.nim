@@ -3,13 +3,21 @@
 
 ## Complete-source chapter validation preserves map authority, exact codec refusals and ARC ownership.
 # @@Verification={"arc": "state_global_snapshot_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[proof_global_helpers, arc_evidence]
-import ../../../src/state/[global_snapshot, store]
-import ../../../src/codec/[bounded, assurances, composite, state_layout, state_trie,
-    state_composition,
-    state_consensus]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../support/testing_arc_evidence
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_consensus as codec_state_consensus
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after constructing the complete immutable test source.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -87,7 +95,7 @@ proc main() {.raises.} =
   copy[StateChapterId.Time] = default(StateChapterSnapshot)
   let composed = composeState(validated.globalChapters.value, [], mapLimits, ByteLimit(0)).value
   for i in 0..<16:
-    let entry = composed.stateEntryAt(state_composition.StateEntryIndex(uint64(i))).value
+    let entry = composed.stateEntryAt(codec_state_composition.StateEntryIndex(uint64(i))).value
     assert array[31, byte](entry.key) == array[31, byte](chapterKey(StateChapter(i+1)))
     assert entry.value == fixture[i] # Typed captures preserve every independent exact byte.
   for i in 0..<16:

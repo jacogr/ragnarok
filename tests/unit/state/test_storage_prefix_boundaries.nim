@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-prefix addresses cannot bypass full equality, canonical image order, graph uniqueness or limits.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_growth_samples
-import ../../../src/storage/[node_repository, node_records, full_state_trie, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc prefix(digest: StateNodeHash): int =
   ## Independent witness selection shares twelve bits without treating the prefix as an address.

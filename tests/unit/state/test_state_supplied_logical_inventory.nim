@@ -3,11 +3,21 @@
 
 ## Supplied raw-key retention is bounded before hashing and remains tied to the exact source through detachment and ARC retirement.
 # @@Verification={"arc": "state_supplied_logical_inventory_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, supplied_logical_context, arc_evidence]
-import ../../../src/state/[supplied_logical_inventory, inventory, manifest, store]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_service_values]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/codec_supplied_logical_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_service_values as codec_state_service_values
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Short extra-retention limits must refuse before mandatory complete matching hashes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -3,11 +3,18 @@
 
 ## Strict optimized guards reject failed composition values and unrelated authorization/refinement/digest reason access.
 
-import std/[assertions, cmdline]
-import ../../src/state/[authorized_refinement, authorization_invocation, refinement_dispatch,
-    refinement_report, refinement_digest]
-import ../../src/codec/[bounded, composite]
-import ../support/[pvm_authorized_refinement, pvm_report_results, pvm_refinement_outcome]
+import std/assertions
+import std/cmdline
+import ../../src/state/authorized_refinement as state_authorized_refinement
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../src/state/refinement_report as state_refinement_report
+import ../../src/state/refinement_digest as state_refinement_digest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../support/pvm_authorized_refinement
+import ../support/pvm_report_results
+import ../support/pvm_refinement_outcome
 
 proc check(result: AuthorizedRefinementResult[AuthorizedRefinement],
     reason: AuthorizedRefinementError) =

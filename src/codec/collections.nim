@@ -7,7 +7,9 @@
 ## accessors.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded]
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
 
 type
   CollectionCount* = distinct uint64 ## Schema cardinality is distinct from both resource ceilings and serialized byte extents.
@@ -79,11 +81,11 @@ proc scalarMinimum*[N: static[int]](T: typedesc[CollectionBytes[N]]): int =
 
 proc readScalar*(T: typedesc[JamNatural], input: openArray[byte]): CollectionResult[ScalarRead[JamNatural]] =
   ## Preserve complete primitive framing errors without publishing a default natural or partial child cursor.
-  let parsed = natural.decode(input)
+  let parsed = codec_natural.decode(input)
   # A natural's inverse rejects incomplete and overlong encodings before any parent ordering decision.
   if not parsed.ok:
     # Keep missing input distinct from a complete but noncanonical scalar.
-    if parsed.error == natural.truncated:
+    if parsed.error == codec_natural.truncated:
       return CollectionResult[ScalarRead[JamNatural]](status: CollectionError.Truncated)
     else:
       # An overlong key/value cannot introduce another representation of an existing logical entry.
@@ -116,7 +118,7 @@ proc readScalar*[N: static[int]](T: typedesc[CollectionBytes[N]], input: openArr
 
 proc scalarSize*(value: JamNatural): CollectionResult[int] =
   ## Canonical natural encoding is infallible over its complete nominal uint64 domain.
-  CollectionResult[int](status: CollectionError.None, completed: natural.encode(value).len)
+  CollectionResult[int](status: CollectionError.None, completed: codec_natural.encode(value).len)
 
 proc scalarSize*[W: static[int]](value: CollectionUInt[W]): CollectionResult[int] =
   ## Source fixed integers must fit their declared width; never silently truncate an overflowing late value.
@@ -148,7 +150,7 @@ proc scalarLess*[N: static[int]](a, b: CollectionBytes[N]): bool =
 
 # Commit a previously preflighted natural into a caller destination at a proved cursor.
 proc put(value: JamNatural, output: var openArray[byte], cursor: var int) =
-  let encoded = natural.encode(value)
+  let encoded = codec_natural.encode(value)
   # Canonical scalar bytes fit because parent source/capacity checks have already completed.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len
@@ -251,11 +253,11 @@ proc frame[T](input: openArray[byte], count: CollectionCount, variable: bool,
   var offset = 0
   # Only variable sets and dictionaries carry a natural element/pair count.
   if variable:
-    let prefix = natural.decode(input)
+    let prefix = codec_natural.decode(input)
     # Prefix canonicality precedes all count, resource and child decisions.
     if not prefix.ok:
       # Missing prefix bytes cannot authorize any typed allocation or traversal.
-      if prefix.error == natural.truncated: return CollectionResult[Layout](
+      if prefix.error == codec_natural.truncated: return CollectionResult[Layout](
           status: CollectionError.Truncated)
       else:
         # Overlong counts cannot encode a second representation of the same collection.
@@ -341,7 +343,7 @@ proc encodeSetImpl[T: CollectionScalar and CollectionFamily](values: openArray[T
       status: CollectionError.LimitExceeded)
   if values.len > high(int) div max(1, sizeof(T)): return CollectionResult[int](
       status: CollectionError.LengthOverflow)
-  let prefix = natural.encode(JamNatural(uint64(count)))
+  let prefix = codec_natural.encode(JamNatural(uint64(count)))
   var total = 0
   # Only explicitly variable terms emit a cardinality prefix.
   if variable: total = prefix.len
@@ -450,7 +452,7 @@ proc encodeDictionary*[K, V: CollectionScalar and CollectionFamily](values: open
       status: CollectionError.LimitExceeded)
   if values.len > high(int) div max(1, sizeof(Entry[K, V])): return CollectionResult[int](
       status: CollectionError.LengthOverflow)
-  let prefix = natural.encode(JamNatural(uint64(values.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(values.len)))
   var total = int(prefix.len)
   # A zero-pair dictionary still emits its count and must fit the complete-prefix byte budget.
   if uint64(total) > uint64(limits.maxBytes): return CollectionResult[int](

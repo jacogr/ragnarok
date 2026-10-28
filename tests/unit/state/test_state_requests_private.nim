@@ -8,8 +8,9 @@
 
 # @@Verification={"arc": "requests_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
 include ../../../src/codec/state_requests
 # This binary alone links the maintained test-only backend observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

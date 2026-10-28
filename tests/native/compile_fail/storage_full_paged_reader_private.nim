@@ -3,6 +3,6 @@
 
 ## A full-state reader cannot expose or replace its private native epoch owner.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/full_paged_store
+import ../../../src/storage/full_paged_store as storage_full_paged_store
 let reader = default(FullPagedReader)
 discard reader.data

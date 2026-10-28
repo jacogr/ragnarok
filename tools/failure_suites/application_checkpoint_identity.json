@@ -102,5 +102,5 @@
     }
   ],
   "crypto_library": "crypto",
-  "source": "tests/native/application_checkpoint_identity_results.nim"
+  "source": "tests/native/app_checkpoint_identity_results.nim"
 }

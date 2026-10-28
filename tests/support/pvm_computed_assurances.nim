@@ -4,13 +4,27 @@
 ## Real successor signatures use the actual computed parent hash, state root, entropy history and nine authored parent keys.
 
 import std/assertions
-import ../../src/state/[computed_assurances, computed_chain, store]
-import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, header, block_codec, assurances, state_layout, state_consensus,
-    state_safrole, state_trie]
-import ../../src/crypto/[primitives, assurance_context, extrinsic_commitment]
-import ../../src/bandersnatch/bandersnatch
-import ./[pvm_computed_chain, pvm_computed_roster, pvm_computed_storage_program, pvm_computed_state_publication]
+import ../../src/state/computed_assurances as state_computed_assurances
+import ../../src/state/computed_chain as state_computed_chain
+import ../../src/state/store as state_store
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/provider as chain_provider
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/crypto/assurance_context as crypto_assurance_context
+import ../../src/crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ../../src/bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ./pvm_computed_chain
+import ./pvm_computed_roster
+import ./pvm_computed_storage_program
+import ./pvm_computed_state_publication
 
 proc computedAssuranceConfig*(): ComputedAssuranceConfig =
   ## Preserve actual three-core/nine-validator domains and independent finite report comparison policies.
@@ -62,7 +76,7 @@ proc assuranceCandidate*(source: AdvancedComputedChain, votes = 7, badSignature 
   for index in 0..<written.written: body.add(assuranceWire[index])
   for index in 0..<3: body.add(0'u8) # Three independently empty dispute families.
   let extrinsic = decodeExtrinsic(body, config.admission.frame).value.owner
-  var header = default(header.Header)
+  var header = default(codec_header.Header)
   header.unsigned.epoch = absentEpoch()
   header.unsigned.winners = absentWinners()
   header.unsigned.parent = HeaderParent(hash)

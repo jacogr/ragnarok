@@ -41,5 +41,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_checkpoint_services_export_results.nim"
+  "source": "tests/native/app_checkpoint_services_export_results.nim"
 }

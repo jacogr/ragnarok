@@ -3,8 +3,11 @@
 
 ## Bounded whole-source supervision observations reuse complete-directory incarnation checks.
 ## Failed batch construction exposes no prefix table or selected authority.
-import ../codec/[bounded, state_accounts]
-import ./[inventory, service_directory, service_supervision]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ./inventory as state_inventory
+import ./service_directory as state_service_directory
+import ./service_supervision as state_service_supervision
 
 type
   SupervisionTableLimits* = object ## Service resolution work and retained native fixed-row bytes are independently bounded.

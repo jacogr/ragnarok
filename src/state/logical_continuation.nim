@@ -2,12 +2,31 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Reconstruct complete current logical state across producer-proven storage/request/service identity changes while preserving exact original parent, selected rollback and genuine successor provenance.
-import ./[parent_logical, current_logical, current_identities, accumulation_current_update,
-    accumulation_storage_history, accumulation_effects, supplied_logical_inventory,
-    supplied_services, inventory, store, current_profile, current_globals, current_state,
-    global_snapshot, request_identity_history, service_identity_history,
-    accumulation_current_sequence, accumulation_current_driver, accumulation_annulment]
-import ../codec/[bounded, state_layout, state_composition, state_accounts, state_requests, state_service_values]
+import ./parent_logical as state_parent_logical
+import ./current_logical as state_current_logical
+import ./current_identities as state_current_identities
+import ./accumulation_current_update as state_accumulation_current_update
+import ./accumulation_storage_history as state_accumulation_storage_history
+import ./accumulation_effects as state_accumulation_effects
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./supplied_services as state_supplied_services
+import ./inventory as state_inventory
+import ./store as state_store
+import ./current_profile as state_current_profile
+import ./current_globals as state_current_globals
+import ./current_state as state_current_state
+import ./global_snapshot as state_global_snapshot
+import ./request_identity_history as state_request_identity_history
+import ./service_identity_history as state_service_identity_history
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_annulment as state_accumulation_annulment
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_service_values as codec_state_service_values
 type
   LogicalContinuationLimits* = object ## Original binding, admitted identity scratch, bounded planning and whole output/current qualification retain independent policies.
     identity*: CurrentIdentityLimits

@@ -5,11 +5,15 @@
 
 ## Native stable-inode locks serialize independent owners and forked processes without retaining state aliases.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint_writer, checkpoint_file, store]
-import ../../../src/codec/[state_trie, bounded]
-import ../../support/arc_evidence
+import ../../../src/state/checkpoint_writer as state_checkpoint_writer
+import ../../../src/state/checkpoint_file as state_checkpoint_file
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc setMask(mask: Mode): Mode {.importc: "umask", cdecl, header: "<sys/stat.h>".}
   ## The test chooses and restores its process-local creation mask for an exact permission witness.

@@ -2,17 +2,39 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent local management HTTP stays responsive while actual current native leases remain uncollected.
-import std/[assertions, envvars, syncio, strutils, monotimes, times]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/strutils
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_input, current_handoff,
-    preparation_worker, disk_worker, disk_chain, proof_query, proof_worker]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, proof_plan, accumulation_current_update]
-import ../../../src/codec/[bounded, state_trie, report_owned, block_codec]
-import ../../../src/storage/managed_manifest
-import ../../../src/rpc/server
-import ../../support/[management_socket, proof_query_context, current_application_context,
-    current_consecutive_context, current_services_disk_samples, managed_storage_samples]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/app/preparation_worker as app_preparation_worker
+import ../../../src/app/disk_worker as app_disk_worker
+import ../../../src/app/disk_chain as app_disk_chain
+import ../../../src/app/proof_query as app_proof_query
+import ../../../src/app/proof_worker as app_proof_worker
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/state/store as state_store
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/rpc/server as rpc_server
+import ../../support/management_socket
+import ../../support/app_proof_query_context
+import ../../support/state_current_application_context
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Short private local socket names remain within the native Unix address bound.

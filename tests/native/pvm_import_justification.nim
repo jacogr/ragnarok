@@ -3,10 +3,13 @@
 
 ## Strict optimized failed-result and missing-owner guards retain real successful proof controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/import_justification
-import ../../src/codec/[work_package, work_report]
-import ../support/[pvm_import_justification, pvm_import_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/import_justification as state_import_justification
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../support/pvm_import_justification
+import ../support/pvm_import_vectors
 
 proc check(outcome: ImportJustificationResult[VerifiedImport], reason: ImportJustificationError) =
   ## Confirm alternatives without statically specializing later deliberate runtime misuse.

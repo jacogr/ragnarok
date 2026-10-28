@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "source"}
 
 ## Current review owners and result alternatives remain private.
-import ../../../src/state/current_review
+import ../../../src/state/current_review as state_current_review
 var source = default(ReviewedCurrentState)
 discard source.source

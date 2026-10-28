@@ -4,11 +4,23 @@
 ## Resolve refinement code commitments and build exact package-bound arguments and entry-zero CPU.
 ## Ready owners supply their own CPU/state/package/heap to host capture; block/input authentication is separate.
 
-import ../codec/[bounded, natural, composite, work_package, work_digest, work_report, state_service_values]
-import ../crypto/primitives
-import ../chain/parameters
-import ../pvm/[machine, program, initialize, host_fetch, refinement_exports]
-import ./[store, refinement_lookup, refinement_dispatch]
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/composite as codec_composite
+import ../codec/work_package as codec_work_package
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../codec/state_service_values as codec_state_service_values
+import ../crypto/primitives as crypto_primitives
+import ../chain/parameters as chain_parameters
+import ../pvm/machine as pvm_machine
+import ../pvm/program as pvm_program
+import ../pvm/initialize as pvm_initialize
+import ../pvm/host_fetch as pvm_host_fetch
+import ../pvm/refinement_exports as pvm_refinement_exports
+import ./store as state_store
+import ./refinement_lookup as state_refinement_lookup
+import ./refinement_dispatch as state_refinement_dispatch
 
 type
   RefinementCodeStatus* {.pure.} = enum ## Protocol eligibility selections precede CPU initialization and guest gas use.
@@ -146,9 +158,10 @@ proc prepareRefinementBootstrap*(state: StateStoreSnapshot, package: OwnedWorkPa
   let codeBytes = raw.len-start # The canonical prefix decoder proves this subtraction and the suffix extent.
   if uint64(codeBytes) > uint64(limits.initialization.envelope): fail(
       RefinementBootstrapError.LimitExceeded)
-  let prefix = [natural.encode(JamNatural(uint64(core))), natural.encode(JamNatural(uint64(item))),
-    natural.encode(JamNatural(uint64(uint32(info.service)))), natural.encode(JamNatural(uint64(
-        info.payloadBytes)))]
+  let prefix = [codec_natural.encode(JamNatural(uint64(core))), codec_natural.encode(JamNatural(
+      uint64(item))),
+    codec_natural.encode(JamNatural(uint64(uint32(info.service)))), codec_natural.encode(JamNatural(
+        uint64(info.payloadBytes)))]
   var size = 32'u64
   for scalar in prefix: size += uint64(scalar.len) # Four encodings of at most nine bytes prove this fixed prefix sum.
   let maximum = min(uint64(limits.arguments), 16777216'u64)

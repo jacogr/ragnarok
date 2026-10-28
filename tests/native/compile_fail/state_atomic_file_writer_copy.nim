@@ -3,7 +3,7 @@
 
 ## Generic native ownership rejects duplication during actual ARC lowering.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <AtomicFileWriter>", "build_name": "state-atomic-file-writer-copy"}
-import ../../../src/lib/atomic_file_writer
+import ../../../src/lib/atomic_file_writer as lib_atomic_file_writer
 var original = default(AtomicFileWriter)
 var duplicate = original
 discard original.close()

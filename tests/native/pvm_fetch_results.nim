@@ -4,7 +4,8 @@
 ## Failed fetch-result extraction probes; each argument selects a distinct local refusal.
 
 import std/cmdline
-import ../../src/pvm/[machine, host_fetch]
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/host_fetch as pvm_host_fetch
 var regs = default(RegisterFile)
 regs[10] = RegisterValue(2)
 let memory = captureMemory([PageImage(index: PageIndex(0), access: PageAccess.ReadWrite)],

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/export_commitment
+import ../../../src/state/export_commitment as state_export_commitment
 var owner: ExportCommitment
 discard owner.data

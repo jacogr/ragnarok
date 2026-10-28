@@ -16,5 +16,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/current_services_memory_results.nim"
+  "source": "tests/native/state_current_services_memory_results.nim"
 }

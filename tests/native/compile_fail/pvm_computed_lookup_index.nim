@@ -5,6 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedAncestorIndex", "early": ["computedLookupHeader(", "[2] expected: ComputedAncestorIndex but got: ReportLookupIndex"]}
 
-import ../../../src/state/[computed_lookup, computed_recent, computed_state, report_identity]
-import ../../../src/codec/bounded
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/codec/bounded as codec_bounded
 discard computedLookupHeader(default(LookupAnchoredComputedReport), ReportLookupIndex(0))

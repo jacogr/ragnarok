@@ -3,6 +3,6 @@
 
 ## Only the owner decoder may populate the executable fallthrough capability.
 # @@Verification={"group": "privacy", "expected": "fallthroughPresent"}
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let decoded = instruction(default(Program), CodeAddress(0))
 discard decoded.value.fallthroughPresent

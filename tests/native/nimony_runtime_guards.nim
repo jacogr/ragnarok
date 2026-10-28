@@ -6,7 +6,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 # Runtime argument values prevent folding either invalid operation into a compile-time diagnostic.
 case paramStr(1)
 of "assertion":

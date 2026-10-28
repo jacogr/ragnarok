@@ -2,11 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard selected-parent global evidence with a genuine signed configured-parent positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[accumulation_current_chain_context, parent_profile_context, parent_globals_context]
-import ../../src/state/[parent_globals, parent_profile, global_snapshot]
-import ../../src/chain/provider
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_accumulation_current_chain_context
+import ../support/state_parent_profile_context
+import ../support/state_parent_globals_context
+import ../../src/state/parent_globals as state_parent_globals
+import ../../src/state/parent_profile as state_parent_profile
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/chain/provider as chain_provider
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: ParentGlobalsResult[SelectedParentGlobals]) {.noinline.} =
   ## No failed/default result grants complete selected-parent globals.
   discard outcome.value

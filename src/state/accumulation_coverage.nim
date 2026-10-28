@@ -3,9 +3,17 @@
 
 ## Exact explicit-input provider coverage preserves original gas through annulment and distinguishes both no-execution proofs.
 ## This immutable certificate neither authenticates caller parameters nor publishes a completed block/round.
-import ../codec/[bounded, composite, header, work_digest]
-import ./[accumulation_annulment, accumulation_outcome, accumulation_skip, accumulation_absent,
-  accumulation_service, accumulation_inputs, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_absent as state_accumulation_absent
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_inputs as state_accumulation_inputs
+import ./store as state_store
 
 type
   AccumulationCoverageIndex* = distinct uint64 ## Canonical input-service row position is distinct from original producer ordinals.

@@ -3,11 +3,18 @@
 
 ## Bounded local restart context retains exact headers, full profiles, roots and explicit finality.
 ## Root hints route historical reads; restoreDiskHead validates every hint against the enclosed identity.
-import ./[chain, disk_head]
-import ../chain/[genesis, provider, parameters]
-import ../state/[store, disk_store]
-import ../storage/[database_identity, node_repository]
-import ../codec/[bounded, header, state_trie]
+import ./chain as app_chain
+import ./disk_head as app_disk_head
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../state/store as state_store
+import ../state/disk_store as state_disk_store
+import ../storage/database_identity as storage_database_identity
+import ../storage/node_repository as storage_node_repository
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/state_trie as codec_state_trie
 
 type
   DiskHistoryError* {.pure.} = enum ## Refusals expose no partially restored history or application owner.

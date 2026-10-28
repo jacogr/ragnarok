@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_lookup
+import ../../../src/state/computed_lookup as state_computed_lookup
 var candidate: LookupAnchoredComputedReport
 discard candidate.data

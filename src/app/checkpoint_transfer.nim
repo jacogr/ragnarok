@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sole-owner application envelope bytes detach all canonical graphs before any publication or I/O offload.
-import ./[chain, checkpoint_codec, checkpoint_identity]
-import ../state/checkpoint
-import ../codec/bounded
-import ../lib/[atomic_file, atomic_file_writer]
+import ./chain as app_chain
+import ./checkpoint_codec as app_checkpoint_codec
+import ./checkpoint_identity as app_checkpoint_identity
+import ../state/checkpoint as state_checkpoint
+import ../codec/bounded as codec_bounded
+import ../lib/atomic_file as lib_atomic_file
+import ../lib/atomic_file_writer as lib_atomic_file_writer
 
 type PreparedApplicationCheckpoint* = object ## Only ready owners retain exact complete envelope bytes and fixed captured context.
   case status: ApplicationCheckpointError

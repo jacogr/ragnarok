@@ -4,12 +4,28 @@
 ## Bind GP 0.8.0 recenthistorydef to finalized C(14)/C(15)/C(16), exact sealed header and certified guarantees.
 ## Reuses history/output algorithms and replaces only C(3) on a private complete-map successor.
 
-import ../codec/[bounded, header, owned, report_owned, state_history, state_outputs,
-  state_layout, state_trie]
-import ../crypto/primitives
-import ./[accumulation_ready, accumulation_history, accumulation_finalization, accumulation_outputs,
-  accumulation_execution, accumulation_round, accumulation_queue, report_admission,
-  guarantee_credentials, block_transition, block_admission, history, store]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_history as codec_state_history
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
+import ./accumulation_ready as state_accumulation_ready
+import ./accumulation_history as state_accumulation_history
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./history as state_history
+import ./store as state_store
 
 type
   AccumulationRecentConfig* = object ## Independent caller work/encoding policies are checked against actual certified extents.

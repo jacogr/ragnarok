@@ -5,12 +5,26 @@
 
 ## Exact posterior assignments, two rotation freshness bounds, cumulative exclusions and complete failure release.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_guarantors, computed_roster, computed_transition,
-  computed_profile,
-  block_transition, block_admission, guarantors, store]
-import ../../../src/codec/[bounded, assurances, guarantees, header, state_safrole, state_layout, state_disputes]
-import ../../support/[pvm_computed_guarantors, pvm_computed_state, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/guarantors as state_guarantors
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../support/pvm_computed_guarantors
+import ../../support/pvm_computed_state
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject actual hash provider refusal only after original signed/PVM sources are complete.

@@ -3,11 +3,16 @@
 
 ## Frozen whole-account policies preflight complete work while granting no successful semantic invariants.
 # @@Verification={"arc": "state_account_audit_plan_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_audit_plan_context, arc_evidence]
-import ../../../src/state/[account_audit_plan, inventory]
-import ../../../src/codec/bounded
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_audit_plan_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/inventory as state_inventory
+import ../../../src/codec/bounded as codec_bounded
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashes after real complete source capture.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

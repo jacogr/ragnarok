@@ -5,7 +5,8 @@
 ## Each argument attempts success extraction from a default or refused alternative.
 
 import std/cmdline
-import ../../src/pvm/[machine, host_fetch]
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/host_fetch as pvm_host_fetch
 let entropy = FetchEntropy(default(array[32, byte]))
 case paramStr(1)
 of "default":

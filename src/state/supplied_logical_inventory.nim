@@ -3,8 +3,10 @@
 
 ## Retain bounded supplied raw storage keys alongside an exact revalidated compact inventory.
 ## Payloads stay in the original immutable snapshot; supplied declarations are not a producer manifest or execution authority.
-import ../codec/[bounded, state_composition]
-import ./[manifest, inventory]
+import ../codec/bounded as codec_bounded
+import ../codec/state_composition as codec_state_composition
+import ./manifest as state_manifest
+import ./inventory as state_inventory
 type
   SuppliedLogicalLimits* = object ## Compact descriptors, extra raw-key counts, raw bytes and all extra retained array bytes have independent limits.
     inventory*: StateInventoryLimits

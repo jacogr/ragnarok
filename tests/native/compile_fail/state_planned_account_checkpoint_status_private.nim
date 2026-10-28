@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Caller cannot forge expected-root account evidence or rewrite failed phase alternatives.
-import ../../../src/state/planned_account_checkpoint
+import ../../../src/state/planned_account_checkpoint as state_planned_account_checkpoint
 var value = default(PlannedAccountCheckpointResult)
 discard value.status

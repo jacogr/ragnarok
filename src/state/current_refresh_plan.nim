@@ -3,9 +3,17 @@
 
 ## Frozen bounded actual-successor service reconstruction, preserving original logical identities and raw keys.
 ## Planning copies no payload and hashes nothing; mutable output declarations and full current qualification are later stages.
-import ./[current_request_keys, current_identities, supplied_logical_inventory, supplied_services,
-    inventory, store, accumulation_current_update]
-import ../codec/[bounded, state_layout, state_accounts, state_composition]
+import ./current_request_keys as state_current_request_keys
+import ./current_identities as state_current_identities
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./supplied_services as state_supplied_services
+import ./inventory as state_inventory
+import ./store as state_store
+import ./accumulation_current_update as state_accumulation_current_update
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_composition as codec_state_composition
 type
   CurrentRefreshLimits* = object ## Native service/child descriptors, raw/payload extents, bounded lookups and temporary codec wires are separate policies.
     projection*: SuppliedServicesLimits

@@ -5,7 +5,8 @@
 # @@Verification={"group": "contracts", "expected": "outcome.status"}
 
 import std/assertions
-import ../../../src/chain/[genesis, provider]
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
 let view = default(ChainView)
 let outcome = view.finalizeView(default(BlockHash))
 assert outcome.error == ViewFinalizeError.Uninitialized

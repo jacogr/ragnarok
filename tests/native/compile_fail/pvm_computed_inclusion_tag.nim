@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_inclusion
+import ../../../src/state/computed_inclusion as state_computed_inclusion
 var candidate: ComputedInclusionResult[IncludedComputedGuarantees]
 discard candidate.status

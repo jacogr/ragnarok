@@ -3,14 +3,26 @@
 # @@Verification={"arc": "pvm_parallel_annulment_arc_release"}
 
 ## Genuine common-source supervisor and junior executions prove the current accpar N selection boundary.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulment, accumulation_outcome, accumulation_effects,
-  accumulation_dispatch, accumulation_inputs, store]
-import ../../../src/pvm/machine
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie]
-import ../../support/[accumulation_batch_context, pvm_accumulation_program,
-    pvm_accumulation_context, accumulation_annulment_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/store as state_store
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/state_accumulation_batch_context
+import ../../support/pvm_accumulation_program
+import ../../support/pvm_accumulation_context
+import ../../support/state_accumulation_annulment_context
+import ../../support/testing_arc_evidence
 
 # Annulment owns pure decisions and never recomputes or publishes a state root.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

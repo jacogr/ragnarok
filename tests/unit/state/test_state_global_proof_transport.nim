@@ -2,10 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Mixed global/service queries retain exact scope, independent root authority and legacy RPV1 bytes.
-import std/[assertions, syncio]
-import ../../support/proof_service_helpers
-import ../../../src/state/[proof_plan, planned_proof, proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole, state_accounts]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_service_helpers
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_accounts as codec_state_accounts
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained actual hash observer and optionally fail the first backend attempt.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

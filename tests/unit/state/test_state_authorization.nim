@@ -7,8 +7,11 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_authorization, bounded, assurances]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
 
 ## Validate retained data remains immutable under caller wire/source/copy/handle mutation.
 proc main() =

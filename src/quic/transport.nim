@@ -9,8 +9,8 @@
 ## metrics and handshake observations over the C bridge.
 
 import std/assertions
-import ./io
-export io.newDispatcher, io.close
+import ./io as quic_io
+export quic_io.newDispatcher, quic_io.close
 
 const BridgeHeader = "transport_bridge.h"
 # Must match RQ_HANDSHAKE_SLOTS; native registration checks this bound.
@@ -313,7 +313,7 @@ proc pollPair*(incoming, outgoing: var Transport): bool =
 
 proc ioSelfTest*() =
   ## Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
-  io.retirementSelfTest(false)
+  quic_io.retirementSelfTest(false)
 
 proc localPort*(owner: Transport): uint16 =
   ## Copy the actual bound UDP port for local telemetry; no socket ownership escapes.

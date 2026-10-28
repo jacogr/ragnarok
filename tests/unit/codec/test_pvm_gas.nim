@@ -4,8 +4,13 @@
 ## Native gas tests replay independent GP pipeline fixtures and exact cycle-budget boundaries.
 ## The executable reads RAGNAROK_PVM_GAS, checks blockGas and reports a failing exit on mismatch.
 
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, gas, machine, step]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
 
 # Decode a bounded little-endian test word without using production codecs.
 proc word(data: string, at, width: int): uint64 =

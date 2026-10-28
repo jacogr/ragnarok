@@ -4,9 +4,15 @@
 ## Construct genuine verified extrinsics and independent proof owners before binding package imports.
 
 import std/assertions
-import ../../src/codec/[bounded, work_package, work_report]
-import ../../src/state/[extrinsic_inputs, import_inputs, import_justification]
-import ./[pvm_extrinsic_inputs, pvm_import_justification, pvm_import_vectors]
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ./pvm_extrinsic_inputs
+import ./pvm_import_justification
+import ./pvm_import_vectors
 
 proc inputLimits*(): ImportInputsLimits =
   ## Admit the protocol maximum with separately counted logical leaf/proof bytes.

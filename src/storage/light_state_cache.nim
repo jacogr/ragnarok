@@ -3,9 +3,12 @@
 
 ## Immutable bounded partial lookup retention at one caller-trusted complete root, with explicit unknown keys.
 ## Admission verifies whole batches before publication; forgetting never claims protocol absence.
-import std/[algorithm, assertions]
-import ./state_proof
-import ../codec/[state_layout, state_trie, bounded]
+import std/algorithm
+import std/assertions
+import ./state_proof as storage_state_proof
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
 
 type
   LightCacheLimits* = object ## Bound retained logical entries/values, batch keys and individual proof work independently.

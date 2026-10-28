@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[3] expected: ProgramByteLimit but got: JumpCountLimit", "early": ["decodeProgram(", "[3] expected: ProgramByteLimit but got: JumpCountLimit"]}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 discard decodeProgram([], CodeAddress(0), JumpCountLimit(0), JumpCountLimit(0))

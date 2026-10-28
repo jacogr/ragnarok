@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_chain_results.nim",
+  "source": "tests/native/app_chain_results.nim",
   "build_name": "application-chain-results",
   "crypto_library": "crypto",
   "cases": [

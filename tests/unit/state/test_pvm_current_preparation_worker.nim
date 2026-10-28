@@ -3,14 +3,29 @@
 
 ## Actual native preparation preserves exact-parent authority across an exclusive ARC graph lease.
 
-import std/[assertions, syncio, envvars, monotimes, times]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/app/[preparation_worker, current_block_input, candidate, chain]
-import ../../../src/app/block_input
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, report_admission, block_admission, accumulation_current_consensus, accumulation_current_update]
-import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context]
+import ../../../src/app/preparation_worker as app_preparation_worker
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/chain as app_chain
+import ../../../src/app/block_input as app_block_input
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/store as state_store
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
 
 proc receive(input: var CurrentBlockInput, chain: ApplicationChain, wire: openArray[
     byte]): CurrentBlockInputId =

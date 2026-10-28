@@ -5,10 +5,15 @@
 
 ## Original age/chain/root correspondence, bounded work, late faults and immutable retained ancestry.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_lookup, computed_recent]
-import ../../../src/codec/[bounded, header]
-import ../../support/[pvm_computed_lookup, pvm_computed_lookup_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../support/pvm_computed_lookup
+import ../../support/pvm_computed_lookup_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observations only after genuine source/chain preparation.

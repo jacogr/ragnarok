@@ -5,14 +5,27 @@
 ## solely local testnet identities. Native codecs construct every global chapter before hashing.
 
 import std/strutils
-import ../chain/[genesis, parameters, presets]
-import ../codec/[bounded, header, state_layout, state_trie, state_safrole, state_consensus,
-  state_disputes, state_authorization, state_history, state_privileges, state_statistics,
-  state_workqueues, state_outputs]
-import ../crypto/[primitives, validator_keys]
-import ../bandersnatch/bandersnatch
-import ../state/store
-import ../lib/json_writer
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../chain/presets as chain_presets
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_history as codec_state_history
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/state_outputs as codec_state_outputs
+import ../crypto/primitives as crypto_primitives
+import ../crypto/validator_keys as crypto_validator_keys
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ../state/store as state_store
+import ../lib/json_writer as lib_json_writer
 
 proc tinySigningKey*(index: range[0..5]): BsResult[BsKey] =
   ## Use JIP-5 development identities Alice through Fergie for actual Tiny block signing.
@@ -74,7 +87,8 @@ proc initTinyGenesis*(): GenesisResult =
     entries.add(encoded.value)
   let headerPolicy = HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6),
     epochSlots: EpochSlots(12), maxBytes: ByteLimit(4096))
-  let initial = header.Header(unsigned: UnsignedHeader(epoch: absentEpoch(), winners: absentWinners(),
+  let initial = codec_header.Header(unsigned: UnsignedHeader(epoch: absentEpoch(),
+      winners: absentWinners(),
     slot: HeaderSlot(0), offenders: @[]))
   var wire = newSeq[byte](4096)
   let encodedHeader = encodeHeader(initial, headerPolicy, wire)

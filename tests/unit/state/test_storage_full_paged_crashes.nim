@@ -2,10 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real successful syscall stops qualify complete full-graph publication, explicit replay recovery and exact retired-epoch cleanup.
-import std/[assertions, syncio, envvars]
-import ../../support/[full_paged_native_fixture, full_paged_reference, storage_io, storage_crash]
-import ../../../src/storage/[full_paged_store, paged_io, full_paged_codec, full_paged_stream,
-  managed_manifest, node_repository, file_errors]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../support/state_full_paged_native_fixture
+import ../../support/state_full_paged_reference
+import ../../support/storage_io
+import ../../support/storage_crash
+import ../../../src/storage/full_paged_store as storage_full_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/full_paged_stream as storage_full_paged_stream
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/file_errors as storage_file_errors
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only fixed test-owned names; discovery never grants recovery authority.

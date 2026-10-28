@@ -4,8 +4,12 @@
 ## Default and failed dispatch results cannot reveal CPU snapshots or unselected engine reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_machine, accumulation_dispatch]
-import ../../src/pvm/[machine, host_fetch, step, gas]
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/gas as pvm_gas
 import ../support/pvm_accumulation_context
 var outcome = executeAccumulationMachine(default(PreparedAccumulationMachine), pvmParameters(),
   default(FetchAccumulationLimits), MemoryByteLimit(0), ExecutionStepLimit(0), HostCallLimit(0),

@@ -4,11 +4,20 @@
 ## Execute an opaque refinement bootstrap and publish only its normalized result, capped gas and exports.
 ## Source binding is internal; local preparation/host/engine refusals never become protocol work errors.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../pvm/[machine, step, gas, output, refinement_exports, host_fetch, inner_machines]
-import ../codec/[composite, work_digest, work_report]
-import ./[refinement_bootstrap, refinement_dispatch]
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/output as pvm_output
+import ../pvm/refinement_exports as pvm_refinement_exports
+import ../pvm/host_fetch as pvm_host_fetch
+import ../pvm/inner_machines as pvm_inner_machines
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ./refinement_bootstrap as state_refinement_bootstrap
+import ./refinement_dispatch as state_refinement_dispatch
 
 type
   RefinementInvocationError* {.pure.} = enum ## Tagged local refusals carry no output owner or partial gas/exports.

@@ -3,9 +3,13 @@
 
 ## Strict computed-assurance result and report-view guards retain a real authenticated successor as their positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_assurances, computed_chain, block_transition]
-import ../../src/codec/[bounded, assurances]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_assurances as state_computed_assurances
+import ../../src/state/computed_chain as state_computed_chain
+import ../../src/state/block_transition as state_block_transition
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
 import ../support/pvm_computed_assurances
 
 proc expect[T](outcome: ComputedAssuranceResult[T], reason: ComputedAssuranceError) =

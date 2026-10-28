@@ -3,8 +3,10 @@
 
 ## Published Genesis wire owns a full header and one complete opaque RawState, without implicit trust.
 import std/assertions
-import ./[trace_state, store]
-import ../codec/[header, bounded]
+import ./trace_state as state_trace_state
+import ./store as state_store
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
 
 type
   TraceGenesisError* {.pure.} = enum ## Failed fields contain their genuine typed refusal, never a trusted chain or successful prefix.

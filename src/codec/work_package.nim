@@ -7,7 +7,11 @@
 ## retained item/blob access.
 
 import std/assertions
-import ./[natural, bounded, composite, work_digest, work_report]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_digest as codec_work_digest
+import ./work_report as codec_work_report
 
 type
   RefinementContext* = object ## Refinement context reuses the nominal anchor/root/slot domains already used in reports.
@@ -189,10 +193,11 @@ proc extent(input: openArray[byte], cursor, count, stride: int,
 # Read a bounded canonical natural, keeping partial cursor updates private on failure.
 proc number(input: openArray[byte], cursor: var int, ceiling: int,
     limit: ByteLimit): PackageResult[int] {.raises: [].} =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.high))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.high))
   # Incomplete and overlong encodings remain distinct typed failures.
   if not parsed.ok:
-    return PackageResult[int](status: if parsed.error == natural.truncated: PackageError.Truncated
+    return PackageResult[int](status: if parsed.error ==
+        codec_natural.truncated: PackageError.Truncated
       else: PackageError.NonCanonical) # Multiple encodings of one count are forbidden.
   cursor += int(parsed.consumed)
   # Both prefix cost and unsigned count are bounded before host narrowing.
@@ -261,7 +266,7 @@ proc put(bytes: openArray[byte], output: var openArray[byte], cursor: var int) {
 
 # Commit only the active canonical prefix of a bounded general natural count.
 proc putNumber(value: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   put(encoded.bytes.toOpenArray(0, int(encoded.len)-1), output, cursor)
 
 # Compare address distances without computing potentially overflowing end addresses.
@@ -520,9 +525,9 @@ proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): Pac
     if length > uint64(MaxBundleBytes-state.bundleBytes):
       return PackageResult[int](status: PackageError.LimitExceeded) # Bound before conversion/addition.
     state.bundleBytes += int(length)
-  let required = 54+int(natural.encode(JamNatural(value.payload.len)).len)+value.payload.len +
-      int(natural.encode(JamNatural(value.imports.len)).len)+34*value.imports.len +
-      int(natural.encode(JamNatural(value.extrinsics.len)).len)+36*value.extrinsics.len
+  let required = 54+int(codec_natural.encode(JamNatural(value.payload.len)).len)+value.payload.len +
+      int(codec_natural.encode(JamNatural(value.imports.len)).len)+34*value.imports.len +
+      int(codec_natural.encode(JamNatural(value.extrinsics.len)).len)+36*value.extrinsics.len
   PackageResult[int](status: PackageError.None, completed: required)
 
 # Commit an item only after every source, aggregate, capacity and alias check for the whole operation.
@@ -622,8 +627,10 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
   if authCost != PackageError.None:
     return PackageResult[int](status: authCost)
   var required = 36+context.value+1
-  required += int(natural.encode(JamNatural(value.authorization.len)).len)+value.authorization.len
-  required += int(natural.encode(JamNatural(value.configuration.len)).len)+value.configuration.len
+  required += int(codec_natural.encode(JamNatural(
+      value.authorization.len)).len)+value.authorization.len
+  required += int(codec_natural.encode(JamNatural(
+      value.configuration.len)).len)+value.configuration.len
   # Late invalid items must not authorize writes of an earlier valid package prefix.
   for item in value.items:
     let measured = measureItem(item, config, state)

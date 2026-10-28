@@ -4,12 +4,22 @@
 
 ## Literal historical intervals, full-width gas/memory and genuine host execution verify read-only refinement lookup.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_lookup, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values,
-  state_requests, state_trie, work_report]
-import ../../../src/pvm/[machine, program, step, gas]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_lookup as state_refinement_lookup
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

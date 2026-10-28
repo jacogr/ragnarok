@@ -4,6 +4,6 @@
 
 ## Outcome storage and result alternatives remain private behind guarded accessors.
 
-import ../../../src/state/accumulation_outcome
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
 var outcome: AccumulationOutcomeResult[AccumulationOutcome]
 discard outcome.status

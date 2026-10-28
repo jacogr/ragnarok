@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Replay bounded public-API JamV1 observations from the pinned upstream VM generator.
-import std/[assertions, syncio]
-import ../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 const UpstreamFrameBytes* = 249+8192+16384 ## Fixed CPU observations, bounded code and two page snapshots.
 
 func word(data: openArray[byte], at, width: int): uint64 =

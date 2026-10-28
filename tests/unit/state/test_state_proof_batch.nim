@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Atomic ordered batch verification retains independent root/key authority and whole-batch quotas.
-import std/[assertions, syncio]
-import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Duplicates remain explicit and all failures discard earlier successful lookups.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(10))

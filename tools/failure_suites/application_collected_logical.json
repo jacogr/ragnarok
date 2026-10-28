@@ -84,5 +84,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/application_collected_logical_results.nim"
+  "source": "tests/native/app_collected_logical_results.nim"
 }

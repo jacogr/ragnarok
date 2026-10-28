@@ -8,9 +8,16 @@
 ## Exposes recent and lookup-anchor checks and immutable access to their certified
 ## policy/history context.
 
-import ../codec/[bounded, state_history, state_safrole, header, report_owned]
-import ./[ancestor_context, fuzz_ancestry, fuzz_protocol]
-import ./[report_policy, guarantee_credentials]
+import ../codec/bounded as codec_bounded
+import ../codec/state_history as codec_state_history
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/header as codec_header
+import ../codec/report_owned as codec_report_owned
+import ./ancestor_context as state_ancestor_context
+import ./fuzz_ancestry as state_fuzz_ancestry
+import ./fuzz_protocol as state_fuzz_protocol
+import ./report_policy as state_report_policy
+import ./guarantee_credentials as state_guarantee_credentials
 
 type
   LookupAge* = distinct uint64 ## Lookup age is measured in timeslots, independently of the eight recent blocks.

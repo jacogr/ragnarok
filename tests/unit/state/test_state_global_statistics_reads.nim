@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact authenticated activity reads preserve independent epoch populations and accepted compact gas.
-import std/[assertions, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_statistics, state_layout, state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 let config = ActivityConfig(cores: CoreCount(3), current: ValidatorCount(6),
     previous: ValidatorCount(9),
   maxServices: ElementLimit(1), maxBytes: ByteLimit(4096))

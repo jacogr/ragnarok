@@ -4,10 +4,21 @@
 ## Execute genuine ordinary/mixed-shape input packages before assembling their auditable wire bytes.
 
 import std/assertions
-import ../../src/state/[input_refinement, import_inputs, import_justification, extrinsic_inputs]
-import ../../src/codec/[bounded, work_package, work_report]
-import ./[pvm_input_refinement, pvm_refinement_outcome, pvm_report_results, pvm_import_inputs,
-  pvm_import_justification, pvm_import_vectors, pvm_extrinsic_inputs, pvm_bundle_vectors]
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ./pvm_input_refinement
+import ./pvm_refinement_outcome
+import ./pvm_report_results
+import ./pvm_import_inputs
+import ./pvm_import_justification
+import ./pvm_import_vectors
+import ./pvm_extrinsic_inputs
+import ./pvm_bundle_vectors
 
 proc bundleExecution*(rich = false, exports = false): InputRefinement =
   ## Retire all mutable preparation fixtures before returning only genuine completed execution ownership.

@@ -7,8 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_service_values, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/bounded as codec_bounded
 
 ## An opaque retained value survives source key/value scope and every caller mutation.
 proc captured(): ServiceValueSnapshot =

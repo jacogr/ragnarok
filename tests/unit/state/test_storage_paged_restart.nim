@@ -3,13 +3,28 @@
 
 ## Whole-index capture, restart-safe retirement and real durability barriers retain partial-state authority.
 # @@Verification={"arc":"storage_paged_restart_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, paged_reference, paged_native_fixture]
-import ../../../src/storage/[paged_stream, paged_codec, paged_store, paged_io, state_proof,
-  full_state_trie, light_state_cache, managed_manifest, light_delta, durability, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/state/paged_proof_view as transport
-import ../../../src/state/proof_view as partial
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/storage_paged_reference
+import ../../support/storage_paged_native_fixture
+import ../../../src/storage/paged_stream as storage_paged_stream
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/paged_store as storage_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/durability as storage_durability
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/state/paged_proof_view as state_paged_proof_view
+import ../../../src/state/proof_view as state_proof_view
 type Memory = ref object ## Independent test transport owns bytes and deterministic callback refusal.
   bytes: seq[byte]
   calls, failAt: int
@@ -130,9 +145,9 @@ proc lowLevel() =
     memory.bytes[4096] = memory.bytes[4096] xor 1
     assert readPagedQueries(memory.input, checked, ElementLimit(130), policy.work).error ==
         PagedStreamError.ChecksumMismatch
-proc viewLimits(selected: PagedNativeConfig): transport.PagedProofViewLimits =
+proc viewLimits(selected: PagedNativeConfig): state_paged_proof_view.PagedProofViewLimits =
   ## State-layer per-query verification and retained view limits remain independent of inventory work.
-  result = default(transport.PagedProofViewLimits)
+  result = default(state_paged_proof_view.PagedProofViewLimits)
   result.proof.nodes = ElementLimit(249)
   result.proof.valueBytes = ByteLimit(10000)
   result.batch.items = ElementLimit(256)
@@ -145,12 +160,12 @@ proc capture(reader: var PagedReader, selected: PagedNativeConfig) =
   ## Missing evidence, authenticated absence and present-empty are observably distinct after materialization.
   let inventory = reader.queryInventory(ElementLimit(3), selected.limits.work).value
   assert inventory.len == 3
-  let view = transport.readAllPagedProofView(reader, selected.root, viewLimits(selected),
-      selected.limits.work).value
+  let view = state_paged_proof_view.readAllPagedProofView(reader, selected.root, viewLimits(
+      selected), selected.limits.work).value
   assert view.lookup(pagedKey(0)).value.bytes[0] == 7
   assert view.lookup(pagedKey(128)).value.present and view.lookup(pagedKey(128)).value.bytes.len == 0
   assert not view.lookup(pagedKey(255)).value.present
-  assert view.lookup(pagedKey(254)).error == partial.ProofViewError.MissingWitness
+  assert view.lookup(pagedKey(254)).error == state_proof_view.ProofViewError.MissingWitness
 proc nativeInventory(source: PagedNativeFixture) =
   ## Restart uses independent expected root; native read uncertainty latches until close/reopen.
   let directory = path("inventory")
@@ -161,12 +176,13 @@ proc nativeInventory(source: PagedNativeFixture) =
   assert writer.close == FileError.None
   assert openPagedReader(reader, directory, selected).error == PagedNativeError.None
   capture(reader, selected)
-  assert transport.readAllPagedProofView(reader, nativeFixture(9).config.root,
-    viewLimits(selected), selected.limits.work).error == transport.PagedProofViewError.WrongRoot
+  assert state_paged_proof_view.readAllPagedProofView(reader, nativeFixture(9).config.root,
+    viewLimits(selected), selected.limits.work).error ==
+        state_paged_proof_view.PagedProofViewError.WrongRoot
   var tight = viewLimits(selected)
   tight.view.items = ElementLimit(2)
-  assert transport.readAllPagedProofView(reader, selected.root, tight,
-    selected.limits.work).error == transport.PagedProofViewError.NativeFailure
+  assert state_paged_proof_view.readAllPagedProofView(reader, selected.root, tight,
+    selected.limits.work).error == state_paged_proof_view.PagedProofViewError.NativeFailure
   resetIo()
   let retained = reader.queryInventory(ElementLimit(3), selected.limits.work).value
   let reads = ioCalls(readIo)

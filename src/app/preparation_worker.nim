@@ -5,8 +5,12 @@
 ## Plain ARC requires every host alias to remain untouched throughout that lease, including on cancellation.
 ## One host thread serializes control calls; worker/input/chain addresses cannot move while borrowed.
 
-import std/[assertions, locks, rawthreads]
-import ./[block_input, current_block_input, chain]
+import std/assertions
+import std/locks
+import std/rawthreads
+import ./block_input as app_block_input
+import ./current_block_input as app_current_block_input
+import ./chain as app_chain
 
 type
   PreparationPhase* {.pure.} = enum ## Done still occupies capacity and retains the exclusive graph lease.

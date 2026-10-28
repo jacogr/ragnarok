@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real process stops qualify compaction selection and both cleanup paths against exact authored file bytes.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ./[storage_io, storage_crash, storage_light_journal]
-import ../../src/storage/[light_journal_cache, light_journal_manifest, light_journal_replay,
-  light_delta, light_snapshot, managed_io, managed_manifest, file_errors]
-import ../../src/codec/bounded
+import ./storage_io
+import ./storage_crash
+import ./storage_light_journal
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/managed_io as storage_managed_io
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
 type LightReplacementAction* = enum ## One coherent namespace transition is observed after its setup completes.
   ReplaceCheckpoint, RetirePrevious, DiscardCandidate
 proc accessNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,

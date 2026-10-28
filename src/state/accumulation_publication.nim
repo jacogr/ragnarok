@@ -4,8 +4,12 @@
 ## Opaque complete chain updates stage fallible execution before durable publication and infallible installation.
 ## Prepared owners retain exact original state/history authority and privately owned successful successors.
 
-import ./[store, accumulation_chain, accumulation_completion, accumulation_finalization]
-import ../chain/[genesis, provider]
+import ./store as state_store
+import ./accumulation_chain as state_accumulation_chain
+import ./accumulation_completion as state_accumulation_completion
+import ./accumulation_finalization as state_accumulation_finalization
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
 
 type
   PreparedChainUpdate* = object ## Copyable immutable preparation retains no descriptors or mutable external borrows.

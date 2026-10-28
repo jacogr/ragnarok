@@ -3,9 +3,14 @@
 
 ## Terminal current accseq output-pair union with explicit bounded C16 encoding and history-root derivation.
 import std/algorithm
-import ../codec/[bounded, natural, state_outputs, state_trie]
-import ./[accumulation_current_driver, accumulation_current_sequence, accumulation_annulled_outputs,
-  history]
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_annulled_outputs as state_accumulation_annulled_outputs
+import ./history as state_history
 
 type
   CurrentAccumulationOutputLimits* = object ## Charge entry/outcome traversal independently of deduplicated pairs and canonical bytes.
@@ -97,7 +102,7 @@ proc prepareCurrentAccumulationOutputs*(source: CompletedCurrentAccumulationSequ
       let candidate = candidates[index]
       candidates[unique] = candidate
       inc unique # Read the original row before compacting its earlier slot.
-  let prefix = int(natural.encode(JamNatural(unique)).len)
+  let prefix = int(codec_natural.encode(JamNatural(unique)).len)
   if unique > (high(int)-prefix) div 36:
     fail(CurrentAccumulationOutputsError.LimitExceeded) # Prove complete encoded arithmetic before multiplication.
   let encodedBytes = prefix+36*unique

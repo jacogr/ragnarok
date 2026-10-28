@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic plan/result misuse guards have genuine initialized empty-knowledge positive controls.
-import std/[cmdline, syncio]
-import ../../src/storage/[light_snapshot, light_state_cache, database_identity]
-import ../../src/codec/[bounded, state_trie]
+import std/cmdline
+import std/syncio
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 let member = paramStr(1)
 let origin = paramStr(2)
 if member == "result" and origin != "valid":

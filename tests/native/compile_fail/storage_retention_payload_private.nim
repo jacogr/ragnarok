@@ -3,6 +3,6 @@
 
 ## Retention ownership and result alternatives cannot be mutated through public handles.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/storage/revision_retention
+import ../../../src/storage/revision_retention as storage_revision_retention
 let hidden = default(RetentionResult[RetentionToken])
 discard hidden.completed

@@ -3,8 +3,9 @@
 
 ## Pinned erasure geometry and source-bound systematic bundle chunks, before parity encoding.
 
-import ../codec/[bounded, work_report]
-import ./auditable_bundle
+import ../codec/bounded as codec_bounded
+import ../codec/work_report as codec_work_report
+import ./auditable_bundle as state_auditable_bundle
 
 type
   ErasureLayoutError* {.pure.} = enum ## Refusals contain no partial padded buffer or fabricated chunk.

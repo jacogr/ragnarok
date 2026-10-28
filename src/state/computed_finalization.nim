@@ -3,8 +3,12 @@
 
 ## Drive original-source computed execution to a genuine stopped history and finalize its private accumulation branch.
 
-import ./[computed_execution, computed_round, accumulation_execution, accumulation_driver,
-  accumulation_finalization, accumulation_outputs]
+import ./computed_execution as state_computed_execution
+import ./computed_round as state_computed_round
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_driver as state_accumulation_driver
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
 
 type
   ComputedFinalizationConfig* = object ## Independent recursive execution and complete output-history ceilings.

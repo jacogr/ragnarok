@@ -4,16 +4,37 @@
 
 ## Actual heap calls preserve immutable CPUs and adopted gas/address rules under bounded allocation.
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context,
-  accumulation_effects, accumulation_outcome, accumulation_invocation, accumulation_service,
-  accumulation_inputs,
-  accumulation_batch, store]
-import ../../../src/codec/[bounded, composite, header, c2_records, state_safrole, state_accounts,
-    state_layout, state_trie]
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
-import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
-  accumulation_batch_context, accumulation_provision_integration, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_batch as state_accumulation_batch
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/state_accumulation_batch_context
+import ../../support/state_accumulation_provision_integration
+import ../../support/testing_arc_evidence
 
 # Each independent authored full-width request tests validation before any narrowing or cost arithmetic.
 proc instructions(request: uint64, repeat = false, panic = false): seq[seq[byte]] =

@@ -3,8 +3,10 @@
 
 ## Strict optimized failed-result, empty-owner and invalid-page guards with genuine positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[export_commitment, report_identity]
+import std/assertions
+import std/cmdline
+import ../../src/state/export_commitment as state_export_commitment
+import ../../src/state/report_identity as state_report_identity
 import ../support/pvm_export_commitment
 
 proc check(outcome: ExportCommitmentResult[ExportCommitment], reason: ExportCommitmentError) =

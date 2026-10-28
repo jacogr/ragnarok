@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/refinement_bootstrap
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
 var owner: PreparedRefinementBootstrap
 discard owner.data

@@ -4,10 +4,19 @@
 ## A bounded proof request retains one explicitly selected posterior state and detached semantic plan.
 ## Capturing is host-side admission only; generation and authentication belong outside callbacks.
 import std/assertions
-import ./[light_head, checkpoint_identity]
-import ../chain/[genesis, state_proof]
-import ../state/[proof_service, proof_view, trie_proof, store, proof_plan, planned_proof]
-import ../codec/[bounded, state_layout, state_trie]
+import ./light_head as app_light_head
+import ./checkpoint_identity as app_checkpoint_identity
+import ../chain/genesis as chain_genesis
+import ../chain/state_proof as chain_state_proof
+import ../state/proof_service as state_proof_service
+import ../state/proof_view as state_proof_view
+import ../state/trie_proof as state_trie_proof
+import ../state/store as state_store
+import ../state/proof_plan as state_proof_plan
+import ../state/planned_proof as state_planned_proof
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   ProofHashLimit* = distinct uint64 ## Conservative admitted hash-call ceiling, separate from bytes and node counts.

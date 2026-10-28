@@ -3,9 +3,13 @@
 
 ## Bind proof generation and verification to one selected immutable block's posterior complete state.
 ## Header prior-state roots and transport-supplied identities never substitute for this explicit selection.
-import ./genesis
-import ../state/[trie_proof, snapshot_proof, proof_service, proof_plan]
-import ../codec/[state_layout, state_trie]
+import ./genesis as chain_genesis
+import ../state/trie_proof as state_trie_proof
+import ../state/snapshot_proof as state_snapshot_proof
+import ../state/proof_service as state_proof_service
+import ../state/proof_plan as state_proof_plan
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 proc generateBlockStateProof*(selected: BlockSnapshotResult, query: StateKey,
     mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
   ## A guarded block result retains its exact complete map; default/refused selection has no empty fallback.

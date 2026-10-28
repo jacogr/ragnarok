@@ -3,6 +3,6 @@
 
 ## Bank results cannot expose private alternatives.
 # @@Verification={"group": "privacy", "expected": "headReason"}
-import ../../../src/state/checkpoint_bank
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
 let outcome = default(CheckpointBankResult[int])
 discard outcome.headReason

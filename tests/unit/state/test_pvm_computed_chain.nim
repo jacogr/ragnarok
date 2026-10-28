@@ -5,12 +5,21 @@
 
 ## Genuine computed publication and direct-child capture advance both live handles or preserve both on every selected refusal.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_chain, computed_composition, computed_state_publication,
-    accumulation_consensus, store]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[state_layout, state_trie]
-import ../../support/[pvm_computed_chain, pvm_computed_state_publication, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_chain as state_computed_chain
+import ../../../src/state/computed_composition as state_computed_composition
+import ../../../src/state/computed_state_publication as state_computed_state_publication
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/pvm_computed_chain
+import ../../support/pvm_computed_state_publication
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force real late child capture to fail after private state publication succeeds.

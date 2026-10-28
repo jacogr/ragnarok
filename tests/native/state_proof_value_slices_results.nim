@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated value slices admit only exact owner-bound ranges; overlapping view merges compare immutable facts without whole-payload copies.
-import std/[assertions, syncio, envvars, cmdline]
-import ../support/arc_evidence
-import ../../src/state/[trie_proof, proof_view]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/cmdline
+import ../support/testing_arc_evidence
+import ../../src/state/trie_proof as state_trie_proof
+import ../../src/state/proof_view as state_proof_view
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reading/comparing already authenticated immutable values needs no further crypto backend work.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

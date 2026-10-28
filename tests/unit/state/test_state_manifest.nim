@@ -3,12 +3,23 @@
 
 ## Complete-map service declarations require exact source bytes and preserve immutable provenance.
 # @@Verification={"arc": "state_manifest_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/arc_evidence
-import ../../../src/state/[global_snapshot, manifest, store]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_composition,
-    state_consensus, state_accounts, state_service_values, state_requests]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing only for preflight or explicit backend rollback witnesses.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

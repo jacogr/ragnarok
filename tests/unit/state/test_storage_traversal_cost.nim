@@ -2,9 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Isolated physical repository workloads measure retained table memory and checked shallow/deep graph walks.
-import std/[assertions, syncio, envvars, monotimes, times]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, record_codec]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import std/times
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 
 type
   Scenario = object ## One mutable owner and nine immutable readers keep all measured storage reachable.

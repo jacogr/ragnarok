@@ -5,12 +5,29 @@
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
-import ../codec/[assurances, natural, bounded, composite, header, state_accounts,
-    state_authorization, state_privileges, state_safrole, state_layout, state_trie]
-import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
-  accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
-  accumulation_skip, accumulation_transfers,
-  accumulation_terminal_provisions, store]
+import ../codec/assurances as codec_assurances
+import ../codec/natural as codec_natural
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_transfers as state_accumulation_transfers
+import ./accumulation_terminal_provisions as state_accumulation_terminal_provisions
+import ./store as state_store
 
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
@@ -279,7 +296,7 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
   let roleBytes = uint64(rawRoles.value.byteLength)
   # Canonical C(12) uses fixed role widths and a compact count; its size depends only on dictionary cardinality.
   let selectedCount = uint64(allowances)
-  let countBytes = uint64(natural.encode(JamNatural(selectedCount)).len)
+  let countBytes = uint64(codec_natural.encode(JamNatural(selectedCount)).len)
   if selectedCount > (high(uint64)-4*uint64(cores+3)-countBytes) div 12:
     fail(AccumulationBatchError.LimitExceeded) # Prove the full serialized extent before multiplication/addition.
   let outputRoleBytes = 4*uint64(cores+3)+countBytes+12*selectedCount

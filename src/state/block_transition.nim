@@ -9,9 +9,19 @@
 ## Exposes blockTransitionProfile and advanceBlockState with checked admission, disputes,
 ## Safrole and availability results.
 
-import ../codec/[block_codec, header, tickets, state_disputes, state_safrole, state_layout, assurances]
-from ../crypto/assurance_context import AssuranceParent
-import ./[store, block_admission, disputes, safrole_transition, availability]
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/tickets as codec_tickets
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/assurances as codec_assurances
+from ../crypto/assurance_context as crypto_assurance_context import AssuranceParent
+import ./store as state_store
+import ./block_admission as state_block_admission
+import ./disputes as state_disputes
+import ./safrole_transition as state_safrole_transition
+import ./availability as state_availability
 
 type
   BlockTransitionError* {.pure.} = enum ## Failures select their precise stage cause without carrying staged state or a usable block.

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Arithmetic extraction guards require linked assertions and a genuine representable control.
-import std/[assertions, cmdline, syncio]
-import ../../src/state/account_footprint
-import ../../src/codec/state_accounts
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/state/account_footprint as state_account_footprint
+import ../../src/codec/state_accounts as codec_state_accounts
 proc extract(outcome: AccountFootprintResult): AccountFootprint {.noinline.} =
   ## Keep default/refused payload extraction dynamic in the checked native binary.
   outcome.value

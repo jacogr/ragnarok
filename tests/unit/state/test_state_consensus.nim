@@ -6,8 +6,12 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_consensus, state_safrole, bounded, assurances]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
 
 ## Confirm complete parent snapshots retain only independent private copies of every selected field.
 proc main() =

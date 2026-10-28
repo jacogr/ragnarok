@@ -3,5 +3,5 @@
 
 ## Validated scalar page slots belong only to the inspecting memory call; callers cannot obtain them.
 # @@Verification={"group": "privacy", "expected": "scalarSpan"}
-import ../../../src/pvm/machine
-discard machine.scalarSpan
+import ../../../src/pvm/machine as pvm_machine
+discard pvm_machine.scalarSpan

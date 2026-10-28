@@ -4,10 +4,22 @@
 ## GP 0.8.0 partialstate/I: immutable initial regular and exceptional accumulation contexts.
 ## Exposes bounded chapter binding and retained account/queue/staging/privilege views; no execution or writes.
 
-import ../codec/[bounded, assurances, composite, header, state_layout, state_authorization,
-  state_safrole, state_privileges, state_accounts]
-import ./[accumulation_invocation, accumulation_service, accumulation_round, accumulation_queue,
-  report_admission, block_transition, store]
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_accounts as codec_state_accounts
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   AccumulationContextConfig* = object ## Explicit chain population and independent decoding/aggregate-copy ceilings.

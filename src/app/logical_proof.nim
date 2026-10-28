@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture an existing generic proof query from exact complete logical producer provenance under independent selected-view retention admission.
-import ./proof_query
-import ../state/[current_logical, accumulation_current_update, proof_plan]
-import ../chain/[provider, genesis]
-import ../codec/bounded
+import ./proof_query as app_proof_query
+import ../state/current_logical as state_current_logical
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/proof_plan as state_proof_plan
+import ../chain/provider as chain_provider
+import ../chain/genesis as chain_genesis
+import ../codec/bounded as codec_bounded
 type
   LogicalProofLimits* = object ## Whole selected-view copying and existing full-map/path/wire/hash query work retain separate ceilings.
     blocks*: ElementLimit

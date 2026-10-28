@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/core_service_activity_results.nim",
+  "source": "tests/native/state_core_service_activity_results.nim",
   "build_name": "core-service-activity-results",
   "crypto_library": "crypto",
   "cases": [

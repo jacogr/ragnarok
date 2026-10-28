@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_links
+import ../../../src/state/computed_links as state_computed_links
 var candidate: ComputedLinksResult[ComputedReportLinks]
 discard candidate.completed

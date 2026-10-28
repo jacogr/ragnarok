@@ -4,13 +4,34 @@
 ## Bind original pools, posterior queues and verified guarantee use to one authenticated accumulation successor.
 ## Only a private complete-map C(1) replacement is prepared; whole-block publication remains separate.
 
-import ../codec/[bounded, assurances, header, report_owned, state_authorization, state_layout, state_trie]
-import ./[accumulation_authorization, accumulation_current_preimages,
-  accumulation_current_activity, accumulation_current_validators, accumulation_current_recent,
-  accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_statistics, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round, accumulation_queue,
-  report_admission, guarantee_credentials, block_transition, block_admission, authorization, store]
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/header as codec_header
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_authorization as state_accumulation_authorization
+import ./accumulation_current_preimages as state_accumulation_current_preimages
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./authorization as state_authorization
+import ./store as state_store
 
 type
   CurrentAccumulationAuthorizationError* {.pure.} = enum ## Failed/default alternatives retain neither a partial entry nor a usable successor.

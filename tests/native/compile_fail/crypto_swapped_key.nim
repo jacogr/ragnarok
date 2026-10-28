@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: EdSignature but wanted: EdPublicKey"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 let value: EdPublicKey = default(EdSignature)
 discard value

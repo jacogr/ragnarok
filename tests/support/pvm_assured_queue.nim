@@ -3,11 +3,19 @@
 
 ## Actual assured successor sources and original-parameter-bound admission/queue policies for subsequent accumulation.
 
-import ../../src/state/[assured_queue, computed_assurances, report_admission, report_policy,
-    report_anchors, guarantors, block_transition]
-import ../../src/chain/parameters
-import ../../src/codec/[bounded, assurances]
-import ./[pvm_computed_assurances, report_admission_context, accumulation_execution_context]
+import ../../src/state/assured_queue as state_assured_queue
+import ../../src/state/computed_assurances as state_computed_assurances
+import ../../src/state/report_admission as state_report_admission
+import ../../src/state/report_policy as state_report_policy
+import ../../src/state/report_anchors as state_report_anchors
+import ../../src/state/guarantors as state_guarantors
+import ../../src/state/block_transition as state_block_transition
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ./pvm_computed_assurances
+import ./state_report_admission_context
+import ./state_accumulation_execution_context
 
 proc assuredQueueFixture*(votes = 7): AssuredComputedReports =
   ## Sign the real next block against its published computed parent; no ready row is inserted for these reports.

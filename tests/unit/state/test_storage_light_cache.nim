@@ -3,10 +3,15 @@
 
 ## Independent root authority and a flat known-key model witness bounded atomic immutable light lookup retention.
 # @@Verification={"arc": "storage_light_cache_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[light_state_cache, state_proof, full_state_trie]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual provider refusal must preserve every retained cache and never create absence.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

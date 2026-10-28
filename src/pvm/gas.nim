@@ -5,7 +5,7 @@
 ## Exposes blockGas, nominal BlockGas/GasCycleLimit values and guarded GasResult outcomes.
 ## The simulator borrows an immutable program and uses bounded stack storage only.
 
-import ./program
+import ./program as pvm_program
 
 type
   BlockGas* = distinct uint64 ## A computed block charge is distinct from both a program address and a local work limit.

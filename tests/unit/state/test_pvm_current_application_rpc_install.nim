@@ -3,15 +3,26 @@
 # @@Verification={"arc": "pvm_current_application_rpc_install_arc_release"}
 
 ## Genuine current prepared updates join canonical/RPC ownership under exact leases and deliver actual WebSocket best-head events.
-import std/[assertions, envvars, syncio, base64, strutils]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/base64
+import std/strutils
 import std/posix/posix
-import ../../../src/app/chain
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/rpc/server
-import ../../../src/state/[accumulation_current_update, accumulation_current_consensus,
-  accumulation_current_chain, store]
-import ../../support/[accumulation_current_chain_context, rpc_socket, arc_evidence]
+import ../../../src/app/chain as app_chain
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/rpc/server as rpc_server
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_current_chain as state_accumulation_current_chain
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_chain_context
+import ../../support/rpc_socket
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 const Subscribe = """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":2}"""

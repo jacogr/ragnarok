@@ -7,7 +7,14 @@
 ## child/cause accessors.
 
 import std/assertions
-import ./[bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./owned as codec_owned
+import ./tickets as codec_tickets
+import ./assurances as codec_assurances
+import ./guarantees as codec_guarantees
+import ./disputes as codec_disputes
+import ./header as codec_header
 
 type
   ComponentKind* {.pure.} = enum ## Static component identities prevent swapping equal-width/wire-compatible child schemas.
@@ -147,7 +154,8 @@ proc fullFrameConfig*(maxBytes: ByteLimit, preimages: PreimageLimits): FrameConf
 
 # Validate shared domains before any count, source owner or attacker-controlled byte is inspected.
 proc validConfig(config: FrameConfig): bool {.raises: [].} =
-  assurances.validConfig(AssuranceConfig(cores: config.cores, validators: config.validators)) and
+  codec_assurances.validConfig(AssuranceConfig(cores: config.cores,
+      validators: config.validators)) and
     uint64(config.epochSlots) > 0 and uint64(config.ticketLimit) <= 16
 
 # Preserve a child's strongly typed failure without publishing partial parent data/progress.

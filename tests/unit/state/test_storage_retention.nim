@@ -3,10 +3,15 @@
 
 ## Explicit bounded pins remain independent across catalog copies, repository revisions and close.
 # @@Verification={"arc": "storage_retention_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[revision_retention, node_repository, full_state_trie]
-import ../../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/revision_retention as storage_revision_retention
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 
 proc cycle() =
   ## Check count refusals, opaque identity, explicit release and acyclic retained ownership.

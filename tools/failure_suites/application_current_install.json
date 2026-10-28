@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_current_install_results.nim",
+  "source": "tests/native/app_current_install_results.nim",
   "build_name": "application-current-install-results",
   "crypto_library": "crypto",
   "cases": [

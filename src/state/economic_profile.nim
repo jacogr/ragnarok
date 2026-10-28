@@ -3,9 +3,9 @@
 
 ## Explicit immutable valid parameter snapshots bind deposit rates without selecting a network or trusted root.
 ## Existing parameter validity remains its documented population/clock subset, not full protocol configuration validation.
-import ../chain/parameters
-import ../codec/state_accounts
-import ./account_deposit
+import ../chain/parameters as chain_parameters
+import ../codec/state_accounts as codec_state_accounts
+import ./account_deposit as state_account_deposit
 
 type
   StateEconomicProfile* = object ## Private fixed parameter snapshot prevents default zero rates from posing as selected valid configuration.

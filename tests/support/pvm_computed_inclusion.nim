@@ -5,17 +5,34 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, block_transition, block_admission, store]
-import ../../src/chain/genesis
-import ../../src/codec/[bounded, header, block_codec, guarantees, assurances]
-import ../../src/crypto/extrinsic_commitment
-import ../../src/bandersnatch/bandersnatch
-import ./[pvm_computed_batch, pvm_computed_roster, pvm_computed_credentials,
-  pvm_computed_guarantors,
-  pvm_computed_recent, pvm_computed_lookup]
+import ../../src/state/computed_batch as state_computed_batch
+import ../../src/state/computed_envelope as state_computed_envelope
+import ../../src/state/computed_credentials as state_computed_credentials
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/computed_recent as state_computed_recent
+import ../../src/state/computed_state as state_computed_state
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/block_transition as state_block_transition
+import ../../src/state/block_admission as state_block_admission
+import ../../src/state/store as state_store
+import ../../src/chain/genesis as chain_genesis
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/assurances as codec_assurances
+import ../../src/crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ../../src/bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ./pvm_computed_batch
+import ./pvm_computed_roster
+import ./pvm_computed_credentials
+import ./pvm_computed_guarantors
+import ./pvm_computed_recent
+import ./pvm_computed_lookup
 
 proc inclusionFixture*(changed = false, distinctPackages = false,
     withReady = false, withRound = false, withExecution = false,

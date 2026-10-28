@@ -3,8 +3,12 @@
 
 ## Original metered fault/repair/retry witnesses preserve paid block gas and all prefix/source state.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
 
 for opcode in 52'u8..62'u8:
   for access in [PageAccess.ReadWrite, PageAccess.ReadOnly]:

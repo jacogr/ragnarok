@@ -4,12 +4,21 @@
 
 ## Independent full-wire witnesses, exact budgets and immutable original execution provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[auditable_bundle, input_refinement, import_inputs, extrinsic_inputs,
-  authorized_refinement, report_identity]
-import ../../../src/codec/[bounded, work_report]
-import ../../../src/crypto/primitives
-import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_import_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/state/input_refinement as state_input_refinement
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_auditable_bundle
+import ../../support/pvm_bundle_vectors
+import ../../support/pvm_import_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse primitive work after original execution to prove assembly is pure serialization.

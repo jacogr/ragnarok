@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/quic/protocol
+import ../../../src/quic/protocol as quic_protocol
 var result = default(LengthResult)
 result.value = 0

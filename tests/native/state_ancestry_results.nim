@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native runtime extraction guards and actual positive controls share each public result accessor.
-import std/[assertions, cmdline]
-import ../../src/state/ancestor_context
-import ../../src/codec/[bounded, header]
+import std/assertions
+import std/cmdline
+import ../../src/state/ancestor_context as state_ancestor_context
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
 
 proc context(outcome: AncestorContextResult[AncestorContext]) =
   ## Default and refused capture cannot expose a context owner.
@@ -20,7 +22,7 @@ proc main() =
   of "default": context(default(AncestorContextResult[AncestorContext])) # No selected payload.
   of "refused": context(captureAncestorContext(default(OwnedHeader), [], limits)) # Actual constructor refusal.
   else:
-    var source = default(header.Header)
+    var source = default(codec_header.Header)
     source.unsigned.slot = HeaderSlot(1)
     var wire = newSeq[byte](1024)
     let encoded = encodeHeader(source, config, wire)

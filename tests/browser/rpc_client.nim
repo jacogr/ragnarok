@@ -5,7 +5,7 @@
 ## Exported no-argument actions let Playwright schedule replies, notifications and socket retirement.
 
 when defined(ragnarokBrowser):
-  import ../../src/ui/rpc
+  import ../../src/ui/rpc as ui_rpc
 
   var firstSubscription {.threadvar.}: uint32
 

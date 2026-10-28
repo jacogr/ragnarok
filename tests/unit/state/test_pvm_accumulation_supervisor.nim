@@ -4,14 +4,30 @@
 
 ## Genuine supervisor guests check incarnation-bound authority, atomic metadata and checkpoint ownership.
 
-import std/[assertions, syncio]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_outputs,
-    state_trie, c2_records]
-import ../../../src/state/[accumulation_dispatch, accumulation_effects, accumulation_context,
-    accumulation_machine, accumulation_invocation, store]
-import ../../../src/pvm/[machine, program, step, gas, host_fetch]
-import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/store as state_store
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 
 # Inject refusal only after authentic account/guest preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

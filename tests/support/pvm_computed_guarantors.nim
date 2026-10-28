@@ -4,8 +4,10 @@
 ## Authored original rotation controls and bounded planning policies for genuine assignment tests.
 
 import std/assertions
-import ../../src/state/[computed_guarantors, computed_roster]
-import ../../src/codec/[bounded, state_disputes]
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_disputes as codec_state_disputes
 import ./pvm_computed_roster
 
 proc guarantorLimits*(): ComputedGuarantorLimits =

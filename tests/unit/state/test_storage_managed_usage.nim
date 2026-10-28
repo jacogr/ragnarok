@@ -3,11 +3,22 @@
 
 ## Selected-file usage exposes exact bounded maintenance counters; a fixed checked workload records reclamation cost.
 # @@Verification={"arc":"storage_managed_usage_arc_release"}
-import std/[assertions, syncio, envvars, monotimes, times]
-import ../../support/[storage_samples, managed_storage_samples, arc_evidence]
-import ../../../src/storage/[managed_repository, managed_manifest, node_repository,
-  node_records, full_state_trie, database_identity, file_errors]
-import ../../../src/codec/state_trie
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import std/times
+import ../../support/storage_samples
+import ../../support/app_managed_storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/managed_repository as storage_managed_repository
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/state_trie as codec_state_trie
 proc sample(repository: ManagedRepository) =
   ## Scalar usage queries allocate no detached graphs or buffers.
   let usage = repository.usage.value

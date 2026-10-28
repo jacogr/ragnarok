@@ -5,8 +5,15 @@
 ## Exposes immutable plans from explicit implication contexts; terminal selection and pipeline binding remain caller-owned.
 
 import std/algorithm
-import ../codec/[bounded, composite, natural, owned, header, state_trie]
-import ./[accumulation_effects, preimages, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/natural as codec_natural
+import ../codec/owned as codec_owned
+import ../codec/header as codec_header
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_effects as state_accumulation_effects
+import ./preimages as state_preimages
+import ./store as state_store
 
 type
   AccumulationProvisionSourceIndex* = distinct uint64 ## A retained context ordinal is distinct from a provision's ordinal inside that context.

@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Independent public withPage reference for batched immutable replacement, ceilings and retained owners.
-import std/[assertions, syncio]
-import ../../../src/pvm/internal/handler_stream
-import ../../../src/pvm/machine
+import std/assertions
+import std/syncio
+import ../../../src/pvm/internal/handler_stream as pvm_handler_stream
+import ../../../src/pvm/machine as pvm_machine
 
 proc same(left, right: Memory, indices: openArray[uint32]) =
   ## Compare every mapped byte/access plus absent pages; no raw owner pointers enter the test.

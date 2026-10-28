@@ -4,9 +4,15 @@
 ## Full-state paged metadata preserves complete physical identities and bounded retained-root claims.
 ## These codecs confer local shape/integrity only; complete graph admission and native pins are separate.
 import std/assertions
-import ./[paged_codec, database_identity, managed_manifest, node_records, node_repository]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import ./paged_codec as storage_paged_codec
+import ./database_identity as storage_database_identity
+import ./managed_manifest as storage_managed_manifest
+import ./node_records as storage_node_records
+import ./node_repository as storage_node_repository
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 
 const
   FullPagedMaxRoots* = 64       ## One header page bounds retained roots independently of dataset size.

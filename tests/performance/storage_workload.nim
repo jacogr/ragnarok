@@ -2,12 +2,24 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Correctness-validated equal physical-repository workloads compare memory, synced journal and managed IO.
-import std/[assertions, syncio, cmdline, monotimes, times]
+import std/assertions
+import std/syncio
+import std/cmdline
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../support/managed_storage_samples
-import ../../src/storage/[full_state_trie, node_repository, node_records, record_codec,
-  file_repository, managed_repository, database_identity, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../support/app_managed_storage_samples
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/record_codec as storage_record_codec
+import ../../src/storage/file_repository as storage_file_repository
+import ../../src/storage/managed_repository as storage_managed_repository
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 
 proc key(index: int, deep: bool): StateKey =
   ## Authored leading/trailing two-byte identities distinguish short and very deep common key prefixes.

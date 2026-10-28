@@ -3,9 +3,13 @@
 
 ## Genuine source-bound report fixtures for export roots and proof-page witnesses.
 
-import ../../src/state/[export_commitment, report_identity, authorized_refinement]
-import ../../src/codec/bounded
-import ./[pvm_authorized_refinement, pvm_report_identity, pvm_report_results]
+import ../../src/state/export_commitment as state_export_commitment
+import ../../src/state/report_identity as state_report_identity
+import ../../src/state/authorized_refinement as state_authorized_refinement
+import ../../src/codec/bounded as codec_bounded
+import ./pvm_authorized_refinement
+import ./pvm_report_identity
+import ./pvm_report_results
 
 proc commitmentLimits*(): ExportCommitmentLimits =
   ## Finite ceilings admit every GP export count, padded tree and exact hash preimage workload.

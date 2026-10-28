@@ -3,12 +3,25 @@
 
 ## Existing checkpoint transport retains expected-root policy and precise typed serialization phases.
 # @@Verification={"arc": "state_validated_checkpoint_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/arc_evidence
-import ../../../src/state/[validated_checkpoint, checkpoint, store, global_snapshot, manifest]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_composition,
-    state_consensus, state_accounts, state_service_values, state_requests]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/manifest as state_manifest
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the observer and optionally refuse every attempted state hash.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

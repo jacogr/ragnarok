@@ -3,6 +3,6 @@
 
 ## Batch authority and tagged results keep their backing inaccessible to importers.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
 let hidden = default(LightJournalResult[PreparedLightJournalBatch])
 discard hidden.completed

@@ -4,11 +4,14 @@
 
 ## Independent commitments, ordered geometry, immutable ownership, exact policies and ARC release.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/host_fetch
-import ../../../src/state/extrinsic_inputs
-import ../../../src/codec/[bounded, work_package]
-import ../../support/[pvm_extrinsic_inputs, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_package as codec_work_package
+import ../../support/pvm_extrinsic_inputs
+import ../../support/testing_arc_evidence
 
 proc input(verified: VerifiedExtrinsics, item, index: uint64): ExtrinsicInputsResult[seq[byte]] =
   ## Keep full-width boundary fixtures concise while exercising the public nominal index domains.

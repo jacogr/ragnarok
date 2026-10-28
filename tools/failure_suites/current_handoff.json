@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/current_handoff_results.nim",
+  "source": "tests/native/state_current_handoff_results.nim",
   "build_name": "current-handoff-results",
   "crypto_library": "crypto",
   "cases": [

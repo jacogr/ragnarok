@@ -3,9 +3,14 @@
 
 ## Optimized result guards with genuine complete executed-bundle encoding controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[bundle_erasure, erasure_layout, erasure_words, auditable_bundle]
-import ../../src/codec/[bounded, work_report]
+import std/assertions
+import std/cmdline
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
 import ../support/pvm_auditable_bundle
 
 proc check[T](outcome: BundleErasureResult[T], reason: BundleErasureError) =

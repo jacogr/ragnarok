@@ -3,8 +3,13 @@
 
 ## Restore existing complete-map checkpoint bytes under explicit root authority, then validate declared serialization.
 ## This synchronous adapter preserves format, ownership and precise phase refusals without installing application state.
-import ../codec/[bounded, state_trie, state_composition]
-import ./[checkpoint, store, global_snapshot, manifest]
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./checkpoint as state_checkpoint
+import ./store as state_store
+import ./global_snapshot as state_global_snapshot
+import ./manifest as state_manifest
 
 type
   StateCheckpointLimits* = object ## Envelope restoration and subsequent global/manifest validation retain independent policies.

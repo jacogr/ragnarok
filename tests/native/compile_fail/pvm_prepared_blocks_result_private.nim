@@ -3,6 +3,6 @@
 
 ## Failed/default preparation results cannot expose a raw fabricated cache owner.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/pvm/step
+import ../../../src/pvm/step as pvm_step
 let prepared = default(PreparationResult[PreparedProgram])
 discard prepared.completed

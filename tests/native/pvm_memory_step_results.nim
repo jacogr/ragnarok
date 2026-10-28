@@ -5,7 +5,10 @@
 ## Chooses a non-fault outcome or local simulation refusal and attempts its forbidden accessor.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 
 let selection = paramStr(1)
 var outcome = default(StepOutcome)

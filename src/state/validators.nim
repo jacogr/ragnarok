@@ -7,9 +7,11 @@
 ##
 ## Exposes planValidatorRotation and checked immutable roster-rotation results.
 
-import ../codec/[state_safrole, assurances, bounded]
-from ../codec/disputes import OffenderKey
-from ../codec/header import EpochSlots
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+from ../codec/disputes as codec_disputes import OffenderKey
+from ../codec/header as codec_header import EpochSlots
 
 type
   ValidatorRotationConfig* = object ## Explicit per-roster population/byte policy and independent offender work ceiling.

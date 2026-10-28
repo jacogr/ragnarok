@@ -4,7 +4,11 @@
 ## GP 0.8.0 C(13) validator projection: parent assurances precede epoch rotation and posterior activity.
 ## Explicit observations certify no block provenance; immutable copied rows publish no state or stale core/service data.
 
-import ../codec/[bounded, header, assurances, state_safrole, state_statistics]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/assurances as codec_assurances
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_statistics as codec_state_statistics
 
 type
   ValidatorActivityObservations* = object ## Explicit pure inputs must later be derived from one authenticated candidate.

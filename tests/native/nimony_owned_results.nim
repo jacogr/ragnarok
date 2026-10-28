@@ -7,8 +7,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import ../../src/codec/[owned, bounded, composite]
-import std/[cmdline, syncio]
+import ../../src/codec/owned as codec_owned
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import std/cmdline
+import std/syncio
 
 # Runtime-selected work errors retain their exact protocol tag without accepting a misspelled probe.
 proc workError(text: string): byte =

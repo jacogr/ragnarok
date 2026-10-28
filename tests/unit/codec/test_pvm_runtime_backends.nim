@@ -3,8 +3,13 @@
 
 ## Run real explicit engines through the same checked host continuation and immutable memory contract.
 ## Optional-runtime and standalone builds retain distinct refusal and execution witnesses.
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, step, gas]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
 
 type HostFailure = enum ## Callback refusal is distinct from every guest/engine exit.
   Refused

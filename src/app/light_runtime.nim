@@ -3,14 +3,32 @@
 
 ## One distinct light actor serializes bounded proof CPU work and paged publication/retirement without complete-state ownership.
 ## All staging activations retire before worker admission; the borrowed RPC owner and this actor remain at stable addresses until joined close.
-import std/[assertions, monotimes, times]
-import ./[light_head, light_store, light_policy, light_proof_import, light_rpc,
-  checkpoint_identity, checkpoint_trust, proof_query, proof_worker, disk_worker]
-import ../rpc/[server, protocol, proof_requests, light_source]
-import ../state/[proof_view, trie_proof, proof_service]
-import ../codec/[bounded, state_trie]
-import ../chain/[genesis, parameters]
-import ../storage/[paged_store, file_errors]
+import std/assertions
+import std/monotimes
+import std/times
+import ./light_head as app_light_head
+import ./light_store as app_light_store
+import ./light_policy as app_light_policy
+import ./light_proof_import as app_light_proof_import
+import ./light_rpc as app_light_rpc
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_trust as app_checkpoint_trust
+import ./proof_query as app_proof_query
+import ./proof_worker as app_proof_worker
+import ./disk_worker as app_disk_worker
+import ../rpc/server as rpc_server
+import ../rpc/protocol as rpc_protocol
+import ../rpc/proof_requests as rpc_proof_requests
+import ../rpc/light_source as rpc_light_source
+import ../state/proof_view as state_proof_view
+import ../state/trie_proof as state_trie_proof
+import ../state/proof_service as state_proof_service
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../storage/paged_store as storage_paged_store
+import ../storage/file_errors as storage_file_errors
 
 type
   LightRuntimeError* {.pure.} = enum ## Admission/default failures grant no worker or state authority.

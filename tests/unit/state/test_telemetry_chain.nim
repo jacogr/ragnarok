@@ -7,8 +7,11 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio, strutils]
-import ../../../src/telemetry/[wire, chain]
+import std/assertions
+import std/syncio
+import std/strutils
+import ../../../src/telemetry/wire as telemetry_wire
+import ../../../src/telemetry/chain as telemetry_chain
 
 # Syntactic metadata fixture deliberately makes no claim of a valid executable genesis state.
 var parameters = repeat('0', 244)

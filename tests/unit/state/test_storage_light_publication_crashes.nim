@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Group every real light publication boundary with successful controls, exact-child death and retained proof semantics.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_light_crash]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_light_crash
 proc main() {.raises.} =
   ## Control counts determine exhaustive independent kill points for full/short writes, syncs, rename and staged close.
   for operation in [writeIo, syncIo, renameIo, closeIo]:

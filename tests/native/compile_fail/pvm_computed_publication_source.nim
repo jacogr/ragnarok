@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "AdmittedComputedReports", "early": ["prepareComputedPublication(", "[1] expected: AdmittedComputedReports but got: AdmittedReports"]}
 
-import ../../../src/state/[computed_publication, report_admission]
-import ../../../src/codec/bounded
+import ../../../src/state/computed_publication as state_computed_publication
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/codec/bounded as codec_bounded
 discard prepareComputedPublication(default(AdmittedReports), ByteLimit(100000))

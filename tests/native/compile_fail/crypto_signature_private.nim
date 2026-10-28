@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 var value = default(CryptoResult[EdSignature])
 discard value.completed

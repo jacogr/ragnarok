@@ -2,18 +2,44 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real signed current preparation crosses native durable publication, exact RPC exclusion and strict complete-map reopen.
-import std/[assertions, syncio, envvars, monotimes, times, base64, strutils]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import std/times
+import std/base64
+import std/strutils
 import std/posix/posix
-import ../../../src/app/[services, options, preparation_worker, current_block_input,
-  current_handoff, candidate, handoff, chain, disk_worker, disk_chain]
-import ../../../src/rpc/server
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus,
-  block_admission, report_admission, accumulation_finalization, accumulation_completion]
-import ../../../src/storage/managed_manifest
-import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
-  current_application_context, current_services_disk_samples, managed_storage_samples, rpc_socket]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/preparation_worker as app_preparation_worker
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/handoff as app_handoff
+import ../../../src/app/chain as app_chain
+import ../../../src/app/disk_worker as app_disk_worker
+import ../../../src/app/disk_chain as app_disk_chain
+import ../../../src/rpc/server as rpc_server
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/accumulation_completion as state_accumulation_completion
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/state_current_application_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/rpc_socket
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Enable failure only after synchronized Done, when the worker no longer calls hashing primitives.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

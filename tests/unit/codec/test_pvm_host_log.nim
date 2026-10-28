@@ -3,9 +3,15 @@
 
 ## JIP-1 witnesses bind gas, atomic diagnostic output, full-width memory and real guest continuation.
 
-import std/[assertions, syncio, os]
-import ../../../src/lib/logging
-import ../../../src/pvm/[machine, program, step, gas, host_log]
+import std/assertions
+import std/syncio
+import std/os
+import ../../../src/lib/logging as lib_logging
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_log as pvm_host_log
 
 proc collect(lines: var seq[string], line: string) {.raises: [].} =
   ## Retain each complete record so invalid reads cannot hide a partial sink invocation.

@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic frozen-plan payload/policy guards retain a genuine complete-source positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_audit_plan_context]
-import ../../src/state/[account_audit_plan, inventory]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_audit_plan_context
+import ../../src/state/account_audit_plan as state_account_audit_plan
+import ../../src/state/inventory as state_inventory
+include nimony_composition_fixture
 proc extract(outcome: AccountAuditPlanResult[StateAccountAuditPlan]): StateAccountAuditPlan {.noinline.} =
   ## No default or source refusal grants frozen executable policy.
   outcome.value

@@ -3,11 +3,20 @@
 
 ## Restart-safe expected-manifest retirement requires complete old content and never guesses an epoch from names.
 # @@Verification={"arc":"storage_full_paged_expected_retirement_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  managed_manifest, node_repository, file_errors]
-import ../../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/state_full_paged_reference
+import ../../support/state_full_paged_native_fixture
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/full_paged_stream as storage_full_paged_stream
+import ../../../src/storage/full_paged_store as storage_full_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc path(label: string): string =
   ## Every destructive/fault scenario owns a fresh process-private namespace.
   "full-expected-retirement-" & $storageProcessId() & "-" & label

@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent fixed-offset metadata and physical-record witnesses exercise full paging's format boundary.
-import std/[assertions, syncio]
-import ../../../src/storage/[full_paged_codec, paged_codec, database_identity, managed_manifest,
-  node_records, node_repository]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive fault injection never substitutes format or graph-validation logic.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

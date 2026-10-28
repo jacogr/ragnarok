@@ -8,9 +8,15 @@
 ## Exposes checkReportPolicy and immutable access to its certified credentials and parent
 ## snapshot.
 
-import ../codec/[state_authorization, state_accounts, state_layout, state_safrole,
-  report_owned, owned, bounded]
-import ./[store, guarantee_credentials]
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/bounded as codec_bounded
+import ./store as state_store
+import ./guarantee_credentials as state_guarantee_credentials
 
 type
   ReportGasLimit* = distinct uint64 ## Maximum accumulation gas for one report, distinct from per-item gas and the block-wide ceiling.

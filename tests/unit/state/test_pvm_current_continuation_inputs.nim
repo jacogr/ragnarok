@@ -3,13 +3,27 @@
 # @@Verification={"arc": "pvm_current_continuation_inputs_arc_release"}
 
 ## Genuine current completion selects next reports, holds supervised incoming credit and never repeats free allowances.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, work_digest]
-import ../../../src/state/[accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, accumulation_coverage,
-  accumulation_inputs, accumulation_operands, accumulation_transfer_partition, store]
-import ../../support/[accumulation_execution_context, accumulation_current_round_context,
-    accumulation_current_sequence_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_operands as state_accumulation_operands
+import ../../../src/state/accumulation_transfer_partition as state_accumulation_transfer_partition
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_execution_context
+import ../../support/state_accumulation_current_round_context
+import ../../support/state_accumulation_current_sequence_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc main() {.raises.} =

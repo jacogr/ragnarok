@@ -5,8 +5,13 @@
 ## Immutable fixed rows certify no block/eligibility provenance and publish no map; every per-block field starts at zero.
 
 import std/algorithm
-import ../codec/[bounded, assurances, report_owned, owned, work_digest, state_statistics]
-from ./preimages import PreimageProvision
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/work_digest as codec_work_digest
+import ../codec/state_statistics as codec_state_statistics
+from ./preimages as state_preimages import PreimageProvision
 
 type
   CoreServiceActivityConfig* = object ## Explicit chain core ceiling and independent traversal/storage policies.

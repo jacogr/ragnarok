@@ -4,10 +4,18 @@
 ## Compose state phases from one immutable finalized execution successor.
 ## The stopped convenience entry finalizes once; caller publication remains separate after complete state success.
 
-import ./[accumulation_driver, accumulation_finalization, accumulation_outputs,
-  accumulation_history, accumulation_ready, accumulation_recent, accumulation_times,
-  accumulation_validators, accumulation_activity, accumulation_preimages,
-  accumulation_authorization, accumulation_consensus]
+import ./accumulation_driver as state_accumulation_driver
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_history as state_accumulation_history
+import ./accumulation_ready as state_accumulation_ready
+import ./accumulation_recent as state_accumulation_recent
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_validators as state_accumulation_validators
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_preimages as state_accumulation_preimages
+import ./accumulation_authorization as state_accumulation_authorization
+import ./accumulation_consensus as state_accumulation_consensus
 
 type
   AccumulationCompositionLimits* = object ## State-only phase ceilings; finalized execution and original block authority are supplied by one immutable successor.

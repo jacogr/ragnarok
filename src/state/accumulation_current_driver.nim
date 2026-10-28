@@ -3,9 +3,12 @@
 
 ## Bounded current accumulation driving and genuine terminal-sequence ownership.
 ## Completion covers recursive accumulation entries, not final statistics/time/history or whole-block publication.
-import ../chain/parameters
-import ../codec/bounded
-import ./[accumulation_current_round, accumulation_current_sequence, accumulation_round, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_round as state_accumulation_round
+import ./store as state_store
 
 type
   CurrentSequenceDriverLimits* = object ## Initial work, recursive planning and bounded entry execution keep independent caller policies.

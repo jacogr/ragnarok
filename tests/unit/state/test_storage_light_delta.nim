@@ -3,12 +3,19 @@
 
 ## Authenticated light-delta framing preserves canonical edits, exact predecessors and atomic owned restoration.
 # @@Verification={"arc":"storage_light_delta_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[light_delta, light_snapshot, light_state_cache, state_proof,
-  full_state_trie, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/crypto/primitives
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/crypto/primitives as crypto_primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Invalid framing, identity and source-policy refusals must not reach the provider.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

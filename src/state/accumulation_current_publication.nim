@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Install a genuine current composed successor only over its exact retained original parent, without hashing or replay.
-import ./[accumulation_current_consensus, accumulation_current_authorization,
-  accumulation_current_preimages, accumulation_current_activity, preimages, store]
+import ./accumulation_current_consensus as state_accumulation_current_consensus
+import ./accumulation_current_authorization as state_accumulation_current_authorization
+import ./accumulation_current_preimages as state_accumulation_current_preimages
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./preimages as state_preimages
+import ./store as state_store
 
 type
   CurrentAccumulationPublicationError* {.pure.} = enum ## Refusals expose neither candidate state nor an earlier successful publication.

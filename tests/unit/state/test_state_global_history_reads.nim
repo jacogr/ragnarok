@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated recent blocks/optional peaks retain exact framing and resource/absence distinctions.
-import std/[assertions, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_history, state_layout, state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_history as codec_state_history
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 let config = HistoryConfig(cores: CoreCount(2), blocks: ElementLimit(8), perBlock: ElementLimit(2),
   totalPackages: ElementLimit(4), peaks: ElementLimit(8), maxBytes: ByteLimit(4096))
 let source = HistoryState(blocks: @[HistoryBlock(slot: HistorySlot(19), packages: @[])],

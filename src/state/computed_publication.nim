@@ -3,9 +3,13 @@
 
 ## Prepare admitted computed C(10) on the exact authenticated prefix and publish only to its original parent version.
 
-import ../codec/bounded
-import ./[computed_admission, report_admission, report_assignments, block_transition,
-    block_admission, store]
+import ../codec/bounded as codec_bounded
+import ./computed_admission as state_computed_admission
+import ./report_admission as state_report_admission
+import ./report_assignments as state_report_assignments
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   ComputedPublicationError* {.pure.} = enum ## Ordinary refusals expose no map; only a selected store failure carries its exact cause.

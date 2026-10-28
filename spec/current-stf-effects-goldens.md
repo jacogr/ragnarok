@@ -57,7 +57,7 @@ wire is generated before native compilation/execution, and comparison requires e
 
 ## Native verification and limits
 
-`tests/native/current_stf_effects_driver.nim` independently constructs the same original maps and
+`tests/native/state_current_stf_effects_driver.nim` independently constructs the same original maps and
 signed child inputs. Each actual child runs through candidate admission, real PVM host execution,
 current completion, complete current-state/global qualification and actual chain installation.
 Explicit supplied declarations cover code, unchanged namespaces, new preimages and selected

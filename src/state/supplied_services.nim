@@ -3,8 +3,12 @@
 
 ## Explicit bounded detached reconstruction of supplied service declarations from retained logical keys and original payloads.
 ## Projection hashes nothing and confers no authority on mutable output declarations.
-import ../codec/[bounded, state_composition]
-import ./[supplied_logical_inventory, inventory, manifest, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_composition as codec_state_composition
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./inventory as state_inventory
+import ./manifest as state_manifest
+import ./store as state_store
 type
   SuppliedServicesLimits* = object ## Every copied service/child descriptor, raw key and payload is charged before allocating output arrays.
     services*, facts*: ElementLimit

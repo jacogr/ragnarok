@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Plan union coalesces common account dependencies without pretending to merge verified root facts.
-import std/[assertions, syncio]
-import ../../../src/state/proof_service
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values]
+import std/assertions
+import std/syncio
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_service_values as codec_state_service_values
 proc main() =
   ## Exact unique budgets apply to output, while originals keep their independent immutable owners.
   let service = ServiceIndex(7)

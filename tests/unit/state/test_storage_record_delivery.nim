@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Ordered record delivery preflights all structure, preserves owned values and exposes provisional refusals.
-import std/[algorithm, assertions, syncio]
+import std/algorithm
+import std/assertions
+import std/syncio
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_records, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 type Delivery = object ## Explicit caller-owned state never retains a borrow into the source buffer.
   records: seq[TrieRecord]

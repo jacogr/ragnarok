@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: KeccakHash but wanted: Blake2bHash"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 let value: Blake2bHash = default(KeccakHash)
 discard value

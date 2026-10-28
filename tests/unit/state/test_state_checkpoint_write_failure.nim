@@ -4,10 +4,15 @@
 ## Real child-process POSIX file-size ceilings force zero/partial writes without production fault hooks.
 ## Native SDK declarations below are test-only; parent processes retain their original resource limits.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint_file, checkpoint, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/state/checkpoint_file as state_checkpoint_file
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 type
   ResourceLimit {.importc: "struct rlimit", header: "<sys/resource.h>", bycopy.} = object

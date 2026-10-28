@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <Client>", "build_name": "telemetry-client-copy"}
 
-import ../../../src/telemetry/client
+import ../../../src/telemetry/client as telemetry_client
 var original = default(Client)
 var duplicate = original
 original.close()

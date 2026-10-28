@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current 105-byte accounts retain supervisor fields and distinguish every refusal category.
-import std/[assertions, syncio]
-import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_service_helpers
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Fixed literal fields cover full-width values and the current supervisor account schema.
   let service = ServiceIndex(7)

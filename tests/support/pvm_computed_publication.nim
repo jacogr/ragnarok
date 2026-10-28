@@ -5,9 +5,11 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_admission, store]
-import ../../src/codec/state_trie
-import ./[pvm_computed_admission, report_context]
+import ../../src/state/computed_admission as state_computed_admission
+import ../../src/state/store as state_store
+import ../../src/codec/state_trie as codec_state_trie
+import ./pvm_computed_admission
+import ./state_report_context
 
 proc publicationFixture*(withReady = false, withRound = false,
     withExecution = false, invalidEntry = false, withComposition = false,

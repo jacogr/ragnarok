@@ -2,19 +2,50 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real native growth, deletion and rollback continue from original raw identities without supplied successor declarations; all-stage refusal exposes no prefix.
-import std/[assertions, syncio, envvars, cmdline]
-import ../support/[collected_native_context, collected_logical_context, collected_mutation_context,
-    current_namespace_transition_context, current_namespace_execution_context,
-    current_namespace_context, current_namespace_refresh_context,
-    accumulation_execution_context, accumulation_current_candidate_context,
-    current_identity_context, current_repeated_logical_context, application_download_chain, arc_evidence]
-import ../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../src/state/[storage_logical_continuation, accumulation_current_update,
-    accumulation_storage_history, accumulation_effects, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission, current_logical, current_identities,
-    supplied_logical_inventory, supplied_services, inventory, manifest, store]
-import ../../src/codec/[bounded, state_layout, state_composition, state_requests, state_accounts]
-import ../../src/chain/[provider, genesis]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/cmdline
+import ../support/app_collected_native_context
+import ../support/app_collected_logical_context
+import ../support/app_collected_mutation_context
+import ../support/state_current_namespace_transition_context
+import ../support/state_current_namespace_execution_context
+import ../support/state_current_namespace_context
+import ../support/state_current_namespace_refresh_context
+import ../support/state_accumulation_execution_context
+import ../support/state_accumulation_current_candidate_context
+import ../support/state_current_identity_context
+import ../support/state_current_repeated_logical_context
+import ../support/app_download_chain
+import ../support/testing_arc_evidence
+import ../../src/app/chain as app_chain
+import ../../src/app/candidate as app_candidate
+import ../../src/app/preparation_worker as app_preparation_worker
+import ../../src/app/current_block_input as app_current_block_input
+import ../../src/state/storage_logical_continuation as state_storage_logical_continuation
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/state/accumulation_storage_history as state_accumulation_storage_history
+import ../../src/state/accumulation_effects as state_accumulation_effects
+import ../../src/state/accumulation_round as state_accumulation_round
+import ../../src/state/accumulation_queue as state_accumulation_queue
+import ../../src/state/report_admission as state_report_admission
+import ../../src/state/block_transition as state_block_transition
+import ../../src/state/block_admission as state_block_admission
+import ../../src/state/current_logical as state_current_logical
+import ../../src/state/current_identities as state_current_identities
+import ../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../src/state/supplied_services as state_supplied_services
+import ../../src/state/inventory as state_inventory
+import ../../src/state/manifest as state_manifest
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/chain/provider as chain_provider
+import ../../src/chain/genesis as chain_genesis
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Bound refusal and genuine mandatory request-key hashing remain distinct.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

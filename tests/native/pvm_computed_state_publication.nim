@@ -3,9 +3,12 @@
 
 ## Strict publication refusals and retained receipt accessors with a real successful computed publication control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_state_publication, computed_composition,
-    accumulation_block_publication, store]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_state_publication as state_computed_state_publication
+import ../../src/state/computed_composition as state_computed_composition
+import ../../src/state/accumulation_block_publication as state_accumulation_block_publication
+import ../../src/state/store as state_store
 import ../support/pvm_computed_state_publication
 
 proc expect[T](outcome: ComputedStatePublicationResult[T], reason: ComputedStatePublicationError) =

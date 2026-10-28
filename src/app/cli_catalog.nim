@@ -5,10 +5,10 @@
 ## Parser and help consume the same records; command-specific values are normalized before service parsing.
 
 import std/strutils
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ./cli_defaults
-export cli_defaults
+import ./cli_defaults as app_cli_defaults
+export app_cli_defaults
 
 type
   OptionGroup* {.pure.} = enum ## Ordered help sections keep activation flags beside their dependent settings.

@@ -5,14 +5,33 @@
 ## Authored provide guest programs verify charging, exact row ordering, requested capture and checkpoint rollback.
 ## Includes wide gas/target/pointer witnesses, normalized provision ownership, local refusals and ARC release.
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_dispatch, accumulation_machine, accumulation_outcome,
-  accumulation_effects, accumulation_context, accumulation_invocation, accumulation_service, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_requests, state_service_values,
-  state_layout, state_trie, c2_records]
-import ../../../src/pvm/[machine, program, gas, step, host_fetch]
-import ../../../src/crypto/primitives
-import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 
 ## Inject payload-hash and namespace-hash refusal independently after immutable fixture preparation.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

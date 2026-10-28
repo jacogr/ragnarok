@@ -3,9 +3,14 @@
 
 ## Strict successor admission/queue result and retained-view contracts with genuine assurance-fed priority as a positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[assured_queue, computed_assurances, accumulation_queue, report_admission]
-import ../../src/codec/[bounded, assurances]
+import std/assertions
+import std/cmdline
+import ../../src/state/assured_queue as state_assured_queue
+import ../../src/state/computed_assurances as state_computed_assurances
+import ../../src/state/accumulation_queue as state_accumulation_queue
+import ../../src/state/report_admission as state_report_admission
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
 import ../support/pvm_assured_queue
 
 proc expect[T](outcome: AssuredQueueResult[T], reason: AssuredQueueError) =

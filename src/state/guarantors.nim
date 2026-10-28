@@ -7,9 +7,14 @@
 ##
 ## Exposes validator shuffling, planGuarantors and bounded guarantorAt/shuffledIndex access.
 
-import ../codec/[state_safrole, assurances, bounded, header, guarantees, work_report]
-from ../codec/disputes import OffenderKey
-import ../crypto/primitives
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/guarantees as codec_guarantees
+import ../codec/work_report as codec_work_report
+from ../codec/disputes as codec_disputes import OffenderKey
+import ../crypto/primitives as crypto_primitives
 
 type
   GuarantorRotationSlots* = distinct uint64 ## Rotation is a chain parameter, distinct from an absolute E4 timeslot.

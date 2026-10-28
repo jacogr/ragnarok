@@ -3,12 +3,20 @@
 
 ## Same-source review joins preserve targeted validity and economic observation scopes without accepting equal-root substitutions.
 # @@Verification={"arc": "state_account_review_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_review_context, arc_evidence]
-import ../../../src/state/[account_review, account_invariants, supervision_table, economics_table,
-    inventory, economic_profile]
-import ../../../src/codec/state_accounts
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_review_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/account_review as state_account_review
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/supervision_table as state_supervision_table
+import ../../../src/state/economics_table as state_economics_table
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/codec/state_accounts as codec_state_accounts
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after constructing real component evidence.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque context follows exactly the same complete-prefix authority as its authored selected root.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_appends]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_appends
 proc main() {.raises.} =
   ## Complete writes/barriers and torn/final extents must never mix old context with a new root or vice versa.
   for operation in [writeIo, syncIo]:

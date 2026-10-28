@@ -5,12 +5,31 @@
 
 ## Exact standalone wire, independent key order, reporter identity deduplication and immutable owner lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_envelope, computed_credentials, computed_guarantors,
-  computed_roster, computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, computed_guarantee, computed_report, store]
-import ../../../src/codec/[bounded, assurances, guarantees, report_owned, owned, state_safrole]
-import ../../support/[pvm_computed_envelope, pvm_computed_credentials, report_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_envelope as state_computed_envelope
+import ../../../src/state/computed_credentials as state_computed_credentials
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/computed_links as state_computed_links
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../support/pvm_computed_envelope
+import ../../support/pvm_computed_credentials
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new hashing after real original computation, credentials and native signature checks complete.

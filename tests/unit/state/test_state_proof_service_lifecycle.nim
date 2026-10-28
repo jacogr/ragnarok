@@ -3,11 +3,22 @@
 
 ## Repeated full-source generation, partial typed reads, transport and refused work release every ARC owner.
 # @@Verification={"arc": "state_proof_service_lifecycle_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[proof_service_helpers, arc_evidence]
-import ../../../src/state/[store, snapshot_proof, proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
-import ../../../src/crypto/primitives
+import std/assertions
+import std/syncio
+import ../../support/state_proof_service_helpers
+import ../../support/testing_arc_evidence
+import ../../../src/state/store as state_store
+import ../../../src/state/snapshot_proof as state_snapshot_proof
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/crypto/primitives as crypto_primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Restore the real primitive after each deliberately refused operation.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

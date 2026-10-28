@@ -5,9 +5,12 @@
 ##
 ## Exposes chainMetadata to read bounded chain-spec metadata into owned telemetry fields.
 
-import std/[parsejson, streams, strutils, parseutils]
-import ../crypto/primitives
-import ./wire
+import std/parsejson
+import std/streams
+import std/strutils
+import std/parseutils
+import ../crypto/primitives as crypto_primitives
+import ./wire as telemetry_wire
 
 const MaxChainBytes* = 8 * 1024 * 1024
 # Full-profile epoch markers exceed 64 KiB; keep a bounded allowance for larger validator sets.

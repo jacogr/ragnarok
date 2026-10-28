@@ -728,7 +728,7 @@ The initial record alone cannot establish that predicate.
 Maintainer decision: preserve GP checks and report missing evidence locally.
 The immutable [ancestry context](jam-fuzzer-ancestry.md) retains membership
 separately from captured full-header evidence.
-`tests/unit/state/test_fuzz_ancestry.nim` witnesses matching actual child roots,
+`tests/unit/state/test_app_fuzz_ancestry.nim` witnesses matching actual child roots,
 wrong roots, missing child evidence, independent sibling contexts and eviction.
 This is a tooling information gap, not a consensus exception. Live generated
 campaign validation remains pending engine availability.

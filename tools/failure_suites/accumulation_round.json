@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_round_results.nim",
+  "source": "tests/native/state_accumulation_round_results.nim",
   "build_name": "accumulation-round-results",
   "crypto_library": "crypto",
   "native_libraries": [],

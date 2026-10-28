@@ -3,8 +3,13 @@
 
 ## Preserve authenticated initial-round account ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
-import ./[accumulation_account_phase, accumulation_block_guests, accumulation_coverage,
-  accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes, store]
+import ./accumulation_account_phase as state_accumulation_account_phase
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_account_selection as state_accumulation_account_selection
+import ./accumulation_creation_union as state_accumulation_creation_union
+import ./accumulation_selected_writes as state_accumulation_selected_writes
+import ./store as state_store
 
 type
   AccumulationAccountStageError* = AccumulationAccountPhaseError ## Preserve the existing public policy/reason shape while sharing the phase implementation.

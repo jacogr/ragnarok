@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## External code cannot forge the retained ancestry, discovery or prepared admission certificate.
-import ../../../src/state/ancestor_context
+import ../../../src/state/ancestor_context as state_ancestor_context
 let owner = default(AncestorContext)
 discard owner.data

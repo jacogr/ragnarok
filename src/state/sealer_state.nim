@@ -6,8 +6,13 @@
 ##
 ## Exposes selectSafroleScheduleState and checked snapshot/publication results.
 
-import ../codec/[state_safrole, state_consensus, state_layout, state_trie, tickets]
-import ./[sealer_schedule, store]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/tickets as codec_tickets
+import ./sealer_schedule as state_sealer_schedule
+import ./store as state_store
 
 type
   SealerStateResult* = object ## Success alone owns a complete immutable published map; defaults/refusals expose no payload.

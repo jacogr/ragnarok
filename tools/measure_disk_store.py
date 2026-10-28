@@ -90,7 +90,7 @@ def main():
     output.unlink(missing_ok=True)
     libraries, _, _ = prepare_libraries(folder, required={'observer'})
     checks = NativeChecks(folder)
-    source = ROOT/'tests/performance/disk_store_workload.nim'
+    source = ROOT/'tests/performance/storage_disk_store_workload.nim'
     compiled, binary = checks.build(args.compiler, source, 'disk-store-workload', libraries['observer'])
     if compiled['exit_code'] != 0:
         raise RuntimeError('Workload compilation failed: '+compiled['log'])

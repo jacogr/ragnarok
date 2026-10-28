@@ -2,15 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal preimage values and availability slots qualify nonempty current continuation and typed prior-request replay refusal.
-import std/[assertions, syncio, envvars]
-import ../../../src/app/[chain, candidate]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded, composite, state_service_values, state_requests]
-import ../../../src/crypto/primitives
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_completion,
-  accumulation_current_activity, preimages]
-import ../../support/[current_preimage_sequence_context, current_consecutive_context,
-  current_services_disk_samples]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_completion as state_accumulation_current_completion
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/preimages as state_preimages
+import ../../support/state_current_preimage_sequence_context
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_services_disk_samples
 
 proc namespaceValues(fixture: CurrentPreimageSequenceFixture) =
   ## Empty values remain present preimages, and each request becomes available only at the actual second-child slot3.

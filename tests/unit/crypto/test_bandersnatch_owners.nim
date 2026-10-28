@@ -9,10 +9,11 @@
 
 # @@Verification={"arc": "bandersnatch_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
-import ../../native/batch_support
-import ../../../src/bandersnatch/bandersnatch
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
+import ../../native/nimony_batch_support
+import ../../../src/bandersnatch/bandersnatch as bandersnatch_bandersnatch
 
 # Reset attempt/free counters and failure flags without erasing the number of still-live native allocations.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}

@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: StateBlsKey but wanted: StateRingRoot"}
 
-import ../../../src/codec/[state_consensus, state_safrole]
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_safrole as codec_state_safrole
 let key = default(StateBlsKey)
 let source = SafroleState(root: key)
 discard source

@@ -3,11 +3,22 @@
 # @@Verification={"arc": "pvm_pending_transfers_arc_release"}
 
 ## Genuine terminal outputs and prior partitions preserve carry order and gas without a second refund.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_pending_transfers, accumulation_transfer_partition,
-    accumulation_transfers, accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie, c2_records]
-import ../../support/[accumulation_transfers, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_pending_transfers as state_accumulation_pending_transfers
+import ../../../src/state/accumulation_transfer_partition as state_accumulation_transfer_partition
+import ../../../src/state/accumulation_transfers as state_accumulation_transfers
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../support/state_accumulation_transfers
+import ../../support/testing_arc_evidence
 
 # Queue preparation and partitioning perform no new state hashes or publication.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

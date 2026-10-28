@@ -4,14 +4,28 @@
 ## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
 ## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
-import std/[syncio, monotimes, times]
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ./[options, services, chain, download_policy, block_download, ancestor_inputs, ancestor_response]
-import ./download_schedule
-import ../codec/[bounded, header]
-import ../state/report_anchors
-import ../chain/[genesis, provider]
-import ../quic/[block_download_loop, block_download_session, block_download_peers, ancestor_peer, ancestor_stream]
+import ./options as app_options
+import ./services as app_services
+import ./chain as app_chain
+import ./download_policy as app_download_policy
+import ./block_download as app_block_download
+import ./ancestor_inputs as app_ancestor_inputs
+import ./ancestor_response as app_ancestor_response
+import ./download_schedule as app_download_schedule
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../state/report_anchors as state_report_anchors
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../quic/block_download_loop as quic_block_download_loop
+import ../quic/block_download_session as quic_block_download_session
+import ../quic/block_download_peers as quic_block_download_peers
+import ../quic/ancestor_peer as quic_ancestor_peer
+import ../quic/ancestor_stream as quic_ancestor_stream
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,

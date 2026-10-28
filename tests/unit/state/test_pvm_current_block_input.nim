@@ -3,14 +3,29 @@
 # @@Verification={"arc": "pvm_current_block_input_arc_release"}
 
 ## Genuine signed bytes retain current-only authority through fragmented reception, lookup suspension and deferred installation.
-import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, candidate, current_block_input, current_handoff]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned, block_codec, header, composite, assurances]
-import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus,
-  accumulation_current_update]
-import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
-  arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/state/store as state_store
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fault injection detects unexpected reception or backpressure hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

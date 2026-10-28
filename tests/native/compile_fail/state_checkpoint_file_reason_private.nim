@@ -3,6 +3,7 @@
 
 ## Checkpoint file results expose neither mutable alternatives nor unguarded restoration payloads.
 # @@Verification={"group": "privacy", "expected": "reason"}
-import ../../../src/state/[checkpoint_file, store]
+import ../../../src/state/checkpoint_file as state_checkpoint_file
+import ../../../src/state/store as state_store
 let outcome = default(CheckpointFileResult[StateStore])
 discard outcome.reason

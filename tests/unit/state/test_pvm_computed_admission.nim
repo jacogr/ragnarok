@@ -4,13 +4,23 @@
 
 ## Genuine computed package admission preserves original semantic policy and exact child failures.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_admission, computed_inclusion, computed_batch, report_admission,
-  report_policy, report_packages, guarantors, report_anchors, guarantee_credentials,
-  block_transition,
-  block_admission, store]
-import ../../../src/codec/bounded
-import ../../support/[pvm_computed_admission, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_admission as state_computed_admission
+import ../../../src/state/computed_inclusion as state_computed_inclusion
+import ../../../src/state/computed_batch as state_computed_batch
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/report_policy as state_report_policy
+import ../../../src/state/report_packages as state_report_packages
+import ../../../src/state/guarantors as state_guarantors
+import ../../../src/state/report_anchors as state_report_anchors
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/pvm_computed_admission
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Detect any unintended crypto before original semantic-profile gates.

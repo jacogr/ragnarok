@@ -7,9 +7,12 @@
 ## Exposes authenticateSafroleSeal and checked authentication results for ticket or fallback-key
 ## schedules.
 
-import ../codec/[state_safrole, state_consensus, header, bounded]
-import ../bandersnatch/bandersnatch
-import ./entropy
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ./entropy as state_entropy
 
 type
   SafroleAuthConfig* = object ## Independent finite C(4)/roster and complete-header ceilings; epoch length selects the cyclic schedule slot.

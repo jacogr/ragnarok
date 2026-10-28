@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/authorized_refinement
+import ../../../src/state/authorized_refinement as state_authorized_refinement
 var result: AuthorizedRefinementResult[AuthorizedRefinement]
 discard result.status

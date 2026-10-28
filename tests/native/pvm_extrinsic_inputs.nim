@@ -3,9 +3,10 @@
 
 ## Optimized failed-result guards with a real successful authentication control.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/host_fetch
-import ../../src/state/extrinsic_inputs
+import std/assertions
+import std/cmdline
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
 import ../support/pvm_extrinsic_inputs
 
 proc input(verified: VerifiedExtrinsics, item, index: uint64): ExtrinsicInputsResult[seq[byte]] =

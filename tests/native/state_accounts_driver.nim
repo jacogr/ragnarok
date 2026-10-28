@@ -6,8 +6,14 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_accounts, state_trie, bounded]
+import std/assertions
+import std/cmdline
+import std/syncio
+import std/strutils
+import std/parseutils
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 
 ## Preserve hostile empty input rather than replacing it with a valid zero discriminator.
 proc unhex(text: string): seq[byte] =

@@ -3,9 +3,11 @@
 
 ## Strict optimized canonical-output/reporters guards with real current and prior verified source controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_envelope, computed_credentials]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_envelope as state_computed_envelope
+import ../../src/state/computed_credentials as state_computed_credentials
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_envelope
 
 proc expect[T](outcome: ComputedEnvelopeResult[T], reason: ComputedEnvelopeError) =

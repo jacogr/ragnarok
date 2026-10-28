@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Refused repair confirmation preserves visible progress without inventing a successful live owner.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_repair_faults
 proc main() {.raises.} =
   ## Every real file/namespace barrier fails independently before strict visibility and exact-token resumption.

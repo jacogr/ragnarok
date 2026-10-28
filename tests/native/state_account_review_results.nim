@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic review payload guards retain a real same-source component join as the positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_review_context]
-import ../../src/state/[account_review, account_invariants, supervision_table, economics_table]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_review_context
+import ../../src/state/account_review as state_account_review
+import ../../src/state/account_invariants as state_account_invariants
+import ../../src/state/supervision_table as state_supervision_table
+import ../../src/state/economics_table as state_economics_table
+include nimony_composition_fixture
 proc extract(outcome: AccountReviewResult[StateAccountReview]): StateAccountReview {.noinline.} =
   ## Defaults and failed joins grant no composite source-bearing review.
   outcome.value

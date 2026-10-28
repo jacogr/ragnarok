@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 let owner = default(Machine)
 discard owner.data

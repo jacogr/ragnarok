@@ -5,11 +5,23 @@
 ## Exposes immutable account/input/code contexts and an admitted-parent/slot-bound initial-round adapter.
 ## Incoming transfer credit is retained on a private complete-map branch; no PVM execution or caller publication.
 
-import ../codec/[bounded, composite, work_digest, state_accounts, state_layout,
-  state_service_values, header, owned, c2_records]
-import ../crypto/primitives
-import ./[accumulation_inputs, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/header as codec_header
+import ../codec/owned as codec_owned
+import ../codec/c2_records as codec_c2_records
+import ../crypto/primitives as crypto_primitives
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   ServiceCodeLimit* = distinct uint64 ## Protocol code-size eligibility is distinct from local preimage-copy/hash resource policy.

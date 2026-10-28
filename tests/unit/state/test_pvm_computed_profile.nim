@@ -5,12 +5,21 @@
 
 ## Complete original configured tuple, exact map/parent identity, fixed projections and immutable lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_profile, computed_lookup, computed_recent, store]
-import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[header, state_trie]
-import ../../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_lookup_vectors,
-  pvm_computed_state, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/pvm_computed_profile
+import ../../support/pvm_computed_lookup
+import ../../support/pvm_computed_lookup_vectors
+import ../../support/pvm_computed_state
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing only after original execution and configured context capture have completed.

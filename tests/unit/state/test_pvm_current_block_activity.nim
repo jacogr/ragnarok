@@ -4,18 +4,45 @@
 
 ## Literal signed C(13) bytes, exact parent/body binding, independent full-map roots and atomic publication refusals.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_activity, accumulation_activity,
-  accumulation_current_validators, validator_projection, core_service_activity, preimages,
-  accumulation_current_recent, accumulation_current_ready, accumulation_current_finalization,
-  accumulation_current_accounts, accumulation_current_statistics, accumulation_current_driver,
-  accumulation_current_sequence, accumulation_current_round, accumulation_block_guests,
-  accumulation_round, accumulation_queue, report_admission, guarantee_credentials,
-  block_transition, block_admission, store]
-import ../../../src/codec/[bounded, composite, natural, block_codec, owned, report_owned,
-  state_statistics, state_layout, state_trie, state_accounts]
-import ../../support/[accumulation_current_activity_context, accumulation_provision_integration,
-  report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_current_validators as state_accumulation_current_validators
+import ../../../src/state/validator_projection as state_validator_projection
+import ../../../src/state/core_service_activity as state_core_service_activity
+import ../../../src/state/preimages as state_preimages
+import ../../../src/state/accumulation_current_recent as state_accumulation_current_recent
+import ../../../src/state/accumulation_current_ready as state_accumulation_current_ready
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/natural as codec_natural
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../support/state_accumulation_current_activity_context
+import ../../support/state_accumulation_provision_integration
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 
 # Backend faults begin only after all real signatures, guests and immutable source candidates exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -33,7 +60,7 @@ proc config(): AccumulationActivityConfig =
 
 # The independent expected bytes use only low-level natural and E4 framing, never the activity codec/projectors.
 proc appendNatural(bytes: var seq[byte], value: uint64) =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   for index in 0..<encoded.len: bytes.add(encoded.bytes[index])
 proc appendFixed(bytes: var seq[byte], value: uint32) =
   for shift in 0..<4: bytes.add(byte((value shr (8*shift)) and 255))
@@ -121,7 +148,7 @@ proc reconstructed(fixture: CurrentActivityFixture, expected: seq[byte]): StateS
     entries.add(StateEntry(key: key, value: prior.lookup(
         key).value.bytes)) # Finalization alone adds this absent chapter.
   assert entries.len == prior.commitment.entries, "independent reconstruction covers the complete prior map"
-  newStateStore(entries, report_context.limits()).value.snapshot.value
+  newStateStore(entries, state_report_context.limits()).value.snapshot.value
 
 proc witness(fixture: CurrentActivityFixture, available, blobs: bool, guarantees: int,
     rotated = false, executed = false): PreparedCurrentAccumulationActivity =

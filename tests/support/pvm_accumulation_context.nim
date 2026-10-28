@@ -5,13 +5,31 @@
 ## Exposes pvmBootstrap, configured parameters and a compact JAM envelope without replacing verdicts.
 
 import std/assertions
-import ../../src/chain/parameters
-import ../../src/state/[accumulation_invocation, accumulation_service, accumulation_inputs,
-  accumulation_operands, accumulation_queue, accumulation_context, store]
-import ../../src/codec/[bounded, composite, header, state_safrole, state_privileges,
-  state_workqueues, state_accounts, state_service_values, state_trie, work_report, report_owned,
-  work_digest, c2_records, assurances, state_authorization, state_layout]
-import ../../src/crypto/primitives
+import ../../src/chain/parameters as chain_parameters
+import ../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../src/state/accumulation_service as state_accumulation_service
+import ../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../src/state/accumulation_operands as state_accumulation_operands
+import ../../src/state/accumulation_queue as state_accumulation_queue
+import ../../src/state/accumulation_context as state_accumulation_context
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/header as codec_header
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_privileges as codec_state_privileges
+import ../../src/codec/state_workqueues as codec_state_workqueues
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/c2_records as codec_c2_records
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_authorization as codec_state_authorization
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/crypto/primitives as crypto_primitives
 
 proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63], writable: seq[
     byte] = @[81'u8]): seq[byte] =

@@ -4,10 +4,17 @@
 ## Adopt finalized accumulation state and a direct-child chain view only after both private stages succeed.
 ## Existing aliases retain their owners; publication is single-threaded and has no fallible gap or callbacks.
 
-import ../chain/[genesis, provider, parameters]
-import ../codec/header
-import ./[store, accumulation_state, accumulation_completion, accumulation_finalization,
-  report_admission, block_transition, block_admission]
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/header as codec_header
+import ./store as state_store
+import ./accumulation_state as state_accumulation_state
+import ./accumulation_completion as state_accumulation_completion
+import ./accumulation_finalization as state_accumulation_finalization
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
 
 type
   AccumulationChainError* {.pure.} = enum ## Each refused stage carries only its selected reason, never a candidate state or view.

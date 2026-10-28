@@ -3,8 +3,17 @@
 
 ## Current accpar global role merge and original queue/staging producer choice after conflict annulment.
 ## Immutable source/privilege certificates do not publish chapters or impersonate completed batch coverage.
-import ../codec/[bounded, state_accounts, state_layout, state_trie, state_privileges, natural]
-import ./[accumulation_annulment, accumulation_outcome, accumulation_effects, accumulation_context, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/natural as codec_natural
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_context as state_accumulation_context
+import ./store as state_store
 
 type
   AccumulationGlobalRoleLimits* = object ## Chain/profile shape and all local inspection/copy policies are explicit.
@@ -125,7 +134,7 @@ proc prepareAccumulationGlobalRoles*(source: PreparedAccumulationAnnulment,
   let always = managerInfo.always
   if uint64(always) > uint64(limits.privileges.maxAlways) or always > high(int) div sizeof(AlwaysAccumulate):
     fail(AccumulationGlobalRoleError.LimitExceeded) # Bound selected manager dictionary before copying any entry.
-  let prefix = int(natural.encode(JamNatural(always)).len)
+  let prefix = int(codec_natural.encode(JamNatural(always)).len)
   if cores > (high(int)-12-prefix) div 4:
     fail(AccumulationGlobalRoleError.LimitExceeded) # Prove fixed role/core bytes before multiplication.
   let fixed = 12+4*cores+prefix

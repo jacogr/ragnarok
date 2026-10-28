@@ -3,11 +3,15 @@
 
 ## Optimized guarded transcript results include a genuine independent complete-wire/message control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_report, computed_guarantee]
-import ../../src/codec/bounded
-import ../../src/crypto/guarantee
-import ../support/[pvm_computed_report, pvm_computed_report_vectors, pvm_computed_guarantee]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/codec/bounded as codec_bounded
+import ../../src/crypto/guarantee as crypto_guarantee
+import ../support/pvm_computed_report
+import ../support/pvm_computed_report_vectors
+import ../support/pvm_computed_guarantee
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after completing and independently validating the original report.

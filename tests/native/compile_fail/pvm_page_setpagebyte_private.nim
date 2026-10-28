@@ -3,5 +3,5 @@
 
 ## Chunk mutation capabilities must remain private to the memory owner.
 # @@Verification={"group": "privacy", "expected": "setPageByte"}
-import ../../../src/pvm/machine
-discard machine.setPageByte
+import ../../../src/pvm/machine as pvm_machine
+discard pvm_machine.setPageByte

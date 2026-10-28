@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime success/variant guards for global reads and planned partial-view outcomes.
-import std/[assertions, cmdline, syncio]
-import ../support/proof_global_helpers
-import ../../src/state/[proof_global, proof_plan, planned_proof, proof_view]
-import ../../src/codec/[bounded, state_safrole, state_composition]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_proof_global_helpers
+import ../../src/state/proof_global as state_proof_global
+import ../../src/state/proof_plan as state_proof_plan
+import ../../src/state/planned_proof as state_planned_proof
+import ../../src/state/proof_view as state_proof_view
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_composition as codec_state_composition
 let mode = paramStr(1)
 case mode
 of "global-default":

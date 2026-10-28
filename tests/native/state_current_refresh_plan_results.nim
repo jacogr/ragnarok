@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict frozen plan/default result guards with a genuine nonempty actual successor control.
-import std/[assertions, cmdline, syncio]
-import ../support/current_refresh_context
-import ../../src/state/current_refresh_plan
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_refresh_context
+import ../../src/state/current_refresh_plan as state_current_refresh_plan
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(value: CurrentRefreshPlanResult[CurrentRefreshPlan]) {.noinline.} =
   ## No default/refused result carries an executable admitted plan.
   discard value.value

@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ImportInputIndex", "early": ["importInput(", "[3] expected: ImportInputIndex but got: ImportIndex"]}
 
-import ../../../src/state/import_inputs
-import ../../../src/codec/work_package
-import ../../../src/pvm/host_fetch
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/pvm/host_fetch as pvm_host_fetch
 discard importInput(default(VerifiedImportInputs), FetchItemIndex(0), ImportIndex(0))

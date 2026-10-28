@@ -3,10 +3,16 @@
 
 ## Full-width duplicate oracles protect compact uniqueness proofs, hostile prefix fallback and mandatory integrity.
 # @@Verification={"arc": "storage_duplicate_preflight_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_samples]
-import ../../../src/storage/[node_records, record_codec, full_state_trie]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_samples
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 type Stage = object ## Preparation/delivery observations never grant integrity to provisional callback prefixes.
   prepared, delivered: int
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

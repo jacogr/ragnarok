@@ -3,9 +3,20 @@
 
 ## Bind original computed-report execution to the exact complete map retained by block commitments.
 
-import ./[computed_links, computed_guarantee, computed_report, block_admission, store,
-  availability_specifier, export_erasure, bundle_erasure, erasure_layout, auditable_bundle,
-  input_refinement, report_identity, authorized_refinement, authorization_invocation]
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
+import ./block_admission as state_block_admission
+import ./store as state_store
+import ./availability_specifier as state_availability_specifier
+import ./export_erasure as state_export_erasure
+import ./bundle_erasure as state_bundle_erasure
+import ./erasure_layout as state_erasure_layout
+import ./auditable_bundle as state_auditable_bundle
+import ./input_refinement as state_input_refinement
+import ./report_identity as state_report_identity
+import ./authorized_refinement as state_authorized_refinement
+import ./authorization_invocation as state_authorization_invocation
 
 type
   ComputedStateError* {.pure.} = enum ## Refusals contain no partially bound report or substitute state.

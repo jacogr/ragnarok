@@ -5,7 +5,7 @@
 ## retires native callbacks before finishing attempts, and reports adoption outside callbacks.
 
 import std/assertions
-import ../codec/bounded
+import ../codec/bounded as codec_bounded
 
 type
   DownloadPeerId* = distinct uint64 ## Nonzero local authenticated-peer identity, never a remote block claim.

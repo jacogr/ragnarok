@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic missing maintenance authority guards have genuine idle-plan and confirmed no-op receipt controls.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import std/posix/posix
-import ../../src/storage/[light_snapshot, light_journal_cache, light_journal_replay, light_delta,
-  database_identity, managed_manifest, file_errors]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Controls use one exact process-owned fixture namespace.
 proc main() {.raises.} =

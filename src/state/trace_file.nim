@@ -3,9 +3,9 @@
 
 ## Bounded offline TraceStep files require exact EOF and preserve atomic publication outcomes.
 ## Files carry framed comparison inputs only; actual-chain STF import remains a separate application operation.
-import ./trace_step
-import ../codec/bounded
-import ../lib/atomic_file
+import ./trace_step as state_trace_step
+import ../codec/bounded as codec_bounded
+import ../lib/atomic_file as lib_atomic_file
 
 type
   TraceFileError* {.pure.} = enum ## File, codec and exact-extent refusals expose no owned trace prefix or successful receipt.

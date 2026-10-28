@@ -3,7 +3,11 @@
 
 ## Copy a context-held pricing handle before borrowing that context mutably; direct input/storage aliasing is rejected.
 # @@Verification={"build_name": "pvm-gas-memo-context-alias", "expected": "mutable argument aliases with immutable parameter", "group": "ownership_compile"}
-import ../../../src/pvm/[program, machine, gas, gas_memo, step]
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/gas_memo as pvm_gas_memo
+import ../../../src/pvm/step as pvm_step
 type Context = object ## The mutable callback context can replace its policy field.
   plan: GasMemo
 proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises: [].} =

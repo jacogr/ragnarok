@@ -3,7 +3,8 @@
 
 ## Original host-12 argument rows and real empty inner maps shared by page unit and misuse probes.
 
-import ../../src/pvm/[inner_machines, machine]
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
 import ./pvm_inner_lifecycle
 
 proc pageRegisters*(mode = 2'u64, first = 16'u64, count = 1'u64, id = 0'u64): RegisterFile =

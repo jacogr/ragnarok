@@ -8,8 +8,11 @@
 ## Exposes advanceAuthorization for immutable planning and advanceAuthorizationState for atomic
 ## full-state publication.
 
-import ../codec/[state_authorization, state_layout, state_trie, bounded]
-import ./store
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
+import ./store as state_store
 
 type
   AuthorizationSlot* = distinct uint32 ## Header timeslot domain, distinct from core/row positions and other arbitrary integers.

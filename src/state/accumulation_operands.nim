@@ -7,8 +7,14 @@
 ## and a block-bound adapter retaining the queue certificate. Execution/gas allocation are separate.
 
 import std/algorithm
-import ../codec/[bounded, natural, composite, work_digest, report_owned, owned, c2_records]
-import ./accumulation_queue
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/c2_records as codec_c2_records
+import ./accumulation_queue as state_accumulation_queue
 
 type
   AccumulationReportStart* = distinct uint64 ## Original-queue range start is distinct from a selected report count.
@@ -183,10 +189,12 @@ proc prepareOperandRange(queue: AccumulationQueuePlan, start: AccumulationReport
           not charge(blobs, perBlobs, uint64(config.totalBlobBytes)):
         fail(AccumulationOperandError.LimitExceeded) # Include a report's shared trace once for each actual operand.
       # Exact C.2 size: outer tag, four hashes, natural gas, work tag/payload and natural trace length/data.
-      var size = 129'u64+uint64(natural.encode(JamNatural(uint64(digest.accumulateGas))).len)+1 +
-        uint64(natural.encode(JamNatural(auth)).len)
+      var size = 129'u64+uint64(codec_natural.encode(JamNatural(uint64(
+          digest.accumulateGas))).len)+1 +
+        uint64(codec_natural.encode(JamNatural(auth)).len)
       if digest.output.kind == WorkKind.Success:
-        size += uint64(natural.encode(JamNatural(payload)).len) # Only success carries a result length prefix.
+        size += uint64(codec_natural.encode(JamNatural(
+            payload)).len) # Only success carries a result length prefix.
       if size > uint64(config.operand.maxBytes) or
           not charge(size, payload, uint64(config.operand.maxBytes)) or
           not charge(size, auth, uint64(config.operand.maxBytes)) or

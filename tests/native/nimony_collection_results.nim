@@ -7,8 +7,12 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[collections, natural, fixed_unsigned, bounded]
+import std/cmdline
+import std/syncio
+import ../../src/codec/collections as codec_collections
+import ../../src/codec/natural as codec_natural
+import ../../src/codec/fixed_unsigned as codec_fixed_unsigned
+import ../../src/codec/bounded as codec_bounded
 let useDefault = paramStr(2) == "default"
 let limits = CollectionLimits(items: ElementLimit(32), maxBytes: ByteLimit(1024))
 var output: seq[byte] = @[]

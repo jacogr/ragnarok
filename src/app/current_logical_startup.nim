@@ -3,12 +3,25 @@
 
 ## Bounded explicit logical identity declarations are matched to the actual selected state before a CLI download opens peers.
 ## Physical map entries never invent raw identities; successful startup retains existing State parent qualification only.
-import std/[syncio, strutils]
-import ./current_logical_download
-import ../chain/[provider, genesis, services]
-import ../codec/[bounded, state_composition, state_accounts, state_service_values, state_requests, state_layout]
-import ../state/[parent_profile, parent_globals, parent_logical, global_snapshot,
-    supplied_logical_inventory, supplied_services, store]
+import std/syncio
+import std/strutils
+import ./current_logical_download as app_current_logical_download
+import ../chain/provider as chain_provider
+import ../chain/genesis as chain_genesis
+import ../chain/services as chain_services
+import ../codec/bounded as codec_bounded
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_layout as codec_state_layout
+import ../state/parent_profile as state_parent_profile
+import ../state/parent_globals as state_parent_globals
+import ../state/parent_logical as state_parent_logical
+import ../state/global_snapshot as state_global_snapshot
+import ../state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../state/supplied_services as state_supplied_services
+import ../state/store as state_store
 
 const CurrentLogicalSourceBytes* = 65536 ## Startup transport cap is independent of retained declarations and decoded payload policies.
 const CurrentLogicalSourceHeader* = "ragnarok-current-logical-source-v1" ## Shared existing v1 identity-only transport header; export and parser accept one representation.

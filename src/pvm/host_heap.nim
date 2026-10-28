@@ -4,7 +4,8 @@
 ## Shared adopted GP #533/#538 grow_heap response for accumulation and refinement dispatch.
 ## Heap geometry comes from the caller's trusted initialization boundary; no context or publication effects.
 
-import ./[machine, step]
+import ./machine as pvm_machine
+import ./step as pvm_step
 
 type
   HeapHostError* {.pure.} = enum ## Local owner/capacity refusals remain distinct from protocol gas exhaustion.

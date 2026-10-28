@@ -5,5 +5,5 @@
 
 # @@Verification={"group": "nominal", "expected": "got: MachineGas but wanted: GasDeficit"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 discard MachineInfo(gasDeficit: MachineGas(1))

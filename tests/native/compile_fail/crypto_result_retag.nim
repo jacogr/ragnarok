@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 var value = default(CryptoResult[Blake2bHash])
 value.status = CryptoError.None

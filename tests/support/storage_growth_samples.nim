@@ -3,8 +3,14 @@
 
 ## Deterministic sustained-publication fixtures keep preparation separate from timed physical IO.
 import std/assertions
-import ../../src/storage/[full_state_trie, node_repository, node_records, record_codec, file_repository]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/record_codec as storage_record_codec
+import ../../src/storage/file_repository as storage_file_repository
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 
 type
   StorageGrowthFixture* = object ## Test-owned changes and complete roots never authorize protocol history.

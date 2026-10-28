@@ -3,14 +3,30 @@
 
 ## Actual application invocations use the selected guest engine and ordinary Nim host dispatch.
 ## Each alternative preserves normalized outputs, gas, inner frame publication and immutable sources.
-import std/[assertions, syncio]
-import ../../../src/app/options
-import ../../../src/state/[authorization_invocation, refinement_outcome, refinement_dispatch,
-    accumulation_dispatch, accumulation_machine]
-import ../../../src/pvm/[machine, step, gas, host_fetch, refinement_exports, inner_machines]
-import ../../../src/codec/[bounded, c2_records, work_report, work_digest]
-import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome,
-    pvm_accumulation_context, pvm_accumulation_program, pvm_inner_lifecycle, pvm_inner_invoke]
+import std/assertions
+import std/syncio
+import ../../../src/app/options as app_options
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/pvm_authorization_invoke
+import ../../support/pvm_refinement_outcome
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/pvm_inner_lifecycle
+import ../../support/pvm_inner_invoke
 
 proc witness(selected: PvmBackend) =
   ## Parse the public flag and pass its exact value into all supported application invocation families.

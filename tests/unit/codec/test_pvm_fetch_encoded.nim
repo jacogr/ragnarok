@@ -6,10 +6,19 @@
 
 # @@Verification={"arc": "pvm_fetch_encoded_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/codec/[work_package, work_report, work_digest, composite, bounded]
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/testing_arc_evidence
 
 # Independent C.2 layout: two items, compact two-byte blob lengths and nonempty manifests.
 proc expected(): seq[byte] =

@@ -3,8 +3,11 @@
 
 ## Seed complete supplied logical inventory on the original selected configured parent, retaining full history/Parameters/finality provenance.
 ## Startup parent description is not a completed transition or producer-exported mutation certificate.
-import ../codec/state_composition
-import ./[parent_globals, global_snapshot, manifest, supplied_logical_inventory]
+import ../codec/state_composition as codec_state_composition
+import ./parent_globals as state_parent_globals
+import ./global_snapshot as state_global_snapshot
+import ./manifest as state_manifest
+import ./supplied_logical_inventory as state_supplied_logical_inventory
 type
   SelectedLogicalParent* = object ## Private original selected-global owner and revalidated logical inventory cannot be paired unchecked.
     initialized: bool

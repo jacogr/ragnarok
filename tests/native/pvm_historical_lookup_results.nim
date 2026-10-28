@@ -3,10 +3,14 @@
 
 ## Isolated default/refused historical lookup accessors retain their optimized runtime contracts.
 
-import std/[assertions, cmdline]
-import ../../src/state/[refinement_lookup, store]
-import ../../src/codec/[composite, work_report]
-import ../../src/pvm/[machine, step]
+import std/assertions
+import std/cmdline
+import ../../src/state/refinement_lookup as state_refinement_lookup
+import ../../src/state/store as state_store
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_report as codec_work_report
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/step as pvm_step
 
 proc checkRefusal(outcome: HistoricalLookupResult[HistoricalLookupContext]) =
   ## A positive control confirms the intended missing-owner refusal before forbidden extraction.

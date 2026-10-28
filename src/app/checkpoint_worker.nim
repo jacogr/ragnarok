@@ -5,10 +5,15 @@
 ## Canonical graphs never cross its thread boundary.
 ## One host thread serializes stage/begin/collect/close; native work and shutdown never run in network callbacks.
 
-import std/[locks, rawthreads]
-import ./[checkpoint_file, checkpoint_writer, checkpoint_identity, checkpoint_transfer, checkpoint_codec]
-import ../codec/bounded
-import ../state/store
+import std/locks
+import std/rawthreads
+import ./checkpoint_file as app_checkpoint_file
+import ./checkpoint_writer as app_checkpoint_writer
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_transfer as app_checkpoint_transfer
+import ./checkpoint_codec as app_checkpoint_codec
+import ../codec/bounded as codec_bounded
+import ../state/store as state_store
 
 type
   ApplicationCheckpointOperation* {.pure.} = enum ## Verified file content and durable publication have distinct fixed receipt meanings.

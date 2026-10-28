@@ -5,17 +5,50 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_profile, computed_lookup, computed_recent, computed_state,
-  computed_links, computed_guarantee, computed_report, block_admission, block_transition,
-  store, input_refinement, availability_specifier, export_erasure, bundle_erasure,
-  erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
-import ../../src/chain/[genesis, parameters]
-import ../../src/codec/[bounded, header, block_codec, work_package, work_report, composite,
-  report_owned, state_layout, state_trie, state_workqueues]
-import ../../src/crypto/primitives
-import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome, pvm_computed_report,
-  pvm_export_erasure, pvm_extrinsic_inputs, pvm_import_inputs, pvm_computed_lookup,
-  pvm_computed_recent, report_context, report_admission_context]
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/computed_recent as state_computed_recent
+import ../../src/state/computed_state as state_computed_state
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/block_admission as state_block_admission
+import ../../src/state/block_transition as state_block_transition
+import ../../src/state/store as state_store
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_workqueues as codec_state_workqueues
+import ../../src/crypto/primitives as crypto_primitives
+import ./pvm_input_refinement
+import ./pvm_report_results
+import ./pvm_refinement_outcome
+import ./pvm_computed_report
+import ./pvm_export_erasure
+import ./pvm_extrinsic_inputs
+import ./pvm_import_inputs
+import ./pvm_computed_lookup
+import ./pvm_computed_recent
+import ./state_report_context
+import ./state_report_admission_context
 
 type
   ComputedTransitionFixture* = object ## Caller-owned genuine signed inputs preserve original execution and posterior identities.

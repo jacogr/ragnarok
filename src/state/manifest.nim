@@ -3,8 +3,12 @@
 
 ## Match a complete serialized map to validated globals and explicit service serialization inputs.
 ## Exact byte coverage is distinct from valid-state consistency, STF execution and root trust.
-import ../codec/[bounded, state_layout, state_trie, state_composition]
-import ./[global_snapshot, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./global_snapshot as state_global_snapshot
+import ./store as state_store
 
 type
   StateManifestLimits* = object ## Caller service traversal, full composition and raw-key hashing have independent ceilings.
@@ -64,7 +68,7 @@ proc validateStateManifest*(globals: ValidatedGlobalState, services: openArray[S
         status: StateManifestError.LimitExceeded) # Cached complete-map extents refuse before copies or key/root hashing.
   var bytes = 0'u64
   for index in 0..<commitment.entries:
-    let key = source.keyAt(store.StateEntryIndex(index)).value
+    let key = source.keyAt(state_store.StateEntryIndex(index)).value
     let size = uint64(source.lookup(key).value.byteLength)
     if size > uint64(limits.serialized.perValue) or size > uint64(
         limits.serialized.totalValueBytes)-bytes:
@@ -82,7 +86,7 @@ proc validateStateManifest*(globals: ValidatedGlobalState, services: openArray[S
     return StateManifestResult[ValidatedStateManifest](
         status: StateManifestError.MappingMismatch) # Equal cardinality plus every unique expected key is required for complete coverage.
   for index in 0..<commitment.entries:
-    let entry = expected.stateEntryAt(state_composition.StateEntryIndex(uint64(index))).value
+    let entry = expected.stateEntryAt(codec_state_composition.StateEntryIndex(uint64(index))).value
     let found = source.lookup(entry.key)
     if found.error != StateStoreError.None:
       return StateManifestResult[ValidatedStateManifest](

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Process death during explicitly trusted repair can never invent a recovery token or rollback a complete prefix.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_repairs]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_repairs
 proc main() {.raises.} =
   ## A completed exact-token control precedes every witnessed recovery syscall kill.
   for managed in [false, true]:

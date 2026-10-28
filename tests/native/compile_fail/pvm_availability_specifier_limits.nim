@@ -5,5 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "AvailabilityCommitmentLimits", "early": ["prepareAvailabilityCommitment(", "[2] expected: AvailabilityCommitmentLimits but got: ExportErasureLimits"]}
 
-import ../../../src/state/[availability_specifier, export_erasure, export_commitment, erasure_layout]
+import ../../../src/state/availability_specifier as state_availability_specifier
+import ../../../src/state/export_erasure as state_export_erasure
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/state/erasure_layout as state_erasure_layout
 discard prepareAvailabilityCommitment(default(ExportErasure), ExportErasureLimits())

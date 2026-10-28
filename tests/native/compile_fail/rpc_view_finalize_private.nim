@@ -4,6 +4,6 @@
 ## Negative compiler fixture: callers cannot retag a failed finality selection into success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/provider
+import ../../../src/chain/provider as chain_provider
 var result = default(ViewFinalizeResult)
 result.status = ViewFinalizeError.None

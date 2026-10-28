@@ -4,9 +4,21 @@
 ## Apply old-epoch assurances, rotate epoch statistics, and credit original-block author/reporter activity.
 ## Raw projections certify no provenance; opaque preparation derives every context from one admitted block.
 
-import ../codec/[bounded, composite, owned, state_statistics, state_safrole, state_layout,
-  block_codec, header, assurances, tickets]
-import ./[report_admission, guarantee_credentials, block_transition, block_admission, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/owned as codec_owned
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/assurances as codec_assurances
+import ../codec/tickets as codec_tickets
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   ValidatorActivityConfig* = object ## Independent population, comparison-work and capture ceilings.

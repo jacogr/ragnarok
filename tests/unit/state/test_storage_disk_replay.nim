@@ -6,11 +6,23 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, envvars, parseutils, strutils, syncio]
+import std/assertions
+import std/envvars
+import std/parseutils
+import std/strutils
+import std/syncio
 import std/posix/posix
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository,
-  file_repository, database_identity, revision_retention, durability]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/revision_retention as storage_revision_retention
+import ../../../src/storage/durability as storage_durability
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 type
   ## Trusted published bytes and commitments, independently checked before fixture preparation.

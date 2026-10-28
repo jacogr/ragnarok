@@ -5,12 +5,18 @@
 
 ## Local compare-and-publish advances only after durable old selection and inactive complete-map staging.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint_bank, checkpoint_head, checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
-import ../../support/arc_evidence
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 const Prefix = "state-checkpoint-advance"
 proc policy(): StateStoreLimits =

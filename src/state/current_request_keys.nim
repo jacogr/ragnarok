@@ -3,8 +3,12 @@
 
 ## Bounded physical request-key companion for exact original-to-genuine-current identity preservation.
 ## Compact inventories retain logical request identity/history; this separate owner admits and caches key derivation once.
-import ./[current_identities, supplied_logical_inventory, inventory]
-import ../codec/[bounded, state_layout, state_requests]
+import ./current_identities as state_current_identities
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./inventory as state_inventory
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_requests as codec_state_requests
 type
   CurrentRequestKeyLimits* = object ## Whole native row/key arrays and primitive call count are admitted before allocation or hashing.
     services*, requests*: ElementLimit

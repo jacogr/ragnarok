@@ -3,7 +3,9 @@
 
 ## Bind exact all-chapter serialization to one genuine current producer and its derived retained profile.
 ## Global framing remains separate from complete service matching, semantic validity, root discovery and STF parity.
-import ./[current_profile, accumulation_current_update, global_snapshot]
+import ./current_profile as state_current_profile
+import ./accumulation_current_update as state_accumulation_current_update
+import ./global_snapshot as state_global_snapshot
 type
   CurrentGlobalSerialization* = object ## Private same-source owners prevent a foreign profile or equal-root map substitution.
     initialized: bool

@@ -4,8 +4,9 @@
 ## Runtime probes ensure failed/default invocation-fetch results expose no completed context.
 
 import std/cmdline
-import ../../src/state/[accumulation_fetch, accumulation_inputs]
-import ../../src/pvm/host_fetch
+import ../../src/state/accumulation_fetch as state_accumulation_fetch
+import ../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../src/pvm/host_fetch as pvm_host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 # Dynamic selection keeps default refusal observable as a runtime contract check.

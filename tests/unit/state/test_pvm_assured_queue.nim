@@ -5,14 +5,33 @@
 
 ## Actual previously computed reports enter successor priority through verified assurances and real empty-body report admission.
 
-import std/[assertions, syncio]
-import ../../../src/state/[assured_queue, computed_assurances, computed_chain, accumulation_queue,
-    availability, report_admission, guarantee_credentials, report_assignments, block_transition,
-    block_admission,
-    report_policy, report_anchors, guarantors, store]
-import ../../../src/chain/[parameters, genesis]
-import ../../../src/codec/[bounded, header, assurances, report_owned, owned, state_layout, state_workqueues]
-import ../../support/[pvm_assured_queue, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/assured_queue as state_assured_queue
+import ../../../src/state/computed_assurances as state_computed_assurances
+import ../../../src/state/computed_chain as state_computed_chain
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/availability as state_availability
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../../src/state/report_assignments as state_report_assignments
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_policy as state_report_policy
+import ../../../src/state/report_anchors as state_report_anchors
+import ../../../src/state/guarantors as state_guarantors
+import ../../../src/state/store as state_store
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../support/pvm_assured_queue
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine retained-ancestry hashing failure after predecessor and successor authentication complete.

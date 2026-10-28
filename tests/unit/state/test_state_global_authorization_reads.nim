@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Distinct authenticated pool and fixed queue chapters preserve row order and exact caller ceilings.
-import std/[assertions, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_authorization, state_layout, state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 let config = AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
     maxBytes: ByteLimit(6000))
 for kind in [AuthorizationKind.Pools, AuthorizationKind.Queues]:

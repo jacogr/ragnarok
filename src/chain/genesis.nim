@@ -9,12 +9,19 @@
 ## establish consensus or validate every chapter. Optional C(4) supplies a cached RPC ticket limit;
 ## C(8) also supplies erasure geometry.
 
-import std/[algorithm, assertions]
-import ./parameters
-import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole,
-    state_accounts, state_consensus]
-import ../state/store
-import ../crypto/primitives
+import std/algorithm
+import std/assertions
+import ./parameters as chain_parameters
+import ../codec/header as codec_header
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_consensus as codec_state_consensus
+import ../state/store as state_store
+import ../crypto/primitives as crypto_primitives
 
 type
   ErasurePieceLength* = distinct uint64 ## Original data bytes in one basic erasure-coding piece, derived from active validators.
@@ -213,7 +220,7 @@ proc stateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} =
 
 proc lookup*(value: BlockSnapshot, key: StateKey): StateStoreResult[StateValue] =
   ## Read a serialized key from this retained snapshot; the view owns its lifetime, and default owners fail.
-  store.lookup(value.state, key)
+  state_store.lookup(value.state, key)
 
 ## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
 ## At most 342 candidates are checked; no allocation or erasure encoding occurs here.

@@ -3,6 +3,6 @@
 
 ## Raw operand copies never expose the captured bounded-coordinate storage.
 # @@Verification={"group": "privacy", "expected": "registerSlots"}
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let copied = default(Instruction)
 discard copied.registerSlots

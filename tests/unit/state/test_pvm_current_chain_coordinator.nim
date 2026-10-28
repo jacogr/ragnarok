@@ -3,12 +3,24 @@
 # @@Verification={"arc": "pvm_current_chain_coordinator_arc_release"}
 
 ## Current composed state and chain view install together only after exact ownership/profile and all private child stages succeed.
-import std/[assertions, envvars, syncio]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/state/[accumulation_current_chain, accumulation_current_publication,
-  accumulation_current_consensus, report_admission, block_transition, block_admission, store]
-import ../../support/[accumulation_current_chain_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/accumulation_current_chain as state_accumulation_current_chain
+import ../../../src/state/accumulation_current_publication as state_accumulation_current_publication
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_chain_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc unchanged(state: StateStore, view: ChainView, prior: StateStoreSnapshot, old: ChainView) =

@@ -5,9 +5,9 @@
 ## owners until native close. No callback decodes blocks, hashes headers or changes canonical state.
 
 import std/assertions
-import ./transport
-import ../app/ancestor_receiver
-import ../codec/bounded
+import ./transport as quic_transport
+import ../app/ancestor_receiver as app_ancestor_receiver
+import ../codec/bounded as codec_bounded
 
 type
   AncestorTick* = distinct uint64 ## Caller-supplied monotonic milliseconds, unrelated to block slots.

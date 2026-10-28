@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/pvm/refinement_exports
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
 var owner: RefinementExports
 discard owner.data

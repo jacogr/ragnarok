@@ -4,12 +4,24 @@
 ## Prepare genuine combined code/state and verify final manifests before the production execution path runs.
 
 import std/assertions
-import ../../src/state/[input_refinement, import_inputs, import_justification, extrinsic_inputs, store]
-import ../../src/codec/[bounded, composite, work_package, work_report]
-import ../../src/pvm/host_fetch
-import ../../src/chain/parameters
-import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_results,
-  pvm_import_inputs, pvm_import_vectors, pvm_extrinsic_inputs, pvm_refinement_outcome]
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/chain/parameters as chain_parameters
+import ./pvm_authorized_refinement
+import ./pvm_authorization_invoke
+import ./pvm_report_results
+import ./pvm_import_inputs
+import ./pvm_import_vectors
+import ./pvm_extrinsic_inputs
+import ./pvm_refinement_outcome
 
 type
   InputFixture* = object ## Mutable test handles can be replaced without changing production owners' retained provenance.

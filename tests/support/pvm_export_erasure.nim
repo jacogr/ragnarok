@@ -3,10 +3,18 @@
 
 ## Execute original normalized export cases before constructing their bundle erasure owner.
 
-import ../../src/state/[bundle_erasure, erasure_layout, erasure_words, auditable_bundle,
-    input_refinement, export_erasure]
-import ../../src/codec/[bounded, work_report]
-import ./[pvm_input_refinement, pvm_report_results, pvm_export_commitment, pvm_refinement_outcome]
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
+import ./pvm_input_refinement
+import ./pvm_report_results
+import ./pvm_export_commitment
+import ./pvm_refinement_outcome
 
 proc exportErasureLimits*(): ExportErasureLimits =
   ## Separate finite output/work caps from the original tree/hash budgets.

@@ -7,8 +7,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[header, bounded, assurances]
+import std/cmdline
+import std/syncio
+import ../../src/codec/header as codec_header
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
 let useDefault = paramStr(2) == "default"
 let config = HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6),
     epochSlots: EpochSlots(12), maxBytes: ByteLimit(4096))

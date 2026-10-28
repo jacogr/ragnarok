@@ -4,12 +4,19 @@
 
 ## Independent complete export/page erasure bytes, original provenance, budget preflight and ownership.
 
-import std/[assertions, syncio]
-import ../../../src/state/[export_erasure, export_commitment, bundle_erasure, erasure_words]
-import ../../../src/codec/[bounded, work_report]
-import ../../../src/pvm/host_fetch
-import ../../../src/crypto/primitives
-import ../../support/[pvm_export_erasure, pvm_export_erasure_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/export_erasure as state_export_erasure
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/state/bundle_erasure as state_bundle_erasure
+import ../../../src/state/erasure_words as state_erasure_words
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_export_erasure
+import ../../support/pvm_export_erasure_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after original execution to verify preflight and commitment failure boundaries.

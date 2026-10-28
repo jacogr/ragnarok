@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The application copies already trusted light metadata into an acyclic RPC transport without exporting proof/state ownership.
-import ./[light_head, checkpoint_identity]
-import ../rpc/light_source
-import ../codec/header
-import ../state/proof_view
+import ./light_head as app_light_head
+import ./checkpoint_identity as app_checkpoint_identity
+import ../rpc/light_source as rpc_light_source
+import ../codec/header as codec_header
+import ../state/proof_view as state_proof_view
 proc captureLightRpcHead*(head: LightApplicationHead): RpcLightSourceResult =
   ## Preflight the entire trusted header window before copying bounded wire; RPC capture grants no new root/chain authority.
   var records: seq[RpcLightHeaderInput] = @[]

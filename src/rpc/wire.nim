@@ -6,9 +6,11 @@
 ## Exposes UTF-8 validation, WebSocket upgrade/framing and incremental frame decoding with
 ## checked payload/status access.
 
-import std/[strutils, base64, sha1]
-import ../lib/utf8
-export utf8
+import std/strutils
+import std/base64
+import std/sha1
+import ../lib/utf8 as lib_utf8
+export lib_utf8
 
 const MaxMessage* = 16384
 const MaxHeader* = 4096

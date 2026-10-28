@@ -3,13 +3,29 @@
 
 ## Frozen logical plans sharing the actual proof worker's canonical graph remain untouched until exact collection or joined shutdown.
 # @@Verification={"arc":"state_current_logical_worker_lease_arc_release"}
-import std/[assertions, envvars, syncio, monotimes, times]
-import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
-    current_logical_proof_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_logical, accumulation_current_update,
-    proof_plan, planned_proof, proof_view, proof_global, trie_proof, store]
-import ../../../src/app/[proof_query, proof_worker]
-import ../../../src/codec/[bounded, report_owned, state_layout]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/monotimes
+import std/times
+import ../../support/state_current_repeated_logical_context
+import ../../support/state_current_namespace_refresh_context
+import ../../support/state_current_logical_proof_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_logical_refresh as state_current_logical_refresh
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/store as state_store
+import ../../../src/app/proof_query as app_proof_query
+import ../../../src/app/proof_worker as app_proof_worker
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar-only deadline polling never retains, drops or copies a canonical alias while the worker leases it.
 proc waitDone(worker: var StateProofWorker) =

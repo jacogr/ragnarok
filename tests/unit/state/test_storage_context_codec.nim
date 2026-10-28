@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Context and node changes share one exact frame; legacy and contextual schemas never cross-decode.
-import std/[assertions, syncio]
-import ../../../src/storage/[journal_codec, record_codec, node_records, node_repository, database_identity]
-import ../../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ../../../src/storage/journal_codec as storage_journal_codec
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
 proc run() =
   ## Frozen Python struct/hashlib checksum independently witnesses generation, context and record binding.
   let limits = RecordLimits(encoded: ByteLimit(105))

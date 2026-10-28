@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
-import std/[assertions, syncio, envvars, monotimes]
-import ../../src/pvm/[program, machine, gas, gas_plan, step]
-import ../../src/pvm/internal/handler_stream
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/gas_plan as pvm_gas_plan
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/internal/handler_stream as pvm_handler_stream
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Reuse the checked OS process clock only for explicitly enabled CI timing runs.

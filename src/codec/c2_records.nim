@@ -8,7 +8,13 @@
 ## constructors, allocation-free input sizing, codecs and copied payload access.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_digest as codec_work_digest
+import ./work_report as codec_work_report
+import ./assurances as codec_assurances
 
 type
   RecordError* {.pure.} = enum ## Missing/default outcomes cannot expose a fabricated fixed record, retained owner or cursor.
@@ -229,18 +235,19 @@ proc put(bytes: openArray[byte], output: var openArray[byte], cursor: var int) =
 
 # Commit a general natural for operand gas, tags or variable byte counts without an E8 substitution.
 proc putNatural(value: uint64, output: var openArray[byte], cursor: var int) =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   # Canonical scalar bytes fit the fully measured destination.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len
 
 # Read a canonical general natural while exposing no progress on incomplete or overlong input.
 proc readNatural(input: openArray[byte], cursor: var int): RecordResult[uint64] =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.high))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.high))
   # Prefix framing is checked before count/tag policy or host conversions.
   if not parsed.ok:
     # Keep incomplete input distinct from an overlong representation of a complete scalar.
-    if parsed.error == natural.truncated: return RecordResult[uint64](status: RecordError.Truncated)
+    if parsed.error == codec_natural.truncated: return RecordResult[uint64](
+        status: RecordError.Truncated)
     else:
       # Only the canonical encoder's image is accepted.
       return RecordResult[uint64](status: RecordError.NonCanonical)
@@ -416,7 +423,7 @@ proc measure(value: AccumulationOperand, limits: OperandLimits): RecordResult[in
   var total = 129
   if uint64(total) > uint64(limits.maxBytes): return RecordResult[int](
       status: RecordError.LimitExceeded) # Tag/four hashes need policy first.
-  var error = grow(total, natural.encode(JamNatural(uint64(value.gas))).len, limits)
+  var error = grow(total, codec_natural.encode(JamNatural(uint64(value.gas))).len, limits)
   if error != RecordError.None: return RecordResult[int](status: error) # Gas is a natural, not fixed E8.
   # A success has a variable blob; protocol error alternatives emit their tag alone.
   if value.output.kind == WorkKind.Success:
@@ -424,7 +431,7 @@ proc measure(value: AccumulationOperand, limits: OperandLimits): RecordResult[in
     if uint64(length) > min(uint64(limits.outputBytes), remaining):
       return RecordResult[int](status: RecordError.LimitExceeded) # Individual/aggregate payload limits precede sizing.
     remaining -= uint64(length)
-    error = grow(total, 1+natural.encode(JamNatural(uint64(length))).len, limits)
+    error = grow(total, 1+codec_natural.encode(JamNatural(uint64(length))).len, limits)
     if error != RecordError.None: return RecordResult[int](
         status: error) # Work tag/count framing contributes to parent budget.
     error = grow(total, length, limits)
@@ -435,7 +442,7 @@ proc measure(value: AccumulationOperand, limits: OperandLimits): RecordResult[in
       status: error) # No late error can permit partial source progress.
   if uint64(value.authTrace.len) > min(uint64(limits.authBytes), remaining):
     return RecordResult[int](status: RecordError.LimitExceeded) # Final trace policy is checked before destination capacity.
-  error = grow(total, natural.encode(JamNatural(uint64(value.authTrace.len))).len, limits)
+  error = grow(total, codec_natural.encode(JamNatural(uint64(value.authTrace.len))).len, limits)
   if error != RecordError.None: return RecordResult[int](
       status: error) # Final count must fit even for an empty trace.
   error = grow(total, value.authTrace.len, limits)

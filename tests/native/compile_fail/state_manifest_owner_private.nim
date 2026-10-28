@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Reject mutable or partial-state shortcuts at the complete-manifest boundary.
-import ../../../src/state/manifest
+import ../../../src/state/manifest as state_manifest
 let private = default(ValidatedStateManifest)
 discard private.data

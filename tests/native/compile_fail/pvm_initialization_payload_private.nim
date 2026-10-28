@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/[initialize]
+import ../../../src/pvm/initialize as pvm_initialize
 let r = default(InitializationResult)
 discard r.completed

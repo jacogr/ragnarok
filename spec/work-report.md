@@ -79,7 +79,7 @@ rebuilds the successful work value. Report owners retain a stable nil-checked pr
 metadata copies and owner-bound payload extraction expose no mutable backing bytes.
 
 `tools/test_runtime.py` runs all 18,430 independent report requests through
-`tests/native/report_codec_driver.nim`, including published tiny/full fixtures and the existing
+`tests/native/state_report_codec_driver.nim`, including published tiny/full fixtures and the existing
 mutation/lifetime checks. `test_report_snapshots.nim` adds replacement/escaped-input/default-owner
 and ARC release coverage. Runtime misuse and compilation checks protect results and nominal
 hash/root/slot/shard domains. Commands, source hashes, corpus hashes and exact diagnostics are

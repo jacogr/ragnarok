@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Larger distinct-payload fixtures preserve seed/current complete maps and exact publication generations.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_deployment_samples
-import ../../../src/storage/node_repository
+import ../../../src/storage/node_repository as storage_node_repository
 
 for count in [1024, 32768]:
   # Small and larger authored fixtures use the same full distinct-value contract.

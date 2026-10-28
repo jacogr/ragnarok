@@ -38,3 +38,8 @@ and [infrastructure](../docs/testing/infrastructure.md) when changing the harnes
 Run only affected local checks; `make unit SUITE=<name>` selects one native suite. Preserve
 complete CI verification, exact diagnostics, output/link/fixture contracts and fresh ARC evidence.
 Do not add tests that merely mirror reversible, low-impact edits.
+
+Native test filenames use `[test_]<area>_<type>.nim`; imported production modules use the same
+area-qualified bindings. Rename `.output` contracts and per-suite requirements with the main,
+while preserving fixture-provider identities, ARC keys and diagnostic expectations. Inventory
+preflight enforces this for newly added tests and source areas.

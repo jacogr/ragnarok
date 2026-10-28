@@ -3,7 +3,7 @@
 
 ## External callers cannot fabricate typed results, requested identities or verified failure alternatives.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/state/proof_service
-import ../../../src/codec/state_accounts
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/codec/state_accounts as codec_state_accounts
 var outcome = default(ServiceProofResult[ServiceMetadata])
 outcome.status = ServiceProofError.None

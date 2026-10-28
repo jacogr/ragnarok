@@ -4,8 +4,9 @@
 ## Parameter capture and configuration refusals must never expose success payloads.
 
 import std/cmdline
-import ../../src/chain/parameters
-import ../../src/pvm/[host_fetch, machine]
+import ../../src/chain/parameters as chain_parameters
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/machine as pvm_machine
 
 # Return a default snapshot through a runtime call for the encoder precondition probe.
 proc missing(): Parameters = default(Parameters)

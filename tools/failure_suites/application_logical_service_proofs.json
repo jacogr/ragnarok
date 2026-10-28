@@ -30,5 +30,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_logical_service_proofs_results.nim"
+  "source": "tests/native/app_logical_service_proofs_results.nim"
 }

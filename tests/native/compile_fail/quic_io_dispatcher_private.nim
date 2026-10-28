@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "descriptors"}
 
-import ../../../src/quic/io
+import ../../../src/quic/io as quic_io
 let dispatcher = newDispatcher()
 discard dispatcher.descriptors

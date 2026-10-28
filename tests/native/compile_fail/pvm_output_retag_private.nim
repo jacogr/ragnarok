@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/[step, output]
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/output as pvm_output
 var r = default(OutputResult)
 r.status = OutputError.None

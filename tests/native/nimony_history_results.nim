@@ -7,7 +7,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 include ../../src/codec/state_history
 let useDefault = paramStr(2) == "default"
 let policy = HistoryConfig(cores: CoreCount(2), blocks: ElementLimit(8), perBlock: ElementLimit(2),

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Killing after each actual staged write cannot select an unrenamed managed manifest.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_compaction]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_compaction
 proc main() {.raises.} =
   ## Snapshot, journal and pending manifest are separately complete writes before atomic selection.
   assert compactionCrashCase("compaction-write-control", writeIo, 4096) == 3

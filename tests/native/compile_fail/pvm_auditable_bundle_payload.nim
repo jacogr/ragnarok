@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/auditable_bundle
+import ../../../src/state/auditable_bundle as state_auditable_bundle
 var candidate: AuditableBundleResult[int]
 discard candidate.completed

@@ -7,8 +7,13 @@
 ##
 ## Exposes admitSafroleTicketsState and checked full-state publication results.
 
-import ../codec/[state_safrole, state_consensus, state_layout, state_trie, tickets]
-import ./[ticket_admission, store]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/tickets as codec_tickets
+import ./ticket_admission as state_ticket_admission
+import ./store as state_store
 
 type
   TicketStateResult* = object ## Only successful publication contains a complete immutable working-store snapshot.

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/storage_logical_continuation
+import ../../../src/state/storage_logical_continuation as state_storage_logical_continuation
 let source = default(StorageContinuationResult)
 discard source.completed

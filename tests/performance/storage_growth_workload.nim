@@ -2,13 +2,26 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sustained public repository operations retain exact complete maps across restart and reclamation.
-import std/[assertions, syncio, cmdline, monotimes, times]
+import std/assertions
+import std/syncio
+import std/cmdline
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io, storage_allocations]
-import ../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
-  managed_repository,
-  database_identity, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../support/storage_growth_samples
+import ../support/app_managed_storage_samples
+import ../support/storage_growth_io
+import ../support/storage_allocations
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/file_repository as storage_file_repository
+import ../../src/storage/managed_repository as storage_managed_repository
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 
 proc elapsed(start: MonoTime): int64 =
   ## Positive monotonic nanoseconds describe only the requested public API operation batch.

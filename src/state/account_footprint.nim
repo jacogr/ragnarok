@@ -3,7 +3,7 @@
 
 ## Current GP accounts eq:deposits computes dependent footprint counts with explicit nonwrapping arithmetic.
 ## Unauthenticated aggregate inputs produce arithmetic observations, never a source-bound state certificate.
-import ../codec/state_accounts
+import ../codec/state_accounts as codec_state_accounts
 
 type
   AccountFootprintShape* = object ## Logical storage/request counts and component byte sums before namespace overhead.

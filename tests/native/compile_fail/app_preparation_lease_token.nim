@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# @@Verification={"group": "privacy", "expected": "marker"}
+
+## Private preparation ownership and RPC release authority cannot escape through fields.
+import ../../../src/app/services as app_services
+import ../../../src/rpc/server as rpc_server
+let private = RpcChainLease()
+discard private.marker

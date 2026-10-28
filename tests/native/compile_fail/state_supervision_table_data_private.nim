@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## No caller may forge a complete batch or rewrite private phase alternatives.
-import ../../../src/state/supervision_table
+import ../../../src/state/supervision_table as state_supervision_table
 var value = default(StateSupervisionTable)
 discard value.data

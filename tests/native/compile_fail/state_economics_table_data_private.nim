@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Callers cannot forge complete report authority or rewrite failed alternatives.
-import ../../../src/state/economics_table
+import ../../../src/state/economics_table as state_economics_table
 var value = default(StateEconomicsTable)
 discard value.data

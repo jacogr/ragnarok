@@ -4,8 +4,9 @@
 ## Exclusive bounded E4 receiver for descending ancestor responses; callbacks copy bytes only.
 ## Request FIN and actual response FIN are independent; decoding remains an explicit producer operation.
 import std/assertions
-import ./ancestor_response
-import ../codec/[bounded, block_codec]
+import ./ancestor_response as app_ancestor_response
+import ../codec/bounded as codec_bounded
+import ../codec/block_codec as codec_block_codec
 
 type
   AncestorReceiveId* = distinct uint64 ## Local generations prevent delayed callbacks from changing a reused receiver.

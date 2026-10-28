@@ -3,9 +3,13 @@
 
 ## Strict optimized admission/result-reason guards retain genuine included computed reports as positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_admission, computed_inclusion, report_admission, report_policy]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_admission as state_computed_admission
+import ../../src/state/computed_inclusion as state_computed_inclusion
+import ../../src/state/report_admission as state_report_admission
+import ../../src/state/report_policy as state_report_policy
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_admission
 
 proc expect[T](outcome: ComputedAdmissionResult[T], reason: ComputedAdmissionError) =

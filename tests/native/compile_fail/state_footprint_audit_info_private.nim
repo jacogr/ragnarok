@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "info"}
 
 ## Caller cannot forge or mutate private source-bound audit authority.
-import ../../../src/state/footprint_audit
+import ../../../src/state/footprint_audit as state_footprint_audit
 var value = default(CheckedAccountFootprints)
 discard value.info

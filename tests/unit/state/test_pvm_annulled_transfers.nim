@@ -3,11 +3,20 @@
 # @@Verification={"arc": "pvm_annulled_transfers_arc_release"}
 
 ## Real annulled producers retain actual gas/provisions while their outgoing transfers disappear from accpar delivery and refund.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_transfers, accumulation_annulment,
-  accumulation_pending_transfers, accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, state_accounts, c2_records]
-import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_transfers as state_accumulation_transfers
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_pending_transfers as state_accumulation_pending_transfers
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../support/state_accumulation_annulment_context
+import ../../support/state_accumulation_batch_context
+import ../../support/testing_arc_evidence
 
 # Collection/sort/projection and pending-budget accounting do not hash or publish state.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

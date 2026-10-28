@@ -5,14 +5,31 @@
 
 ## Actual successor signatures free prior computed reports at strict quorum while retaining original chain ownership and precise refusals.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_assurances, computed_chain, block_transition, block_admission,
-    availability, safrole_transition, safrole_authentication, store]
-import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[bounded, header, block_codec, state_layout, state_availability,
-    report_owned, owned, assurances, tickets, state_safrole]
-import ../../../src/crypto/assurance_context
-import ../../support/[pvm_computed_assurances, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_assurances as state_computed_assurances
+import ../../../src/state/computed_chain as state_computed_chain
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/availability as state_availability
+import ../../../src/state/safrole_transition as state_safrole_transition
+import ../../../src/state/safrole_authentication as state_safrole_authentication
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_availability as codec_state_availability
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/tickets as codec_tickets
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/crypto/assurance_context as crypto_assurance_context
+import ../../support/pvm_computed_assurances
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force actual maintained admission hashing refusal after all genuine source/candidate construction.

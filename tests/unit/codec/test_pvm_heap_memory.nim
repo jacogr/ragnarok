@@ -6,9 +6,10 @@
 
 # @@Verification={"arc": "pvm_heap_memory_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/machine
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/testing_arc_evidence
 
 ## Fill every byte so a permission change cannot silently discard inaccessible or read-only storage.
 proc page(index: uint32, access: PageAccess): PageImage =

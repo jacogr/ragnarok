@@ -7,8 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_statistics, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/bounded as codec_bounded
 
 ## The retained snapshot outlives local source/wire arrays and preserves all statistical families.
 proc captured(config: ActivityConfig): ActivitySnapshot =

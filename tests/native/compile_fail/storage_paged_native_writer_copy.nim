@@ -3,7 +3,7 @@
 
 ## Actual ARC lowering must reject duplication of the explicit-close writer owner.
 # @@Verification={"group":"ownership_compile","build_name":"storage-paged-native-writer-copy","expected":"'=dup' is not available for type <PagedWriter>"}
-import ../../../src/storage/paged_store
+import ../../../src/storage/paged_store as storage_paged_store
 proc duplicate(source: PagedWriter): PagedWriter =
   ## Returning a borrowed owner would duplicate native retirement authority.
   source

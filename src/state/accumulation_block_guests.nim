@@ -3,10 +3,18 @@
 
 ## Bind current guest execution to genuine initial-round admission, posterior entropy and chain shape.
 ## Coverage remains private preparation; complete selected publication owns the subsequent state transition.
-import ../chain/parameters
-import ../codec/[header, state_layout, state_safrole]
-import ./[accumulation_guest_runner, accumulation_coverage, accumulation_round, accumulation_queue,
-  report_admission, block_transition, block_admission, store]
+import ../chain/parameters as chain_parameters
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ./accumulation_guest_runner as state_accumulation_guest_runner
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   BlockGuestError* {.pure.} = enum ## Refusals expose neither partial coverage nor an earlier guest result.

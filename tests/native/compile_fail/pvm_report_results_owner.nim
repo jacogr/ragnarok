@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/refinement_report
+import ../../../src/state/refinement_report as state_refinement_report
 var owner: RefinedPackage
 discard owner.data

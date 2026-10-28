@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "RefinedPackage", "early": ["prepareRefinementDigests(", "[1] expected: RefinedPackage but got: WorkDigest"]}
 
-import ../../../src/state/refinement_digest
-import ../../../src/codec/work_digest
+import ../../../src/state/refinement_digest as state_refinement_digest
+import ../../../src/codec/work_digest as codec_work_digest
 discard prepareRefinementDigests(default(WorkDigest), default(RefinementDigestLimits))

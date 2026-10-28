@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "failedPage"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 let outcome = default(MachineResult[Memory])
 discard outcome.failedPage

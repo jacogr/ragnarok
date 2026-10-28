@@ -4,9 +4,12 @@
 ## Verify GP constant-depth leaf inclusion and retain immutable root/index/segment/proof ownership.
 ## Inclusion alone grants no root freshness, package correspondence or prior-execution certificate.
 
-import ../codec/[bounded, natural, work_package, work_report]
-import ../pvm/host_fetch
-import ../crypto/primitives
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/work_package as codec_work_package
+import ../codec/work_report as codec_work_report
+import ../pvm/host_fetch as pvm_host_fetch
+import ../crypto/primitives as crypto_primitives
 
 type
   ImportJustificationError* {.pure.} = enum ## Refusals carry no partially authenticated segment or proof bytes.

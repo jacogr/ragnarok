@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/validator_projection_results.nim",
+  "source": "tests/native/state_validator_projection_results.nim",
   "build_name": "validator-projection-results",
   "crypto_library": "crypto",
   "cases": [

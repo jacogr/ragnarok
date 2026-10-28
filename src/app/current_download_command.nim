@@ -4,18 +4,37 @@
 ## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
 ## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
-import std/[syncio, monotimes, times]
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ./[options, services, chain, current_handoff, current_download_policy,
-    current_block_download, ancestor_inputs, ancestor_response, current_logical_download,
-    current_logical_startup, logical_source_export]
-import ./download_schedule
-import ../codec/[bounded, header]
-import ../state/[report_anchors, current_logical, accumulation_current_update, store, supplied_services]
-import ../lib/atomic_file
-import ../chain/[genesis, provider]
-import ../quic/[current_block_download_loop, current_block_download_session,
-    current_block_download_peers, ancestor_peer, ancestor_stream]
+import ./options as app_options
+import ./services as app_services
+import ./chain as app_chain
+import ./current_handoff as app_current_handoff
+import ./current_download_policy as app_current_download_policy
+import ./current_block_download as app_current_block_download
+import ./ancestor_inputs as app_ancestor_inputs
+import ./ancestor_response as app_ancestor_response
+import ./current_logical_download as app_current_logical_download
+import ./current_logical_startup as app_current_logical_startup
+import ./logical_source_export as app_logical_source_export
+import ./download_schedule as app_download_schedule
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../state/report_anchors as state_report_anchors
+import ../state/current_logical as state_current_logical
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/store as state_store
+import ../state/supplied_services as state_supplied_services
+import ../lib/atomic_file as lib_atomic_file
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../quic/current_block_download_loop as quic_current_block_download_loop
+import ../quic/current_block_download_session as quic_current_block_download_session
+import ../quic/current_block_download_peers as quic_current_block_download_peers
+import ../quic/ancestor_peer as quic_ancestor_peer
+import ../quic/ancestor_stream as quic_ancestor_stream
 
 type CurrentDownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,

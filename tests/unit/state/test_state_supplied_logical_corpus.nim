@@ -2,12 +2,26 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Retained raw keys and detached complete declarations reproduce independent whole-map checkpoints across full-width/empty shapes.
-import std/[assertions, envvars, strutils, syncio]
-import ../../support/[state_complete_serialization_context, state_inventory_context,
-    supplied_logical_context, supplied_services_context]
-import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint,
-    inventory, supplied_logical_inventory, supplied_services]
-import ../../../src/codec/[bounded, state_trie, state_composition, state_requests]
+import std/assertions
+import std/envvars
+import std/strutils
+import std/syncio
+import ../../support/state_complete_serialization_context
+import ../../support/state_inventory_context
+import ../../support/codec_supplied_logical_context
+import ../../support/state_supplied_services_context
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/supplied_services as state_supplied_services
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_requests as codec_state_requests
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Full raw-key/payload projection must work after matching with the hash backend disabled.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -76,7 +90,7 @@ proc check(input: seq[byte], services: seq[StateService]) =
       mapLimits, ByteLimit(65)).value
   var entries: seq[StateEntry] = @[]
   for i in 0..<composed.stateCommitment.value.entries:
-    entries.add(composed.stateEntryAt(state_composition.StateEntryIndex(uint64(i))).value)
+    entries.add(composed.stateEntryAt(codec_state_composition.StateEntryIndex(uint64(i))).value)
   let snapshot = newStateStore(entries, limits.store).value.snapshot.value
   assert encodeFullCheckpoint(snapshot, limits.checkpointBytes).value == input
   copied[0].storage[0].key = @[byte(99)]

@@ -3,10 +3,17 @@
 
 ## Single-buffer journal framing preserves strict mutable-record validation, exact bytes, replay and ownership.
 # @@Verification={"arc": "storage_journal_framing_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_snapshot_samples]
-import ../../../src/storage/[node_repository, node_records, record_codec, journal_codec, snapshot_codec]
-import ../../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_snapshot_samples
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/journal_codec as storage_journal_codec
+import ../../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real hash refusal distinguishes preflight from mandatory raw integrity and the outer checksum.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

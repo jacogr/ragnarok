@@ -4,10 +4,18 @@
 ## Single-slot current raw-block reception with bounded copying and generation-safe callback retirement.
 ## Explicit preparation runs outside transport callbacks; only a current prepared update can reach adoption.
 
-import ./[chain, candidate, current_handoff]
-import ../chain/[genesis, provider]
-import ../codec/[bounded, block_codec, header]
-import ../state/[store, accumulation_current_update, report_admission, report_anchors]
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ./current_handoff as app_current_handoff
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../codec/bounded as codec_bounded
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../state/store as state_store
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/report_admission as state_report_admission
+import ../state/report_anchors as state_report_anchors
 
 type
   CurrentBlockInputId* = distinct uint64 ## A local reception generation, never a peer/stream or block identity.

@@ -3,10 +3,14 @@
 
 ## Checked optimized erasure result guards with a genuine completed layout control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[erasure_layout, auditable_bundle]
-import ../../src/codec/[bounded, work_report]
-import ../support/[pvm_auditable_bundle, pvm_bundle_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
+import ../support/pvm_auditable_bundle
+import ../support/pvm_bundle_vectors
 
 proc check[T](outcome: ErasureLayoutResult[T], reason: ErasureLayoutError) =
   ## Inspect reasons before deliberately attempting refused extraction selected at runtime.

@@ -9,7 +9,12 @@
 ## assigner/accumulation-service access.
 
 import std/assertions
-import ./[natural, bounded, composite, assurances, state_layout, state_trie]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export ServiceIndex, CoreCount
 
 type
@@ -84,7 +89,7 @@ proc countError(count: uint64, config: PrivilegeConfig): PrivilegeError =
 ## Read one canonical natural into a local fixed result; only success advances the private cursor.
 proc readNatural(input: openArray[byte], cursor: var int,
     config: PrivilegeConfig): PrivilegeResult[uint64] =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
       return PrivilegeResult[uint64](status: PrivilegeError.Truncated) # Missing fields publish no partial progress.
@@ -167,7 +172,7 @@ proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): Pri
 
 ## Commit a canonical natural after the whole source has passed sizing, order and byte-policy checks.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   # The measured final destination already contains space for every canonical scalar byte.
   for i in 0..<encoded.len:
     output[cursor] = encoded.bytes[i]
@@ -198,7 +203,7 @@ proc privilegeStateEntry*(source: PrivilegeState, config: PrivilegeConfig): Priv
   if count != PrivilegeError.None: return PrivilegeResult[StateEntry](
       status: count) # Bound work before sizing pairs.
   var size = 4*(source.assigners.len+3)
-  var error = grow(size, natural.encode(JamNatural(source.always.len)).len, config)
+  var error = grow(size, codec_natural.encode(JamNatural(source.always.len)).len, config)
   if error != PrivilegeError.None: return PrivilegeResult[StateEntry](
       status: error) # Empty dictionary still emits its count.
   # Numeric dictionary order is required from sources; no silent sorting or last-key-wins repair.

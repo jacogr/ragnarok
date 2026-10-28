@@ -3,9 +3,10 @@
 
 ## Scalar writer identity, immutable epochs, full-byte boundary updates and atomic failure preservation.
 # @@Verification={"arc": "pvm_scalar_writer_arc_release"}
-import std/[assertions, syncio]
-import ../../../src/pvm/machine
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/testing_arc_evidence
 
 proc originalByte(offset: int): byte =
   ## Independently authored nonuniform bytes expose stale chunk selection and neighboring writes.

@@ -3,9 +3,12 @@
 
 ## Actual assured PVM completion with bounded stopped-history and whole successor composition policies.
 
-import ../../src/codec/bounded
-import ../../src/state/[assured_execution, assured_composition]
-import ./[pvm_assured_execution, pvm_computed_finalization, pvm_computed_composition]
+import ../../src/codec/bounded as codec_bounded
+import ../../src/state/assured_execution as state_assured_execution
+import ../../src/state/assured_composition as state_assured_composition
+import ./pvm_assured_execution
+import ./pvm_computed_finalization
+import ./pvm_computed_composition
 
 proc assuredCompositionFixture*(votes = 7): ExecutedAssuredAccumulation =
   ## Execute the actual previously computed reports only after genuine next-block assurances and admission.

@@ -4,10 +4,17 @@
 
 ## Literal export bytes, host ordering, immutable forks and generic host execution verify Omega_E.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[refinement_exports, host_fetch, machine, program, step, gas]
-import ../../../src/codec/[bounded, work_digest]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/testing_arc_evidence
 
 proc source(): Memory =
   ## Distinct consecutive read-only pages expose clipping, cross-page reads and unreadable successors.

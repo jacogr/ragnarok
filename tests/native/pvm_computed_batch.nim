@@ -3,9 +3,11 @@
 
 ## Strict optimized batch refusals retain genuine complete-context positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_batch, computed_envelope]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_batch as state_computed_batch
+import ../../src/state/computed_envelope as state_computed_envelope
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_batch
 
 proc expect[T](outcome: ComputedBatchResult[T], reason: ComputedBatchError) =

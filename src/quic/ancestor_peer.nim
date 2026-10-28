@@ -4,9 +4,13 @@
 ## One pinned outgoing ancestor request owns its native endpoint, receiver and callback binding.
 ## Nonblocking host ticks authenticate, transfer and retire the stream before exposing producer decoding.
 import std/assertions
-import ./[transport, protocol, ancestor_stream]
-import ../app/[ancestor_response, ancestor_receiver]
-import ../codec/[bounded, block_codec]
+import ./transport as quic_transport
+import ./protocol as quic_protocol
+import ./ancestor_stream as quic_ancestor_stream
+import ../app/ancestor_response as app_ancestor_response
+import ../app/ancestor_receiver as app_ancestor_receiver
+import ../codec/bounded as codec_bounded
+import ../codec/block_codec as codec_block_codec
 
 type
   AncestorPeerKey* = distinct array[32, byte] ## Explicit expected TLS Ed25519 identity, unrelated to a header hash.

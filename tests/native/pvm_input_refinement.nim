@@ -3,10 +3,17 @@
 
 ## Strict optimized success/reason guards include real code execution and successful immutable owner controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[input_refinement, import_inputs, report_identity, authorization_invocation]
-import ../../src/codec/[bounded, work_report]
-import ../support/[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome]
+import std/assertions
+import std/cmdline
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/report_identity as state_report_identity
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
+import ../support/pvm_input_refinement
+import ../support/pvm_report_results
+import ../support/pvm_refinement_outcome
 
 proc check(outcome: InputRefinementResult[InputRefinement], reason: InputRefinementError) =
   ## Inspect runtime alternatives without statically specializing deliberate invalid extraction.

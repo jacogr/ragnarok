@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict guarded identity results/default owners with an actual selected parent/current successor control.
-import std/[assertions, cmdline, syncio]
-import ../support/[accumulation_current_chain_context, current_checkpoint_context,
-    parent_logical_context, current_identity_context]
-import ../../src/state/[current_identities, parent_logical]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_accumulation_current_chain_context
+import ../support/state_current_checkpoint_context
+import ../support/state_parent_logical_context
+import ../support/state_current_identity_context
+import ../../src/state/current_identities as state_current_identities
+import ../../src/state/parent_logical as state_parent_logical
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## Defaults/refusals cannot expose a current preservation certificate.
   discard value.value

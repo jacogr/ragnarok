@@ -3,10 +3,15 @@
 
 ## Stable root inventories cover large distinct/duplicate sets, tight bounds, source retirement and late refusal.
 # @@Verification={"arc": "storage_root_inventory_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_root_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/storage_root_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selection must not hash immutable already-admitted records, even with the backend refusing.

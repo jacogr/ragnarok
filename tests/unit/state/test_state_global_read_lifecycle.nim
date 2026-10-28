@@ -3,15 +3,31 @@
 
 ## Typed chapter captures, planned projections and refusal paths release every derived ARC owner.
 # @@Verification={"arc": "state_global_read_lifecycle_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[proof_global_helpers, arc_evidence]
-import ../../../src/state/[proof_global, proof_view, planned_proof]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_composition,
-  state_consensus, state_safrole,
-  state_authorization, state_history, state_disputes, state_availability, guarantees,
-  state_privileges,
-  state_statistics, state_workqueues, state_outputs]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../support/testing_arc_evidence
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../../src/codec/state_history as codec_state_history
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../../src/codec/state_availability as codec_state_availability
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/state_outputs as codec_state_outputs
+include ../../native/nimony_composition_fixture
 proc cycle(source: ProofView) =
   ## Every temporary plan, partial owner and typed chapter dies before the allocator is sampled.
   let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),

@@ -6,8 +6,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_privileges, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/bounded as codec_bounded
 
 ## A snapshot copied out of local scope retains independent fixed role/pair values.
 proc captured(config: PrivilegeConfig): PrivilegeSnapshot =

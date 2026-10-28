@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_provision_integration_results.nim",
+  "source": "tests/native/state_accumulation_provision_integration_results.nim",
   "build_name": "accumulation-provision-integration-results",
   "crypto_library": "observer",
   "cases": [

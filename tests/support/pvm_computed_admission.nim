@@ -5,12 +5,25 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_inclusion, computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors, computed_roster, computed_transition, computed_profile, report_admission,
-  report_policy, report_anchors, guarantors]
-import ../../src/chain/parameters
-import ../../src/codec/[bounded, assurances, report_owned, owned]
-import ./[pvm_computed_inclusion, report_admission_context]
+import ../../src/state/computed_inclusion as state_computed_inclusion
+import ../../src/state/computed_batch as state_computed_batch
+import ../../src/state/computed_envelope as state_computed_envelope
+import ../../src/state/computed_credentials as state_computed_credentials
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/report_admission as state_report_admission
+import ../../src/state/report_policy as state_report_policy
+import ../../src/state/report_anchors as state_report_anchors
+import ../../src/state/guarantors as state_guarantors
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/owned as codec_owned
+import ./pvm_computed_inclusion
+import ./state_report_admission_context
 
 proc computedAdmissionConfig*(source: IncludedComputedGuarantees): ReportAdmissionConfig =
   ## Match all original protocol knobs while keeping existing finite chapter/ancestor byte policies.

@@ -4,19 +4,42 @@
 
 ## Real computed state composition preserves pending guarantees and authenticated prefix while consuming historical work once.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_composition, computed_finalization, computed_execution,
-  computed_round, computed_publication, computed_admission, report_admission, report_assignments,
-  accumulation_completion, accumulation_consensus, accumulation_finalization,
-  accumulation_execution,
-  accumulation_history, accumulation_ready, accumulation_recent, accumulation_times,
-  accumulation_round, accumulation_queue,
-  accumulation_validators, accumulation_activity, accumulation_preimages,
-  accumulation_authorization,
-  block_transition, block_admission, store]
-import ../../../src/codec/[bounded, state_layout, state_workqueues, state_statistics, assurances,
-    report_owned, owned]
-import ../../support/[pvm_computed_composition, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_composition as state_computed_composition
+import ../../../src/state/computed_finalization as state_computed_finalization
+import ../../../src/state/computed_execution as state_computed_execution
+import ../../../src/state/computed_round as state_computed_round
+import ../../../src/state/computed_publication as state_computed_publication
+import ../../../src/state/computed_admission as state_computed_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/report_assignments as state_report_assignments
+import ../../../src/state/accumulation_completion as state_accumulation_completion
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/accumulation_execution as state_accumulation_execution
+import ../../../src/state/accumulation_history as state_accumulation_history
+import ../../../src/state/accumulation_ready as state_accumulation_ready
+import ../../../src/state/accumulation_recent as state_accumulation_recent
+import ../../../src/state/accumulation_times as state_accumulation_times
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/accumulation_validators as state_accumulation_validators
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_preimages as state_accumulation_preimages
+import ../../../src/state/accumulation_authorization as state_accumulation_authorization
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../support/pvm_computed_composition
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse real private map/root work after the full genuine source execution completes.

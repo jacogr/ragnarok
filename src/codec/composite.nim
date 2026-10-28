@@ -6,9 +6,9 @@
 ## Exposes explicit optional/work variants and borrowed optional, work-result and preimage
 ## codecs with measured write/decode results.
 
-import ./natural
-import ./fixed_unsigned
-import ./bounded
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
 
 type
   BlobSpan* = object ## Caller-supplied or decoded coordinates in a borrowed pool; encoders validate bounds against that pool.
@@ -196,7 +196,7 @@ proc tagSize(tag: int, hasBlob: bool, span: BlobSpan, poolSize: int,
   # Apply caller policy before calculating encoded extent.
   if uint64(span.length) > uint64(limit): return CompositeWrite(
       status: CompositeError.LimitExceeded)
-  let length = natural.encode(JamNatural(uint64(span.length)))
+  let length = codec_natural.encode(JamNatural(uint64(span.length)))
   # Headers must fit in the host extent without overflowing the sum.
   if span.length > high(int) - 1 - length.len: return CompositeWrite(
       status: CompositeError.LengthOverflow)
@@ -216,7 +216,7 @@ proc writeTag(tag: int, hasBlob: bool, span: BlobSpan, pool: openArray[byte], li
   output[0] = byte(tag)
   # Present/success values append the canonical length and identity payload.
   if hasBlob:
-    let length = natural.encode(JamNatural(uint64(span.length)))
+    let length = codec_natural.encode(JamNatural(uint64(span.length)))
     # Copy the complete canonical length before the blob.
     for i in 0..<length.len: output[1 + i] = length.bytes[i]
     # Span bounds and output capacity were proved above.
@@ -234,10 +234,10 @@ proc measureWork*(value: WorkOutput, poolSize: int, limit: ByteLimit): Composite
 # Read a canonical discriminator, accepting only the defined schema tags before any enum conversion.
 proc readTag(input: openArray[byte], maximum, blobTag: uint64,
     limit: ByteLimit): TaggedResult {.raises: [].} =
-  let tag = natural.decode(input)
+  let tag = codec_natural.decode(input)
   if not tag.ok:
     # Distinguish incomplete from overlong discriminators before interpreting a variant.
-    return TaggedResult(error: if tag.error == natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
+    return TaggedResult(error: if tag.error == codec_natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
   let value = uint64(tag.value)
   if value > maximum: return TaggedResult(error: CompositeError.InvalidTag) # Unsupported schema value.
   if value != blobTag: return TaggedResult(error: CompositeError.None, tag: value,
@@ -314,11 +314,11 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
 proc decodePreimagesBorrowed*(input: openArray[byte], limits: PreimageLimits,
                       output: var openArray[Preimage]): PreimageResult {.raises: [].} =
   ## Decode the full preimage extrinsic into caller-owned records, retaining blob locations as original-input spans.
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   if not prefix.ok:
     # An invalid outer discriminator cannot advance a cursor or initialize any record.
     return PreimageResult(status: if prefix.error ==
-        natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
+        codec_natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
   let claimed = uint64(prefix.value)
   if claimed > uint64(limits.items): return PreimageResult(
       status: CompositeError.LimitExceeded) # Outer count policy.
@@ -340,7 +340,7 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
   ## Encode nested tuples from a shared byte pool, preflighting every span, count, byte budget and destination extent.
   if uint64(values.len) > uint64(limits.items): return CompositeWrite(
       status: CompositeError.LimitExceeded) # Count ceiling.
-  let prefix = natural.encode(JamNatural(uint64(values.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(values.len)))
   if output.len < prefix.len: return CompositeWrite(status: CompositeError.OutputTooSmall) # Outer header extent.
   var required = int(prefix.len)
   var budget = uint64(limits.totalBlobBytes)
@@ -350,7 +350,7 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
         status: CompositeError.InvalidSpan) # Checked source endpoints.
     if uint64(value.blob.length) > min(uint64(limits.perBlob), budget):
       return CompositeWrite(status: CompositeError.LimitExceeded) # Nested and aggregate policy.
-    let length = natural.encode(JamNatural(uint64(value.blob.length)))
+    let length = codec_natural.encode(JamNatural(uint64(value.blob.length)))
     if output.len - required < 4 + length.len or value.blob.length > output.len - required - 4 - length.len:
       return CompositeWrite(status: CompositeError.OutputTooSmall) # Safe total size by subtraction.
     required += 4 + length.len + value.blob.length
@@ -368,7 +368,7 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
     let service = encodeFixed(FixedUnsigned(uint64(uint32(value.service))), ByteWidth(4))
     for i in 0..<4: output[cursor + i] = service.encoded.bytes[i] # Tuple's little-endian nominal service ID.
     cursor += 4
-    let length = natural.encode(JamNatural(uint64(value.blob.length)))
+    let length = codec_natural.encode(JamNatural(uint64(value.blob.length)))
     for i in 0..<length.len: output[cursor + i] = length.bytes[i] # Nested length prefix.
     cursor += length.len
     if value.blob.length > 0:
@@ -380,10 +380,11 @@ proc encodePreimagesBorrowed*(values: openArray[Preimage], pool: openArray[byte]
 proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
     wireLimit: ByteLimit): PreimageResult {.raises: [].} =
   ## Inspect preimage framing/payload policy without allocation or exposing source coordinates.
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Preserve primitive framing errors before choosing a count.
   if not prefix.ok:
-    return PreimageResult(status: if prefix.error == natural.truncated: CompositeError.Truncated
+    return PreimageResult(status: if prefix.error ==
+        codec_natural.truncated: CompositeError.Truncated
       else: CompositeError.NonCanonical) # Parent composition cannot normalize overlong counts.
   let count = uint64(prefix.value)
   # Policy and minimum-wire proof precede any conversion or record iteration.

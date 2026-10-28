@@ -4,8 +4,12 @@
 ## Negative runtime fixture for local stepping-result success preconditions.
 ## The executable selects a failure by command-line argument and attempts forbidden result access.
 
-import std/[cmdline, assertions]
-import ../../src/pvm/[program, machine, gas, step]
+import std/cmdline
+import std/assertions
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 let selection = paramStr(1)
 var outcome = default(StepResult)
 # Runtime selection prevents constant folding from substituting a different rejection mechanism.

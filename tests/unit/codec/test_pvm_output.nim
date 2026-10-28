@@ -6,9 +6,15 @@
 
 # @@Verification={"arc": "pvm_output_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, gas, step, output]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/output as pvm_output
+import ../../support/testing_arc_evidence
 
 # An original minimal standard envelope runs jump_ind through the initialized return-address register.
 proc initialized(arguments: openArray[byte]): Machine =

@@ -5,9 +5,11 @@
 ## Structural decoding grants no ancestry/trust authority; report admission still checks every link.
 
 import std/assertions
-import ../codec/[bounded, header]
-import ../lib/atomic_file
-import ../chain/[genesis, provider]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../lib/atomic_file as lib_atomic_file
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
 
 type
   AncestorInputError* {.pure.} = enum ## Refusal never exposes the successfully decoded prefix.

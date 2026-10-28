@@ -7,8 +7,13 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, strutils, syncio, parseutils, rawthreads]
-import ../../src/crypto/primitives
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/parseutils
+import std/rawthreads
+import ../../src/crypto/primitives as crypto_primitives
 
 # Decode trusted fixture hex; a dash is the empty message.
 proc bytes(text: string): seq[byte] {.raises.} =

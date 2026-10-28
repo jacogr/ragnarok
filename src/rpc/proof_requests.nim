@@ -3,10 +3,11 @@
 
 ## Connection-local bounded proof selectors, independent of canonical state and native worker lifetime.
 ## Immutable namespace identities prevent stale or foreign completions from consuming a replacement slot.
-import ../state/proof_plan
-import ../codec/[bounded, state_layout]
-from ../chain/genesis import BlockHash
-export proof_plan, BlockHash, StateKey
+import ../state/proof_plan as state_proof_plan
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+from ../chain/genesis as chain_genesis import BlockHash
+export state_proof_plan, BlockHash, StateKey
 
 const MaxRpcProofImportBytes* = 8192 ## Base64 evidence fits the existing 16 KiB JSON-RPC request bound.
 const MaxRpcProofKeys* = 16 ## One immutable request retains at most sixteen exact serialized selectors.

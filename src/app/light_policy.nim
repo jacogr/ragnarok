@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Finite light runtime retention, request, native IO and header policies remain independent.
-import ./[light_head, light_store, proof_query, light_proof_import]
-import ../state/[trie_proof, proof_view, paged_proof_view]
-import ../storage/[paged_stream, paged_codec, database_identity]
-import ../codec/[bounded, header, state_trie]
-from ../rpc/protocol import MaxRpcProofBytes
-from ../rpc/proof_requests import MaxRpcProofKeys, MaxRpcProofImportBytes
+import ./light_head as app_light_head
+import ./light_store as app_light_store
+import ./proof_query as app_proof_query
+import ./light_proof_import as app_light_proof_import
+import ../state/trie_proof as state_trie_proof
+import ../state/proof_view as state_proof_view
+import ../state/paged_proof_view as state_paged_proof_view
+import ../storage/paged_stream as storage_paged_stream
+import ../storage/paged_codec as storage_paged_codec
+import ../storage/database_identity as storage_database_identity
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/state_trie as codec_state_trie
+from ../rpc/protocol as rpc_protocol import MaxRpcProofBytes
+from ../rpc/proof_requests as rpc_proof_requests import MaxRpcProofKeys, MaxRpcProofImportBytes
 
 type LightRuntimePolicy* = object ## Resident retained knowledge and each incoming/outgoing request use separate finite budgets.
   head*: LightHeadLimits

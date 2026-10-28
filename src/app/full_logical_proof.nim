@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Select every serialized key of the original qualified logical successor for existing bounded proof generation and independently checked complete import.
-import ./[logical_proof, proof_query]
-import ../state/[current_logical, proof_plan, store]
-import ../codec/[bounded, state_layout, state_trie]
+import ./logical_proof as app_logical_proof
+import ./proof_query as app_proof_query
+import ../state/current_logical as state_current_logical
+import ../state/proof_plan as state_proof_plan
+import ../state/store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 type
   FullLogicalProofLimits* = object ## Complete physical key traversal and input/retained/sort key arrays have independent selector policies.
     keys*: ElementLimit

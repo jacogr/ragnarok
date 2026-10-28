@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze unqualified complete declarations under whole-copy quotas, bound to one actual collected supplied target.
-import ./[chain, collected_supplied_plan, collected_supplied_state]
-import ../state/[current_logical, supplied_services, accumulation_current_update]
-import ../codec/[bounded, state_composition]
+import ./chain as app_chain
+import ./collected_supplied_plan as app_collected_supplied_plan
+import ./collected_supplied_state as app_collected_supplied_state
+import ../state/current_logical as state_current_logical
+import ../state/supplied_services as state_supplied_services
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../codec/bounded as codec_bounded
+import ../codec/state_composition as codec_state_composition
 type
   FrozenSuppliedInfo* = object ## Exact copied descriptor/payload accounting grants no matching or execution authority.
     services*: int

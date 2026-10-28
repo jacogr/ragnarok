@@ -7,14 +7,21 @@
 ## Exposes runPeer/runMesh, progress observations and peer/mesh selftests over retained
 ## transport sessions.
 
-import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
-import ../lib/logging
-import ./transport
-import ./protocol
-import ./integration
-import ./offload
-import ../app/[options, services]
-import ../telemetry/observer
+import std/os
+import std/strutils
+import std/monotimes
+import std/times
+import std/assertions
+import std/syncio
+import std/envvars
+import ../lib/logging as lib_logging
+import ./transport as quic_transport
+import ./protocol as quic_protocol
+import ./integration as quic_integration
+import ./offload as quic_offload
+import ../app/options as app_options
+import ../app/services as app_services
+import ../telemetry/observer as telemetry_observer
 
 template progress*() {.varargs.} =
   ## Emit complete lifecycle observations immediately; the native Nimony stdout buffer otherwise waits until exit.

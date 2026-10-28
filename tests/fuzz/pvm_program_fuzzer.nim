@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real libFuzzer ABI plus bounded standalone artifact replay share the exact program decoder properties after ordinary Nimony initialization.
-import std/[assertions, syncio, cmdline]
+import std/assertions
+import std/syncio
+import std/cmdline
 import ./pvm_program_target
 when defined(fuzzReplay):
   # Standalone replay uses no fuzzer runtime; malformed bytes are ordinary decoder refusals, while property defects remain fatal.

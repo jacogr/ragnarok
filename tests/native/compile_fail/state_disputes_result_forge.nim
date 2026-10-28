@@ -8,5 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_disputes, state_trie]
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../../src/codec/state_trie as codec_state_trie
 discard DisputeStateResult[DisputeStateInfo](status: DisputeStateError.None)

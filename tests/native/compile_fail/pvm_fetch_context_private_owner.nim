@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host_fetch as pvm_host_fetch
 let captured = default(FetchContext)
 discard captured.data

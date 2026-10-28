@@ -5,10 +5,17 @@
 ## Exposes normalizeAccumulationOutcome, retained context/info extraction and guarded typed refusals.
 ## See spec/pvm-hash-return-provisions.md for the scoped adoption of GP #533's regular projection.
 
-import ../codec/[work_digest, composite, state_outputs]
-import ../pvm/[machine, step, output]
-import ./[accumulation_dispatch, accumulation_context, accumulation_effects,
-  accumulation_invocation, accumulation_service]
+import ../codec/work_digest as codec_work_digest
+import ../codec/composite as codec_composite
+import ../codec/state_outputs as codec_state_outputs
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ../pvm/output as pvm_output
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
 
 type
   AccumulationTermination* {.pure.} = enum ## Normalized protocol termination; a physical fault follows Psi_M's panic branch.

@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/current_disk_publication_results.nim",
+  "source": "tests/native/state_current_disk_publication_results.nim",
   "build_name": "current-disk-publication-results",
   "crypto_library": "crypto",
   "cases": [

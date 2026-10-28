@@ -5,11 +5,12 @@
 
 ## Raw byte publication supports checkpoint control metadata without inventing state or root authority.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/lib/atomic_file
-import ../../../src/codec/bounded
-import ../../support/arc_evidence
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 const FileName = "state-atomic-file.bin"
 proc cycle(bytes: seq[byte]) =

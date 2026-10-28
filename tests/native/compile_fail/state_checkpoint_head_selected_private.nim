@@ -3,6 +3,6 @@
 
 ## Local head fields remain immutable behind initialized read accessors.
 # @@Verification={"group": "privacy", "expected": "selected"}
-import ../../../src/state/checkpoint_head
+import ../../../src/state/checkpoint_head as state_checkpoint_head
 let head = default(CheckpointHead)
 discard head.selected

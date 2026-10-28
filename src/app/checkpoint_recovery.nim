@@ -5,10 +5,14 @@
 ## Recovery creates one retained head with unset finality; no ancestor or consensus proof is inferred.
 
 import std/assertions
-import ./[chain, checkpoint_identity, checkpoint_codec, checkpoint_file]
-import ../codec/bounded
-import ../chain/[genesis, provider]
-import ../state/store
+import ./chain as app_chain
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_codec as app_checkpoint_codec
+import ./checkpoint_file as app_checkpoint_file
+import ../codec/bounded as codec_bounded
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../state/store as state_store
 
 type
   ApplicationRecoveryError* {.pure.} = enum ## Refusals expose no partial canonical owner.

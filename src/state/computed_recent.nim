@@ -3,11 +3,28 @@
 
 ## Derive corrected recent history from the original admitted state and match one complete computed-report anchor tuple.
 
-import ../codec/[bounded, header, state_history, state_layout, state_trie]
-import ../chain/parameters
-import ./[computed_state, computed_links, computed_guarantee, computed_report, block_admission,
-  store, history, availability_specifier, export_erasure, bundle_erasure, erasure_layout,
-  auditable_bundle, input_refinement, report_identity, authorized_refinement, authorization_invocation]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/state_history as codec_state_history
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../chain/parameters as chain_parameters
+import ./computed_state as state_computed_state
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
+import ./block_admission as state_block_admission
+import ./store as state_store
+import ./history as state_history
+import ./availability_specifier as state_availability_specifier
+import ./export_erasure as state_export_erasure
+import ./bundle_erasure as state_bundle_erasure
+import ./erasure_layout as state_erasure_layout
+import ./auditable_bundle as state_auditable_bundle
+import ./input_refinement as state_input_refinement
+import ./report_identity as state_report_identity
+import ./authorized_refinement as state_authorized_refinement
+import ./authorization_invocation as state_authorization_invocation
 
 type
   ComputedRecentError* {.pure.} = enum ## Refusals contain no corrected prefix or partially matched anchor certificate.

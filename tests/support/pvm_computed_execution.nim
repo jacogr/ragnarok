@@ -4,9 +4,14 @@
 ## Real multi-entry original service code and three-core context policies for computed accumulation execution.
 
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_round, accumulation_runner]
-import ../../src/codec/[assurances, bounded, c2_records]
-import ./[pvm_computed_round, accumulation_runner_context, pvm_accumulation_context]
+import ../../src/state/computed_round as state_computed_round
+import ../../src/state/accumulation_runner as state_accumulation_runner
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/c2_records as codec_c2_records
+import ./pvm_computed_round
+import ./state_accumulation_runner_context
+import ./pvm_accumulation_context
 
 proc computedExecutionFixture*(withReady = true, withExecution = true,
     invalidEntry = false, withComposition = false, withChain = false,

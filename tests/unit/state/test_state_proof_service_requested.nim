@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Solicitation is a composed verdict requiring positive evidence or authenticated absence.
-import std/[assertions, syncio]
-import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values, state_requests]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_service_helpers
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
 proc main() =
   ## An empty encoded history is requested; a missing history needs an actual absence witness.
   let service = ServiceIndex(7)

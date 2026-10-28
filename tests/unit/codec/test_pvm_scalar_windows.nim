@@ -3,9 +3,10 @@
 
 ## Bounded scalar windows preserve checked access, immutable epochs and shared writer identity.
 # @@Verification={"arc": "pvm_scalar_windows_arc_release"}
-import std/[assertions, syncio]
-import ../../../src/pvm/machine
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/testing_arc_evidence
 
 proc sameMemory(left, right: Memory) =
   ## Every initialized byte and permission participates, including unchanged and inaccessible pages.

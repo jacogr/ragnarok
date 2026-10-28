@@ -3,6 +3,6 @@
 
 ## Caller trust and resource ceilings cannot be replaced outside synchronized admission.
 # @@Verification={"group": "privacy", "expected": "trustedRoot"}
-import ../../../src/state/checkpoint_worker
+import ../../../src/state/checkpoint_worker as state_checkpoint_worker
 let worker = default(CheckpointWorker)
 discard worker.trustedRoot

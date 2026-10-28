@@ -4,11 +4,23 @@
 
 ## Genuine refinement bootstraps compose creation/invoke/frame return and preserve exact nested engine refusal reasons.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_bootstrap, refinement_dispatch, refinement_outcome]
-import ../../../src/pvm/[inner_machines, machine, program, step, gas, refinement_exports]
-import ../../../src/codec/[composite, work_digest]
-import ../../support/[pvm_refinement_outcome, pvm_inner_lifecycle, pvm_inner_invoke, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/pvm_refinement_outcome
+import ../../support/pvm_inner_lifecycle
+import ../../support/pvm_inner_invoke
+import ../../support/testing_arc_evidence
 
 proc limits(): RefinementInvocationLimits =
   ## Inner segment work is independently finite; the outer instruction/call policies remain unchanged.

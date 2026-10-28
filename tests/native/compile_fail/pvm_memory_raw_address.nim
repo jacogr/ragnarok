@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: MemoryAddress but got: uint64", "early": ["load(", "[2] expected: MemoryAddress but got: uint64"]}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 discard load(default(Memory), 0'u64, AccessWidth(1))

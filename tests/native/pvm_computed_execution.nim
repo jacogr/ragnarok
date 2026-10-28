@@ -3,11 +3,15 @@
 
 ## Strict actual computed execution/result-cause probes retain a real paid guest as their positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_execution, computed_round, accumulation_runner,
-  accumulation_execution, accumulation_dispatch]
-import ../../src/codec/bounded
-import ../../src/pvm/step
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_execution as state_computed_execution
+import ../../src/state/computed_round as state_computed_round
+import ../../src/state/accumulation_runner as state_accumulation_runner
+import ../../src/state/accumulation_execution as state_accumulation_execution
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/step as pvm_step
 import ../support/pvm_computed_execution
 
 proc expect[T](outcome: ComputedExecutionResult[T], reason: ComputedExecutionError) =

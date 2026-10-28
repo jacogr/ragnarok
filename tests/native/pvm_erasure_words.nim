@@ -3,9 +3,11 @@
 
 ## Optimized scalar-code guards include actual independent successful parity controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/erasure_words
-import ../../src/codec/[bounded, work_report]
+import std/assertions
+import std/cmdline
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
 
 proc check[T](outcome: ErasureWordResult[T], reason: ErasureWordError) =
   ## Observe the runtime alternative before attempting deliberate failed extraction.

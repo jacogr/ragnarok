@@ -3,10 +3,14 @@
 
 ## Differential prepared execution covers the complete opcode set, source snapshots, budgets, cache reuse and bounded segments.
 # @@Verification={"arc": "pvm_prepared_blocks_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/codec/natural
-import ../../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/codec/natural as codec_natural
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.

@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Qualify all sixteen globals on one original selected configured parent without substituting its map/profile/view.
-import ./[parent_profile, global_snapshot]
+import ./parent_profile as state_parent_profile
+import ./global_snapshot as state_global_snapshot
 type
   SelectedParentGlobals* = object ## Private original profile/view and all-global evidence are distinct from transition completion.
     initialized: bool

@@ -3,12 +3,27 @@
 
 ## Whole-account admission precedence and content-hash boundaries survive unchanged expected-root checkpoint restoration.
 # @@Verification={"arc": "state_planned_account_checkpoint_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, planned_account_checkpoint_context, arc_evidence]
-import ../../../src/state/[planned_account_checkpoint, validated_checkpoint, checkpoint, manifest, store,
-  inventory, account_audit_plan, account_audit, account_invariants, preimage_content]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_planned_account_checkpoint_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/planned_account_checkpoint as state_planned_account_checkpoint
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset hash counters or reject all primitive calls.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

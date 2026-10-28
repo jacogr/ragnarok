@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_reentry_execution_results.nim",
+  "source": "tests/native/state_accumulation_reentry_execution_results.nim",
   "build_name": "accumulation-reentry-execution-results",
   "crypto_library": "crypto",
   "cases": [

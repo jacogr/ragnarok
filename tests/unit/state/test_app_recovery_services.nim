@@ -1,0 +1,97 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# @@Verification={"arc": "application_recovery_services_arc_release"}
+
+## Explicit recovered startup installs the exact map/header pair before listener setup and retains no false finality.
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/chain as app_chain
+import ../../../src/app/checkpoint_identity as app_checkpoint_identity
+import ../../../src/app/checkpoint_codec as app_checkpoint_codec
+import ../../../src/app/checkpoint_recovery as app_checkpoint_recovery
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/state/store as state_store
+import ../../support/app_checkpoint_context
+import ../../support/testing_arc_evidence
+proc recovered(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.raises.} =
+  ## Original producer graph and input bytes retire before Services receives the restored owner.
+  let source = checkpointFixture(variant)
+  let expected = captureApplicationCheckpointIdentity(source).value
+  let envelope = encodeApplicationCheckpoint(source, ByteLimit(high(uint64))).value
+  let header = source.chainView.bestBlock.value.header
+  var wire = newSeq[byte](header.headerInfo.value.consumed)
+  assert encodeOwnedHeader(header, wire).error == HeaderError.None
+  decodeRecoveryCheckpoint(envelope, wire, expected, genesisStoreLimits(), ByteLimit(high(uint64)))
+proc cycle(options: Options, restored: ApplicationRecoveryResult) {.raises.} =
+  ## Closed aggregate lifetimes release their canonical/input owners without starting threads or listeners.
+  var owner = default(Services)
+  defer: owner.close()
+  assert owner.startRecovered(options, "recovery", restored)
+  assert sameStateSnapshot(owner.stateSnapshot.value, restored.value.stateSnapshot.value)
+  assert owner.chainView.retainedCount == 1
+  assert owner.chainView.finalizedBlock.error != GenesisError.None
+  assert not owner.startRecovered(options, "repeat", restored) # Live aggregates cannot be replaced.
+proc main() {.raises.} =
+  ## Recovery never falls back to genesis when supplied trust, context or startup options refuse.
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
+      "RAGNAROK_APPLICATION_CHECKPOINT"), "--state-writes", "0", "--state-write-bytes", "0"], options)
+  var importOptions = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
+      "RAGNAROK_APPLICATION_CHECKPOINT"),
+    "--state-writes", "0", "--state-write-bytes", "0", "--state-checkpoint", "missing-state",
+        "--state-trust", "missing-trust",
+    "--state-header", "missing-header", "--state-checkpoint-bytes", "100000"], importOptions)
+  var denied = default(Services)
+  assert not denied.start(importOptions, "no silent genesis")
+  assert denied.chainView.retainedCount == 0
+  denied.close()
+  let restored = recovered(CheckpointFixtureVariant.Header)
+  let expected = captureApplicationCheckpointIdentity(restored.value).value
+  let original = captureApplicationCheckpointIdentity(checkpointFixture()).value
+  assert not sameApplicationCheckpoint(expected, original) # Selected trusted header deliberately differs from configured genesis.
+  var owner = default(Services)
+  defer: owner.close()
+  let absentRecovery = default(ApplicationRecoveryResult)
+  assert not owner.startRecovered(options, "absent", absentRecovery)
+  assert not owner.startRecovered(default(Options), "invalid", restored)
+  assert owner.chainView.retainedCount == 0
+  let wrongProfile = recovered(CheckpointFixtureVariant.Profile)
+  assert not owner.startRecovered(options, "wrong profile", wrongProfile)
+  assert owner.chainView.retainedCount == 0
+  assert owner.startRecovered(options, "recovered", restored)
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
+  assert sameStateSnapshot(owner.stateSnapshot.value, restored.value.stateSnapshot.value)
+  assert owner.chainView.retainedCount == 1 and owner.chainView.finalizedBlock.error !=
+      GenesisError.None
+  assert not owner.startRecovered(options, "refused repeat", absentRecovery)
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
+  var branch = forkStateStore(owner.stateSnapshot.value).value
+  let refused = branch.apply([StateWrite(key: chapterKey(StateChapter(250)),
+      kind: StateWriteKind.Put, value: @[1'u8])])
+  assert refused.error == StateStoreError.LimitExceeded # Startup cannot widen a restored read-only policy.
+  owner.close()
+  assert owner.chainView.retainedCount == 0
+  assert owner.startRecovered(options, "restart", restored)
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
+  owner.close()
+  cycle(options, restored)
+  let before = getOccupiedMem()
+  for iteration in 0..<1000:
+    cycle(options, restored) # Stable service lifetimes leave no listener/canonical aliases behind.
+  let after = getOccupiedMem()
+  assert before == after
+  recordArcRelease("app_recovery_services", 1000, before, after)
+  echo "PASS application recovery services: exact recovered seed, profile preflight, inherited policy and clean restart"
+try:
+  main() # Fixture/service failures cannot become successful partial startup.
+except:
+  quit(2)

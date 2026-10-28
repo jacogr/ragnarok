@@ -86,7 +86,7 @@ def parse(raw, mode, count, cache, expected):
 def inputs(compiler, library, binary):
     """Freeze complete production closure, pinned compiler/providers and the independent fixture/measurement helpers."""
     value = panel_identity(compiler, library, SOURCE)
-    value['sources'].update(source_hashes([HEADER, Path(__file__), ROOT/'tests/support/full_paged_reference.nim',
+    value['sources'].update(source_hashes([HEADER, Path(__file__), ROOT/'tests/support/state_full_paged_reference.nim',
         ROOT/'Dockerfile', ROOT/'tests/native/storage_io_observer.c', ROOT/'tests/native/crypto_observer.c',
         *sorted((ROOT/'native/storage_io').glob('*.h'))]))
     observed = BUILD/('libcrypto_observed.dylib' if platform.system() == 'Darwin' else 'libcrypto_observed.so')

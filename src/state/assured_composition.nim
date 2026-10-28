@@ -3,9 +3,13 @@
 
 ## Stop, finalize and compose actual assured execution without replaying initial guests or publishing a partial successor.
 
-import ../chain/parameters
-import ./[assured_execution, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion, accumulation_consensus]
+import ../chain/parameters as chain_parameters
+import ./assured_execution as state_assured_execution
+import ./accumulation_driver as state_accumulation_driver
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_completion as state_accumulation_completion
+import ./accumulation_consensus as state_accumulation_consensus
 
 type
   AssuredCompositionConfig* = object ## Independent maintained-phase ceilings never replace retained parameter or block authority.

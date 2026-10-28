@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "CredentialedComputedReport", "early": ["prepareComputedEnvelope(", "[1] expected: CredentialedComputedReport but got: ComputedCredentialInfo"]}
 
-import ../../../src/state/[computed_envelope, computed_credentials, computed_guarantors]
-import ../../../src/codec/guarantees
+import ../../../src/state/computed_envelope as state_computed_envelope
+import ../../../src/state/computed_credentials as state_computed_credentials
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/codec/guarantees as codec_guarantees
 discard prepareComputedEnvelope(default(ComputedCredentialInfo), ComputedEnvelopeLimits())

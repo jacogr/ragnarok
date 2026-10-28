@@ -7,8 +7,11 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_layout, bounded, composite]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
 
 # Only complete success authorizes access to node metadata, hashes or keys.
 proc checked[T](parsed: StateLayoutResult[T]): T =

@@ -9,10 +9,13 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[report_owned, owned]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/owned as codec_owned
 include ../../src/codec/state_availability
-import ../support/probe_cases
+import ../support/testing_probe_cases
 
 ## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.
 # @@ProbeCases

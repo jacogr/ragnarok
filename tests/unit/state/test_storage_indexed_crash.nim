@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Large indexed repositories preserve exact full/torn append restart and independent recovery authority.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_growth_samples, managed_storage_samples, storage_io, storage_crash]
-import ../../../src/storage/[node_repository, full_state_trie, file_repository, managed_repository,
-  managed_manifest, database_identity, journal_codec]
-import ../../../src/codec/bounded
+import ../../support/storage_growth_samples
+import ../../support/app_managed_storage_samples
+import ../../support/storage_io
+import ../../support/storage_crash
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/managed_repository as storage_managed_repository
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/journal_codec as storage_journal_codec
+import ../../../src/codec/bounded as codec_bounded
 
 proc scenario(managed, torn: bool) {.raises.} =
   ## Fork without a parent file lease, then kill only after an actual complete or eight-byte SDK write.

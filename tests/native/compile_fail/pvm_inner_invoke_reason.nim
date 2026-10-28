@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "privacy", "expected": "reason"}
 
-import ../../../src/pvm/[inner_machines, step, gas]
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
 var outcome: InnerMachineResult[InnerMachineTransition]
 discard outcome.reason

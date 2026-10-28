@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: HostCallLimit"}
 
-import ../../../src/pvm/step
+import ../../../src/pvm/step as pvm_step
 # A typed budget holder tests the distinct domain without unrelated callback instantiation failures.
 type Policy = object
   calls: HostCallLimit

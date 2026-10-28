@@ -3,10 +3,16 @@
 
 ## Strict optimized computed-chain result/receipt contracts with genuine success and real late-stage failures.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_chain, computed_composition, store]
-import ../../src/chain/[genesis, provider, parameters]
-import ../support/[pvm_computed_chain, pvm_computed_state_publication]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_chain as state_computed_chain
+import ../../src/state/computed_composition as state_computed_composition
+import ../../src/state/store as state_store
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/provider as chain_provider
+import ../../src/chain/parameters as chain_parameters
+import ../support/pvm_computed_chain
+import ../support/pvm_computed_state_publication
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Cause actual late child capture failure after private publication.

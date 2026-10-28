@@ -3,11 +3,15 @@
 
 ## Optimized guards reject missing report owners and wrong-stage details after genuine positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[refinement_report, refinement_bootstrap, refinement_outcome]
-import ../../src/codec/bounded
-import ../../src/pvm/host_fetch
-import ../support/[pvm_report_results, pvm_refinement_outcome]
+import std/assertions
+import std/cmdline
+import ../../src/state/refinement_report as state_refinement_report
+import ../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../src/state/refinement_outcome as state_refinement_outcome
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../support/pvm_report_results
+import ../support/pvm_refinement_outcome
 
 proc check(outcome: RefinementReportResult[RefinedPackage], reason: RefinementReportError) =
   ## Confirm the actual alternative without statically specializing the intentional misuse below.

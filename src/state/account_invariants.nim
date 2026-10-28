@@ -3,7 +3,10 @@
 
 ## Join independent dependent-field/content/linkage certificates only for the exact same logical inventory.
 ## This targeted accounts certificate deliberately grants no trusted root or full STF validity.
-import ./[inventory, footprint_audit, preimage_content, preimage_linkage]
+import ./inventory as state_inventory
+import ./footprint_audit as state_footprint_audit
+import ./preimage_content as state_preimage_content
+import ./preimage_linkage as state_preimage_linkage
 
 type
   AccountInvariantInfo* = object ## Fixed completed observations preserve each independently bounded predicate.

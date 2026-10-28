@@ -4,10 +4,22 @@
 ## Adopt one genuinely composed accumulation successor only while the target retains its exact admitted parent.
 ## A single final handle replacement preserves historical aliases and inherited policies without payload copies or hashing.
 
-import ./[accumulation_consensus, accumulation_authorization, accumulation_preimages,
-  accumulation_activity, accumulation_validators, accumulation_times, accumulation_statistics,
-  accumulation_finalization, accumulation_outputs, accumulation_execution, accumulation_round,
-  accumulation_queue, report_admission, block_transition, block_admission, store]
+import ./accumulation_consensus as state_accumulation_consensus
+import ./accumulation_authorization as state_accumulation_authorization
+import ./accumulation_preimages as state_accumulation_preimages
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_validators as state_accumulation_validators
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AccumulationPublicationError* {.pure.} = enum ## Refused/default alternatives retain neither a usable candidate nor earlier successful publication.

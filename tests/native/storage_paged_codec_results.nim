@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic codec guard probes share independently successful controls for every accessed representation.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[paged_codec, database_identity, managed_manifest, light_delta]
-import ../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/paged_codec as storage_paged_codec
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Runtime arguments select failed/default metadata without turning negative probes into compile-only evidence.
   let member = paramStr(1)

@@ -3,9 +3,10 @@
 
 ## Typed independent inclusion witnesses and finite verification policies.
 
-import ../../src/state/import_justification
-import ../../src/codec/[bounded, work_report]
-import ../../src/pvm/host_fetch
+import ../../src/state/import_justification as state_import_justification
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_report as codec_work_report
+import ../../src/pvm/host_fetch as pvm_host_fetch
 
 proc importLimits*(): ImportJustificationLimits =
   ## Admit the full twelve-sibling GP domain with separately bounded copying and hash preimages.

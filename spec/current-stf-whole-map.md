@@ -41,7 +41,7 @@ extent; they cannot turn an observation into a golden answer.
 
 ## Native execution and verification
 
-`tests/native/current_stf_driver.nim` independently builds the same explicit original maps and
+`tests/native/state_current_stf_driver.nim` independently builds the same explicit original maps and
 signed child inputs. Every child goes through `prepareCurrentCandidate`, current completion and
 actual chain installation. Each successor passes current-profile/global qualification and complete
 supplied-service matching before installation. Retained original snapshots remain byte-identical.

@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic whole-table guards retain a real complete-source positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, service_directory_context]
-import ../../src/state/[supervision_table, service_directory, inventory]
-import ../../src/codec/bounded
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_service_directory_context
+import ../../src/state/supervision_table as state_supervision_table
+import ../../src/state/service_directory as state_service_directory
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+include nimony_composition_fixture
 proc extract(outcome: SupervisionTableResult[StateSupervisionTable]): StateSupervisionTable {.noinline.} =
   ## Default and bounded construction failure never expose table authority.
   outcome.value

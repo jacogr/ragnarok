@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Declared complete-map snapshot limits refuse before outer hashing, with genuine integrity controls.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_repository, node_records, snapshot_codec,
-  database_identity]
-import ../../../src/codec/bounded
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual primitive counters without substituting hash results.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

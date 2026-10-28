@@ -4,8 +4,8 @@
 ## Explicit bounded revision pins retain immutable read owners without choosing eviction or reclaiming disk.
 ## Catalog copies share immutable slots; releasing a pin affects only the selected catalog handle.
 import std/assertions
-import ./node_repository
-import ../codec/bounded
+import ./node_repository as storage_node_repository
+import ../codec/bounded as codec_bounded
 
 type
   RetentionError* {.pure.} = enum ## Refusals leave the selected catalog and every retained view unchanged.

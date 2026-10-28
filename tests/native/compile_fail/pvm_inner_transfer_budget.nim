@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[5] expected: MemoryByteLimit but got: MemoryLength", "early": ["innerPeekResponse(", "[5] expected: MemoryByteLimit but got: MemoryLength"]}
 
-import ../../../src/pvm/[inner_machines, machine]
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
 discard innerPeekResponse(default(InnerMachines), MachineGas(0), default(RegisterFile),
   default(Memory), MemoryLength(4))

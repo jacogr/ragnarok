@@ -9,9 +9,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 include ../../src/codec/state_workqueues
-import ../support/probe_cases
+import ../support/testing_probe_cases
 
 ## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.
 # @@ProbeCases

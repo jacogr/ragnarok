@@ -8,7 +8,7 @@
 ## Exposes Ticket and TicketAttempt domains, encodeTickets/decodeTickets, inspection and checked
 ## count/extent results.
 
-import ./natural
+import ./natural as codec_natural
 
 type
   TicketAttempt* = distinct uint8 ## An entry index occupies exactly one octet, including values whose compact encoding would be longer.
@@ -71,7 +71,7 @@ proc encodeTickets*(values: openArray[Ticket], limit: TicketLimit,
   ## Validate the entire source extent and output before committing a canonical tickets extrinsic.
   # Count policy precedes extent arithmetic, allocation or any destination access.
   if uint64(values.len) > uint64(limit): return TicketWrite(status: TicketError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(values.len))
+  let prefix = codec_natural.encode(JamNatural(values.len))
   # Both wire stride and host record stride must be representable before alias checks.
   if values.len > (high(int)-prefix.len) div 785 or values.len > high(int) div sizeof(Ticket):
     return TicketWrite(status: TicketError.LengthOverflow)
@@ -96,10 +96,10 @@ proc encodeTickets*(values: openArray[Ticket], limit: TicketLimit,
 proc decodeTickets*(input: openArray[byte], limit: TicketLimit,
                     output: var openArray[Ticket]): TicketRead {.raises: [].} =
   ## Decode into fully owned caller records atomically, consuming exactly one extrinsic prefix.
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Preserve canonicality/truncation reasons before any untrusted count can be narrowed.
   if not prefix.ok:
-    return TicketRead(status: if prefix.error == natural.truncated: TicketError.Truncated
+    return TicketRead(status: if prefix.error == codec_natural.truncated: TicketError.Truncated
       else: TicketError.NonCanonical) # Overlong count encodings are not canonical extrinsics.
   let count = uint64(prefix.value)
   # Count policy bounds work before proving the complete wire stride.
@@ -129,10 +129,10 @@ proc decodeTickets*(input: openArray[byte], limit: TicketLimit,
 
 proc inspectTickets*(input: openArray[byte], limit: TicketLimit): TicketRead {.raises: [].} =
   ## Inspect complete ticket framing without allocating records or exposing any borrowed proof bytes.
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # An incomplete/overlong count cannot authorize a record extent or host conversion.
   if not prefix.ok:
-    return TicketRead(status: if prefix.error == natural.truncated: TicketError.Truncated
+    return TicketRead(status: if prefix.error == codec_natural.truncated: TicketError.Truncated
       else: TicketError.NonCanonical) # Canonical framing precedes count policy.
   let count = uint64(prefix.value)
   # Apply the same configured count ceiling as the existing caller-record decoder.

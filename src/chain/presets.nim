@@ -3,7 +3,7 @@
 
 ## Canonical GP0.8 Tiny/Full and experimental issue215 Fuzz parameters are selected once at startup.
 ## The catalog owns every protocol scalar and the explicit Fuzz D interpretation; resource limits remain separate.
-import ./parameters
+import ./parameters as chain_parameters
 
 type ChainPreset* {.pure.} = enum Tiny, Full, Fuzz ## Named protocol presets never select mutable global state.
 

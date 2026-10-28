@@ -4,11 +4,23 @@
 ## One-child dispatcher drives native I/O, private preparation and actual deferred adoption separately.
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
-import ./[block_download_peers, block_download_session, block_download_stream]
-import ../app/[services, handoff, chain, candidate, block_input, block_download, download_schedule, preparation_worker]
-import ../codec/[bounded, header]
-import ../chain/genesis
-import ../state/[accumulation_completion, store, report_anchors]
+import ./block_download_peers as quic_block_download_peers
+import ./block_download_session as quic_block_download_session
+import ./block_download_stream as quic_block_download_stream
+import ../app/services as app_services
+import ../app/handoff as app_handoff
+import ../app/chain as app_chain
+import ../app/candidate as app_candidate
+import ../app/block_input as app_block_input
+import ../app/block_download as app_block_download
+import ../app/download_schedule as app_download_schedule
+import ../app/preparation_worker as app_preparation_worker
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../chain/genesis as chain_genesis
+import ../state/accumulation_completion as state_accumulation_completion
+import ../state/store as state_store
+import ../state/report_anchors as state_report_anchors
 
 type
   DownloadLoopTick* = distinct uint64 ## Monotonic host milliseconds shared by all dispatcher deadlines.

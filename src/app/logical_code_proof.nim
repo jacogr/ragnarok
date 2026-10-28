@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Export only the authenticated dependencies of metadata-selected code, deriving request length and time from one original qualified logical source.
-import ./[logical_code, logical_proof, proof_query]
-import ../state/[current_logical, code_availability, proof_plan]
-import ../codec/[bounded, state_layout, state_requests, state_service_values]
+import ./logical_code as app_logical_code
+import ./logical_proof as app_logical_proof
+import ./proof_query as app_proof_query
+import ../state/current_logical as state_current_logical
+import ../state/code_availability as state_code_availability
+import ../state/proof_plan as state_proof_plan
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_service_values as codec_state_service_values
 type
   LogicalCodeProofLimits* = object ## Complete availability auditing and the fixed selector's input/retained/sort storage have separate budgets.
     code*: CodeAvailabilityLimits

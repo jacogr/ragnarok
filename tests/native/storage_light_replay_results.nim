@@ -2,10 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic replay and explicit-tail-plan probes require real runtime guards with successful controls.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_journal_replay, light_journal_manifest, light_delta, light_snapshot,
-  light_state_cache, state_proof, database_identity, managed_manifest]
-import ../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Dynamic origins select default, failed and complete alternatives without compile-time guard folding.
   let member = paramStr(1)

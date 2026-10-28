@@ -151,5 +151,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_preparation_lease_results.nim"
+  "source": "tests/native/app_preparation_lease_results.nim"
 }

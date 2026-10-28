@@ -4,13 +4,29 @@
 
 ## Authored bless programs verify exact charging, authority, dictionary capture and checkpoint ownership.
 
-import std/[assertions, syncio]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_layout, state_privileges, c2_records]
-import ../../../src/state/[accumulation_dispatch, accumulation_effects, accumulation_context,
-  accumulation_machine, accumulation_invocation, accumulation_outcome, store]
-import ../../../src/pvm/[machine, program, step, gas, host_fetch]
-import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/store as state_store
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/pvm_accumulation_program
+import ../../support/pvm_accumulation_context
+import ../../support/testing_arc_evidence
 
 ## Refuse only the first Merklization hash after authentic fixture construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

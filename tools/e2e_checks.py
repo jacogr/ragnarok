@@ -179,14 +179,14 @@ def application_download_load(context):
     from native_fixtures import unit_runtime_fixtures
     from application_download_resources import observe
     checks = context.checks
-    compiled, binary = checks.build(context.compiler, ROOT/'tests/native/application_download_load.nim',
+    compiled, binary = checks.build(context.compiler, ROOT/'tests/native/app_download_load.nim',
                                    'application-download-load', context.crypto,
                                    native_libraries=(context.bs,), quic_library=context.quic)
     observed = dict(build=compiled, passed=False)
     if compiled['exit_code'] == 0:
         # Reuse the signed-report/two-identity fixture adapter without reporting a native unit verdict.
         _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
-            suite='application_download_loop')['application_download_loop']
+            suite='app_download_loop')['app_download_loop']
         for path, expected in files:
             # Missing or altered independent inputs fail before launching the linked workload.
             if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
@@ -221,7 +221,7 @@ def application_current_download(context):
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
         compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_download.nim', 'application-current-download',
+            ROOT/'tests/native/app_current_download.nim', 'application-current-download',
             context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
@@ -249,7 +249,7 @@ def prepare_current_sequence_responder(context):
     if context.current_download_peer[0]['exit_code'] == 0:
         # Failed peer builds cannot launch stale witnesses; every consumer checks this same build result.
         context.current_sequence_responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-sequence',
+            ROOT/'tests/native/app_current_sequence.nim', 'application-current-sequence',
             context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
 
 
@@ -393,12 +393,12 @@ def application_download_sequence(context):
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
         compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_download_sequence.nim', 'application-download-sequence',
+            ROOT/'tests/native/app_download_sequence.nim', 'application-download-sequence',
             context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
-                suite='application_download_progress')['application_download_progress']
+                suite='app_download_progress')['app_download_progress']
             for path, expected in files:
                 # Preserve independent input identities before launching either live process.
                 if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
@@ -425,12 +425,12 @@ def ancestor_executable(context, *, discovery=False):
     if peer_build['exit_code'] == 0:
         # Only the current production build may drive the independent native witness.
         compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_remote_ancestors.nim', 'application-remote-ancestors',
+            ROOT/'tests/native/app_remote_ancestors.nim', 'application-remote-ancestors',
             context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
-                suite='application_download_progress')['application_download_progress']
+                suite='app_download_progress')['app_download_progress']
             for path, expected in files:
                 # Actual generated input identities remain independently checked before either process starts.
                 if hashlib.sha256(path.read_bytes()).hexdigest() != expected:

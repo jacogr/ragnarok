@@ -4,8 +4,10 @@
 ## Bind canonical outgoing transfer collection and paid gas to an actual completed admitted initial round.
 ## No replacement outcome array, source state or caller-authored gas observation is accepted.
 
-import ../codec/work_digest
-import ./[accumulation_execution, accumulation_batch, accumulation_transfers]
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_batch as state_accumulation_batch
+import ./accumulation_transfers as state_accumulation_transfers
 
 type
   AccumulationRoundTransferError* {.pure.} = enum ## Default/refused results retain no earlier collection, source or gas progress.

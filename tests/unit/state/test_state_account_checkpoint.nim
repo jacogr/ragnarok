@@ -3,12 +3,28 @@
 
 ## Expected-root restoration exposes targeted account evidence only after each independently bounded phase completes.
 # @@Verification={"arc": "state_account_checkpoint_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_checkpoint_context, arc_evidence]
-import ../../../src/state/[account_checkpoint, validated_checkpoint, checkpoint, store, manifest,
-  inventory, account_invariants, footprint_audit, preimage_linkage, preimage_content]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_requests, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_checkpoint_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/account_checkpoint as state_account_checkpoint
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Retire the entire restored graph and every joined certificate inside one activation.
   let result = decodeAccountCheckpoint(wire, root, services, inventoryProfile, accountCheckpointLimits)

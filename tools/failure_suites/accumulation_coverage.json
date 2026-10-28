@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_coverage_results.nim",
+  "source": "tests/native/state_accumulation_coverage_results.nim",
   "build_name": "accumulation-coverage-results",
   "crypto_library": "crypto",
   "cases": [

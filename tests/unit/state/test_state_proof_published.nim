@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every key in all fourteen unchanged pinned maps supplies membership under its original published root.
-import std/[assertions, syncio]
-import ../../../src/state/[store, trie_proof, snapshot_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../support/published_state
+import std/assertions
+import std/syncio
+import ../../../src/state/store as state_store
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/snapshot_proof as state_snapshot_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/codec_published_state
 proc main() {.raises.} =
   ## Reuse exact pinned fixture preparation without converting a partial witness into a complete map.
   let mappings = publishedMappings()

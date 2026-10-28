@@ -3,10 +3,14 @@
 
 ## Checkpoint serialization/restoration preserves all fourteen independently pinned published complete maps.
 
-import std/[assertions, syncio]
-import ../../../src/state/[checkpoint, checkpoint_transfer, store]
-import ../../../src/codec/[state_trie, bounded]
-import ../../support/published_state
+import std/assertions
+import std/syncio
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/codec_published_state
 
 proc replay(expected: Mapping) =
   ## Original fixture roots and every original key/value are independent expectations, never checkpoint-derived goldens.

@@ -3,11 +3,19 @@
 
 ## Independent golden selections and anchors reject schema confusion, malformed metadata and provider failures.
 # @@Verification={"arc":"storage_light_journal_manifest_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[light_journal_manifest, light_snapshot, light_delta,
-  light_state_cache, state_proof, database_identity, managed_manifest, node_repository]
-import ../../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal and no-provider preflight cases use the maintained observer.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

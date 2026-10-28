@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Detached projection alternatives stay private and success-guarded.
-import ../../../src/state/supplied_services
+import ../../../src/state/supplied_services as state_supplied_services
 var outcome = default(SuppliedServicesResult)
 discard outcome.completed

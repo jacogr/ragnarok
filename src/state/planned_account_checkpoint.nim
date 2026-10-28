@@ -3,8 +3,13 @@
 
 ## Restore unchanged checkpoint transport under an explicit root, then preflight whole-account policies before semantic execution.
 ## All phases are synchronous and source-bound; this adapter never installs state or discovers root/profile authority.
-import ../codec/[state_trie, state_composition]
-import ./[validated_checkpoint, inventory, account_audit_plan, account_audit, account_invariants]
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./validated_checkpoint as state_validated_checkpoint
+import ./inventory as state_inventory
+import ./account_audit_plan as state_account_audit_plan
+import ./account_audit as state_account_audit
+import ./account_invariants as state_account_invariants
 
 type
   PlannedAccountCheckpointLimits* = object ## Restoration, exact capture and all planning/execution policies stay explicit.

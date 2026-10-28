@@ -3,7 +3,8 @@
 ## Experimental ARM64 compiler for sealed register fragments and guarded connected blocks.
 ## Code borrows invocation registers and a bounded scalar context, never guest/source pointers.
 import std/assertions
-import ../[program, machine]
+import ../program as pvm_program
+import ../machine as pvm_machine
 
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}
 proc createArenaNative(): nil pointer {.cdecl, importc: "pvm_arm64_arena_create",

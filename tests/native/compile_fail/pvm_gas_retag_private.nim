@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/[program, gas]
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/gas as pvm_gas
 var r = default(GasResult)
 r.status = GasError.None

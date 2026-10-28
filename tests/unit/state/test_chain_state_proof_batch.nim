@@ -1,12 +1,22 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-import std/[assertions, syncio, envvars]
-import ../../../src/chain/[genesis, provider, state_proof]
-import ../../../src/app/chain
-import ../../../src/codec/[report_owned, header, bounded, state_layout, state_trie]
-import ../../../src/state/[store, trie_proof, proof_service]
-import ../../support/application_candidate_context
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/state_proof as chain_state_proof
+import ../../../src/app/chain as app_chain
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/state/store as state_store
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/proof_service as state_proof_service
+import ../../support/app_candidate_context
 proc run() {.raises.} =
   ## Use the actual signed fixture's immutable selected posterior state.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

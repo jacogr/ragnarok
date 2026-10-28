@@ -4,8 +4,13 @@
 ## Fulfill original terminal provisions after complete selected accounts, including requests belonging to new accounts.
 ## Annulment never filters original provide contributions; all work and Merkle changes remain on a private complete fork.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
-import ./[accumulation_account_phase, accumulation_coverage,
-  accumulation_annulment, accumulation_outcome, accumulation_effects, accumulation_provisions, store]
+import ./accumulation_account_phase as state_accumulation_account_phase
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_provisions as state_accumulation_provisions
+import ./store as state_store
 
 type
   AccumulationProvisionPhaseError* {.pure.} = enum ## Refusals expose no partial union, account map or proposed root.

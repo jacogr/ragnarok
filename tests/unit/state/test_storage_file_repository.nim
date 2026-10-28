@@ -3,11 +3,18 @@
 
 ## Real append/sync/reopen and cooperative ownership preserve retained complete physical views.
 # @@Verification={"arc": "storage_file_repository_arc_release"}
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[file_repository, node_repository, node_records, full_state_trie, database_identity]
-import ../../../src/codec/[state_trie, bounded]
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc cycle() =
   ## Files live inside the native runner's ignored work directory; cleanup follows explicit close.

@@ -3,6 +3,6 @@
 
 ## A copied memory-fact value exposes queries, never mutable backing fields.
 # @@Verification={"group": "privacy", "expected": "widthValue"}
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let copied = default(MemoryOperands)
 discard copied.widthValue

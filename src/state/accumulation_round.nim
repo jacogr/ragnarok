@@ -4,9 +4,18 @@
 ## GP 0.8.0 accseq/finalstateaccumulation: initial gas-bounded prefix and invocation preparation.
 ## Exposes pure and admitted-parent-bound immutable plans; never executes or publishes state.
 
-import ../codec/[bounded, work_digest, report_owned, state_privileges, state_layout]
-import ./[accumulation_queue, accumulation_operands, accumulation_inputs, report_admission,
-  block_transition, block_admission, store]
+import ../codec/bounded as codec_bounded
+import ../codec/work_digest as codec_work_digest
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_layout as codec_state_layout
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_inputs as state_accumulation_inputs
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AccumulationRoundConfig* = object ## Explicit chain gas parameters and independent ceilings for parent decoding and projections.

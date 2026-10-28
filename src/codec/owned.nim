@@ -7,7 +7,10 @@
 ## Exposes OwnedFrame snapshots for bytes, optionals, work, preimages and digests, with bounded
 ## copy and re-encoding operations.
 
-import ./[natural, bounded, composite, work_digest]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_digest as codec_work_digest
 
 type
   OwnedKind* {.pure.} = enum ## Each snapshot has exactly one validated schema, independent of later input mutations.
@@ -153,11 +156,11 @@ proc capture(input: openArray[byte], kind: OwnedKind, limit: ByteLimit,
     # Payload-free work variants need no descriptor.
     if data.hasBlob: data.blob = parsed.value.blob
   of Preimages:
-    let count = natural.decode(input)
+    let count = codec_natural.decode(input)
     # Validate the count before narrowing or allocating record storage.
     if not count.ok:
       return OwnedResult[OwnedFrame](status: if count.error ==
-          natural.truncated: OwnershipError.Truncated else: OwnershipError.NonCanonical)
+          codec_natural.truncated: OwnershipError.Truncated else: OwnershipError.NonCanonical)
     let claimed = uint64(count.value)
     # Check policy before the minimum-wire proof, matching the borrowed decoder's precedence.
     if claimed > uint64(limits.items): return OwnedResult[OwnedFrame](

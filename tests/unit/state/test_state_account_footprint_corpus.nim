@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent arbitrary-precision item/octet expectations cover both output domains without mirroring checked arithmetic.
-import std/[assertions, envvars, syncio]
-import ../../support/fixed_arithmetic_corpus
-import ../../../src/state/account_footprint
-import ../../../src/codec/state_accounts
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/testing_fixed_arithmetic_corpus
+import ../../../src/state/account_footprint as state_account_footprint
+import ../../../src/codec/state_accounts as codec_state_accounts
 proc main() {.raises.} =
   ## Require every SHA-pinned shape's exact success values or explicit nonrepresentability.
   let records = arithmeticCorpus(getEnv("RAGNAROK_ACCOUNT_FOOTPRINT_CORPUS"), 2048, 57)

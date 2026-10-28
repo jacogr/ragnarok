@@ -4,11 +4,19 @@
 
 ## Complete independent erasure bytes, exact aggregate caps and original executed-bundle provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[auditable_bundle, erasure_layout, erasure_words, bundle_erasure]
-import ../../../src/codec/[bounded, work_report]
-import ../../../src/crypto/primitives
-import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_bundle_erasure_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/state/erasure_layout as state_erasure_layout
+import ../../../src/state/erasure_words as state_erasure_words
+import ../../../src/state/bundle_erasure as state_bundle_erasure
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_auditable_bundle
+import ../../support/pvm_bundle_vectors
+import ../../support/pvm_bundle_erasure_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after original execution to demonstrate pure erasure preparation.

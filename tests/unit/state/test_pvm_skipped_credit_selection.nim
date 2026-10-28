@@ -3,12 +3,27 @@
 # @@Verification={"arc": "pvm_skipped_credit_selection_arc_release"}
 
 ## Genuine unavailable-code certificates preserve liquid/protected/zero credits and common-frame ownership in M selection.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulment, accumulation_account_selection,
-  accumulation_outcome, accumulation_inputs, accumulation_service, accumulation_skip, store]
-import ../../../src/codec/[bounded, header, state_accounts, state_service_values, state_layout,
-  state_trie, state_privileges, state_safrole, c2_records]
-import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_account_selection as state_accumulation_account_selection
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/state/accumulation_skip as state_accumulation_skip
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../support/state_accumulation_annulment_context
+import ../../support/state_accumulation_batch_context
+import ../../support/testing_arc_evidence
 
 # Account-source selection must retain precredited maps, never recompute or publish their roots.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

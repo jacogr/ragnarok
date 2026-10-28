@@ -2,11 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent rooted sources reject substituted logical declarations in every complete service namespace.
-import std/[assertions, envvars, strutils, syncio]
+import std/assertions
+import std/envvars
+import std/strutils
+import std/syncio
 import ../../support/state_complete_serialization_context
-import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
-import ../../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-  state_composition, state_accounts, state_service_values, state_requests]
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
 const
   profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6), previous: ValidatorCount(
       6), epochSlots: EpochSlots(2))

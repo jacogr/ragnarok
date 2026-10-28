@@ -4,7 +4,7 @@
 ## Failed writable-page counts and range updates cannot expose values or partial memory owners.
 
 import std/cmdline
-import ../../src/pvm/machine
+import ../../src/pvm/machine as pvm_machine
 let empty = captureMemory([], PageLimit(0)).value
 case paramStr(1)
 of "count-owner":

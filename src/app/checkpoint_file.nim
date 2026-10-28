@@ -3,10 +3,15 @@
 
 ## Bounded synchronous file adapters preserve whole application envelopes and independently supplied recovery context.
 ## Startup/offline callers own scheduling; these APIs never run in transport callbacks or adopt a canonical chain.
-import ./[chain, checkpoint_identity, checkpoint_codec, checkpoint_transfer]
-import ../state/[store, checkpoint]
-import ../codec/bounded
-import ../lib/[atomic_file, atomic_file_writer]
+import ./chain as app_chain
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_codec as app_checkpoint_codec
+import ./checkpoint_transfer as app_checkpoint_transfer
+import ../state/store as state_store
+import ../state/checkpoint as state_checkpoint
+import ../codec/bounded as codec_bounded
+import ../lib/atomic_file as lib_atomic_file
+import ../lib/atomic_file_writer as lib_atomic_file_writer
 
 type
   ApplicationCheckpointFileError* {.pure.} = enum ## Native and selected codec failures never carry a partial map or successful publication receipt.

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bootstrap process death must preserve forensic files and cannot silently overwrite an existing target.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_bootstrap]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_bootstrap
 proc main() {.raises.} =
   ## Independently count genuine creation boundaries before killing after every selected successful syscall.
   for operation in [syncIo]:

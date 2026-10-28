@@ -3,11 +3,15 @@
 
 ## Bounded caller-owned windows preserve held-inode identity, exact EOF, observable retirement and allocation independence.
 # @@Verification={"arc":"storage_held_journal_ranges_arc_release"}
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[arc_evidence, storage_io]
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only equal-byte inode replacement cannot become selected-file authority.
 proc seed(directory: var ManagedDirectory, path: string): seq[byte] =

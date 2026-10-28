@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/refinement_digest
+import ../../../src/state/refinement_digest as state_refinement_digest
 var value: RefinementDigestResult[RefinementDigests]
 discard value.completed

@@ -7,8 +7,8 @@
 ## Exposes assuranceMessage and verifyAssurances with owned transcripts and checked verification
 ## counts.
 
-import ./primitives
-import ../codec/assurances
+import ./primitives as crypto_primitives
+import ../codec/assurances as codec_assurances
 
 type
   AssuranceParent* = distinct array[32, byte] ## Expected block parent is distinct from an assurance anchor and from a computed digest.

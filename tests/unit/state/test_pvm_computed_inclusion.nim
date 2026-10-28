@@ -4,10 +4,18 @@
 
 ## Actual signed guarantee-bearing candidates prove exact inclusion, refusal, provenance and lifetime behavior.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_inclusion, computed_batch, block_transition, block_admission, store]
-import ../../../src/codec/[bounded, block_codec]
-import ../../support/[pvm_computed_inclusion, pvm_computed_batch, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_inclusion as state_computed_inclusion
+import ../../../src/state/computed_batch as state_computed_batch
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../support/pvm_computed_inclusion
+import ../../support/pvm_computed_batch
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force any unexpected new hash call to refuse after original signing/admission completes.

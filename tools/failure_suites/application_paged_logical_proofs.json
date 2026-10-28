@@ -52,5 +52,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_paged_logical_proofs_results.nim"
+  "source": "tests/native/app_paged_logical_proofs_results.nim"
 }

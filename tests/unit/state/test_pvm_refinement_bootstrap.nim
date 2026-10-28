@@ -4,14 +4,33 @@
 
 ## Literal code/package hashes and argument bytes verify historical code binding and entry-zero bootstrap.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_bootstrap, refinement_dispatch, store]
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch, refinement_exports, output]
-import ../../../src/chain/parameters
-import ../../../src/crypto/primitives
-import ../../../src/codec/[bounded, composite, natural, work_package, work_report, work_digest,
-  state_accounts, state_layout, state_service_values, state_requests, state_trie]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/store as state_store
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/pvm/output as pvm_output
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/natural as codec_natural
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
@@ -132,7 +151,7 @@ assert big.bootstrapMachine.error == RefinementBootstrapError.NotReady
 assert big.bootstrapArguments.error == RefinementBootstrapError.NotReady
 assert hosts(big).error == RefinementBootstrapError.NotReady
 # Exactly four million bytes, mostly metadata, remains eligible; only the authenticated code suffix initializes.
-let metadata = natural.encode(JamNatural(3999975))
+let metadata = codec_natural.encode(JamNatural(3999975))
 assert metadata.len == 4
 var exact: seq[byte] = @[]
 for index in 0..<metadata.len: exact.add(metadata.bytes[index])

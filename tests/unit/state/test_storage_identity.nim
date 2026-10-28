@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen full-state identity bytes reject every prefix, octet mutation and foreign chain.
-import std/[assertions, syncio]
-import ../../../src/storage/database_identity
-import ../../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
 
 proc main() =
   ## Keep mode/schema/chain checks independent of physical-node or application consumers.

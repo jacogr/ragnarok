@@ -63,5 +63,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_download_session_results.nim"
+  "source": "tests/native/app_download_session_results.nim"
 }

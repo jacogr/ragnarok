@@ -5,7 +5,7 @@
 # @@Verification={"group": "contracts", "expected": "decoded.success"}
 
 import std/assertions
-import ../../../src/chain/parameters
+import ../../../src/chain/parameters as chain_parameters
 let decoded = decodeParameters([])
 assert not decoded.ok
 discard decoded.value

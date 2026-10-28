@@ -3,11 +3,18 @@
 
 ## Independent complete sources distinguish mismatched dependent metadata from bounded refusal and ownership.
 # @@Verification={"arc": "state_footprint_audit_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[footprint_audit, inventory, manifest, store]
-import ../../../src/codec/[bounded, state_accounts]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force hash refusal to prove this audit consumes only already captured facts.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

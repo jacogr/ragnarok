@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One independently validated lifetime scenario emits scalar checkpoints after every owner retires.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/storage_lifetime_samples
 
 proc main() =

@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict guarded reconstruction result alternatives with actual original/current positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/current_refresh_context
-import ../../src/state/[current_refresh, current_refresh_plan]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_refresh_context
+import ../../src/state/current_refresh as state_current_refresh
+import ../../src/state/current_refresh_plan as state_current_refresh_plan
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(value: CurrentRefreshResult) {.noinline.} =
   ## No default or refused frozen-plan execution exposes partial mutable declarations.
   discard value.value

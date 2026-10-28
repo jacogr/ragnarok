@@ -2,13 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Valid outer checksums never authorize corrupt inner records, implicit repair or leaked replay locks.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
-  managed_repository, managed_manifest, database_identity, journal_codec, snapshot_codec, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
-import ../../../src/crypto/primitives
+import ../../support/storage_samples
+import ../../support/app_managed_storage_samples
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/managed_repository as storage_managed_repository
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/journal_codec as storage_journal_codec
+import ../../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/crypto/primitives as crypto_primitives
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Give finite real-file fixtures a process-owned namespace.

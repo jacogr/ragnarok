@@ -3,13 +3,24 @@
 # @@Verification={"arc": "pvm_current_sequence_driver_arc_release"}
 
 ## Bounded current driving proves actual termination, exact history capacity and root/manual state parity without exposing successful prefixes on refusal.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_trie]
-import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round,
-  accumulation_coverage, store]
-import ../../support/[accumulation_current_round_context, accumulation_current_sequence_context,
-    accumulation_current_driver_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_round_context
+import ../../support/state_accumulation_current_sequence_context
+import ../../support/state_accumulation_current_driver_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc policy(): CurrentSequenceDriverLimits =

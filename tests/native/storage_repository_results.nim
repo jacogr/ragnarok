@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic default/refused repository accesses require exact optimized public contracts.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/storage_samples
-import ../../src/storage/[node_repository, node_records, full_state_trie]
-import ../../src/codec/[state_layout, state_trie]
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 
 proc main() =
   ## Genuine active read controls run through the same native profile as refused accesses.

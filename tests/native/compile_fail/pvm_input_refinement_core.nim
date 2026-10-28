@@ -5,8 +5,10 @@
 
 # @@Verification={"group": "nominal", "expected": "CoreIndex", "early": ["runInputRefinement(", "[3] expected: CoreIndex but got: ServiceIndex"]}
 
-import ../../../src/state/[input_refinement, import_inputs, store]
-import ../../../src/codec/composite
-import ../../../src/chain/parameters
+import ../../../src/state/input_refinement as state_input_refinement
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/state/store as state_store
+import ../../../src/codec/composite as codec_composite
+import ../../../src/chain/parameters as chain_parameters
 discard runInputRefinement(default(StateStoreSnapshot), default(VerifiedImportInputs), ServiceIndex(
     0), default(Parameters), default(InputRefinementLimits))

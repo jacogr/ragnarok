@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed export lifetimes retain an unacknowledged joined publication receipt across repeated shutdown and restart attempts.
-import ./[checkpoint_worker, checkpoint_file, checkpoint_transfer]
-import ../codec/bounded
-import ../state/store
-import ./checkpoint_identity
+import ./checkpoint_worker as app_checkpoint_worker
+import ./checkpoint_file as app_checkpoint_file
+import ./checkpoint_transfer as app_checkpoint_transfer
+import ../codec/bounded as codec_bounded
+import ../state/store as state_store
+import ./checkpoint_identity as app_checkpoint_identity
 
 type ApplicationCheckpointSession* = object ## One stable worker address and fixed shutdown journal have a single host owner.
   worker: ApplicationCheckpointWorker

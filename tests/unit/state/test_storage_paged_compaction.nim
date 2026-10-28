@@ -3,11 +3,21 @@
 
 ## Source-derived compaction preserves retained knowledge/sequence through native faults and independent byte witnesses.
 # @@Verification={"arc":"storage_paged_compaction_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[paged_native_fixture, paged_reference, storage_io, arc_evidence]
-import ../../../src/storage/[paged_store, paged_codec, paged_stream, file_errors, paged_io,
-  managed_manifest,
-  light_delta, light_state_cache, state_proof]
+import std/assertions
+import std/syncio
+import ../../support/storage_paged_native_fixture
+import ../../support/storage_paged_reference
+import ../../support/storage_io
+import ../../support/testing_arc_evidence
+import ../../../src/storage/paged_store as storage_paged_store
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/paged_stream as storage_paged_stream
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal must remain independent of local IO errors.
 proc text(bytes: seq[byte]): string =

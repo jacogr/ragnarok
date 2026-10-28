@@ -7,7 +7,7 @@
 ## Exposes typed metadata and registration/status/connection event encoders with checked owned
 ## wire results.
 
-import ../codec/natural
+import ../codec/natural as codec_natural
 
 const MetadataSize* = 204
 const MaxCores* = 1024

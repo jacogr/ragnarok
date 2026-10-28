@@ -3,8 +3,11 @@
 
 ## Reserve and execute an authenticated assurance-fed queue under its retained original parameter authority.
 
-import ../chain/parameters
-import ./[assured_queue, accumulation_round, accumulation_runner, accumulation_execution]
+import ../chain/parameters as chain_parameters
+import ./assured_queue as state_assured_queue
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_runner as state_accumulation_runner
+import ./accumulation_execution as state_accumulation_execution
 
 type
   AssuredExecutionConfig* = object ## Semantic gas remains original while independent round and runner ceilings bound work.

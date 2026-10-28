@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual managed regular files exercise empty, exact chunk, tail and configured read ceilings.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
 import ../../support/storage_io
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 
 proc scenario(size: int) {.raises.} =
   ## Every detached byte survives repeated short reads and preserves the selected inode's contents.

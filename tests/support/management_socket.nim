@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real local HTTP client with independent framing and bounded nonblocking receive polling.
-import std/[assertions, strutils, nativesocket]
+import std/assertions
+import std/strutils
+import std/nativesocket
 import std/posix/posix
-import ../../src/management/server
+import ../../src/management/server as management_server
 
 type LocalEndpoint = object ## POSIX local-address prefix with a bounded pathname and final NUL.
   when defined(macosx):

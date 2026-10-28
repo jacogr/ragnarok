@@ -5,13 +5,16 @@
 ## Options owns normalized command arguments and explicit enable/configuration values. Failed parsing
 ## clears the output; private fields and read accessors prevent partial configuration from escaping.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import std/[strutils, assertions]
-import ../codec/bounded
+import std/strutils
+import std/assertions
+import ../codec/bounded as codec_bounded
 
-import ./[cli_catalog, cli_commands, cli_defaults]
-export cli_defaults
+import ./cli_catalog as app_cli_catalog
+import ./cli_commands as app_cli_commands
+import ./cli_defaults as app_cli_defaults
+export app_cli_defaults
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool

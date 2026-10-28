@@ -4,8 +4,10 @@
 ## Default and closed-listener publication results expose no child or unselected adoption failure.
 
 import std/cmdline
-import ../../src/rpc/server
-import ../../src/state/[store, accumulation_finalization, accumulation_completion]
+import ../../src/rpc/server as rpc_server
+import ../../src/state/store as state_store
+import ../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../src/state/accumulation_completion as state_accumulation_completion
 
 let argument = paramStr(1)
 var owner = default(Server)

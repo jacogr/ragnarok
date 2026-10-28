@@ -3,11 +3,21 @@
 # @@Verification={"arc": "pvm_parallel_account_selection_arc_release"}
 
 ## Genuine annulment certificates bind M's logical account to the exact selected prior/invoker/supervisor snapshot.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_account_selection, accumulation_annulment,
-  accumulation_outcome, accumulation_effects, accumulation_inputs, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
-import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_account_selection as state_accumulation_account_selection
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/state_accumulation_annulment_context
+import ../../support/state_accumulation_batch_context
+import ../../support/testing_arc_evidence
 
 # Source selection performs no state hashes and publishes no replacement state store.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

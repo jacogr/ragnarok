@@ -3,9 +3,11 @@
 
 ## Exact checksummed revision frames support bounded append-only physical node journals.
 ## Framing is local integrity; selected roots still require independent caller trust.
-import ./[node_records, record_codec, node_repository]
-import ../codec/bounded
-import ../crypto/primitives
+import ./node_records as storage_node_records
+import ./record_codec as storage_record_codec
+import ./node_repository as storage_node_repository
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
 
 type
   FrameError* {.pure.} = enum ## Only complete frames expose transport metadata or bytes.

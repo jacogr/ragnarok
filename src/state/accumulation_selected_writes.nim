@@ -3,9 +3,16 @@
 
 ## Bounded physical writes for an exact-source selected prior-account subset M and new-account union n.
 ## Retained complete snapshots authorize only the selected logical accounts; this plan does not publish state.
-import ../codec/[bounded, state_accounts, state_layout, state_trie]
-import ./[accumulation_annulment, accumulation_account_selection, accumulation_creation_union,
-  accumulation_outcome, accumulation_effects, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_account_selection as state_accumulation_account_selection
+import ./accumulation_creation_union as state_accumulation_creation_union
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./store as state_store
 
 type
   AccumulationSelectedWriteIndex* = distinct uint64 ## A final descriptor position cannot substitute a source/fact/account ordinal.

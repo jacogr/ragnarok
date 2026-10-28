@@ -5,12 +5,29 @@
 ## Exposes authored programs, temporary complete maps, finite policies and empty manifest-matching input rows.
 
 import std/assertions
-import ../../src/state/[refinement_bootstrap, refinement_outcome, refinement_dispatch, store]
-import ../../src/pvm/[machine, program, initialize, gas, step, host_fetch, refinement_exports, output]
-import ../../src/codec/[bounded, composite, state_accounts, state_service_values, state_requests,
-  state_trie, work_package, work_report, work_digest]
-import ../../src/chain/parameters
-import ../../src/crypto/primitives
+import ../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../src/state/refinement_outcome as state_refinement_outcome
+import ../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../src/state/store as state_store
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../src/pvm/output as pvm_output
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/chain/parameters as chain_parameters
+import ../../src/crypto/primitives as crypto_primitives
 
 proc refinementImmediate*(register: byte, value: uint64): seq[byte] =
   ## Independent load_imm_64 encoding preserves every high address/value bit.

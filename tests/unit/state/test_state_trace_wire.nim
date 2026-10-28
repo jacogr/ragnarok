@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Published RawState prefix framing, detached ownership and atomic resource/root refusals.
-import std/[assertions, syncio]
-import ../../../src/state/[trace_state, store]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/state/trace_state as state_trace_state
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc policy(): StateStoreLimits =
   ## Tiny independent limits isolate descriptor, value and trie refusal paths.

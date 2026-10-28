@@ -125,5 +125,5 @@
   ],
   "crypto_library": "crypto",
   "native_libraries": [],
-  "source": "tests/native/accumulation_pending_transfers_results.nim"
+  "source": "tests/native/state_accumulation_pending_transfers_results.nim"
 }

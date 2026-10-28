@@ -3,11 +3,17 @@
 
 ## Optimized misuse probes reject default/refused preparation, execution and wrong engine-error extraction.
 
-import std/[assertions, cmdline]
-import ../../src/state/[refinement_dispatch, store]
-import ../../src/pvm/[machine, gas, step, host_fetch, refinement_exports]
-import ../../src/chain/parameters
-import ../../src/codec/work_package
+import std/assertions
+import std/cmdline
+import ../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../src/state/store as state_store
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/work_package as codec_work_package
 
 proc checkPrepared(outcome: RefinementDispatchResult[PreparedRefinementExecution]) =
   ## Confirm the local invalid-machine alternative before attempting forbidden extraction.

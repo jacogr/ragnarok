@@ -3,8 +3,12 @@
 
 ## Metered host continuations retain one block charge, register replies and explicit shared budgets.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
 
 type HostContext = object ## Plain synchronous state retains only expected metadata and callback order.
   calls: uint64

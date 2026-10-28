@@ -8,9 +8,17 @@
 ## Exposes verifyGuaranteeCredentials and immutable verified-guarantee/reporter/context access
 ## with typed structure/assignment failures.
 
-import ../codec/[guarantees, assurances, bounded, state_safrole, disputes, report_owned, owned, natural]
-import ../crypto/[primitives, guarantee]
-import ./guarantors
+import ../codec/guarantees as codec_guarantees
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/disputes as codec_disputes
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/natural as codec_natural
+import ../crypto/primitives as crypto_primitives
+import ../crypto/guarantee as crypto_guarantee
+import ./guarantors as state_guarantors
 
 type
   GuaranteeCredentialConfig* = object ## One assignment profile, aggregate canonical extrinsic byte budget and distinct reporter-key ceiling.
@@ -153,7 +161,7 @@ proc verifyGuaranteeCredentials*(values: openArray[Guarantee], active,
   if uint64(values.len) > uint64(wire.cores):
     return GuaranteeCredentialResult[VerifiedGuaranteeCredentials](
         status: GuaranteeCredentialError.LimitExceeded) # At most one report per core.
-  var total = uint64(natural.encode(JamNatural(values.len)).len)
+  var total = uint64(codec_natural.encode(JamNatural(values.len)).len)
   var priorCore = 0'u64
   for i, value in values:
     let size = measureGuarantee(value, wire)

@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic joined-payload guards preserve genuine evidence as the positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_invariant_context]
-import ../../src/state/[account_invariants, inventory, footprint_audit, preimage_content, preimage_linkage]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/codec_account_invariant_context
+import ../../src/state/account_invariants as state_account_invariants
+import ../../src/state/inventory as state_inventory
+import ../../src/state/footprint_audit as state_footprint_audit
+import ../../src/state/preimage_content as state_preimage_content
+import ../../src/state/preimage_linkage as state_preimage_linkage
+include nimony_composition_fixture
 proc extract(outcome: AccountInvariantResult[CheckedAccountInvariants]): CheckedAccountInvariants {.noinline.} =
   ## Default and failed joins cannot expose a retained complete source.
   outcome.value

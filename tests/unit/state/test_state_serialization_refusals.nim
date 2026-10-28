@@ -2,10 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently recommitted maps isolate precise typed chapter refusals from checkpoint/root failures.
-import std/[assertions, envvars, strutils, syncio, parseutils]
-import ../../../src/state/[checkpoint, store, global_snapshot, manifest, validated_checkpoint]
-import ../../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-    state_composition]
+import std/assertions
+import std/envvars
+import std/strutils
+import std/syncio
+import std/parseutils
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_composition as codec_state_composition
 const
   profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))

@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "storage"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 discard EdSeed(storage: nil)

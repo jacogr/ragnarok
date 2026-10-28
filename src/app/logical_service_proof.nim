@@ -2,8 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Select metadata and every declared service namespace from original logical provenance under whole key/work admission.
-import ../state/[current_logical, supplied_logical_inventory, inventory, proof_plan]
-import ../codec/[bounded, state_layout, state_requests]
+import ../state/current_logical as state_current_logical
+import ../state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../state/inventory as state_inventory
+import ../state/proof_plan as state_proof_plan
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_requests as codec_state_requests
 type
   LogicalServiceProofLimits* = object ## Full service traversal, total selectors, request hashes and scratch/retained key arrays have separate ceilings.
     services*, keys*, requests*: ElementLimit

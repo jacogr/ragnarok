@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/availability_transition_results.nim",
+  "source": "tests/native/state_availability_transition_results.nim",
   "build_name": "availability-transition-results",
   "crypto_library": "crypto",
   "native_libraries": [

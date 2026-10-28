@@ -3,5 +3,5 @@
 
 ## Batch authority and tagged results keep their backing inaccessible to importers.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
 discard default(PreparedLightJournalBatch).data

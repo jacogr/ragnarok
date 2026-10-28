@@ -25,10 +25,10 @@ import native_fixtures
 class NativeRequirementsHarness(unittest.TestCase):
     # Missing and unexpected profiles both violate directory-discovered suite coverage.
     def test_coverage(self):
-        for name in ('natural', 'unexpected'):
+        for name in ('codec_natural', 'unexpected'):
             # Exercise both an omitted suite and an unscheduled addition.
             records = deepcopy(NATIVE_REQUIREMENTS)
-            records.pop(name) if name in records else records.update({name: records['natural']})
+            records.pop(name) if name in records else records.update({name: records['codec_natural']})
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'exactly'):
                 validate_requirements(records)
 
@@ -80,7 +80,7 @@ class NativeRequirementsHarness(unittest.TestCase):
         with temporary_folder() as folder:
             self.profiles(folder)
             self.assertEqual(load_requirements(folder), NATIVE_REQUIREMENTS)
-            (folder/'codec/natural.json').unlink()
+            (folder/'codec/codec_natural.json').unlink()
             with self.assertRaisesRegex(ValueError, 'exactly'):
                 load_requirements(folder)
 
@@ -88,12 +88,12 @@ class NativeRequirementsHarness(unittest.TestCase):
     def test_duplicate_profiles(self):
         with temporary_folder() as folder:
             self.profiles(folder)
-            duplicate = dict(NATIVE_REQUIREMENTS['natural'], directory='state')
-            (folder/'state/natural.json').write_text(json.dumps(duplicate, sort_keys=True))
+            duplicate = dict(NATIVE_REQUIREMENTS['codec_natural'], directory='state')
+            (folder/'state/codec_natural.json').write_text(json.dumps(duplicate, sort_keys=True))
             with self.assertRaisesRegex(ValueError, 'duplicate native'):
                 load_requirements(folder)
-            (folder/'state/natural.json').unlink()
-            (folder/'codec/natural.json').write_text('{"directory":"codec","directory":"codec"}')
+            (folder/'state/codec_natural.json').unlink()
+            (folder/'codec/codec_natural.json').write_text('{"directory":"codec","directory":"codec"}')
             with self.assertRaisesRegex(ValueError, 'Duplicate'):
                 load_requirements(folder)
 
@@ -103,12 +103,12 @@ class NativeRequirementsHarness(unittest.TestCase):
         for scenario in scenarios:
             with self.subTest(scenario=scenario), temporary_folder() as folder:
                 self.profiles(folder)
-                record = NATIVE_REQUIREMENTS['natural']
-                path = folder/'codec/natural.json'
+                record = NATIVE_REQUIREMENTS['codec_natural']
+                path = folder/'codec/codec_natural.json'
                 if scenario == 'root':
                     path = folder/'unexpected.json'  # Profiles must belong to one source family.
                 elif scenario == 'nested':
-                    path = folder/'codec/nested/natural.json'  # Extra nesting hides ownership.
+                    path = folder/'codec/nested/codec_natural.json'  # Extra nesting hides ownership.
                 elif scenario == 'wrong-directory':
                     path = folder/'state/misplaced.json'  # Metadata still declares codec.
                 elif scenario == 'bad-name':
@@ -149,7 +149,7 @@ class NativeRequirementsHarness(unittest.TestCase):
                 with patch('availability_transition_fixtures.prepare', side_effect=AssertionError('unrelated preparation')):
                     fixtures, observed = native_fixtures.unit_disputes_fixture(folder)
             prepare.assert_called_once_with(folder)
-            self.assertEqual(fixtures, {'disputes_transition': (
+            self.assertEqual(fixtures, {'codec_disputes_transition': (
                 'RAGNAROK_DISPUTES_TRANSITION', path, ((path, 'independent-hash'),))})
             self.assertIs(observed, evidence)
 

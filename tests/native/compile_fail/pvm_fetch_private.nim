@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host_fetch as pvm_host_fetch
 let reply = default(FetchResult)
 discard reply.completed

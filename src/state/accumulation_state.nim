@@ -4,7 +4,10 @@
 ## Apply one finalized execution successor through state-owned composition and exact-parent publication.
 ## Preflight is hash-free; only complete success replaces the caller's single-threaded full-map handle.
 
-import ./[accumulation_finalization, accumulation_completion, accumulation_block_publication, store]
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_completion as state_accumulation_completion
+import ./accumulation_block_publication as state_accumulation_block_publication
+import ./store as state_store
 
 type
   AccumulationStateError* {.pure.} = enum ## Each refusal selects its own reason without an earlier candidate or snapshot.

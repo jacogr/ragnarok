@@ -3,11 +3,20 @@
 
 ## Fuzzer-owned ephemeral complete maps feed the ordinary current candidate pipeline without production bootstrap trust.
 import std/assertions
-import ./[chain, candidate]
-import ../chain/[genesis, parameters, provider]
-import ../codec/[bounded, header, block_codec]
-import ../crypto/primitives
-import ../state/[fuzz_ancestry, fuzz_protocol, store, accumulation_current_update, report_anchors]
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../chain/provider as chain_provider
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/block_codec as codec_block_codec
+import ../crypto/primitives as crypto_primitives
+import ../state/fuzz_ancestry as state_fuzz_ancestry
+import ../state/fuzz_protocol as state_fuzz_protocol
+import ../state/store as state_store
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/report_anchors as state_report_anchors
 
 type
   FuzzBackendConfig* = object ## Parameters and every execution/codec ceiling are explicit trusted host configuration.

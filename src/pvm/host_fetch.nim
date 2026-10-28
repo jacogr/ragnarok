@@ -6,9 +6,14 @@
 ## FetchResult separates local refusals from completed Continue, Panic and OutOfGas responses.
 ## Capture owns bounded immutable context; responses own memory copies. See spec/pvm-fetch-context.md.
 
-import ./[machine, step]
-import ../chain/parameters
-import ../codec/[work_package, fixed_unsigned, c2_records, bounded, natural]
+import ./machine as pvm_machine
+import ./step as pvm_step
+import ../chain/parameters as chain_parameters
+import ../codec/work_package as codec_work_package
+import ../codec/fixed_unsigned as codec_fixed_unsigned
+import ../codec/c2_records as codec_c2_records
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
 
 type
   FetchEntropy* = distinct array[32, byte] ## Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.
@@ -136,7 +141,7 @@ proc withFetchAccumulation*(context: FetchContext, presence: FetchPresence,
   if uint64(inputs.len) > uint64(limits.items):
     # Bound metadata traversal and allocation even when many records have small payloads.
     return FetchContextResult(status: FetchError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(uint64(inputs.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(inputs.len)))
   let maximum = min(uint64(limits.bytes), uint64(high(int)))
   var total = uint64(prefix.len)
   if total > maximum:

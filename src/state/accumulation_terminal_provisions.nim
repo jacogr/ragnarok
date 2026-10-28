@@ -4,9 +4,15 @@
 ## Bind provision union/fulfillment to actual terminal-selected execution effects and their invocation slot.
 ## Explicit posterior complete maps remain caller-owned; this is not a merged-round or block certificate.
 
-import ../codec/header
-import ./[accumulation_dispatch, accumulation_outcome, accumulation_provisions,
-  accumulation_context, accumulation_effects, accumulation_invocation, accumulation_service, store]
+import ../codec/header as codec_header
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
+import ./store as state_store
 
 type
   AccumulationTerminalProvisionError* {.pure.} = enum ## Local preparation failures retain no partial selected outcome, union or published map.

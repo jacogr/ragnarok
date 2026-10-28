@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supervision rejects missed hooks, unmarked stops, early exits and deadlines without losing child ownership.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash
 type
   Control = enum ## Each control must retain a different failed-witness or explicit baseline disposition.
     Baseline, UnmarkedStop, EarlyExit, Deadline, Cancelled

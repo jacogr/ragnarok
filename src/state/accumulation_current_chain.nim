@@ -4,15 +4,33 @@
 ## Adopt genuine current composed state and a direct-child chain view only after every private stage succeeds.
 ## Existing aliases retain their owners; publication is single-threaded and has no fallible gap or callbacks.
 
-import ../chain/[genesis, provider, parameters]
-import ../codec/[bounded, header]
-import ./[store, accumulation_current_publication, accumulation_current_consensus,
-  accumulation_current_authorization, accumulation_current_preimages, accumulation_current_activity,
-  accumulation_current_validators, accumulation_current_recent, accumulation_current_ready,
-  accumulation_current_finalization, accumulation_current_accounts, accumulation_current_statistics,
-  accumulation_current_driver, accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, preimages,
-  report_admission, block_transition, block_admission]
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ./store as state_store
+import ./accumulation_current_publication as state_accumulation_current_publication
+import ./accumulation_current_consensus as state_accumulation_current_consensus
+import ./accumulation_current_authorization as state_accumulation_current_authorization
+import ./accumulation_current_preimages as state_accumulation_current_preimages
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./preimages as state_preimages
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
 
 type
   CurrentAccumulationChainError* {.pure.} = enum ## Each refused stage carries only its selected reason, never a candidate state or view.

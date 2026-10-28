@@ -3,9 +3,16 @@
 
 ## Require exact computed batch bytes in its own authenticated candidate guarantee component.
 
-import ../codec/[bounded, block_codec]
-import ./[computed_batch, computed_envelope, computed_credentials, computed_guarantors,
-  computed_roster, computed_transition, block_transition, block_admission]
+import ../codec/bounded as codec_bounded
+import ../codec/block_codec as codec_block_codec
+import ./computed_batch as state_computed_batch
+import ./computed_envelope as state_computed_envelope
+import ./computed_credentials as state_computed_credentials
+import ./computed_guarantors as state_computed_guarantors
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
 
 type
   ComputedInclusionError* {.pure.} = enum ## Refusals carry no partially included batch or detached candidate.

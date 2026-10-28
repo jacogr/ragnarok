@@ -5,10 +5,21 @@
 ## Provides copied pairs, fresh log encoding and explicit history-root derivation without publishing state.
 
 import std/algorithm
-import ../codec/[bounded, composite, natural, state_outputs, state_trie]
-import ./[accumulation_execution, accumulation_batch, accumulation_outcome, accumulation_effects,
-  accumulation_provisions, accumulation_continuation_execution, accumulation_continuation_inputs,
-  accumulation_continuation, accumulation_reentry, history]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/natural as codec_natural
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_batch as state_accumulation_batch
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_continuation_execution as state_accumulation_continuation_execution
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_reentry as state_accumulation_reentry
+import ./history as state_history
 
 type
   AccumulationOutputLimits* = object ## Traversal work is independent of retained pair count and canonical wire extent.
@@ -186,7 +197,7 @@ proc prepareAccumulationOutputs*(source: CompletedBlockAccumulation,
       if uint64(present) >= uint64(limits.log.items):
         fail(AccumulationOutputsError.LimitExceeded) # Count increment is bounded by the already bounded execution count.
       inc present
-  let prefix = natural.encode(JamNatural(present)).len
+  let prefix = codec_natural.encode(JamNatural(present)).len
   if present > (high(int) - prefix) div 36 or present > high(int) div sizeof(AccumulationOutput):
     fail(AccumulationOutputsError.LimitExceeded) # Prove both native row storage and full wire arithmetic first.
   let encodedBytes = prefix + present * 36
@@ -262,7 +273,7 @@ proc collectHistory(batches: seq[PreparedAccumulationBatch], executions: uint64,
       let candidate = candidates[index]
       candidates[unique] = candidate
       inc unique
-  let prefix = natural.encode(JamNatural(unique)).len
+  let prefix = codec_natural.encode(JamNatural(unique)).len
   if unique > (high(int)-prefix) div 36:
     fail() # Prove wire arithmetic independently of bounded candidate storage.
   let encodedBytes = prefix + unique*36

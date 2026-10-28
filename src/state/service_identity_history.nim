@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze selected creation and ejection membership from a genuine completed current sequence; separate fixed arrays preserve source positions without interpreting an operation log.
-import ./[accumulation_current_driver, accumulation_current_sequence, accumulation_coverage,
-  accumulation_annulment, accumulation_effects, accumulation_outcome, store]
-import ../codec/[bounded, state_layout]
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_outcome as state_accumulation_outcome
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
 type
   ServiceIdentityHistoryLimits* = object ## Original coverage and each selected fixed-array extent are independently admitted.
     entries*, outcomes*, creations*, deletions*: ElementLimit

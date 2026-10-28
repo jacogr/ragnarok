@@ -2,11 +2,24 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Constant-size proof templates generate populated paged datasets; fresh consumers measure strict admission and spread reads.
-import std/[assertions, cmdline, syncio]
-import ../support/[storage_io, storage_allocations]
-import ../../src/storage/[paged_store, paged_io, paged_stream, paged_codec, state_proof,
-  light_state_cache, full_state_trie, light_delta, file_errors, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/storage_io
+import ../support/storage_allocations
+import ../../src/storage/paged_store as storage_paged_store
+import ../../src/storage/paged_io as storage_paged_io
+import ../../src/storage/paged_stream as storage_paged_stream
+import ../../src/storage/paged_codec as storage_paged_codec
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 type Fixture = object ## Only three bounded proofs and one cross-page value survive independent complete-map construction.
   config: PagedNativeConfig
   first, absent, last: LightStateProof

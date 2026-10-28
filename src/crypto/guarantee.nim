@@ -5,7 +5,7 @@
 ##
 ## Exposes guaranteeMessage and its owned signing-transcript/result types.
 
-import ./primitives
+import ./primitives as crypto_primitives
 
 type
   GuaranteeMessage* = distinct array[45, byte] ## The normative domain plus report hash is distinct from a signature or raw digest.

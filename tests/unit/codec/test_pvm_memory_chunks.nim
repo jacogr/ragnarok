@@ -3,9 +3,10 @@
 
 ## Persistent page storage preserves full-byte predecessor snapshots across scalar, host and permission updates.
 # @@Verification={"arc": "pvm_memory_chunks_arc_release"}
-import std/[assertions, syncio]
-import ../../../src/pvm/machine
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/testing_arc_evidence
 
 proc byteAt(offset: int): byte =
   ## An independent nonuniform pattern exposes accidental neighboring writes and stale chunk selection.

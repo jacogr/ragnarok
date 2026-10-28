@@ -3,8 +3,10 @@
 
 ## Validate all global chapter serializations from one complete immutable map without hashing.
 ## Retained source identity and typed chapters confer no valid-state or trusted-root authority.
-import ../codec/[bounded, state_layout, state_composition]
-import ./store
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_composition as codec_state_composition
+import ./store as state_store
 
 type
   GlobalStateLimits* = object ## Per-chapter codec work and aggregate detached chapter bytes are independent policies.

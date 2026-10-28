@@ -5,15 +5,26 @@
 
 ## Real source-bound credentials, canonicality/preflight, retained message identity and immutable ARC lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_credentials, computed_guarantors, computed_roster,
-  computed_transition,
-  computed_profile, computed_lookup, computed_recent, computed_state, computed_links,
-  computed_guarantee,
-  computed_report, store]
-import ../../../src/codec/[guarantees, state_safrole]
-import ../../../src/crypto/[primitives, guarantee]
-import ../../support/[pvm_computed_credentials, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_credentials as state_computed_credentials
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/computed_links as state_computed_links
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/store as state_store
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/crypto/guarantee as crypto_guarantee
+import ../../support/pvm_computed_credentials
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new Blake2b hashing after original computation, planning and test signatures complete.

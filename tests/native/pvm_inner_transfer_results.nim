@@ -3,8 +3,10 @@
 
 ## Optimized response-access guards preserve explicit local failures for both inner transfer directions.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[inner_machines, machine]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
 import ../support/pvm_inner_transfer
 
 proc check(outcome: InnerMachineResult[InnerMachineTransition], expected: InnerMachineError) =

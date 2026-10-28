@@ -10,7 +10,7 @@
 ## updates, writable-page range counting/mapping, atomic zero/remap/free ranges and terminal-state capture.
 
 import std/assertions
-import ./program
+import ./program as pvm_program
 
 type
   MemoryAddress* = distinct uint64 ## Guest effective addresses retain the register domain until cyclic 32-bit memory access.

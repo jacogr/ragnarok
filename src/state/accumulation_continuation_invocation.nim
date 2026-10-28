@@ -4,10 +4,20 @@
 ## Bind transfer/report continuation service bootstraps to actual posterior accounts and authenticated block entropy.
 ## Retains immutable source/projection certificates; execution and recursive completion remain separate.
 
-import ../codec/[composite, state_safrole, state_layout]
-import ./[accumulation_continuation_inputs, accumulation_continuation, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, accumulation_inputs,
-  accumulation_service, accumulation_invocation, store]
+import ../codec/composite as codec_composite
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_invocation as state_accumulation_invocation
+import ./store as state_store
 
 type
   AccumulationContinuationInvocationError* {.pure.} = enum ## Refusals expose no service, bootstrap or partial source binding.

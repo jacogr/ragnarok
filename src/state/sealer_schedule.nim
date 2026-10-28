@@ -7,8 +7,10 @@
 ##
 ## Exposes selectSafroleSchedule and checked immutable schedule results.
 
-import ../codec/[state_safrole, state_consensus, bounded]
-import ../crypto/primitives
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
 
 type
   SealerScheduleConfig* = object ## Chain epoch/tail parameters and independent finite chapter, accumulator and roster ceilings.

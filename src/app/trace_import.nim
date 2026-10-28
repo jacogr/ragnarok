@@ -3,9 +3,13 @@
 
 ## Prepare real current-profile STF imports against the actual selected application chain.
 ## Advertised pre/post maps are comparison inputs, never sources of Parameters or installable state.
-import ./[chain, candidate]
-import ../codec/header
-import ../state/[trace_step, trace_state, store, accumulation_current_update]
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ../codec/header as codec_header
+import ../state/trace_step as state_trace_step
+import ../state/trace_state as state_trace_state
+import ../state/store as state_store
+import ../state/accumulation_current_update as state_accumulation_current_update
 
 type
   TraceImportError* {.pure.} = enum ## A refused trace cannot expose a prepared prefix or a fabricated successor.

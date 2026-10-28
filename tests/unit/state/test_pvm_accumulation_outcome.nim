@@ -5,12 +5,26 @@
 ## Authored Psi_M/Psi_A terminal normalization witnesses use actual guest execution and retained effects.
 ## Exercises gas caps, checkpoint selection, bounded return overrides, provenance and ARC release.
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_outcome,
-  accumulation_context, accumulation_effects, accumulation_invocation, accumulation_service]
-import ../../../src/pvm/[machine, program, step, gas, host_fetch]
-import ../../../src/codec/[bounded, c2_records, state_outputs]
-import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 
 ## Refuse backend hashing only after execution; collapsing immutable effects must perform no hashes.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

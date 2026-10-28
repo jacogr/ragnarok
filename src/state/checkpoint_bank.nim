@@ -5,9 +5,14 @@
 ## Synchronous host-thread calls retain no canonical state graph between operations.
 
 import std/posix/posix
-import ../lib/[atomic_file, atomic_file_writer]
-import ../codec/[bounded, state_trie]
-import ./[checkpoint_head, checkpoint, checkpoint_transfer, store]
+import ../lib/atomic_file as lib_atomic_file
+import ../lib/atomic_file_writer as lib_atomic_file_writer
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ./checkpoint_head as state_checkpoint_head
+import ./checkpoint as state_checkpoint
+import ./checkpoint_transfer as state_checkpoint_transfer
+import ./store as state_store
 
 type
   CheckpointBank* = object ## Own the head lock and copied slot prefix; no raw child or destination escapes.

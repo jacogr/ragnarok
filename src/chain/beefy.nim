@@ -4,9 +4,11 @@
 ## Read the GP 0.8.0 BEEFY commitment from a configured block's retained C(3) history.
 ## Exposes a bounded read and guarded copied root; no finality or signature is asserted.
 
-import ./genesis
-import ../state/store
-import ../codec/[state_layout, state_history, bounded]
+import ./genesis as chain_genesis
+import ../state/store as state_store
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_history as codec_state_history
+import ../codec/bounded as codec_bounded
 export HistorySuperPeak
 
 type

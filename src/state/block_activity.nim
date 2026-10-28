@@ -4,10 +4,21 @@
 ## Assemble complete canonical C(13) from one genuine service activity history and internally derived core/validator owners.
 ## Hash-free preparation owns the entry; publication applies it only to the exact finalized complete accumulation map.
 
-import ../codec/[bounded, state_statistics, state_trie]
-import ./[service_activity, core_activity, validator_activity, accumulation_statistics,
-  accumulation_finalization, accumulation_outputs, accumulation_execution, accumulation_round,
-  accumulation_queue, report_admission, block_transition, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_trie as codec_state_trie
+import ./service_activity as state_service_activity
+import ./core_activity as state_core_activity
+import ./validator_activity as state_validator_activity
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   BlockActivityConfig* = object ## Each producer keeps its policies; complete output has independent service/encoded-byte ceilings.

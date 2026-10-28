@@ -7,7 +7,9 @@ coverage details and reproduction commands in the feature's `spec/` document ins
 ## Native suites and compiler rejections
 
 Add native application assertions as `tests/unit/<source-family>/test_<suite>.nim` with an explicit
-`.output` contract. Suite identities are discovered from these files in alphabetical order; do not
+`.output` contract. Use `<area>_<type>` for `<suite>` (for example `codec_header` or
+`pvm_program`), and import production modules as `<area>_<type>` aliases. Keep `src/` filenames
+in their existing area directories. Suite identities are discovered from these files in alphabetical order; do not
 maintain a separate suite list. Helpers belong in `tests/support/` and
 rejection fixtures in `tests/native/compile_fail/`. Duplicate identities, misplaced Nim files,
 empty discovery and missing output contracts fail before setup.

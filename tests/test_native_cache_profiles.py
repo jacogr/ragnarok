@@ -36,7 +36,7 @@ class NativeCacheProfileTests(unittest.TestCase):
             def caches():
                 """Plan both selected-suite and directory-worker cache arguments."""
                 return [next(a for a in native_tests.unit_command(root/'nimony',name)
-                    if a.startswith('--cachedir:')) for name in ('natural',None)]
+                    if a.startswith('--cachedir:')) for name in ('codec_natural',None)]
             original=caches();self.assertEqual(original,caches())
             helper.write_text('second');changed=caches()
             self.assertEqual(original,changed)

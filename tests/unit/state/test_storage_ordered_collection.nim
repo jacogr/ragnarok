@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical collection decoding rejects unordered/duplicate borrowed identities before allocation or hashing.
-import std/[algorithm, assertions, syncio]
+import std/algorithm
+import std/assertions
+import std/syncio
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_records, record_codec]
-import ../../../src/codec/state_trie
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/state_trie as codec_state_trie
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Keep real hashes while resetting the existing primitive observer.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

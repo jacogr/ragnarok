@@ -2,11 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict prepared-review payload/reason guards retain a genuine complete-source execution control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_review_plan_context, economic_profile_context]
-import ../../src/chain/parameters
-import ../../src/state/[account_review_plan, account_review, inventory, economic_profile]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_review_plan_context
+import ../support/state_economic_profile_context
+import ../../src/chain/parameters as chain_parameters
+import ../../src/state/account_review_plan as state_account_review_plan
+import ../../src/state/account_review as state_account_review
+import ../../src/state/inventory as state_inventory
+import ../../src/state/economic_profile as state_economic_profile
+include nimony_composition_fixture
 proc extract(outcome: AccountReviewPlanResult[StateAccountReviewPlan]): StateAccountReviewPlan {.noinline.} =
   ## No failed/default preparation result grants a plan.
   outcome.value

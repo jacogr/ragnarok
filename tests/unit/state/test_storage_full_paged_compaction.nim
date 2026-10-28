@@ -3,12 +3,23 @@
 
 ## Full physical compaction preserves exact complete-root history and ordinary generation without a caller producer.
 # @@Verification={"arc":"storage_full_paged_compaction_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store,
-  paged_codec, paged_stream, paged_io, managed_manifest, node_repository, file_errors]
-import ../../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/state_full_paged_reference
+import ../../support/state_full_paged_native_fixture
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/full_paged_stream as storage_full_paged_stream
+import ../../../src/storage/full_paged_build as storage_full_paged_build
+import ../../../src/storage/full_paged_store as storage_full_paged_store
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/paged_stream as storage_paged_stream
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc path(label: string): string =
   ## Process-specific names isolate every authored artifact and forensic prefix beneath the ignored native runner.
   "full-paged-compaction-" & $storageProcessId() & "-" & label

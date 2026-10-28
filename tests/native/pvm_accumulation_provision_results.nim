@@ -3,9 +3,11 @@
 
 ## Actual provide-local failures cannot expose a charged CPU or partially accumulated implication pair.
 
-import std/[assertions, cmdline]
-import ../../src/state/accumulation_dispatch
-import ../../src/pvm/[machine, step]
+import std/assertions
+import std/cmdline
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/step as pvm_step
 import ../support/pvm_accumulation_provision
 
 ## Inject backend refusal only after the complete guest/source fixture exists.

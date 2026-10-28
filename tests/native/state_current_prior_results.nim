@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checked default projections and genuine signed original/posterior positive controls.
-import std/[assertions, cmdline, syncio]
-import ../support/[accumulation_current_chain_context, current_checkpoint_context]
-import ../../src/state/accumulation_current_update
-import ../../src/chain/provider
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_accumulation_current_chain_context
+import ../support/state_current_checkpoint_context
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/chain/provider as chain_provider
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(mode: string, update: PreparedCurrentChainUpdate) {.noinline.} =
   ## Dynamic noinline calls preserve actual runtime precondition evidence.
   case mode

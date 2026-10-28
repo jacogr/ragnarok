@@ -2,15 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit block selection is required before complete-state proof operations can establish lookup authority.
-import std/[assertions, syncio, envvars]
-import ../../../src/chain/[genesis, provider, state_proof]
-import ../../../src/app/chain
-import ../../../src/codec/[report_owned, header]
-import ../../support/application_download_chain
-import ../../../src/state/store
-import ../../support/application_candidate_context
-import ../../../src/state/[trie_proof, store]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/state_proof as chain_state_proof
+import ../../../src/app/chain as app_chain
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/header as codec_header
+import ../../support/app_download_chain
+import ../../../src/state/store as state_store
+import ../../support/app_candidate_context
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() {.raises.} =
   ## Defaults and invalid captures must refuse without interpreting a zero root as authenticated emptiness.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(100))

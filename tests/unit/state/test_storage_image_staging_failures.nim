@@ -3,10 +3,19 @@
 
 ## Late image failures must release private prefix cells while preserving every independent admitted owner.
 # @@Verification={"arc": "storage_image_staging_failures_arc_release"}
-import std/[algorithm, assertions, syncio]
-import ../../support/[admission_samples, storage_samples, arc_evidence]
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/algorithm
+import std/assertions
+import std/syncio
+import ../../support/codec_admission_samples
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count genuine local hashes across staged-prefix and complete graph refusal boundaries.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

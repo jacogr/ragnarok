@@ -9,8 +9,12 @@
 ## block/package/peak access.
 
 import std/assertions
-import ./[natural, bounded, assurances, state_layout, state_trie]
-from ./work_report import PackageHash, SegmentRoot
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+from ./work_report as codec_work_report import PackageHash, SegmentRoot
 export PackageHash, SegmentRoot
 
 type
@@ -104,7 +108,7 @@ proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): History
 
 ## Canonical natural-prefix reads return complete count/progress together or a failure-only reason.
 proc count(input: openArray[byte], cursor: int): HistoryResult[tuple[value: uint64, size: int]] =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     # Distinguish missing bytes from a complete but overlong count.
     if parsed.error == DecodeError.truncated:
@@ -265,7 +269,7 @@ proc put(bytes: openArray[byte], output: var seq[byte], cursor: var int) =
 
 ## Commit one canonical natural count without copying unused primitive encoder storage.
 proc putCount(n: int, output: var seq[byte], cursor: var int) =
-  let prefix = natural.encode(JamNatural(n))
+  let prefix = codec_natural.encode(JamNatural(n))
   put(prefix.bytes.toOpenArray(0, prefix.len-1), output, cursor)
 
 proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryResult[StateEntry] =
@@ -274,7 +278,7 @@ proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryRes
   if error != HistoryError.None: return HistoryResult[StateEntry](
       status: error) # No source traversal/allocation for invalid history count.
   var size = 0
-  let prefix = natural.encode(JamNatural(source.blocks.len))
+  let prefix = codec_natural.encode(JamNatural(source.blocks.len))
   error = grow(size, uint64(prefix.len), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[StateEntry](
       status: error) # Initial count consumes budget even for empty history.
@@ -287,7 +291,7 @@ proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryRes
     error = packageCount(uint64(record.packages.len), config, total)
     if error != HistoryError.None: return HistoryResult[StateEntry](
         status: error) # Propagate this preflight failure before allocation or output.
-    let child = natural.encode(JamNatural(record.packages.len))
+    let child = codec_natural.encode(JamNatural(record.packages.len))
     error = grow(size, uint64(child.len), 1, config.maxBytes)
     if error != HistoryError.None: return HistoryResult[StateEntry](
         status: error) # Propagate this preflight failure before allocation or output.
@@ -302,7 +306,7 @@ proc historyStateEntry*(source: HistoryState, config: HistoryConfig): HistoryRes
       status: HistoryError.LimitExceeded) # Independent peak-work ceiling.
   if source.peaks.len > high(int) div sizeof(HistoryPeak): return HistoryResult[StateEntry](
       status: HistoryError.LengthOverflow) # Bound typed source extents.
-  let belt = natural.encode(JamNatural(source.peaks.len))
+  let belt = codec_natural.encode(JamNatural(source.peaks.len))
   error = grow(size, uint64(belt.len), 1, config.maxBytes)
   if error != HistoryError.None: return HistoryResult[StateEntry](
       status: error) # Propagate this preflight failure before allocation or output.

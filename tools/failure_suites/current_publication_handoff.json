@@ -17,5 +17,5 @@
     }
   ],
   "crypto_library": "crypto",
-  "source": "tests/native/current_publication_handoff_results.nim"
+  "source": "tests/native/state_current_publication_handoff_results.nim"
 }

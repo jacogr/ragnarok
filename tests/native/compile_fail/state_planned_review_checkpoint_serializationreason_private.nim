@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "serializationReason"}
 
 ## Planned restoration discriminators and payloads remain private.
-import ../../../src/state/planned_review_checkpoint
+import ../../../src/state/planned_review_checkpoint as state_planned_review_checkpoint
 var value = default(PlannedReviewCheckpointResult)
 discard value.serializationReason

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "manifestReason"}
 
 ## Compact source storage and result alternatives are private.
-import ../../../src/state/inventory
+import ../../../src/state/inventory as state_inventory
 let private = default(StateInventoryResult[bool])
 discard private.manifestReason

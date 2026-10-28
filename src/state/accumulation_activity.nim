@@ -4,12 +4,31 @@
 ## Bind all C(13) observations to one authenticated accumulation candidate and privately replace the complete activity entry.
 ## Retain original-parent preimage admission for later integration; no canonical block or nested preimage publication occurs here.
 
-import ../codec/[bounded, composite, block_codec, owned, report_owned, assurances,
-  state_statistics, state_trie]
-import ./[accumulation_validators, validator_projection, core_service_activity, preimages,
-  accumulation_times, accumulation_statistics, accumulation_finalization, accumulation_outputs,
-  accumulation_execution, accumulation_round, accumulation_queue, report_admission,
-  guarantee_credentials, block_transition, block_admission, availability, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/block_codec as codec_block_codec
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/assurances as codec_assurances
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_validators as state_accumulation_validators
+import ./validator_projection as state_validator_projection
+import ./core_service_activity as state_core_service_activity
+import ./preimages as state_preimages
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./availability as state_availability
+import ./store as state_store
 
 type
   AccumulationActivityConfig* = object ## Resource policies only; every chain domain and observation comes from the retained source.

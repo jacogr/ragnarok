@@ -4,12 +4,17 @@
 ## Strict complete current v1 download policies preserve all nominal stage budgets without inferred defaults.
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
-import std/[strutils, syncio]
-import ../quic/current_block_download_loop
-import ./[current_logical_startup, candidate]
-import ../codec/bounded
-import ../state/[logical_continuation, accumulation_effects, accumulation_storage_history,
-  request_identity_history, service_identity_history]
+import std/strutils
+import std/syncio
+import ../quic/current_block_download_loop as quic_current_block_download_loop
+import ./current_logical_startup as app_current_logical_startup
+import ./candidate as app_candidate
+import ../codec/bounded as codec_bounded
+import ../state/logical_continuation as state_logical_continuation
+import ../state/accumulation_effects as state_accumulation_effects
+import ../state/accumulation_storage_history as state_accumulation_storage_history
+import ../state/request_identity_history as state_request_identity_history
+import ../state/service_identity_history as state_service_identity_history
 
 const
   CurrentDownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.

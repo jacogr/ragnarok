@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## An opaque selected-root plan retains its exact immutable source and permits a complete independent clone after close.
-import std/[assertions, syncio]
-import ../../support/[storage_lifetime_samples, storage_allocations]
+import std/assertions
+import std/syncio
+import ../../support/storage_lifetime_samples
+import ../../support/storage_allocations
 
 let baseline = occupiedStorageBytes()
 for count in [1024, 8192]:

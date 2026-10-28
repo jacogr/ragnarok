@@ -3,6 +3,6 @@
 
 ## Streamed admission metadata and selected results remain private behind guarded accessors.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/storage/paged_stream
+import ../../../src/storage/paged_stream as storage_paged_stream
 let hidden = default(PagedStreamResult[CheckedPagedArtifact])
 discard hidden.completed

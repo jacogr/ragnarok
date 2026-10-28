@@ -3,11 +3,20 @@
 
 ## Actual child fixed facts preserve full profile/state/Parameters without RPC index copies before resource refusal.
 # @@Verification={"arc":"state_current_child_context_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[accumulation_current_chain_context, current_checkpoint_context, arc_evidence]
-import ../../../src/state/[accumulation_current_update, current_profile, store]
-import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[bounded, report_owned, state_composition]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_checkpoint_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_composition as codec_state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine signed/current preparation precedes every fixed-only observation.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -4,11 +4,22 @@
 ## Fulfill the exact admitted lookup extrinsic on its authenticated accumulation activity successor.
 ## Source-derived slot and cached original-parent admission authorize only a private complete-map candidate.
 
-import ../codec/[bounded, header]
-import ./[accumulation_activity, accumulation_validators, accumulation_times,
-  accumulation_statistics, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
-  preimages, store]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_validators as state_accumulation_validators
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./preimages as state_preimages
+import ./store as state_store
 
 type
   AccumulationPreimageLimits* = object ## Independent fulfillment work limits supplement retained admission and store policies.

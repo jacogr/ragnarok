@@ -4,8 +4,10 @@
 ## Bounded CE 128 descending-inclusive requests and complete response validation.
 ## Captured headers provide parent-linked context only; no execution, trust or canonical publication occurs.
 import std/assertions
-import ../codec/[bounded, header, block_codec]
-import ../crypto/primitives
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/block_codec as codec_block_codec
+import ../crypto/primitives as crypto_primitives
 
 type
   AncestorResponseError* {.pure.} = enum ## Refusal retains no decoded prefix or usable request.

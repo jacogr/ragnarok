@@ -3,17 +3,30 @@
 # @@Verification={"arc": "pvm_annulled_creation_union_arc_release"}
 
 ## Real new/supervisor/eject guests prove final n membership, original cancellation and same-frame collision invalidity.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_creation_union, accumulation_annulment,
-  accumulation_dispatch,
-  accumulation_outcome, accumulation_effects, accumulation_inputs, accumulation_invocation, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_service_values,
-  state_privileges,
-  state_layout, state_trie]
-import ../../../src/chain/parameters
-import ../../../src/pvm/machine
-import ../../support/[accumulation_batch_context, accumulation_annulment_context,
-  pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_creation_union as state_accumulation_creation_union
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/state_accumulation_batch_context
+import ../../support/state_accumulation_annulment_context
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc profile(): Parameters =

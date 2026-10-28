@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "ordinal"}
 
 ## Callers cannot forge complete report authority or rewrite failed alternatives.
-import ../../../src/state/economics_table
+import ../../../src/state/economics_table as state_economics_table
 var value = default(EconomicsTableResult[StateEconomicsTable])
 discard value.ordinal

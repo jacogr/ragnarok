@@ -3,6 +3,6 @@
 
 ## External callers cannot fabricate partial verified state or nested success/failure payloads.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/state/proof_view
+import ../../../src/state/proof_view as state_proof_view
 let owner = default(ProofViewResult[ProofView])
 discard owner.completed

@@ -7,8 +7,10 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import ../../src/codec/[bounded, fixed_unsigned]
-import std/[cmdline, syncio]
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/fixed_unsigned as codec_fixed_unsigned
+import std/cmdline
+import std/syncio
 # Runtime fixture selection prevents one statically known default from rejecting the whole test build.
 let useDefault = paramStr(2) == "default"
 let empty = newSeq[byte](0)

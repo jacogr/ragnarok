@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real light-file process death witnesses complete old/new selection, stable leases and explicit forensic cleanup.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ./[storage_io, storage_crash]
-import ../../src/storage/[light_snapshot, light_file_cache, light_state_cache, state_proof,
-  full_state_trie, database_identity, file_errors]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ./storage_io
+import ./storage_crash
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_file_cache as storage_light_file_cache
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Test-only presence checks never establish authority for the production held-directory reader.

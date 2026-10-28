@@ -2,11 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## End-to-end service transport uses genuine successive executed posterior heads rather than header parent roots.
-import std/[assertions, syncio, envvars]
-import ../../../src/chain/[genesis, state_proof]
-import ../../../src/codec/[report_owned, header, bounded, state_layout, state_trie, state_accounts]
-import ../../../src/state/[store, trie_proof, proof_view, proof_service]
-import ../../support/[application_candidate_context, application_download_chain]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/state_proof as chain_state_proof
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/state/store as state_store
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/proof_service as state_proof_service
+import ../../support/app_candidate_context
+import ../../support/app_download_chain
 proc main() {.raises.} =
   ## Every child is signed and executed from its actual predecessor by the maintained independent fixture.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

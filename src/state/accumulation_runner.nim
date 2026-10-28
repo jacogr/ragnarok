@@ -4,15 +4,29 @@
 ## Execute independent source-bound initial-round services and certify one complete supported batch.
 ## Exposes explicit local ceilings and guarded completion/reasons; never mutates a caller store.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../chain/parameters
-import ../codec/[bounded, c2_records]
-import ../pvm/[initialize, machine, step, gas, host_fetch]
-import ./[accumulation_round, accumulation_inputs, accumulation_queue, report_admission,
-  block_transition, accumulation_service, accumulation_invocation, accumulation_context,
-  accumulation_machine, accumulation_dispatch, accumulation_skip, accumulation_execution,
-  accumulation_effects]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/c2_records as codec_c2_records
+import ../pvm/initialize as pvm_initialize
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/host_fetch as pvm_host_fetch
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_machine as state_accumulation_machine
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_effects as state_accumulation_effects
 
 type
   AccumulationRunnerLimits* = object ## Service count bounds total work; all guest ceilings apply independently per service.

@@ -3,7 +3,7 @@
 
 ## Exclusive checkpoint lock ownership rejects actual composite duplication during ARC lowering.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CheckpointWriter>", "build_name": "state-checkpoint-writer-copy"}
-import ../../../src/state/checkpoint_writer
+import ../../../src/state/checkpoint_writer as state_checkpoint_writer
 var original = default(CheckpointWriter)
 var duplicate = original
 discard original.close()

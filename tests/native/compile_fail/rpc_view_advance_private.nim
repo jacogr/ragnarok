@@ -4,6 +4,6 @@
 ## Negative compiler fixture: callers cannot retag a failed history advance into success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/provider
+import ../../../src/chain/provider as chain_provider
 var result = default(ViewAdvanceResult)
 result.status = ViewAdvanceError.None

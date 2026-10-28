@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 var result = default(ProgramResult[Program])
 result.status = ProgramError.None

@@ -4,6 +4,6 @@
 ## Negative compiler fixture: Reject external retagging of an unavailable genesis result.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/genesis
+import ../../../src/chain/genesis as chain_genesis
 var decoded = unavailableGenesis()
 decoded.status = GenesisError.None

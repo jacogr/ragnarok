@@ -9,8 +9,9 @@
 
 # @@Verification={"arc": "crypto_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
 include ../../../src/crypto/primitives
 
 # Test-only bridge counters contain no secret bytes or retained ARC owners.

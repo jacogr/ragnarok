@@ -7,9 +7,13 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
-import ../../src/state/store
-import ../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/state/store as state_store
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/bounded as codec_bounded
 
 ## Return a default or actual failed construction without exposing an unchecked store payload.
 proc storeFailure(origin: string): StateStoreResult[StateStore] =

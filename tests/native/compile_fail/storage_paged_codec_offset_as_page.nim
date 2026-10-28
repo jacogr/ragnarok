@@ -3,6 +3,9 @@
 
 ## Local integrity, protocol roots, byte offsets and page ordinals retain distinct nominal roles.
 # @@Verification={"group":"nominal","expected":"PageOrdinal","early":["pagedPath(","[2] expected: PageOrdinal but got: PagedOffset"]}
-import ../../../src/storage/[paged_codec, database_identity, managed_manifest, light_delta]
-import ../../../src/codec/state_trie
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/codec/state_trie as codec_state_trie
 discard pagedPath(default(PagedGeometry), PagedOffset(0))

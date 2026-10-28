@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compare published TraceStep files against independent exact wires and complete pre/post maps.
-import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/state/[trace_step, trace_state, store, checkpoint]
-import ../../src/codec/block_codec
-import ../support/trace_step_context
-import ../../src/codec/[state_trie, bounded]
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/parseutils
+import ../../src/state/trace_step as state_trace_step
+import ../../src/state/trace_state as state_trace_state
+import ../../src/state/store as state_store
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/codec/block_codec as codec_block_codec
+import ../support/state_trace_step_context
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 proc unhex(text: string): seq[byte] =
   ## Decode only the maintained request transport; production codecs validate actual framing and roots.
   assert text.len mod 2 == 0

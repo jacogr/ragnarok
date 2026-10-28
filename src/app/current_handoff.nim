@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One prepared current update or one unacknowledged result provides bounded producer backpressure without execution.
-import ./chain
-import ../chain/genesis
-import ../rpc/server
-import ../state/[store, accumulation_current_update]
+import ./chain as app_chain
+import ../chain/genesis as chain_genesis
+import ../rpc/server as rpc_server
+import ../state/store as state_store
+import ../state/accumulation_current_update as state_accumulation_current_update
 type
   CurrentHandoffPhase* {.pure.} = enum ## Finished success/refusal occupies capacity until explicit acknowledgment.
     Idle, Pending, Finished, Publishing

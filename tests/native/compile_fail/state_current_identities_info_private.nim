@@ -3,6 +3,6 @@
 
 ## Identity preservation ownership and result authority remain private.
 # @@Verification={"group":"privacy","expected":"info"}
-import ../../../src/state/current_identities
+import ../../../src/state/current_identities as state_current_identities
 var owner: PreservedCurrentIdentities
 discard owner.info

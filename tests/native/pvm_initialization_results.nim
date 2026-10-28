@@ -5,7 +5,9 @@
 ## Selects default, malformed-envelope and local-limit failures by command-line argument.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, initialize]
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/initialize as pvm_initialize
 let selection = paramStr(1)
 var outcome = default(InitializationResult)
 # Every failure must reject value access rather than fabricate an executable machine.

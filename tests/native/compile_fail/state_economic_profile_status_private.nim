@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Caller cannot forge selected economic configuration or mutate private alternatives.
-import ../../../src/state/economic_profile
+import ../../../src/state/economic_profile as state_economic_profile
 var value = default(EconomicProfileResult[StateEconomicProfile])
 discard value.status

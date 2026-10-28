@@ -5,12 +5,21 @@
 
 ## Stale-head refusal may reuse its sole encoded buffer only through a fresh explicit expected-head ticket.
 
-import std/[assertions, syncio, monotimes, times]
+import std/assertions
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/state/[checkpoint_worker, checkpoint_bank, checkpoint_transfer, checkpoint_head,
-    checkpoint, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
-import ../../support/arc_evidence
+import ../../../src/state/checkpoint_worker as state_checkpoint_worker
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 const Prefix = "state-checkpoint-worker-retry"
 proc policy(): StateStoreLimits =

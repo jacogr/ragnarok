@@ -5,12 +5,27 @@
 ## Exposes prepared pairs, guarded current accounts/info/queues/staging/privileges and controlled mutations with a versioned allocation cursor.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
-import std/[assertions, algorithm]
-import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout, state_requests,
-    state_service_values, state_privileges, state_authorization, work_report, state_safrole, c2_records]
-import ../chain/parameters
-import ../crypto/primitives
-import ./[accumulation_context, accumulation_invocation, accumulation_service, store, preimages]
+import std/assertions
+import std/algorithm
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/work_report as codec_work_report
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/c2_records as codec_c2_records
+import ../chain/parameters as chain_parameters
+import ../crypto/primitives as crypto_primitives
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
+import ./store as state_store
+import ./preimages as state_preimages
 
 const AccumulationAccountInfoBytes* = 112 ## Fixed Omega_I record, excluding serialized metadata's version byte.
 

@@ -2,20 +2,35 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit JAM_FUZZ startup runs only ephemeral full-state sessions with host-supplied Parameters and execution policy.
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-from ./cli_defaults import DefaultFuzzWrites, DefaultFuzzWriteBytes
+from ./cli_defaults as app_cli_defaults import DefaultFuzzWrites, DefaultFuzzWriteBytes
 
-import std/[assertions, atomics, envvars, monotimes, os, syncio]
+import std/assertions
+import std/atomics
+import std/envvars
+import std/monotimes
+import std/os
+import std/syncio
 import std/posix/posix
-import ../pvm/backend
-import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate, fuzz_policy]
-import ../chain/[parameters, presets, genesis]
-import ../codec/[bounded, block_codec]
-import ../state/[fuzz_protocol, fuzz_session, store]
-import ../management/file_status
-import ../lib/atomic_file
-from ../rpc/protocol import configuredParameters
+import ../pvm/backend as pvm_backend
+import ./fuzz_socket as app_fuzz_socket
+import ./fuzz_backend as app_fuzz_backend
+import ./fuzz_rejection as app_fuzz_rejection
+import ./current_download_policy as app_current_download_policy
+import ./candidate as app_candidate
+import ./fuzz_policy as app_fuzz_policy
+import ../chain/parameters as chain_parameters
+import ../chain/presets as chain_presets
+import ../chain/genesis as chain_genesis
+import ../codec/bounded as codec_bounded
+import ../codec/block_codec as codec_block_codec
+import ../state/fuzz_protocol as state_fuzz_protocol
+import ../state/fuzz_session as state_fuzz_session
+import ../state/store as state_store
+import ../management/file_status as management_file_status
+import ../lib/atomic_file as lib_atomic_file
+from ../rpc/protocol as rpc_protocol import configuredParameters
 
 type
   FuzzEnvironment* = object ## Standard target entry variables are copied once before listener startup.

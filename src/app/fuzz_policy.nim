@@ -4,8 +4,9 @@
 ## Self-contained bounded host policy lets external conformance launch the ordinary binary with environment variables alone.
 ## Canonical chain parameters supply every profile-dependent token; remaining numbers are explicit local resource ceilings.
 import std/strutils
-import ./current_download_policy
-import ../chain/[parameters, presets]
+import ./current_download_policy as app_current_download_policy
+import ../chain/parameters as chain_parameters
+import ../chain/presets as chain_presets
 
 const PolicyTemplate = """ragnarok-current-download-policy-v1
 schedule.peers=1

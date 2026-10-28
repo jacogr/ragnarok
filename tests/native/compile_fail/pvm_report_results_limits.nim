@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: ElementLimit"}
 
-import ../../../src/state/refinement_report
-import ../../../src/codec/bounded
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/codec/bounded as codec_bounded
 discard RefinementReportLimits(exports: ByteLimit(1))

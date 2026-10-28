@@ -3,10 +3,17 @@
 
 ## Strict optimized configured-profile and fixed-context projection guards with genuine full parent/map controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_profile, computed_lookup, store]
-import ../../src/chain/[genesis, parameters]
-import ../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_lookup_vectors, pvm_computed_state]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/store as state_store
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/parameters as chain_parameters
+import ../support/pvm_computed_profile
+import ../support/pvm_computed_lookup
+import ../support/pvm_computed_lookup_vectors
+import ../support/pvm_computed_state
 
 proc check[T](outcome: ComputedProfileResult[T], reason: ComputedProfileError) =
   ## Confirm selected alternatives before deliberate unsuccessful extraction.

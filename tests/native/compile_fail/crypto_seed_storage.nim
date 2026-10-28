@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "storage"}
 
-import ../../../src/crypto/primitives
+import ../../../src/crypto/primitives as crypto_primitives
 let value = default(EdSeed)
 discard value.storage

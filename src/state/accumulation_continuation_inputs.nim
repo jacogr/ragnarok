@@ -4,11 +4,26 @@
 ## Bind selected continuation range inputs to the actual privately applied initial batch state.
 ## Retains immutable source/input/full-map owners; never accepts replacement provenance or publishes caller state.
 
-import ../codec/[bounded, c2_records, header, state_accounts]
-import ./[accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
-  accumulation_operands, accumulation_inputs, accumulation_batch, accumulation_service,
-  accumulation_round_transfers, accumulation_transfers, report_admission, block_transition,
-  block_admission, accumulation_pending_transfers, accumulation_transfer_partition, store]
+import ../codec/bounded as codec_bounded
+import ../codec/c2_records as codec_c2_records
+import ../codec/header as codec_header
+import ../codec/state_accounts as codec_state_accounts
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_batch as state_accumulation_batch
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_round_transfers as state_accumulation_round_transfers
+import ./accumulation_transfers as state_accumulation_transfers
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./accumulation_pending_transfers as state_accumulation_pending_transfers
+import ./accumulation_transfer_partition as state_accumulation_transfer_partition
+import ./store as state_store
 
 type
   AccumulationContinuationInputConfig* = object ## Independent selected-range C.2 and service-input materialization budgets.

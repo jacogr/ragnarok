@@ -6,5 +6,5 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: InitializationByteLimit"}
 
-import ../../../src/pvm/[initialize]
+import ../../../src/pvm/initialize as pvm_initialize
 discard InitializationLimits(envelope: 20'u64)

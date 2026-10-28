@@ -3,11 +3,20 @@
 # @@Verification={"arc": "pvm_current_account_timestamps_arc_release"}
 
 ## Real current statistics authorize exact final-present metadata timestamps, never account resurrection.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_layout]
-import ../../../src/state/[accumulation_current_accounts, accumulation_accounts,
-  accumulation_current_statistics, accumulation_current_driver, store]
-import ../../support/[accumulation_current_statistics_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_accounts as state_accumulation_accounts
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_statistics_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc policy(): AccumulationAccountConfig =

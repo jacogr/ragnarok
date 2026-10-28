@@ -3,8 +3,12 @@
 
 ## Source-bound deposit observations use certified footprints and complete same-inventory service lookup.
 ## Caller-selected rates and insufficient coverage are observations, never automatic valid-state or root authority.
-import ../codec/state_accounts
-import ./[inventory, service_directory, footprint_audit, account_footprint, account_deposit]
+import ../codec/state_accounts as codec_state_accounts
+import ./inventory as state_inventory
+import ./service_directory as state_service_directory
+import ./footprint_audit as state_footprint_audit
+import ./account_footprint as state_account_footprint
+import ./account_deposit as state_account_deposit
 
 type
   ServiceDepositInfo* = object ## Copied nominal inputs and computed threshold explain one explicit economic observation.

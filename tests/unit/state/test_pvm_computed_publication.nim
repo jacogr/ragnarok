@@ -4,11 +4,20 @@
 
 ## Exact computed report successors preserve all posterior chapters and publish only to their original parent handles.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_publication, computed_admission, report_admission,
-  report_assignments, block_transition, block_admission, store]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../support/[pvm_computed_publication, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_publication as state_computed_publication
+import ../../../src/state/computed_admission as state_computed_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/report_assignments as state_report_assignments
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/pvm_computed_publication
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force the maintained hash backend to refuse during successor preparation, after real admission completes.

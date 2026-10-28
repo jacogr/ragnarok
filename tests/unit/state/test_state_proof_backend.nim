@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual maintained primitive faults prove all-or-neither generation/verification and zero-hash policy refusal.
-import std/[assertions, syncio]
-import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and optionally refuse every hash through the maintained test observer.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

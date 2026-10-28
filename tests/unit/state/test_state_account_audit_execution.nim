@@ -3,12 +3,23 @@
 
 ## Frozen whole-account execution preserves semantic/backend distinctions, zero-hash early failures and exact owner lifetime.
 # @@Verification={"arc": "state_account_audit_execution_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_audit_plan_context, arc_evidence]
-import ../../../src/state/[account_audit, account_audit_plan, account_invariants, inventory,
-    footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, state_accounts, state_requests]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_audit_plan_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_requests as codec_state_requests
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and optionally reject all hash primitives.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

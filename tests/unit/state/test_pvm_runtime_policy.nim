@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-source forced interpretation, native policy, warm reuse/hosts and cross-policy cache refusal.
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, step, gas]
-import ../../../src/pvm/internal/handler_stream
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/internal/handler_stream as pvm_handler_stream
 
 type Context = object ## Callbacks only observe copied snapshots and retain no invocation addresses.
   calls: int

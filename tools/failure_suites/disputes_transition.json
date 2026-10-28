@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/disputes_transition_results.nim",
+  "source": "tests/native/codec_disputes_transition_results.nim",
   "build_name": "disputes-transition-results",
   "crypto_library": "crypto",
   "native_libraries": [

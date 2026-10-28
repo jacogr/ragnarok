@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: array[0..31, uint8] but wanted: FetchEntropy"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host_fetch as pvm_host_fetch
 
 type
   # This fixture binds the public entropy type to a field to isolate nominal assignment checking.

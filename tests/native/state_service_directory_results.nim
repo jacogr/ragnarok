@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic directory payload guards retain genuine complete-source lookup as the positive control.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/state_inventory_context
-import ../../src/state/[service_directory, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/state/service_directory as state_service_directory
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_accounts as codec_state_accounts
+include nimony_composition_fixture
 proc extract(outcome: ServiceDirectoryResult[StateServiceDirectory]): StateServiceDirectory {.noinline.} =
   ## Default and failed directory construction have no source-bearing success.
   outcome.value

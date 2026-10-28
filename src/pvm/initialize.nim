@@ -6,7 +6,8 @@
 ## only during the call; successful machines own immutable acyclic copies. See spec/pvm-initialization.md.
 
 import std/assertions
-import ./[program, machine]
+import ./program as pvm_program
+import ./machine as pvm_machine
 
 type
   InitializationByteLimit* = distinct uint64 ## Local input policy bounds the complete JAM envelope independently of the embedded program.

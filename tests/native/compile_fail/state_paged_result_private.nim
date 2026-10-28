@@ -3,6 +3,6 @@
 
 ## Composite full-state transport results retain a private selected discriminator.
 # @@Verification={"group":"privacy","expected":"status"}
-import ../../../src/state/paged_state
+import ../../../src/state/paged_state as state_paged_state
 let outcome = default(PagedStateResult[int])
 discard outcome.status

@@ -7,7 +7,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 include ../../src/codec/state_trie
 
 # Sequential test-only backend refusal is absent from the production-linked root corpus.

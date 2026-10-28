@@ -6,13 +6,32 @@
 
 # @@Verification={"arc": "pvm_accumulation_dispatch_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context, accumulation_effects]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, c2_records, state_outputs, assurances, composite,
-  state_authorization, state_safrole, state_privileges, state_layout, state_trie]
-import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
-import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../support/pvm_accumulation_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 
 ## Prepare an actual bound service with ecalli at PC 5 and a dynamic return at PC 7.
 proc prepared(id: byte, credit = 10000'u64): PreparedAccumulationMachine =

@@ -4,18 +4,48 @@
 ## Re-execute genuine anchored work from a C8-bearing exact map before capturing configured parent context.
 
 import std/assertions
-import ../../src/state/[computed_lookup, computed_recent, computed_state, computed_links,
-  computed_guarantee, computed_report, block_admission, store, availability_specifier,
-  export_erasure,
-  bundle_erasure, erasure_layout, erasure_words, auditable_bundle, input_refinement,
-  report_identity,
-  authorized_refinement, authorization_invocation, extrinsic_inputs, import_inputs, import_justification]
-import ../../src/chain/[genesis, parameters]
-import ../../src/codec/[bounded, header, block_codec, work_package, work_report, composite,
-  state_layout, state_trie, state_safrole]
-import ../../src/crypto/extrinsic_commitment
-import ./[pvm_computed_lookup, pvm_computed_recent, pvm_computed_state, pvm_input_refinement,
-  pvm_computed_report, pvm_export_erasure, pvm_extrinsic_inputs, pvm_import_inputs, validator_rotation_fixture]
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/computed_recent as state_computed_recent
+import ../../src/state/computed_state as state_computed_state
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/block_admission as state_block_admission
+import ../../src/state/store as state_store
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/state/report_identity as state_report_identity
+import ../../src/state/authorized_refinement as state_authorized_refinement
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../src/state/import_inputs as state_import_inputs
+import ../../src/state/import_justification as state_import_justification
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ./pvm_computed_lookup
+import ./pvm_computed_recent
+import ./pvm_computed_state
+import ./pvm_input_refinement
+import ./pvm_computed_report
+import ./pvm_export_erasure
+import ./pvm_extrinsic_inputs
+import ./pvm_import_inputs
+import ./codec_validator_rotation_fixture
 
 type
   ComputedProfileFixture* = object ## Mutable test handles preserve exact source/version provenance for context replacement witnesses.

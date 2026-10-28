@@ -8,9 +8,18 @@
 ## planAccumulationQueues/planBlockAccumulationQueue and checked report/dependency/source access.
 
 import std/algorithm
-import ../codec/[bounded, state_workqueues, report_owned, owned, work_report, header,
-  state_layout]
-import ./[report_admission, block_transition, block_admission, availability, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/work_report as codec_work_report
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./availability as state_availability
+import ./store as state_store
 
 type
   AccumulationQueueConfig* = object ## Independent aggregate bounds cover parent plus incoming descriptors before scratch allocation.

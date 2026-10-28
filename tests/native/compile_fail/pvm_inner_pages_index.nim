@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: PageCount but wanted: PageIndex"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 let item: PageIndex = PageCount(16)
 discard item

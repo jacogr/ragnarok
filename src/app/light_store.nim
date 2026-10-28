@@ -4,13 +4,24 @@
 ## Distinct light paged ownership publishes trusted header metadata and partial proofs together.
 ## Startup requires independent current trust; passive snapshots never perform native IO.
 import std/assertions
-import ./[light_head, checkpoint_trust, checkpoint_identity]
-import ../state/[proof_view, trie_proof, paged_proof_view]
-import ../storage/[paged_store, paged_stream, paged_codec, managed_manifest, light_delta,
-  durability, file_errors]
-import ../storage/state_proof as nativeproof
-import ../storage/light_state_cache as nativecache
-import ../codec/[bounded, state_layout, state_trie]
+import ./light_head as app_light_head
+import ./checkpoint_trust as app_checkpoint_trust
+import ./checkpoint_identity as app_checkpoint_identity
+import ../state/proof_view as state_proof_view
+import ../state/trie_proof as state_trie_proof
+import ../state/paged_proof_view as state_paged_proof_view
+import ../storage/paged_store as storage_paged_store
+import ../storage/paged_stream as storage_paged_stream
+import ../storage/paged_codec as storage_paged_codec
+import ../storage/managed_manifest as storage_managed_manifest
+import ../storage/light_delta as storage_light_delta
+import ../storage/durability as storage_durability
+import ../storage/file_errors as storage_file_errors
+import ../storage/state_proof as storage_state_proof
+import ../storage/light_state_cache as storage_light_state_cache
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 const
   ContextMagic = "RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n"
   ContextPrefix = ContextMagic.len+9 # One explicit predecessor tag and E8 inner byte length.
@@ -228,7 +239,7 @@ proc prepare(head: LightApplicationHead, limits: LightPagedLimits): LightStoreRe
       status: LightStoreError.PolicyMismatch) # Explicit V2 and complete envelope capacity are mandatory.
   let empty = verifyStateProofs(newSeq[StateProofQuery](0), head.stateRoot, limits.proofs.proof,
       limits.proofs.batch)
-  if empty.error != trie_proof.StateProofError.None: return LightStoreResult[PreparedData](
+  if empty.error != state_trie_proof.StateProofError.None: return LightStoreResult[PreparedData](
       status: LightStoreError.LimitExceeded) # No successful placeholder batch is invented.
   let recaptured = mergeLightProofs(head, empty.value, limits.head)
   if recaptured.error != LightHeadError.None: return LightStoreResult[PreparedData](
@@ -293,15 +304,15 @@ proc prepare(head: LightApplicationHead, limits: LightPagedLimits): LightStoreRe
     completed: PreparedData(head: retained, inner: encoded.value, count: count, payload: payload))
 proc producer(prepared: PreparedData): PagedProducer =
   ## Repeated synchronous passes borrow one immutable view and materialize at most one detached native proof at a time.
-  proc next(pass: int, ordinal: uint64, output: var nativecache.LightStateProof): PagedProducerStep {.closure.} =
+  proc next(pass: int, ordinal: uint64, output: var storage_light_state_cache.LightStateProof): PagedProducerStep {.closure.} =
     ## Host-extent proof follows the retained view's bounded length; no closure escapes native authoring.
     if ordinal >= prepared.count: return PagedProducerStep.End # Explicit stable end on every pass.
     let lookup = prepared.head.proofView.lookupAt(int(ordinal)).value
     let witness = lookup.witness
     var nodes = newSeq[EncodedStateNode](witness.len)
     for index in 0..<nodes.len: nodes[index] = witness.nodeAt(index).value # Fixed canonical node transport.
-    output = nativecache.LightStateProof(key: lookup.key, proof: nativeproof.StateProof(
-        nodes: nodes, value: witness.suppliedValue.value))
+    output = storage_light_state_cache.LightStateProof(key: lookup.key,
+        proof: storage_state_proof.StateProof(nodes: nodes, value: witness.suppliedValue.value))
     PagedProducerStep.Item
   next
 proc prepareLightProofMerge*(source: LightStorageSnapshot,

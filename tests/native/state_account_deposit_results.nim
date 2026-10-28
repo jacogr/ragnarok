@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checked minimum-balance payload guards require a representable independent positive control.
-import std/[assertions, cmdline, syncio]
-import ../../src/state/[account_deposit, account_footprint]
-import ../../src/codec/state_accounts
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/state/account_deposit as state_account_deposit
+import ../../src/state/account_footprint as state_account_footprint
+import ../../src/codec/state_accounts as codec_state_accounts
 proc extract(outcome: AccountDepositResult): AccountBalance {.noinline.} =
   ## Dynamic failed/default arithmetic must never expose wrapped minimums.
   outcome.value

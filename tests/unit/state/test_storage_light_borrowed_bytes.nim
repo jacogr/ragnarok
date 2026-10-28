@@ -3,10 +3,16 @@
 
 ## Immutable light-image borrows allocate no payload copy, while mutable extraction remains independent and scoped.
 # @@Verification={"arc":"storage_light_borrowed_bytes_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc key(first: byte): StateKey =
   ## Two fixed query identities retain authenticated empty-root absence in a nonempty canonical image.
   var raw = default(array[31, byte])

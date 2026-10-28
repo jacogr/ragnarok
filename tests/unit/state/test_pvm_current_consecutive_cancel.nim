@@ -2,19 +2,34 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A real adopted prefix survives later uncollected-Done cancellation, joined preparation and a cancelled pending handoff.
-import std/[assertions, envvars, syncio, monotimes, times]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/app/[services, options, current_handoff, download_schedule, preparation_worker]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers, current_block_download_stream]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/report_owned
-import ../../../src/state/store
-import ../../../src/storage/managed_manifest
-import ../../../src/rpc/server
-import ../../support/[current_application_context, current_services_disk_samples,
-  block_download_transport, current_consecutive_context, current_rotated_sequence_context,
-  current_consecutive_download_context,
-  current_download_command_context, managed_storage_samples]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/app/download_schedule as app_download_schedule
+import ../../../src/app/preparation_worker as app_preparation_worker
+import ../../../src/quic/current_block_download_loop as quic_current_block_download_loop
+import ../../../src/quic/current_block_download_peers as quic_current_block_download_peers
+import ../../../src/quic/current_block_download_stream as quic_current_block_download_stream
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/store as state_store
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/rpc/server as rpc_server
+import ../../support/state_current_application_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_block_download_transport
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_rotated_sequence_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_download_command_context
+import ../../support/app_managed_storage_samples
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   CancelDone, Joined, LostHandoff
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =

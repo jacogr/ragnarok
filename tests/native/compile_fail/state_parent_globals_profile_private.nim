@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "profile"}
 
 ## Original selection/global evidence and tagged alternatives remain private.
-import ../../../src/state/parent_globals
+import ../../../src/state/parent_globals as state_parent_globals
 var owner = default(SelectedParentGlobals)
 discard owner.profile

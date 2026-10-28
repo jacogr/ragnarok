@@ -185,7 +185,7 @@ Dataset, scratch, resident policy and complete output extent are checked before 
 rejects failed/early/late producers and valid same-root physical alias substitution, checks every
 one-short construction quota and every observed output callback refusal (including partial failed
 appends), and retires all closures/bytes/scratch after 1000 cycles (54,480 -> 54,480 occupied bytes).
-The shared test-only byte/tree oracle lives in `tests/support/full_paged_reference.nim`; it is
+The shared test-only byte/tree oracle lives in `tests/support/state_full_paged_reference.nim`; it is
 resident reference material, not the production bounded path. Native ownership and publication are implemented below; consumer adoption remains open.
 
 

@@ -3,8 +3,11 @@
 
 ## Explicit source-preserving migration copies a locked legacy revision into a new managed directory.
 ## This operation grants no checkpoint import trust and never overwrites or renames the source database.
-import ./[file_repository, managed_repository, node_repository, database_identity]
-import ../codec/state_trie
+import ./file_repository as storage_file_repository
+import ./managed_repository as storage_managed_repository
+import ./node_repository as storage_node_repository
+import ./database_identity as storage_database_identity
+import ../codec/state_trie as codec_state_trie
 type
   MigrationSeed = object ## One exact legacy revision retains its validated root selection and detached context.
     selection: RepositorySelection

@@ -4,10 +4,12 @@
 ## Translate peer/transport observations into bounded telemetry events without reading CLI state.
 ## Incoming tables own copied identities and correlation IDs through native transport teardown.
 
-import std/[times, monotimes]
-import ./[wire, client]
-import ../quic/transport
-export wire, client
+import std/times
+import std/monotimes
+import ./wire as telemetry_wire
+import ./client as telemetry_client
+import ../quic/transport as quic_transport
+export telemetry_wire, telemetry_client
 
 # Convert wall time to the wire epoch; zero denotes an unavailable/pre-epoch local clock.
 proc eventTimestamp(): Timestamp =

@@ -4,8 +4,10 @@
 ## Published TraceStep composition owns one pre-state, full block and post-state in normative order.
 ## Wire capture validates framing and complete opaque roots, not STF execution, signatures or chain authority.
 import std/assertions
-import ./[trace_state, store]
-import ../codec/[block_codec, bounded]
+import ./trace_state as state_trace_state
+import ./store as state_store
+import ../codec/block_codec as codec_block_codec
+import ../codec/bounded as codec_bounded
 
 type
   TraceStepError* {.pure.} = enum ## Each failed field retains its genuine typed failure without a successful prefix.

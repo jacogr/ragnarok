@@ -3,10 +3,14 @@
 
 ## Complete revisions produce exact bounded detached paths that verify against independent full-map roots.
 # @@Verification={"arc": "storage_proof_production_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[full_state_trie, state_proof]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse real hashing to distinguish free cached branch encoding from long-leaf preimages.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

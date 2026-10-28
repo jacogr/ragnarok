@@ -4,7 +4,11 @@
 ## Explicit application-owned diagnostic logging: immutable filters and one bounded native writer.
 ## Producers never wait for the queue or perform output IO. Close joins after all producers retire;
 ## draining close can wait for a blocked output sink. Handles borrow their fixed-address owner.
-import std/[assertions, strutils, locks, rawthreads, atomics]
+import std/assertions
+import std/strutils
+import std/locks
+import std/rawthreads
+import std/atomics
 
 type
   LogLevel* {.pure.} = enum ## Increasing verbosity; Off admits no records.

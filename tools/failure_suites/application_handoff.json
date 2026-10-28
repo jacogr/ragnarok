@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_handoff_results.nim",
+  "source": "tests/native/app_handoff_results.nim",
   "build_name": "application-handoff-results",
   "crypto_library": "crypto",
   "quic_library": "quic",

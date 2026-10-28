@@ -3,9 +3,19 @@
 
 ## Explicit locked light journal owners publish immutable evidence only after confirmed sparse append durability.
 import std/assertions
-import ./[light_snapshot, light_state_cache, light_delta, light_journal_manifest,
-  light_journal_replay, managed_io, managed_manifest, database_identity, file_errors, durability]
-import ../codec/[bounded, state_trie, state_layout]
+import ./light_snapshot as storage_light_snapshot
+import ./light_state_cache as storage_light_state_cache
+import ./light_delta as storage_light_delta
+import ./light_journal_manifest as storage_light_journal_manifest
+import ./light_journal_replay as storage_light_journal_replay
+import ./managed_io as storage_managed_io
+import ./managed_manifest as storage_managed_manifest
+import ./database_identity as storage_database_identity
+import ./file_errors as storage_file_errors
+import ./durability as storage_durability
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
 type
   LightJournalConfig* = object ## Independently selected trust and exact resource policies never come from journal metadata.
     chain*: StorageChainId

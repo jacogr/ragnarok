@@ -4,6 +4,6 @@
 ## Negative compiler fixture: the provider snapshot is private to its immutable owner.
 # @@Verification={"group": "privacy", "expected": "snapshot"}
 
-import ../../../src/chain/provider
+import ../../../src/chain/provider as chain_provider
 var view = default(ChainView)
 discard view.snapshot

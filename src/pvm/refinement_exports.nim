@@ -5,8 +5,11 @@
 ## Exposes bounded append responses and copied segment access; no invocation authentication or publication.
 
 import std/assertions
-import ./[machine, step, host_fetch]
-import ../codec/[bounded, work_digest]
+import ./machine as pvm_machine
+import ./step as pvm_step
+import ./host_fetch as pvm_host_fetch
+import ../codec/bounded as codec_bounded
+import ../codec/work_digest as codec_work_digest
 
 type
   ExportOffset* = distinct uint64 ## Package segment position before this invocation's ordered exports.

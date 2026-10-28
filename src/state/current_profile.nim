@@ -3,9 +3,16 @@
 
 ## Derive structural state cardinalities and retain full parameters from one genuine current update.
 ## Bounded exact C9 decoding never falls back to the current population or substitutes an equal-root map.
-import ./[accumulation_current_update, store]
-import ../chain/[genesis, parameters]
-import ../codec/[bounded, state_layout, state_safrole, state_composition, assurances, header]
+import ./accumulation_current_update as state_accumulation_current_update
+import ./store as state_store
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_composition as codec_state_composition
+import ../codec/assurances as codec_assurances
+import ../codec/header as codec_header
 type
   CurrentProfileLimits* = object ## Previous-roster bytes/items are preflighted independently of later whole-global validation.
     validators*: ElementLimit

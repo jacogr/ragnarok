@@ -4,12 +4,27 @@
 ## Authored authorizer code, complete historical source maps and canonical packages for Psi_I witnesses.
 
 import std/assertions
-import ../../src/state/[authorization_invocation, store]
-import ../../src/codec/[bounded, natural, composite, work_package, work_report, work_digest,
-  state_accounts, state_service_values, state_requests, state_trie]
-import ../../src/pvm/[machine, program, initialize, gas, step, host_fetch, output]
-import ../../src/chain/parameters
-import ../../src/crypto/primitives
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/natural as codec_natural
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/output as pvm_output
+import ../../src/chain/parameters as chain_parameters
+import ../../src/crypto/primitives as crypto_primitives
 
 type
   AuthorizationFixture* = object ## Test-owned inputs retire independently of the production result's immutable provenance.
@@ -56,7 +71,7 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   result.envelope.add(byte(raw.len))
   for index in 0..<3: result.envelope.add(0) # E4 raw length is bounded by the authored short program.
   for octet in raw: result.envelope.add(octet)
-  let prefix = natural.encode(JamNatural(uint64(metadata.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(metadata.len)))
   for index in 0..<prefix.len: result.preimage.add(prefix.bytes[index])
   for octet in metadata: result.preimage.add(octet)
   for octet in result.envelope: result.preimage.add(octet)

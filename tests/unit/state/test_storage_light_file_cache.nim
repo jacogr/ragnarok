@@ -3,13 +3,25 @@
 
 ## Real light-file leases preserve root-bound evidence, atomic selection, explicit uncertainty and immutable readers.
 # @@Verification={"arc":"storage_light_file_cache_arc_release"}
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[arc_evidence, storage_io]
-import ../../../src/storage/[light_file_cache, light_snapshot, light_state_cache, state_proof,
-  full_state_trie, database_identity, file_errors, durability, managed_manifest, node_repository]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/crypto/primitives
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../../src/storage/light_file_cache as storage_light_file_cache
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/storage/durability as storage_durability
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/crypto/primitives as crypto_primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real provider refusal must release an acquired directory lease on unsuccessful reopen.
 proc renamePath(source, destination: cstring): cint {.importc: "rename", cdecl,

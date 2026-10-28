@@ -9,7 +9,14 @@
 ## checked report access.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded, composite, work_report, report_owned, owned, assurances]
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_report as codec_work_report
+import ./report_owned as codec_report_owned
+import ./owned as codec_owned
+import ./assurances as codec_assurances
 
 type
   GuaranteeSlot* = distinct uint32 ## A guarantee's evaluation slot is separate from anchor/lookup timeslots.
@@ -77,7 +84,7 @@ func guaranteeFailure*[T](reason: GuaranteeError): GuaranteeResult[T] {.requires
 
 # Validate chain ceilings before byte access; the same validator domain applies to assurances.
 proc validConfig(config: GuaranteeConfig): bool {.raises: [].} =
-  assurances.validConfig(AssuranceConfig(cores: config.cores, validators: config.validators))
+  codec_assurances.validConfig(AssuranceConfig(cores: config.cores, validators: config.validators))
 
 # Preserve existing report framing/canonicality failures while keeping unrelated owner errors private.
 proc reportError(error: CompositeError): GuaranteeError {.raises: [].} =
@@ -98,11 +105,11 @@ proc scanRecord(input: openArray[byte], start: int, config: GuaranteeConfig,
   # Canonical numbers advance private parser state only after complete prefix validation.
   template readNumber(target: untyped) =
     block:
-      let number = natural.decode(input.toOpenArray(cursor, input.high))
+      let number = codec_natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve the original failure instead of narrowing a partial count.
       if not number.ok:
         return GuaranteeResult[ScannedGuarantee](status: if number.error ==
-            natural.truncated: GuaranteeError.Truncated
+            codec_natural.truncated: GuaranteeError.Truncated
           else: GuaranteeError.NonCanonical) # Overlong counts cannot select a second wire representation.
       target = uint64(number.value)
       cursor += int(number.consumed)
@@ -169,11 +176,11 @@ proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan
   # Canonical numbers advance private parser state only after complete prefix validation.
   template readNumber(target: untyped) =
     block:
-      let number = natural.decode(input.toOpenArray(cursor, input.high))
+      let number = codec_natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve the original failure instead of narrowing a partial count.
       if not number.ok:
         return GuaranteeResult[Scan](status: if number.error ==
-            natural.truncated: GuaranteeError.Truncated
+            codec_natural.truncated: GuaranteeError.Truncated
           else: GuaranteeError.NonCanonical) # Overlong counts cannot select a second wire representation.
       target = uint64(number.value)
       cursor += int(number.consumed)
@@ -275,7 +282,7 @@ proc measure(values: openArray[Guarantee], config: GuaranteeConfig): GuaranteeRe
   if not validConfig(config): return GuaranteeResult[int](status: GuaranteeError.InvalidConfig)
   if values.len > int(uint64(config.cores)): return GuaranteeResult[int](
       status: GuaranteeError.LimitExceeded)
-  var required = int(natural.encode(JamNatural(values.len)).len)
+  var required = int(codec_natural.encode(JamNatural(values.len)).len)
   var previousCore = 0'u64
   # The final malformed source record must be discovered before committing an earlier record.
   for i, value in values:
@@ -329,7 +336,7 @@ proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
     if alias.error != OwnershipError.None: return GuaranteeResult[int](
         status: GuaranteeError.InvalidReport)
     if alias.value: return GuaranteeResult[int](status: GuaranteeError.AliasedBuffers)
-  let prefix = natural.encode(JamNatural(values.len))
+  let prefix = codec_natural.encode(JamNatural(values.len))
   # Commit the canonical outer count after every source and alias check has succeeded.
   for i in 0..<prefix.len: output[i] = prefix.bytes[i]
   var cursor = int(prefix.len)

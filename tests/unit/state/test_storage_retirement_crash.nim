@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed process death at retirement preserves complete selected state independently from physical reclamation.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_compaction]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_compaction
 proc main() {.raises.} =
   ## A completed positive control counts genuine SDK boundaries before each independently witnessed kill.
   let count = compactionCrashCase("compaction-retirement-control", unlinkIo, 4096)

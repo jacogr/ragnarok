@@ -6,9 +6,10 @@
 ## execution, signatures, wall-clock validity, fork choice or finality. finalizeView records caller-certified
 ## finality only; old readers retain their view. At most eight history owners plus one finalized owner.
 
-import ./[genesis, reports]
-import ../codec/bounded
-from ../state/store import sameStateSnapshot
+import ./genesis as chain_genesis
+import ./reports as chain_reports
+import ../codec/bounded as codec_bounded
+from ../state/store as state_store import sameStateSnapshot
 
 const MaxRetainedBlocks* = 8 # Local retention policy; no protocol history or finality guarantee.
 
@@ -173,7 +174,7 @@ proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportR
   let head = view.bestBlock
   if head.error != GenesisError.None:
     return default(ReportReadResult) # The existing result marks default owners uninitialized.
-  reports.workReport(head.value, hash, limit)
+  chain_reports.workReport(head.value, hash, limit)
 
 
 proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =

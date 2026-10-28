@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Listener routing binds completions to original sessions and isolates slow consumers without canonical access.
-import std/[assertions, syncio, base64]
+import std/assertions
+import std/syncio
+import std/base64
 include ../../../src/rpc/server
 
 proc descriptor(): cint =

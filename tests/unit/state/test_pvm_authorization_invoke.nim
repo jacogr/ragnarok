@@ -4,13 +4,28 @@
 
 ## Genuine historical authorizers verify fixed invocation inputs, stateless host dispatch, gas and immutable provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[authorization_invocation, refinement_lookup, store]
-import ../../../src/codec/[bounded, composite, work_package, work_digest, work_report]
-import ../../../src/pvm/[program, machine, step, gas, initialize, host_fetch, output]
-import ../../../src/chain/parameters
-import ../../../src/codec/state_authorization # Invocation names coexist with the existing state codec domain.
-import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/state/refinement_lookup as state_refinement_lookup
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/output as pvm_output
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../support/pvm_authorization_invoke
+import ../../support/pvm_refinement_outcome
+import ../../support/testing_arc_evidence
 
 # Both public domains remain independently usable when imported into the same module.
 let codecDefault = default(AuthorizationResult[int])

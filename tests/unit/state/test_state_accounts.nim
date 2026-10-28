@@ -7,8 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_accounts, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/bounded as codec_bounded
 
 ## All fixed decoded fields survive both input mutation and local scope exit without a retained owner.
 proc captured(): ServiceMetadataRead =

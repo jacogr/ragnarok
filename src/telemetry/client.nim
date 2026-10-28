@@ -7,9 +7,11 @@
 ## Exposes exporter configuration/close/tick and incoming/outgoing connection event reporting
 ## over one retained client owner.
 
-import std/[strutils, oserrors, nativesocket]
+import std/strutils
+import std/oserrors
+import std/nativesocket
 import std/posix/posix
-import ./wire
+import ./wire as telemetry_wire
 
 type
   # Opaque native address bytes are filled only by inet_pton; no Nim array layout crosses the ABI.

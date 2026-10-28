@@ -3,15 +3,27 @@
 # @@Verification={"arc": "pvm_current_download_policy_arc_release"}
 
 ## Every current resource leaf is mandatory; canonical numeric/boolean decoding stays atomic and decoded policies drive genuine current preparation.
-import std/[assertions, syncio, envvars, strutils]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/strutils
 import std/posix/posix
-import ../../../src/app/[current_download_policy, download_policy, current_block_input, candidate, chain,
-  download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_stream]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[accumulation_current_update, accumulation_current_consensus]
-import ../../support/[current_services_disk_samples, accumulation_current_chain_context,
-  accumulation_current_candidate_context, arc_evidence]
+import ../../../src/app/current_download_policy as app_current_download_policy
+import ../../../src/app/download_policy as app_download_policy
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/chain as app_chain
+import ../../../src/app/download_schedule as app_download_schedule
+import ../../../src/quic/current_block_download_loop as quic_current_block_download_loop
+import ../../../src/quic/current_block_download_stream as quic_current_block_download_stream
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../support/state_current_services_disk_samples
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/testing_arc_evidence
 proc policy(): CurrentDownloadLoopLimits =
   ## Authored stage policies are independent caller choices, including explicit discovery permission.
   CurrentDownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,

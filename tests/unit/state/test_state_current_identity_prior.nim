@@ -3,11 +3,23 @@
 
 ## Completed-origin current logical parents retain exact previous producer/view and cannot be projected as configured startup parents.
 # @@Verification={"arc":"state_current_identity_prior_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_repeated_logical_context, current_identity_context, arc_evidence]
-import ../../../src/state/[current_identities, parent_logical, current_logical, current_state,
-    supplied_logical_inventory, inventory, manifest, store, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_repeated_logical_context
+import ../../support/state_current_identity_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/parent_logical as state_parent_logical
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/current_state as state_current_state
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Both genuine current children and the first full matching finish before hash-free original-source/identity tests.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

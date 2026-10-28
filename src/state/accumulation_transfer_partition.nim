@@ -4,8 +4,11 @@
 ## Current GP fnpartitionxfers: stable deferred-transfer scheduling with incarnation-bound supervision.
 ## Pure owned plans retain exact input records/prior; round selection and publication belong to their callers.
 import std/assertions
-import ../codec/[bounded, state_accounts, state_layout, c2_records]
-import ./store
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/c2_records as codec_c2_records
+import ./store as state_store
 
 type
   TransferPartitionIndex* = distinct uint64 ## Selected-output ordinal cannot substitute a service identity.

@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen independent Python/hashlib commitments and raw paths cross-check production verification and generation.
-import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/envvars
+import std/parseutils
+import std/strutils
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc unhex(text: string): seq[byte] =
   ## Fixture byte tokens are exact lowercase hexadecimal; a dash is present-empty storage.
   if text == "-": return @[]

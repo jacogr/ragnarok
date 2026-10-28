@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/authorization_transition_results.nim",
+  "source": "tests/native/state_authorization_transition_results.nim",
   "build_name": "authorization-transition-results",
   "crypto_library": "crypto",
   "native_libraries": [],

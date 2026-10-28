@@ -4,8 +4,12 @@
 ## Isolated guard probes for fallible callback and execution alternatives.
 ## Positive controls validate the selected reasons before each forbidden accessor is attempted.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 
 type
   # A caller-local enum proves that the host loop requires no dependency on concrete host modules.

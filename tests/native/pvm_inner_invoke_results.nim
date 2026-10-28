@@ -3,9 +3,13 @@
 
 ## Optimized guards reject failed invoke payloads and wrong-stage nested engine reasons after real positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[inner_machines, machine, step]
-import ../support/[pvm_inner_lifecycle, pvm_inner_invoke]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/step as pvm_step
+import ../support/pvm_inner_lifecycle
+import ../support/pvm_inner_invoke
 
 proc check(outcome: InnerMachineResult[InnerMachineTransition], reason: InnerMachineError) =
   ## Confirm genuine alternatives without exposing static caller knowledge to intentional guard misuse.

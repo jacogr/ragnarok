@@ -5,10 +5,16 @@
 ## Exposes bounded explicit-plan attachment and machine-derived fetch assembly with guarded results.
 ## Neither path executes a service or certifies a block.
 
-import ../codec/[bounded, natural, c2_records, composite]
-import ../pvm/host_fetch
-import ../chain/parameters
-import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine]
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/c2_records as codec_c2_records
+import ../codec/composite as codec_composite
+import ../pvm/host_fetch as pvm_host_fetch
+import ../chain/parameters as chain_parameters
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_machine as state_accumulation_machine
 
 type
   InvocationFetchError* {.pure.} = enum ## Adapter failures distinguish invalid selections from local resource refusals and encoding errors.
@@ -57,7 +63,7 @@ proc captureSelection(context: FetchContext, source: FetchSelection, count: uint
   if count > uint64(limits.items) or count > uint64(high(int) div sizeof(AccumulationSource)):
     fail(InvocationFetchError.LimitExceeded) # Bound source descriptors as well as input traversal.
   let maximum = min(uint64(limits.bytes), uint64(high(int)))
-  var total = uint64(natural.encode(JamNatural(count)).len)
+  var total = uint64(codec_natural.encode(JamNatural(count)).len)
   if total > maximum:
     fail(InvocationFetchError.LimitExceeded) # Allowance-only services still need the empty-list count.
   for i in 0..<int(count):

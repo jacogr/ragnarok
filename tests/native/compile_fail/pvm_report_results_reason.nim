@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "invocationReason"}
 
-import ../../../src/state/refinement_report
+import ../../../src/state/refinement_report as state_refinement_report
 var outcome: RefinementReportResult[RefinedPackage]
 discard outcome.invocationReason

@@ -3,8 +3,8 @@
 
 ## Typed application defaults and CLI bounds shared by parsing, execution and help.
 
-import ../pvm/backend
-export backend
+import ../pvm/backend as pvm_backend
+export pvm_backend
 
 type
   NodeMode* {.pure.} = enum ## Complete and partial state are distinct startup modes.

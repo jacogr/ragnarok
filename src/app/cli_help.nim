@@ -4,7 +4,8 @@
 ## Deterministic grouped command help rendered from the parser's option catalog and defaults.
 
 import std/strutils
-import ./[cli_catalog, cli_commands]
+import ./cli_catalog as app_cli_catalog
+import ./cli_commands as app_cli_commands
 
 proc wrapped(text: string, indent = 6): string =
   ## Wrap catalog descriptions at a stable terminal width without splitting an option spelling.

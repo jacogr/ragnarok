@@ -8,8 +8,11 @@
 ## judged-report/offender access.
 
 import std/assertions
-import ./[natural, bounded, state_layout, state_trie]
-from ./disputes import DisputeHash, OffenderKey
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+from ./disputes as codec_disputes import DisputeHash, OffenderKey
 export DisputeHash, OffenderKey
 
 type
@@ -91,7 +94,7 @@ proc scan(input: openArray[byte], config: DisputeStateConfig): DisputeStateResul
   var total = 0'u64
   # Exactly four independently framed sets occur in good/bad/wonky/offender order.
   for section in 0..<4:
-    let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
+    let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len-1))
     if not parsed.ok:
       # Preserve missing count bytes versus a complete but overlong representation.
       if parsed.error == DecodeError.truncated:
@@ -122,7 +125,7 @@ proc disputeStateEntry*(source: DisputeState, config: DisputeStateConfig): Dispu
   for section in 0..<4:
     let count = if section < 3: source.reports[JudgmentSet(
         section)].len else: source.offenders.len # Select the correct nominal domain.
-    let prefix = natural.encode(JamNatural(count))
+    let prefix = codec_natural.encode(JamNatural(count))
     let error = charge(uint64(count), prefix.len, config, total, size)
     if error != DisputeStateError.None: return DisputeStateResult[StateEntry](
         status: error) # No earlier payload is emitted on failure.
@@ -145,7 +148,7 @@ proc disputeStateEntry*(source: DisputeState, config: DisputeStateConfig): Dispu
   for section in 0..<4:
     let count = if section < 3: source.reports[JudgmentSet(
         section)].len else: source.offenders.len # No outer tuple count.
-    let prefix = natural.encode(JamNatural(count))
+    let prefix = codec_natural.encode(JamNatural(count))
     for i in 0..<prefix.len:
       entry.value[cursor] = prefix.bytes[i] # Count prefix is never omitted for an empty set.
       inc cursor

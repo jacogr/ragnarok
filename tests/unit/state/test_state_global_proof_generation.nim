@@ -2,11 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Generic global plans bind generation to independent complete snapshots and genuine selected blocks.
-import std/[assertions, syncio]
-import ../../support/[proof_service_helpers, proof_query_context]
-import ../../../src/state/[proof_plan, planned_proof, proof_view, trie_proof, snapshot_proof, store]
-import ../../../src/chain/[genesis, state_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_service_helpers
+import ../../support/app_proof_query_context
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/snapshot_proof as state_snapshot_proof
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/state_proof as chain_state_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_safrole as codec_state_safrole
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained hash observer or fail attempted backend work during bound checks.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

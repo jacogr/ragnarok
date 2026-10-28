@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Known oversized regular files must refuse before buffering under a one-MiB test heap.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/storage/[file_errors, managed_io, managed_manifest]
-import ../../../src/codec/bounded
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/codec/bounded as codec_bounded
 
 proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}

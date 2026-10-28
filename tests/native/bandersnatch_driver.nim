@@ -7,9 +7,13 @@
 ## observations for the independent Python harness.
 
 # exact widths enter the typed primitive APIs.
-import std/[assertions, cmdline, strutils, syncio, rawthreads]
-import ./batch_support
-import ../../src/bandersnatch/bandersnatch
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/rawthreads
+import ./nimony_batch_support
+import ../../src/bandersnatch/bandersnatch as bandersnatch_bandersnatch
 
 # Decode public fixture hex
 # dash represents an empty context/additional-data array.

@@ -2,11 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict result and source guards use a real signed complete successor as positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, current_typed_context,
-    accumulation_current_chain_context, state_inventory_context]
-import ../../src/state/[current_state, current_globals, current_profile, global_snapshot, accumulation_current_update]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_current_typed_context
+import ../support/state_accumulation_current_chain_context
+import ../support/state_inventory_context
+import ../../src/state/current_state as state_current_state
+import ../../src/state/current_globals as state_current_globals
+import ../../src/state/current_profile as state_current_profile
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/state_composition as codec_state_composition
 proc extract(outcome: CurrentStateResult[CurrentStateSerialization]) {.noinline.} =
   ## Failed/default alternatives cannot expose payloads.
   discard outcome.value

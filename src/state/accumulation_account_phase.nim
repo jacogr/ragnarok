@@ -5,10 +5,17 @@
 ## Explicit coverage does not authenticate its frame or grant block publication; bound wrappers retain that authority separately.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
 import std/algorithm
-import ../codec/[bounded, composite, state_layout, state_trie]
-import ./[accumulation_coverage, accumulation_annulment,
-  accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes,
-  accumulation_skip, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_account_selection as state_accumulation_account_selection
+import ./accumulation_creation_union as state_accumulation_creation_union
+import ./accumulation_selected_writes as state_accumulation_selected_writes
+import ./accumulation_skip as state_accumulation_skip
+import ./store as state_store
 
 type
   AccumulationAccountPhaseLimits* = object ## Complete prior inventory and provider traversal are independent of selected proof/write ceilings.

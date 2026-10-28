@@ -3,9 +3,14 @@
 
 ## Strict bounded light journal replay separates complete immutable publication from exact-byte partial-tail plans.
 import std/assertions
-import ./[light_snapshot, light_state_cache, light_delta, light_journal_manifest, database_identity]
-import ../codec/[bounded, state_layout]
-import ../crypto/primitives
+import ./light_snapshot as storage_light_snapshot
+import ./light_state_cache as storage_light_state_cache
+import ./light_delta as storage_light_delta
+import ./light_journal_manifest as storage_light_journal_manifest
+import ./database_identity as storage_database_identity
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../crypto/primitives as crypto_primitives
 const EditBytes = 42
 
 type

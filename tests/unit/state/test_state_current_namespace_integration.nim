@@ -3,17 +3,45 @@
 
 ## Nonempty supplied namespaces retain genuine current provenance, detached copy isolation and independently bounded account audits.
 # @@Verification={"arc":"state_current_namespace_integration_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_namespace_context, service_namespace_seed,
-    accumulation_current_chain_context, current_checkpoint_context, parent_profile_context,
-    parent_globals_context, supplied_logical_context, supplied_services_context,
-    state_inventory_context, arc_evidence]
-import ../../../src/chain/[provider, genesis]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_profile,
-    current_globals, current_state, current_logical, accumulation_current_update, global_snapshot,
-    store, inventory, manifest, supplied_logical_inventory, supplied_services, account_audit_plan,
-    account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_namespace_context
+import ../../support/codec_service_namespace_seed
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_checkpoint_context
+import ../../support/state_parent_profile_context
+import ../../support/state_parent_globals_context
+import ../../support/codec_supplied_logical_context
+import ../../support/state_supplied_services_context
+import ../../support/state_inventory_context
+import ../../support/testing_arc_evidence
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/state/parent_profile as state_parent_profile
+import ../../../src/state/parent_globals as state_parent_globals
+import ../../../src/state/parent_logical as state_parent_logical
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/current_globals as state_current_globals
+import ../../../src/state/current_state as state_current_state
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/store as state_store
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/supplied_services as state_supplied_services
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_accounts as codec_state_accounts
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Exact map matching happens before hash-free audit planning and observational projections.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

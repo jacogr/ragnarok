@@ -2,9 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently encoded complete chapter/service fixtures support compact provenance and consistency consumers.
-import ../../src/state/[manifest, global_snapshot, store, inventory]
-import ../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-  state_accounts, state_service_values, state_requests, state_composition]
+import ../../src/state/manifest as state_manifest
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/state/store as state_store
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
+import ../../src/codec/state_composition as codec_state_composition
 const
   inventoryProfile* = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))

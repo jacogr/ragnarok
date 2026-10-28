@@ -4,9 +4,11 @@
 ## One application checkpoint envelope binds exact scalar context to existing canonical complete-map checkpoint bytes.
 ## Synchronous capture/encoding belongs outside transport callbacks and retains no application graph in its output.
 
-import ./[chain, checkpoint_identity]
-import ../state/[checkpoint, store]
-import ../codec/bounded
+import ./chain as app_chain
+import ./checkpoint_identity as app_checkpoint_identity
+import ../state/checkpoint as state_checkpoint
+import ../state/store as state_store
+import ../codec/bounded as codec_bounded
 
 type
   ApplicationCheckpointError* {.pure.} = enum ## Only complete envelopes grant payloads; nested failures retain their selected typed reason.

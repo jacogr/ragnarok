@@ -3,8 +3,13 @@
 
 ## Bounded whole-service economic observations retain certified footprints, exact directory and explicit valid parameters.
 ## Undercoverage is reported as an observation; no new global account funding or root-authority rule is inferred.
-import ../codec/[bounded, state_accounts]
-import ./[inventory, footprint_audit, service_directory, economic_profile, service_deposit]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ./inventory as state_inventory
+import ./footprint_audit as state_footprint_audit
+import ./service_directory as state_service_directory
+import ./economic_profile as state_economic_profile
+import ./service_deposit as state_service_deposit
 
 type
   EconomicsTableLimits* = object ## All service observations and retained native fixed rows are bounded before allocation.

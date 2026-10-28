@@ -8,10 +8,12 @@
 ## Exposes advanceEntropyTime and advanceEntropyTimeState for pure planning and atomic
 ## full-state publication.
 
-import ../codec/[state_safrole, state_layout, state_trie]
-from ../codec/header import EpochSlots
-import ../crypto/primitives
-import ./store
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+from ../codec/header as codec_header import EpochSlots
+import ../crypto/primitives as crypto_primitives
+import ./store as state_store
 
 type
   EntropyInput* = distinct array[32, byte] ## Already supplied VRF output bytes, distinct from stored entropy; this constructor proves no signature.

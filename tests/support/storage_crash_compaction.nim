@@ -2,12 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed replacement process death preserves one complete selected epoch and independent held readers.
-import std/[assertions, syncio]
-import ./[storage_samples, managed_storage_samples, storage_io, storage_crash,
-  storage_crash_appends, storage_bootstrap_faults]
-import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, managed_manifest, snapshot_codec, database_identity]
-import ../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ./storage_samples
+import ./app_managed_storage_samples
+import ./storage_io
+import ./storage_crash
+import ./storage_crash_appends
+import ./storage_bootstrap_faults
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/file_repository as storage_file_repository
+import ../../src/storage/managed_repository as storage_managed_repository
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/codec/bounded as codec_bounded
 proc compactionCrashCase*(label: string, operation, skip: cint,
     shortWrites = false, retainedContext = false): uint64 {.raises.} =
   ## Prepare a complete obsolete root, then observe only physical compaction after the child's strict open.

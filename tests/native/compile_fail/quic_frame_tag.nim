@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/quic/protocol
+import ../../../src/quic/protocol as quic_protocol
 var result = default(FrameResult)
 discard result.status

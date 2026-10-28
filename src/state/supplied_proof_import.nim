@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Import authenticated complete state and publish supplied logical serialization only after complete-root, global, manifest and raw-key qualification all succeed.
-import ./[proof_state_import, proof_view, store, global_snapshot, manifest, supplied_logical_inventory]
-import ../codec/[state_trie, state_composition]
+import ./proof_state_import as state_proof_state_import
+import ./proof_view as state_proof_view
+import ./store as state_store
+import ./global_snapshot as state_global_snapshot
+import ./manifest as state_manifest
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
 type
   SuppliedProofImportLimits* = object ## Complete reconstruction, all-global decoding and supplied compact/raw-key retention use independent existing policies.
     restoration*: ProofStateImportLimits

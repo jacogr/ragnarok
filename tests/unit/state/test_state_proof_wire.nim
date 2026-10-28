@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Local proof serialization is bounded and exact, with root/key trust deliberately supplied separately.
-import std/[assertions, syncio]
-import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Verify exact framing, detached output and both individual and outer byte limits.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(100))

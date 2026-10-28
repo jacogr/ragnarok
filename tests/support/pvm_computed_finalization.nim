@@ -3,14 +3,24 @@
 
 ## Genuine completed computed service execution and bounded stopped-history/finalization policies.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_execution, computed_finalization, accumulation_driver,
-  accumulation_runner, accumulation_dispatch, accumulation_execution, accumulation_batch,
-  accumulation_reentry, accumulation_continuation, accumulation_outputs]
-import ../../src/codec/[bounded, state_outputs]
-import ../../src/pvm/step
-import ./[pvm_computed_execution, accumulation_execution_context]
+import ../../src/state/computed_execution as state_computed_execution
+import ../../src/state/computed_finalization as state_computed_finalization
+import ../../src/state/accumulation_driver as state_accumulation_driver
+import ../../src/state/accumulation_runner as state_accumulation_runner
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/state/accumulation_execution as state_accumulation_execution
+import ../../src/state/accumulation_batch as state_accumulation_batch
+import ../../src/state/accumulation_reentry as state_accumulation_reentry
+import ../../src/state/accumulation_continuation as state_accumulation_continuation
+import ../../src/state/accumulation_outputs as state_accumulation_outputs
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_outputs as codec_state_outputs
+import ../../src/pvm/step as pvm_step
+import ./pvm_computed_execution
+import ./state_accumulation_execution_context
 
 proc finalizationFixture*(withReady = true, withComposition = false,
     withChain = false, storage = ComputedStorageMode.Disabled): ExecutedComputedAccumulation =

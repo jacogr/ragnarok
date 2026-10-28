@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/ticket_admission_results.nim",
+  "source": "tests/native/state_ticket_admission_results.nim",
   "build_name": "ticket-admission-results",
   "crypto_library": "crypto",
   "native_libraries": [

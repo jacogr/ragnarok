@@ -5,16 +5,39 @@
 ## Retains immutable original-queue provenance and actual full-map successor without publishing caller state.
 
 import std/algorithm
-import ../codec/[bounded, composite, header, work_digest, report_owned, state_safrole, state_layout,
-    state_trie, c2_records]
-import ./[accumulation_continuation_execution, accumulation_continuation_inputs,
-  accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
-  accumulation_operands, accumulation_inputs, accumulation_batch, accumulation_outcome,
-  accumulation_provisions, accumulation_transfers, accumulation_service, report_admission,
-  block_transition,
-  block_admission, accumulation_dispatch, accumulation_skip, accumulation_effects,
-  accumulation_context, accumulation_invocation, accumulation_pending_transfers,
-  accumulation_transfer_partition, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/work_digest as codec_work_digest
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/c2_records as codec_c2_records
+import ./accumulation_continuation_execution as state_accumulation_continuation_execution
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_batch as state_accumulation_batch
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_transfers as state_accumulation_transfers
+import ./accumulation_service as state_accumulation_service
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_pending_transfers as state_accumulation_pending_transfers
+import ./accumulation_transfer_partition as state_accumulation_transfer_partition
+import ./store as state_store
 
 type
   AccumulationReentryDepth* = distinct uint64 ## Retained reentry ordinal starts at one and is distinct from report counts or gas.

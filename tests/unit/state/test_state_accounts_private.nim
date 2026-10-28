@@ -9,8 +9,9 @@
 
 # @@Verification={"arc": "accounts_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
 include ../../../src/codec/state_accounts
 
 ## Construct complete fixed fields independently of decoder offsets or encoded payloads.

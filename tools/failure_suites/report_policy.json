@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/report_policy_results.nim",
+  "source": "tests/native/state_report_policy_results.nim",
   "build_name": "report-policy-results",
   "crypto_library": "crypto",
   "native_libraries": [],

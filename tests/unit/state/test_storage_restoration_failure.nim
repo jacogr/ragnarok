@@ -3,10 +3,15 @@
 
 ## Trusted-root refusal and narrower policies precede reconstruction crypto; backend refusal is typed.
 # @@Verification={"arc": "storage_restoration_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records, full_state_trie]
-import ../../../src/codec/[state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse only after the original repository and complete graph are valid.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

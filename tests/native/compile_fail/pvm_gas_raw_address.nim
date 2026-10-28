@@ -6,5 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: uint64", "early": ["blockGas(", "[2] expected: CodeAddress but got: uint64"]}
 
-import ../../../src/pvm/[program, gas]
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/gas as pvm_gas
 discard blockGas(default(Program), 0'u64, GasCycleLimit(100))

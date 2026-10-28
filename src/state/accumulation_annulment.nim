@@ -3,9 +3,18 @@
 
 ## Current GP accpar conflict annulment over genuine common-source normalized outcomes.
 ## Pure immutable certificates distinguish original effects from selected state/count observations.
-import ../codec/[bounded, state_accounts, state_layout, header, state_safrole]
-import ./[accumulation_outcome, accumulation_effects, accumulation_context,
-  accumulation_invocation, accumulation_service, accumulation_inputs, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/header as codec_header
+import ../codec/state_safrole as codec_state_safrole
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_inputs as state_accumulation_inputs
+import ./store as state_store
 
 type
   AccumulationAnnulmentIndex* = distinct uint64 ## Input outcome ordinal cannot substitute a service identity.

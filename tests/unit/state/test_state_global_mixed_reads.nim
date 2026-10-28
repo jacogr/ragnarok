@@ -2,12 +2,25 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent sixteen-chapter fixtures and service evidence roundtrip through exact planned projections.
-import std/[assertions, envvars, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_plan, proof_view, proof_service, planned_proof, trie_proof]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_accounts,
-    state_safrole, state_consensus, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_consensus as codec_state_consensus
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained backend observer to prove projection never rehashes already verified facts.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

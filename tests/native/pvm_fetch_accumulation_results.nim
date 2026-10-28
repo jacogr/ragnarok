@@ -4,8 +4,9 @@
 ## Failed accumulation capture must not expose a partial context or encoded input list.
 
 import std/cmdline
-import ../../src/codec/[c2_records, bounded]
-import ../../src/pvm/host_fetch
+import ../../src/codec/c2_records as codec_c2_records
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/host_fetch as pvm_host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 var limits = FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(154),

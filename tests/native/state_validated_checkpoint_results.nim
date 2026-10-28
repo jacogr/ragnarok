@@ -2,10 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Linked checkpoint validation must reject inactive payload/phase access and support a genuine expected-root control.
-import std/[assertions, cmdline, syncio]
-import ../../src/state/[validated_checkpoint, checkpoint, store, global_snapshot, manifest]
-import ../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie, state_composition]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/store as state_store
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/state/manifest as state_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_composition as codec_state_composition
+include nimony_composition_fixture
 proc extract(outcome: ValidatedCheckpointResult): ValidatedStateManifest {.noinline.} =
   ## Keep success extraction dynamic so a compiler rejection cannot count as a runtime guard.
   outcome.value

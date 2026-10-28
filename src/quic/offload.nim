@@ -30,9 +30,17 @@ proc `==`*(a, b: JobId): bool {.borrow.}
 # Diagnostic printing preserves the generation without permitting implicit integer conversion.
 proc `$`*(id: JobId): string {.borrow.}
 when OffloadEnabled:
-  import std/[os, strutils, locks, monotimes, times, rawthreads, syncio, envvars, assertions]
+  import std/os
+  import std/strutils
+  import std/locks
+  import std/monotimes
+  import std/times
+  import std/rawthreads
+  import std/syncio
+  import std/envvars
+  import std/assertions
   import std/posix/posix
-  import ../bandersnatch/bandersnatch
+  import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
   type
     # Every admitted slot owns these fixed bytes independently of caller storage.
     ProofJob = object

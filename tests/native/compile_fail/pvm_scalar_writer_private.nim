@@ -3,5 +3,5 @@
 
 ## Mutable writer backing remains private across every immutable publication boundary.
 # @@Verification={"group": "privacy", "expected": "prepareWriterSpan"}
-import ../../../src/pvm/machine
-discard machine.prepareWriterSpan
+import ../../../src/pvm/machine as pvm_machine
+discard pvm_machine.prepareWriterSpan

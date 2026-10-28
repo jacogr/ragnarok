@@ -9,10 +9,12 @@
 
 # @@Verification={"arc": "integration_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, envvars, syncio]
-import ../../../src/quic/integration
-import ../../../src/codec/owned
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/quic/integration as quic_integration
+import ../../../src/codec/owned as codec_owned
 
 # Faults affect only this test-linked observer; production hashes still use the maintained primitive ABI.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

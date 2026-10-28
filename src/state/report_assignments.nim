@@ -8,9 +8,15 @@
 ## Exposes planReportAssignments and access to the retained source, resulting availability state
 ## and serialized entry.
 
-import ../codec/[bounded, assurances, guarantees, state_safrole, state_availability,
-  state_layout, state_trie, report_owned]
-import ./guarantee_credentials
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/guarantees as codec_guarantees
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_availability as codec_state_availability
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/report_owned as codec_report_owned
+import ./guarantee_credentials as state_guarantee_credentials
 
 type
   ReportAssignmentError* {.pure.} = enum ## Default and refused plans contain a reason only, never partial assignments or serialized progress.

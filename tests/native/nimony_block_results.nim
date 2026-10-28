@@ -7,9 +7,17 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
-    disputes, header]
+import std/cmdline
+import std/syncio
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/owned as codec_owned
+import ../../src/codec/tickets as codec_tickets
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/disputes as codec_disputes
+import ../../src/codec/header as codec_header
 let useDefault = paramStr(2) == "default"
 let config = FrameConfig(cores: CoreCount(2), validators: ValidatorCount(6), epochSlots: EpochSlots(12),
   ticketLimit: TicketLimit(3), preimages: PreimageLimits(items: ElementLimit(10000),

@@ -3,10 +3,17 @@
 
 ## Atomically install actual assured successor state and its direct-child view only after every private phase succeeds.
 
-import ../chain/[genesis, provider, parameters]
-import ../codec/header
-import ./[assured_composition, accumulation_block_publication, accumulation_finalization,
-  report_admission, block_transition, block_admission, store]
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/header as codec_header
+import ./assured_composition as state_assured_composition
+import ./accumulation_block_publication as state_accumulation_block_publication
+import ./accumulation_finalization as state_accumulation_finalization
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AssuredChainError* {.pure.} = enum ## Refusals expose no earlier successful private map, receipt or captured child.

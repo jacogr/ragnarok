@@ -7,9 +7,12 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, strutils, syncio]
-import ./batch_support
-import ../../src/quic/protocol
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import ./nimony_batch_support
+import ../../src/quic/protocol as quic_protocol
 
 # Empty tokens use dash; bounded fixture hex never invokes a permissive integer parser.
 proc unhex(text: string): seq[byte] =

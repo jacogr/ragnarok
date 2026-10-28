@@ -3,11 +3,22 @@
 
 ## Assemble a complete canonical work report from one original execution/availability provenance.
 
-import ../codec/[bounded, composite, work_digest, work_report]
-import ../chain/parameters
-import ../pvm/host_fetch
-import ./[availability_specifier, export_erasure, bundle_erasure, erasure_layout, auditable_bundle,
-  input_refinement, report_identity, authorized_refinement, authorization_invocation, refinement_digest]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../chain/parameters as chain_parameters
+import ../pvm/host_fetch as pvm_host_fetch
+import ./availability_specifier as state_availability_specifier
+import ./export_erasure as state_export_erasure
+import ./bundle_erasure as state_bundle_erasure
+import ./erasure_layout as state_erasure_layout
+import ./auditable_bundle as state_auditable_bundle
+import ./input_refinement as state_input_refinement
+import ./report_identity as state_report_identity
+import ./authorized_refinement as state_authorized_refinement
+import ./authorization_invocation as state_authorization_invocation
+import ./refinement_digest as state_refinement_digest
 
 type
   ComputedReportError* {.pure.} = enum ## Refusals expose no encoded prefix or detached report authority.

@@ -3,19 +3,39 @@
 # @@Verification={"arc": "pvm_current_round_runner_arc_release"}
 
 ## One current signed round composes selected state, yields and transfer budgets without guest replay or annulment gas refunds.
-import std/[assertions, envvars, syncio]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, report_owned, state_outputs, state_layout, state_trie]
-import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_current_round, accumulation_round,
-  accumulation_block_guests,
-  accumulation_guest_runner, accumulation_account_stage, accumulation_provision_stage,
-  accumulation_provisions, accumulation_global_stage, accumulation_coverage, accumulation_annulment,
-  accumulation_outcome,
-  accumulation_annulled_outputs, accumulation_transfers, accumulation_pending_transfers, store]
-import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
-  accumulation_current_round_context,
-  pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_guest_runner as state_accumulation_guest_runner
+import ../../../src/state/accumulation_account_stage as state_accumulation_account_stage
+import ../../../src/state/accumulation_provision_stage as state_accumulation_provision_stage
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/accumulation_global_stage as state_accumulation_global_stage
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_annulled_outputs as state_accumulation_annulled_outputs
+import ../../../src/state/accumulation_transfers as state_accumulation_transfers
+import ../../../src/state/accumulation_pending_transfers as state_accumulation_pending_transfers
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_execution_context
+import ../../support/state_accumulation_current_guests_context
+import ../../support/state_accumulation_current_round_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 proc main() {.raises.} =
   ## Maintained fixtures authenticate source state/header/profile before the single current orchestration path executes.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

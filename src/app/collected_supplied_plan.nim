@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze the genuine collected target and explicit policies for later complete supplied successor qualification.
-import ./[chain, preparation_worker, collected_update]
-import ../state/[current_profile, current_globals, accumulation_current_update, global_snapshot, supplied_logical_inventory]
+import ./chain as app_chain
+import ./preparation_worker as app_preparation_worker
+import ./collected_update as app_collected_update
+import ../state/current_profile as state_current_profile
+import ../state/current_globals as state_current_globals
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/global_snapshot as state_global_snapshot
+import ../state/supplied_logical_inventory as state_supplied_logical_inventory
 type
   CollectedSuppliedLimits* = object ## Profile/global decoding and complete supplied logical matching retain separate quotas.
     profile*: CurrentProfileLimits

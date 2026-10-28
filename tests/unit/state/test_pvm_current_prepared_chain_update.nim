@@ -3,12 +3,20 @@
 # @@Verification={"arc": "pvm_current_prepared_chain_update_arc_release"}
 
 ## Opaque current updates prepare on private copies and install exact state/view candidates only while all original owners remain current.
-import std/[assertions, envvars, syncio]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[accumulation_current_update, accumulation_current_chain,
-  accumulation_current_consensus, store]
-import ../../support/[accumulation_current_chain_context, report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_chain as state_accumulation_current_chain
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc witness(context: CurrentChainFixture) =
@@ -62,7 +70,7 @@ proc refusals(context: CurrentChainFixture) =
   assert refused.chainFailure.error == CurrentAccumulationChainError.CaptureFailure
   assert sameStateSnapshot(state.snapshot.value, parent) and sameChainView(view, original)
   failHash(0)
-  var rebuilt = newStateStore(context.entries, report_context.limits()).value
+  var rebuilt = newStateStore(context.entries, state_report_context.limits()).value
   assert array[32, byte](rebuilt.snapshot.value.commitment.root) == array[32, byte](
       parent.commitment.root)
   assert not canInstallCurrentChainUpdate(rebuilt, view, owner), "equal complete roots cannot substitute version identity"

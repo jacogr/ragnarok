@@ -5,6 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "ByteLimit", "early": ["prepareComputedReport(", "[2] expected: ByteLimit but got: BundleLength"]}
 
-import ../../../src/state/[computed_report, report_identity, availability_specifier]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/state/availability_specifier as state_availability_specifier
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
 discard prepareComputedReport(default(AvailabilityCommitment), BundleLength(1000))

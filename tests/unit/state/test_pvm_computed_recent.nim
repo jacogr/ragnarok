@@ -5,10 +5,20 @@
 
 ## Complete original/corrected history, exact recent tuple, endpoint coherence and immutable lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_recent, computed_state, store]
-import ../../../src/codec/[bounded, state_history, state_layout, state_trie, assurances]
-import ../../support/[pvm_computed_recent, pvm_computed_state_vectors, pvm_computed_state, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_recent as state_computed_recent
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_history as codec_state_history
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/assurances as codec_assurances
+import ../../support/pvm_computed_recent
+import ../../support/pvm_computed_state_vectors
+import ../../support/pvm_computed_state
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashes after all genuine execution/admission fixtures have been prepared.

@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current capsule payload guards retain an actually prepared current producer as positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_checkpoint, accumulation_current_update]
-import ../../src/codec/[bounded, report_owned]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_accumulation_current_chain_context
+import ../../src/state/current_checkpoint as state_current_checkpoint
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: CurrentCheckpointResult[CurrentUpdateCheckpoint]) {.noinline.} =
   ## Default/source/encoding failure grants no retained capsule.
   discard outcome.value

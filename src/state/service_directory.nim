@@ -3,8 +3,9 @@
 
 ## Bounded immutable service identity lookup retains one exact complete logical inventory.
 ## Proven absence belongs to this source; the directory grants no trusted root or STF authority.
-import ../codec/[bounded, state_accounts]
-import ./inventory
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ./inventory as state_inventory
 
 type
   DirectoryServiceIndex* = distinct uint64 ## Sorted-directory ordinals are separate from original capture order.

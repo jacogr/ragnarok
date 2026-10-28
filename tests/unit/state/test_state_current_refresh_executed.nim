@@ -3,15 +3,40 @@
 
 ## Actual custom HALT metadata refresh retains complete code/request namespaces and source-bound account predicate evidence.
 # @@Verification={"arc":"state_current_refresh_executed_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
-    current_namespace_context, current_namespace_refresh_context, accumulation_execution_context,
-    supplied_services_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_refresh_plan, current_request_keys,
-    current_identities, current_logical, current_state, current_globals, current_profile,
-    accumulation_current_update, supplied_logical_inventory, supplied_services, inventory, manifest,
-    store, account_audit_plan, account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_namespace_transition_context
+import ../../support/state_current_namespace_execution_context
+import ../../support/state_current_namespace_context
+import ../../support/state_current_namespace_refresh_context
+import ../../support/state_accumulation_execution_context
+import ../../support/state_supplied_services_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_logical_refresh as state_current_logical_refresh
+import ../../../src/state/current_refresh_plan as state_current_refresh_plan
+import ../../../src/state/current_request_keys as state_current_request_keys
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/current_state as state_current_state
+import ../../../src/state/current_globals as state_current_globals
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/supplied_services as state_supplied_services
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_requests as codec_state_requests
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual signed/current execution and request-key capture precede hash-free plans and independently counted audit execution.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -51,5 +51,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/current_request_provenance_results.nim"
+  "source": "tests/native/state_current_request_provenance_results.nim"
 }

@@ -7,8 +7,12 @@
 ##
 ## Exposes admitSafroleTickets and checked immutable admission results.
 
-import ../codec/[state_safrole, state_consensus, tickets, bounded, assurances]
-import ../bandersnatch/bandersnatch
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/tickets as codec_tickets
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
 
 type
   TicketAdmissionConfig* = object ## Protocol epoch/tail/block parameters and explicit finite chapter/accumulator resource ceilings.

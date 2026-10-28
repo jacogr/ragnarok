@@ -5,9 +5,17 @@
 ## Resources are explicit-close/move-only. Independent epoch directory descriptors survive writer retirement.
 import std/assertions
 import std/posix/posix
-import ./[paged_codec, paged_stream, managed_manifest, file_errors, database_identity,
-    full_paged_codec, full_paged_stream, full_paged_build]
-import ../codec/[bounded, state_layout, state_trie]
+import ./paged_codec as storage_paged_codec
+import ./paged_stream as storage_paged_stream
+import ./managed_manifest as storage_managed_manifest
+import ./file_errors as storage_file_errors
+import ./database_identity as storage_database_identity
+import ./full_paged_codec as storage_full_paged_codec
+import ./full_paged_stream as storage_full_paged_stream
+import ./full_paged_build as storage_full_paged_build
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   PagedIoResult*[T] = object ## Failed/default native outcomes carry no bytes or directory authority.

@@ -4,17 +4,35 @@
 
 ## Genuine owned-input execution binds fetched bytes, source identity and lookup; failures retain no completed prefix.
 
-import std/[assertions, syncio]
-import ../../../src/state/[input_refinement, import_inputs, extrinsic_inputs, import_justification,
-  report_identity, authorized_refinement, authorization_invocation, refinement_digest,
-  refinement_report, refinement_outcome, refinement_bootstrap, refinement_dispatch,
-  refinement_lookup, store]
-import ../../../src/codec/[bounded, composite, work_package, work_report]
-import ../../../src/pvm/host_fetch
-import ../../../src/chain/parameters
-import ../../../src/crypto/primitives
-import ../../support/[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome,
-  pvm_import_inputs, pvm_import_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/input_refinement as state_input_refinement
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../../src/state/import_justification as state_import_justification
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/state/refinement_digest as state_refinement_digest
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/refinement_lookup as state_refinement_lookup
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_input_refinement
+import ../../support/pvm_report_results
+import ../../support/pvm_refinement_outcome
+import ../../support/pvm_import_inputs
+import ../../support/pvm_import_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Controlled hashing failure proves invalid source refusal precedes execution.

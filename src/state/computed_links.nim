@@ -3,9 +3,16 @@
 
 ## Check original lookup pairs against complete computed exporter reports without detached root authority.
 
-import ../codec/bounded
-import ./[computed_guarantee, computed_report, availability_specifier, export_erasure,
-  bundle_erasure, erasure_layout, auditable_bundle, input_refinement, report_identity]
+import ../codec/bounded as codec_bounded
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
+import ./availability_specifier as state_availability_specifier
+import ./export_erasure as state_export_erasure
+import ./bundle_erasure as state_bundle_erasure
+import ./erasure_layout as state_erasure_layout
+import ./auditable_bundle as state_auditable_bundle
+import ./input_refinement as state_input_refinement
+import ./report_identity as state_report_identity
 
 type
   ComputedLinksError* {.pure.} = enum ## Refusals contain no accepted prefix or partially linked owner.

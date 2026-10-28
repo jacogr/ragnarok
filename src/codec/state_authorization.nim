@@ -8,8 +8,12 @@
 ## per-core authorizer access.
 
 import std/assertions
-import ./[natural, bounded, assurances, state_layout, state_trie]
-from ./work_report import AuthorizerHash
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+from ./work_report as codec_work_report import AuthorizerHash
 export AuthorizerHash
 
 type
@@ -88,7 +92,7 @@ proc charge(kind: AuthorizationKind, count: uint64, prefix: int, config: Authori
 
 ## Read canonical pool counts, mapping primitive framing failures without exposing partial progress.
 proc poolCount(input: openArray[byte]): AuthorizationResult[tuple[count: uint64, prefix: int]] =
-  let parsed = natural.decode(input)
+  let parsed = codec_natural.decode(input)
   if not parsed.ok:
     # Incomplete counts and complete overlong forms remain distinct failure-only results.
     if parsed.error == DecodeError.truncated:
@@ -113,7 +117,8 @@ proc authorizationEntry*(kind: AuthorizationKind, rows: openArray[AuthorizerRow]
   for row in rows:
     var prefix = 0
     if kind == AuthorizationKind.Pools:
-      prefix = int(natural.encode(JamNatural(row.len)).len) # Pools alone carry a positive count-prefix extent.
+      prefix = int(codec_natural.encode(JamNatural(
+          row.len)).len) # Pools alone carry a positive count-prefix extent.
     let error = charge(kind, uint64(row.len), prefix, config, layout)
     if error != AuthorizationError.None:
       return AuthorizationResult[StateEntry](status: error) # No partial output on shape/policy failure.
@@ -124,7 +129,7 @@ proc authorizationEntry*(kind: AuthorizationKind, rows: openArray[AuthorizerRow]
   for row in rows:
     if kind == AuthorizationKind.Pools:
       # General-natural framing applies to each pool, never the whole core sequence.
-      let count = natural.encode(JamNatural(row.len))
+      let count = codec_natural.encode(JamNatural(row.len))
       for i in 0..<count.len:
         entry.value[cursor] = count.bytes[i]
         inc cursor

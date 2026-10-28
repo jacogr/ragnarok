@@ -3,7 +3,7 @@
 
 ## Light file cache duplication must fail actual native lowering.
 # @@Verification={"group":"ownership_compile","build_name":"storage-light-recovery-copy","expected":"'=dup' is not available for type <LightJournalRecovery>"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
 proc duplicated(source: LightJournalRecovery): LightJournalRecovery =
   ## A borrowed append owner cannot acquire another retirement authority.
   source

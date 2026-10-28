@@ -4,9 +4,12 @@
 ## Bounded startup-only full-checkpoint reads close every file before returning owned state.
 ## Filesystem operations are synchronous and never belong in networking callbacks.
 
-import ../lib/[atomic_file, atomic_file_writer]
-import ./[checkpoint, store]
-import ../codec/[bounded, state_trie]
+import ../lib/atomic_file as lib_atomic_file
+import ../lib/atomic_file_writer as lib_atomic_file_writer
+import ./checkpoint as state_checkpoint
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 
 type
   CheckpointFileError* {.pure.} = enum ## I/O and format refusals cannot publish partial restored state.

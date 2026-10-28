@@ -7,7 +7,7 @@
 ## Exposes nominal bit counts, Boolean and packed-bit codecs, immutable bit snapshots and
 ## bounded bitAt access.
 
-import ./natural
+import ./natural as codec_natural
 
 type
   BitCount* = distinct uint64 ## A logical bit count is distinct from byte extents and from resource ceilings.
@@ -115,11 +115,12 @@ proc decodeFixedBits*(input: openArray[byte], count: BitCount, limit: BitLimit):
 
 proc decodeBits*(input: openArray[byte], limit: BitLimit): BitResult[BitsRead] =
   ## Decode a variable bitstring whose canonical natural length counts bits, not packed octets.
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Primitive framing failures precede any declared-count policy or input-derived allocation.
   if not prefix.ok:
     # Incomplete natural frames and complete overlong frames retain distinct failure reasons.
-    if prefix.error == natural.truncated: return BitResult[BitsRead](status: BitError.Truncated)
+    if prefix.error == codec_natural.truncated: return BitResult[BitsRead](
+        status: BitError.Truncated)
     else:
       # An overlong bit count cannot choose a second encoding of the same logical string.
       return BitResult[BitsRead](status: BitError.NonCanonical)
@@ -135,7 +136,7 @@ proc encode(values: openArray[bool], count: BitCount, limit: BitLimit, variable:
   if uint64(values.len) != uint64(count): return BitResult[int](status: BitError.InvalidCount)
   # Counts are checked before calculating a packed destination size.
   if uint64(count) > uint64(limit): return BitResult[int](status: BitError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(uint64(count)))
+  let prefix = codec_natural.encode(JamNatural(uint64(count)))
   let offset = (if variable: int(prefix.len) else: 0) # Only variable terms carry a natural bit count.
   let length = int(packedLength(uint64(count)))
   # Subtraction proves offset+length fits actual output and therefore host arithmetic.
@@ -198,7 +199,7 @@ proc reemit(owner: OwnedBits, count: BitCount, limit: BitLimit, variable: bool,
   if uint64(count) != uint64(data.count): return BitResult[int](status: BitError.InvalidCount)
   # Retained owners must obey new caller resource ceilings too.
   if uint64(count) > uint64(limit): return BitResult[int](status: BitError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(uint64(count)))
+  let prefix = codec_natural.encode(JamNatural(uint64(count)))
   let offset = (if variable: int(prefix.len) else: 0) # Fixed re-emission has no natural prefix.
   let length = data.packed.len
   # Prove total host extent against actual output capacity before forming its sum.

@@ -6,8 +6,12 @@
 ## This projection neither executes services nor certifies caller-supplied transfers or privileges.
 
 import std/algorithm
-import ../codec/[bounded, composite, work_digest, c2_records, state_privileges]
-import ./accumulation_operands
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/c2_records as codec_c2_records
+import ../codec/state_privileges as codec_state_privileges
+import ./accumulation_operands as state_accumulation_operands
 
 type
   InvocationServiceIndex* = distinct uint64 ## Invocation service position is distinct from protocol service IDs and operand-group ordinals.

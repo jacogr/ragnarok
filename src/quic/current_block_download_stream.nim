@@ -5,9 +5,9 @@
 ## owners until native close. No operation prepares a block or dereferences a retained receiver address.
 
 import std/assertions
-import ./transport
-import ../app/current_block_download
-import ../codec/bounded
+import ./transport as quic_transport
+import ../app/current_block_download as app_current_block_download
+import ../codec/bounded as codec_bounded
 
 type
   CurrentDownloadTick* = distinct uint64 ## Caller-supplied monotonic milliseconds, unrelated to block slots.

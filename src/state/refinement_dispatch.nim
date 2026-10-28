@@ -4,13 +4,26 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../pvm/[machine, program, step, gas, host_gas, host_log, host_heap, host_fetch,
-    refinement_exports, inner_machines]
-import ../codec/[bounded, composite, state_service_values, work_package, work_digest]
-import ../chain/parameters
-import ./[store, refinement_lookup]
+import ../pvm/machine as pvm_machine
+import ../pvm/program as pvm_program
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/host_gas as pvm_host_gas
+import ../pvm/host_log as pvm_host_log
+import ../pvm/host_heap as pvm_host_heap
+import ../pvm/host_fetch as pvm_host_fetch
+import ../pvm/refinement_exports as pvm_refinement_exports
+import ../pvm/inner_machines as pvm_inner_machines
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/work_package as codec_work_package
+import ../codec/work_digest as codec_work_digest
+import ../chain/parameters as chain_parameters
+import ./store as state_store
+import ./refinement_lookup as state_refinement_lookup
 
 type
   RefinementDispatchError* {.pure.} = enum ## Local failures expose no partial CPU, output or export history.

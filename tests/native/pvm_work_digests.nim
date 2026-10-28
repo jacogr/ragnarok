@@ -3,11 +3,15 @@
 
 ## Optimized result guards reject refused/default payloads and invalid owner/index/output extraction after positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[refinement_digest, refinement_report]
-import ../../src/codec/bounded
-import ../../src/pvm/host_fetch
-import ../support/[pvm_work_digests, pvm_report_results, pvm_refinement_outcome]
+import std/assertions
+import std/cmdline
+import ../../src/state/refinement_digest as state_refinement_digest
+import ../../src/state/refinement_report as state_refinement_report
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../support/pvm_work_digests
+import ../support/pvm_report_results
+import ../support/pvm_refinement_outcome
 
 proc check(outcome: RefinementDigestResult[RefinementDigests], reason: RefinementDigestError) =
   ## Confirm genuine alternatives without specializing intentional misuse below.

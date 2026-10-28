@@ -3,10 +3,13 @@
 
 ## Strict optimized inclusion refusals use a genuinely authenticated guarantee-bearing positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_inclusion, computed_batch]
-import ../../src/codec/bounded
-import ../support/[pvm_computed_inclusion, pvm_computed_batch]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_inclusion as state_computed_inclusion
+import ../../src/state/computed_batch as state_computed_batch
+import ../../src/codec/bounded as codec_bounded
+import ../support/pvm_computed_inclusion
+import ../support/pvm_computed_batch
 
 proc expect[T](outcome: ComputedInclusionResult[T], reason: ComputedInclusionError) =
   ## Confirm exact alternative before deliberately extracting missing application data.

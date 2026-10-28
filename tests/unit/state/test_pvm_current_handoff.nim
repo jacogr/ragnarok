@@ -3,14 +3,23 @@
 # @@Verification={"arc": "pvm_current_handoff_arc_release"}
 
 ## A genuine current update crosses one bounded slot once; canonical/RPC visibility and refusal survive until acknowledgment.
-import std/[assertions, envvars, syncio]
+import std/assertions
+import std/envvars
+import std/syncio
 import std/posix/posix
-import ../../../src/app/[chain, current_handoff]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/rpc/server
-import ../../../src/state/[store, accumulation_current_update]
-import ../../support/[accumulation_current_chain_context, rpc_socket, arc_evidence]
+import ../../../src/app/chain as app_chain
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/rpc/server as rpc_server
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../support/state_accumulation_current_chain_context
+import ../../support/rpc_socket
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc listener(rpc: var Server, view: ChainView) =

@@ -4,10 +4,13 @@
 
 ## Independent full parity witnesses, exact field-work bounds and immutable scalar-code ownership.
 
-import std/[assertions, syncio]
-import ../../../src/state/erasure_words
-import ../../../src/codec/[bounded, work_report]
-import ../../support/[pvm_erasure_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/erasure_words as state_erasure_words
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
+import ../../support/pvm_erasure_vectors
+import ../../support/testing_arc_evidence
 
 proc generous(): ErasureWordLimits =
   ## Permit every valid scalar geometry while remaining an explicit local policy.

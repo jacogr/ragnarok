@@ -6,7 +6,12 @@
 ##
 ## Exposes deriveSafroleMarkers/validateSafroleMarkers and checked epoch/winners marker access.
 
-import ../codec/[state_safrole, state_consensus, header, bounded, natural, assurances]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/assurances as codec_assurances
 
 type
   SafroleMarkerConfig* = object ## Independent chapter and marker ceilings; chain epoch/tail parameters are explicit.

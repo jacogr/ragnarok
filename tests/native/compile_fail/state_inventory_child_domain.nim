@@ -4,6 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "InventoryStorageIndex", "early": ["inventoryStorageAt(", "[3] expected: InventoryStorageIndex but got: InventoryPreimageIndex"]}
 
 ## Nominal coordinates and partial evidence cannot impersonate compact source authority.
-import ../../../src/state/inventory
+import ../../../src/state/inventory as state_inventory
 discard inventoryStorageAt(default(StateInventory), InventoryServiceIndex(0),
     InventoryPreimageIndex(0))

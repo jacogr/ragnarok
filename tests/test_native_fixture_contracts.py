@@ -187,7 +187,7 @@ class NativeFixtureContractsHarness(unittest.TestCase):
     # A suite cannot ambiguously assign two pinned targets to one environment variable.
     def test_conflicting_environments(self):
         records = deepcopy(native_requirements.NATIVE_REQUIREMENTS)
-        records['natural']['fixtures'] = ['first', 'second']
+        records['codec_natural']['fixtures'] = ['first', 'second']
         contract = ('RAGNAROK_SAMPLE', Path('/unused'), ())
         with patch.dict(native_requirements.FIXTURE_CONTRACTS, first=contract, second=contract):
             with self.assertRaisesRegex(ValueError, 'Conflicting'):

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Query identities and successful alternatives remain private to their immutable owner.
-import ../../../src/state/proof_plan
+import ../../../src/state/proof_plan as state_proof_plan
 let private = default(ProofPlanResult[StateProofPlan])
 discard private.status

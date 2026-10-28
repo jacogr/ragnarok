@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restored checkpoints must rebuild mutation-capable incremental stores under original trusted roots.
-import std/[assertions, syncio]
-import ../../support/published_state
-import ../../../src/state/[store, checkpoint]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/syncio
+import ../../support/codec_published_state
+import ../../../src/state/store as state_store
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 ## Find a fixture key by linear scan, independent of the production sorted two-pass merge.
 proc find(entries: seq[StateEntry], key: StateKey): int =

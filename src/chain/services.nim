@@ -6,10 +6,14 @@
 ## Missing entries carry no value; StateValue views retain the snapshot and copy bytes on extraction.
 ## Successful request lookups return independent fixed histories with no retained borrows.
 
-import ./genesis
-import ../state/store
-import ../codec/[state_layout, state_accounts, state_service_values, state_requests, bounded]
-import ../crypto/primitives
+import ./genesis as chain_genesis
+import ../state/store as state_store
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
 export ServiceIndex, ServicePreimageHash, StateValue, byteLength, bytes, ByteLimit
 
 export RequestHistory, RequestLength, RequestState, state, since, availableFrom, unavailableFrom,

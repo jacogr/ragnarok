@@ -3,8 +3,11 @@
 
 ## Validate supplied logical declarations against the exact qualified current successor and retain compact inventory.
 ## This is supplied completeness evidence, not producer-exported provenance, semantic validity or adoption authority.
-import ../codec/state_composition
-import ./[current_globals, global_snapshot, manifest, inventory]
+import ../codec/state_composition as codec_state_composition
+import ./current_globals as state_current_globals
+import ./global_snapshot as state_global_snapshot
+import ./manifest as state_manifest
+import ./inventory as state_inventory
 type
   CurrentStateSerialization* = object ## Private owners bind supplied facts to the original authenticated update and profile.
     initialized: bool

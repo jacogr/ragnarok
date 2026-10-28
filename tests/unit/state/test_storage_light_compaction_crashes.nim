@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Grouped replacement/cleanup qualification kills every actual observed IO boundary and checks explicit retry.
-import std/[assertions, envvars, syncio]
-import ../../support/[storage_io, storage_light_journal, storage_light_compaction_crash]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_light_journal
+import ../../support/storage_light_compaction_crash
 proc main() {.raises.} =
   ## Completed controls discover bounded operation counts; each real successful boundary has its own exact-child kill.
   let fixture = lightFixture()

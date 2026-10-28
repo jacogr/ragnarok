@@ -4,8 +4,8 @@
 ## JIP-5 validator key derivation from an exact borrowed 32-byte master seed.
 ## Development indices expand to repeated little-endian uint32 seeds; arbitrary seeds use the same
 ## domain-separated BLAKE2b-256 derivation. Returned signing owners are opaque and explicitly clearable.
-import ./primitives
-import ../bandersnatch/bandersnatch
+import ./primitives as crypto_primitives
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
 
 func trivialSeed*(index: uint32): array[32, byte] =
   ## Expand a public development index eight times without hashing; never use as production entropy.
@@ -33,7 +33,7 @@ proc deriveEd25519Seed*(seed: openArray[byte]): CryptoResult[EdSeed] {.raises: [
   let reason = deriveSeed(seed, "jam_val_key_ed25519", derived)
   if reason != CryptoError.None:
     return cryptoFailure[EdSeed](reason) # A failed hash never becomes an all-zero signing seed.
-  primitives.importSeed(derived)
+  crypto_primitives.importSeed(derived)
 
 proc deriveBandersnatchKey*(seed: openArray[byte]): BsResult[BsKey] {.raises: [], gcsafe.} =
   ## Derive the JIP-5 Bandersnatch seed, then use Draft 35 A.3 to create an opaque key.

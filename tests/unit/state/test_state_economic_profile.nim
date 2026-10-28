@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently encoded parameter fields prove exact rate selection, full snapshot equality and detached fixed ownership.
-import std/[assertions, syncio]
-import ../../support/economic_profile_context
-import ../../../src/chain/parameters
-import ../../../src/state/economic_profile
-import ../../../src/codec/state_accounts
+import std/assertions
+import std/syncio
+import ../../support/state_economic_profile_context
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/codec/state_accounts as codec_state_accounts
 var wire = economicTestWire()
 let selectedParameters = decodeParameters(wire).value
 let result = captureEconomicProfile(selectedParameters)

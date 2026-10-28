@@ -3,6 +3,7 @@
 
 ## Disk ownership and selected result backing cannot escape the public lifecycle.
 # @@Verification={"group":"privacy","expected":"descriptor"}
-import ../../../src/storage/[file_repository, node_repository]
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/node_repository as storage_node_repository
 let hidden = default(FileRepository)
 discard hidden.descriptor

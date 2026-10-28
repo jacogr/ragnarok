@@ -4,11 +4,17 @@
 ## Independently trusted light headers own bounded immutable history and partial verified evidence, never complete-map state.
 ## Cross-thread callers serialize shared ARC aliases as with the other immutable application owners.
 import std/assertions
-import ./[checkpoint_identity, checkpoint_trust]
-import ../chain/[genesis, parameters]
-import ../codec/[bounded, header, assurances, state_trie]
-import ../crypto/primitives
-import ../state/[proof_view, trie_proof]
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_trust as app_checkpoint_trust
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/assurances as codec_assurances
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
+import ../state/proof_view as state_proof_view
+import ../state/trie_proof as state_trie_proof
 
 const MaxLightHeaders* = 8 ## Header retention is independent of finality, complete state and physical storage generations.
 type

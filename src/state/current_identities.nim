@@ -3,10 +3,23 @@
 
 ## Bind an original selected complete logical parent to a genuine update with unchanged physical namespace identities.
 ## This observation is not a producer mutation/event certificate, payload validity or installation authority.
-import ./[parent_logical, parent_globals, parent_profile, supplied_logical_inventory, inventory,
-    manifest, store, accumulation_current_update, current_logical, current_state, current_globals, current_profile]
-import ../chain/[provider, genesis, parameters]
-import ../codec/[bounded, state_layout]
+import ./parent_logical as state_parent_logical
+import ./parent_globals as state_parent_globals
+import ./parent_profile as state_parent_profile
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./inventory as state_inventory
+import ./manifest as state_manifest
+import ./store as state_store
+import ./accumulation_current_update as state_accumulation_current_update
+import ./current_logical as state_current_logical
+import ./current_state as state_current_state
+import ./current_globals as state_current_globals
+import ./current_profile as state_current_profile
+import ../chain/provider as chain_provider
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
 type
   CurrentIdentityLimits* = object ## Full prior/posterior view copies and sorted key inspections require independent upfront admission.
     blocks*, keys*: ElementLimit

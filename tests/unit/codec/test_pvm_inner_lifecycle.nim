@@ -4,9 +4,14 @@
 
 ## Current compile/instantiate/expunge equations preserve independent immutable catalogue and instance owners.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[inner_machines, machine, program, step]
-import ../../support/[pvm_inner_lifecycle, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../support/pvm_inner_lifecycle
+import ../../support/testing_arc_evidence
 
 # Stable borrowed fixture memory is captured once; returned responses retain its immutable owner.
 let fixtureMemory = innerMemory()

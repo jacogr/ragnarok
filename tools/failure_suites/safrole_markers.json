@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/safrole_markers_results.nim",
+  "source": "tests/native/state_safrole_markers_results.nim",
   "build_name": "safrole-markers-results",
   "crypto_library": "crypto",
   "native_libraries": [],

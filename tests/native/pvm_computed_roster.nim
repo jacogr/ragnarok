@@ -3,9 +3,14 @@
 
 ## Strict optimized roster-result guards with genuine epoch-shrink and computed report controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_roster, computed_transition, computed_profile]
-import ../../src/codec/[assurances, bounded, state_safrole]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_safrole as codec_state_safrole
 import ../support/pvm_computed_roster
 
 proc expect[T](outcome: ComputedRosterResult[T], reason: ComputedRosterError) =

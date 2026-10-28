@@ -2,13 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bind current timestamped accounts, terminal C16 output and exact processed C15 history on one private selected-state fork.
-import ../codec/[bounded, composite, report_owned, state_layout, state_outputs, state_workqueues,
-  work_digest]
-import ./[accumulation_current_accounts, accumulation_current_statistics,
-  accumulation_current_outputs,
-  accumulation_current_driver, accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, accumulation_operands,
-  report_admission, block_transition, accumulation_history, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_outputs as state_accumulation_current_outputs
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_operands as state_accumulation_operands
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./accumulation_history as state_accumulation_history
+import ./store as state_store
 
 type
   CurrentAccumulationFinalizationConfig* = object ## All values are local ceilings; original queue, completed prefix and chain shape come from the source.

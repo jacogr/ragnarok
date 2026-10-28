@@ -6,9 +6,13 @@
 
 # @@Verification={"arc": "pvm_memory_step_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../support/testing_arc_evidence
 
 # Literal instruction-table inventory; widths and signedness are independent test expectations.
 const ops = [30'u8, 31, 32, 33, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,

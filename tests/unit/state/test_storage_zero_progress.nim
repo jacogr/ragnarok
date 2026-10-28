@@ -2,12 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Zero-progress writes terminate immediately and preserve explicit recovery authority.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_samples, managed_storage_samples, storage_io]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, journal_codec,
-  file_repository, managed_repository, managed_manifest, database_identity]
-import ../../../src/codec/[bounded, state_trie]
+import ../../support/storage_samples
+import ../../support/app_managed_storage_samples
+import ../../support/storage_io
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/journal_codec as storage_journal_codec
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/managed_repository as storage_managed_repository
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 proc check(view: RepositoryView, expected: byte) =
   ## Held views remain complete and independent across retry, poisoned owner and explicit repair.
   let entries = restoreStateEntries(view, view.commitment.root, storageLimits().codec.trie).value

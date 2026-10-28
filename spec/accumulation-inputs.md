@@ -57,7 +57,7 @@ prove each addition before it is evaluated.
 
 ## Verification evidence
 
-`tests/unit/state/test_accumulation_inputs.nim` replays 146 independently derived contexts over
+`tests/unit/state/test_state_accumulation_inputs.nim` replays 146 independently derived contexts over
 six unchanged pinned accumulation queue inputs (tiny/full at three prefixes) and 128 authored
 report prefixes. Vector revision is `d3c089c9a1d5352ad353626d7a2db8589f137b2a`; original source/hash
 checks remain in force. Transfer and allowance contexts are explicitly authored test data, not

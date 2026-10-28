@@ -7,7 +7,9 @@
 ## rejection diagnostic and exit status.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, registers]
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/registers as pvm_registers
 let selection = paramStr(1)
 var outcome = default(RegisterResult)
 # Select runtime failures so the intended assertion, not constant-folded rejection, is exercised.

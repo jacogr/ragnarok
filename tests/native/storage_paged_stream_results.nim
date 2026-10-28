@@ -2,10 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic stream-result/metadata guard probes share real successful admission and lookup controls.
-import std/[assertions, cmdline, syncio]
-import ../support/paged_reference
-import ../../src/storage/[paged_stream, paged_codec, database_identity, state_proof, light_state_cache]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/storage_paged_reference
+import ../../src/storage/paged_stream as storage_paged_stream
+import ../../src/storage/paged_codec as storage_paged_codec
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc policy(): PagedStreamLimits =
   ## Small positive limits keep every control on the actual admission path.
   let maximum = ElementLimit(100000)

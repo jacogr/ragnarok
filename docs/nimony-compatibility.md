@@ -13,12 +13,12 @@ These observations describe exercised APIs and targets, rather than compiler-wid
 
 | Area | Observed behavior | Working approach and evidence |
 | --- | --- | --- |
-| Assertions | `doAssert` was undeclared after importing `std/assertions`. | Use Nimony's release-enabled `assert` with the project runner. See the assertion notes in the trial and `tests/unit/crypto/test_rpc.nim`. |
+| Assertions | `doAssert` was undeclared after importing `std/assertions`. | Use Nimony's release-enabled `assert` with the project runner. See the assertion notes in the trial and `tests/unit/crypto/test_rpc_rpc.nim`. |
 | Integer overloads | Declaring both `int` and `int64` overloads, or both `uint` and `uint64`, produced ambiguous calls on this 64-bit target. | Use the fixed-width overloads in [`src/lib/json_writer.nim`](../src/lib/json_writer.nim); machine integers resolve through their matching width. |
 | Generic checking | A `proc encode[T: SomeInteger](value: T): string = $value`-shaped body failed overload resolution during generic checking in the attempted writer. | Concrete integer overloads compiled and passed the RPC suite. Upstream classified [#2808](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445) as not a bug: `SomeInteger` does not guarantee a `$` operator. Keep the concrete overloads; this is not an outstanding compiler fix. |
 | Tuple arguments | An array literal of unnamed `(string, JsonValue)` tuples did not match the attempted `openArray[tuple[key: string, value: JsonValue]]` parameter. | `openArray[(string, JsonValue)]` with indexed tuple access compiled in `jsonObject`. Probe named conversions before relying on them elsewhere. |
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | [`src/lib/json_writer.nim`](../src/lib/json_writer.nim) preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
-| Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
+| Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/app_block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
 | Exclusive owner copies | October 23 includes [#2737](https://github.com/nim-lang/nimony/issues/2737): both tested sequence-element copy bans now reject, alongside scalar-only and stream-array copies. | Exact lowering guards cover copy-only and copy-plus-dup elements; a native positive control verifies explicit sequence moves. Keep ownership exclusions and real callback-retirement destructors. No artificial scalar destructor is needed. |
 
 ## PVM integration observations
@@ -77,7 +77,7 @@ Recovery startup observed conflicting `completed` fields when a complex
 `default(ApplicationChain)` was an optional private parameter, and when
 `default(ApplicationRecoveryResult)` appeared directly inside an asserted call.
 Explicit helper arguments and a named local default result passed semantic and
-native checking. See [the Services binding test](../tests/unit/state/test_application_recovery_services.nim).
+native checking. See [the Services binding test](../tests/unit/state/test_app_recovery_services.nim).
 Keep negative controls opaque enough to exercise runtime admission rather than
 constant construction; this observation does not establish a general default-value
 restriction or justify modifying the compiler.

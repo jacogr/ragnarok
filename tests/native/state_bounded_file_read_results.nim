@@ -3,10 +3,11 @@
 
 ## Raw read extraction requires actual bounded EOF, including a real binary/empty success control.
 
-import std/[cmdline, assertions]
+import std/cmdline
+import std/assertions
 import std/posix/posix
-import ../../src/lib/atomic_file
-import ../../src/codec/bounded
+import ../../src/lib/atomic_file as lib_atomic_file
+import ../../src/codec/bounded as codec_bounded
 
 proc main() =
   ## Routine-local cleanup uses the pinned compiler's supported defer lowering.

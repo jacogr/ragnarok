@@ -8,9 +8,11 @@
 
 # @@Verification={"arc": "pvm_machine_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../support/testing_arc_evidence
 
 # Test fixtures own deterministic bytes; the implementation never supplies expected values.
 proc page(index: uint32, access: PageAccess): PageImage =

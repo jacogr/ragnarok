@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_seed_results.nim",
+  "source": "tests/native/app_seed_results.nim",
   "build_name": "application-seed-results",
   "crypto_library": "crypto",
   "cases": [

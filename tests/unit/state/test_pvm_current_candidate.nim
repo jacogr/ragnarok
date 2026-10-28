@@ -3,14 +3,29 @@
 # @@Verification={"arc": "pvm_current_candidate_arc_release"}
 
 ## Genuine signed blocks traverse shared admission and current-only execution/state/capture before any canonical publication.
-import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, candidate]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned, block_codec, header, composite]
-import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus,
-  accumulation_current_update, accumulation_current_completion, accumulation_current_driver]
-import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
-  pvm_accumulation_provision, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/composite as codec_composite
+import ../../../src/state/store as state_store
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_completion as state_accumulation_current_completion
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/pvm_accumulation_provision
+import ../../support/testing_arc_evidence
 proc currentLimits(provided: bool): CurrentCandidateLimits =
   ## Real provided preimages use the same explicit capture ceilings as the independently assembled current fixture.
   result = currentCandidateLimits()

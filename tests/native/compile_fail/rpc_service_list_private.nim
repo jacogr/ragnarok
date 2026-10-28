@@ -4,6 +4,6 @@
 ## Negative compiler fixture: the retained discovery sequence cannot be mutated externally.
 # @@Verification={"group": "privacy", "expected": "services"}
 
-import ../../../src/chain/genesis
+import ../../../src/chain/genesis as chain_genesis
 var owner = default(Genesis)
 owner.services = @[]

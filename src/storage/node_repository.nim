@@ -4,9 +4,15 @@
 ## Atomic in-memory physical-node repository verifies complete graphs before publishing revisions.
 ## Retained immutable read views are independent of later publication and explicit owner close.
 
-import std/[algorithm, assertions]
-import ./[node_records, record_codec, full_state_trie, durability]
-import ../codec/[state_layout, state_trie, bounded]
+import std/algorithm
+import std/assertions
+import ./node_records as storage_node_records
+import ./record_codec as storage_record_codec
+import ./full_state_trie as storage_full_state_trie
+import ./durability as storage_durability
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
 
 type
   RepositoryLimits* = object ## Bound accumulated physical records separately from one complete target.

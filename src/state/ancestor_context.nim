@@ -4,8 +4,9 @@
 ## Immutable bounded full sealed-header context linked to an explicitly supplied parent.
 ## Structural ancestry does not authenticate the caller's parent or publish historical state.
 import std/assertions
-import ../codec/[bounded, header]
-import ../crypto/primitives
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../crypto/primitives as crypto_primitives
 
 type
   AncestorContextLimits* = object ## Parent-inclusive count, serialized bytes and exact header profile.

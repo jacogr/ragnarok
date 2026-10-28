@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/accumulation_machine
+import ../../../src/state/accumulation_machine as state_accumulation_machine
 var prepared: PreparedAccumulationMachine
 discard prepared.data

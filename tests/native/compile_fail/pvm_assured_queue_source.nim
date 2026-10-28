@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "AssuredComputedReports", "early": ["prepareAssuredQueue(", "[1] expected: AssuredComputedReports but got: BlockTransitionResult"]}
 
-import ../../../src/state/[assured_queue, block_transition]
+import ../../../src/state/assured_queue as state_assured_queue
+import ../../../src/state/block_transition as state_block_transition
 discard prepareAssuredQueue(default(BlockTransitionResult), AssuredQueueConfig())

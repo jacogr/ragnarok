@@ -5,11 +5,20 @@
 
 ## Posterior population/core/shard eligibility with genuine epoch shrink, immutable provenance and ARC release.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_roster, computed_transition, computed_profile, block_transition,
-  store]
-import ../../../src/codec/[assurances, bounded, state_safrole, state_layout]
-import ../../support/[pvm_computed_roster, pvm_computed_state, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/store as state_store
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../support/pvm_computed_roster
+import ../../support/pvm_computed_state
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine source execution and signed transition construction.

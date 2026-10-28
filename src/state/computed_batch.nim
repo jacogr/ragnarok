@@ -3,10 +3,24 @@
 
 ## Compose verified computed guarantees only within one exact authenticated execution context.
 
-import ../chain/parameters
-import ../codec/[bounded, assurances, guarantees, report_owned, owned, header, state_safrole, natural]
-import ./[computed_envelope, computed_credentials, computed_guarantors, computed_roster,
-  computed_transition, computed_profile, block_transition, block_admission, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/guarantees as codec_guarantees
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/header as codec_header
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/natural as codec_natural
+import ./computed_envelope as state_computed_envelope
+import ./computed_credentials as state_computed_credentials
+import ./computed_guarantors as state_computed_guarantors
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   ComputedBatchError* {.pure.} = enum ## Failed/default results expose neither a prefix nor authority for an empty batch.

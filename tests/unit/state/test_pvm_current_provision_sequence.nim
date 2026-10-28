@@ -2,18 +2,35 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real guest values remain supplied at slot2 across duplicate calls; mixed body refusal and a short local union budget preserve exact prefixes.
-import std/[assertions, syncio, envvars, monotimes]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
 import std/posix/posix
-import ../../../src/app/[chain, candidate, services, current_download_command]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded, composite, state_service_values, state_requests]
-import ../../../src/crypto/primitives
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_completion,
-  accumulation_current_activity, preimages]
-import ../../../src/storage/managed_manifest
-import ../../support/[current_provision_sequence_context, current_consecutive_download_context,
-  current_sequence_command_context, current_services_disk_samples, managed_storage_samples,
-  block_download_transport]
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/services as app_services
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_completion as state_accumulation_current_completion
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/preimages as state_preimages
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../support/state_current_provision_sequence_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_sequence_command_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/app_block_download_transport
 
 proc namespaceValues(fixture: CurrentProvisionSequenceFixture) =
   ## The first program provides its literal RO73 and RW81; remaining lookup requests must stay outstanding after rejected delivery.

@@ -1,0 +1,207 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Authored common-source two-service executions with separate incoming credits and real PVM terminals.
+## Complete source maps retain code, storage, requests and unrelated chapters; no production verdict is replaced.
+
+import std/assertions
+import ../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../src/state/accumulation_operands as state_accumulation_operands
+import ../../src/state/accumulation_queue as state_accumulation_queue
+import ../../src/state/accumulation_service as state_accumulation_service
+import ../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/state/accumulation_batch as state_accumulation_batch
+import ../../src/state/store as state_store
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/header as codec_header
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/c2_records as codec_c2_records
+import ../../src/codec/state_privileges as codec_state_privileges
+import ../../src/codec/state_workqueues as codec_state_workqueues
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_authorization as codec_state_authorization
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/gas as pvm_gas
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/chain/parameters as chain_parameters
+import ./pvm_accumulation_context
+import ./pvm_accumulation_program
+import ./pvm_accumulation_provision
+import ./state_accumulation_provision_integration
+
+type
+  BatchEnding* {.pure.} = enum ## Literal final instructions distinguish normal halt from exceptional rollback.
+    Halt,                  ## Normal termination retains both regular provision contributions.
+    Panic,                 ## A trap discards the later regular provision and retains the first checkpoint.
+    HashReturn,            ## A readable 32-byte return overrides yield and retains regular provisions.
+    StorageHalt,           ## The sibling PVM API retains a regular storage write at halt.
+    StoragePanic,          ## Panic discards a storage write made after the original checkpoint.
+    StorageCheckpointPanic ## A second checkpoint retains the storage write before panic.
+  BatchFixture* = object ## Mutable test-only fixture values are independently captured by the production preparation APIs.
+    inputs*: PreparedAccumulationInputs ## Shared immutable service-input owner for execution provenance.
+    state*: StateStore        ## Complete prior map captured independently of the fixture rows.
+    entries*: seq[StateEntry] ## Mutable authored rows used to construct independent expected maps.
+
+proc batchEnvelope*(ending: BatchEnding): seq[byte] =
+  ## Assemble two provides around a checkpoint; instruction bytes and opcode boundaries are independently authored.
+  var instructions = @[registerImmediate(7, 42), registerImmediate(8, 65536),
+    registerImmediate(9, 1), @[10'u8, 28], @[10'u8, 19], registerImmediate(7, 99),
+    registerImmediate(8, 196608), @[10'u8, 28]]
+  if ending in {BatchEnding.StorageHalt, BatchEnding.StoragePanic,
+      BatchEnding.StorageCheckpointPanic}:
+    instructions.add(@[51'u8, 7, 255]) # Current self selector is independent of the preceding provide verdict.
+    instructions.add(registerImmediate(8, 65536))
+    instructions.add(registerImmediate(9, 1))
+    instructions.add(registerImmediate(10, 196608))
+    instructions.add(registerImmediate(11, 1))
+    instructions.add(@[10'u8, 5]) # Existing PVM write PR: one-byte raw key/value in the invoking service.
+    if ending == BatchEnding.StorageCheckpointPanic:
+      instructions.add(@[10'u8, 19]) # A checkpoint now retains the storage mutation as exceptional state.
+  case ending
+  of BatchEnding.Halt, BatchEnding.StorageHalt:
+    discard # r8 remains an address rather than the exactly-32-byte halt-return length.
+  of BatchEnding.Panic, BatchEnding.StoragePanic, BatchEnding.StorageCheckpointPanic:
+    instructions.add(@[0'u8]) # Completed guest trap selects the exceptional checkpoint.
+  of BatchEnding.HashReturn:
+    instructions.add(registerImmediate(7, 65536))
+    instructions.add(registerImmediate(8, 32)) # Hash-return normalization retains this service's regular provisions.
+  instructions.add(@[50'u8, 0])
+  var code = @[0'u8, 0, 0, 0, 0]
+  var starts = @[0, 1, 2, 3, 4]
+  for instruction in instructions:
+    starts.add(code.len)
+    for octet in instruction: code.add(octet) # Arguments are never marked as opcodes.
+  assert code.len < 128
+  var raw = @[0'u8, 0, byte(code.len)]
+  for octet in code: raw.add(octet)
+  var mask = newSeq[byte]((code.len+7) div 8)
+  for index in starts: mask[index div 8] = mask[index div 8] or byte(1 shl (index mod 8))
+  for octet in mask: raw.add(octet)
+  pvmEnvelope(raw)
+
+proc batchInputSet*(incoming = true): PreparedAccumulationInputs =
+  ## Equal-content calls create distinct input owners for source-substitution rejection tests.
+  let queue = planAccumulationQueues([], [0'u8], [0'u8], HeaderSlot(0),
+    AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(1),
+      maxBytes: ByteLimit(1000)))).value
+  let operands = prepareAccumulationOperands(queue, AccumulationReportPrefix(0), default(
+      AccumulationOperandConfig)).value
+  var transfers: seq[DeferredTransfer] = @[]
+  if incoming:
+    transfers.add(DeferredTransfer(source: ServiceIndex(1), destination: ServiceIndex(42),
+        amount: TransferBalance(7)))
+    transfers.add(DeferredTransfer(source: ServiceIndex(2), destination: ServiceIndex(99),
+        amount: TransferBalance(11)))
+  prepareAccumulationInputs(operands, transfers, [AlwaysAccumulate(service: ServiceIndex(42),
+      gas: PrivilegeGas(100000)),
+    AlwaysAccumulate(service: ServiceIndex(99), gas: PrivilegeGas(100000))],
+    AccumulationInputConfig(inputs: ElementLimit(2), allowances: ElementLimit(2),
+        services: ElementLimit(2))).value
+
+proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
+    writes = 64'u64, incoming = true, firstEnvelope: seq[byte] = @[],
+    secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[],
+    assigners: seq[ServiceIndex] = @[], manager = 0'u32,
+    always: seq[AlwaysAccumulate] = @[], allowanceLimit = 0'u64, cores = 2'u64, delegator = 0'u32,
+    stagingCount = 6): BatchFixture =
+  ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
+  ## Optional copied envelopes/extra entries authorize cross-host witnesses without changing default callers.
+  var config = pvmContextConfig(cores)
+  if cores == 3:
+    config.totalBytes = ByteLimit(12000) # Three-core/nine-validator source chapters exceed the older two-core aggregate ceiling.
+  config.validators = ValidatorCount(uint64(stagingCount)) # Explicit initial roster count remains distinct from the host successor count.
+  config.privileges.maxAlways = ElementLimit(allowanceLimit) # Explicit manager fixtures opt into allowance capture; earlier callers retain zero capacity.
+  assert assigners.len == 0 or assigners.len == int(
+      cores) # Optional current roles enter the same authenticated fixture map.
+  let selectedAssigners = if assigners.len == 0: newSeq[ServiceIndex](int(cores)) else: assigners
+  var queues = newSeq[AuthorizerRow](int(cores))
+  for core in 0..<int(cores):
+    queues[core] = newSeq[AuthorizerHash](80) # Optional three-core fixtures retain the same fixed queue shape.
+  var entries = @[
+    authorizationEntry(AuthorizationKind.Queues, queues, config.queues).value,
+    validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](stagingCount),
+        config.staging).value,
+    privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
+        assigners: selectedAssigners, delegator: ServiceIndex(delegator), always: always),
+            config.privileges).value,
+    StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 8]),
+    serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
+        1), valueBytes: ByteLimit(1))).value,
+    provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+  for entry in extra:
+    entries.add(entry) # Extra integration witnesses enter the same immutable complete source map.
+  for index, ending in [first, second]:
+    let service = ServiceIndex(if index == 0: 42 else: 99)
+    var preimage = @[0'u8]
+    let supplied = (if index == 0: firstEnvelope else: secondEnvelope)
+    let envelope = (if supplied.len == 0: batchEnvelope(ending) else: supplied)
+    for octet in envelope: preimage.add(octet) # Empty metadata framing precedes the entire code envelope.
+    let hash = array[32, byte](blake2b256(preimage).value)
+    entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
+      balance: AccountBalance(if index == 0: 10 else: 20), lastAccumulation: AccountSlot(5)),
+          ByteLimit(ServiceMetadataBytes)).value)
+    entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), preimage,
+      ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value)
+  var limits = integrationStoreLimits(writes = writes)
+  result = BatchFixture(inputs: batchInputSet(incoming), entries: entries,
+    state: newStateStore(entries, limits).value)
+
+# Preserve the exact original execution profile for default callers, including its independently encoded zero deposits.
+proc batchParameters(): Parameters =
+  var wire = encodeParameters(pvmParameters())
+  for index in 0..<24:
+    wire[index] = 0 # Existing tiny-balance fixtures require no deposit funding.
+  decodeParameters(wire).value
+
+proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128),
+    copyLimit = MemoryByteLimit(32), parameters = batchParameters(), transferLimit = ElementLimit(0),
+    accountWriteKeys = ElementLimit(0),
+    createdAccounts = ElementLimit(0),
+    deletedAccounts = ElementLimit(0), allowanceLimit = 0'u64,
+    serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord), cores = 2'u64,
+        stagingCount = 6, codeBytes = 512'u64, preimageBytes = 1024'u64,
+    modifiedAccounts = ElementLimit(0), accountWriteFacts = ElementLimit(0)):
+    AccumulationDispatchResult =
+  ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
+  ## Explicit finite execution policies support integrations; defaults retain the earlier supported path.
+  let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
+    fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(
+        codeBytes), preimageBytes: ByteLimit(preimageBytes))).value
+  let invoked = prepareAccumulationInvocation(service, entropy, ServiceProbeLimit(1)).value
+  let prepared = initializeAccumulationMachine(invoked, InitializationLimits(
+      envelope: InitializationByteLimit(codeBytes),
+    program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))).value
+  var config = pvmContextConfig(cores)
+  if cores == 3:
+    config.totalBytes = ByteLimit(12000) # Three-core/nine-validator source chapters exceed the older two-core aggregate ceiling.
+  config.validators = ValidatorCount(uint64(stagingCount)) # Explicit initial roster count remains distinct from the host successor count.
+  config.privileges.maxAlways = ElementLimit(allowanceLimit) # Real bless guests explicitly opt into bounded dictionary growth/shrinkage.
+  executeAccumulationMachine(prepared, parameters,
+    FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),
+      operand: OperandLimits(maxBytes: ByteLimit(512))), copyLimit,
+    ExecutionStepLimit(200), HostCallLimit(32), GasCycleLimit(10000), config,
+    provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit,
+    accountWriteKeys = accountWriteKeys, createdAccounts = createdAccounts,
+    deletedAccounts = deletedAccounts, serviceProbes = serviceProbes,
+        modifiedAccounts = modifiedAccounts, accountWriteFacts = accountWriteFacts)
+
+proc batchPolicy*(accounts = 2'u64, selfWrites = 0'u64,
+    selfValueBytes = 0'u64, createdAccounts = 0'u64,
+    deletedAccounts = 0'u64): AccumulationBatchLimits =
+  ## Account and union ceilings remain independent, with the latter including duplicate contributions from both services.
+  AccumulationBatchLimits(accounts: ElementLimit(accounts),
+    deletedAccounts: ElementLimit(deletedAccounts), createdAccounts: ElementLimit(createdAccounts),
+    selfWrites: ElementLimit(selfWrites), selfValueBytes: ByteLimit(selfValueBytes),
+    provisions: integrationPolicy(contexts = 2, items = 4, perBlob = 1, total = 4, encoded = 13))

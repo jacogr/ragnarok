@@ -4,10 +4,13 @@
 ## One immutable finalized candidate or one unacknowledged adoption result, with explicit producer backpressure.
 ## Dispatch attempts once; success and refusal are both retained until taken. This module performs no execution.
 
-import ./chain
-import ../chain/genesis
-import ../rpc/server
-import ../state/[store, accumulation_finalization, accumulation_completion, accumulation_publication]
+import ./chain as app_chain
+import ../chain/genesis as chain_genesis
+import ../rpc/server as rpc_server
+import ../state/store as state_store
+import ../state/accumulation_finalization as state_accumulation_finalization
+import ../state/accumulation_completion as state_accumulation_completion
+import ../state/accumulation_publication as state_accumulation_publication
 
 type
   AccumulationHandoffStage* {.pure.} = enum ## Default Idle owns no candidate; Finished requires explicit acknowledgement.

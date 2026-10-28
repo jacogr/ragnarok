@@ -4,10 +4,20 @@
 ## Apply selected C12 roles, original-owner C2 queues and C7 staging after private account/provision preparation.
 ## Genuine annulment sources govern every component; no caller map, role recipient or fabricated empty context substitutes authority.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
-import ../codec/[bounded, assurances, state_authorization, state_privileges, state_safrole, state_layout]
-import ./[accumulation_provision_phase, accumulation_account_phase, accumulation_coverage,
-  accumulation_annulment, accumulation_global_roles, accumulation_outcome,
-  accumulation_effects, store]
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ./accumulation_provision_phase as state_accumulation_provision_phase
+import ./accumulation_account_phase as state_accumulation_account_phase
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_global_roles as state_accumulation_global_roles
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./store as state_store
 
 type
   AccumulationGlobalPhaseLimits* = object ## Every complete global component has explicit shape/count/byte ceilings; aggregate bytes charge original and output.

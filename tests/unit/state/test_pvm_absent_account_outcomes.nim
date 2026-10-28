@@ -3,14 +3,32 @@
 # @@Verification={"arc": "pvm_absent_account_outcomes_arc_release"}
 
 ## Real metadata absence and signed block authority prove identity before credit, zero execution and exact source lifetime.
-import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_absent, accumulation_inputs, accumulation_service,
-  accumulation_round, accumulation_operands, accumulation_queue, report_admission, store]
-import ../../../src/codec/[bounded, composite, header, work_digest, state_accounts,
-  state_privileges,
-  state_layout, state_trie, state_workqueues, report_owned, c2_records]
-import ../../support/[accumulation_batch_context, accumulation_provision_integration,
-  report_admission_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/state/accumulation_absent as state_accumulation_absent
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_operands as state_accumulation_operands
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../support/state_accumulation_batch_context
+import ../../support/state_accumulation_provision_integration
+import ../../support/state_report_admission_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc inputs(target: uint32, protected = false): PreparedAccumulationInputs =

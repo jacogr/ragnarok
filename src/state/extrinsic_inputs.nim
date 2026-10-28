@@ -4,9 +4,10 @@
 ## Authenticate complete ordered extrinsic tables against their original owned package manifest.
 ## Immutable package-bound bytes certify commitments, not availability, state freshness or execution.
 
-import ../codec/[bounded, work_package]
-import ../crypto/primitives
-import ../pvm/host_fetch
+import ../codec/bounded as codec_bounded
+import ../codec/work_package as codec_work_package
+import ../crypto/primitives as crypto_primitives
+import ../pvm/host_fetch as pvm_host_fetch
 
 type
   ExtrinsicInputsError* {.pure.} = enum ## Refusals retain no partially authenticated table.

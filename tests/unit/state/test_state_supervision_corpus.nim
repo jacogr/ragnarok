@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent dictionary expectations qualify sparse full-domain supervisor resolution and batch lookup across all declaration orders.
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, fixed_arithmetic_corpus]
-import ../../../src/state/[inventory, service_directory, service_supervision, supervision_table]
-import ../../../src/codec/[bounded, state_accounts, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/testing_fixed_arithmetic_corpus
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/service_directory as state_service_directory
+import ../../../src/state/service_supervision as state_service_supervision
+import ../../../src/state/supervision_table as state_supervision_table
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashes only after each independent complete directory is built.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -18,5 +18,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/accumulation_storage_history_results.nim"
+  "source": "tests/native/state_accumulation_storage_history_results.nim"
 }

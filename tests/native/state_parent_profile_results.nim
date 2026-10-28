@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/source/reason/view guards use an actual signed selected parent as genuine positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[accumulation_current_chain_context, parent_profile_context]
-import ../../src/state/parent_profile
-import ../../src/chain/[provider, genesis]
-import ../../src/codec/[bounded, report_owned]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_accumulation_current_chain_context
+import ../support/state_parent_profile_context
+import ../../src/state/parent_profile as state_parent_profile
+import ../../src/chain/provider as chain_provider
+import ../../src/chain/genesis as chain_genesis
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: ParentProfileResult[SelectedParentProfile]) {.noinline.} =
   ## No default/failed result grants a configured selected parent.
   discard outcome.value

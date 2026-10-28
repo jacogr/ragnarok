@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime misuse probes reach actual success-only extraction under checked optimized compilation.
-import std/[assertions, cmdline]
-import ../../src/state/trie_proof
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/cmdline
+import ../../src/state/trie_proof as state_trie_proof
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc extract[T](outcome: StateProofResult[T]) =
   ## The same generic public accessor must reject defaults and every actual failure payload type.
   discard outcome.value

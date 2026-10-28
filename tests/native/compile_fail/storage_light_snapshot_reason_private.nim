@@ -3,6 +3,6 @@
 
 ## Snapshot owners and result alternatives expose only selected guarded accessors.
 # @@Verification={"group": "privacy", "expected": "proofReason"}
-import ../../../src/storage/light_snapshot
+import ../../../src/storage/light_snapshot as storage_light_snapshot
 let hidden = default(LightSnapshotResult[PreparedLightSnapshot])
 discard hidden.proofReason

@@ -5,7 +5,7 @@
 ## Each invocation attempts forbidden value extraction after a failed read or write.
 
 import std/cmdline
-import ../../src/pvm/machine
+import ../../src/pvm/machine as pvm_machine
 var memory = captureMemory([], PageLimit(0)).value
 var address = MemoryAddress(65536)
 var limit = MemoryByteLimit(1)

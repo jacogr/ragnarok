@@ -339,7 +339,7 @@ and close-on-exec, and SIGPIPE is suppressed per socket/send.
 
 ## Verification
 
-`tests/unit/crypto/test_rpc.nim` covers JSON-RPC envelopes, batches, notifications, strict malformed
+`tests/unit/crypto/test_rpc_rpc.nim` covers JSON-RPC envelopes, batches, notifications, strict malformed
 JSON, numeric/string IDs, Unicode boundaries, RFC 6455's published handshake example, every
 truncated frame prefix, masking/length/control errors, fragmentation and repeated ARC destruction.
 It is registered in `make check-unit`. `make check-guards` includes a lowering-level server-copy

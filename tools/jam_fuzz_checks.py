@@ -11,7 +11,7 @@ from e2e_checks import prepare_peer
 def prepare_fuzzer_policy(context):
     """Build only native test resource-policy materialization; expected protocol data remains independent."""
     context.fuzzer_policy = context.checks.build(context.compiler,
-        ROOT/'tests/native/jam_fuzzer_target_policy.nim', 'jam-fuzzer-target-policy',
+        ROOT/'tests/native/app_jam_fuzzer_target_policy.nim', 'jam-fuzzer-target-policy',
         crypto_library=context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
 
 

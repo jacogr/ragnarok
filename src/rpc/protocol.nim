@@ -10,15 +10,25 @@
 ## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
 ## missing state uses zero. RpcSession owns bounded chain subscriptions and serialized updates.
 
-import std/[strutils, base64]
-import ./wire
-import ./proof_requests
-import ../lib/[json_writer, json_reader]
-import ../version
-import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
-import ../codec/[state_trie, state_layout, header]
-import ../state/store
-import ./light_source
+import std/strutils
+import std/base64
+import ./wire as rpc_wire
+import ./proof_requests as rpc_proof_requests
+import ../lib/json_writer as lib_json_writer
+import ../lib/json_reader as lib_json_reader
+import ../version as ragnarok_version
+import ../chain/parameters as chain_parameters
+import ../chain/genesis as chain_genesis
+import ../chain/services as chain_services
+import ../chain/statistics as chain_statistics
+import ../chain/beefy as chain_beefy
+import ../chain/reports as chain_reports
+import ../chain/provider as chain_provider
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/header as codec_header
+import ../state/store as state_store
+import ./light_source as rpc_light_source
 
 const MaxRpcProofBytes* = 32768 ## Independent raw RPV1 response ceiling before Base64 expansion.
 
@@ -455,7 +465,7 @@ proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure
 
 ## Encode validated C(13) once per publication/session; failures never expose a partial result.
 proc statisticsUpdate(head: BlockSnapshot): string =
-  let found = statistics.statistics(head, ByteLimit(MaxBlobReplyBytes))
+  let found = chain_statistics.statistics(head, ByteLimit(MaxBlobReplyBytes))
   if found.error != StatisticsReadError.None:
     return "" # Missing, malformed and oversized statistics all terminate this subscription family.
   $descriptorValue(head, json(base64.encode(found.value.bytes)))
@@ -465,11 +475,11 @@ proc statisticsUpdate(head: BlockSnapshot): string =
 proc serviceUpdate(head: BlockSnapshot, service: ServiceIndex, kind: SubscriptionKind,
     key: openArray[byte], hash: ServicePreimageHash): string =
   let found = if kind == SubscriptionKind.ServiceValue:
-    services.serviceValue(head, service, key, ByteLimit(MaxBlobReplyBytes))
+    chain_services.serviceValue(head, service, key, ByteLimit(MaxBlobReplyBytes))
     elif kind == SubscriptionKind.ServicePreimage:
-      services.servicePreimage(head, service, hash, ByteLimit(
+      chain_services.servicePreimage(head, service, hash, ByteLimit(
           MaxBlobReplyBytes)) # Verify bounded bytes against their identity.
-    else: services.serviceData(head, service, ByteLimit(
+    else: chain_services.serviceData(head, service, ByteLimit(
         MaxBlobReplyBytes))   # All readers validate account metadata.
   var value = jsonNull()
   if found.error == ServiceReadError.None:
@@ -497,7 +507,7 @@ proc requestSlots(history: RequestHistory): JsonValue =
 ## Read one fixed request history; absence is null and malformed or ambiguous state is a failure.
 proc requestUpdate(head: BlockSnapshot, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): string =
-  let found = services.serviceRequest(head, service, hash, length)
+  let found = chain_services.serviceRequest(head, service, hash, length)
   var value = jsonNull()
   if found.error == ServiceReadError.None:
     value = requestSlots(found.value) # Only validated histories expose timestamp fields.
@@ -996,7 +1006,7 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
     if methodName == "serviceRequest":
       var identity = default(array[32, byte])
       for j in 0..<32: identity[j] = key[j] # Canonical hash width was validated above.
-      let request = services.serviceRequest(view, ServiceIndex(service), ServicePreimageHash(
+      let request = chain_services.serviceRequest(view, ServiceIndex(service), ServicePreimageHash(
           identity), RequestLength(length))
       if request.error == ServiceReadError.Missing:
         return success(id, jsonNull()) # Absence differs from an outstanding empty history.
@@ -1007,14 +1017,15 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
     let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
     var found = default(ServiceReadResult)
     if methodName == "serviceData":
-      found = services.serviceData(view, ServiceIndex(service), budget) # Metadata uses C(255, service).
+      found = chain_services.serviceData(view, ServiceIndex(service), budget) # Metadata uses C(255, service).
     elif methodName == "serviceValue":
-      found = services.serviceValue(view, ServiceIndex(service), key, budget) # Empty raw keys remain valid.
+      found = chain_services.serviceValue(view, ServiceIndex(service), key, budget) # Empty raw keys remain valid.
     else:
       # Exact hash width was established before selecting the known block snapshot.
       var identity = default(array[32, byte])
       for j in 0..<32: identity[j] = key[j]
-      found = services.servicePreimage(view, ServiceIndex(service), ServicePreimageHash(identity), budget)
+      found = chain_services.servicePreimage(view, ServiceIndex(service), ServicePreimageHash(
+          identity), budget)
     if found.error == ServiceReadError.Missing:
       return success(id, jsonNull()) # Absence differs from a present empty blob.
     if found.error == ServiceReadError.LimitExceeded: return error(id, 0,
@@ -1063,7 +1074,7 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
         return success(id, json(ids))
       if methodName == "beefyRoot":
         # The fixed commitment comes from the complete matching history, not a guessed empty root.
-        let found = beefy.beefyRoot(view)
+        let found = chain_beefy.beefyRoot(view)
         if found.error != BeefyReadError.None:
           return error(id, 0, "Invalid or unavailable BEEFY history") # No root is exposed on failure.
         return success(id, json(base64.encode(
@@ -1071,7 +1082,7 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
       if methodName == "statistics":
         # Use the same raw-value and aggregate reply ceilings as service blobs.
         let budget = ByteLimit(min(MaxBlobReplyBytes, max(0, (allowance - id.len - 256) div 4 * 3)))
-        let found = statistics.statistics(view, budget)
+        let found = chain_statistics.statistics(view, budget)
         if found.error == StatisticsReadError.LimitExceeded:
           return error(id, 0, ReplyBudgetError) # A complete value must fit; no truncation.
         if found.error != StatisticsReadError.None:

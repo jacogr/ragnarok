@@ -8,7 +8,12 @@
 ## validator/core/service statistics access.
 
 import std/assertions
-import ./[natural, bounded, composite, assurances, state_layout, state_trie]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export ServiceIndex, CoreCount, ValidatorCount
 
 type
@@ -108,7 +113,7 @@ proc serviceCount(count: uint64, config: ActivityConfig): ActivityError =
 
 ## Read a single canonical natural using a private cursor; failure never exports partial progress.
 proc readNatural(input: openArray[byte], cursor: var int, config: ActivityConfig): ActivityResult[uint64] =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
       return ActivityResult[uint64](status: ActivityError.Truncated) # Missing count/key/measure is incomplete framing.
@@ -257,7 +262,7 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
 
 ## Commit a measured canonical natural after whole-source validation and destination sizing.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   # Exact preflight size includes every natural prefix and payload octet.
   for i in 0..<encoded.len:
     output[cursor] = encoded.bytes[i]
@@ -274,7 +279,7 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
     let count = source.validators[epoch].len
     if count != population(config, epoch): return ActivityResult[StateEntry](
         status: ActivityError.InvalidCount) # Never infer a roster from source count.
-    let error = grow(size, natural.encode(JamNatural(count)).len+count*24, config)
+    let error = grow(size, codec_natural.encode(JamNatural(count)).len+count*24, config)
     if error != ActivityError.None: return ActivityResult[StateEntry](
         status: error) # Proved profile count bounds native multiplication.
   if uint64(source.cores.len) != uint64(config.cores):
@@ -285,10 +290,10 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
   # Size every natural core field before allocating any encoded parent bytes.
   for core in source.cores:
     for field in coreFields(core):
-      let error = grow(size, natural.encode(JamNatural(field)).len, config)
+      let error = grow(size, codec_natural.encode(JamNatural(field)).len, config)
       if error != ActivityError.None: return ActivityResult[StateEntry](
           status: error) # Gas and counters share byte policy.
-  let prefix = grow(size, natural.encode(JamNatural(source.services.len)).len, config)
+  let prefix = grow(size, codec_natural.encode(JamNatural(source.services.len)).len, config)
   if prefix != ActivityError.None: return ActivityResult[StateEntry](
       status: prefix) # Even zero services consume a count byte.
   # Service inputs must already have strictly increasing numeric IDs; do not sort or deduplicate silently.
@@ -299,7 +304,7 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
     if key != ActivityError.None: return ActivityResult[StateEntry](
         status: key) # All four service-key bytes share parent policy.
     for field in serviceFields(record.statistics):
-      let error = grow(size, natural.encode(JamNatural(field)).len, config)
+      let error = grow(size, codec_natural.encode(JamNatural(field)).len, config)
       if error != ActivityError.None: return ActivityResult[StateEntry](
           status: error) # Include the last accumulation gas field.
   var entry = StateEntry(key: chapterKey(StateChapter(13)), value: newSeq[byte](size))

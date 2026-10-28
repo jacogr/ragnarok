@@ -3,8 +3,13 @@
 
 ## Constant-work same-source account review joins targeted invariants with complete supervisor/economic observations.
 ## Review success preserves each evidence scope; undercoverage does not become an unstated global invalid-state rule.
-import ./[inventory, account_invariants, service_directory, supervision_table, economics_table,
-    footprint_audit, economic_profile]
+import ./inventory as state_inventory
+import ./account_invariants as state_account_invariants
+import ./service_directory as state_service_directory
+import ./supervision_table as state_supervision_table
+import ./economics_table as state_economics_table
+import ./footprint_audit as state_footprint_audit
+import ./economic_profile as state_economic_profile
 
 type
   AccountReviewInfo* = object ## Fixed completed component observations retain their original individual meanings.

@@ -7,9 +7,13 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, strutils, syncio]
-import ../../src/crypto/[primitives, assurance_context]
-import ../../src/codec/assurances
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/crypto/assurance_context as crypto_assurance_context
+import ../../src/codec/assurances as codec_assurances
 
 # Sequential fault injection applies only to the test observer library.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

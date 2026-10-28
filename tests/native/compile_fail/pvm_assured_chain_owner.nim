@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/assured_chain
+import ../../../src/state/assured_chain as state_assured_chain
 var candidate: AdvancedAssuredChain
 discard candidate.data

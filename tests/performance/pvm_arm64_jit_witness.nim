@@ -1,12 +1,19 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Local JIT alias/overflow and reservation witness against the engine's bounded single-step adapter.
-import std/[assertions, syncio]
-import ../../src/codec/natural
-import ../../src/pvm/[program, machine, gas, step, registers, gas_plan, gas_memo]
+import std/assertions
+import std/syncio
+import ../../src/codec/natural as codec_natural
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/registers as pvm_registers
+import ../../src/pvm/gas_plan as pvm_gas_plan
+import ../../src/pvm/gas_memo as pvm_gas_memo
 when defined(pvmArm64Jit):
-  import ../../src/pvm/internal/arm64_jit
-import ../../src/pvm/internal/handler_stream
+  import ../../src/pvm/internal/arm64_jit as pvm_arm64_jit
+import ../../src/pvm/internal/handler_stream as pvm_handler_stream
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))

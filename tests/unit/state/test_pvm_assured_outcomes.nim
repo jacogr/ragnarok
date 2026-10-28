@@ -5,17 +5,43 @@
 
 ## Original guest modes retain authentic reports while successor aggregation changes gas exhaustion into real regular commits.
 
-import std/[assertions, syncio]
-import ../../../src/state/[assured_chain, assured_composition, assured_execution, assured_queue,
-  accumulation_execution, accumulation_round, accumulation_queue, accumulation_inputs,
-  accumulation_batch, accumulation_provisions, accumulation_outcome, accumulation_effects,
-  accumulation_context, accumulation_consensus, accumulation_finalization, accumulation_runner,
-  report_admission, block_transition, block_admission, store]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, state_accounts, state_service_values, state_layout,
-  state_statistics, state_workqueues, work_digest]
-import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
-  pvm_assured_execution, pvm_assured_composition, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/assured_chain as state_assured_chain
+import ../../../src/state/assured_composition as state_assured_composition
+import ../../../src/state/assured_execution as state_assured_execution
+import ../../../src/state/assured_queue as state_assured_queue
+import ../../../src/state/accumulation_execution as state_accumulation_execution
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_batch as state_accumulation_batch
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/accumulation_runner as state_accumulation_runner
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/pvm_assured_outcomes
+import ../../support/pvm_computed_storage_program
+import ../../support/pvm_assured_execution
+import ../../support/pvm_assured_composition
+import ../../support/testing_arc_evidence
 
 func initialStorage(mode: ComputedStorageMode): seq[byte] =
   ## Literal first-block exceptional/checkpoint oracle differs from the next block's doubled-credit oracle.

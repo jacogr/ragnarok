@@ -3,10 +3,15 @@
 
 ## Independent complete roots and detached record paths witness bounded authenticated lookups and hostile proofs.
 # @@Verification={"arc": "storage_state_proof_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[state_proof, full_state_trie, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject actual provider refusal and reset its exact attempt counter.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

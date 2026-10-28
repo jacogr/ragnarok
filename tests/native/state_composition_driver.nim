@@ -6,9 +6,22 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_composition, state_trie, state_layout, bounded, assurances,
-  state_consensus, state_safrole, state_privileges, state_accounts, state_service_values, state_requests]
+import std/assertions
+import std/cmdline
+import std/syncio
+import std/strutils
+import std/parseutils
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_privileges as codec_state_privileges
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
 
 ## Empty payloads use one explicit token; all other bytes retain exact order.
 proc unhex(text: string): seq[byte] =

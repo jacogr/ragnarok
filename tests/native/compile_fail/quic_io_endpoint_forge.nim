@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "opened"}
 
-import ../../../src/quic/io
+import ../../../src/quic/io as quic_io
 discard UdpEndpoint(opened: true)

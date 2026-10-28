@@ -3,10 +3,14 @@
 
 ## Immutable partial verified read evidence. Unknown keys never become absent state.
 ## These owners cannot substitute for complete StateStore snapshots or certify a new state root.
-import std/[algorithm, assertions]
-import ./trie_proof
-import ./proof_plan
-import ../codec/[bounded, state_layout, state_trie, state_safrole]
+import std/algorithm
+import std/assertions
+import ./trie_proof as state_trie_proof
+import ./proof_plan as state_proof_plan
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_safrole as codec_state_safrole
 type
   ProofViewLimits* = object ## Count and retained logical value bytes bound this partial evidence collection.
     items*: ElementLimit

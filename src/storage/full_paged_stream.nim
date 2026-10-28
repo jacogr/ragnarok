@@ -4,9 +4,14 @@
 ## Complete full-state graph admission and authenticated reads use fixed traversal state and disk scratch.
 ## Synchronous callbacks are borrowed; checked metadata owns no file, producer, graph or scratch buffer.
 import std/assertions
-import ./[full_paged_codec, paged_codec, paged_stream, node_records]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import ./full_paged_codec as storage_full_paged_codec
+import ./paged_codec as storage_paged_codec
+import ./paged_stream as storage_paged_stream
+import ./node_records as storage_node_records
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 
 const FullPagedFixedBytes* = 4194304'u64 ## Conservative logical workspace, distinct from measured RSS.
 type

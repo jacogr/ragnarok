@@ -5,11 +5,12 @@
 
 ## Shared raw EOF reads retain exact binary bytes and typed failures without interpreting state/control formats.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/lib/atomic_file
-import ../../../src/codec/bounded
-import ../../support/arc_evidence
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc makeFifo(path: cstring, mode: Mode): cint {.importc: "mkfifo", cdecl, header: "<sys/stat.h>".}
   ## A real FIFO with no writer proves path opening cannot block before regular-file validation.

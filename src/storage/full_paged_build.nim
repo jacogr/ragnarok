@@ -4,9 +4,14 @@
 ## Replay-bound full-state artifact construction uses one record, fixed pages and a bounded digest stack.
 ## Successful construction includes complete graph admission; borrowed producer/output/scratch never escape.
 import std/assertions
-import ./[full_paged_codec, full_paged_stream, paged_codec, paged_stream, node_records, managed_manifest]
-import ../codec/bounded
-import ../crypto/primitives
+import ./full_paged_codec as storage_full_paged_codec
+import ./full_paged_stream as storage_full_paged_stream
+import ./paged_codec as storage_paged_codec
+import ./paged_stream as storage_paged_stream
+import ./node_records as storage_node_records
+import ./managed_manifest as storage_managed_manifest
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
 
 type
   FullPagedProducerStep* {.pure.} = enum ## Explicit end is distinct from unavailable producer data.

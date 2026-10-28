@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: uint64", "early": ["instruction(", "[2] expected: CodeAddress but got: uint64"]}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 discard instruction(default(Program), 0'u64)

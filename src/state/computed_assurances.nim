@@ -3,12 +3,29 @@
 
 ## Authenticate the next block against an actual computed predecessor and retain exact prior-computed availability outputs.
 
-import ../chain/[genesis, parameters]
-import ../codec/[block_codec, report_owned, owned, bounded]
-import ./[computed_chain, computed_state_publication, computed_composition, computed_finalization,
-    computed_execution, computed_round, computed_publication, computed_admission,
-    computed_inclusion, computed_batch, computed_envelope, block_transition, block_admission,
-    disputes, safrole_transition, availability, store]
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../codec/block_codec as codec_block_codec
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/bounded as codec_bounded
+import ./computed_chain as state_computed_chain
+import ./computed_state_publication as state_computed_state_publication
+import ./computed_composition as state_computed_composition
+import ./computed_finalization as state_computed_finalization
+import ./computed_execution as state_computed_execution
+import ./computed_round as state_computed_round
+import ./computed_publication as state_computed_publication
+import ./computed_admission as state_computed_admission
+import ./computed_inclusion as state_computed_inclusion
+import ./computed_batch as state_computed_batch
+import ./computed_envelope as state_computed_envelope
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./disputes as state_disputes
+import ./safrole_transition as state_safrole_transition
+import ./availability as state_availability
+import ./store as state_store
 
 type
   ComputedAssuranceConfig* = object ## Maintained transition policies and independent report comparison/storage ceilings.

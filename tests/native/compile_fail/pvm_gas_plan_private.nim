@@ -3,6 +3,6 @@
 
 ## Opaque immutable prices and selected-result payloads cannot be forged or inspected through raw fields.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/pvm/gas_plan
+import ../../../src/pvm/gas_plan as pvm_gas_plan
 let held = default(GasPlan)
 discard held.data

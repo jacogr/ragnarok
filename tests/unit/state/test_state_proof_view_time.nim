@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A typed C(11) read keeps missing evidence, authenticated absence and invalid bytes separate.
-import std/[assertions, syncio]
-import ../../../src/state/[trie_proof, proof_view]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import std/assertions
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_safrole as codec_state_safrole
 proc view(entries: seq[StateEntry], query: StateKey): ProofView =
   ## Independently commit a complete authored map before preparing and verifying the selected witness.
   let maps = StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(5),

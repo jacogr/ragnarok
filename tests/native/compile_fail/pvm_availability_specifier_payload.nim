@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/availability_specifier
+import ../../../src/state/availability_specifier as state_availability_specifier
 var candidate: AvailabilityCommitmentResult[AvailabilityCommitment]
 discard candidate.completed

@@ -8,12 +8,28 @@
 ## Exposes planBlockReports and retained block-stage, credential and assignment access with
 ## typed per-stage failures.
 
-import ../codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
-  state_disputes, state_history, state_layout, state_availability]
-import ./[fuzz_ancestry, ancestor_context, store, block_transition, block_admission,
-  guarantee_credentials,
-  report_policy,
-  report_anchors, report_packages, report_assignments, availability, history]
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../codec/guarantees as codec_guarantees
+import ../codec/assurances as codec_assurances
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/state_history as codec_state_history
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_availability as codec_state_availability
+import ./fuzz_ancestry as state_fuzz_ancestry
+import ./ancestor_context as state_ancestor_context
+import ./store as state_store
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./report_policy as state_report_policy
+import ./report_anchors as state_report_anchors
+import ./report_packages as state_report_packages
+import ./report_assignments as state_report_assignments
+import ./availability as state_availability
+import ./history as state_history
 
 type
   ReportAdmissionConfig* = object ## Explicit chain/resource policies for credentials, parent state, ancestors and complete C(10) candidates.

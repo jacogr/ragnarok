@@ -3,9 +3,11 @@
 
 ## Strict optimized original-transcript credential extraction and selected assignment-cause guards.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_credentials, computed_guarantors]
-import ../../src/codec/guarantees
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_credentials as state_computed_credentials
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/codec/guarantees as codec_guarantees
 import ../support/pvm_computed_credentials
 
 proc expect[T](outcome: ComputedCredentialResult[T], reason: ComputedCredentialError) =

@@ -4,11 +4,15 @@
 ## Named CLI witnesses verify help/default agreement, ordered groups, canonical names, failures and owner release.
 # @@Verification={"arc": "app_cli_arc_release"}
 
-import std/[assertions, syncio, strutils]
-import ../../../src/app/[options, cli_help, cli_commands]
-import ../../../src/codec/bounded
-import ../../../src/lib/logging
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import std/strutils
+import ../../../src/app/options as app_options
+import ../../../src/app/cli_help as app_cli_help
+import ../../../src/app/cli_commands as app_cli_commands
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/lib/logging as lib_logging
+import ../../support/testing_arc_evidence
 
 proc peer(command = "server"): seq[string] =
   ## Name each transport input; service flags can be interleaved without changing their ownership.

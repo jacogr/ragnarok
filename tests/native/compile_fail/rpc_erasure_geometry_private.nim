@@ -4,6 +4,6 @@
 ## Negative compiler fixture: Reject external access to the cached genesis erasure piece length.
 # @@Verification={"group": "privacy", "expected": "pieceLength"}
 
-import ../../../src/chain/genesis
+import ../../../src/chain/genesis as chain_genesis
 var view = default(Genesis)
 discard view.pieceLength

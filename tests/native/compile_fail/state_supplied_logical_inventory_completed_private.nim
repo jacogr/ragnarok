@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Supplied raw-key storage and tagged payloads stay private.
-import ../../../src/state/supplied_logical_inventory
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
 var owner = default(SuppliedLogicalResult[SuppliedLogicalInventory])
 discard owner.completed

@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_recent_results.nim",
+  "source": "tests/native/state_accumulation_recent_results.nim",
   "build_name": "accumulation-recent-results",
   "crypto_library": "crypto",
   "cases": [

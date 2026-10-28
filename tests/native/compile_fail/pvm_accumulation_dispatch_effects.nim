@@ -4,6 +4,6 @@
 
 ## Dispatch effects remain private behind the selected-success accessor.
 
-import ../../../src/state/accumulation_dispatch
+import ../../../src/state/accumulation_dispatch as state_accumulation_dispatch
 var outcome: AccumulationDispatchResult
 discard outcome.completedEffects

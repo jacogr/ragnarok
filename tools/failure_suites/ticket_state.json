@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/ticket_state_results.nim",
+  "source": "tests/native/state_ticket_state_results.nim",
   "build_name": "ticket-state-results",
   "crypto_library": "crypto",
   "native_libraries": [

@@ -3,19 +3,45 @@
 # @@Verification={"arc": "pvm_current_completion_arc_release"}
 
 ## The complete current builder matches existing phase witnesses and preserves every actual failure without publication.
-import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_statistics, accumulation_current_accounts,
-    accumulation_current_finalization, accumulation_current_ready, accumulation_current_recent,
-    accumulation_current_validators, accumulation_current_activity, accumulation_current_preimages,
-    accumulation_current_authorization, accumulation_current_consensus,
-    accumulation_current_completion, accumulation_current_driver, accumulation_current_sequence,
-    accumulation_current_round, accumulation_accounts, accumulation_ready, accumulation_recent,
-    accumulation_validators, accumulation_activity, accumulation_preimages,
-    accumulation_authorization, accumulation_consensus, accumulation_provisions, preimages,
-    accumulation_block_guests, store, accumulation_round, accumulation_queue]
-import ../../../src/codec/[bounded, composite, report_owned]
-import ../../support/[accumulation_current_chain_context, accumulation_current_completion_context,
-    accumulation_current_round_context, pvm_accumulation_provision, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_ready as state_accumulation_current_ready
+import ../../../src/state/accumulation_current_recent as state_accumulation_current_recent
+import ../../../src/state/accumulation_current_validators as state_accumulation_current_validators
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/accumulation_current_preimages as state_accumulation_current_preimages
+import ../../../src/state/accumulation_current_authorization as state_accumulation_current_authorization
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_current_completion as state_accumulation_current_completion
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_accounts as state_accumulation_accounts
+import ../../../src/state/accumulation_ready as state_accumulation_ready
+import ../../../src/state/accumulation_recent as state_accumulation_recent
+import ../../../src/state/accumulation_validators as state_accumulation_validators
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_preimages as state_accumulation_preimages
+import ../../../src/state/accumulation_authorization as state_accumulation_authorization
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/preimages as state_preimages
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_completion_context
+import ../../support/state_accumulation_current_round_context
+import ../../support/pvm_accumulation_provision
+import ../../support/testing_arc_evidence
 proc terminal(context: CurrentChainFixture): CompletedCurrentAccumulationSequence =
   ## Retain the genuine terminal input from the independently assembled current witness.
   context.source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value

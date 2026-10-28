@@ -6,8 +6,12 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[guarantees, bounded, assurances, work_report]
+import std/cmdline
+import std/syncio
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/work_report as codec_work_report
 
 let useDefault = paramStr(2) == "default"
 let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),

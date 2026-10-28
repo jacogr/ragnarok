@@ -6,57 +6,96 @@
 ## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
 ## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import std/[syncio, strutils, base64, assertions, monotimes, times]
-import ../state/logical_continuation
-import ./options
-import ./light_runtime as light_actor
-import ./[light_head, light_policy]
-import ./[checkpoint_recovery, checkpoint_trust]
-import ./[handoff, current_handoff, current_block_input]
-import ./candidate
-import ./block_input
-import ./preparation_worker
-import ./[collected_supplied_plan, collected_supplied_state]
-import ./logical_review
-import ./logical_proof
-import ../state/account_review_plan
-import ./logical_checkpoint
-import ./frozen_supplied
-import ../state/supplied_services
-import ./logical_service_proof
-import ./logical_export
-import ./logical_source_export
-import ./logical_checkpoint_import
-import ./logical_code
-import ./logical_code_proof
-import ../state/code_availability
-import ./full_logical_proof
-import ./paged_logical_proof
-import ./logical_seed
-import ../codec/[state_composition, composite]
-import ./current_logical as collected_logical
-import ../state/[parent_logical, current_logical]
-import ./[proof_query, proof_worker]
-import ../state/[proof_service, proof_plan, proof_view, trie_proof]
-import ./[disk_chain, disk_worker]
-import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
-import ../codec/bounded
-import ../crypto/primitives
-import ../codec/[block_codec, header, state_trie]
-import ./chain as application_chain
-import ../state/[store, disk_store, accumulation_finalization, accumulation_completion,
-    accumulation_publication, accumulation_current_update]
-import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
-    managed_repository, managed_manifest, full_paged_store]
-import ../chain/provider
-import ../telemetry/[wire, client, chain]
-import ../quic/transport
-import ../rpc/[server, protocol, proof_requests]
-import ../chain/[parameters, genesis]
-import ../ui/server
-import ../management/[server, protocol]
+import std/syncio
+import std/strutils
+import std/base64
+import std/assertions
+import std/monotimes
+import std/times
+import ../state/logical_continuation as state_logical_continuation
+import ./options as app_options
+import ./light_runtime as app_light_runtime
+import ./light_head as app_light_head
+import ./light_policy as app_light_policy
+import ./checkpoint_recovery as app_checkpoint_recovery
+import ./checkpoint_trust as app_checkpoint_trust
+import ./handoff as app_handoff
+import ./current_handoff as app_current_handoff
+import ./current_block_input as app_current_block_input
+import ./candidate as app_candidate
+import ./block_input as app_block_input
+import ./preparation_worker as app_preparation_worker
+import ./collected_supplied_plan as app_collected_supplied_plan
+import ./collected_supplied_state as app_collected_supplied_state
+import ./logical_review as app_logical_review
+import ./logical_proof as app_logical_proof
+import ../state/account_review_plan as state_account_review_plan
+import ./logical_checkpoint as app_logical_checkpoint
+import ./frozen_supplied as app_frozen_supplied
+import ../state/supplied_services as state_supplied_services
+import ./logical_service_proof as app_logical_service_proof
+import ./logical_export as app_logical_export
+import ./logical_source_export as app_logical_source_export
+import ./logical_checkpoint_import as app_logical_checkpoint_import
+import ./logical_code as app_logical_code
+import ./logical_code_proof as app_logical_code_proof
+import ../state/code_availability as state_code_availability
+import ./full_logical_proof as app_full_logical_proof
+import ./paged_logical_proof as app_paged_logical_proof
+import ./logical_seed as app_logical_seed
+import ../codec/state_composition as codec_state_composition
+import ../codec/composite as codec_composite
+import ./current_logical as app_current_logical
+import ../state/parent_logical as state_parent_logical
+import ../state/current_logical as state_current_logical
+import ./proof_query as app_proof_query
+import ./proof_worker as app_proof_worker
+import ../state/proof_service as state_proof_service
+import ../state/proof_plan as state_proof_plan
+import ../state/proof_view as state_proof_view
+import ../state/trie_proof as state_trie_proof
+import ./disk_chain as app_disk_chain
+import ./disk_worker as app_disk_worker
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_transfer as app_checkpoint_transfer
+import ./checkpoint_session as app_checkpoint_session
+import ./checkpoint_worker as app_checkpoint_worker
+import ./checkpoint_file as app_checkpoint_file
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/state_trie as codec_state_trie
+import ./chain as app_chain
+import ../state/store as state_store
+import ../state/disk_store as state_disk_store
+import ../state/accumulation_finalization as state_accumulation_finalization
+import ../state/accumulation_completion as state_accumulation_completion
+import ../state/accumulation_publication as state_accumulation_publication
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../storage/file_repository as storage_file_repository
+import ../storage/node_repository as storage_node_repository
+import ../storage/node_records as storage_node_records
+import ../storage/record_codec as storage_record_codec
+import ../storage/database_identity as storage_database_identity
+import ../storage/managed_repository as storage_managed_repository
+import ../storage/managed_manifest as storage_managed_manifest
+import ../storage/full_paged_store as storage_full_paged_store
+import ../chain/provider as chain_provider
+import ../telemetry/wire as telemetry_wire
+import ../telemetry/client as telemetry_client
+import ../telemetry/chain as telemetry_chain
+import ../quic/transport as quic_transport
+import ../rpc/server as rpc_server
+import ../rpc/protocol as rpc_protocol
+import ../rpc/proof_requests as rpc_proof_requests
+import ../chain/parameters as chain_parameters
+import ../chain/genesis as chain_genesis
+import ../ui/server as ui_server
+import ../management/server as management_server
+import ../management/protocol as management_protocol
 
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
@@ -99,7 +138,7 @@ type
     Publication, Maintenance, CurrentPublication, Retirement
 
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
-  light: light_actor.LightRuntime
+  light: app_light_runtime.LightRuntime
   rpc*: Server
   ui*: UiServer
   management*: ManagementServer
@@ -741,7 +780,7 @@ proc startLightServices(services: var Services, options: Options, role: string):
   services.started = true
   ready = true
   true
-proc lightHead*(services: Services): light_actor.LightRuntimeResult[LightApplicationHead] =
+proc lightHead*(services: Services): app_light_runtime.LightRuntimeResult[LightApplicationHead] =
   ## Distinct partial-state access is gated before any shared handle copy and never returns a complete StateStore snapshot.
   services.light.head
 proc lightDiskPhase*(services: var Services): DiskWorkerPhase =
@@ -998,14 +1037,14 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: StatePr
   if services.light.active:
     let admitted = services.light.beginQuery(selected, plan, limits)
     case admitted.error
-    of light_actor.LightRuntimeError.None:
+    of app_light_runtime.LightRuntimeError.None:
       return StateProofAdmission(status: StateProofAdmissionError.None, ticket: admitted.value)
-    of light_actor.LightRuntimeError.Closed:
+    of app_light_runtime.LightRuntimeError.Closed:
       return StateProofAdmission(status: StateProofAdmissionError.Closed)
-    of light_actor.LightRuntimeError.QueryFailure:
+    of app_light_runtime.LightRuntimeError.QueryFailure:
       return StateProofAdmission(status: StateProofAdmissionError.QueryFailure,
           queryReason: admitted.queryError)
-    of light_actor.LightRuntimeError.WorkerFailure:
+    of app_light_runtime.LightRuntimeError.WorkerFailure:
       return StateProofAdmission(status: StateProofAdmissionError.WorkerFailure,
           workerReason: admitted.workerError)
     else:
@@ -1023,14 +1062,14 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: Service
   if services.light.active:
     let admitted = services.light.beginQuery(selected, plan, limits)
     case admitted.error
-    of light_actor.LightRuntimeError.None:
+    of app_light_runtime.LightRuntimeError.None:
       return StateProofAdmission(status: StateProofAdmissionError.None, ticket: admitted.value)
-    of light_actor.LightRuntimeError.Closed:
+    of app_light_runtime.LightRuntimeError.Closed:
       return StateProofAdmission(status: StateProofAdmissionError.Closed)
-    of light_actor.LightRuntimeError.QueryFailure:
+    of app_light_runtime.LightRuntimeError.QueryFailure:
       return StateProofAdmission(status: StateProofAdmissionError.QueryFailure,
           queryReason: admitted.queryError)
-    of light_actor.LightRuntimeError.WorkerFailure:
+    of app_light_runtime.LightRuntimeError.WorkerFailure:
       return StateProofAdmission(status: StateProofAdmissionError.WorkerFailure,
           workerReason: admitted.workerError)
     else:
@@ -1149,53 +1188,53 @@ proc planCollectedSupplied*(services: Services, receipt: PreparationCompletion,
     limits: CollectedSuppliedLimits): CollectedSuppliedPlanResult[CollectedSuppliedPlan] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Freeze only the genuine collected target while the actual canonical host gate is open.
-  collected_supplied_plan.planCollectedSupplied(services.canonical, receipt, limits)
+  app_collected_supplied_plan.planCollectedSupplied(services.canonical, receipt, limits)
 proc executeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
     declarations: openArray[StateService]): CollectedSuppliedResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Recheck frozen prior provenance and complete borrowed successor declarations outside every managed native lease.
-  collected_supplied_state.executeCollectedSupplied(services.canonical, plan, declarations)
+  app_collected_supplied_state.executeCollectedSupplied(services.canonical, plan, declarations)
 
 proc captureLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
     limit: ByteLimit): LogicalCheckpointResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Explicit retained logical sources may share canonical ARC graphs; checkpoint copying requires the managed host gate open.
-  logical_checkpoint.captureLogicalCheckpoint(source, limit)
+  app_logical_checkpoint.captureLogicalCheckpoint(source, limit)
 
 proc reviewLogicalState*(services: Services, source: CurrentLogicalState,
     limits: AccountReviewPlanLimits): LogicalReviewResult[ReviewedLogicalState] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Explicit immutable logical sources may alias canonical state; original-current review runs only outside all managed graph leases.
-  logical_review.reviewLogicalState(source, limits)
+  app_logical_review.reviewLogicalState(source, limits)
 
 proc planLogicalReview*(services: Services, source: CurrentLogicalState,
     limits: AccountReviewPlanLimits): LogicalReviewResult[LogicalReviewPlan] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen admission may share canonical graphs, so every existing native exclusion remains checked.
-  logical_review.planLogicalReview(source, limits)
+  app_logical_review.planLogicalReview(source, limits)
 proc executeLogicalReview*(services: Services,
     source: LogicalReviewPlan): LogicalReviewResult[ReviewedLogicalState] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Content retry touches retained original aliases only outside native graph leases; it grants no adoption authority.
-  logical_review.executeLogicalReview(source)
+  app_logical_review.executeLogicalReview(source)
 
 proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Select the actual physical canonical parent only while all managed native aliases are available.
-  logical_seed.captureLogicalSeed(services.canonical, declarations, limits)
+  app_logical_seed.captureLogicalSeed(services.canonical, declarations, limits)
 
 proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
     source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
-  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
+  app_current_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
 
 proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
     source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
-  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
+  app_current_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
 
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =
@@ -1516,109 +1555,109 @@ proc freezeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
         FrozenSuppliedInput] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Capture source aliases only after every managed native graph lease has ended.
-  frozen_supplied.freezeCollectedSupplied(services.canonical, plan, declarations, limits)
+  app_frozen_supplied.freezeCollectedSupplied(services.canonical, plan, declarations, limits)
 proc executeFrozenSupplied*(services: Services, source: FrozenSuppliedInput): FrozenSuppliedResult[
     CurrentLogicalState] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen input does not bypass canonical staleness or native exclusion checks.
-  frozen_supplied.executeFrozenSupplied(services.canonical, source)
+  app_frozen_supplied.executeFrozenSupplied(services.canonical, source)
 
 proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
     source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retaining prepared source graphs requires every existing native lease to have ended.
-  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+  app_current_logical.planCollectedLogical(services.canonical, completion, source, limits)
 
 proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
     source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retaining prepared source graphs requires every existing native lease to have ended.
-  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+  app_current_logical.planCollectedLogical(services.canonical, completion, source, limits)
 proc executeCollectedLogical*(services: Services, plan: CollectedLogicalPlan): CollectedLogicalResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retry cannot bypass native exclusion or the frozen update's exact canonical-parent check.
-  collected_logical.executeCollectedLogical(services.canonical, plan)
+  app_current_logical.executeCollectedLogical(services.canonical, plan)
 
 proc planLogicalServiceProof*(services: Services, source: CurrentLogicalState,
     service: ServiceIndex, limits: LogicalServiceProofLimits): LogicalServiceProofResult[
         LogicalServiceProof] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Namespace selection reads retained source aliases only outside the managed native graph lease.
-  logical_service_proof.planLogicalServiceProof(source, service, limits)
+  app_logical_service_proof.planLogicalServiceProof(source, service, limits)
 
 proc planLogicalExport*(services: Services, source: CurrentLogicalState,
     limits: SuppliedServicesLimits): LogicalExportResult[LogicalExportPlan] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Complete export admission reads retained original source graphs only outside managed native leases.
-  logical_export.planLogicalExport(source, limits)
+  app_logical_export.planLogicalExport(source, limits)
 proc executeLogicalExport*(services: Services, plan: LogicalExportPlan): LogicalExportResult[seq[
     StateService]] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Detached copying remains excluded through actual collection/join of every native graph borrower.
-  logical_export.executeLogicalExport(plan)
+  app_logical_export.executeLogicalExport(plan)
 
 proc importLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
     wire: openArray[byte], limits: StateStoreLimits,
     wireLimit: ByteLimit): LogicalCheckpointImportResult[ImportedLogicalCheckpoint] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original logical/root aliases remain outside every managed native lease until actual collection or join.
-  logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)
+  app_logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)
 
 proc auditLogicalCodeAvailability*(services: Services, source: CurrentLogicalState,
     limits: CodeAvailabilityLimits): LogicalCodeResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original logical/current payload aliases remain excluded until actual matching collection or joined shutdown.
-  logical_code.auditLogicalCodeAvailability(source, limits)
+  app_logical_code.auditLogicalCodeAvailability(source, limits)
 
 proc planFullLogicalProof*(services: Services, source: CurrentLogicalState,
     limits: FullLogicalProofLimits): FullLogicalProofResult[FullLogicalProofPlan] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Whole-map enumeration and selector ownership remain excluded until actual managed collection/join.
-  full_logical_proof.planFullLogicalProof(source, limits)
+  app_full_logical_proof.planFullLogicalProof(source, limits)
 
 proc planLogicalProofPages*(services: Services, source: CurrentLogicalState,
     fullLimits: FullLogicalProofLimits, pageLimits: LogicalProofPageLimits): LogicalProofPageResult[
         LogicalProofPages] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Complete original-source traversal and all retained page-plan aliases remain outside managed native graph leases until matching collection/join.
-  paged_logical_proof.planLogicalProofPages(source, fullLimits, pageLimits)
+  app_paged_logical_proof.planLogicalProofPages(source, fullLimits, pageLimits)
 
 proc planLogicalCodeProof*(services: Services, source: CurrentLogicalState, service: ServiceIndex,
     limits: LogicalCodeProofLimits): LogicalCodeProofResult[LogicalCodeProof] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original current inventory/content and selector aliases remain excluded until actual matching native collection or joined close.
-  logical_code_proof.planLogicalCodeProof(source, service, limits)
+  app_logical_code_proof.planLogicalCodeProof(source, service, limits)
 
 proc planLogicalSourceExport*(services: Services, source: CurrentLogicalState,
     limits: LogicalSourceExportLimits): LogicalSourceExportResult[
         LogicalSourceExportPlan] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original raw-key graph traversal remains excluded until actual matching native collection or joined shutdown.
-  logical_source_export.planLogicalSourceExport(source, limits)
+  app_logical_source_export.planLogicalSourceExport(source, limits)
 proc executeLogicalSourceExport*(services: Services,
     plan: LogicalSourceExportPlan): LogicalSourceExportResult[string] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen declaration aliases and raw keys remain outside every active managed graph lease.
-  logical_source_export.executeLogicalSourceExport(plan)
+  app_logical_source_export.executeLogicalSourceExport(plan)
 
 proc continueCurrentStorage*(services: Services, parent: SelectedLogicalParent,
     update: PreparedCurrentChainUpdate, limits: StorageContinuationLimits): StorageContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Keep original parent, producer history and copied declarations outside every managed graph lease until actual collection/join.
-  logical_continuation.continueCurrentStorage(parent, update, limits)
+  state_logical_continuation.continueCurrentStorage(parent, update, limits)
 proc continueCurrentStorage*(services: Services, prior: CurrentLogicalState,
     update: PreparedCurrentChainUpdate, limits: StorageContinuationLimits): StorageContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Continue only on the stable owner after matching collection or joined shutdown retires all native graph borrowing.
-  logical_continuation.continueCurrentStorage(prior, update, limits)
+  state_logical_continuation.continueCurrentStorage(prior, update, limits)
 
 proc continueCurrentNamespaces*(services: Services, parent: SelectedLogicalParent,
     update: PreparedCurrentChainUpdate, limits: LogicalContinuationLimits): LogicalContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Read original identities and producer storage/request history only on the stable host after all matching collection/join boundaries.
-  logical_continuation.continueCurrentNamespaces(parent, update, limits)
+  state_logical_continuation.continueCurrentNamespaces(parent, update, limits)
 proc continueCurrentNamespaces*(services: Services, prior: CurrentLogicalState,
     update: PreparedCurrentChainUpdate, limits: LogicalContinuationLimits): LogicalContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Current provenance and detached reconstruction remain excluded from every native graph lease until actual retirement.
-  logical_continuation.continueCurrentNamespaces(prior, update, limits)
+  state_logical_continuation.continueCurrentNamespaces(prior, update, limits)

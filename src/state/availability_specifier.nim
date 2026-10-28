@@ -3,9 +3,12 @@
 
 ## Assemble GP availability commitments from one original bundle/export erasure owner.
 
-import ../codec/[bounded, work_report]
-import ../crypto/primitives
-import ./[bundle_erasure, export_erasure, erasure_words]
+import ../codec/bounded as codec_bounded
+import ../codec/work_report as codec_work_report
+import ../crypto/primitives as crypto_primitives
+import ./bundle_erasure as state_bundle_erasure
+import ./export_erasure as state_export_erasure
+import ./erasure_words as state_erasure_words
 
 type
   AvailabilityCommitmentError* {.pure.} = enum ## Refusals expose no partial root or computed validator prefix.

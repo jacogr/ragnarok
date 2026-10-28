@@ -1,7 +1,0 @@
-# Copyright (c) 2026 Ragnarök contributors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-
-# @@Verification={"arc":"current_service_provenance_arc_release"}
-
-## Execute the complete feature control through the supported native runner.
-import ../../native/current_service_provenance_results

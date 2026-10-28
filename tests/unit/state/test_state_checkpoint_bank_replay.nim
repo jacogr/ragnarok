@@ -3,12 +3,18 @@
 
 ## Real durable bank generations recover independently pinned complete maps across close/reopen and selected-data corruption.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, bounded]
-import ../../support/published_state
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/codec_published_state
 
 const Prefix = "state-bank-replay"
 proc clearFiles() =

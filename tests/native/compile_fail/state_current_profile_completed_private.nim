@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Current profile/parameter/source storage and result alternatives remain private.
-import ../../../src/state/current_profile
+import ../../../src/state/current_profile as state_current_profile
 var value = default(CurrentProfileResult[DerivedCurrentProfile])
 discard value.completed

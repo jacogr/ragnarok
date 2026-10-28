@@ -4,8 +4,14 @@
 ## Current accseq pending transfers: prior queued records precede newly emitted records without a double gas refund.
 ## Pure owned preparation checks explicit budget facts; authenticated round integration belongs to callers.
 import std/assertions
-import ../codec/[bounded, composite, state_accounts, c2_records]
-import ./[accumulation_transfers, accumulation_transfer_partition, accumulation_outcome, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/c2_records as codec_c2_records
+import ./accumulation_transfers as state_accumulation_transfers
+import ./accumulation_transfer_partition as state_accumulation_transfer_partition
+import ./accumulation_outcome as state_accumulation_outcome
+import ./store as state_store
 
 type
   PendingTransferIndex* = distinct uint64 ## Pending ordinal cannot substitute an outgoing-collection or partition ordinal.

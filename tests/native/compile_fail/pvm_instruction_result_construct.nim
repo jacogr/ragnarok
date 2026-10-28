@@ -6,6 +6,6 @@
 
 # @@Verification={"expected": "status", "group": "privacy"}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let forged = ProgramResult[Instruction](status: ProgramError.None, completed: default(Instruction))
 discard forged

@@ -5,11 +5,20 @@
 ## Exposes immutable accumulation deltas in existing service-statistics records; other activity remains separate.
 
 import std/algorithm
-import ../codec/[bounded, owned, report_owned, state_statistics, work_digest]
-import ./[accumulation_finalization, accumulation_outputs, accumulation_reentry,
-  accumulation_continuation_execution, accumulation_continuation_inputs, accumulation_execution,
-  accumulation_inputs,
-  accumulation_round, accumulation_queue]
+import ../codec/bounded as codec_bounded
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_reentry as state_accumulation_reentry
+import ./accumulation_continuation_execution as state_accumulation_continuation_execution
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
 
 type
   AccumulationStatisticsLimits* = object ## Independent ceilings distinguish inspected history from retained nonzero services.

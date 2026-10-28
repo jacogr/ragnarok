@@ -4,8 +4,13 @@
 ## Host-response failure and exit-metadata contract probes selected by command-line arguments.
 ## Each invocation attempts exactly one forbidden result or metadata access.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[program, machine, initialize, gas, step]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 let selection = paramStr(1)
 let accessor = paramStr(2)
 let source = initializeMachine([0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0,

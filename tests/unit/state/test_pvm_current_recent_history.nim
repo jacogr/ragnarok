@@ -3,15 +3,37 @@
 # @@Verification={"arc": "pvm_current_recent_history_arc_release"}
 
 ## Current C3 derives sealed header, output root and guarantee dictionary from one genuine terminal source.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, header, report_owned, state_history, state_layout]
-import ../../../src/crypto/primitives
-import ../../../src/state/[accumulation_current_recent, accumulation_recent,
-  accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_statistics, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round, accumulation_queue,
-  report_admission, guarantee_credentials, block_transition, block_admission, history, store]
-import ../../support/[accumulation_current_recent_context, accumulation_recent_witnesses, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_history as codec_state_history
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/state/accumulation_current_recent as state_accumulation_current_recent
+import ../../../src/state/accumulation_recent as state_accumulation_recent
+import ../../../src/state/accumulation_current_ready as state_accumulation_current_ready
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/history as state_history
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_recent_context
+import ../../support/state_accumulation_recent_witnesses
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 proc checkSource(source: PreparedCurrentAccumulationReady,

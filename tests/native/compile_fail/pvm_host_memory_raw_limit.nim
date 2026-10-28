@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: MemoryByteLimit"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 # A local policy record isolates the nominal field contract from unrelated owner validation.
 type Policy = object
   limit: MemoryByteLimit

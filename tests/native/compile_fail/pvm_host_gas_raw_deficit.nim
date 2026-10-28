@@ -5,5 +5,5 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: GasDeficit"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 discard MachineInfo(gasDeficit: 1'u64)

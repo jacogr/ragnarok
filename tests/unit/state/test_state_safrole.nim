@@ -8,9 +8,12 @@
 
 # @@Verification={"arc": "safrole_arc_release"}
 
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/codec/[state_safrole, bounded, assurances]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
 
 ## Verify source destruction and extracted-copy mutation cannot change retained validator records.
 proc main() =

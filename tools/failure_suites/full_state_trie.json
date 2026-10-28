@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/full_state_trie_results.nim",
+  "source": "tests/native/state_full_state_trie_results.nim",
   "build_name": "full-state-trie-results",
   "crypto_library": "crypto",
   "cases": [

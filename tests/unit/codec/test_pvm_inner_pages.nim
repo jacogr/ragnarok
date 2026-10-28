@@ -4,9 +4,15 @@
 
 ## Literal page prices, atomic memory transformations and immutable map successors verify Omega_Z.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[inner_machines, machine, program, step]
-import ../../support/[pvm_inner_lifecycle, pvm_inner_pages, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../support/pvm_inner_lifecycle
+import ../../support/pvm_inner_pages
+import ../../support/testing_arc_evidence
 
 proc pages(map: InnerMachines, regs = pageRegisters(), credit = 10000'u64):
     InnerMachineResult[InnerMachineTransition] =

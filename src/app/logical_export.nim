@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Stage complete qualified logical declarations for bounded detached export without recapturing producer or root authority.
-import ../state/[current_logical, supplied_services]
-import ../codec/state_composition
+import ../state/current_logical as state_current_logical
+import ../state/supplied_services as state_supplied_services
+import ../codec/state_composition as codec_state_composition
 type
   LogicalExportPlan* = object ## Original logical provenance and admitted projection stay paired through source-scope retirement.
     initialized: bool

@@ -3,10 +3,15 @@
 
 ## File-boundary failures and success-only reasons retain strict checked extraction contracts.
 
-import std/[cmdline, assertions, syncio]
+import std/cmdline
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../src/state/[checkpoint_file, checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/checkpoint_file as state_checkpoint_file
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 
 proc main() {.raises.} =
   ## Real files feed the same public loader used at startup; cleanup runs before exit on every path.

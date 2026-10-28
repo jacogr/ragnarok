@@ -5,12 +5,24 @@
 
 ## Actual assured successor publication installs both handles together or preserves both through every selected refusal.
 
-import std/[assertions, syncio]
-import ../../../src/state/[assured_chain, assured_composition, accumulation_consensus,
-  accumulation_finalization, store]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_accounts, state_service_values]
-import ../../support/[pvm_assured_chain, pvm_computed_chain, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/assured_chain as state_assured_chain
+import ../../../src/state/assured_composition as state_assured_composition
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../support/pvm_assured_chain
+import ../../support/pvm_computed_chain
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force actual structural capture to fail after prepared state adoption succeeds privately.

@@ -3,11 +3,22 @@
 
 ## Complete selected-root entry streams lend canonical sorted values under fixed inherited IO and native pin ownership.
 # @@Verification={"arc":"storage_full_paged_entries_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  full_state_trie, node_records, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/state_full_paged_reference
+import ../../support/state_full_paged_native_fixture
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/full_paged_stream as storage_full_paged_stream
+import ../../../src/storage/full_paged_store as storage_full_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 type Capture = ref object ## Private consumer staging owns copies only; failed streams cannot expose a completed capture.
   keys: seq[StateKey]
   values: seq[seq[byte]]

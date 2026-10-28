@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Reject forged serialization authority at the actual public boundary.
-import ../../../src/state/global_snapshot
+import ../../../src/state/global_snapshot as state_global_snapshot
 let state = default(ValidatedGlobalState)
 discard state.data

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/authorized_refinement
+import ../../../src/state/authorized_refinement as state_authorized_refinement
 var owner: AuthorizedRefinement
 discard owner.data

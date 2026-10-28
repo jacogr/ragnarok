@@ -41,5 +41,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_logical_proof_admission_results.nim"
+  "source": "tests/native/app_logical_proof_admission_results.nim"
 }

@@ -8,7 +8,10 @@
 ## validator/ticket/offender access.
 
 import std/assertions
-import ./[natural, bounded, assurances, tickets]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./tickets as codec_tickets
 
 type
   HeaderParent* = distinct array[32, byte] ## Parent block identity is distinct from the header's two other commitments.
@@ -216,7 +219,7 @@ proc fullHeaderConfig*(maxBytes: ByteLimit): HeaderConfig {.raises: [].} =
 
 # Validate GP validator domains and a positive epoch length before any untrusted byte or source access.
 proc validConfig(config: HeaderConfig): bool {.raises: [].} =
-  assurances.validConfig(AssuranceConfig(cores: config.cores,
+  codec_assurances.validConfig(AssuranceConfig(cores: config.cores,
       validators: config.authorValidators)) and
     uint64(config.epochSlots) > 0
 
@@ -246,10 +249,11 @@ proc extent(input: openArray[byte], cursor: int, count: uint64, stride: int,
 # Read a canonical bounded natural; partial cursor updates remain private on failure.
 proc number(input: openArray[byte], cursor: var int, ceiling: uint64,
     config: HeaderConfig): HeaderResult[int] {.raises: [].} =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.high))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.high))
   # Preserve truncated versus overlong framing before interpreting a count.
   if not parsed.ok:
-    return HeaderResult[int](status: if parsed.error == natural.truncated: HeaderError.Truncated
+    return HeaderResult[int](status: if parsed.error ==
+        codec_natural.truncated: HeaderError.Truncated
       else: HeaderError.NonCanonical) # An overlong discriminator cannot select another valid wire representation.
   cursor += int(parsed.consumed)
   # Every caller's count ceiling is at most 1023, so checking it also proves host narrowing.
@@ -471,7 +475,7 @@ proc epochSize(value: EpochMarker, config: HeaderConfig): HeaderResult[int] {.ra
     # Pending population follows valcount, independently of author population.
     if count < 6 or uint64(count) > 3*uint64(config.cores) or count mod 3 != 0:
       return HeaderResult[int](status: HeaderError.LimitExceeded)
-    size += 64+int(natural.encode(JamNatural(count)).len)+64*count
+    size += 64+int(codec_natural.encode(JamNatural(count)).len)+64*count
   HeaderResult[int](status: HeaderError.None, completed: size)
 
 # Measure winners with exact caller epoch cardinality and safe host arithmetic.
@@ -509,7 +513,7 @@ proc unsignedSize(value: UnsignedHeader, config: HeaderConfig): HeaderResult[int
   # A complete winner tuple can be large under custom epoch parameters.
   if winnerGrowth != HeaderError.None:
     return HeaderResult[int](status: winnerGrowth)
-  let suffix = int(natural.encode(JamNatural(value.offenders.len)).len)+32*value.offenders.len
+  let suffix = int(codec_natural.encode(JamNatural(value.offenders.len)).len)+32*value.offenders.len
   let suffixGrowth = grow(size, suffix, 1)
   # Complete offender count/keys must fit after winners.
   if suffixGrowth != HeaderError.None:
@@ -564,7 +568,7 @@ proc putScalar(value: uint32, width: int, output: var openArray[byte], cursor: v
 
 # Commit a bounded natural count's active prefix, never its unused encoder buffer.
 proc putNumber(value: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
-  let encoded = natural.encode(JamNatural(value))
+  let encoded = codec_natural.encode(JamNatural(value))
   put(encoded.bytes.toOpenArray(0, int(encoded.len)-1), output, cursor)
 
 # Commit one fully owned fixed winner record in identifier/E1 attempt order.

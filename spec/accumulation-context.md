@@ -66,7 +66,7 @@ identifier reservation or full/light database selection.
 
 ## Verification evidence
 
-`tests/unit/state/test_accumulation_context.nim` compares every queue hash and all staging key,
+`tests/unit/state/test_state_accumulation_context.nim` compares every queue hash and all staging key,
 BLS and metadata bytes against independent scalar patterns across 32 deterministic states. It
 checks every role/assigner/allowance, both initial dimensions, self/other accounts and unrelated
 preimages. Exact/one-below byte, aggregate, hash, validator and allowance policies are exercised.

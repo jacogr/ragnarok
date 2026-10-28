@@ -58,5 +58,5 @@
     }
   ],
   "crypto_library": "crypto",
-  "source": "tests/native/application_ancestor_receiver_results.nim"
+  "source": "tests/native/app_ancestor_receiver_results.nim"
 }

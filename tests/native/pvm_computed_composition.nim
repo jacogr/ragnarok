@@ -3,10 +3,13 @@
 
 ## Strict computed full-state composition/refusal probes retain genuine composed pending guarantees as a positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_composition, computed_finalization, accumulation_completion,
-  accumulation_consensus]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_composition as state_computed_composition
+import ../../src/state/computed_finalization as state_computed_finalization
+import ../../src/state/accumulation_completion as state_accumulation_completion
+import ../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_composition
 
 proc expect[T](outcome: ComputedCompositionResult[T], reason: ComputedCompositionError) =

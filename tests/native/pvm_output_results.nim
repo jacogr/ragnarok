@@ -5,7 +5,12 @@
 ## Each selected failure attempts the success-only byte accessor and must trap its contract.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, initialize, gas, step, output]
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/output as pvm_output
 let selection = paramStr(1)
 var result = default(OutputResult)
 # Default has no byte value; all other cases exercise a real API refusal.

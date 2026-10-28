@@ -5,13 +5,25 @@
 
 ## Exact authenticated candidate and posterior provenance, rejection boundaries and ARC lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_transition, computed_profile, computed_lookup, block_transition,
-  block_admission, store]
-import ../../../src/codec/[bounded, header, block_codec, state_layout, state_safrole]
-import ../../../src/chain/parameters
-import ../../support/[pvm_computed_transition, pvm_computed_profile, pvm_computed_state,
-  report_admission_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/computed_lookup as state_computed_lookup
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/chain/parameters as chain_parameters
+import ../../support/pvm_computed_transition
+import ../../support/pvm_computed_profile
+import ../../support/pvm_computed_state
+import ../../support/state_report_admission_context
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine signed authentication and original execution complete.

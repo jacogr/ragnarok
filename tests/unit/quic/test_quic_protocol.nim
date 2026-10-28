@@ -7,8 +7,9 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/quic/protocol
+import std/assertions
+import std/syncio
+import ../../../src/quic/protocol as quic_protocol
 
 # The original request and response prefixes must remain pending until exact FIN.
 proc prefixes() =

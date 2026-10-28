@@ -8,9 +8,13 @@
 ## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, sorted keyAt, commitment and atomic apply over
 ## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
 
-import std/[algorithm, assertions]
-import ../codec/[state_trie, state_layout, bounded]
-import ../storage/[full_state_trie, node_records]
+import std/algorithm
+import std/assertions
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/bounded as codec_bounded
+import ../storage/full_state_trie as storage_full_state_trie
+import ../storage/node_records as storage_node_records
 
 type
   StateEntryIndex* = distinct int ## Sorted ordinal interpreted only against the supplied immutable complete-map snapshot.

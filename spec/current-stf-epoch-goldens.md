@@ -66,7 +66,7 @@ ticket's scalar/attempt and the exact
 posterior active ordinal. Multi-epoch skipping rotates history/statistics once from the original
 parent, without inventing intermediate empty-block transitions.
 
-`tests/native/current_stf_epoch_driver.nim` independently constructs the original map and child
+`tests/native/state_current_stf_epoch_driver.nim` independently constructs the original map and child
 inputs, runs each actual `prepareCurrentCandidate`, qualifies all current globals and supplied
 services, installs the result, and preserves retained original snapshots. The registered
 `current_stf_epoch_corpus` uses the normal checked ARC/Clang non-LTO builder, production libraries,

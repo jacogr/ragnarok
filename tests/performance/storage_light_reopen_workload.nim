@@ -2,10 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Separate bounded fixture producers from fresh light-file reopen consumers and exact ARC/hash witnesses.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_file_cache, light_snapshot, light_state_cache, full_state_trie,
-  state_proof, database_identity, file_errors, durability]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/light_file_cache as storage_light_file_cache
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/storage/durability as storage_durability
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## A clean observer counts only actual reopen proof/checksum attempts, excluding fixture production.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

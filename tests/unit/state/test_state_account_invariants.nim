@@ -3,10 +3,18 @@
 
 ## Same-capture joins reject equal-source substitutions and defaults without rehashing certified evidence.
 # @@Verification={"arc": "state_account_invariants_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_invariant_context, arc_evidence]
-import ../../../src/state/[account_invariants, inventory, footprint_audit, preimage_content, preimage_linkage]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/codec_account_invariant_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable all hashing after generating real independently bounded certificates.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

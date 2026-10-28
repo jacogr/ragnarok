@@ -6,9 +6,17 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo, step]
-import ../../../src/pvm/internal/register_ops
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/registers as pvm_registers
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/gas_plan as pvm_gas_plan
+import ../../../src/pvm/gas_memo as pvm_gas_memo
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/internal/register_ops as pvm_register_ops
 
 # Decode a fixed little-endian fixture word; the fixture shape is checked before any access.
 proc word(data: string, at: int): uint64 =

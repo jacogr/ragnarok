@@ -4,15 +4,26 @@
 
 ## Original computed gas and exact parent privileges bind real initial accumulation inputs without guest execution.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_round, computed_publication, computed_admission,
-  report_admission,
-  accumulation_round, accumulation_queue, accumulation_inputs, accumulation_operands,
-  block_transition,
-  block_admission, store]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, work_digest, state_privileges, state_layout]
-import ../../support/[pvm_computed_round, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_round as state_computed_round
+import ../../../src/state/computed_publication as state_computed_publication
+import ../../../src/state/computed_admission as state_computed_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_operands as state_accumulation_operands
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../support/pvm_computed_round
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reject unexpected hashing after the real computed/signed source pipeline finishes.

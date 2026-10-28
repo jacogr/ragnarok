@@ -4,8 +4,11 @@
 ## Strict runtime probes reject failed initialization and default accumulation-machine child extraction.
 
 import std/cmdline
-import ../../src/state/[accumulation_machine, accumulation_invocation]
-import ../../src/pvm/[initialize, program, machine]
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
 import ../support/pvm_accumulation_context
 let limits = InitializationLimits(envelope: InitializationByteLimit(1000),
   program: ProgramByteLimit(100), jumps: JumpCountLimit(0), pages: PageLimit(0))

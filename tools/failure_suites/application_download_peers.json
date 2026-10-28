@@ -36,5 +36,5 @@
     }
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_download_peers_results.nim"
+  "source": "tests/native/app_download_peers_results.nim"
 }

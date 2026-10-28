@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/pvm/registers
+import ../../../src/pvm/registers as pvm_registers
 var r = default(RegisterResult)
 r.error = RegisterError.None

@@ -4,7 +4,9 @@
 ## Original inner programs and literal E8 frame fixtures shared by invocation unit and strict misuse probes.
 
 import std/assertions
-import ../../src/pvm/[inner_machines, machine, program]
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
 import ./pvm_inner_lifecycle
 
 proc invokeBlob*(instructions: openArray[seq[byte]]): seq[byte] =

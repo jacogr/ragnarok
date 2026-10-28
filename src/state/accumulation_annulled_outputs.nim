@@ -4,8 +4,13 @@
 ## Current accpar service/yield pairs bound to genuine conflict-annulment decisions.
 ## This separate owner cannot impersonate a completed round/history or final block output certificate.
 import std/algorithm
-import ../codec/[bounded, natural, state_outputs, state_trie]
-import ./[accumulation_annulment, accumulation_outcome, accumulation_effects]
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
 
 type
   AnnulmentOutputIndex* = distinct uint64 ## Output-pair ordinal cannot substitute a service or source-outcome ordinal.
@@ -66,7 +71,7 @@ proc prepareAnnulmentOutputs*(source: PreparedAccumulationAnnulment,
       if uint64(present) >= uint64(limits.log.items):
         fail(AnnulmentOutputsError.LimitExceeded) # Charge the next selected pair before incrementing or allocation.
       inc present # Presence is explicit even when every commitment byte is zero.
-  let prefix = int(natural.encode(JamNatural(present)).len)
+  let prefix = int(codec_natural.encode(JamNatural(present)).len)
   if present > (high(int)-prefix) div 36 or present > high(int) div sizeof(AccumulationOutput):
     fail(AnnulmentOutputsError.LimitExceeded) # Prove both complete encoded bytes and typed native storage before multiplication.
   let bytes = prefix+present*36

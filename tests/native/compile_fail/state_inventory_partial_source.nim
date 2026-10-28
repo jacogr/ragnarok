@@ -4,6 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "ValidatedStateManifest", "early": ["captureStateInventory(", "[1] expected: ValidatedStateManifest but got: ProofView"]}
 
 ## Nominal coordinates and partial evidence cannot impersonate compact source authority.
-import ../../../src/state/inventory
-import ../../../src/state/proof_view
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/proof_view as state_proof_view
 discard captureStateInventory(default(ProofView), [], StateInventoryLimits())

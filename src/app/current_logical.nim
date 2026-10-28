@@ -3,10 +3,17 @@
 
 ## Host-side complete logical qualification of genuine collected current preparation.
 ## The caller keeps every canonical ARC alias stable and touches this API only outside worker leases.
-import ./[chain, preparation_worker, current_block_input]
-import ./collected_update
-import ../state/[parent_logical, current_logical, current_identities, current_request_keys,
-    current_refresh_plan, current_logical_refresh, accumulation_current_update]
+import ./chain as app_chain
+import ./preparation_worker as app_preparation_worker
+import ./current_block_input as app_current_block_input
+import ./collected_update as app_collected_update
+import ../state/parent_logical as state_parent_logical
+import ../state/current_logical as state_current_logical
+import ../state/current_identities as state_current_identities
+import ../state/current_request_keys as state_current_request_keys
+import ../state/current_refresh_plan as state_current_refresh_plan
+import ../state/current_logical_refresh as state_current_logical_refresh
+import ../state/accumulation_current_update as state_accumulation_current_update
 type
   CollectedLogicalLimits* = object ## Every existing bounded stage keeps its independent caller policy.
     identities*: CurrentIdentityLimits

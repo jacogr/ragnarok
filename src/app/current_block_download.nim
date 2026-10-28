@@ -5,11 +5,20 @@
 ## Native callbacks copy bytes/observe FIN; producers explicitly enqueue or lend Ready input to a joined worker later.
 
 import std/assertions
-import ./[chain, candidate, current_block_input, services, current_handoff, preparation_worker,
-    current_logical_download]
-import ../chain/[genesis, provider]
-import ../codec/[bounded, header]
-import ../state/[report_anchors, store, accumulation_current_update]
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ./current_block_input as app_current_block_input
+import ./services as app_services
+import ./current_handoff as app_current_handoff
+import ./preparation_worker as app_preparation_worker
+import ./current_logical_download as app_current_logical_download
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../state/report_anchors as state_report_anchors
+import ../state/store as state_store
+import ../state/accumulation_current_update as state_accumulation_current_update
 
 type
   CurrentBlockDownloadId* = distinct uint64 ## Local receiver generations are unrelated to QUIC handles and block identities.

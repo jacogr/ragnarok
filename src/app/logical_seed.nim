@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture a complete supplied configured logical seed from the actual application chain on the stable host.
-import ./chain
-import ../state/[parent_profile, parent_globals, parent_logical, global_snapshot, supplied_logical_inventory]
-import ../codec/state_composition
+import ./chain as app_chain
+import ../state/parent_profile as state_parent_profile
+import ../state/parent_globals as state_parent_globals
+import ../state/parent_logical as state_parent_logical
+import ../state/global_snapshot as state_global_snapshot
+import ../state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../codec/state_composition as codec_state_composition
 type
   LogicalSeedLimits* = object ## Selected-view retention, all globals and supplied logical arrays retain independent ceilings.
     profile*: ParentProfileLimits

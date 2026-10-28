@@ -4,9 +4,15 @@
 ## Assemble GP makebundle only from the exact verified inputs retained by completed execution.
 ## This immutable wire owner certifies neither root/state freshness nor erasure-coded availability.
 
-import ../codec/[bounded, work_package, work_report]
-import ../pvm/host_fetch
-import ./[input_refinement, import_inputs, extrinsic_inputs, import_justification, report_identity]
+import ../codec/bounded as codec_bounded
+import ../codec/work_package as codec_work_package
+import ../codec/work_report as codec_work_report
+import ../pvm/host_fetch as pvm_host_fetch
+import ./input_refinement as state_input_refinement
+import ./import_inputs as state_import_inputs
+import ./extrinsic_inputs as state_extrinsic_inputs
+import ./import_justification as state_import_justification
+import ./report_identity as state_report_identity
 
 type
   AuditableBundleError* {.pure.} = enum ## Refusals contain only reasons, never a serialized successful prefix.

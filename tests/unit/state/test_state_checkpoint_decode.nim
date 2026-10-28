@@ -5,10 +5,14 @@
 
 ## Untrusted checkpoint shape, policy, root integrity and restored ownership witnesses.
 
-import std/[assertions, syncio]
-import ../../../src/state/[checkpoint, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc key(number: byte): StateKey =
   ## Fixed keys make record identity and mutation offsets independently visible.

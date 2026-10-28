@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/erasure_words
+import ../../../src/state/erasure_words as state_erasure_words
 var candidate: ErasureWordResult[ErasureWordCode]
 discard candidate.completed

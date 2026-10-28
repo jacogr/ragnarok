@@ -59,7 +59,7 @@ A gas-budget stop is ordinary successful selection; a local resource stop is a t
 
 ## Verification
 
-`tests/unit/state/test_accumulation_round.nim` checks 670 independently derived contexts: five gas
+`tests/unit/state/test_state_accumulation_round.nim` checks 670 independently derived contexts: five gas
 policies over six unchanged published tiny/full queue scenarios and 128 authored report queues.
 The davxy pin remains `d3c089c9a1d5352ad353626d7a2db8589f137b2a`; existing blob hashes are verified.
 The gas policies and allowances are authored test inputs, not published STF execution outputs.

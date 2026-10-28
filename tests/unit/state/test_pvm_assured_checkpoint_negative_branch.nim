@@ -6,7 +6,8 @@
 ## A genuinely charged negative branch selects checkpoint deletion after actual regular restoration.
 
 import std/syncio
-import ../../support/[pvm_assured_checkpoint, pvm_computed_storage_program]
+import ../../support/pvm_assured_checkpoint
+import ../../support/pvm_computed_storage_program
 
 verifyCheckpointDeletion(ComputedStorageMode.ReadCheckpointNegativeBranch,
   "pvm_assured_checkpoint_negative_branch")

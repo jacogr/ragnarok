@@ -3,13 +3,27 @@
 
 ## Independent V2 bytes and native fault/replay controls bind light context without granting complete-map authority.
 # @@Verification={"arc":"storage_paged_context_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, paged_reference, paged_native_fixture]
-import ../../../src/storage/[paged_stream, paged_codec, paged_store, paged_io, state_proof,
-  light_state_cache, managed_manifest, light_delta, durability, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/state/paged_proof_view as transport
-import ../../../src/state/proof_view as partial
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/storage_paged_reference
+import ../../support/storage_paged_native_fixture
+import ../../../src/storage/paged_stream as storage_paged_stream
+import ../../../src/storage/paged_codec as storage_paged_codec
+import ../../../src/storage/paged_store as storage_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/durability as storage_durability
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/state/paged_proof_view as state_paged_proof_view
+import ../../../src/state/proof_view as state_proof_view
 type Memory = ref object ## Only the independent test transport retains a resident artifact and fault counters.
   bytes: seq[byte]
   calls, failAt: int
@@ -176,7 +190,7 @@ proc normal(old, fresh: PagedNativeFixture) =
     if writer.opened: discard writer.close
   initialize(writer, directory, old, selected, before)
   assert openPagedReader(reader, directory, selected).error == PagedNativeError.None
-  var viewLimits = default(transport.PagedProofViewLimits)
+  var viewLimits = default(state_paged_proof_view.PagedProofViewLimits)
   viewLimits.proof.nodes = ElementLimit(249)
   viewLimits.proof.valueBytes = ByteLimit(10000)
   viewLimits.batch.items = ElementLimit(3)
@@ -185,14 +199,14 @@ proc normal(old, fresh: PagedNativeFixture) =
   viewLimits.view.items = ElementLimit(3)
   viewLimits.view.valueBytes = ByteLimit(10000)
   viewLimits.work = selected.limits.work
-  let view = transport.readPagedProofView(reader, selected.root,
+  let view = state_paged_proof_view.readPagedProofView(reader, selected.root,
     [pagedKey(0), pagedKey(128), pagedKey(255)], viewLimits).value
   assert view.lookup(pagedKey(0)).value.bytes[0] == 7
   assert view.lookup(pagedKey(128)).value.present and view.lookup(pagedKey(128)).value.bytes.len == 0
   assert not view.lookup(pagedKey(255)).value.present
-  assert view.lookup(pagedKey(32)).error == partial.ProofViewError.MissingWitness
-  assert transport.readPagedProofView(reader, selected.root, [pagedKey(32)], viewLimits).error ==
-      transport.PagedProofViewError.MissingWitness
+  assert view.lookup(pagedKey(32)).error == state_proof_view.ProofViewError.MissingWitness
+  assert state_paged_proof_view.readPagedProofView(reader, selected.root, [pagedKey(32)],
+      viewLimits).error ==state_paged_proof_view.PagedProofViewError.MissingWitness
   let retained = reader.readContext(selected.limits.work).value
   let receipt = reader.epochReceipt.value
   assert preparePagedReplacement(writer, candidate, old.records.nativeProducer,

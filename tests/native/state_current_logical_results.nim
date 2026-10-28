@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard current logical parent/source extraction with a genuine signed complete successor positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, current_state_context, current_typed_context,
-    accumulation_current_chain_context, supplied_logical_context]
-import ../../src/state/[current_logical, current_state, supplied_logical_inventory, inventory, manifest]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_current_state_context
+import ../support/state_current_typed_context
+import ../support/state_accumulation_current_chain_context
+import ../support/codec_supplied_logical_context
+import ../../src/state/current_logical as state_current_logical
+import ../../src/state/current_state as state_current_state
+import ../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../src/state/inventory as state_inventory
+import ../../src/state/manifest as state_manifest
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: CurrentLogicalResult[CurrentLogicalState]) {.noinline.} =
   ## Failed/default results grant no logical owner.
   discard outcome.value

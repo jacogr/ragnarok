@@ -6,8 +6,11 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 ## Exercise public ownership/result contracts independently of the batch oracle's root comparisons.
 proc main() =

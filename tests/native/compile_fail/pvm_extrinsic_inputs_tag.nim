@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/extrinsic_inputs
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
 var candidate: ExtrinsicInputsResult[int]
 discard candidate.status

@@ -3,11 +3,24 @@
 
 ## Materialize exact verified computed guarantees and canonical unique reporter identities.
 
-import ../chain/parameters
-import ../codec/[bounded, assurances, guarantees, report_owned, owned, state_safrole]
-import ./[computed_credentials, computed_guarantors, computed_roster, computed_transition,
-  computed_profile, computed_lookup, computed_recent, computed_state, computed_links,
-  computed_guarantee, computed_report]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/guarantees as codec_guarantees
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/state_safrole as codec_state_safrole
+import ./computed_credentials as state_computed_credentials
+import ./computed_guarantors as state_computed_guarantors
+import ./computed_roster as state_computed_roster
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./computed_recent as state_computed_recent
+import ./computed_state as state_computed_state
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
 
 type
   ComputedEnvelopeError* {.pure.} = enum ## Refusals carry no partial guarantee, wire or reporter set.

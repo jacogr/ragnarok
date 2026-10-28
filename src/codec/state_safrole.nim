@@ -8,7 +8,11 @@
 ## bounded validator access.
 
 import std/assertions
-import ./[natural, bounded, assurances, state_layout, state_trie]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 
 type
   StateEntropyWord* = distinct array[32, byte] ## One fixed entropy word; the four-word state preserves accumulator/history order.
@@ -134,7 +138,7 @@ proc validatorEntry*(chapter: ValidatorChapter, values: openArray[StateValidator
   # The nightly permits unchecked enum casts; only the three roster chapters may construct an entry.
   if ord(chapter) < ord(ValidatorChapter.Staging) or ord(chapter) > ord(ValidatorChapter.Previous):
     return StateComponentResult[StateEntry](status: StateComponentError.InvalidTag)
-  let prefix = natural.encode(JamNatural(values.len))
+  let prefix = codec_natural.encode(JamNatural(values.len))
   let checked = extent(uint64(values.len), prefix.len, config)
   if checked.error != StateComponentError.None:
     return StateComponentResult[StateEntry](status: checked.error) # Reject before payload allocation or any write.
@@ -155,7 +159,7 @@ proc stateValidatorPrefixSize*(input: openArray[byte],
   if uint64(config.cores) < 2:
     return StateComponentResult[int](
         status: StateComponentError.InvalidConfig) # Invalid policy never starts parsing.
-  let count = natural.decode(input)
+  let count = codec_natural.decode(input)
   if not count.ok:
     # Missing bytes and complete overlong forms remain distinct failure-only alternatives.
     if count.error == DecodeError.truncated:
@@ -175,7 +179,7 @@ proc stateValidatorPrefixSize*(input: openArray[byte],
 
 proc stateValidatorSize*(count: ValidatorCount, config: ValidatorStateConfig): StateComponentResult[int] =
   ## Measure a typed roster source without allocation, preserving the same population/resource policy.
-  extent(uint64(count), natural.encode(JamNatural(uint64(count))).len, config)
+  extent(uint64(count), codec_natural.encode(JamNatural(uint64(count))).len, config)
 
 proc decodeStateValidators*(input: openArray[byte],
     config: ValidatorStateConfig): StateComponentResult[StateComponentRead[
@@ -185,7 +189,7 @@ proc decodeStateValidators*(input: openArray[byte],
   if checked.error != StateComponentError.None:
     return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
         status: checked.error) # Parent and standalone validation agree.
-  let count = natural.decode(input)
+  let count = codec_natural.decode(input)
   assert count.ok # The stable source's canonical count was proved by the scan.
   let data = ValidatorStateData(records: newSeq[StateValidator](int(uint64(count.value))))
   let owner = ValidatorStateSnapshot(data: data)

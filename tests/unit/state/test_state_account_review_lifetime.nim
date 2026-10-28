@@ -3,14 +3,27 @@
 
 ## Restored review evidence survives caller-buffer destruction, component handle drops and independent mutable forks.
 # @@Verification={"arc": "state_account_review_lifetime_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, account_review_checkpoint_context,
-    economic_profile_context, arc_evidence]
-import ../../../src/chain/parameters
-import ../../../src/state/[account_review_checkpoint, account_review, economic_profile, inventory,
-    manifest, store, checkpoint]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_service_values, state_trie]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_account_review_checkpoint_context
+import ../../support/state_economic_profile_context
+import ../../support/testing_arc_evidence
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/state/account_review_checkpoint as state_account_review_checkpoint
+import ../../../src/state/account_review as state_account_review
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_trie as codec_state_trie
+include ../../native/nimony_composition_fixture
 proc retainedSource(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile): StateStoreSnapshot =
   ## Drop every review/component owner and caller byte buffer before returning only the independently retained immutable source.

@@ -3,9 +3,15 @@
 
 ## Bind retained supplied logical declarations to the original qualified current successor and full parameter provenance.
 ## This read-only parent description does not export a producer manifest or certify propagation through later execution.
-import ../codec/state_composition
-import ./[current_state, inventory, supplied_logical_inventory, current_globals, current_profile, accumulation_current_update]
-import ../chain/[genesis, provider]
+import ../codec/state_composition as codec_state_composition
+import ./current_state as state_current_state
+import ./inventory as state_inventory
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./current_globals as state_current_globals
+import ./current_profile as state_current_profile
+import ./accumulation_current_update as state_accumulation_current_update
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
 type
   CurrentLogicalState* = object ## Private higher provenance owner and revalidated logical owner cannot be paired unchecked.
     initialized: bool

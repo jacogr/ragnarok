@@ -60,7 +60,7 @@ retains existing immutable owners; it introduces no untrusted-size allocation or
 
 ## Verification evidence
 
-`tests/unit/state/test_accumulation_skip.nim` reuses all 408 independently authored service-envelope
+`tests/unit/state/test_state_accumulation_skip.nim` reuses all 408 independently authored service-envelope
 witnesses with the same hash-pinned corpus and signed-report template. It distinguishes preparation
 refusals, execution-required cases and complete non-executing outcomes, comparing the complete source
 root, account bytes and zero/empty effects. No new Python protocol implementation or corpus fork is

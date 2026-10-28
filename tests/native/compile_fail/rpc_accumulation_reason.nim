@@ -5,6 +5,6 @@
 
 ## RPC publication results hide mutable tags and payloads behind selected accessors.
 
-import ../../../src/rpc/server
+import ../../../src/rpc/server as rpc_server
 let outcome = default(RpcAccumulationResult)
 discard outcome.chainReason

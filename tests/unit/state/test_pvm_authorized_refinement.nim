@@ -4,13 +4,28 @@
 
 ## Genuine combined source fixtures verify authorization gating, trace propagation, atomic children and immutable provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[authorized_refinement, authorization_invocation, refinement_report,
-  refinement_digest, refinement_dispatch, refinement_bootstrap, refinement_outcome, store]
-import ../../../src/codec/[bounded, composite, work_digest, work_package, work_report]
-import ../../../src/pvm/[host_fetch, refinement_exports]
-import ../../../src/chain/parameters
-import ../../support/[pvm_authorized_refinement, pvm_report_results, pvm_refinement_outcome, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/state/refinement_digest as state_refinement_digest
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/chain/parameters as chain_parameters
+import ../../support/pvm_authorized_refinement
+import ../../support/pvm_report_results
+import ../../support/pvm_refinement_outcome
+import ../../support/testing_arc_evidence
 
 let halt = @[50'u8, 0]
 let authCode = @[refinementImmediate(7, 65536), refinementImmediate(8, 3), halt]

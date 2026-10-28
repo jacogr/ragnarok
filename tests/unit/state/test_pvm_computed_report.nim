@@ -4,14 +4,26 @@
 
 ## Complete independent report wire, exact policy and original context/trace/digest provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_report, availability_specifier, export_erasure, bundle_erasure,
-  erasure_layout, auditable_bundle, input_refinement, report_identity, authorized_refinement,
-  authorization_invocation]
-import ../../../src/codec/[bounded, composite, work_report]
-import ../../../src/chain/parameters
-import ../../../src/crypto/primitives
-import ../../support/[pvm_computed_report, pvm_computed_report_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/availability_specifier as state_availability_specifier
+import ../../../src/state/export_erasure as state_export_erasure
+import ../../../src/state/bundle_erasure as state_bundle_erasure
+import ../../../src/state/erasure_layout as state_erasure_layout
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/state/input_refinement as state_input_refinement
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_computed_report
+import ../../support/pvm_computed_report_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new hashing after original execution/availability to prove assembly is pure serialization.

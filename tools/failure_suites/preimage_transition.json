@@ -81,5 +81,5 @@
   ],
   "crypto_library": "crypto",
   "native_libraries": [],
-  "source": "tests/native/preimage_transition_results.nim"
+  "source": "tests/native/codec_preimage_transition_results.nim"
 }

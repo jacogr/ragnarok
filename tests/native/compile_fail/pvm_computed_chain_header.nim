@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "headerReason"}
 
-import ../../../src/state/computed_chain
+import ../../../src/state/computed_chain as state_computed_chain
 var candidate: ComputedChainResult[AdvancedComputedChain]
 discard candidate.headerReason

@@ -3,10 +3,16 @@
 
 ## Strict optimized lookup-owner result guards with a genuine independent exporter-wire positive control.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
-import ../../src/codec/bounded
-import ../support/[pvm_computed_links, pvm_computed_report, pvm_computed_report_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/report_identity as state_report_identity
+import ../../src/codec/bounded as codec_bounded
+import ../support/pvm_computed_links
+import ../support/pvm_computed_report
+import ../support/pvm_computed_report_vectors
 
 proc check[T](outcome: ComputedLinksResult[T], reason: ComputedLinksError) =
   ## Establish the exact alternative before deliberate unsuccessful extraction.

@@ -6,8 +6,18 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_availability, guarantees, report_owned, owned, state_trie, bounded, assurances]
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/parseutils
+import ../../src/codec/state_availability as codec_state_availability
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/owned as codec_owned
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
 
 ## Preserve empty malformed report/input tokens without inventing protocol bytes.
 proc unhex(text: string): seq[byte] =

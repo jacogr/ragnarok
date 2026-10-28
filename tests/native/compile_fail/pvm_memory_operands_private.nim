@@ -3,6 +3,6 @@
 
 ## Raw operand copies cannot expose or replace the owner-decoded memory facts.
 # @@Verification={"group": "privacy", "expected": "memoryOperands"}
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let copied = default(Instruction)
 discard copied.memoryOperands

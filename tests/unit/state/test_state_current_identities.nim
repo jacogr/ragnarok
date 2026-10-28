@@ -3,13 +3,24 @@
 
 ## Genuine exact-original predecessor/full-view binding and hash-free complete sorted physical identity observations.
 # @@Verification={"arc":"state_current_identities_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[accumulation_current_chain_context, current_checkpoint_context,
-    parent_logical_context, current_identity_context, arc_evidence]
-import ../../../src/state/[current_identities, parent_logical, parent_globals, parent_profile,
-    accumulation_current_update, store]
-import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_checkpoint_context
+import ../../support/state_parent_logical_context
+import ../../support/state_current_identity_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/parent_logical as state_parent_logical
+import ../../../src/state/parent_globals as state_parent_globals
+import ../../../src/state/parent_profile as state_parent_profile
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/store as state_store
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Prepare real updates and full supplied matching before disabling all hashes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -4,6 +4,6 @@
 ## Negative compiler fixture: prevent retagging a failed beefy read as success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/beefy
+import ../../../src/chain/beefy as chain_beefy
 var decoded = default(BeefyReadResult)
 decoded.status = BeefyReadError.None

@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <ManagementServer>", "build_name": "management-server-copy"}
 
-import ../../../src/management/server
+import ../../../src/management/server as management_server
 var original = default(ManagementServer)
 var duplicate = original
 original.close() # Original use prevents last-use sinking from hiding a copy.

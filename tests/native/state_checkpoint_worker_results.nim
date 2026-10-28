@@ -3,11 +3,20 @@
 
 ## Default/failed admissions and unstarted shutdown cannot fabricate committed worker receipts.
 
-import std/[assertions, cmdline, monotimes, times, syncio]
+import std/assertions
+import std/cmdline
+import std/monotimes
+import std/times
+import std/syncio
 import std/posix/posix
-import ../../src/state/[checkpoint_worker, checkpoint_bank, checkpoint_head, checkpoint_transfer,
-    checkpoint, store]
-import ../../src/codec/[state_trie, bounded]
+import ../../src/state/checkpoint_worker as state_checkpoint_worker
+import ../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../src/state/checkpoint_head as state_checkpoint_head
+import ../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/store as state_store
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 
 proc extractCompletion(completion: CheckpointCompletion) =
   ## Preserve a runtime misuse witness after callers verify its cancellation kind; the accessor still enforces its own contract.

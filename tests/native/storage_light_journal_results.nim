@@ -2,11 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic light-journal result and retirement guards require successful native builds and genuine positive controls.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import std/posix/posix
-import ../../src/storage/[light_journal_cache, light_snapshot, light_state_cache, database_identity,
-  file_errors, durability, light_journal_replay, light_delta, managed_io, managed_manifest]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/storage/durability as storage_durability
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/managed_io as storage_managed_io
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Match the supported SDK pid_t ABI without assuming an unported stdlib export.
 proc main() {.raises.} =

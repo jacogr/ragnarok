@@ -3,7 +3,7 @@
 
 ## Bounded raw/JAM deblob fuzz properties inspect copied instructions, huge indices and immutable ownership without executing guest code.
 import std/assertions
-import ../../src/pvm/program
+import ../../src/pvm/program as pvm_program
 const ProgramFuzzBytes* = 1024 ## Includes the test-only profile/resource selector; no file or callback may allocate from a larger untrusted extent.
 proc sameInstruction(actual, expected: Instruction) =
   ## Every scalar operand and instruction identity must remain independent of caller buffer mutation.

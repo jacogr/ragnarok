@@ -4,10 +4,11 @@
 ## JIP-1 host 100: fixed ten-gas response and bounded, escaped operator diagnostics.
 ## Logging policy and IO never change guest results; see spec/pvm-host-log.md.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
 import std/syncio
-import ./[machine, step]
+import ./machine as pvm_machine
+import ./step as pvm_step
 
 const LogFieldBytes* = 4096'u64 ## Local user-agent display ceiling per field, independent of gas.
 

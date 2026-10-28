@@ -8,10 +8,14 @@
 
 # @@Verification={"arc": "quic_io_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio, monotimes, times, oserrors]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
+import std/monotimes
+import std/times
+import std/oserrors
 import std/posix/posix
-import ../../../src/quic/io
+import ../../../src/quic/io as quic_io
 
 let
   # Read the actual OS flag independently through public C headers, not wrapper bookkeeping.

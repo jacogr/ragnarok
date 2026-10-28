@@ -9,8 +9,9 @@
 
 # @@Verification={"arc": "state_disputes_arc_release"}
 
-import std/[assertions, syncio]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
 include ../../../src/codec/state_disputes
 
 ## Small explicit per-set and whole-parent ceilings include all four canonical count prefixes.

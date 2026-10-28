@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/export_commitment
+import ../../../src/state/export_commitment as state_export_commitment
 var outcome: ExportCommitmentResult[int]
 discard outcome.completed

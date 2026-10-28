@@ -3,8 +3,10 @@
 
 ## Bounded matching implements the request-membership half of GP accounts eq:preimageconstraints.
 ## Original immutable inventory provenance binds every hash/length pair without rehashing payloads.
-import ../codec/[bounded, state_accounts, state_service_values]
-import ./inventory
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ./inventory as state_inventory
 
 type
   PreimageLinkageLimits* = object ## Preflight rows, preimages and worst-case pair comparisons independently.

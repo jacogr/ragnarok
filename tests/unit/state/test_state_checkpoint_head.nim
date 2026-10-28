@@ -5,10 +5,12 @@
 
 ## Independent fixed-byte witness, all-prefix and every-byte corruption checks for local selection metadata.
 
-import std/[assertions, syncio]
-import ../../../src/state/checkpoint_head
-import ../../../src/codec/[state_trie, bounded]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc cycle(head: CheckpointHead) =
   ## Successful temporary bytes and decoded metadata retire before allocator observation.

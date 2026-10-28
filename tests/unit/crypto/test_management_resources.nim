@@ -4,8 +4,9 @@
 # @@Verification={"arc": "management_resources_arc_release"}
 
 ## Real filesystem accounting, incremental bounded scans, unavailable values and resource retirement.
-import std/[assertions, syncio]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
 include ../../../src/management/resources
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}

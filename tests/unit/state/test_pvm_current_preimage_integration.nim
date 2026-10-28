@@ -4,15 +4,30 @@
 
 ## Signed lookup integration freezes exact request/value bytes, complete-map roots and inherited source ownership.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_preimages, accumulation_preimages,
-  accumulation_current_activity, accumulation_activity, accumulation_current_validators,
-  core_service_activity, preimages, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, state_layout, state_trie,
-  state_accounts, state_service_values]
-import ../../../src/crypto/primitives
-import ../../support/[accumulation_current_activity_context, accumulation_provision_integration,
-  report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/state/accumulation_current_preimages as state_accumulation_current_preimages
+import ../../../src/state/accumulation_preimages as state_accumulation_preimages
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_current_validators as state_accumulation_current_validators
+import ../../../src/state/core_service_activity as state_core_service_activity
+import ../../../src/state/preimages as state_preimages
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/state_accumulation_current_activity_context
+import ../../support/state_accumulation_provision_integration
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 
 # Failure injection starts after authenticated blocks and every earlier private stage have been built.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -64,7 +79,7 @@ proc expected(fixture: CurrentActivityFixture, prior: StateStoreSnapshot, blobs,
     for index, entry in [valueEntry(42, @[73'u8]), valueEntry(99, @[]),
         valueEntry(99, @[81'u8, 82, 83])]:
       if not (provided and index == 0): rows.add(entry) # Only two new keys when the guest already provided service 42.
-  newStateStore(rows, report_context.limits()).value.snapshot.value
+  newStateStore(rows, state_report_context.limits()).value.snapshot.value
 
 proc witness(base: OwnedReport, blobs = false, combined = false, provided = false,
     slot = 2'u32): PreparedCurrentAccumulationPreimages =

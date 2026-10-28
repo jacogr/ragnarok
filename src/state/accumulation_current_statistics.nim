@@ -4,9 +4,15 @@
 ## Current GP S(s)=(processed work-items, processed incoming transfers, original actual gas) from genuine terminal sequence coverage.
 ## Complete input groups partition the original contiguous report prefix and accepted transfers, including skipped/absent services.
 import std/algorithm
-import ../codec/[bounded, state_statistics, work_digest]
-import ./[accumulation_current_driver, accumulation_current_sequence, accumulation_coverage,
-  accumulation_annulment, accumulation_inputs, accumulation_operands]
+import ../codec/bounded as codec_bounded
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_current_sequence as state_accumulation_current_sequence
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_operands as state_accumulation_operands
 
 type
   CurrentAccumulationStatisticsLimits* = object ## Traversal, mathematical counts, retained dictionary and gross gas have independent explicit ceilings.

@@ -5,12 +5,26 @@
 ## Pure projection and source-bound private C(14) successor preserve finalized C(15)/C(16) and service state.
 
 import std/algorithm
-import ../codec/[natural, bounded, owned, report_owned, work_report, header, state_workqueues,
-    state_layout, state_trie]
-import ./[accumulation_history, accumulation_finalization, accumulation_outputs,
-  accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
-  availability, store]
+import ../codec/natural as codec_natural
+import ../codec/bounded as codec_bounded
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/work_report as codec_work_report
+import ../codec/header as codec_header
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_history as state_accumulation_history
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./availability as state_availability
+import ./store as state_store
 
 type
   AccumulationReadyConfig* = object ## Independent input-work ceilings apply before expiry/removal can shrink output.
@@ -123,8 +137,8 @@ proc projectAccumulationReady*(parent: ReadySnapshot, accumulated: AccumulatedSn
     let historyCount = accumulated.accumulatedSlotCount(position).value
     if historyCount > high(int) div sizeof(PackageHash):
       fail(AccumulationReadyError.LimitExceeded) # Prove native history storage before fixed-width multiplication.
-    chargeWire(readyBytes, uint64(natural.encode(JamNatural(uint64(count))).len))
-    chargeWire(historyBytes, uint64(natural.encode(JamNatural(uint64(historyCount))).len))
+    chargeWire(readyBytes, uint64(codec_natural.encode(JamNatural(uint64(count))).len))
+    chargeWire(historyBytes, uint64(codec_natural.encode(JamNatural(uint64(historyCount))).len))
     if uint64(historyCount) > (uint64(queues.maxBytes)-historyBytes) div 32:
       fail(AccumulationReadyError.LimitExceeded) # Prove wire multiplication before charging fixed hashes.
     chargeWire(historyBytes, uint64(historyCount)*32)
@@ -143,7 +157,8 @@ proc projectAccumulationReady*(parent: ReadySnapshot, accumulated: AccumulatedSn
         fail(AccumulationReadyError.LimitExceeded) # Bound retained report wire work before copying descriptors.
       reportBytes += uint64(meta.consumed)
       chargeWire(readyBytes, uint64(meta.consumed))
-      chargeWire(readyBytes, uint64(natural.encode(JamNatural(uint64(item.dependencies))).len))
+      chargeWire(readyBytes, uint64(codec_natural.encode(JamNatural(uint64(
+          item.dependencies))).len))
       if uint64(item.dependencies) > (uint64(queues.maxBytes)-readyBytes) div 32:
         fail(AccumulationReadyError.LimitExceeded) # Bound dependency wire even when this row expires.
       chargeWire(readyBytes, uint64(item.dependencies)*32)

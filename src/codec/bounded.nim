@@ -6,8 +6,8 @@
 ## Exposes byte/element limits, borrowed byte spans and bounded byte-string/fixed-width sequence
 ## encoders and decoders.
 
-import ./natural
-import ./fixed_unsigned
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
 
 type
   ByteLimit* = distinct uint64 ## A byte-string resource ceiling, never confused implicitly with an element count.
@@ -94,10 +94,10 @@ proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].}
 
 # Validate a canonical length prefix, limit and complete fixed-stride payload without multiplying first.
 proc readFrame(input: openArray[byte], stride: int, limit: uint64): FrameResult {.raises: [].} =
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Preserve the distinction between incomplete and overlong natural length prefixes.
   if not prefix.ok:
-    if prefix.error == natural.truncated:
+    if prefix.error == codec_natural.truncated:
       # No complete length was available, so no payload may be inspected.
       return FrameResult(error: ContainerError.Truncated)
     else:
@@ -129,7 +129,7 @@ proc encodeBytes*(value: openArray[byte], limit: ByteLimit,
   ## Encode a canonical byte count and payload into a separate caller-owned output buffer, without allocation.
   # Apply the resource ceiling before output-size calculations or copying.
   if uint64(value.len) > uint64(limit): return WriteResult(status: ContainerError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(uint64(value.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(value.len)))
   # Check available capacity by subtraction so prefix + payload cannot overflow a host int.
   if output.len < prefix.len or value.len > output.len - prefix.len:
     return WriteResult(status: ContainerError.OutputTooSmall)
@@ -153,7 +153,7 @@ proc encodeSequence*(values: openArray[FixedUnsigned], width: ByteWidth, limit: 
   if stride < 0 or stride > 8: return WriteResult(status: ContainerError.InvalidWidth)
   # Counts are resources even when the wire payload is empty at width zero.
   if uint64(values.len) > uint64(limit): return WriteResult(status: ContainerError.LimitExceeded)
-  let prefix = natural.encode(JamNatural(uint64(values.len)))
+  let prefix = codec_natural.encode(JamNatural(uint64(values.len)))
   # Bound the product against actual output capacity before multiplying it.
   if output.len < prefix.len or (stride > 0 and values.len > (output.len - prefix.len) div stride):
     return WriteResult(status: ContainerError.OutputTooSmall)

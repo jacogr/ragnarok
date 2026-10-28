@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic audit payload/phase guards retain genuine frozen-plan execution as the positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_audit_plan_context]
-import ../../src/state/[account_audit, account_audit_plan, account_invariants, inventory]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_audit_plan_context
+import ../../src/state/account_audit as state_account_audit
+import ../../src/state/account_audit_plan as state_account_audit_plan
+import ../../src/state/account_invariants as state_account_invariants
+import ../../src/state/inventory as state_inventory
+include nimony_composition_fixture
 proc extract(outcome: AccountAuditResult): CheckedAccountInvariants {.noinline.} =
   ## Default or failed execution grants no complete source-bearing certificate.
   outcome.value

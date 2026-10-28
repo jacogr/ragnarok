@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One exact canonical admission gate for genuine current preparation collection consumers.
-import ./[chain, preparation_worker, current_block_input, candidate]
-import ../state/accumulation_current_update
+import ./chain as app_chain
+import ./preparation_worker as app_preparation_worker
+import ./current_block_input as app_current_block_input
+import ./candidate as app_candidate
+import ../state/accumulation_current_update as state_accumulation_current_update
 type
   CollectedUpdateError* {.pure.} = enum ## Receipt lifecycle and genuine preparation failure remain distinct from stale canonical provenance.
     Uninitialized, None, NoCompletion, Cancelled, WrongOperation, PreparationFailure, StaleUpdate

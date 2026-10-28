@@ -2,9 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic light-delta result/owner misuse requires real runtime contracts and independent success controls.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_delta, light_snapshot, light_state_cache, state_proof, database_identity]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Dynamic origins keep default/failed extraction from becoming a compile-only rejection.
   let member = paramStr(1)

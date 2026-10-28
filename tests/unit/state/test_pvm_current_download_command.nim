@@ -2,15 +2,26 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The explicit current command performs real authenticated current execution and durable/RPC adoption with atomic option/policy preflight.
-import std/[assertions, syncio, envvars]
+import std/assertions
+import std/syncio
+import std/envvars
 import std/posix/posix
-import ../../../src/app/[current_download_command, current_download_policy, options, services]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/state/accumulation_current_consensus
-import ../../../src/storage/managed_manifest
-import ../../support/[accumulation_current_chain_context, current_download_command_context,
-  current_services_disk_samples, managed_storage_samples, block_download_transport, rpc_socket]
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/app/current_download_policy as app_current_download_policy
+import ../../../src/app/options as app_options
+import ../../../src/app/services as app_services
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_download_command_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/app_block_download_transport
+import ../../support/rpc_socket
 const ChainPath = "pvm-current-download-command-chain"
 const PolicyPath = "pvm-current-download-command-policy"
 proc optionsTests() {.raises.} =

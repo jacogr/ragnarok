@@ -2,20 +2,39 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original report context after a real adoption resumes hash-free under the same clock/token, or preserves only the actually selected prefix.
-import std/[assertions, envvars, syncio, monotimes, times]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/app/[services, options, chain, current_handoff, current_block_download,
-    current_block_input, download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers, current_block_download_session]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, header]
-import ../../../src/state/[store, accumulation_current_update, report_anchors]
-import ../../../src/storage/managed_manifest
-import ../../../src/rpc/server
-import ../../support/[current_guarantee_sequence_context, current_consecutive_context,
-  current_consecutive_download_context, current_download_command_context,
-  current_application_context,
-  current_services_disk_samples, managed_storage_samples, block_download_transport]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/chain as app_chain
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/app/current_block_download as app_current_block_download
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/download_schedule as app_download_schedule
+import ../../../src/quic/current_block_download_loop as quic_current_block_download_loop
+import ../../../src/quic/current_block_download_peers as quic_current_block_download_peers
+import ../../../src/quic/current_block_download_session as quic_current_block_download_session
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/header as codec_header
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/report_anchors as state_report_anchors
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/rpc/server as rpc_server
+import ../../support/state_current_guarantee_sequence_context
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_download_command_context
+import ../../support/state_current_application_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/app_block_download_transport
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Hash failures cover only synchronous resumption while every managed worker remains idle.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

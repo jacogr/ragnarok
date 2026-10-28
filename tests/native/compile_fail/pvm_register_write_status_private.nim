@@ -3,6 +3,6 @@
 
 ## Failed scalar arithmetic results cannot expose or forge their private payload/status.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/pvm/registers
+import ../../../src/pvm/registers as pvm_registers
 let written = default(RegisterWriteResult)
 discard written.status

@@ -3,10 +3,15 @@
 
 ## Actual assurance-fed queues and independently bounded original-parameter execution policies.
 
-import ../../src/state/[assured_execution, assured_queue]
-import ../../src/chain/parameters
-import ../../src/codec/[bounded, assurances, work_digest]
-import ./[pvm_assured_queue, pvm_computed_execution, accumulation_execution_context]
+import ../../src/state/assured_execution as state_assured_execution
+import ../../src/state/assured_queue as state_assured_queue
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/work_digest as codec_work_digest
+import ./pvm_assured_queue
+import ./pvm_computed_execution
+import ./state_accumulation_execution_context
 
 proc assuredExecutionFixture*(votes = 7): AssuredAccumulationQueue =
   ## Derive the real next queue from authenticated availability, with no injected ready item.

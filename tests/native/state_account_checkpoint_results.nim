@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic phase guards retain a genuine expected-root restored certificate as their positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_checkpoint_context]
-import ../../src/state/[account_checkpoint, account_invariants, checkpoint, manifest, store]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_checkpoint_context
+import ../../src/state/account_checkpoint as state_account_checkpoint
+import ../../src/state/account_invariants as state_account_invariants
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/manifest as state_manifest
+import ../../src/state/store as state_store
+include nimony_composition_fixture
 proc extract(outcome: AccountCheckpointResult): CheckedAccountInvariants {.noinline.} =
   ## Default restoration has no completed source-bearing certificate.
   outcome.value

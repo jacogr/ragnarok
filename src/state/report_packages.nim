@@ -8,9 +8,17 @@
 ## context.
 
 import std/algorithm
-import ../codec/[bounded, state_history, state_availability, state_workqueues, report_owned, work_report]
-import ./[report_anchors, report_policy, guarantee_credentials, store]
-import ../codec/state_layout
+import ../codec/bounded as codec_bounded
+import ../codec/state_history as codec_state_history
+import ../codec/state_availability as codec_state_availability
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/report_owned as codec_report_owned
+import ../codec/work_report as codec_work_report
+import ./report_anchors as state_report_anchors
+import ./report_policy as state_report_policy
+import ./guarantee_credentials as state_guarantee_credentials
+import ./store as state_store
+import ../codec/state_layout as codec_state_layout
 
 type
   ReportPackageConfig* = object ## State decode bounds and per-index item ceilings bound parent copies, sorting scratch and lookups.

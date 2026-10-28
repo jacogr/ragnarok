@@ -9,7 +9,11 @@
 ## request key/entry construction.
 
 import std/assertions
-import ./[natural, bounded, state_layout, state_trie, state_service_values]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+import ./state_service_values as codec_state_service_values
 export ServiceIndex, ServicePreimageHash
 
 type
@@ -131,7 +135,7 @@ proc extent(count: uint64, config: RequestHistoryConfig): RequestResult[int] =
 proc decodeRequestHistory*(input: openArray[byte], config: RequestHistoryConfig): RequestResult[
     RequestHistoryRead] =
   ## Decode one complete canonical fixed-domain history prefix before reading any of its timeslots.
-  let count = natural.decode(input)
+  let count = codec_natural.decode(input)
   if not count.ok:
     if count.error == DecodeError.truncated:
       return RequestResult[RequestHistoryRead](status: RequestError.Truncated) # Missing count is not requested mode.

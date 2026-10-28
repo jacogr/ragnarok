@@ -4,12 +4,27 @@
 ## Bind C(13) validator bookkeeping to one authenticated accumulation timestamp candidate.
 ## Derive parent statistics, posterior roster, body observations and reporter identities; retain the unchanged complete map.
 
-import ../codec/[bounded, header, assurances, block_codec, owned, state_safrole,
-  state_statistics, state_layout]
-import ./[validator_projection, accumulation_times, accumulation_statistics,
-  accumulation_finalization,
-  accumulation_outputs, accumulation_execution, accumulation_round, accumulation_queue,
-  report_admission, guarantee_credentials, block_transition, block_admission, store]
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/assurances as codec_assurances
+import ../codec/block_codec as codec_block_codec
+import ../codec/owned as codec_owned
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_layout as codec_state_layout
+import ./validator_projection as state_validator_projection
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AccumulationValidatorsConfig* = object ## Resource ceilings only; every chain domain comes from the source certificate.

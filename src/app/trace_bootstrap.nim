@@ -4,10 +4,16 @@
 ## Initialize a trace replay chain only from independently supplied header/state anchors and full Parameters.
 ## The published Genesis file cannot select its own trust or infer a chain profile.
 import std/assertions
-import ./chain
-import ../chain/[genesis, parameters, provider]
-import ../codec/[header, bounded, state_trie]
-import ../state/[trace_genesis, trace_state, store]
+import ./chain as app_chain
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../chain/provider as chain_provider
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../state/trace_genesis as state_trace_genesis
+import ../state/trace_state as state_trace_state
+import ../state/store as state_store
 
 type
   TraceBootstrapTrust* = object ## Independent configuration must anchor both full header identity and its separately supplied posterior map.

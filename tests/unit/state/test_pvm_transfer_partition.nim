@@ -3,10 +3,17 @@
 # @@Verification={"arc": "pvm_transfer_partition_arc_release"}
 
 ## Exact stable partition agrees with independent finite paper predicates across every small supervision graph.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_transfer_partition, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie, c2_records]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_transfer_partition as state_accumulation_transfer_partition
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../support/testing_arc_evidence
 
 # Partitioning only reads canonical metadata; it must perform no native hash work.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

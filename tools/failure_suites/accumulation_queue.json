@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_queue_results.nim",
+  "source": "tests/native/state_accumulation_queue_results.nim",
   "build_name": "accumulation-queue-results",
   "crypto_library": "crypto",
   "native_libraries": [

@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/[initialize]
+import ../../../src/pvm/initialize as pvm_initialize
 var r = default(InitializationResult)
 r.status = InitializationError.None

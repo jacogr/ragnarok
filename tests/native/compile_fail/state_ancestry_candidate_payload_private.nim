@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "prepared"}
 
 ## External code cannot forge or substitute the original candidate report preparation.
-import ../../../src/app/candidate
+import ../../../src/app/candidate as app_candidate
 let owner = CandidateReportPreparation()
 discard owner.prepared

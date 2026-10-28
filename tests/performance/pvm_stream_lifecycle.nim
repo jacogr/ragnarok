@@ -1,10 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Frozen full-state benchmark with the same decoded-fact/reset boundary as the historical local control.
-import std/[assertions, syncio, envvars]
-import ../../src/pvm/[program, machine, gas]
-import ../../src/pvm/internal/handler_stream
-import ../../src/pvm/step as oracle
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/internal/handler_stream as pvm_handler_stream
+import ../../src/pvm/step as pvm_step
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
 proc word(data: string, at, width: int): uint64 =
   ## All local fixture words are bounded before shifts or narrowing.
@@ -72,7 +76,7 @@ for sample in 0..<samples:
     assert image.access == images[page].access
     for at in 0..<4096: assert image.bytes[at] == byte(expected[120+page*4096+at])
   let elapsed = afterExecution-before
-  assert frame.reason == oracle.StepError.None and frame.exit == oracle.StepExit.Halt
+  assert frame.reason == pvm_step.StepError.None and frame.exit == pvm_step.StepExit.Halt
   assert uint64(frame.info.pc) == 0 and frame.info.blockCharged and uint64(frame.info.gasDeficit) == 0
   assert uint64(frame.info.gas) == word(expected, 8, 8)
   for i in 0..<13: assert uint64(frame.info.registers[i]) == word(expected, 16+i*8, 8)

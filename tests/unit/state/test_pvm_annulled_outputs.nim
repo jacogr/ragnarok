@@ -3,11 +3,21 @@
 # @@Verification={"arc": "pvm_annulled_outputs_arc_release"}
 
 ## Genuine selected yield presence survives zero hashes, cancellation, pair ordering and exact canonical wire limits.
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulled_outputs, accumulation_annulment,
-  accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, state_accounts, state_outputs, state_layout, state_trie]
-import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_annulled_outputs as state_accumulation_annulled_outputs
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/state_accumulation_annulment_context
+import ../../support/state_accumulation_batch_context
+import ../../support/testing_arc_evidence
 
 # Selection and C(16)-format encoding do not compute or publish state roots.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: StateEdKey but wanted: StateBsKey"}
 
-import ../../../src/codec/state_safrole
+import ../../../src/codec/state_safrole as codec_state_safrole
 let key = default(StateEdKey)
 let validator = StateValidator(bandersnatch: key)
 discard validator

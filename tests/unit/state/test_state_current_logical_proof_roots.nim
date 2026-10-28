@@ -3,14 +3,29 @@
 
 ## Detached authentic successor responses survive source retirement but old/new evidence cannot cross independently retained actual roots.
 # @@Verification={"arc":"state_current_logical_proof_roots_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
-    current_logical_proof_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_logical, accumulation_current_update,
-    proof_plan, planned_proof, proof_view, proof_global, trie_proof, store]
-import ../../../src/chain/[provider, genesis]
-import ../../../src/app/proof_query
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_repeated_logical_context
+import ../../support/state_current_namespace_refresh_context
+import ../../support/state_current_logical_proof_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_logical_refresh as state_current_logical_refresh
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/planned_proof as state_planned_proof
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/state/store as state_store
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/app/proof_query as app_proof_query
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 type Detached = object ## Only independent scalar expectation, detached transport response and semantic request survive; no logical/view/snapshot owner escapes.
   expected: StateRoot
   response: ProofResponse

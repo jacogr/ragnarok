@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Allocator checkpoints observe live test-owned payloads and return to baseline after ARC retirement.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_allocations
 
 proc retainedPayload(): int =

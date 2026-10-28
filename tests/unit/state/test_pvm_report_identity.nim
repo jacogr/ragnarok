@@ -4,12 +4,20 @@
 
 ## Source-derived hashes, exact dictionary keys, byte policies, immutable copies and owner lifetimes.
 
-import std/[assertions, syncio]
-import ../../../src/state/[report_identity, authorized_refinement, authorization_invocation,
-  refinement_report, refinement_digest]
-import ../../../src/codec/[bounded, composite, work_package, work_report]
-import ../../../src/crypto/primitives
-import ../../support/[pvm_report_identity, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/authorization_invocation as state_authorization_invocation
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/state/refinement_digest as state_refinement_digest
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_report_identity
+import ../../support/testing_arc_evidence
 
 let a = packageImport(identityKey(1), ImportIndex(0))
 let b = packageImport(identityKey(2), ImportIndex(32767))

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/erasure_layout
+import ../../../src/state/erasure_layout as state_erasure_layout
 var candidate: ErasureLayoutResult[ErasureLayout]
 discard candidate.status

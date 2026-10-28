@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/report_transition_results.nim",
+  "source": "tests/native/state_report_transition_results.nim",
   "build_name": "report-transition-results",
   "crypto_library": "crypto",
   "native_libraries": [

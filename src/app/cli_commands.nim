@@ -5,7 +5,7 @@
 ## Positional command values and unknown/duplicate flags are refused before startup.
 
 import std/strutils
-import ./cli_catalog
+import ./cli_catalog as app_cli_catalog
 
 proc unsignedValue*(text: string, value: var uint64): bool =
   ## Parse one unsigned decimal with checked multiply/add; zero is data, never a failure sentinel.

@@ -7,9 +7,17 @@
 ##
 ## Exposes advanceBlockReports with typed block-stage, report-planning and publication errors.
 
-import ../codec/[block_codec, header, state_layout]
-import ./[store, block_admission, block_transition, disputes, safrole_transition, availability,
-  report_admission, report_assignments]
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ./store as state_store
+import ./block_admission as state_block_admission
+import ./block_transition as state_block_transition
+import ./disputes as state_disputes
+import ./safrole_transition as state_safrole_transition
+import ./availability as state_availability
+import ./report_admission as state_report_admission
+import ./report_assignments as state_report_assignments
 
 type
   BlockReportConfig* = object ## One explicit collection of bounded policies for the earlier coordinator and complete report admission.

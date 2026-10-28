@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic supervision payload guards preserve genuine complete-source selection as a positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, service_directory_context]
-import ../../src/state/[service_supervision, service_directory, inventory]
-import ../../src/codec/state_accounts
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_service_directory_context
+import ../../src/state/service_supervision as state_service_supervision
+import ../../src/state/service_directory as state_service_directory
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/state_accounts as codec_state_accounts
+include nimony_composition_fixture
 proc extract(outcome: ServiceSupervisionResult[ServiceSupervision]): ServiceSupervision {.noinline.} =
   ## Default or failed target queries cannot expose source-bearing authority.
   outcome.value

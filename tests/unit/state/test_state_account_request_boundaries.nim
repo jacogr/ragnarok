@@ -2,14 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current request-length reservation boundaries remain finite complete-account facts without allocating absent advertised payloads.
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, economic_profile_context]
-import ../../../src/chain/parameters
-import ../../../src/state/[inventory, account_audit_plan, account_audit, account_invariants,
-  footprint_audit,
-  preimage_content, preimage_linkage, service_directory, economic_profile, economics_table]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_requests]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_economic_profile_context
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/state/service_directory as state_service_directory
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/state/economics_table as state_economics_table
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_requests as codec_state_requests
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing after exact complete source capture for each advertised length.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

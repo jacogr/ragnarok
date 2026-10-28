@@ -4,15 +4,37 @@
 ## Genuine computed reports execute from the exact complete parent map later admitted with sealed block commitments.
 
 import std/assertions
-import ../../src/state/[store, block_admission, computed_links, computed_report, computed_guarantee,
-  availability_specifier, export_erasure, bundle_erasure, erasure_layout, erasure_words,
-  auditable_bundle, input_refinement]
-import ../../src/codec/[bounded, state_trie, state_layout, state_safrole, header, block_codec,
-  composite, work_report, assurances, tickets]
-import ../../src/chain/parameters
-import ../../src/crypto/[primitives, extrinsic_commitment]
-import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome, pvm_computed_report,
-  pvm_export_erasure, pvm_computed_state_vectors]
+import ../../src/state/store as state_store
+import ../../src/state/block_admission as state_block_admission
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/state/export_erasure as state_export_erasure
+import ../../src/state/bundle_erasure as state_bundle_erasure
+import ../../src/state/erasure_layout as state_erasure_layout
+import ../../src/state/erasure_words as state_erasure_words
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/header as codec_header
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/tickets as codec_tickets
+import ../../src/chain/parameters as chain_parameters
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ./pvm_input_refinement
+import ./pvm_report_results
+import ./pvm_refinement_outcome
+import ./pvm_computed_report
+import ./pvm_export_erasure
+import ./pvm_computed_state_vectors
 
 type
   ComputedStateFixture* = object ## Mutable fixture handles permit caller replacement after original immutable owners have completed.

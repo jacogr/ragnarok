@@ -3,6 +3,6 @@
 
 ## Immutable cache owners and tagged results expose only checked accessors.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/storage/light_state_cache
+import ../../../src/storage/light_state_cache as storage_light_state_cache
 let hidden = default(LightCacheResult[LightStateCache])
 discard hidden.status

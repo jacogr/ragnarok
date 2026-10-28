@@ -4,9 +4,11 @@
 ## Exclusive prepared full-map bytes detach disk publication from the source ARC graph.
 ## Prepare on a permitted computation/startup path, then transfer the sole buffer owner to an I/O worker.
 
-import ./[checkpoint, store]
-import ../codec/[bounded, state_trie]
-import ../lib/atomic_file
+import ./checkpoint as state_checkpoint
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../lib/atomic_file as lib_atomic_file
 
 type PreparedCheckpoint* = object ## Private tagged ownership permits no payload alias or implicit buffer duplication.
   case status: CheckpointError

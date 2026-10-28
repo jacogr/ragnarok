@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored complete two-leaf graphs exercise every full-key route depth and masked byte boundary.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_samples
-import ../../../src/storage/[node_records, node_repository, record_codec]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 
 proc fixture(depth: int, pattern: byte, wrong = -1): TrieExport =
   ## Build valid local hashes independently of the trie builder, optionally misrouting one edge.

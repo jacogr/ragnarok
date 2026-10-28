@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_state_publication
+import ../../../src/state/computed_state_publication as state_computed_state_publication
 var candidate: ComputedStatePublicationResult[PublishedComputedState]
 discard candidate.status

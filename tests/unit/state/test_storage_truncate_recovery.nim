@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Truncation interruption can repeat only the independently exact prefix; permanent refusal grants no owner.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_repair_faults
 proc main() {.raises.} =
   ## Both layouts prove one actual truncation, two resumed interruptions and a separate permanent refusal.

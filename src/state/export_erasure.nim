@@ -3,10 +3,20 @@
 
 ## Erasure-code final ordered exports and proof pages from one original executed-bundle provenance.
 
-import ../codec/[bounded, work_digest, work_report]
-import ../pvm/host_fetch
-import ./[bundle_erasure, erasure_layout, erasure_words, auditable_bundle, input_refinement,
-  export_commitment, report_identity, authorized_refinement, refinement_digest, refinement_report]
+import ../codec/bounded as codec_bounded
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../pvm/host_fetch as pvm_host_fetch
+import ./bundle_erasure as state_bundle_erasure
+import ./erasure_layout as state_erasure_layout
+import ./erasure_words as state_erasure_words
+import ./auditable_bundle as state_auditable_bundle
+import ./input_refinement as state_input_refinement
+import ./export_commitment as state_export_commitment
+import ./report_identity as state_report_identity
+import ./authorized_refinement as state_authorized_refinement
+import ./refinement_digest as state_refinement_digest
+import ./refinement_report as state_refinement_report
 
 type
   ExportErasureError* {.pure.} = enum ## Refusals expose no partial export/page encoding or substitute tree.

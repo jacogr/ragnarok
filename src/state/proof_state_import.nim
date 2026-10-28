@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restore an independently selected complete map from verified partial evidence only after full-map root equality proves completeness.
-import ./[proof_view, trie_proof, store]
-import ../codec/[bounded, state_trie, state_layout]
+import ./proof_view as state_proof_view
+import ./trie_proof as state_trie_proof
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
 type
   ProofStateImportLimits* = object ## Input lookup traversal and temporary entry copies are independent of the resulting complete store's inherited policies.
     lookups*: ElementLimit

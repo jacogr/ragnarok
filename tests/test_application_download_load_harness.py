@@ -35,7 +35,7 @@ class DownloadLoadHarness(unittest.TestCase):
             fixture = folder/'report'
             fixture.write_bytes(b'independent fixture')
             digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
-            manifest = {'application_download_loop': (None, {'RAGNAROK_STATE_REPORT': fixture},
+            manifest = {'app_download_loop': (None, {'RAGNAROK_STATE_REPORT': fixture},
                                                        ((fixture, digest),))}
             with patch('native_fixtures.unit_runtime_fixtures', return_value=manifest):
                 for passed in (True, False):
@@ -59,7 +59,7 @@ class DownloadLoadHarness(unittest.TestCase):
                 context.checks.command.assert_not_called()
             fixture = folder/'report'
             fixture.write_bytes(b'altered fixture')
-            manifest = {'application_download_loop': (None, {}, ((fixture, '0'*64),))}
+            manifest = {'app_download_loop': (None, {}, ((fixture, '0'*64),))}
             context = self.context(folder)
             with patch('native_fixtures.unit_runtime_fixtures', return_value=manifest):
                 with self.assertRaisesRegex(ValueError, 'fixture mismatch'):

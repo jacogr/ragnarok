@@ -4,10 +4,11 @@
 ## Validate independent application configurations without process arguments, sockets or native services.
 ## The parser owns copied positions, commits only valid results, and requires explicit enable flags.
 
-import std/[assertions, syncio]
-import ../../../src/app/options
-import ../../../src/lib/logging
-import ../../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ../../../src/app/options as app_options
+import ../../../src/lib/logging as lib_logging
+import ../../../src/codec/bounded as codec_bounded
 
 # An absent enable flag leaves all services disabled, regardless of endpoint/directory configuration.
 var disabled = default(Options)

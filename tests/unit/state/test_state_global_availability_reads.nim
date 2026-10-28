@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated optional assignments retain nested guarantee/report lifetime and separate registration time.
-import std/[assertions, syncio]
-import ../../support/[proof_global_helpers, proof_global_report]
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, guarantees, state_availability, state_layout,
-    state_safrole, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../support/state_proof_global_report
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/state_availability as codec_state_availability
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() {.raises.} =
   ## Cover present and absent core slots plus independently authenticated malformed outer framing.
   let config = AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(2),

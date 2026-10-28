@@ -4,11 +4,19 @@
 
 ## Original source-bound report guests verify C's field derivation, literal hash/wire witnesses and ownership.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_digest, refinement_report]
-import ../../../src/pvm/host_fetch
-import ../../../src/codec/[bounded, composite, work_package, work_digest]
-import ../../support/[pvm_work_digests, pvm_report_results, pvm_refinement_outcome, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_digest as state_refinement_digest
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/pvm_work_digests
+import ../../support/pvm_report_results
+import ../../support/pvm_refinement_outcome
+import ../../support/testing_arc_evidence
 
 const payloadHash = [186'u8, 170, 40, 136, 247, 203, 180, 131, 40, 171, 152, 2, 14, 173, 35, 122,
     12, 184, 229, 214, 17, 9, 91, 199, 184, 18, 183, 125, 142, 159, 116, 234]

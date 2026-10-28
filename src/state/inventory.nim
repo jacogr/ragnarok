@@ -3,8 +3,13 @@
 
 ## Compact service facts retain exact logical declarations bound to one complete matched source.
 ## Payload bytes stay in the existing source; callers cannot substitute mutable declarations later.
-import ../codec/[bounded, composite, state_layout, state_accounts, state_composition, state_service_values]
-import ./manifest
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_service_values as codec_state_service_values
+import ./manifest as state_manifest
 
 type
   InventoryServiceIndex* = distinct uint64 ## Ordinal belongs to this captured declaration order, not a service identity.

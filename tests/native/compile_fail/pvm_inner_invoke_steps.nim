@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: GasCycleLimit but wanted: ExecutionStepLimit"}
 
-import ../../../src/pvm/[inner_machines, step, gas]
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
 discard InnerMachineLimits(steps: GasCycleLimit(1))

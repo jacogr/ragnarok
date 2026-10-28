@@ -4,12 +4,20 @@
 
 ## Independent complete availability fields, raw-leaf trees, hash preflight and immutable original provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[availability_specifier, export_erasure, bundle_erasure, erasure_words,
-  erasure_layout, auditable_bundle]
-import ../../../src/codec/[bounded, work_report]
-import ../../../src/crypto/primitives
-import ../../support/[pvm_export_erasure, pvm_availability_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/availability_specifier as state_availability_specifier
+import ../../../src/state/export_erasure as state_export_erasure
+import ../../../src/state/bundle_erasure as state_bundle_erasure
+import ../../../src/state/erasure_words as state_erasure_words
+import ../../../src/state/erasure_layout as state_erasure_layout
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/pvm_export_erasure
+import ../../support/pvm_availability_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual hash attempts and optionally refuse the backend after original source preparation.

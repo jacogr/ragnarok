@@ -4,9 +4,13 @@
 ## Fixed-address outgoing transport catalog pins authenticated peers before routing scheduled downloads.
 ## Callers keep borrowed sessions stable and explicitly close this owner before destruction.
 
-import ./[transport, protocol, block_download_session, block_download_stream]
-import ../app/[download_schedule, block_download]
-import ../codec/bounded
+import ./transport as quic_transport
+import ./protocol as quic_protocol
+import ./block_download_session as quic_block_download_session
+import ./block_download_stream as quic_block_download_stream
+import ../app/download_schedule as app_download_schedule
+import ../app/block_download as app_block_download
+import ../codec/bounded as codec_bounded
 
 type
   DownloadPeerKey* = distinct array[32, byte] ## Exact expected Ed25519 identity; never a block/state hash.

@@ -2,8 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Calibrate diagnostic invocation boundaries, nested callbacks, terminal replies and pair-capacity refusal.
-import std/[assertions, syncio, envvars]
-import ../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/step as pvm_step
 proc pureSource(): Machine =
   ## Two unlikely instructions and a trap have independently known opcode/pair counts with no gas work.
   let owner = decodeProgram([0'u8, 0, 3, 2, 2, 0, 7], CodeAddress(0), ProgramByteLimit(7),

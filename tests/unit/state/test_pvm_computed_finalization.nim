@@ -4,14 +4,27 @@
 
 ## Genuine n=0 continuation finalizes actual computed execution without replaying initial guests or losing pending-report provenance.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_finalization, computed_execution, computed_round,
-  computed_publication, computed_admission, report_admission, block_transition, block_admission,
-  accumulation_driver, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_continuation, store]
-import ../../../src/codec/[bounded, state_layout]
-import ../../../src/pvm/step
-import ../../support/[pvm_computed_finalization, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_finalization as state_computed_finalization
+import ../../../src/state/computed_execution as state_computed_execution
+import ../../../src/state/computed_round as state_computed_round
+import ../../../src/state/computed_publication as state_computed_publication
+import ../../../src/state/computed_admission as state_computed_admission
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/accumulation_driver as state_accumulation_driver
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/accumulation_outputs as state_accumulation_outputs
+import ../../../src/state/accumulation_execution as state_accumulation_execution
+import ../../../src/state/accumulation_continuation as state_accumulation_continuation
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/pvm/step as pvm_step
+import ../../support/pvm_computed_finalization
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine private map/root work to fail after actual service execution completes.

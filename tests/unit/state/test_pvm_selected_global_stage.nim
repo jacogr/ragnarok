@@ -3,15 +3,33 @@
 # @@Verification={"arc": "pvm_selected_global_stage_arc_release"}
 
 ## Signed bless/assign/designate hosts preserve original payload authority across handoff and annulment.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_layout, state_authorization,
-  state_privileges, state_safrole, c2_records]
-import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_global_stage, accumulation_global_roles,
-  accumulation_provision_stage, accumulation_provisions, accumulation_account_stage,
-  accumulation_block_guests, accumulation_guest_runner, store]
-import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
-  pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_authorization as codec_state_authorization
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/state/accumulation_global_stage as state_accumulation_global_stage
+import ../../../src/state/accumulation_global_roles as state_accumulation_global_roles
+import ../../../src/state/accumulation_provision_stage as state_accumulation_provision_stage
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/accumulation_account_stage as state_accumulation_account_stage
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_guest_runner as state_accumulation_guest_runner
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_execution_context
+import ../../support/state_accumulation_current_guests_context
+import ../../support/pvm_accumulation_program
+import ../../support/pvm_accumulation_provision
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc code(instructions: seq[seq[byte]], payload: seq[byte]): seq[byte] =
   ## Complete service framing preserves actual PVM guest code and independently authored payloads.

@@ -7,10 +7,16 @@
 ##
 ## Exposes rotateValidatorState and checked full-state rotation/publication results.
 
-import ../codec/[state_safrole, state_consensus, state_layout, state_trie, assurances, bounded]
-from ../codec/disputes import OffenderKey
-import ../bandersnatch/bandersnatch
-import ./[validators, store]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+from ../codec/disputes as codec_disputes import OffenderKey
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ./validators as state_validators
+import ./store as state_store
 
 type
   ValidatorTransitionConfig* = object ## Complete chapter/roster ceilings plus a separate bound on borrowed posterior offender identities.

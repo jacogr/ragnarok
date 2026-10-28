@@ -104,7 +104,7 @@ class VerificationE2E(unittest.TestCase):
                 else:
                     checks.build.assert_called_once()
                     self.assertEqual(checks.build.call_args.args[1],
-                        ROOT/'tests/native/application_current_sequence.nim')
+                        ROOT/'tests/native/app_current_sequence.nim')
 
     # Every E2E workload and CLI selftest is required, including on a fresh standalone invocation.
     def test_e2e_complete_inventory(self):
@@ -240,7 +240,7 @@ class VerificationE2E(unittest.TestCase):
                     else:
                         checks.build.assert_called_once()
                         self.assertEqual(checks.build.call_args.args[1],
-                                         ROOT/('tests/native/'+observer_module+'.nim'))
+                                         ROOT/('tests/native/'+observer_module.replace('application_', 'app_', 1)+'.nim'))
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.

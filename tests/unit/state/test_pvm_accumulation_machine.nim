@@ -6,10 +6,18 @@
 
 # @@Verification={"arc": "pvm_accumulation_machine_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_invocation, accumulation_service]
-import ../../../src/pvm/[initialize, program, machine, step, gas]
-import ../../support/[pvm_accumulation_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../support/pvm_accumulation_context
+import ../../support/testing_arc_evidence
 
 ## Test-only provider refusal proves initialization uses the existing immutable bootstrap without rehashing.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

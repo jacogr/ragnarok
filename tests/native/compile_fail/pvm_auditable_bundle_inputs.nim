@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "InputRefinement", "early": ["prepareAuditableBundle(", "[1] expected: InputRefinement but got: VerifiedImportInputs"]}
 
-import ../../../src/state/[auditable_bundle, import_inputs]
-import ../../../src/codec/bounded
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/codec/bounded as codec_bounded
 discard prepareAuditableBundle(default(VerifiedImportInputs), ByteLimit(4096))

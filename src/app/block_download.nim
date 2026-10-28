@@ -4,10 +4,20 @@
 ## CE 128 one-child request and bounded incremental response adapter over the existing raw-block input owner.
 ## Native callbacks copy bytes/observe FIN; producers explicitly enqueue or lend Ready input to a joined worker later.
 
-import ./[chain, candidate, block_input, services, handoff, preparation_worker]
-import ../chain/[genesis, provider]
-import ../codec/[bounded, header]
-import ../state/[report_anchors, store, accumulation_finalization, accumulation_completion]
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ./block_input as app_block_input
+import ./services as app_services
+import ./handoff as app_handoff
+import ./preparation_worker as app_preparation_worker
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../state/report_anchors as state_report_anchors
+import ../state/store as state_store
+import ../state/accumulation_finalization as state_accumulation_finalization
+import ../state/accumulation_completion as state_accumulation_completion
 
 type
   BlockDownloadId* = distinct uint64 ## Local receiver generations are unrelated to QUIC handles and block identities.

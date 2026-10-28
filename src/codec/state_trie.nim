@@ -8,7 +8,8 @@
 ## results.
 
 import std/algorithm
-import ./[state_layout, bounded]
+import ./state_layout as codec_state_layout
+import ./bounded as codec_bounded
 
 type
   StateEntry* = object ## A serialized mapping entry; callers own the value and retain its lifetime during construction.

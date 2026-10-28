@@ -3,11 +3,16 @@
 
 ## Bank payload and inner reasons require their exact successful/failed alternative; native owners require close.
 
-import std/[assertions, cmdline]
+import std/assertions
+import std/cmdline
 import std/posix/posix
-import ../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_file, store]
-import ../../src/lib/atomic_file
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../src/state/checkpoint_head as state_checkpoint_head
+import ../../src/state/checkpoint_file as state_checkpoint_file
+import ../../src/state/store as state_store
+import ../../src/lib/atomic_file as lib_atomic_file
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 
 proc policy(): StateStoreLimits =
   ## Empty maps need no value/node budget and no unrelated protocol state.

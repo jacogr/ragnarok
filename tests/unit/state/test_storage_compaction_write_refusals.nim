@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed snapshot, journal or staged-manifest writes cannot select an incomplete epoch.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_compaction_faults
 proc main() {.raises.} =
   ## Each compacted fixture has exactly three complete staged writes before manifest selection.

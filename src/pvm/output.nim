@@ -5,7 +5,8 @@
 ## Exposes OutputByteLimit, OutputError/Result and captureOutput. Successful byte sequences are
 ## independent copies; unreadable guest ranges produce empty output. See spec/pvm-output.md.
 
-import ./[machine, step]
+import ./machine as pvm_machine
+import ./step as pvm_step
 
 type
   OutputByteLimit* = distinct uint64 ## Local copying policy is independent of guest register lengths, gas and physical memory addresses.

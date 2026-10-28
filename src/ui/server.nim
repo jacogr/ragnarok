@@ -7,7 +7,10 @@
 ## or uncompressed fallback is provided. Only GET
 ## and HEAD are supported; paths cannot traverse parents or follow symlinks. No directory listing.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/nativesocket
+import std/oserrors
+import std/strutils
+import std/monotimes
 import std/posix/posix
 
 # Make generates immutable path/data arrays from the staged UI; no runtime asset files are read.

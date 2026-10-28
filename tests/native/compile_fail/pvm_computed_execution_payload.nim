@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_execution
+import ../../../src/state/computed_execution as state_computed_execution
 var candidate: ComputedExecutionResult[ExecutedComputedAccumulation]
 discard candidate.completed

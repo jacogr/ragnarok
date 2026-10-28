@@ -5,9 +5,13 @@
 ## Inputs are borrowed for synchronous calls; published nodes and owned values never mutate.
 ## Exposes complete revisions, retained lookup values, explicit limits and guarded results.
 
-import std/[algorithm, assertions]
-import ./[node_records, state_proof]
-import ../codec/[state_trie, state_layout, bounded]
+import std/algorithm
+import std/assertions
+import ./node_records as storage_node_records
+import ./state_proof as storage_state_proof
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/bounded as codec_bounded
 
 type
   FullStateTrieLimits* = object ## Complete-map ceilings plus independent borrowed batch limits.

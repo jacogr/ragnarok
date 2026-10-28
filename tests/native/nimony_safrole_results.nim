@@ -7,8 +7,14 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[assertions, cmdline, syncio]
-import ../../src/codec/[state_safrole, state_trie, bounded, assurances, natural]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/natural as codec_natural
 let useDefault = paramStr(2) == "default"
 let policy = ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
     maxBytes: ByteLimit(2017))
@@ -23,7 +29,7 @@ assert encoded.error == StateComponentError.None
 let decoded = decodeStateValidators(encoded.value.value, policy)
 assert decoded.error == StateComponentError.None
 let owner = decoded.value.value
-let huge = natural.encode(JamNatural(high(uint64)))
+let huge = codec_natural.encode(JamNatural(high(uint64)))
 case paramStr(1)
 of "entropy-value":
   # No default/failed result may authorize this value, owner or progress observation.

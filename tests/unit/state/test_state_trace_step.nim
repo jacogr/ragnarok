@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete published TraceStep ownership, exact child boundaries and typed failure isolation.
-import std/[assertions, envvars, syncio]
-import ../../support/trace_step_context
-import ../../../src/state/[trace_step, trace_state, store]
-import ../../../src/codec/[block_codec, bounded, header, assurances]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_trace_step_context
+import ../../../src/state/trace_step as state_trace_step
+import ../../../src/state/trace_state as state_trace_state
+import ../../../src/state/store as state_store
+import ../../../src/codec/block_codec as codec_block_codec
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/assurances as codec_assurances
 proc main() {.raises.} =
   ## Independent frozen wire is an input only; expected complete maps live in the mathematical corpus.
   let path = getEnv("RAGNAROK_STATE_TRACE_STEP")

@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Compiler rejection fixture protecting immutable initial accumulation ownership and gas domains.
+## Its top-level access must fail semantic compilation rather than expose or forge validated values.
+
+# @@Verification={"group": "privacy", "expected": "completed"}
+
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/codec/bounded as codec_bounded
+let owner = default(AccumulationRoundResult[InitialAccumulationRound])
+discard owner.completed # Private storage cannot be forged or modified.

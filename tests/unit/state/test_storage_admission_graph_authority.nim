@@ -3,10 +3,17 @@
 
 ## Unordered record delivery preserves serialized order but grants no root, dependency, reachability or no-op authority.
 # @@Verification={"arc": "storage_admission_graph_authority_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 type LocalRecords = object ## A locally valid transport summary is independent of complete graph admission.
   digests: seq[StateNodeHash]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

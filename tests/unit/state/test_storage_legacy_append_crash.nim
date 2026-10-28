@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Legacy complete writes remain strictly decodable when a writer dies before receiving its syscall result.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_appends]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_appends
 proc main() {.raises.} =
   ## Count a genuine completed control, then kill at its actual complete append write.
   assert appendCrashCase("legacy-append-control", false, writeIo, 4096) == 1

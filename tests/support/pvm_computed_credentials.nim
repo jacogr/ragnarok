@@ -4,10 +4,19 @@
 ## Genuine deterministic Ed25519 credentials for original computed messages and owner-selected test keys.
 
 import std/assertions
-import ../../src/state/[computed_guarantors, computed_roster, computed_transition, computed_profile,
-  computed_lookup, computed_recent, computed_state, computed_links, computed_guarantee]
-import ../../src/codec/[guarantees, state_safrole]
-import ../../src/crypto/[primitives, guarantee]
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/computed_recent as state_computed_recent
+import ../../src/state/computed_state as state_computed_state
+import ../../src/state/computed_links as state_computed_links
+import ../../src/state/computed_guarantee as state_computed_guarantee
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/crypto/guarantee as crypto_guarantee
 import ./pvm_computed_guarantors
 
 proc credentialFixture*(shrink = false, core = 0'u64, offender = false,

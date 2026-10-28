@@ -3,6 +3,6 @@
 
 ## Database identity and result backing stay private.
 # @@Verification={"group":"privacy","expected":"initialized"}
-import ../../../src/storage/database_identity
+import ../../../src/storage/database_identity as storage_database_identity
 let hidden = default(DatabaseIdentity)
 discard hidden.initialized

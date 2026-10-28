@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ReportIdentity", "early": ["prepareExportCommitment(", "[1] expected: ReportIdentity but got: RefinedPackage"]}
 
-import ../../../src/state/[export_commitment, refinement_report]
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/state/refinement_report as state_refinement_report
 discard prepareExportCommitment(default(RefinedPackage), default(ExportCommitmentLimits))

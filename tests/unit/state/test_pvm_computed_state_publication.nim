@@ -5,11 +5,17 @@
 
 ## Exact-parent publication retains original computed work and the whole prepared state without hashing or guest replay.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_state_publication, computed_composition, accumulation_consensus,
-    accumulation_block_publication, store]
-import ../../../src/codec/[state_layout, state_trie]
-import ../../support/[pvm_computed_state_publication, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_state_publication as state_computed_state_publication
+import ../../../src/state/computed_composition as state_computed_composition
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_block_publication as state_accumulation_block_publication
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../support/pvm_computed_state_publication
+import ../../support/testing_arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine composition so publication cannot hide replay or reconstruction.

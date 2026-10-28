@@ -3,9 +3,13 @@
 
 ## A distinct local selection schema anchors light journal epochs without full-image or full-state fallback.
 import std/assertions
-import ./[light_snapshot, light_delta, database_identity, managed_manifest]
-import ../codec/[bounded, state_trie]
-import ../crypto/primitives
+import ./light_snapshot as storage_light_snapshot
+import ./light_delta as storage_light_delta
+import ./database_identity as storage_database_identity
+import ./managed_manifest as storage_managed_manifest
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 const
   Magic = "RAGNAROK-LIGHT-MANIFEST-V1\n"
   AnchorMagic = "RAGNAROK-LIGHT-JOURNAL-V1\n"

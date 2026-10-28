@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Consuming failed results must stop before payload access; each child supplies a causal start witness.
-import std/[assertions, syncio, strutils]
+import std/assertions
+import std/syncio
+import std/strutils
 import std/posix/posix
-import ../../../src/storage/[managed_io, record_codec, snapshot_codec, journal_codec]
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../../src/storage/journal_codec as storage_journal_codec
 
 proc armTimeout(seconds: cuint): cuint {.importc: "alarm", cdecl, header: "<unistd.h>".}
   ## Bound only the deliberately failing child; timeout signals never qualify as contract evidence.

@@ -52,7 +52,7 @@ def integration_corpus(compiler, report, checks, libraries, quic_fixtures, integ
     lines, expected = integration_requests(integration_wires)
     source = BUILD/'integration-requests.txt'
     # Compare complete serialized bytes and failure ordering, not only a self-generated round trip.
-    corpus = execute_corpus(ROOT / 'tests/native/integration_driver.nim', 'integration-driver',
+    corpus = execute_corpus(ROOT / 'tests/native/quic_integration_driver.nim', 'integration-driver',
                         source, lines, expected, 'integration-corpus',
                         metadata=dict(scope='CE fixture codec/crypto composition; no authenticated transport or normative digest/preimage relationship'), expected_hash=True,
                         crypto_library=crypto_library,

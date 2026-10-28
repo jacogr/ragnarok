@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard current-global payloads and exact failed-global reasons with an actual prepared producer success control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_globals, current_profile, global_snapshot]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_accumulation_current_chain_context
+import ../../src/state/current_globals as state_current_globals
+import ../../src/state/current_profile as state_current_profile
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/state_composition as codec_state_composition
 proc extract(outcome: CurrentGlobalsResult[CurrentGlobalSerialization]) {.noinline.} =
   ## No failed/default global qualification grants its owner.
   discard outcome.value

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/pvm/inner_machines
+import ../../../src/pvm/inner_machines as pvm_inner_machines
 var item: InnerMachines
 discard item.data

@@ -5,7 +5,7 @@
 
 ## Chain pagination coordinates cannot silently substitute for store enumeration coordinates.
 
-import ../../../src/state/store
-import ../../../src/chain/genesis
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
 let source = default(StateStoreSnapshot)
 discard source.keyAt(StateKeyIndex(0))

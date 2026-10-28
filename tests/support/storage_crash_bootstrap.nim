@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed creator process lifetime grants no implicit overwrite or authority from partial bootstrap files.
-import std/[assertions, syncio]
-import ./[storage_samples, managed_storage_samples, storage_io, storage_crash,
-  storage_crash_appends, storage_bootstrap_faults]
-import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, database_identity]
-import ../../src/codec/bounded
+import std/assertions
+import std/syncio
+import ./storage_samples
+import ./app_managed_storage_samples
+import ./storage_io
+import ./storage_crash
+import ./storage_crash_appends
+import ./storage_bootstrap_faults
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/file_repository as storage_file_repository
+import ../../src/storage/managed_repository as storage_managed_repository
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/codec/bounded as codec_bounded
 proc bootstrapCrashCase*(label: string, managed: bool, operation, skip: cint): uint64 {.raises.} =
   ## Arm before exclusive creation, then verify preserved forensic names before any independently strict admission.
   resetIo()

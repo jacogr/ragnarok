@@ -4,11 +4,26 @@
 
 ## Original multi-item guests verify ordered report I, protocol precedence, source ownership and atomic local refusal.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_report, refinement_bootstrap, refinement_outcome, refinement_dispatch]
-import ../../../src/pvm/[host_fetch, refinement_exports, output, step, initialize, machine]
-import ../../../src/codec/[bounded, composite, work_package, work_digest, work_report]
-import ../../support/[pvm_report_results, pvm_refinement_outcome, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/pvm/output as pvm_output
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_report as codec_work_report
+import ../../support/pvm_report_results
+import ../../support/pvm_refinement_outcome
+import ../../support/testing_arc_evidence
 
 let halt = @[50'u8, 0]
 let returning = @[refinementImmediate(7, 196608), refinementImmediate(8, 3), halt]

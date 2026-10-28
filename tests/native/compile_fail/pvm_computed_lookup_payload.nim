@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_lookup
+import ../../../src/state/computed_lookup as state_computed_lookup
 var candidate: ComputedLookupResult[LookupAnchoredComputedReport]
 discard candidate.completed

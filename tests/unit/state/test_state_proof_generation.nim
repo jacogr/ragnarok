@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Generated complete-map paths must reproduce the unchanged independent root calculator.
-import std/[assertions, syncio]
-import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../../src/state/trie_proof as state_trie_proof
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Exercise both leaf encodings, empty edges, conflicting leaves and complete-map quotas.
   let maps = StateTrieLimits(items: ElementLimit(8), perValue: ByteLimit(100),

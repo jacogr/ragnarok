@@ -17,3 +17,6 @@ Read the owning `../docs/design/<module>.md` before changing architectural bound
 Keep JAM codecs, domains, identities, framing and state logic in Nim. Narrow C/Rust interfaces
 are reserved for maintained primitives, LSQUIC/TLS and OS interfaces. Compile natively on Linux;
 consensus behavior must remain deterministic. Use idiomatic Nim without speculative scaffolding.
+
+Use the repository module-naming rule: keep source filenames and import production modules as
+`<area>_<type>` (for example `../pvm/backend as pvm_backend`), including module re-exports.

@@ -6,8 +6,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[disputes, bounded, assurances]
+import std/cmdline
+import std/syncio
+import ../../src/codec/disputes as codec_disputes
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
 
 let useDefault = paramStr(2) == "default"
 let config = DisputeConfig(validators: ValidatorCount(6), maxBytes: ByteLimit(1024))

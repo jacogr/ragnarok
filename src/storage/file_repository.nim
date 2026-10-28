@@ -4,13 +4,21 @@
 ## Locked append-only physical node journals publish complete checked revisions after synchronization.
 ## IO is synchronous startup/storage work; callers preserve the directory and journal inode namespace.
 
-import ./[file_errors, managed_repository, managed_manifest]
-export file_errors
+import ./file_errors as storage_file_errors
+import ./managed_repository as storage_managed_repository
+import ./managed_manifest as storage_managed_manifest
+export storage_file_errors
 
 import std/assertions
 import std/posix/posix
-import ./[node_repository, node_records, record_codec, journal_codec, database_identity, durability]
-import ../codec/[bounded, state_trie]
+import ./node_repository as storage_node_repository
+import ./node_records as storage_node_records
+import ./record_codec as storage_record_codec
+import ./journal_codec as storage_journal_codec
+import ./database_identity as storage_database_identity
+import ./durability as storage_durability
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 
 type
   JournalLimits* = object ## Bound complete/accumulated node storage and the whole physical journal.

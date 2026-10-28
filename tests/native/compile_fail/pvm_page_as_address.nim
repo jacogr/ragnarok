@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: MemoryAddress but got: PageIndex", "early": ["load(", "[2] expected: MemoryAddress but got: PageIndex"]}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 discard load(default(Memory), PageIndex(16), AccessWidth(1))

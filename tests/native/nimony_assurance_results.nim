@@ -6,8 +6,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/assurances
+import std/cmdline
+import std/syncio
+import ../../src/codec/assurances as codec_assurances
 
 let useDefault = paramStr(2) == "default"
 let config = AssuranceConfig(cores: CoreCount(2), validators: ValidatorCount(6))

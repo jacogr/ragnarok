@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_batch_results.nim",
+  "source": "tests/native/state_accumulation_batch_results.nim",
   "build_name": "accumulation-batch-results",
   "crypto_library": "observer",
   "cases": [

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "source"}
 
 ## Logical current provenance and tagged payloads remain private.
-import ../../../src/state/current_logical
+import ../../../src/state/current_logical as state_current_logical
 var owner = default(CurrentLogicalState)
 discard owner.source

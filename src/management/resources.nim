@@ -5,10 +5,11 @@
 ## Current process RSS and filesystem space are sampled once per second. Database sizes are
 ## sampled every ten seconds; flat directories advance by at most sixteen entries per turn.
 
-import std/[strutils, monotimes]
+import std/strutils
+import std/monotimes
 import std/posix/posix
-import ./file_status
-import ../lib/json_writer
+import ./file_status as management_file_status
+import ../lib/json_writer as lib_json_writer
 
 type
   VolumeInfo {.importc: "struct statvfs", header: "<sys/statvfs.h>", bycopy.} = object

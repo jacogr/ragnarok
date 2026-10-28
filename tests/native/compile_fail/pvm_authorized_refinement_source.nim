@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "AuthorizationInvocation", "early": ["prepareAuthorizedRefinement(", "[1] expected: AuthorizationInvocation but got: RefinedPackage"]}
 
-import ../../../src/state/[authorized_refinement, refinement_report, refinement_dispatch]
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/state/refinement_report as state_refinement_report
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
 discard prepareAuthorizedRefinement(default(RefinedPackage), default(RefinementInputs), default(AuthorizedRefinementLimits))

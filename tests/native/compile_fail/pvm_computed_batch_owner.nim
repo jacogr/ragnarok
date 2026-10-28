@@ -5,5 +5,5 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_batch
+import ../../../src/state/computed_batch as state_computed_batch
 discard default(ComputedGuaranteeBatch).data

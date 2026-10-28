@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: FetchTraceLimit"}
 
-import ../../../src/state/authorized_refinement
-import ../../../src/codec/bounded
+import ../../../src/state/authorized_refinement as state_authorized_refinement
+import ../../../src/codec/bounded as codec_bounded
 discard AuthorizedRefinementLimits(trace: ByteLimit(1))

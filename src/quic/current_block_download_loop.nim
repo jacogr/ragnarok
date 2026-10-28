@@ -4,12 +4,27 @@
 ## One-child dispatcher drives native I/O, private preparation and actual deferred adoption separately.
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
-import ./[current_block_download_peers, current_block_download_session, current_block_download_stream]
-import ../app/[services, handoff, current_handoff, chain, candidate, current_block_input,
-    current_block_download, download_schedule, preparation_worker, current_logical_download]
-import ../codec/[bounded, header]
-import ../chain/[genesis, provider]
-import ../state/[accumulation_current_update, store, report_anchors, current_logical]
+import ./current_block_download_peers as quic_current_block_download_peers
+import ./current_block_download_session as quic_current_block_download_session
+import ./current_block_download_stream as quic_current_block_download_stream
+import ../app/services as app_services
+import ../app/handoff as app_handoff
+import ../app/current_handoff as app_current_handoff
+import ../app/chain as app_chain
+import ../app/candidate as app_candidate
+import ../app/current_block_input as app_current_block_input
+import ../app/current_block_download as app_current_block_download
+import ../app/download_schedule as app_download_schedule
+import ../app/preparation_worker as app_preparation_worker
+import ../app/current_logical_download as app_current_logical_download
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/store as state_store
+import ../state/report_anchors as state_report_anchors
+import ../state/current_logical as state_current_logical
 
 type
   CurrentDownloadLoopTick* = distinct uint64 ## Monotonic host milliseconds shared by all dispatcher deadlines.

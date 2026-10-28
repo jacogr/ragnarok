@@ -5,16 +5,36 @@
 
 ## Actual guest storage effects survive computed execution, finalization and canonical chain publication only under the selected implication.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_chain, computed_state_publication, computed_composition,
-    computed_finalization, computed_execution, accumulation_runner, accumulation_execution,
-    accumulation_batch,
-    accumulation_provisions, accumulation_outcome, accumulation_context, accumulation_effects,
-    accumulation_consensus, accumulation_finalization, store]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, assurances, state_layout, state_accounts, state_service_values, state_statistics]
-import ../../support/[pvm_computed_storage_program, pvm_computed_execution, pvm_computed_chain,
-    pvm_computed_state_publication, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_chain as state_computed_chain
+import ../../../src/state/computed_state_publication as state_computed_state_publication
+import ../../../src/state/computed_composition as state_computed_composition
+import ../../../src/state/computed_finalization as state_computed_finalization
+import ../../../src/state/computed_execution as state_computed_execution
+import ../../../src/state/accumulation_runner as state_accumulation_runner
+import ../../../src/state/accumulation_execution as state_accumulation_execution
+import ../../../src/state/accumulation_batch as state_accumulation_batch
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/store as state_store
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../support/pvm_computed_storage_program
+import ../../support/pvm_computed_execution
+import ../../support/pvm_computed_chain
+import ../../support/pvm_computed_state_publication
+import ../../support/testing_arc_evidence
 
 let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =

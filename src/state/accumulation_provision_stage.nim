@@ -3,7 +3,10 @@
 
 ## Preserve authenticated initial-round provision ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
-import ./[accumulation_provision_phase, accumulation_account_stage, accumulation_provisions, store]
+import ./accumulation_provision_phase as state_accumulation_provision_phase
+import ./accumulation_account_stage as state_accumulation_account_stage
+import ./accumulation_provisions as state_accumulation_provisions
+import ./store as state_store
 
 type
   AccumulationProvisionStageError* = AccumulationProvisionPhaseError ## Preserve the existing public policy/reason shape while sharing the phase implementation.

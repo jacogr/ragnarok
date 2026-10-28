@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime payload/location extraction guards retain a genuine independent content control.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/state_inventory_context
-import ../../src/state/[preimage_content, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/state/preimage_content as state_preimage_content
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_accounts as codec_state_accounts
+include nimony_composition_fixture
 proc extract(outcome: PreimageContentResult[CheckedPreimageContent]): CheckedPreimageContent {.noinline.} =
   ## Keep default and actual invalid-source extraction dynamic.
   outcome.value

@@ -3,6 +3,6 @@
 
 ## Checkpoint result internals cannot bypass success-guarded extraction.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/state/checkpoint
+import ../../../src/state/checkpoint as state_checkpoint
 let outcome = default(CheckpointResult[seq[byte]])
 discard outcome.completed

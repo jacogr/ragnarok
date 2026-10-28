@@ -2,10 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic manifest guards and a genuine complete-map positive control share the linked implementation.
-import std/[assertions, cmdline, syncio]
-import ../../src/state/[manifest, global_snapshot, store]
-import ../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie, state_composition]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/state/manifest as state_manifest
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_composition as codec_state_composition
+include nimony_composition_fixture
 proc extract(outcome: StateManifestResult[ValidatedStateManifest]): ValidatedStateManifest {.noinline.} =
   ## Preserve the dynamic success assertion instead of constant-folding an inactive default variant.
   outcome.value

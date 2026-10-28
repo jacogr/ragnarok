@@ -7,9 +7,17 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances,
-    state_composition, header]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/state_availability as codec_state_availability
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/header as codec_header
 
 ## Return a copied child after the temporary parent and all its handles leave scope.
 proc detachedChild(input: openArray[byte], config: AvailabilityConfig): AvailabilityAssignment =

@@ -4,11 +4,19 @@
 
 ## Independent inclusion witnesses, shape/work policy, tampering, canonical path bytes and immutable ownership.
 
-import std/[assertions, syncio]
-import ../../../src/state/[import_justification, export_commitment]
-import ../../../src/codec/[bounded, natural, work_package, work_report]
-import ../../../src/pvm/host_fetch
-import ../../support/[pvm_import_justification, pvm_import_vectors, pvm_export_commitment, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/import_justification as state_import_justification
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/natural as codec_natural
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/pvm_import_justification
+import ../../support/pvm_import_vectors
+import ../../support/pvm_export_commitment
+import ../../support/testing_arc_evidence
 
 proc expectFailure(outcome: ImportJustificationResult[VerifiedImport],
     reason: ImportJustificationError) =

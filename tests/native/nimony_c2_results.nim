@@ -7,8 +7,14 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import std/cmdline
+import std/syncio
+import ../../src/codec/c2_records as codec_c2_records
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/assurances as codec_assurances
 let useDefault = paramStr(2) == "default"
 let policy = OperandLimits(outputBytes: ByteLimit(1024), authBytes: ByteLimit(1024),
     totalBlobBytes: ByteLimit(1024), maxBytes: ByteLimit(4096))

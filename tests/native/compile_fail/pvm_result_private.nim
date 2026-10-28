@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 let result = default(ProgramResult[Program])
 discard result.completed

@@ -7,11 +7,14 @@
 ## Exposes owned fixture banks and verified digest/wire results, fixture lookup/capture and an
 ## integration selftest.
 
-import std/[os, assertions, syncio]
-import ../codec/[owned, bounded]
+import std/os
+import std/assertions
+import std/syncio
+import ../codec/owned as codec_owned
+import ../codec/bounded as codec_bounded
 when defined(integration):
   # Only explicitly integrated binaries link the existing pinned crypto ABI.
-  import ../crypto/primitives
+  import ../crypto/primitives as crypto_primitives
 
 const IntegrationEnabled* = defined(integration)
 const WireCap* = 1024 * 1024 + 256

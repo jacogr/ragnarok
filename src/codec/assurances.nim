@@ -6,7 +6,7 @@
 ## Exposes Assurance records and configuration, encodeAssurances/decodeAssurances, inspection
 ## and checked write/count results.
 
-import ./natural
+import ./natural as codec_natural
 
 type
   CoreCount* = distinct uint64 ## Configuration domains remain distinct from each other and from encoded validator indices.
@@ -124,7 +124,7 @@ proc encodeAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     return AssuranceWriteResult(status: AssuranceError.LimitExceeded)
   let width = (int(config.cores)+7) div 8
   let stride = 98+width
-  let prefix = natural.encode(JamNatural(values.len))
+  let prefix = codec_natural.encode(JamNatural(values.len))
   # Division proves the complete output product without overflowing it.
   if output.len < prefix.len or values.len > (output.len-prefix.len) div stride:
     return AssuranceWriteResult(status: AssuranceError.OutputTooSmall)
@@ -165,10 +165,10 @@ proc decodeAssurances*(input: openArray[byte], config: AssuranceConfig,
   ## Decode one prefix into independent caller records; the whole destination survives any failure.
   # Reject invalid profiles before reading even the count header.
   if not validConfig(config): return AssuranceDecodeResult(status: AssuranceError.InvalidConfig)
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Preserve the primitive's canonicality and truncation distinction.
   if not prefix.ok:
-    if prefix.error == natural.truncated:
+    if prefix.error == codec_natural.truncated:
       # No count is available for subsequent record parsing.
       return AssuranceDecodeResult(status: AssuranceError.Truncated)
     else:
@@ -210,11 +210,11 @@ proc inspectAssurances*(input: openArray[byte], config: AssuranceConfig): Assura
   ## Inspect complete assurance records without allocation/writes, reusing the existing per-record policy.
   # Caller domains precede any untrusted count or profile-dependent stride.
   if not validConfig(config): return AssuranceDecodeResult(status: AssuranceError.InvalidConfig)
-  let prefix = natural.decode(input)
+  let prefix = codec_natural.decode(input)
   # Preserve canonical count failures before narrowing or iteration.
   if not prefix.ok:
     return AssuranceDecodeResult(status: if prefix.error ==
-        natural.truncated: AssuranceError.Truncated
+        codec_natural.truncated: AssuranceError.Truncated
       else: AssuranceError.NonCanonical) # Overlong counts cannot choose a second encoding.
   let count = uint64(prefix.value)
   # Count bounds prove both host conversion and the validator index domain.

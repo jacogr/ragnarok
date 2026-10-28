@@ -4,9 +4,14 @@
 ## Derive original package/authorizer identities and validate exact report lookup keys.
 ## Dictionary values remain unauthenticated; this immutable owner is not an availability certificate.
 
-import ../codec/[bounded, composite, work_digest, work_package, work_report]
-import ../crypto/primitives
-import ./[authorized_refinement, authorization_invocation]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_package as codec_work_package
+import ../codec/work_report as codec_work_report
+import ../crypto/primitives as crypto_primitives
+import ./authorized_refinement as state_authorized_refinement
+import ./authorization_invocation as state_authorization_invocation
 
 type
   ReportIdentityError* {.pure.} = enum ## Refusals contain no partial identity or lookup owner.

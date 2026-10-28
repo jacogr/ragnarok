@@ -3,10 +3,14 @@
 
 ## Strict actual assured execution result guards with genuine success and precise maintained phase refusals.
 
-import std/[assertions, cmdline]
-import ../../src/state/[assured_execution, assured_queue, accumulation_execution,
-    accumulation_round, accumulation_runner]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/assured_execution as state_assured_execution
+import ../../src/state/assured_queue as state_assured_queue
+import ../../src/state/accumulation_execution as state_accumulation_execution
+import ../../src/state/accumulation_round as state_accumulation_round
+import ../../src/state/accumulation_runner as state_accumulation_runner
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_assured_execution
 
 proc expect[T](outcome: AssuredExecutionResult[T], reason: AssuredExecutionError) =

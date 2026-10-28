@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_candidate_results.nim",
+  "source": "tests/native/app_candidate_results.nim",
   "build_name": "application-candidate-results",
   "crypto_library": "crypto",
   "native_libraries": ["bandersnatch"],

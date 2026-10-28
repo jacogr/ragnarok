@@ -8,5 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: uint64", "early": ["evaluateRegisters(", "[2] expected: CodeAddress but got: uint64"]}
 
-import ../../../src/pvm/[program, machine, registers]
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/registers as pvm_registers
 discard evaluateRegisters(default(Program), 0'u64, default(RegisterFile))

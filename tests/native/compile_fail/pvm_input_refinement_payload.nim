@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/input_refinement
+import ../../../src/state/input_refinement as state_input_refinement
 var candidate: InputRefinementResult[int]
 discard candidate.completed

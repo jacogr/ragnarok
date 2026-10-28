@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "invariants"}
 
 ## Caller cannot forge composite account authority or rewrite private source/evidence fields.
-import ../../../src/state/account_review
+import ../../../src/state/account_review as state_account_review
 var value = default(StateAccountReview)
 discard value.invariants

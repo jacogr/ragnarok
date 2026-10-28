@@ -64,7 +64,7 @@ capacity 1,024 (above the largest valid 1,023-record profile), then select count
 there is no production record allocation. Thus late semantic errors are checked even when the
 corresponding ordinary decode request intentionally supplies insufficient typed capacity.
 
-`tests/unit/codec/test_assurances.nim` checks successful/default metadata, empty prefixes,
+`tests/unit/codec/test_codec_assurances.nim` checks successful/default metadata, empty prefixes,
 configuration
 extremes, escaped-source ownership, independent record copies and zero extension. Ten runtime
 misuse checks reject failed/default progress reads across encoding, decoding and inspection.

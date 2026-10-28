@@ -3,6 +3,6 @@
 
 ## Private directory state cannot forge a native resource or successful receipt.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/paged_io
+import ../../../src/storage/paged_io as storage_paged_io
 let outcome = default(PagedDirectory)
 discard outcome.data

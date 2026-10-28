@@ -2,13 +2,28 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## New complete authored current fixtures qualify exact parent/successor maps while legacy rollback sentinels remain unchanged.
-import std/[assertions, envvars, syncio]
-import ../../support/[current_checkpoint_context, current_typed_context,
-  accumulation_current_chain_context,
-  state_inventory_context, account_review_plan_context]
-import ../../../src/state/[current_profile, current_globals, global_snapshot, manifest, store, inventory,
-  account_review_plan, account_review, economic_profile, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_checkpoint_context
+import ../../support/state_current_typed_context
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_inventory_context
+import ../../support/state_account_review_plan_context
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/current_globals as state_current_globals
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/account_review_plan as state_account_review_plan
+import ../../../src/state/account_review as state_account_review
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_composition as codec_state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Measure targeted account preparation only after mandatory complete matching/capture hashes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

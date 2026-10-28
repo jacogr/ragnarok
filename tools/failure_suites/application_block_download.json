@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_block_download_results.nim",
+  "source": "tests/native/app_block_download_results.nim",
   "build_name": "application-block-download-results",
   "crypto_library": "crypto",
   "native_libraries": [

@@ -2,14 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compose all current PVM state phases from a terminal sequence; failures retain no successful prefix.
-import ./[accumulation_current_statistics, accumulation_current_accounts,
-    accumulation_current_finalization, accumulation_current_ready, accumulation_current_recent,
-    accumulation_current_validators, accumulation_current_activity, accumulation_current_preimages,
-    accumulation_current_authorization, accumulation_current_consensus, accumulation_current_driver,
-    accumulation_round, accumulation_accounts, accumulation_ready, accumulation_recent,
-    accumulation_validators, accumulation_activity, accumulation_preimages,
-    accumulation_authorization, accumulation_consensus]
-import ../chain/parameters
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./accumulation_current_preimages as state_accumulation_current_preimages
+import ./accumulation_current_authorization as state_accumulation_current_authorization
+import ./accumulation_current_consensus as state_accumulation_current_consensus
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_accounts as state_accumulation_accounts
+import ./accumulation_ready as state_accumulation_ready
+import ./accumulation_recent as state_accumulation_recent
+import ./accumulation_validators as state_accumulation_validators
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_preimages as state_accumulation_preimages
+import ./accumulation_authorization as state_accumulation_authorization
+import ./accumulation_consensus as state_accumulation_consensus
+import ../chain/parameters as chain_parameters
 
 type
   CurrentAccumulationCompositionLimits* = object ## Each state phase keeps its existing independent local resource ceilings.

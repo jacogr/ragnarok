@@ -2,13 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A real adopted predecessor precedes authenticated guarantees requiring original lookup context; missing context cannot change canonical state.
-import std/[assertions, syncio, envvars]
-import ../../../src/app/[chain, candidate]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, state_layout]
-import ../../../src/state/[store, accumulation_current_update, report_admission, guarantee_credentials]
-import ../../support/[current_guarantee_sequence_context, current_consecutive_context,
-  accumulation_current_chain_context, current_services_disk_samples]
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/app/chain as app_chain
+import ../../../src/app/candidate as app_candidate
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../support/state_current_guarantee_sequence_context
+import ../../support/state_current_consecutive_context
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_current_services_disk_samples
 
 proc main() {.raises.} =
   ## Actual phase composition freezes expected maps before the separate candidate wrapper checks missing and complete lookup inputs.

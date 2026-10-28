@@ -9,8 +9,16 @@
 ## slot/item/dependency/hash access.
 
 import std/assertions
-import ./[natural, bounded, assurances, composite, work_report, report_owned, owned, state_layout, state_trie]
-from ./header import EpochSlots
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./composite as codec_composite
+import ./work_report as codec_work_report
+import ./report_owned as codec_report_owned
+import ./owned as codec_owned
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+from ./header as codec_header import EpochSlots
 export EpochSlots, CoreCount, PackageHash, OwnedReport
 
 type
@@ -108,7 +116,7 @@ proc chargeDependencies(count: uint64, config: WorkQueueConfig, total: var uint6
 
 ## Read a canonical row/dependency count into private parser state, retaining no partial public cursor.
 proc readCount(input: openArray[byte], cursor: var int, config: WorkQueueConfig): WorkQueueResult[uint64] =
-  let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
+  let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
       return WorkQueueResult[uint64](status: WorkQueueError.Truncated) # A missing count is not an empty set/sequence.
@@ -254,11 +262,11 @@ proc ordered(values: openArray[PackageHash]): bool =
 
 ## Charge a source count's canonical framing before any selected row/payload validation.
 proc countBytes(cursor: var int, count: int, config: WorkQueueConfig): WorkQueueError =
-  grow(cursor, uint64(natural.encode(JamNatural(count)).len), 1, config)
+  grow(cursor, uint64(codec_natural.encode(JamNatural(count)).len), 1, config)
 
 ## Write a previously sized canonical count to the fresh independent parent output.
 proc putCount(output: var seq[byte], cursor: var int, count: int) =
-  let encoded = natural.encode(JamNatural(count))
+  let encoded = codec_natural.encode(JamNatural(count))
   for i in 0..<encoded.len:
     output[cursor] = encoded.bytes[i] # Whole-source preflight proved destination extent.
     inc cursor

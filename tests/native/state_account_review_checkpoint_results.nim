@@ -2,12 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic restored-review payload/phase guards retain genuine explicit-root and explicit-policy success as a control.
-import std/[assertions, cmdline, syncio]
-import ../support/[state_inventory_context, account_review_checkpoint_context, economic_profile_context]
-import ../../src/chain/parameters
-import ../../src/state/[account_review_checkpoint, account_review, economic_profile, checkpoint,
-    store, manifest]
-include composition_fixture
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_inventory_context
+import ../support/state_account_review_checkpoint_context
+import ../support/state_economic_profile_context
+import ../../src/chain/parameters as chain_parameters
+import ../../src/state/account_review_checkpoint as state_account_review_checkpoint
+import ../../src/state/account_review as state_account_review
+import ../../src/state/economic_profile as state_economic_profile
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/store as state_store
+import ../../src/state/manifest as state_manifest
+include nimony_composition_fixture
 proc extract(outcome: AccountReviewCheckpointResult): StateAccountReview {.noinline.} =
   ## Default or failed restoration grants no composite review owner.
   outcome.value

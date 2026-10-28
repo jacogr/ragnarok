@@ -4,11 +4,17 @@
 ## Small application-head context binds exact sealed header, full parameters and posterior state revision.
 ## Its enclosing contextual journal supplies integrity and local restart authority; this is no import certificate.
 
-import ./[chain, checkpoint_identity]
-import ../chain/[genesis, provider, parameters]
-import ../state/store
-import ../storage/[database_identity, node_repository]
-import ../codec/[header, state_trie, bounded]
+import ./chain as app_chain
+import ./checkpoint_identity as app_checkpoint_identity
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../state/store as state_store
+import ../storage/database_identity as storage_database_identity
+import ../storage/node_repository as storage_node_repository
+import ../codec/header as codec_header
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
 
 type
   DiskHeadError* {.pure.} = enum ## Failed/default results expose no partial header, chain or encoded bytes.

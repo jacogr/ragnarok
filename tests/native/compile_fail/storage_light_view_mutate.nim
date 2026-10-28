@@ -3,9 +3,10 @@
 
 ## A borrowed immutable light image may not violate its compiler-enforced mutability or owner lifetime.
 # @@Verification={"group": "ownership_compile", "build_name": "storage-light-view-mutate", "expected": "cannot pass encodedBytes(snapshot) to var/out T parameter"}
-import ../../../src/storage/light_snapshot
-import ../../../src/storage/database_identity
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_trie as codec_state_trie
 proc mutate(snapshot: PreparedLightSnapshot) =
   snapshot.encodedBytes[0] = 1
 let snapshot = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [],

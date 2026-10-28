@@ -3,9 +3,11 @@
 
 ## Frozen valid fuzz seeds, every truncation and deterministic single-bit mutations replay the exact native target; retained lifetimes return to ARC baseline.
 # @@Verification={"arc": "pvm_program_fuzz_arc_release"}
-import std/[assertions, syncio, envvars]
+import std/assertions
+import std/syncio
+import std/envvars
 import ../../fuzz/pvm_program_target
-import ../../support/arc_evidence
+import ../../support/testing_arc_evidence
 proc main() {.raises.} =
   ## Fixture identities are checked by the source-owned native descriptor before deterministic replay.
   var inputs: seq[seq[byte]] = @[]

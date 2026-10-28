@@ -4,18 +4,36 @@
 ## Bounded Tiny validator process: native authoring, ordinary GP candidate admission, canonical
 ## CE128 serving/polling and durable replay of validated blocks. No finality or fork choice is claimed.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import std/[os, strutils, times, monotimes, syncio]
-import ../pvm/backend
-import ./[chain, candidate, block_author, tiny_genesis, current_download_policy]
-import ../chain/[genesis, provider, parameters]
-import ../codec/[bounded, header, block_codec]
-import ../state/[store, checkpoint, accumulation_current_update, block_transition, safrole_transition]
-import ../bandersnatch/bandersnatch
-import ../crypto/[primitives, validator_keys]
-import ../quic/[devnet, protocol]
-import ../lib/atomic_file
+import std/os
+import std/strutils
+import std/times
+import std/monotimes
+import std/syncio
+import ../pvm/backend as pvm_backend
+import ./chain as app_chain
+import ./candidate as app_candidate
+import ./block_author as app_block_author
+import ./tiny_genesis as app_tiny_genesis
+import ./current_download_policy as app_current_download_policy
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/block_codec as codec_block_codec
+import ../state/store as state_store
+import ../state/checkpoint as state_checkpoint
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/block_transition as state_block_transition
+import ../state/safrole_transition as state_safrole_transition
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
+import ../crypto/primitives as crypto_primitives
+import ../crypto/validator_keys as crypto_validator_keys
+import ../quic/devnet as quic_devnet
+import ../quic/protocol as quic_protocol
+import ../lib/atomic_file as lib_atomic_file
 
 proc number(text: string, maximum: uint64, output: var uint64): bool =
   ## Canonical bounded decimal is parsed before any multiplication, narrowing or time arithmetic.
@@ -56,7 +74,7 @@ proc admit(chain: var ApplicationChain, raw: seq[byte], limits: CurrentCandidate
     journal: var seq[byte], path: string, durable: bool): bool =
   ## Prepare through the ordinary complete-state path; only durable journal publication authorizes installation.
   let parsed = decodeBlock(raw, limits.reporting.admission.frame)
-  if parsed.error != block_codec.FrameError.None or parsed.value.consumed != raw.len:
+  if parsed.error != codec_block_codec.FrameError.None or parsed.value.consumed != raw.len:
     stderr.writeLine("DEVNET_REFUSED decode")
     return false
   let prepared = prepareCurrentCandidate(chain, parsed.value.owner, [], limits)
@@ -182,7 +200,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       if authored.error == BlockAuthorError.None:
         var raw = newSeq[byte](65536)
         let encoded = encodeOwnedBlock(authored.value, raw)
-        if encoded.error != block_codec.FrameError.None: return 2
+        if encoded.error != codec_block_codec.FrameError.None: return 2
         raw.setLen(encoded.value)
         if not admit(chain, raw, limits, journal, journalPath, true) or
             not network.publish(array[32, byte](head.blockHash), raw) or

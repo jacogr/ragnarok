@@ -4,10 +4,14 @@
 ## Derive and encode GP C work digests only from completed source-bound refinement report items.
 ## Public immutable owners expose copies; borrowed codec spans never escape their matching scratch pool.
 
-import ../codec/[bounded, natural, composite, work_package, work_digest]
-import ../crypto/primitives
-import ../pvm/host_fetch
-import ./refinement_report
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/composite as codec_composite
+import ../codec/work_package as codec_work_package
+import ../codec/work_digest as codec_work_digest
+import ../crypto/primitives as crypto_primitives
+import ../pvm/host_fetch as pvm_host_fetch
+import ./refinement_report as state_refinement_report
 
 type
   RefinementDigestError* {.pure.} = enum ## Local failures never expose an encoded prefix or invented digest fields.
@@ -156,7 +160,7 @@ proc prepareRefinementDigests*(report: RefinedPackage, limits: RefinementDigestL
     var size = 76+work.written # Work output <=49162 bytes proves fixed-prefix addition fits host int.
     for metric in [uint64(load.gasUsed), uint64(load.imports), uint64(load.extrinsicCount),
         uint64(load.extrinsicSize), uint64(load.exports)]:
-      size += natural.encode(JamNatural(metric)).len # Five canonical naturals add at most 45 bytes; no allocation or overflow.
+      size += codec_natural.encode(JamNatural(metric)).len # Five canonical naturals add at most 45 bytes; no allocation or overflow.
     if uint64(size) > uint64(limits.encoding) or encodingTotal > uint64(limits.totalEncoding) or
         uint64(size) > uint64(limits.totalEncoding)-encodingTotal:
       fail(RefinementDigestError.LimitExceeded) # Exact occupied size admits tight caps, including error-only digests.

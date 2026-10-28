@@ -3,11 +3,22 @@
 # @@Verification={"arc": "pvm_current_accumulation_statistics_arc_release"}
 
 ## Current terminal providers prove S(s) counts across real execution, unavailable work, annulment and deleted recipients.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, work_digest, report_owned, state_statistics, state_layout]
-import ../../../src/state/[accumulation_current_statistics, accumulation_current_driver,
-  accumulation_current_sequence, accumulation_coverage, accumulation_annulment, store]
-import ../../support/[accumulation_current_statistics_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_statistics as codec_state_statistics
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_statistics_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc main() {.raises.} =

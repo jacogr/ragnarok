@@ -8,8 +8,9 @@
 ## Exposes nominal state keys, chapter/service key constructors, typed trie-node metadata and
 ## node encoding, decoding and hashing.
 
-import ./[bounded, composite]
-import ../crypto/primitives
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ../crypto/primitives as crypto_primitives
 
 type
   StateChapter* = distinct uint8 ## Chapter namespace octet is distinct from a service identifier or raw integer.

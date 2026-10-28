@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/extrinsic_inputs
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
 var candidate: VerifiedExtrinsics
 discard candidate.data

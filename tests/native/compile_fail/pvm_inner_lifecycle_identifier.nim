@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: InnerMachineLimit but wanted: InnerMachineId"}
 
-import ../../../src/pvm/[inner_machines, program]
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/program as pvm_program
 let item: InnerMachineId = InnerMachineLimit(0)
 discard item

@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: PageCount but wanted: PageIndex"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 ## Test-only holder isolates the nominal mismatch from overloaded call diagnostics.
 type Endpoint = object
   page: PageIndex

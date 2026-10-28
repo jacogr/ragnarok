@@ -3,12 +3,21 @@
 
 ## Journal replay authenticates exact ordered transitions and gives explicit partial-tail plans no mutable authority.
 # @@Verification={"arc":"storage_light_journal_replay_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[light_journal_replay, light_journal_manifest, light_delta,
-  light_snapshot, light_state_cache, state_proof, database_identity, managed_manifest]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/crypto/primitives
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/crypto/primitives as crypto_primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## The provider observer isolates verification refusal and preflight work.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

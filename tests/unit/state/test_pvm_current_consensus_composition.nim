@@ -4,21 +4,53 @@
 
 ## Real block prefixes and completed accumulation compose exact seven-chapter state without losing either source's effects.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_consensus, accumulation_consensus,
-  accumulation_current_authorization, accumulation_authorization, accumulation_current_preimages,
-  accumulation_preimages, accumulation_current_activity, accumulation_activity,
-  accumulation_current_validators, accumulation_current_recent, accumulation_current_ready,
-  accumulation_current_finalization, accumulation_current_accounts, accumulation_current_statistics,
-  accumulation_current_driver, accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, report_admission,
-  report_assignments, guarantee_credentials, block_transition, block_admission,
-  core_service_activity, preimages, authorization, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, guarantees, assurances,
-  state_layout, state_trie, state_accounts, state_service_values]
-import ../../../src/crypto/primitives
-import ../../support/[accumulation_current_activity_context, accumulation_provision_integration,
-  report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../../src/state/accumulation_current_authorization as state_accumulation_current_authorization
+import ../../../src/state/accumulation_authorization as state_accumulation_authorization
+import ../../../src/state/accumulation_current_preimages as state_accumulation_current_preimages
+import ../../../src/state/accumulation_preimages as state_accumulation_preimages
+import ../../../src/state/accumulation_current_activity as state_accumulation_current_activity
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_current_validators as state_accumulation_current_validators
+import ../../../src/state/accumulation_current_recent as state_accumulation_current_recent
+import ../../../src/state/accumulation_current_ready as state_accumulation_current_ready
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_current_statistics as state_accumulation_current_statistics
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_current_round as state_accumulation_current_round
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/report_assignments as state_report_assignments
+import ../../../src/state/guarantee_credentials as state_guarantee_credentials
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/core_service_activity as state_core_service_activity
+import ../../../src/state/preimages as state_preimages
+import ../../../src/state/authorization as state_authorization
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../support/state_accumulation_current_activity_context
+import ../../support/state_accumulation_provision_integration
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 
 # Inject only after genuine signed stages, report planning, guests and bookkeeping are complete.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -100,7 +132,7 @@ proc oracle(fixture: CurrentActivityFixture, source: PreparedCurrentAccumulation
           entry.key).value.bytes)) # Earlier lookup/guest effects are preserved exactly.
   if provided: entries.add(valueEntry(99, @[81'u8])) # The guest also provided one independent non-lookup pair.
   assert entries.len == prior.commitment.entries, "known keys exhaust the complete source map"
-  newStateStore(entries, report_context.limits()).value.snapshot.value
+  newStateStore(entries, state_report_context.limits()).value.snapshot.value
 
 proc witness(base: OwnedReport, uses = 0, available = false, blobs = false, provided = false,
     disputed = false, rotated = false, ticket = false): PreparedCurrentAccumulationConsensus =

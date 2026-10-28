@@ -5,10 +5,14 @@
 ## Exposes guestEnvelope, guestProgram and registerImmediate; no production execution or verdict is replaced.
 
 import std/assertions
-import ../../src/state/accumulation_machine
-import ../../src/pvm/[initialize, machine, program]
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
 import ./pvm_accumulation_context
-import ../../src/codec/[state_trie, state_accounts, header]
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/header as codec_header
 
 proc guestEnvelope*(instructions: openArray[seq[byte]], writable: seq[byte] = @[81'u8]): seq[byte] =
   ## Copy authored instructions into the bounded entry-5 envelope; exact opcode masks and framing match guestProgram.

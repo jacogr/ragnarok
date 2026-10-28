@@ -9,7 +9,10 @@
 ## bounded value copying.
 
 import std/assertions
-import ./[bounded, composite, state_layout, state_trie]
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export ServiceIndex, StateKey
 
 type

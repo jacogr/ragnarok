@@ -5,5 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "ErasureShardIndex", "early": ["availabilityShard(", "[2] expected: ErasureShardIndex but got: OriginalShardIndex"]}
 
-import ../../../src/state/[availability_specifier, export_erasure, export_commitment, erasure_layout]
+import ../../../src/state/availability_specifier as state_availability_specifier
+import ../../../src/state/export_erasure as state_export_erasure
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/state/erasure_layout as state_erasure_layout
 discard availabilityShard(default(AvailabilityCommitment), OriginalShardIndex(0))

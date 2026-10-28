@@ -3,7 +3,8 @@
 
 ## Bounded reusable pricing learns successful facts lazily for one immutable program and cycle policy.
 ## Handles share a private mutable memo identity; use exclusively, including synchronous nested calls.
-import ./[program, gas]
+import ./program as pvm_program
+import ./gas as pvm_gas
 
 type
   GasMemoByteLimit* = distinct uint64 ## Bound the direct-address price payload before any allocation.

@@ -5,11 +5,17 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition]
-import ../../src/codec/[bounded, guarantees]
-import ./[pvm_computed_roster, pvm_computed_guarantors, pvm_computed_credentials]
+import ../../src/state/computed_batch as state_computed_batch
+import ../../src/state/computed_envelope as state_computed_envelope
+import ../../src/state/computed_credentials as state_computed_credentials
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/guarantees as codec_guarantees
+import ./pvm_computed_roster
+import ./pvm_computed_guarantors
+import ./pvm_computed_credentials
 
 proc batchLimits*(): ComputedBatchLimits =
   ## Broad independent policies cover three configured cores and at most nine reporters.

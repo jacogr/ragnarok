@@ -7,8 +7,9 @@
 ## Exposes registerOnlyOpcode, evaluateRegisterWrite, evaluateRegisters and guarded scalar/array results
 ## and applyRegisterWrite for caller-owned register arrays in the implemented arithmetic/logic subset.
 
-import ./[program, machine]
-import ./internal/register_ops
+import ./program as pvm_program
+import ./machine as pvm_machine
+import ./internal/register_ops as pvm_register_ops
 
 type
   RegisterError* {.pure.} = enum ## Unsupported instructions are scope failures, not guest traps; no partial registers escape.

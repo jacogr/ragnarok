@@ -5,11 +5,16 @@
 
 ## An independently trusted complete root distinguishes internally valid but unauthorized checkpoint state.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint, checkpoint_file, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
-import ../../support/arc_evidence
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/checkpoint_file as state_checkpoint_file
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc policy(): StateStoreLimits =
   ## Exact small limits apply equally to trusted and internally valid alternate maps.

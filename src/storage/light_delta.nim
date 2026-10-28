@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded local light-update frames bind canonical edits to one independently trusted root and exact predecessor.
-import std/[algorithm, assertions]
-import ./[light_snapshot, light_state_cache, state_proof, database_identity]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import std/algorithm
+import std/assertions
+import ./light_snapshot as storage_light_snapshot
+import ./light_state_cache as storage_light_state_cache
+import ./state_proof as storage_state_proof
+import ./database_identity as storage_database_identity
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 const
   Magic = "RAGNAROK-LIGHT-DELTA-V1\n"
   LightDeltaHeaderBytes* = Magic.len+152 ## Fixed metadata precedes every variable-width edit.

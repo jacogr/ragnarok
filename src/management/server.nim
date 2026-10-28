@@ -5,10 +5,15 @@
 ## Four nonblocking slots, fixed request budgets and deadlines bound dispatcher work.
 ## This listener never imports the public WS method registry or canonical state.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/nativesocket
+import std/oserrors
+import std/strutils
+import std/monotimes
 import std/posix/posix
-import ./[protocol, file_status, resources]
-import ../lib/utf8
+import ./protocol as management_protocol
+import ./file_status as management_file_status
+import ./resources as management_resources
+import ../lib/utf8 as lib_utf8
 
 const
   MaxConnections = 4

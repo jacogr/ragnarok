@@ -3,10 +3,27 @@
 
 ## Logical GP T sources for complete encoder comparisons; no expected bytes feed these constructors.
 import std/assertions
-import ../../src/codec/[bounded, assurances, composite, work_digest, work_report, owned,
-  report_owned, guarantees, state_layout, state_trie, state_composition, state_authorization,
-  state_history, state_consensus, state_safrole, state_disputes, state_availability,
-  state_privileges, state_statistics, state_workqueues, state_outputs]
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/owned as codec_owned
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_authorization as codec_state_authorization
+import ../../src/codec/state_history as codec_state_history
+import ../../src/codec/state_consensus as codec_state_consensus
+import ../../src/codec/state_safrole as codec_state_safrole
+import ../../src/codec/state_disputes as codec_state_disputes
+import ../../src/codec/state_availability as codec_state_availability
+import ../../src/codec/state_privileges as codec_state_privileges
+import ../../src/codec/state_statistics as codec_state_statistics
+import ../../src/codec/state_workqueues as codec_state_workqueues
+import ../../src/codec/state_outputs as codec_state_outputs
 const
   items = ElementLimit(50000)
   budget = ByteLimit(2000000)
@@ -41,8 +58,8 @@ proc report(profile: StateProfile): OwnedReport =
     codeHash: CodeHash(patterned[32](73)), payloadHash: PayloadHash(patterned[32](107)),
     accumulateGas: Gas(high(uint64)), output: successfulWork(BlobSpan(offset: 0, length: 0)),
     refine: RefineLoad(gasUsed: Gas(128), imports: ImportCount(127),
-      extrinsicCount: work_digest.ExtrinsicCount(256), extrinsicSize: work_digest.ExtrinsicBytes(
-          0x100000000'u64),
+      extrinsicCount: codec_work_digest.ExtrinsicCount(256),
+          extrinsicSize: codec_work_digest.ExtrinsicBytes(0x100000000'u64),
       exports: ExportCount(16384)))
   let size = measureReportBorrowed(source, 0, uint64(profile.cores))
   assert size.error == CompositeError.None

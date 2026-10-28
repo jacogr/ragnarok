@@ -7,8 +7,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/crypto/primitives
+import std/cmdline
+import std/syncio
+import ../../src/crypto/primitives as crypto_primitives
 # Fault injection exists only in the separately linked test observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 let useDefault = paramStr(2) == "default"

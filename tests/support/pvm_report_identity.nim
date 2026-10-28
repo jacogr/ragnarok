@@ -4,9 +4,16 @@
 ## Construct genuine authorization-bound sources after fixing their import manifests and context.
 
 import std/assertions
-import ../../src/state/[report_identity, authorized_refinement, authorization_invocation]
-import ../../src/codec/[bounded, composite, work_package, work_report]
-import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_results]
+import ../../src/state/report_identity as state_report_identity
+import ../../src/state/authorized_refinement as state_authorized_refinement
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/work_report as codec_work_report
+import ./pvm_authorized_refinement
+import ./pvm_authorization_invoke
+import ./pvm_report_results
 
 proc identityLimits*(): ReportIdentityLimits =
   ## Finite independent hash/copy policies admit the small canonical test sources.

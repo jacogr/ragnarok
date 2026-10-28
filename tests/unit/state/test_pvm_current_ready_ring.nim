@@ -3,13 +3,24 @@
 # @@Verification={"arc": "pvm_current_ready_ring_arc_release"}
 
 ## Genuine current completion removes only processed parent ready reports and preserves unaffordable original suffixes.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, report_owned, state_layout, state_workqueues]
-import ../../../src/state/[accumulation_current_ready, accumulation_ready,
-  accumulation_current_finalization, accumulation_current_accounts, store]
-import ../../support/[accumulation_current_outputs_context,
-  accumulation_current_finalization_context,
-  accumulation_ready_witnesses, report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/state/accumulation_current_ready as state_accumulation_current_ready
+import ../../../src/state/accumulation_ready as state_accumulation_ready
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_outputs_context
+import ../../support/state_accumulation_current_finalization_context
+import ../../support/state_accumulation_ready_witnesses
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc main() {.raises.} =
   ## Complete signatures, guest execution, selected state, statistics and timestamps remain genuine prerequisites.

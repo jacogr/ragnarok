@@ -3,7 +3,9 @@
 
 ## Publish one fully composed computed state against its exact original parent and retain the authentic receipt.
 
-import ./[computed_composition, accumulation_block_publication, store]
+import ./computed_composition as state_computed_composition
+import ./accumulation_block_publication as state_accumulation_block_publication
+import ./store as state_store
 
 type
   ComputedStatePublicationError* {.pure.} = enum ## Only selected publication failure carries a complete precise child refusal.

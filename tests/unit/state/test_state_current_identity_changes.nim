@@ -3,14 +3,27 @@
 
 ## Genuine preimage addition, current-service raw storage deletion and empty-junior ejection refuse identity-preserving continuation with the exact physical key.
 # @@Verification={"arc":"state_current_identity_changes_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
-    current_namespace_context, service_namespace_seed, accumulation_execution_context,
-    current_identity_context, arc_evidence]
-import ../../../src/state/[current_identities, accumulation_current_update, store]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_composition, state_requests,
-    state_service_values, state_layout]
-import ../../../src/crypto/primitives
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_namespace_transition_context
+import ../../support/state_current_namespace_execution_context
+import ../../support/state_current_namespace_context
+import ../../support/codec_service_namespace_seed
+import ../../support/state_accumulation_execution_context
+import ../../support/state_current_identity_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/crypto/primitives as crypto_primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original full matching and genuine actual mutation execution precede hash-free identity refusal observation.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

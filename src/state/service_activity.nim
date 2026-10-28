@@ -5,10 +5,22 @@
 ## Pure projections own fixed rows; opaque preparation retains finalized statistics without publishing C(13) or state.
 
 import std/algorithm
-import ../codec/[bounded, composite, owned, report_owned, state_statistics, block_codec]
-import ./[accumulation_statistics, accumulation_finalization, accumulation_outputs,
-  accumulation_execution, accumulation_round, accumulation_queue, report_admission,
-  guarantee_credentials, block_transition, block_admission]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/block_codec as codec_block_codec
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
 
 type
   ServiceActivityConfig* = object ## Independent inspected populations and retained rows bound all materialization/work.

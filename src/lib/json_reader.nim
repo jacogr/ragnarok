@@ -4,8 +4,9 @@
 ## Bounded strict JSON tokens shared by independent method registries. Callers bound input bytes
 ## and validate raw UTF-8 before parsing; decoded strings are checked again after unescaping.
 
-import std/[parsejson, streams]
-import ./utf8
+import std/parsejson
+import std/streams
+import ./utf8 as lib_utf8
 
 # Flat tokens retain exact numeric lexemes and decoded text; next skips a complete subtree.
 type

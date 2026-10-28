@@ -2,11 +2,24 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact stopped-child deaths qualify root selection and both cleanup paths against independent authored old/new-root bytes.
-import std/[assertions, envvars, syncio]
-import ../../support/[storage_io, storage_crash, storage_light_journal, storage_light_root]
-import ../../../src/storage/[light_journal_cache, light_journal_replay, light_journal_manifest,
-  light_delta, light_snapshot, light_state_cache, state_proof, managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash
+import ../../support/storage_light_journal
+import ../../support/storage_light_root
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Only exact test-owned names are observed; directory scans never establish selection authority.

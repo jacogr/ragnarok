@@ -3,16 +3,34 @@
 # @@Verification={"arc": "pvm_selected_provision_stage_arc_release"}
 
 ## Signed new/provide and real annulled producers fulfill original provisions over complete selected accounts.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
-  state_service_values]
-import ../../../src/crypto/primitives
-import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_provision_stage, accumulation_provisions,
-  accumulation_account_stage, accumulation_block_guests, accumulation_guest_runner,
-  accumulation_coverage, accumulation_annulment, accumulation_creation_union, store]
-import ../../support/[accumulation_execution_context, accumulation_runner_context,
-  accumulation_current_guests_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/state/accumulation_provision_stage as state_accumulation_provision_stage
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/accumulation_account_stage as state_accumulation_account_stage
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_guest_runner as state_accumulation_guest_runner
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_creation_union as state_accumulation_creation_union
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_execution_context
+import ../../support/state_accumulation_runner_context
+import ../../support/state_accumulation_current_guests_context
+import ../../support/pvm_accumulation_program
+import ../../support/pvm_accumulation_provision
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc policy(): AccumulationProvisionUnionLimits =
   ## Two original producers and one actual byte remain separate traversal, blob and frame ceilings.

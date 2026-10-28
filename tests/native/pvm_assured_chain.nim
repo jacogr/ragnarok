@@ -3,11 +3,17 @@
 
 ## Strict atomic assured chain result and receipt guards with actual success and genuine late failures.
 
-import std/[assertions, cmdline]
-import ../../src/state/[assured_chain, assured_composition, store]
-import ../../src/chain/[genesis, provider, parameters]
-import ../../src/codec/state_layout
-import ../support/[pvm_assured_chain, pvm_computed_chain]
+import std/assertions
+import std/cmdline
+import ../../src/state/assured_chain as state_assured_chain
+import ../../src/state/assured_composition as state_assured_composition
+import ../../src/state/store as state_store
+import ../../src/chain/genesis as chain_genesis
+import ../../src/chain/provider as chain_provider
+import ../../src/chain/parameters as chain_parameters
+import ../../src/codec/state_layout as codec_state_layout
+import ../support/pvm_assured_chain
+import ../support/pvm_computed_chain
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Cause real child capture failure after private publication, preserving both live handles.

@@ -2,12 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict regular-file EOF, bounded reads and atomic exact TraceStep publication preserve existing targets on refusal.
-import std/[assertions, envvars, syncio]
+import std/assertions
+import std/envvars
+import std/syncio
 import std/posix/posix
-import ../../support/trace_step_context
-import ../../../src/state/[trace_file, trace_step, trace_state]
-import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../support/state_trace_step_context
+import ../../../src/state/trace_file as state_trace_file
+import ../../../src/state/trace_step as state_trace_step
+import ../../../src/state/trace_state as state_trace_state
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/lib/atomic_file as lib_atomic_file
 proc text(bytes: openArray[byte]): string =
   ## Test-only exact byte materialization preserves binary zeros and all UTF-8-independent payload octets.
   result = newString(bytes.len)

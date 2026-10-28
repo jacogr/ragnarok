@@ -8,11 +8,24 @@
 ## Exposes typed chapter capture, composeState, stateCommitment and indexed state-entry access.
 
 import std/assertions
-import ./[bounded, assurances, guarantees, state_layout, state_trie, state_authorization,
-  state_history,
-  state_consensus, state_disputes, state_safrole, state_availability, state_privileges,
-  state_statistics, state_workqueues, state_outputs, state_accounts, state_service_values,
-  state_requests]
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./guarantees as codec_guarantees
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+import ./state_authorization as codec_state_authorization
+import ./state_history as codec_state_history
+import ./state_consensus as codec_state_consensus
+import ./state_disputes as codec_state_disputes
+import ./state_safrole as codec_state_safrole
+import ./state_availability as codec_state_availability
+import ./state_privileges as codec_state_privileges
+import ./state_statistics as codec_state_statistics
+import ./state_workqueues as codec_state_workqueues
+import ./state_outputs as codec_state_outputs
+import ./state_accounts as codec_state_accounts
+import ./state_service_values as codec_state_service_values
+import ./state_requests as codec_state_requests
 
 type
   StateChapterId* {.pure.} = enum ## Total enum makes each of the sixteen required chapter slots explicit at the composition boundary.

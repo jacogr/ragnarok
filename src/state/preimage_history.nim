@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared pinned historical preimage availability equation for complete and authenticated partial state readers.
-import ../codec/state_requests
+import ../codec/state_requests as codec_state_requests
 func requestAvailableAt*(history: RequestHistory, slot: RequestSlot): bool =
   ## Inspect the four exact tagged shapes at an explicitly selected time, without adding chronology or chain-time authority.
   let time = uint32(slot)

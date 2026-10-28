@@ -4,7 +4,8 @@
 ## Internal GP register arithmetic shared by the guarded public evaluator and execution dispatch.
 ## Owns no state; private helpers and typed scalar outputs preserve atomic operand evaluation.
 
-import ../[program, machine]
+import ../program as pvm_program
+import ../machine as pvm_machine
 
 func isRegisterOpcode*(opcode: byte): bool =
   ## Identify the complete register-only execution scope before gas charging or register evaluation.

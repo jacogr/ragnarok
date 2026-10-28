@@ -3,11 +3,14 @@
 
 ## Managed journal leases keep the stable lock alive across append, manifest replacement and descriptor transfer.
 # @@Verification={"arc":"storage_managed_publication_io_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
 import std/posix/posix
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/codec/bounded as codec_bounded
 proc cycle(directory: ManagedDirectory) =
   ## A complete journal lease and detached read buffer retire before the next isolated iteration.
   var journal = default(ManagedJournal)

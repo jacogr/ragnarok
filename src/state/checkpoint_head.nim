@@ -4,8 +4,9 @@
 ## Local full-checkpoint selection metadata, separate from JAM state encoding and chain trust.
 ## Exact fixed bytes carry a generation, slot and complete root under a corruption checksum.
 
-import ../codec/[bounded, state_trie]
-import ../crypto/primitives
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 
 const
   HeadMagic = "RAGNAROK-HEAD-V1\n"

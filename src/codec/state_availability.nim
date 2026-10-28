@@ -9,7 +9,11 @@
 ## guarantee/registration access.
 
 import std/assertions
-import ./[bounded, assurances, guarantees, state_layout, state_trie]
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./guarantees as codec_guarantees
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export Guarantee
 
 type
@@ -84,7 +88,7 @@ func registered*(assignment: AvailabilityAssignment): AssignmentSlot {.inline,
 
 ## Reuse the existing guarantee profile domain before indexing the fixed local scan array.
 proc validate(config: AvailabilityConfig): AvailabilityError =
-  if not assurances.validConfig(AssuranceConfig(cores: config.guarantee.cores,
+  if not codec_assurances.validConfig(AssuranceConfig(cores: config.guarantee.cores,
       validators: config.guarantee.validators)):
     return AvailabilityError.InvalidConfig # Only the existing 2..341 core and multiple-of-three validator profiles are supported.
   if uint64(config.guarantee.cores) > uint64(config.maxBytes):

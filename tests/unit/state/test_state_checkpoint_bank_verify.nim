@@ -5,12 +5,19 @@
 
 ## Trusted selected-map verification returns only scalar metadata after retiring temporary complete state.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/state/[checkpoint_bank, checkpoint_transfer, checkpoint_head, checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
-import ../../support/arc_evidence
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 const Prefix = "state-bank-verify"
 proc policy(): StateStoreLimits =

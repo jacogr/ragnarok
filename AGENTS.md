@@ -32,6 +32,21 @@ scope, pinned specification and completion tests before changing protocol behavi
 feature status, evidence and next work belong in `spec/<feature>.md`; keep shared design pages
 stable unless architectural boundaries change.
 
+## Module naming
+
+- Keep `src/` filenames within their existing area directories. At every production-module import,
+  bind `<area>_<type>` explicitly, for example `import ../pvm/backend as pvm_backend`.
+  Internal modules retain the top-level source area; root helpers use `ragnarok_`. Use those names
+  in module-qualified references and module re-exports. Selective `from ... as ... import`
+  declarations also bind an area-qualified module name.
+  Textual `include` declarations introduce no module binding and need no alias.
+- Native test filenames use `[test_]<area>_<type>.nim` because suite/module identities are flat.
+  Move expected-output contracts and update harness references and per-suite requirements together.
+  Compiler/language controls use `nimony_` or `compiler_`; test infrastructure uses `testing_`.
+  Preserve fixture-provider IDs, ARC evidence keys and exact rejection diagnostics.
+- `make check-inventory` enforces production import bindings and native test names across all areas
+  before setup or compilation. Do not restore generic module bindings through re-exports.
+
 ## Safety and implementation
 
 - Use nominal protocol indices, hashes, signatures, roots, amounts and limits. Validate untrusted

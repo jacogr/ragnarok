@@ -3,13 +3,24 @@
 # @@Verification={"arc": "pvm_reusable_selected_phases_arc_release"}
 
 ## Explicit-input current coverage reuses complete selected algorithms without gaining authenticated initial-block ownership.
-import std/[assertions, syncio]
-import ../../../src/codec/[bounded, composite, header, state_safrole, state_trie]
-import ../../../src/state/[accumulation_guest_runner, accumulation_coverage,
-  accumulation_account_phase, accumulation_provision_phase, accumulation_global_phase,
-  accumulation_provisions, store]
-import ../../support/[accumulation_batch_context, accumulation_current_guests_context,
-    pvm_accumulation_program, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/state/accumulation_guest_runner as state_accumulation_guest_runner
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_account_phase as state_accumulation_account_phase
+import ../../../src/state/accumulation_provision_phase as state_accumulation_provision_phase
+import ../../../src/state/accumulation_global_phase as state_accumulation_global_phase
+import ../../../src/state/accumulation_provisions as state_accumulation_provisions
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_batch_context
+import ../../support/state_accumulation_current_guests_context
+import ../../support/pvm_accumulation_program
+import ../../support/testing_arc_evidence
 proc provisions(): AccumulationProvisionUnionLimits =
   ## Two genuine original contexts are traversed even when both provide sets are empty.
   AccumulationProvisionUnionLimits(contexts: ElementLimit(2),

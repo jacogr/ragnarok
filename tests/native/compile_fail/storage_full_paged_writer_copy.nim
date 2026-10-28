@@ -3,7 +3,7 @@
 
 ## Actual ARC lowering rejects duplication of full-state writer lease and selected-file retirement.
 # @@Verification={"group":"ownership_compile","build_name":"storage-full-paged-writer-copy","expected":"'=dup' is not available for type <FullPagedWriter>"}
-import ../../../src/storage/full_paged_store
+import ../../../src/storage/full_paged_store as storage_full_paged_store
 proc duplicate(source: FullPagedWriter): FullPagedWriter =
   ## Returning a borrowed writer would duplicate its native retirement authority.
   source

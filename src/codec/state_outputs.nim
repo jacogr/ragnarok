@@ -9,7 +9,11 @@
 ## item access.
 
 import std/assertions
-import ./[natural, bounded, composite, state_layout, state_trie]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export ServiceIndex
 
 type
@@ -61,7 +65,7 @@ proc extent(count: uint64, prefix: int, config: OutputLogConfig): OutputLogResul
 proc decodeOutputLog*(input: openArray[byte], config: OutputLogConfig): OutputLogResult[
     OutputLogRead] =
   ## Decode a complete ordered sequence prefix after full count/extent preflight, without sorting or deduplication.
-  let count = natural.decode(input)
+  let count = codec_natural.decode(input)
   if not count.ok:
     if count.error == DecodeError.truncated:
       return OutputLogResult[OutputLogRead](status: OutputLogError.Truncated) # Missing count is not a valid empty log.
@@ -90,7 +94,7 @@ proc decodeOutputLog*(input: openArray[byte], config: OutputLogConfig): OutputLo
 proc outputLogEntry*(values: openArray[AccumulationOutput],
     config: OutputLogConfig): OutputLogResult[StateEntry] =
   ## Encode stable ordered source pairs into fresh C(16) bytes after complete extent preflight.
-  let count = natural.encode(JamNatural(values.len))
+  let count = codec_natural.encode(JamNatural(values.len))
   let checked = extent(uint64(values.len), count.len, config)
   if checked.error != OutputLogError.None:
     return OutputLogResult[StateEntry](status: checked.error) # No output allocation before complete size/policy validation.

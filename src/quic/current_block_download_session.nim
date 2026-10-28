@@ -4,11 +4,20 @@
 ## Join scheduled attempts, bounded raw reception and native close barriers in one stable owner.
 ## Explicit producer/host acknowledgement remains outside native callbacks and never infers adoption.
 
-import ./[transport, current_block_download_stream]
-import ../app/[download_schedule, current_block_download, current_block_input, candidate, services,
-    preparation_worker, current_logical_download]
-import ../codec/[bounded, header]
-import ../state/[report_anchors, accumulation_current_update, current_logical]
+import ./transport as quic_transport
+import ./current_block_download_stream as quic_current_block_download_stream
+import ../app/download_schedule as app_download_schedule
+import ../app/current_block_download as app_current_block_download
+import ../app/current_block_input as app_current_block_input
+import ../app/candidate as app_candidate
+import ../app/services as app_services
+import ../app/preparation_worker as app_preparation_worker
+import ../app/current_logical_download as app_current_logical_download
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../state/report_anchors as state_report_anchors
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/current_logical as state_current_logical
 
 type
   CurrentDownloadSessionError* {.pure.} = enum ## Defaults and failed alternatives contain no usable attempt or execution prefix.

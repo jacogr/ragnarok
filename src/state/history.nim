@@ -8,9 +8,14 @@
 ## Exposes parent-history correction, accumulationRoot, advanceHistory and advanceHistoryState.
 
 import std/algorithm
-import ../codec/[natural, state_history, state_outputs, state_layout, state_trie, bounded]
-import ../crypto/primitives
-import ./store
+import ../codec/natural as codec_natural
+import ../codec/state_history as codec_state_history
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
+import ./store as state_store
 
 type
   AccumulationRoot* = distinct array[32, byte] ## Well-balanced Keccak root of the ordered E4-service/output-commitment sequence.
@@ -71,8 +76,8 @@ proc capture(owner: HistorySnapshot, config: HistoryConfig): HistoryTransitionRe
     return HistoryTransitionResult[HistoryState](status: HistoryTransitionError.InvalidConfig) # Explicit population.
   if uint64(info.value.blocks) > uint64(config.blocks) or uint64(info.value.peaks) > uint64(config.peaks):
     return HistoryTransitionResult[HistoryState](status: HistoryTransitionError.LimitExceeded) # Bound descriptor copies.
-  var size = uint64(natural.encode(JamNatural(info.value.blocks)).len +
-      natural.encode(JamNatural(info.value.peaks)).len) # Both exact canonical parent counts.
+  var size = uint64(codec_natural.encode(JamNatural(info.value.blocks)).len +
+      codec_natural.encode(JamNatural(info.value.peaks)).len) # Both exact canonical parent counts.
   var total = 0'u64
   # Validate nested extents before allocating any dictionary copies.
   for i in 0..<info.value.blocks:
@@ -83,7 +88,7 @@ proc capture(owner: HistorySnapshot, config: HistoryConfig): HistoryTransitionRe
       return HistoryTransitionResult[HistoryState](
           status: HistoryTransitionError.LimitExceeded) # No aggregate overflow.
     total += uint64(record.packages)
-    let fixedSize = uint64(100 + natural.encode(JamNatural(record.packages)).len)
+    let fixedSize = uint64(100 + codec_natural.encode(JamNatural(record.packages)).len)
     if size > uint64(config.maxBytes) or uint64(config.maxBytes)-size < fixedSize:
       return HistoryTransitionResult[HistoryState](
           status: HistoryTransitionError.LimitExceeded) # Fixed record plus count.

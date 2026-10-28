@@ -3,14 +3,25 @@
 
 ## Opaque current updates stage fallible child capture before durable handoff and guarded installation.
 import std/assertions
-import ./[store, accumulation_current_chain, accumulation_current_consensus,
-    accumulation_current_authorization, accumulation_current_preimages,
-    accumulation_current_activity, accumulation_current_validators, accumulation_current_recent,
-    accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-    accumulation_current_statistics, accumulation_storage_history, service_identity_history,
-    request_identity_history, accumulation_current_driver]
-import ../codec/bounded
-import ../chain/[genesis, provider]
+import ./store as state_store
+import ./accumulation_current_chain as state_accumulation_current_chain
+import ./accumulation_current_consensus as state_accumulation_current_consensus
+import ./accumulation_current_authorization as state_accumulation_current_authorization
+import ./accumulation_current_preimages as state_accumulation_current_preimages
+import ./accumulation_current_activity as state_accumulation_current_activity
+import ./accumulation_current_validators as state_accumulation_current_validators
+import ./accumulation_current_recent as state_accumulation_current_recent
+import ./accumulation_current_ready as state_accumulation_current_ready
+import ./accumulation_current_finalization as state_accumulation_current_finalization
+import ./accumulation_current_accounts as state_accumulation_current_accounts
+import ./accumulation_current_statistics as state_accumulation_current_statistics
+import ./accumulation_storage_history as state_accumulation_storage_history
+import ./service_identity_history as state_service_identity_history
+import ./request_identity_history as state_request_identity_history
+import ./accumulation_current_driver as state_accumulation_current_driver
+import ../codec/bounded as codec_bounded
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
 
 type
   CurrentUpdateData = ref object # Private immutable original/candidate handles and captured child form an acyclic graph.

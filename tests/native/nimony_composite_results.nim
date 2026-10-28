@@ -7,8 +7,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import ../../src/codec/[composite, bounded, work_digest]
-import std/[cmdline, syncio]
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_digest as codec_work_digest
+import std/cmdline
+import std/syncio
 
 # Select the six real payload-free work tags without accepting an accidental fixture spelling.
 proc workError(text: string): WorkKind =

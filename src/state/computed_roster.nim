@@ -3,10 +3,22 @@
 
 ## Check original computed core/shards against the exact authenticated posterior active population.
 
-import ../chain/parameters
-import ../codec/[assurances, bounded, state_safrole, state_layout, work_report]
-import ./[computed_transition, computed_profile, computed_lookup, computed_recent, computed_state,
-  computed_links, computed_guarantee, computed_report, block_transition, store]
+import ../chain/parameters as chain_parameters
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/work_report as codec_work_report
+import ./computed_transition as state_computed_transition
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./computed_recent as state_computed_recent
+import ./computed_state as state_computed_state
+import ./computed_links as state_computed_links
+import ./computed_guarantee as state_computed_guarantee
+import ./computed_report as state_computed_report
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   ComputedRosterError* {.pure.} = enum ## Refusals carry neither a roster certificate nor partial decoded state.

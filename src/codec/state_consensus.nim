@@ -9,9 +9,14 @@
 ## pending-validator/sealer/accumulated-ticket access.
 
 import std/assertions
-import ./[natural, bounded, assurances, state_layout, state_trie, state_safrole]
-from ./header import WinningTicket, WinningTicketId, EpochSlots
-from ./tickets import TicketAttempt
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
+import ./state_safrole as codec_state_safrole
+from ./header as codec_header import WinningTicket, WinningTicketId, EpochSlots
+from ./tickets as codec_tickets import TicketAttempt
 export WinningTicket, WinningTicketId, EpochSlots, TicketAttempt
 
 type
@@ -110,7 +115,7 @@ proc validate(config: SafroleStateConfig): StateComponentError =
 
 ## Read one canonical accumulator count without allocating or publishing partial parser progress.
 proc count(input: openArray[byte]): SafroleStateResult[tuple[value: uint64, size: int]] =
-  let parsed = natural.decode(input)
+  let parsed = codec_natural.decode(input)
   if not parsed.ok:
     # Preserve primitive framing failures before interpreting population/resource constraints.
     if parsed.error == DecodeError.truncated:
@@ -236,7 +241,7 @@ proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): Safro
     return SafroleStateResult[StateEntry](status: StateComponentError.InvalidCount) # Schedule is fixed; accumulator is epoch-bounded.
   if uint64(source.accumulator.len) > uint64(config.maxAccumulator):
     return SafroleStateResult[StateEntry](status: StateComponentError.LimitExceeded) # Apply stricter caller policy before allocating children.
-  let prefix = natural.encode(JamNatural(source.accumulator.len))
+  let prefix = codec_natural.encode(JamNatural(source.accumulator.len))
   var size = roster.value
   var error = grow(size, 145, 1, config.maxBytes)
   if error != StateComponentError.None: return SafroleStateResult[StateEntry](

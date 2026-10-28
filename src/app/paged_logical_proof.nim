@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze deterministic complete-map proof pages on one original logical source; page responses remain partial until independently checked reconstruction succeeds.
-import ./[full_logical_proof, logical_proof, proof_query]
-import ../state/[current_logical, proof_plan]
-import ../codec/[bounded, state_layout, state_trie]
+import ./full_logical_proof as app_full_logical_proof
+import ./logical_proof as app_logical_proof
+import ./proof_query as app_proof_query
+import ../state/current_logical as state_current_logical
+import ../state/proof_plan as state_proof_plan
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 type
   LogicalProofPageIndex* = distinct uint64 ## Page ordinals are neither physical entry indices nor key limits.
   LogicalProofPageLimits* = object ## Each page admits copied input/retained/sort key storage separately from whole-source selector capture.

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/import_justification
+import ../../../src/state/import_justification as state_import_justification
 var owner: VerifiedImport
 discard owner.data

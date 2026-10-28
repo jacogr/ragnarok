@@ -3,14 +3,36 @@
 
 ## Authenticated current accumulation sequence ownership and bounded continuation input planning.
 ## Flat per-entry facts avoid recursive certificate ownership; selected successor state governs pending partitioning.
-import ../chain/parameters
-import ../codec/[bounded, composite, work_digest, report_owned, c2_records, header, state_safrole, state_layout]
-import ./[accumulation_current_round, accumulation_block_guests, accumulation_round,
-  accumulation_queue, accumulation_coverage, accumulation_global_stage, accumulation_global_phase,
-  accumulation_annulled_outputs, accumulation_pending_transfers, accumulation_transfer_partition,
-  accumulation_operands, accumulation_inputs, accumulation_guest_runner, accumulation_account_phase,
-  accumulation_provision_phase, accumulation_provisions, accumulation_transfers, report_admission,
-  block_transition, block_admission, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_digest as codec_work_digest
+import ../codec/report_owned as codec_report_owned
+import ../codec/c2_records as codec_c2_records
+import ../codec/header as codec_header
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ./accumulation_current_round as state_accumulation_current_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_global_stage as state_accumulation_global_stage
+import ./accumulation_global_phase as state_accumulation_global_phase
+import ./accumulation_annulled_outputs as state_accumulation_annulled_outputs
+import ./accumulation_pending_transfers as state_accumulation_pending_transfers
+import ./accumulation_transfer_partition as state_accumulation_transfer_partition
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_guest_runner as state_accumulation_guest_runner
+import ./accumulation_account_phase as state_accumulation_account_phase
+import ./accumulation_provision_phase as state_accumulation_provision_phase
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_transfers as state_accumulation_transfers
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   CurrentSequenceEntryIndex* = distinct uint64 ## A historical sequence entry cannot substitute an input service or report ordinal.

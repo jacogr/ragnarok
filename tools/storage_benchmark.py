@@ -72,7 +72,7 @@ def benchmark_sources():
     """Rediscover owned runtime/native inputs at both ends so additions and removals cannot hide drift."""
     source=ROOT/'tests/performance/storage_workload.nim'
     return [*[ROOT/name for name in GROWTH_SOURCES],*sorted((ROOT/'src').rglob('*.nim')),source,
-        ROOT/'tests/support/managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
+        ROOT/'tests/support/app_managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
         ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
         ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
         ROOT/'Makefile',ROOT/'.github/workflows/ci.yml',ROOT/'tools/build_crypto.py',

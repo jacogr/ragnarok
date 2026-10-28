@@ -3,7 +3,11 @@
 
 ## Execute a frozen complete-source account audit plan without accepting substituted sources or policies.
 ## Successful targeted predicates remain distinct from global validity, application installation or trusted-root authority.
-import ./[account_audit_plan, account_invariants, footprint_audit, preimage_content, preimage_linkage]
+import ./account_audit_plan as state_account_audit_plan
+import ./account_invariants as state_account_invariants
+import ./footprint_audit as state_footprint_audit
+import ./preimage_content as state_preimage_content
+import ./preimage_linkage as state_preimage_linkage
 
 type
   AccountAuditError* {.pure.} = enum ## Semantic/backend failures preserve their actual phase; invalid/default plans grant no prefix.

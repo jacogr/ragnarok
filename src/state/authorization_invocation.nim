@@ -4,13 +4,28 @@
 ## Execute pinned Psi_I from an original package's historical authorizer code and retain immutable provenance.
 ## Local policy refusals are distinct from protocol work errors; report composition/publication is separate.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../codec/[bounded, composite, work_package, work_digest, work_report, state_service_values]
-import ../chain/parameters
-import ../crypto/primitives
-import ../pvm/[machine, program, initialize, step, gas, output, host_gas, host_log, host_heap, host_fetch]
-import ./[store, refinement_lookup]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_package as codec_work_package
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../codec/state_service_values as codec_state_service_values
+import ../chain/parameters as chain_parameters
+import ../crypto/primitives as crypto_primitives
+import ../pvm/machine as pvm_machine
+import ../pvm/program as pvm_program
+import ../pvm/initialize as pvm_initialize
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/output as pvm_output
+import ../pvm/host_gas as pvm_host_gas
+import ../pvm/host_log as pvm_host_log
+import ../pvm/host_heap as pvm_host_heap
+import ../pvm/host_fetch as pvm_host_fetch
+import ./store as state_store
+import ./refinement_lookup as state_refinement_lookup
 
 type
   AuthorizationHostError* {.pure.} = enum ## Callback refusals cannot fabricate a charged reply or guest work error.

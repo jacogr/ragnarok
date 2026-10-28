@@ -3,10 +3,18 @@
 
 ## Opaque selections encode canonical independent bytes without transport copies or repeated integrity calls.
 # @@Verification={"arc": "storage_selection_encoding_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_snapshot_samples, storage_root_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records, record_codec, snapshot_codec, database_identity]
-import ../../../src/codec/[state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/storage_snapshot_samples
+import ../../support/storage_root_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## An unavailable backend cannot affect already-admitted body serialization, but must refuse its new frame checksum.

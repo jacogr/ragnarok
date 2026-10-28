@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Callers cannot forge joined authority or failed execution alternatives.
-import ../../../src/state/account_audit
+import ../../../src/state/account_audit as state_account_audit
 var value = default(AccountAuditResult)
 discard value.completed

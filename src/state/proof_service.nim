@@ -3,11 +3,17 @@
 
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
-import ./proof_plan
-import ./preimage_history
-import ./[proof_view, trie_proof]
-import ../crypto/primitives
-import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests, state_trie]
+import ./proof_plan as state_proof_plan
+import ./preimage_history as state_preimage_history
+import ./proof_view as state_proof_view
+import ./trie_proof as state_trie_proof
+import ../crypto/primitives as crypto_primitives
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_trie as codec_state_trie
 
 type
   ServiceProofError* {.pure.} = enum ## Failed/default reads expose only a reason, never a fabricated value.

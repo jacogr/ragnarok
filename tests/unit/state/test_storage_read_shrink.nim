@@ -2,12 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real post-stat truncation must return only observed bytes from a preallocated native read buffer.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[storage_io, storage_samples]
-import ../../../src/storage/[managed_io, managed_manifest, file_errors, file_repository,
-  full_state_trie, node_repository, node_records, database_identity]
-import ../../../src/codec/bounded
+import ../../support/storage_io
+import ../../support/storage_samples
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
 
 proc scenario(mode, extent: int) {.raises.} =
   ## The test alone owns the truncation descriptor; each reader still performs genuine short/EINTR IO.

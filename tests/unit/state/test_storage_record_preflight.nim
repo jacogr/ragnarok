@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every physical decoder rejects reserved addresses and empty branch forms during borrowed preflight.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_repository, node_records, record_codec]
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset real primitive attempt observation.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

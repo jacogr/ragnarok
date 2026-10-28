@@ -3,9 +3,12 @@
 
 ## Fixed checked workload for A/B crypto-work and live-memory observations through StateStore's public API.
 ## Compile the identical source against baseline/candidate trees; output is JSON lines, not timing claims.
-import std/[assertions, syncio]
-import ../../src/state/store
-import ../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/syncio
+import ../../src/state/store as state_store
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/bounded as codec_bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer without changing protocol hashing behavior.

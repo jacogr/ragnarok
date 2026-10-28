@@ -3,6 +3,6 @@
 
 ## External callers cannot fabricate or mutate proof/lookup authority.
 # @@Verification={"group": "privacy", "expected": "rootIdentity"}
-import ../../../src/state/trie_proof
+import ../../../src/state/trie_proof as state_trie_proof
 let owner = default(VerifiedStateLookup)
 discard owner.rootIdentity

@@ -68,7 +68,7 @@ zero-used-gas execution results or checkpoint states.
 
 ## Verification
 
-`tests/unit/state/test_accumulation_service.nim` checks 408 deterministic independently authored
+`tests/unit/state/test_state_accumulation_service.nim` checks 408 deterministic independently authored
 metadata/code envelopes and protocol/resource limits. The Python oracle uses unbounded prefix/length
 arithmetic and independently encoded compact lengths; native code uses the maintained bounded parser.
 Both empty/malformed encodings and metadata lengths around 127/128 and 16,383/16,384 are covered.

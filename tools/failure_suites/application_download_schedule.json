@@ -35,5 +35,5 @@
       "name": "application-download-schedule-peer"
     }
   ],
-  "source": "tests/native/application_download_schedule_results.nim"
+  "source": "tests/native/app_download_schedule_results.nim"
 }

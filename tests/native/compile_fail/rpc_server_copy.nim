@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <Server>", "build_name": "rpc-server-copy"}
 
-import ../../../src/rpc/server
+import ../../../src/rpc/server as rpc_server
 var original = default(Server)
 var duplicate = original
 original.close()

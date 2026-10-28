@@ -3,9 +3,12 @@
 
 ## Default and refused checkpoint results reject extraction; the same binary admits real success.
 
-import std/[cmdline, assertions]
-import ../../src/state/[checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import std/cmdline
+import std/assertions
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 
 let mode = paramStr(1)
 if mode == "root-refused":

@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict current-review guards use signed complete successor qualification as their genuine success control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, current_state_context,
-    accumulation_current_chain_context, account_review_plan_context]
-import ../../src/state/[current_review, current_state]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_current_state_context
+import ../support/state_accumulation_current_chain_context
+import ../support/state_account_review_plan_context
+import ../../src/state/current_review as state_current_review
+import ../../src/state/current_state as state_current_state
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## Failed/default alternatives grant no completed owner.
   discard outcome.value

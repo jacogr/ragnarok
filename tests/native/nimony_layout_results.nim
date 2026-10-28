@@ -7,8 +7,11 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[state_layout, bounded, composite]
+import std/cmdline
+import std/syncio
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
 # Native refusals exist only in the test observer, never the production primitive library.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 let useDefault = paramStr(2) == "default"

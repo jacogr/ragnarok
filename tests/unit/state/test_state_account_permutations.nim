@@ -2,13 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Declaration permutations preserve complete mapping/root/checkpoint bytes while never substituting logical owner identity.
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, planned_account_checkpoint_context]
-import ../../../src/state/[inventory, manifest, store, checkpoint, planned_account_checkpoint,
-  account_audit_plan,
-  account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_requests]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_planned_account_checkpoint_context
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/planned_account_checkpoint as state_planned_account_checkpoint
+import ../../../src/state/account_audit_plan as state_account_audit_plan
+import ../../../src/state/account_audit as state_account_audit
+import ../../../src/state/account_invariants as state_account_invariants
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/preimage_linkage as state_preimage_linkage
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_requests as codec_state_requests
+include ../../native/nimony_composition_fixture
 const auditLimits = AccountAuditLimits(planning: ElementLimit(64),
   footprints: FootprintAuditLimits(services: ElementLimit(4), checks: ElementLimit(64)),
   content: PreimageContentLimits(services: ElementLimit(4), preimages: ElementLimit(4),

@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: OutputByteLimit but got: uint64", "early": ["captureOutput(", "[2] expected: OutputByteLimit but got: uint64"]}
 
-import ../../../src/pvm/[step, output]
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/output as pvm_output
 let outcome = default(StepOutcome)
 discard captureOutput(outcome, 0'u64)

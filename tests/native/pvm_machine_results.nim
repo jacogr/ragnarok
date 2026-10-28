@@ -7,7 +7,7 @@
 ## rejection diagnostic and exit status.
 
 import std/cmdline
-import ../../src/pvm/machine
+import ../../src/pvm/machine as pvm_machine
 let selection = paramStr(1)
 let empty = captureMemory([], PageLimit(0))
 # Select an actual failed/default scalar result at runtime, preserving the compiler's checked path.

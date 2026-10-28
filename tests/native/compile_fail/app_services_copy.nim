@@ -6,7 +6,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <Services>", "build_name": "app-services-copy"}
 
-import ../../../src/app/services
+import ../../../src/app/services as app_services
 var original = default(Services)
 var duplicate = original
 original.close()

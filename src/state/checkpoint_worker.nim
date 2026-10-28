@@ -4,10 +4,15 @@
 ## One fixed-address native I/O worker consumes sole-owner prepared bytes without borrowing canonical state.
 ## One host thread serializes stage/begin/collect/close; native work and shutdown never run in network callbacks.
 
-import std/[locks, rawthreads]
-import ./[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint]
-import ./store
-import ../codec/[bounded, state_trie]
+import std/locks
+import std/rawthreads
+import ./checkpoint_bank as state_checkpoint_bank
+import ./checkpoint_head as state_checkpoint_head
+import ./checkpoint_transfer as state_checkpoint_transfer
+import ./checkpoint as state_checkpoint
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 
 type
   CheckpointWorkerPhase* {.pure.} = enum ## Done retains capacity until explicit collection; Staged has not begun I/O.

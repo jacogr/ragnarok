@@ -7,7 +7,9 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, envvars, syncio]
+import std/assertions
+import std/envvars
+import std/syncio
 include ../../../src/quic/transport
 
 # The real transport invokes identity validation only while the stack owner remains alive.

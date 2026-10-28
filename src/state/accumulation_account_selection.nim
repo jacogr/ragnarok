@@ -3,9 +3,17 @@
 
 ## Current GP accpar M(s): bind prior accounts to genuine annulment-selected source maps.
 ## A bounded subset certificate does not claim complete coverage, creation union or publication.
-import ../codec/[bounded, state_accounts, state_layout, header]
-import ./[accumulation_annulment, accumulation_outcome, accumulation_effects, accumulation_skip,
-    accumulation_service, accumulation_inputs, store]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/header as codec_header
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_inputs as state_accumulation_inputs
+import ./store as state_store
 
 type
   AccumulationAccountSelectionIndex* = distinct uint64 ## Requested-account ordinal is distinct from outcome ordinals and service IDs.

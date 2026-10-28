@@ -9,9 +9,12 @@
 
 # @@Verification={"arc": "availability_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[report_owned, owned]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
 include ../../../src/codec/state_availability
 var fixture: seq[byte] = @[]
 # Fixture I/O is trusted setup; unavailable input cannot count as coverage.

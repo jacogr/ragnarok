@@ -4,13 +4,20 @@
 ## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
 ## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
 import std/assertions
-import ./[program, machine, registers, gas, gas_plan, gas_memo, backend]
-export backend
+import ./program as pvm_program
+import ./machine as pvm_machine
+import ./registers as pvm_registers
+import ./gas as pvm_gas
+import ./gas_plan as pvm_gas_plan
+import ./gas_memo as pvm_gas_memo
+import ./backend as pvm_backend
+export pvm_backend
 when defined(polkavmRuntime):
   import std/algorithm
-  import ./internal/polkavm
-import ./internal/[handler_stream, execution_types]
-export execution_types
+  import ./internal/polkavm as pvm_polkavm
+import ./internal/handler_stream as pvm_handler_stream
+import ./internal/execution_types as pvm_execution_types
+export pvm_execution_types
 
 type
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.

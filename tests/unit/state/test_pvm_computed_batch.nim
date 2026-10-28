@@ -4,12 +4,22 @@
 
 ## Real shared-context batches prove canonical wire, reporter union, bounded refusal and immutable lifetime behavior.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition, computed_profile, store]
-import ../../../src/codec/[bounded, assurances, guarantees, state_safrole]
-import ../../support/[pvm_computed_batch, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_batch as state_computed_batch
+import ../../../src/state/computed_envelope as state_computed_envelope
+import ../../../src/state/computed_credentials as state_computed_credentials
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/state/computed_roster as state_computed_roster
+import ../../../src/state/computed_transition as state_computed_transition
+import ../../../src/state/computed_profile as state_computed_profile
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../support/pvm_computed_batch
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reject new hashing after original computation and real signature verification complete.

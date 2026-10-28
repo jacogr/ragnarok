@@ -5,10 +5,20 @@
 ## Explicit close exposes retirement uncertainty; no reader owns a writer lease, callback or resident graph.
 ## One caller serializes operations per owner; independent readers have independent native seek cursors.
 import std/assertions
-import ./[full_paged_codec, full_paged_stream, paged_io, paged_codec, database_identity,
-  file_errors, full_paged_build, durability,
-  managed_manifest, node_repository, paged_stream]
-import ../codec/[bounded, state_layout, state_trie]
+import ./full_paged_codec as storage_full_paged_codec
+import ./full_paged_stream as storage_full_paged_stream
+import ./paged_io as storage_paged_io
+import ./paged_codec as storage_paged_codec
+import ./database_identity as storage_database_identity
+import ./file_errors as storage_file_errors
+import ./full_paged_build as storage_full_paged_build
+import ./durability as storage_durability
+import ./managed_manifest as storage_managed_manifest
+import ./node_repository as storage_node_repository
+import ./paged_stream as storage_paged_stream
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   FullPagedNativeError* {.pure.} = enum ## Failed/default native results contain no retained reader or graph receipt.

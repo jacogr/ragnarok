@@ -7,9 +7,12 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/state/store
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 ## Derive distinct fixed keys without relying on hashed protocol namespace inference.
 proc key(index: byte): StateKey =

@@ -3,8 +3,8 @@
 
 ## Exact constant-work account deposit observations preserve gratis cancellation before representability refusal.
 ## Explicit arithmetic inputs are not authenticated state, protocol configuration or a global funding invariant.
-import ../codec/state_accounts
-import ./account_footprint
+import ../codec/state_accounts as codec_state_accounts
+import ./account_footprint as state_account_footprint
 
 type
   AccountDepositSchedule* = object ## Explicit nonnegative rates are mathematical inputs, not validated network parameters.

@@ -3,13 +3,32 @@
 
 ## Frozen actual successor reconstruction preserves namespace identities, detached output isolation and complete current matching.
 # @@Verification={"arc":"state_current_refresh_execution_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_refresh_context, parent_globals_context, state_inventory_context,
-    supplied_logical_context, arc_evidence]
-import ../../../src/state/[current_refresh, current_refresh_plan, current_request_keys,
-    current_identities, current_profile, current_globals, current_state, current_logical,
-    accumulation_current_update, supplied_logical_inventory, inventory, manifest, store]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests, state_composition]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_refresh_context
+import ../../support/state_parent_globals_context
+import ../../support/state_inventory_context
+import ../../support/codec_supplied_logical_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_refresh as state_current_refresh
+import ../../../src/state/current_refresh_plan as state_current_refresh_plan
+import ../../../src/state/current_request_keys as state_current_request_keys
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/current_globals as state_current_globals
+import ../../../src/state/current_state as state_current_state
+import ../../../src/state/current_logical as state_current_logical
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_composition as codec_state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Source and request-key derivation finish before observing hash-free execution.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

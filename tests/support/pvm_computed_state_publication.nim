@@ -3,7 +3,10 @@
 
 ## Genuine composed computed state and its original parent for publication and later chain-view witnesses.
 
-import ../../src/state/[computed_composition, computed_finalization, accumulation_finalization, store]
+import ../../src/state/computed_composition as state_computed_composition
+import ../../src/state/computed_finalization as state_computed_finalization
+import ../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../src/state/store as state_store
 import ./pvm_computed_composition
 
 proc statePublicationFixture*(): ComposedComputedState =

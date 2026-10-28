@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Journal frame result alternatives remain success/selected-error guarded.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/[journal_codec, record_codec, node_records, node_repository]
-import ../../src/codec/[bounded, state_trie]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/journal_codec as storage_journal_codec
+import ../../src/storage/record_codec as storage_record_codec
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_trie as codec_state_trie
 proc main() =
   ## Dynamic origins cover both payload families and the nested refusal diagnostic.
   let member = paramStr(1)

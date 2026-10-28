@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime-selected failed scalar arithmetic results must reject payload accessors and direct application; valid mode is the positive control.
-import std/[assertions, cmdline, syncio]
-import ../../src/pvm/[program, machine, registers]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/registers as pvm_registers
 let origin = paramStr(1)
 let member = paramStr(2)
 var written = default(RegisterWriteResult)

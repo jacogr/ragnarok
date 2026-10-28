@@ -3,6 +3,7 @@
 
 ## Storage ordinals cannot select a physical request key.
 # @@Verification={"group":"nominal","expected":"InventoryRequestIndex","early":["currentRequestKeyAt(","[3] expected: InventoryRequestIndex but got: InventoryStorageIndex"]}
-import ../../../src/state/[current_request_keys, inventory]
+import ../../../src/state/current_request_keys as state_current_request_keys
+import ../../../src/state/inventory as state_inventory
 discard currentRequestKeyAt(default(CurrentRequestKeys), InventoryServiceIndex(0),
     InventoryStorageIndex(0))

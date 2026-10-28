@@ -6,9 +6,14 @@
 
 # @@Verification={"arc": "pvm_initialization_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, gas, step]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../support/testing_arc_evidence
 
 # Fixed-width fixture encoding is independent of the initializer's decoder.
 proc appendFixed(bytes: var seq[byte], value: uint64, width: int) =

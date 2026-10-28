@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedAccumulationRound", "early": ["executeComputedAccumulation(", "[1] expected: ComputedAccumulationRound but got: BlockAccumulationRound"]}
 
-import ../../../src/state/[computed_execution, accumulation_round, accumulation_runner]
+import ../../../src/state/computed_execution as state_computed_execution
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_runner as state_accumulation_runner
 discard executeComputedAccumulation(default(BlockAccumulationRound), AccumulationRunnerLimits())

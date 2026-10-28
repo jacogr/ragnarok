@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Prepared plan/report storage and result alternatives remain private.
-import ../../../src/state/account_review_plan
+import ../../../src/state/account_review_plan as state_account_review_plan
 var value = default(AccountReviewPlanResult[StateAccountReviewPlan])
 discard value.status

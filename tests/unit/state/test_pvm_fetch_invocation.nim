@@ -6,13 +6,26 @@
 
 # @@Verification={"arc": "pvm_fetch_invocation_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_fetch, accumulation_inputs, accumulation_operands,
-  accumulation_queue]
-import ../../../src/codec/[bounded, composite, natural, work_digest, work_report, report_owned,
-  c2_records, state_workqueues, state_privileges, header]
-import ../../../src/pvm/[host_fetch, machine, step]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_fetch as state_accumulation_fetch
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_operands as state_accumulation_operands
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/natural as codec_natural
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/header as codec_header
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../support/testing_arc_evidence
 
 ## Independent local caps cover the complete selected service, not all groups in the source plan.
 proc limits(): FetchAccumulationLimits =

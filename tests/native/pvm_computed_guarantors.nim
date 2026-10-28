@@ -3,9 +3,13 @@
 
 ## Strict optimized guarantor planning/query guards with genuine epoch-crossing success controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_guarantors, computed_roster, guarantors]
-import ../../src/codec/[guarantees, bounded]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_guarantors as state_computed_guarantors
+import ../../src/state/computed_roster as state_computed_roster
+import ../../src/state/guarantors as state_guarantors
+import ../../src/codec/guarantees as codec_guarantees
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_guarantors
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

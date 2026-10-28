@@ -4,11 +4,22 @@
 ## Finalize supported report-only accseq on a private full-state fork after a genuine stopped completion.
 ## Retains terminal provenance, earlier service effects and fresh C(16); whole-block publication remains separate.
 
-import ../codec/[work_digest, state_trie]
-import ./[accumulation_driver, accumulation_outputs, accumulation_execution, accumulation_round,
-  accumulation_queue, report_admission, block_transition, block_admission, accumulation_operands,
-  accumulation_continuation_execution,
-  accumulation_continuation_inputs, accumulation_continuation, accumulation_reentry, store]
+import ../codec/work_digest as codec_work_digest
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_driver as state_accumulation_driver
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./accumulation_operands as state_accumulation_operands
+import ./accumulation_continuation_execution as state_accumulation_continuation_execution
+import ./accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ./accumulation_continuation as state_accumulation_continuation
+import ./accumulation_reentry as state_accumulation_reentry
+import ./store as state_store
 
 type
   AccumulationFinalizationInfo* = object ## Copied terminal facts distinguish a stopped budget from an exhausted queue.

@@ -3,12 +3,20 @@
 
 ## Strict optimized transition extraction guards with genuine signed success controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_transition, computed_profile, block_transition, store]
-import ../../src/codec/[bounded, block_codec, header]
-import ../../src/chain/parameters
-import ../support/[pvm_computed_transition, pvm_computed_state, pvm_computed_profile,
-  report_admission_context]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_transition as state_computed_transition
+import ../../src/state/computed_profile as state_computed_profile
+import ../../src/state/block_transition as state_block_transition
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/block_codec as codec_block_codec
+import ../../src/codec/header as codec_header
+import ../../src/chain/parameters as chain_parameters
+import ../support/pvm_computed_transition
+import ../support/pvm_computed_state
+import ../support/pvm_computed_profile
+import ../support/state_report_admission_context
 
 proc expect[T](outcome: ComputedTransitionResult[T], reason: ComputedTransitionError) =
   ## Verify selected failure identity before deliberately reading its absent payload.

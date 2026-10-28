@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict selected logical-parent result/source guards retain real signed complete-parent positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[accumulation_current_chain_context, parent_logical_context, supplied_logical_context]
-import ../../src/state/[parent_logical, parent_globals, supplied_logical_inventory]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_accumulation_current_chain_context
+import ../support/state_parent_logical_context
+import ../support/codec_supplied_logical_context
+import ../../src/state/parent_logical as state_parent_logical
+import ../../src/state/parent_globals as state_parent_globals
+import ../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(outcome: ParentLogicalResult[SelectedLogicalParent]) {.noinline.} =
   ## Failed/default seed grants no logical parent.
   discard outcome.value

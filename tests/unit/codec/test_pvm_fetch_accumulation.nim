@@ -6,11 +6,20 @@
 
 # @@Verification={"arc": "pvm_fetch_accumulation_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_package]
-import ../../../src/chain/parameters
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/testing_arc_evidence
 
 # Generous per-record bounds are independent of the aggregate capture budget.
 proc limits(count, bytes: uint64): FetchAccumulationLimits =

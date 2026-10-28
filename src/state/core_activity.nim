@@ -4,8 +4,17 @@
 ## Derive fresh per-block core metrics from incoming work, available data and original assurance bits.
 ## Pure rows are caller-owned; opaque preparation retains exact report-admission provenance without state writes.
 
-import ../codec/[bounded, owned, report_owned, state_statistics, assurances, block_codec]
-import ./[report_admission, guarantee_credentials, block_transition, block_admission, availability]
+import ../codec/bounded as codec_bounded
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/assurances as codec_assurances
+import ../codec/block_codec as codec_block_codec
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./availability as state_availability
 
 type
   CoreActivityConfig* = object ## Independent output, descriptor, digest, encoded and bit-work ceilings.

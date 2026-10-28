@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/[step, output]
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/output as pvm_output
 let r = default(OutputResult)
 discard r.completed

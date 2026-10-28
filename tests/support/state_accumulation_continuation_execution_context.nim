@@ -1,0 +1,147 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Genuine signed completed initial rounds and actual later-round dispatches for continuation coverage tests.
+
+import std/assertions
+import ../../src/state/accumulation_continuation_inputs as state_accumulation_continuation_inputs
+import ../../src/state/accumulation_continuation as state_accumulation_continuation
+import ../../src/state/accumulation_continuation_invocation as state_accumulation_continuation_invocation
+import ../../src/state/accumulation_execution as state_accumulation_execution
+import ../../src/state/accumulation_round as state_accumulation_round
+import ../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../src/state/accumulation_service as state_accumulation_service
+import ../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/state/accumulation_dispatch as state_accumulation_dispatch
+import ../../src/state/accumulation_skip as state_accumulation_skip
+import ../../src/state/accumulation_effects as state_accumulation_effects
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/header as codec_header
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/work_digest as codec_work_digest
+import ../../src/codec/state_workqueues as codec_state_workqueues
+import ../../src/codec/c2_records as codec_c2_records
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/gas as pvm_gas
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ./state_accumulation_execution_context
+import ./state_report_context
+import ./pvm_accumulation_context
+import ./state_accumulation_batch_context
+import ./pvm_accumulation_provision
+
+type
+  ContinuationExecutionFixture* = object ## Original signed map and exact later-round context remain separately observable.
+    initial*: ExecutionFixture ## Genuine initial round, original complete map and authored rows.
+    source*: PreparedAccumulationContinuationInputs ## Only the selected suffix feeds later invocations.
+
+# Re-encode a unique ready report with service 99 as the optional second digest rather than service 43.
+proc report(base: OwnedReport, id: byte, gases: openArray[uint64]): ReadyItem =
+  let raw = reportBytes(reportFor(base, 0, gases))
+  var decoded = decodeReportBorrowed(raw, 2).value
+  decoded.header.packageHash.bytes[0] = id
+  if gases.len == 2:
+    decoded.digests[1].service = ServiceIndex(99) # The two authenticated services have independent selected gas.
+  var bytes = newSeq[byte](raw.len+10000)
+  let written = encodeReportBorrowed(decoded, raw, 2, bytes)
+  assert written.error == CompositeError.None
+  ReadyItem(report: decodeOwnedReport(bytes.toOpenArray(0, written.written-1), 2).value,
+      dependencies: @[])
+
+proc continuationExecutionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
+    second = ExecutionEnding.Halt, firstGas = 300'u64, secondGas = 300'u64,
+    empty = false): ContinuationExecutionFixture =
+  ## Consume the first report in the initial round; only actual unused gas admits the two-service suffix.
+  let ready = if empty: newSeq[ReadyItem]() else:
+    @[report(base, 64, [1000'u64]), report(base, 65, [firstGas, secondGas])]
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = first
+  executionOptions0.second = second
+  executionOptions0.signed.ready = ready
+  executionOptions0.empty = empty
+  var initial = executionFixture(base, executionOptions0)
+  var policy = executionRoundConfig()
+  var budget = 1000'u64
+  for ending in [first, second]:
+    let allowance = if ending == ExecutionEnding.Exhausted: 1'u64 elif ending ==
+        ExecutionEnding.HostExhausted: 200'u64 else: 100000'u64
+    budget += allowance # Two fixed test credits and one tiny report fit uint64 independently of supplied report gas.
+  policy.blockGas = Gas(budget)
+  initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value
+  var executions: seq[AccumulationDispatchResult] = @[]
+  var skipped: seq[SkippedAccumulation] = @[]
+  if not empty:
+    for index, ending in [first, second]:
+      if ending == ExecutionEnding.Missing:
+        skipped.add(executionSkip(initial, uint64(
+            index))) # Only genuine missing code authorizes a non-executing outcome.
+      else:
+        executions.add(executionGuest(initial, uint64(index))) # CPU outcomes and gas are never forged.
+  let completed = completeBlockAccumulation(initial.round, executions, skipped, executionLimits()).value
+  let plan = planAccumulationContinuation(completed,
+    AccumulationContinuationLimits(executions: ElementLimit(2), reports: ElementLimit(2),
+      digests: ElementLimit(2))).value
+  ContinuationExecutionFixture(initial: initial, source: prepareAccumulationContinuationInputs(plan,
+    AccumulationContinuationInputConfig(operands: policy.operands, inputs: policy.inputs)).value)
+
+proc continuationServiceConfig*(): AccumulationServiceConfig =
+  ## Keep complete preimage and executable budgets independent of gas and provenance.
+  AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))
+
+proc continuationRun*(invocation: PreparedAccumulationInvocation,
+    provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
+  ## Initialize and execute the exact supplied immutable bootstrap through existing bounded PVM adapters.
+  let machine = initializeAccumulationMachine(invocation, InitializationLimits(
+    envelope: InitializationByteLimit(512), program: ProgramByteLimit(256), jumps: JumpCountLimit(0),
+    pages: PageLimit(5))).value
+  var contexts = pvmContextConfig()
+  contexts.privileges = executionRoundConfig().privileges
+  executeAccumulationMachine(machine, pvmParameters(),
+    FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),
+      operand: OperandLimits(maxBytes: ByteLimit(512))), MemoryByteLimit(32),
+    ExecutionStepLimit(40), HostCallLimit(8), GasCycleLimit(1000), contexts, provisions)
+
+proc continuationGuest*(source: PreparedAccumulationContinuationInputs,
+    index: uint64, provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
+  ## Derive service/slot/entropy only from the exact prepared continuation and authenticated block stage.
+  continuationRun(prepareContinuationAccumulationInvocation(source, InvocationServiceIndex(index),
+    continuationServiceConfig(), ServiceProbeLimit(1)).value.bootstrapProjection.value, provisions)
+
+proc continuationSkip*(source: PreparedAccumulationContinuationInputs,
+    index: uint64): SkippedAccumulation =
+  ## Certify missing-code service from this exact later-round input owner and actual posterior map.
+  finishUninvokedAccumulation(prepareContinuationAccumulationService(source,
+    InvocationServiceIndex(index), continuationServiceConfig()).value).value
+
+proc continuationProvidedFixture*(base: OwnedReport): ContinuationExecutionFixture =
+  ## Real initial provides fulfill outstanding requests before any later service or completion is prepared.
+  var code = @[0'u8]
+  for octet in batchEnvelope(BatchEnding.Halt): code.add(
+      octet) # Preserve the complete code preimage metadata prefix.
+  var executionOptions1 = executionFixtureConfig()
+  executionOptions1.firstProgram = code
+  executionOptions1.signed.ready = @[report(base, 64, [1000'u64]), report(base, 65, [1000'u64, 1000])]
+  executionOptions1.signed.extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+  var initial = executionFixture(base, executionOptions1)
+  var policy = executionRoundConfig()
+  policy.blockGas = Gas(201000)
+  initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value
+  let service = prepareBlockAccumulationService(initial.round, InvocationServiceIndex(0),
+    continuationServiceConfig()).value
+  let invocation = prepareBlockAccumulationInvocation(service, ServiceProbeLimit(
+      1)).value.bootstrapProjection.value
+  let first = continuationRun(invocation, provisionPolicy(items = 2, perBlob = 1, total = 2))
+  let complete = completeBlockAccumulation(initial.round,
+    [first, executionGuest(initial, 1)], [], executionLimits()).value
+  let plan = planAccumulationContinuation(complete,
+    AccumulationContinuationLimits(executions: ElementLimit(2), reports: ElementLimit(1),
+        digests: ElementLimit(2))).value
+  ContinuationExecutionFixture(initial: initial, source: prepareAccumulationContinuationInputs(plan,
+    AccumulationContinuationInputConfig(operands: policy.operands, inputs: policy.inputs)).value)

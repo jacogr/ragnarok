@@ -5,11 +5,28 @@
 ## Retains genuine source/batch certificates without executing guests again or publishing state.
 
 import std/algorithm
-import ../codec/[bounded, composite, header, work_digest, state_safrole, state_layout, state_trie]
-import ./[accumulation_round, accumulation_inputs, accumulation_queue, report_admission,
-  block_transition, block_admission, accumulation_batch, accumulation_dispatch, accumulation_skip,
-  accumulation_outcome, accumulation_provisions, accumulation_effects, accumulation_context,
-  accumulation_invocation, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/work_digest as codec_work_digest
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./accumulation_batch as state_accumulation_batch
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_invocation as state_accumulation_invocation
+import ./store as state_store
 
 type
   AccumulationExecutionLimits* = object ## Independent gas-row work and complete batch preparation ceilings.

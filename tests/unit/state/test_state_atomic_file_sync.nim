@@ -5,11 +5,13 @@
 
 ## Explicit recovery synchronization preserves bytes and native ownership, rejecting special files without blocking.
 
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../../src/lib/[atomic_file, atomic_file_writer]
-import ../../../src/codec/bounded
-import ../../support/arc_evidence
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/lib/atomic_file_writer as lib_atomic_file_writer
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/testing_arc_evidence
 
 proc makeFifo(path: cstring, mode: Mode): cint {.importc: "mkfifo", cdecl, header: "<sys/stat.h>".}
   ## Real FIFO creation uses the SDK API absent from the pinned public POSIX wrapper.

@@ -7,14 +7,28 @@
 ## Parses one explicit configuration and selects peer/mesh workloads, bounded selftests or offline trace checking.
 ## This is the production build and E2E entry point; full node execution remains future work.
 
-import std/[os, strutils, monotimes, times, syncio, envvars]
+import std/os
+import std/strutils
+import std/monotimes
+import std/times
+import std/syncio
+import std/envvars
 import std/posix/posix
-import ./quic/[session, transport, integration, offload]
-import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, fuzz_target, devnet_command]
-import ./pvm/step
-import ./version
-import ./lib/logging
+import ./quic/session as quic_session
+import ./quic/transport as quic_transport
+import ./quic/integration as quic_integration
+import ./quic/offload as quic_offload
+import ./app/options as app_options
+import ./app/cli_help as app_cli_help
+import ./app/cli_commands as app_cli_commands
+import ./app/download_command as app_download_command
+import ./app/current_download_command as app_current_download_command
+import ./app/trace_check_command as app_trace_check_command
+import ./app/fuzz_target as app_fuzz_target
+import ./app/devnet_command as app_devnet_command
+import ./pvm/step as pvm_step
+import ./version as ragnarok_version
+import ./lib/logging as lib_logging
 
 proc writeFailure(logger: var Logger, message: string) =
   ## Command producers have retired; drain and join stderr logging before its final CLI line.

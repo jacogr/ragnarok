@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/[state_disputes, state_trie]
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../../src/codec/state_trie as codec_state_trie
 var value = default(DisputeStateSnapshot)
 value.data = nil

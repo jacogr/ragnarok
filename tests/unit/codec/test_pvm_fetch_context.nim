@@ -6,9 +6,14 @@
 
 # @@Verification={"arc": "pvm_fetch_context_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/testing_arc_evidence
 
 # A retained sentinel reveals any unintended memory mutation on absent-value replies.
 proc memory(): Memory =

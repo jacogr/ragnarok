@@ -4,8 +4,10 @@
 ## Deterministic local full-map checkpoints preserve serialized keys/values and the complete root.
 ## This storage envelope is not a JAM wire encoding and never accepts partial light state.
 
-import ./store
-import ../codec/[state_trie, state_layout, bounded]
+import ./store as state_store
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/bounded as codec_bounded
 
 const
   CheckpointMagic = "RAGNAROK-FULL-V1\n"

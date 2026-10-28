@@ -6,10 +6,13 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../support/published_state
-import ../../../src/state/store
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import std/assertions
+import std/syncio
+import ../../support/codec_published_state
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 ## Find a fixture key by linear scan, independent of the production sorted two-pass merge.
 proc find(entries: seq[StateEntry], key: StateKey): int =

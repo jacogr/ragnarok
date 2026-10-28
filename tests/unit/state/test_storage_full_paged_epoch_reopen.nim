@@ -3,10 +3,18 @@
 
 ## Independently known old manifests recover pinned full readers and fresh exact cleanup receipts after owner retirement.
 # @@Verification={"arc":"storage_full_paged_epoch_reopen_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  managed_manifest, file_errors]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/state_full_paged_reference
+import ../../support/state_full_paged_native_fixture
+import ../../../src/storage/full_paged_codec as storage_full_paged_codec
+import ../../../src/storage/full_paged_stream as storage_full_paged_stream
+import ../../../src/storage/full_paged_store as storage_full_paged_store
+import ../../../src/storage/paged_io as storage_paged_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
 proc path(label: string): string =
   ## New namespaces isolate genuine pins and fault schedules without namespace-wide recovery scans.
   "full-epoch-reopen-" & $storageProcessId() & "-" & label

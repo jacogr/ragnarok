@@ -5,11 +5,16 @@
 
 ## Source-bound full-report signing bytes, bounded work, backend refusals and ARC lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_report, computed_guarantee]
-import ../../../src/codec/bounded
-import ../../../src/crypto/guarantee
-import ../../support/[pvm_computed_report, pvm_computed_report_vectors, pvm_computed_guarantee, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/crypto/guarantee as crypto_guarantee
+import ../../support/pvm_computed_report
+import ../../support/pvm_computed_report_vectors
+import ../../support/pvm_computed_guarantee
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observations or refuse only after full original source preparation.

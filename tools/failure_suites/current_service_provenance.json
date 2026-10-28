@@ -73,5 +73,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/current_service_provenance_results.nim"
+  "source": "tests/native/state_current_service_provenance_results.nim"
 }

@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Service selectors retain their public errors while sharing generic immutable query mechanics.
-import std/[assertions, syncio]
-import ../../../src/state/[proof_plan, proof_service]
-import ../../../src/codec/[bounded, state_layout, state_accounts]
+import std/assertions
+import std/syncio
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/proof_service as state_proof_service
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_accounts as codec_state_accounts
 proc main() =
   ## Combine explicit global/service identities without granting roots or widening a service selector.
   let service = planProofAccount(ServiceIndex(7), ElementLimit(1)).value

@@ -2,13 +2,30 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent chapter fixtures and complete authenticated source facts test atomic typed proof restoration, root/schema/declaration separation and isolated retained-owner release.
-import std/[assertions, syncio, envvars, cmdline]
-import ../support/[state_inventory_context, supplied_logical_context, arc_evidence]
-import ../../src/state/[supplied_proof_import, proof_state_import, proof_view, trie_proof,
-    snapshot_proof, proof_plan, planned_proof, store, global_snapshot, manifest,
-        supplied_logical_inventory, inventory]
-import ../../src/codec/[bounded, state_layout, state_composition, state_trie]
-include composition_fixture
+import std/assertions
+import std/syncio
+import std/envvars
+import std/cmdline
+import ../support/state_inventory_context
+import ../support/codec_supplied_logical_context
+import ../support/testing_arc_evidence
+import ../../src/state/supplied_proof_import as state_supplied_proof_import
+import ../../src/state/proof_state_import as state_proof_state_import
+import ../../src/state/proof_view as state_proof_view
+import ../../src/state/trie_proof as state_trie_proof
+import ../../src/state/snapshot_proof as state_snapshot_proof
+import ../../src/state/proof_plan as state_proof_plan
+import ../../src/state/planned_proof as state_planned_proof
+import ../../src/state/store as state_store
+import ../../src/state/global_snapshot as state_global_snapshot
+import ../../src/state/manifest as state_manifest
+import ../../src/state/supplied_logical_inventory as state_supplied_logical_inventory
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_trie as codec_state_trie
+include nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine complete-root reconstruction cannot succeed through a refusing backend.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -25,7 +42,7 @@ const viewLimits = ProofViewLimits(items: ElementLimit(64), valueBytes: ByteLimi
 proc authenticated(source: StateStoreSnapshot): ProofView =
   ## Independently authenticate all exact physical keys through existing proof generation/verification before exercising typed restoration.
   var keys = newSeq[StateKey](source.commitment.entries)
-  for i in 0..<keys.len: keys[i] = source.keyAt(store.StateEntryIndex(i)).value
+  for i in 0..<keys.len: keys[i] = source.keyAt(state_store.StateEntryIndex(i)).value
   let plan = captureStateProofPlan(keys, ElementLimit(64)).value
   let proofs = generatePlannedProofs(source, plan, inventoryMapLimits, perProof, aggregate).value
   var queries = newSeq[StateProofQuery](proofs.len)
@@ -94,7 +111,7 @@ proc main() {.raises.} =
   assert not sameStateSnapshot(restored, original) and sameStateStorePolicy(restored, original)
   assert restored.commitment.entries == original.commitment.entries
   for i in 0..<original.commitment.entries:
-    let key = original.keyAt(store.StateEntryIndex(i)).value
+    let key = original.keyAt(state_store.StateEntryIndex(i)).value
     assert restored.lookup(key).value.bytes == original.lookup(
         key).value.bytes # All physical chapters and untouched namespaces remain exact on the independently owned map.
   let partial = projectProofView(evidence, [chapterKey(StateChapter(1))], viewLimits).value

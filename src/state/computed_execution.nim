@@ -3,7 +3,9 @@
 
 ## Execute genuine computed accumulation rounds using only their retained original parameter authority.
 
-import ./[computed_round, accumulation_runner, accumulation_execution]
+import ./computed_round as state_computed_round
+import ./accumulation_runner as state_accumulation_runner
+import ./accumulation_execution as state_accumulation_execution
 
 type
   ComputedExecutionError* {.pure.} = enum ## Only a selected actual runner failure carries its original typed refusal.

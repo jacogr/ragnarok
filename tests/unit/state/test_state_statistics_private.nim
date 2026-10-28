@@ -9,8 +9,9 @@
 
 # @@Verification={"arc": "statistics_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
 include ../../../src/codec/state_statistics
 
 ## Independent current/previous populations model a resized epoch with bounded core/service work.

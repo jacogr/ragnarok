@@ -4,17 +4,35 @@
 ## Prepare finalized successors from owned blocks against the selected complete-map application head.
 ## Existing state/PVM stages retain authority; private prefixes never publish until a later handoff tick.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ./[chain, handoff]
-import ../pvm/backend
-import ../chain/[genesis, provider, parameters]
-import ../codec/[block_codec, header, bounded]
-import ../state/[fuzz_ancestry, store, block_transition, report_transition, report_admission,
-  accumulation_queue,
-  accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion,
-  accumulation_current_update, accumulation_storage_history, service_identity_history, request_identity_history]
+import ./chain as app_chain
+import ./handoff as app_handoff
+import ../pvm/backend as pvm_backend
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../state/fuzz_ancestry as state_fuzz_ancestry
+import ../state/store as state_store
+import ../state/block_transition as state_block_transition
+import ../state/report_transition as state_report_transition
+import ../state/report_admission as state_report_admission
+import ../state/accumulation_queue as state_accumulation_queue
+import ../state/accumulation_round as state_accumulation_round
+import ../state/accumulation_runner as state_accumulation_runner
+import ../state/accumulation_driver as state_accumulation_driver
+import ../state/accumulation_finalization as state_accumulation_finalization
+import ../state/accumulation_outputs as state_accumulation_outputs
+import ../state/accumulation_completion as state_accumulation_completion
+import ../state/report_anchors as state_report_anchors
+import ../state/accumulation_current_completion as state_accumulation_current_completion
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/accumulation_storage_history as state_accumulation_storage_history
+import ../state/service_identity_history as state_service_identity_history
+import ../state/request_identity_history as state_request_identity_history
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.

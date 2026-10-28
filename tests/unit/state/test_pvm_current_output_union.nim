@@ -3,10 +3,18 @@
 # @@Verification={"arc": "pvm_current_output_union_arc_release"}
 
 ## Terminal output union preserves full pair identity across real current entries and excludes original annulled yields.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_outputs]
-import ../../../src/state/[accumulation_current_outputs, accumulation_current_driver, history]
-import ../../support/[accumulation_current_outputs_context, accumulation_current_statistics_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/state/accumulation_current_outputs as state_accumulation_current_outputs
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/history as state_history
+import ../../support/state_accumulation_current_outputs_context
+import ../../support/state_accumulation_current_statistics_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc main() {.raises.} =

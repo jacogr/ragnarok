@@ -4,13 +4,22 @@
 ## Real kernel file-size ceilings reach the native worker and preserve its exact two-stage publication receipts.
 ## An empty candidate is smaller than its head so the kernel can fail precisely after durable staging.
 
-import std/[assertions, syncio, monotimes, times]
+import std/assertions
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../support/file_size_ceiling
-import ../../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint_worker,
-    checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../support/testing_file_size_ceiling
+import ../../../src/state/checkpoint_bank as state_checkpoint_bank
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/state/checkpoint_transfer as state_checkpoint_transfer
+import ../../../src/state/checkpoint_worker as state_checkpoint_worker
+import ../../../src/state/checkpoint as state_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/lib/atomic_file as lib_atomic_file
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/bounded as codec_bounded
 
 
 

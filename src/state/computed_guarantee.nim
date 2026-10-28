@@ -3,9 +3,10 @@
 
 ## Bind the GP guarantorsig transcript to one original complete computed report.
 
-import ../codec/bounded
-import ../crypto/[primitives, guarantee]
-import ./computed_report
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
+import ../crypto/guarantee as crypto_guarantee
+import ./computed_report as state_computed_report
 
 type
   ComputedGuaranteeError* {.pure.} = enum ## Refusals carry no signing transcript or partial candidate owner.

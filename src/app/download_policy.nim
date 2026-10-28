@@ -4,8 +4,9 @@
 ## Strict complete v1 download policies preserve all nominal stage budgets without inferred defaults.
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
-import std/[strutils, syncio]
-import ../quic/block_download_loop
+import std/strutils
+import std/syncio
+import ../quic/block_download_loop as quic_block_download_loop
 
 const
   DownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.

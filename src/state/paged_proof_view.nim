@@ -4,9 +4,14 @@
 ## Bounded paged light evidence becomes an ordinary immutable ProofView only after state-layer recapture and verification.
 ## Unknown stored queries remain missing witnesses; no partial evidence becomes a complete StateStore.
 import std/algorithm
-import ./[trie_proof, proof_view]
-import ../storage/[paged_store, paged_stream, paged_codec]
-import ../codec/[bounded, state_layout, state_trie]
+import ./trie_proof as state_trie_proof
+import ./proof_view as state_proof_view
+import ../storage/paged_store as storage_paged_store
+import ../storage/paged_stream as storage_paged_stream
+import ../storage/paged_codec as storage_paged_codec
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   PagedProofViewLimits* = object ## Native per-query work and per-proof/batch/view retention ceilings remain independent.

@@ -3,8 +3,13 @@
 
 ## Explicit-root restoration prepares complete account reports before any account-content work.
 ## This synchronous unchanged-format adapter performs no I/O, canonical installation or root discovery.
-import ../codec/[state_trie, state_composition]
-import ./[validated_checkpoint, inventory, account_review_plan, account_review, economic_profile]
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./validated_checkpoint as state_validated_checkpoint
+import ./inventory as state_inventory
+import ./account_review_plan as state_account_review_plan
+import ./account_review as state_account_review
+import ./economic_profile as state_economic_profile
 type
   PlannedReviewCheckpointLimits* = object ## Restoration, compact capture and complete report preparation keep independent policies.
     serialization*: StateCheckpointLimits

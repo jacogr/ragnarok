@@ -5,10 +5,20 @@
 import std/assertions
 import std/posix/posix
 import ./storage_io
-import ../../src/storage/[light_journal_cache, light_journal_replay, light_delta, light_snapshot,
-  light_state_cache, state_proof, full_state_trie, database_identity, managed_io,
-  managed_manifest, file_errors]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_state_cache as storage_light_state_cache
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/storage/managed_io as storage_managed_io
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 type
   LightJournalFixture* = object ## Detached proof images and transitions retain no complete trie or native lease.
     config*: LightJournalConfig

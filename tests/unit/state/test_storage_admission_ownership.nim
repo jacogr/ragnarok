@@ -3,10 +3,16 @@
 
 ## Fused transfers and legacy raw admission retain independent immutable values, metadata, handles and lookups.
 # @@Verification={"arc": "storage_admission_ownership_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[admission_samples, arc_evidence]
-import ../../../src/storage/[node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/codec_admission_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/record_codec as storage_record_codec
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 type
   LeafWitness = object ## Fixed expected identity/value never borrows the mutable source image.
     digest: StateNodeHash

@@ -4,6 +4,6 @@
 ## Negative compiler fixture: failed request lookups cannot be retagged to expose fabricated history.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/services
+import ../../../src/chain/services as chain_services
 var decoded = default(ServiceRequestResult)
 decoded.status = ServiceReadError.None

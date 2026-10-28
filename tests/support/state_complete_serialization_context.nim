@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical corpus inputs shared by single/multi-service tests; expected bytes come only from Python fixtures.
-import std/[assertions, parseutils]
-import ../../src/crypto/primitives
-import ../../src/codec/[state_composition, state_accounts, state_service_values, state_requests]
+import std/assertions
+import std/parseutils
+import ../../src/crypto/primitives as crypto_primitives
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_service_values as codec_state_service_values
+import ../../src/codec/state_requests as codec_state_requests
 const sizes = [0, 1, 31, 32, 33, 63, 64, 65]
 proc serializationWord*(caseId, field, bits: int): uint64 =
   ## Fingerprint logical inputs without encoding them; zero/all-ones exercise unsigned domains.

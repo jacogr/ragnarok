@@ -8,7 +8,9 @@
 ## verdict/judgment/evidence access.
 
 import std/assertions
-import ./[natural, bounded, assurances]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./assurances as codec_assurances
 
 type
   DisputeHash* = distinct array[32, byte] ## A disputed report identity is distinct from an offender key, despite the same wire width.
@@ -117,10 +119,10 @@ proc scan(input: openArray[byte], config: DisputeConfig): DisputeResult[Layout] 
   # Canonical counts are bounded before host conversion; even empty sections consume budget.
   template number(target: untyped, ceiling: uint64) =
     block:
-      let parsed = natural.decode(input.toOpenArray(cursor, input.high))
+      let parsed = codec_natural.decode(input.toOpenArray(cursor, input.high))
       # Incomplete and overlong naturals remain distinct typed failures.
       if not parsed.ok:
-        return DisputeResult[Layout](status: if parsed.error == natural.truncated:
+        return DisputeResult[Layout](status: if parsed.error == codec_natural.truncated:
           DisputeError.Truncated
         else: DisputeError.NonCanonical) # Overlong encodings cannot select a second representation.
       cursor += int(parsed.consumed)
@@ -236,7 +238,8 @@ proc measure(value: Disputes, config: DisputeConfig): DisputeResult[int] {.raise
       # Strict order also excludes repeated validator identities.
       if judge <= previous: return DisputeResult[int](status: DisputeError.NonCanonical)
       previous = judge
-    required += 36+int(natural.encode(JamNatural(verdict.judgments.len)).len)+67*verdict.judgments.len
+    required += 36+int(codec_natural.encode(JamNatural(
+        verdict.judgments.len)).len)+67*verdict.judgments.len
   # Culprit and fault uniqueness are independent; the same key may occur once in each section.
   for i in 1..<value.culprits.len:
     # Reject duplicate or descending culprit identities before computing output capacity.
@@ -297,7 +300,7 @@ proc encodeDisputes*(value: Disputes, config: DisputeConfig,
   # Counts use canonical compact naturals rather than the scalar widths of indices/epochs.
   template number(count: int) =
     block:
-      let prefix = natural.encode(JamNatural(count))
+      let prefix = codec_natural.encode(JamNatural(count))
       # Emit only the active canonical natural prefix, never its unused fixed storage.
       for i in 0..<prefix.len:
         output[cursor] = prefix.bytes[i] # Vote counts above 127 retain general-natural encoding.

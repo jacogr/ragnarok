@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_global_roles_results.nim",
+  "source": "tests/native/state_accumulation_global_roles_results.nim",
   "build_name": "accumulation-global-roles-results",
   "crypto_library": "crypto",
   "cases": [

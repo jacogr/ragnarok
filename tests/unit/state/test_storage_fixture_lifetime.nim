@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixture-only lifetime checks distinguish live prepared payloads from actual ARC-retired scopes.
-import std/[assertions, syncio]
-import ../../support/[storage_lifetime_samples, storage_allocations]
+import std/assertions
+import std/syncio
+import ../../support/storage_lifetime_samples
+import ../../support/storage_allocations
 
 let before = occupiedStorageBytes()
 for count in [1024, 8192]:

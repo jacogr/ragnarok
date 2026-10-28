@@ -6,8 +6,12 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/[composite, work_report, report_owned, owned]
+import std/cmdline
+import std/syncio
+import ../../src/codec/composite as codec_composite
+import ../../src/codec/work_report as codec_work_report
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/owned as codec_owned
 
 let useDefault = paramStr(2) == "default"
 let empty = newSeq[byte](0)

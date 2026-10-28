@@ -4,9 +4,18 @@
 ## A stable directory lease selects one complete snapshot and its exact append journal.
 ## Opening validates every selected byte and graph; no directory scan or older-epoch fallback grants authority.
 import std/assertions
-import ./[file_errors, managed_io, managed_manifest, snapshot_codec, node_repository,
-  node_records, record_codec, journal_codec, database_identity, durability]
-import ../codec/[bounded, state_trie]
+import ./file_errors as storage_file_errors
+import ./managed_io as storage_managed_io
+import ./managed_manifest as storage_managed_manifest
+import ./snapshot_codec as storage_snapshot_codec
+import ./node_repository as storage_node_repository
+import ./node_records as storage_node_records
+import ./record_codec as storage_record_codec
+import ./journal_codec as storage_journal_codec
+import ./database_identity as storage_database_identity
+import ./durability as storage_durability
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 
 type
   ManagedLimits* = object ## Physical file bounds remain independent of complete graph and context ceilings.

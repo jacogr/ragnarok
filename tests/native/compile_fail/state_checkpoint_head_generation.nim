@@ -3,7 +3,7 @@
 
 ## A bare counter cannot replace the nominal local checkpoint generation.
 # @@Verification={"group": "nominal", "expected": "CheckpointGeneration", "early": ["newCheckpointHead(", "[1] expected: CheckpointGeneration but got: uint64"]}
-import ../../../src/state/checkpoint_head
-import ../../../src/codec/state_trie
+import ../../../src/state/checkpoint_head as state_checkpoint_head
+import ../../../src/codec/state_trie as codec_state_trie
 let number = 1'u64
 discard newCheckpointHead(number, CheckpointSlot.First, default(StateRoot))

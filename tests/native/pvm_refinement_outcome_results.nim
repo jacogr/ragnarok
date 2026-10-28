@@ -3,10 +3,16 @@
 
 ## Optimized probes reject refused owners, wrong-stage reason access and protocol-error byte extraction.
 
-import std/[assertions, cmdline]
-import ../../src/state/[refinement_outcome, refinement_bootstrap, refinement_dispatch]
-import ../../src/pvm/[machine, step, refinement_exports, output]
-import ../../src/codec/composite
+import std/assertions
+import std/cmdline
+import ../../src/state/refinement_outcome as state_refinement_outcome
+import ../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../src/pvm/output as pvm_output
+import ../../src/codec/composite as codec_composite
 import ../support/pvm_refinement_outcome
 
 proc run(source: PreparedRefinementBootstrap, cap = refinementLimits()): RefinementInvocationResult[

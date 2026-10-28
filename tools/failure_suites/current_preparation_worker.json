@@ -17,5 +17,5 @@
   "native_libraries": [
     "bandersnatch"
   ],
-  "source": "tests/native/current_preparation_worker_results.nim"
+  "source": "tests/native/state_current_preparation_worker_results.nim"
 }

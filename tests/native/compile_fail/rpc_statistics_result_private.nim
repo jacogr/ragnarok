@@ -4,6 +4,6 @@
 ## Negative compiler fixture: prevent retagging a failed statistics read as success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/statistics
+import ../../../src/chain/statistics as chain_statistics
 var decoded = default(StatisticsReadResult)
 decoded.status = StatisticsReadError.None

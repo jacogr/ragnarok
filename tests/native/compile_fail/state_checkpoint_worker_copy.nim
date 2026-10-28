@@ -3,7 +3,7 @@
 
 ## Composite native thread/bank/buffer ownership independently rejects actual ARC duplication.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CheckpointWorker>", "build_name": "state-checkpoint-worker-copy"}
-import ../../../src/state/checkpoint_worker
+import ../../../src/state/checkpoint_worker as state_checkpoint_worker
 var original = default(CheckpointWorker)
 var duplicate = original
 discard original.close()

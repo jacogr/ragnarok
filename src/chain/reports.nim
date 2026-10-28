@@ -4,12 +4,19 @@
 ## Lookup canonical work reports retained in configured genesis availability assignments and ready queues.
 ## Exposes nominal report identities and guarded immutable report results; no archive or validity claim.
 
-import ./genesis
-import ../state/store
-import ../codec/[assurances, state_layout, state_safrole, state_availability, guarantees,
-    report_owned, owned, bounded, state_workqueues]
-import ../crypto/primitives
-export report_owned, owned
+import ./genesis as chain_genesis
+import ../state/store as state_store
+import ../codec/assurances as codec_assurances
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_availability as codec_state_availability
+import ../codec/guarantees as codec_guarantees
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/bounded as codec_bounded
+import ../codec/state_workqueues as codec_state_workqueues
+import ../crypto/primitives as crypto_primitives
+export codec_report_owned, codec_owned
 
 type
   WorkReportHash* = distinct array[32, byte] ## Report identity hashes the exact canonical report, excluding guarantee credentials and slots.

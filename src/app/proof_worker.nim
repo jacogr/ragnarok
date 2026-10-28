@@ -5,8 +5,11 @@
 ## Plain ARC requires all external selected-state aliases to remain untouched through cancellation and Done.
 ## One host thread serializes controls; the worker stays at its final address until joined close.
 
-import std/[assertions, locks, rawthreads]
-import ./[proof_query, light_proof_import]
+import std/assertions
+import std/locks
+import std/rawthreads
+import ./proof_query as app_proof_query
+import ./light_proof_import as app_light_proof_import
 
 type
   ProofWorkerPhase* {.pure.} = enum ## Done still occupies capacity and retains the exclusive graph lease.

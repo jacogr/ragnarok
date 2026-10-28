@@ -4,12 +4,29 @@
 ## Bind original pools, posterior queues and verified guarantee use to one authenticated accumulation successor.
 ## Only a private complete-map C(1) replacement is prepared; whole-block publication remains separate.
 
-import ../codec/[bounded, assurances, header, report_owned, state_authorization, state_layout, state_trie]
-import ./[accumulation_preimages, accumulation_activity, accumulation_validators,
-  accumulation_times,
-  accumulation_statistics, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, guarantee_credentials, block_transition,
-  block_admission, authorization, store]
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/header as codec_header
+import ../codec/report_owned as codec_report_owned
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_preimages as state_accumulation_preimages
+import ./accumulation_activity as state_accumulation_activity
+import ./accumulation_validators as state_accumulation_validators
+import ./accumulation_times as state_accumulation_times
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./guarantee_credentials as state_guarantee_credentials
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./authorization as state_authorization
+import ./store as state_store
 
 type
   AccumulationAuthorizationLimits* = object ## Resource policies cannot replace source-derived chain domains or guarantee use.

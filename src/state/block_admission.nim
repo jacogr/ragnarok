@@ -8,10 +8,17 @@
 ## block/header/state views or typed stage failures.
 
 import std/assertions
-import ../codec/[block_codec, header, bounded, state_safrole, state_layout, state_trie]
-from ../codec/disputes import OffenderKey
-import ../crypto/[primitives, extrinsic_commitment]
-import ./[store, safrole_transition]
+import ../codec/block_codec as codec_block_codec
+import ../codec/header as codec_header
+import ../codec/bounded as codec_bounded
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+from ../codec/disputes as codec_disputes import OffenderKey
+import ../crypto/primitives as crypto_primitives
+import ../crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ./store as state_store
+import ./safrole_transition as state_safrole_transition
 
 type
   BlockAdmissionConfig* = object ## Caller-selected C.2 profile and independent parent-header ceiling; no domain is inferred from bytes.

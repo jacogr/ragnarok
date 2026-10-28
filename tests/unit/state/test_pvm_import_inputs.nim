@@ -4,11 +4,19 @@
 
 ## Bind every ordered package import to real verified leaf owners, with exact dictionaries and bounded ownership.
 
-import std/[assertions, syncio]
-import ../../../src/state/[import_inputs, import_justification, extrinsic_inputs]
-import ../../../src/codec/[bounded, work_package, work_report]
-import ../../../src/pvm/host_fetch
-import ../../support/[pvm_import_inputs, pvm_import_justification, pvm_import_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/import_inputs as state_import_inputs
+import ../../../src/state/import_justification as state_import_justification
+import ../../../src/state/extrinsic_inputs as state_extrinsic_inputs
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_report as codec_work_report
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../support/pvm_import_inputs
+import ../../support/pvm_import_justification
+import ../../support/pvm_import_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Select a refusal to prove that binding immutable proofs does no additional hashing.

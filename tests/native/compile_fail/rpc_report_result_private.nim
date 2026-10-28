@@ -4,6 +4,6 @@
 ## Negative compiler fixture: prevent retagging a failed reports read as success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/chain/reports
+import ../../../src/chain/reports as chain_reports
 var decoded = default(ReportReadResult)
 decoded.status = ReportReadError.None

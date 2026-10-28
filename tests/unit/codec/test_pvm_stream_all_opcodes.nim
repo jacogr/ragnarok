@@ -1,10 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
-import std/[assertions, syncio]
-import ../../../src/pvm/internal/handler_stream
-import ../../../src/codec/natural
-import ../../../src/pvm/[program, machine, gas, step]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/internal/handler_stream as pvm_handler_stream
+import ../../../src/codec/natural as codec_natural
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/step as pvm_step
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))

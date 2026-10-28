@@ -40,5 +40,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/current_storage_provenance_results.nim"
+  "source": "tests/native/state_current_storage_provenance_results.nim"
 }

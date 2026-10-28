@@ -5,8 +5,8 @@
 ## Checksums detect corruption; independently expected chain identity prevents accidental reuse.
 
 import std/assertions
-import ../crypto/primitives
-import ../codec/bounded
+import ../crypto/primitives as crypto_primitives
+import ../codec/bounded as codec_bounded
 
 const
   IdentityMagic = "RAGNAROK-FULL-NODES-V1\n"

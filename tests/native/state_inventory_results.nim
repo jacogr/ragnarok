@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic compact-inventory payload/reason contracts retain a genuine source-bound positive control.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/state_inventory_context
-import ../../src/state/[inventory, manifest]
-import ../../src/codec/state_service_values
-include composition_fixture
+import ../../src/state/inventory as state_inventory
+import ../../src/state/manifest as state_manifest
+import ../../src/codec/state_service_values as codec_state_service_values
+include nimony_composition_fixture
 proc extract(outcome: StateInventoryResult[StateInventory]): StateInventory {.noinline.} =
   ## Preserve actual linked success assertions for default and refused owners.
   outcome.value

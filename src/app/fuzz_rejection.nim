@@ -2,11 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Translate only explicitly recognized consensus import refusals; unknown/resource/context failures close locally.
-import ./candidate
-import ../state/[block_transition, block_admission, disputes, safrole_transition,
-  ticket_admission, safrole_authentication, safrole_markers, availability, report_admission,
-  report_policy, report_packages, report_assignments, report_anchors, guarantee_credentials]
-import ../crypto/assurance_context
+import ./candidate as app_candidate
+import ../state/block_transition as state_block_transition
+import ../state/block_admission as state_block_admission
+import ../state/disputes as state_disputes
+import ../state/safrole_transition as state_safrole_transition
+import ../state/ticket_admission as state_ticket_admission
+import ../state/safrole_authentication as state_safrole_authentication
+import ../state/safrole_markers as state_safrole_markers
+import ../state/availability as state_availability
+import ../state/report_admission as state_report_admission
+import ../state/report_policy as state_report_policy
+import ../state/report_packages as state_report_packages
+import ../state/report_assignments as state_report_assignments
+import ../state/report_anchors as state_report_anchors
+import ../state/guarantee_credentials as state_guarantee_credentials
+import ../crypto/assurance_context as crypto_assurance_context
 proc consensusReportFailure[T](failure: ReportAdmissionResult[T]): bool =
   ## A missing lookup ancestor is a local context failure, not evidence that the block violates consensus.
   case failure.error

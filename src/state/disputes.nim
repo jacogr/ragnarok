@@ -8,11 +8,22 @@
 ## Exposes planDisputes, checkDisputeMarker and publishDisputes with retained judgments,
 ## assignments and new-offender access.
 
-import std/[algorithm, assertions]
-import ../codec/[disputes, state_disputes, state_safrole, state_availability,
-  state_layout, state_trie, bounded, assurances, guarantees, report_owned, owned, header]
-import ../crypto/primitives
-import ./store
+import std/algorithm
+import std/assertions
+import ../codec/disputes as codec_disputes
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_availability as codec_state_availability
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
+import ../codec/assurances as codec_assurances
+import ../codec/guarantees as codec_guarantees
+import ../codec/report_owned as codec_report_owned
+import ../codec/owned as codec_owned
+import ../codec/header as codec_header
+import ../crypto/primitives as crypto_primitives
+import ./store as state_store
 
 type
   DisputesConfig* = object ## Independent limits bound full parent chapters, roster copies and posterior judgment sets.

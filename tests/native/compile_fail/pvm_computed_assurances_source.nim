@@ -5,8 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "AdvancedComputedChain", "early": ["prepareComputedAssurances(", "[1] expected: AdvancedComputedChain but got: BlockSnapshot"]}
 
-import ../../../src/state/computed_assurances
-import ../../../src/chain/genesis
-import ../../../src/codec/block_codec
+import ../../../src/state/computed_assurances as state_computed_assurances
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/codec/block_codec as codec_block_codec
 discard prepareComputedAssurances(default(BlockSnapshot), default(OwnedBlock),
     ComputedAssuranceConfig())

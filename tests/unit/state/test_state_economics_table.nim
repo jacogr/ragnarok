@@ -3,13 +3,24 @@
 
 ## Complete-source economic reports preserve explicit policy, uncovered observations, late failure rollback and retired graphs.
 # @@Verification={"arc": "state_economics_table_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, service_deposit_context, economic_profile_context, arc_evidence]
-import ../../../src/chain/parameters
-import ../../../src/state/[economics_table, economic_profile, service_deposit, account_deposit,
-    footprint_audit, service_directory, inventory]
-import ../../../src/codec/[bounded, state_accounts]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/state_service_deposit_context
+import ../../support/state_economic_profile_context
+import ../../support/testing_arc_evidence
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/state/economics_table as state_economics_table
+import ../../../src/state/economic_profile as state_economic_profile
+import ../../../src/state/service_deposit as state_service_deposit
+import ../../../src/state/account_deposit as state_account_deposit
+import ../../../src/state/footprint_audit as state_footprint_audit
+import ../../../src/state/service_directory as state_service_directory
+import ../../../src/state/inventory as state_inventory
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after real source/evidence construction.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

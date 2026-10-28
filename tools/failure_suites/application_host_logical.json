@@ -304,5 +304,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/application_host_logical_results.nim"
+  "source": "tests/native/app_host_logical_results.nim"
 }

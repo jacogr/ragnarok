@@ -4,8 +4,10 @@
 ## Negative runtime fixture for the public gas-result success precondition.
 ## The executable selects a failure by command-line argument and attempts forbidden cost access.
 
-import std/[cmdline, assertions]
-import ../../src/pvm/[program, gas]
+import std/cmdline
+import std/assertions
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/gas as pvm_gas
 let selection = paramStr(1)
 var outcome = default(GasResult)
 # Dynamic selection preserves runtime contract checking rather than constant-folded rejection.

@@ -4,11 +4,14 @@
 ## Capture scalar checkpoint context from one selected application head and its exact canonical complete map.
 ## This metadata is not a consensus certificate or authorization to adopt a recovered chain.
 
-import ./chain
-import ../chain/[genesis, provider, parameters]
-import ../state/store
-import ../codec/[state_trie, bounded]
-import ../crypto/primitives
+import ./chain as app_chain
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../state/store as state_store
+import ../codec/state_trie as codec_state_trie
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
 
 type
   ApplicationCheckpointSlot* = distinct uint32 ## Captured block time remains distinct from disk generations and slot-file selectors.

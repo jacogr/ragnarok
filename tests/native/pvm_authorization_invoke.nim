@@ -3,11 +3,18 @@
 
 ## Optimized guards reject failed authorization payloads and unrelated stage details after genuine positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[authorization_invocation, refinement_lookup]
-import ../../src/codec/bounded
-import ../../src/pvm/[initialize, host_fetch, step, output, machine]
-import ../support/[pvm_authorization_invoke, pvm_refinement_outcome]
+import std/assertions
+import std/cmdline
+import ../../src/state/authorization_invocation as state_authorization_invocation
+import ../../src/state/refinement_lookup as state_refinement_lookup
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/pvm/step as pvm_step
+import ../../src/pvm/output as pvm_output
+import ../../src/pvm/machine as pvm_machine
+import ../support/pvm_authorization_invoke
+import ../support/pvm_refinement_outcome
 
 proc check(outcome: AuthorizationInvocationResult[AuthorizationInvocation],
     reason: AuthorizationInvocationError) =

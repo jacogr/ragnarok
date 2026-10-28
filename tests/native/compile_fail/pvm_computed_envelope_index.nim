@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedReporterIndex", "early": ["computedEnvelopeReporterAt(", "[2] expected: ComputedReporterIndex but got: ComputedCredentialIndex"]}
 
-import ../../../src/state/[computed_envelope, computed_credentials]
+import ../../../src/state/computed_envelope as state_computed_envelope
+import ../../../src/state/computed_credentials as state_computed_credentials
 discard computedEnvelopeReporterAt(default(ComputedGuaranteeEnvelope), ComputedCredentialIndex(0))

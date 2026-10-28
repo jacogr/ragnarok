@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Standalone bounded replay retains ordinary Nimony startup and fatal assertion semantics.
-import std/[assertions, syncio, cmdline]
+import std/assertions
+import std/syncio
+import std/cmdline
 import ./pvm_upstream_target
 if paramCount() == 0: quit(2)
 for index in 1..paramCount():

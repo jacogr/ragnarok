@@ -4,7 +4,7 @@
 ## Compatibility import for completed reentry execution; preparation and completion share private ownership in accumulation_reentry.
 ## Preserves the existing guarded completion API without exposing raw construction of recursive certificates.
 
-import ./accumulation_reentry
+import ./accumulation_reentry as state_accumulation_reentry
 export AccumulationReentryExecutionInfo, AccumulationReentryExecutionError,
   CompletedAccumulationReentry, AccumulationReentryExecutionResult,
   error, value, batchFailure, executionInfo, executionGasAt, executionReentry, executionBatch,

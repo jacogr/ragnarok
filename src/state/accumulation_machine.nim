@@ -5,8 +5,11 @@
 ## Exposes bounded initialization, retained bootstrap/machine access and guarded typed failures.
 ## Initialization performs no guest execution, host mutation or state publication.
 
-import ../pvm/[initialize, machine, program]
-import ./[accumulation_invocation, accumulation_service]
+import ../pvm/initialize as pvm_initialize
+import ../pvm/machine as pvm_machine
+import ../pvm/program as pvm_program
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_service as state_accumulation_service
 
 type
   AccumulationHeapBounds* = object ## Copied envelope-derived heap interval under the adopted GP #538 zone reservation.

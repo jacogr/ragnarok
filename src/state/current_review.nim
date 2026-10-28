@@ -4,7 +4,12 @@
 ## Review one qualified current successor using only its original full child parameter tuple.
 ## Targeted account observations remain separate from full semantic validity, installation and root/finality policy.
 import std/assertions
-import ./[current_state, current_globals, current_profile, economic_profile, account_review_plan, account_review]
+import ./current_state as state_current_state
+import ./current_globals as state_current_globals
+import ./current_profile as state_current_profile
+import ./economic_profile as state_economic_profile
+import ./account_review_plan as state_account_review_plan
+import ./account_review as state_account_review
 type
   CurrentReviewPlan* = object ## Frozen original current serialization and admitted reports retain one immutable source and original parameter rates.
     initialized: bool

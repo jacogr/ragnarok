@@ -3,6 +3,6 @@
 
 ## Source/key arrays and selected result authority remain private.
 # @@Verification={"group":"privacy","expected":"requestReason"}
-import ../../../src/state/current_request_keys
+import ../../../src/state/current_request_keys as state_current_request_keys
 var owner: CurrentRequestKeyResult[CurrentRequestKeys]
 discard owner.requestReason

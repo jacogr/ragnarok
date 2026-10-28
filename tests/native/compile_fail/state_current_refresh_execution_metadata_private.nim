@@ -3,6 +3,6 @@
 
 ## Refreshed mutable declarations and typed failure payloads require guarded result selection.
 # @@Verification={"group":"privacy","expected":"metadataReason"}
-import ../../../src/state/current_refresh
+import ../../../src/state/current_refresh as state_current_refresh
 var owner: CurrentRefreshResult
 discard owner.metadataReason

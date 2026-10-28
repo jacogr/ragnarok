@@ -3,9 +3,15 @@
 
 ## Current accpar n: immutable final prior-absent accounts from genuine nonannulled producers.
 ## This certificate selects logical accounts; physical publication and complete block coverage remain separate.
-import std/[algorithm, assertions]
-import ../codec/[bounded, state_accounts, state_layout]
-import ./[accumulation_annulment, accumulation_outcome, accumulation_effects, store]
+import std/algorithm
+import std/assertions
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./store as state_store
 
 type
   AccumulationCreationIndex* = distinct uint64 ## Final new-account ordinal is distinct from original producer or fact ordinals.

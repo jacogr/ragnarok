@@ -4,11 +4,20 @@
 
 ## Genuine refinement bootstraps drive host-13 gas, protocol return codes and atomic normalized results.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_bootstrap, refinement_dispatch, refinement_outcome]
-import ../../../src/pvm/[inner_machines, machine, step, refinement_exports]
-import ../../../src/codec/[composite, work_digest]
-import ../../support/[pvm_refinement_outcome, pvm_inner_lifecycle, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_bootstrap as state_refinement_bootstrap
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/refinement_outcome as state_refinement_outcome
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../support/pvm_refinement_outcome
+import ../../support/pvm_inner_lifecycle
+import ../../support/testing_arc_evidence
 
 proc limits(pages = 4'u32): RefinementInvocationLimits =
   ## Inner RAM allocation and all independent outer policies retain finite separately selected ceilings.

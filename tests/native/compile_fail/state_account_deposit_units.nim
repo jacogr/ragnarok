@@ -4,6 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "AccountBalance", "early": ["coversAccountMinimum(", "[3] expected: AccountBalance but got: AccountStorageBytes"]}
 
 ## Storage octets cannot substitute for a token threshold.
-import ../../../src/state/account_deposit
-import ../../../src/codec/state_accounts
+import ../../../src/state/account_deposit as state_account_deposit
+import ../../../src/codec/state_accounts as codec_state_accounts
 discard coversAccountMinimum(AccountBalance(1), AccountBalance(2), AccountStorageBytes(3))

@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict current-profile payload/reason guards retain a genuinely prepared current child as positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_profile, accumulation_current_update]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_checkpoint_context
+import ../support/state_accumulation_current_chain_context
+import ../../src/state/current_profile as state_current_profile
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/report_owned as codec_report_owned
+import ../../src/codec/state_composition as codec_state_composition
 proc extract(outcome: CurrentProfileResult[DerivedCurrentProfile]) {.noinline.} =
   ## Default/refused projection grants no source-bound profile.
   discard outcome.value

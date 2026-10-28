@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Grouped real-process journal qualification covers bootstrap, first/following append and every actual short-write/durability boundary.
-import std/[assertions, envvars, syncio]
-import ../../support/[storage_io, storage_light_journal, storage_light_journal_crash]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_light_journal
+import ../../support/storage_light_journal_crash
 proc main() {.raises.} =
   ## Completed controls first establish actual operation counts, then each witnessed successful boundary is killed independently.
   let fixture = lightFixture()

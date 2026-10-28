@@ -3,8 +3,14 @@
 
 ## Fixed complete-map selections support snapshot encoding ownership and separate-process peak probes.
 import std/assertions
-import ../../src/storage/[full_state_trie, node_repository, node_records, record_codec, snapshot_codec]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full_state_trie as storage_full_state_trie
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/storage/node_records as storage_node_records
+import ../../src/storage/record_codec as storage_record_codec
+import ../../src/storage/snapshot_codec as storage_snapshot_codec
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 
 type SnapshotFixture* = object ## Only the opaque immutable union and fixed scalar policy survive fixture creation.
   selection*: RepositorySelection

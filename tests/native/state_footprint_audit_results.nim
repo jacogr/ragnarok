@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic guarded audit extraction rejects defaults and preserves a genuine source-bound positive control.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/state_inventory_context
-import ../../src/state/[footprint_audit, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/state/footprint_audit as state_footprint_audit
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_accounts as codec_state_accounts
+include nimony_composition_fixture
 proc extract(outcome: FootprintAuditResult[CheckedAccountFootprints]): CheckedAccountFootprints {.noinline.} =
   ## Prevent static simplification of the guarded complete audit payload.
   outcome.value

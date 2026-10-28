@@ -2,17 +2,29 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Three genuine adoptions traverse automatic managed maintenance while preserving exact history and a later refusal prefix.
-import std/[assertions, syncio, envvars, monotimes]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
 import std/posix/posix
-import ../../../src/app/[current_download_command, services]
-import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[report_owned, bounded]
-import ../../../src/crypto/primitives
-import ../../../src/storage/[managed_manifest, database_identity]
-import ../../support/[current_consecutive_context, current_rotated_sequence_context,
-  current_consecutive_download_context,
-  current_sequence_command_context, current_services_disk_samples, managed_storage_samples,
-  block_download_transport, rpc_socket]
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/app/services as app_services
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/crypto/primitives as crypto_primitives
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_rotated_sequence_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_sequence_command_context
+import ../../support/state_current_services_disk_samples
+import ../../support/app_managed_storage_samples
+import ../../support/app_block_download_transport
+import ../../support/rpc_socket
 const
   ChainPath = "pvm-current-consecutive-maintenance-chain"
   PolicyPath = "pvm-current-consecutive-maintenance-policy"

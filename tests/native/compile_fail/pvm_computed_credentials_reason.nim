@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "assignmentReason"}
 
-import ../../../src/state/computed_credentials
+import ../../../src/state/computed_credentials as state_computed_credentials
 var candidate: ComputedCredentialResult[CredentialedComputedReport]
 discard candidate.assignmentReason

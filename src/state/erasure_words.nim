@@ -3,8 +3,9 @@
 
 ## Bounded scalar GP systematic Reed–Solomon transform over the pinned Cantor-coordinate field.
 
-import ../codec/[bounded, work_report]
-import ./erasure_layout
+import ../codec/bounded as codec_bounded
+import ../codec/work_report as codec_work_report
+import ./erasure_layout as state_erasure_layout
 
 type
   ErasureWord* = distinct uint16 ## Numeric Cantor coordinates corresponding to a little-endian E2 pair.

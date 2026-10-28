@@ -6,8 +6,8 @@
 
 import std/assertions
 import std/posix/posix
-import ./atomic_file
-import ../codec/bounded
+import ./atomic_file as lib_atomic_file
+import ../codec/bounded as codec_bounded
 
 type AtomicFileWriter* = object ## Own one lock descriptor and copied destination; no application graph is retained between calls.
   path: string

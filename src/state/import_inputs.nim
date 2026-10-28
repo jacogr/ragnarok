@@ -4,9 +4,12 @@
 ## Bind verified leaves to the exact original package derived from verified extrinsic ownership.
 ## Explicit lookup values resolve package references but do not certify root freshness/correspondence.
 
-import ../codec/[bounded, work_package, work_report]
-import ../pvm/host_fetch
-import ./[extrinsic_inputs, import_justification]
+import ../codec/bounded as codec_bounded
+import ../codec/work_package as codec_work_package
+import ../codec/work_report as codec_work_report
+import ../pvm/host_fetch as pvm_host_fetch
+import ./extrinsic_inputs as state_extrinsic_inputs
+import ./import_justification as state_import_justification
 
 type
   ImportInputsError* {.pure.} = enum ## Refusals contain no partial manifest/input binding.

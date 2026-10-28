@@ -7,8 +7,12 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_requests, state_service_values, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 ## A decoded fixed tagged history survives source mutation, caller-input destruction and local scope exit.
 proc captured(config: RequestEntryConfig): RequestHistoryRead =

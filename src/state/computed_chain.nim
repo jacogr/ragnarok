@@ -3,11 +3,20 @@
 
 ## Advance a fully composed computed state and its direct-child chain view only after every private phase succeeds.
 
-import ../chain/[genesis, provider, parameters]
-import ../codec/header
-import ./[computed_composition, computed_state_publication, computed_finalization,
-    computed_execution, computed_round, accumulation_finalization, report_admission,
-    block_transition, block_admission, store]
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../codec/header as codec_header
+import ./computed_composition as state_computed_composition
+import ./computed_state_publication as state_computed_state_publication
+import ./computed_finalization as state_computed_finalization
+import ./computed_execution as state_computed_execution
+import ./computed_round as state_computed_round
+import ./accumulation_finalization as state_accumulation_finalization
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   ComputedChainError* {.pure.} = enum ## Refusals expose no earlier successful private map, receipt or captured child.

@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <UdpEndpoint>", "build_name": "quic-endpoint-copy"}
 
-import ../../../src/quic/io
+import ../../../src/quic/io as quic_io
 var original = default(UdpEndpoint)
 var duplicate = original
 original.close()

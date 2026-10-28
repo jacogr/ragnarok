@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/current_block_download_results.nim",
+  "source": "tests/native/state_current_block_download_results.nim",
   "build_name": "current-block-download-results",
   "crypto_library": "crypto",
   "native_libraries": [

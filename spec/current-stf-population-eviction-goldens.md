@@ -84,7 +84,7 @@ tests run through ordinary discovery. Negative native controls additionally isol
 offender marker, bad culprit signature and repeated prior offender as
 `InvalidMarker`, `InvalidSignature`, `InvalidKey`; each preserves the canonical complete map.
 
-Reusable native construction lives in `tests/support/current_stf_epoch_context.nim`; each driver
+Reusable native construction lives in `tests/support/state_current_stf_epoch_context.nim`; each driver
 owns its execution loop and entry point. The batch must pass using the normal shared checked
 native profile cache, including epoch followed by eviction. No executable driver is imported as
 a helper: the earlier arrangement passed isolation but retained the old main in the shared-cache

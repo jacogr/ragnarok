@@ -7,7 +7,11 @@
 ## size measurement.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded, composite, work_digest]
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_digest as codec_work_digest
 
 type
   ReportHash*[kind: static[int]] = object ## Distinct generic hash domains own their bytes and cannot be silently interchanged.
@@ -189,11 +193,11 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
   # Read a canonical natural into private parser state, never into a caller-visible partial report.
   template readNumber(target: untyped) =
     block:
-      let parsed = natural.decode(input.toOpenArray(cursor, input.high))
+      let parsed = codec_natural.decode(input.toOpenArray(cursor, input.high))
       # Preserve precise natural failure before advancing or narrowing an attacker-supplied count.
       if not parsed.ok:
         return ReportResult(status: if parsed.error ==
-            natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
+            codec_natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
       target = uint64(parsed.value)
       cursor += parsed.consumed
   var count: uint64 = 0
@@ -292,10 +296,12 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
   for i in 1..<value.lookupCount:
     if not reportHashLess(value.lookup[i-1].packageHash, value.lookup[i].packageHash):
       return compositeFailure(CompositeError.NonCanonical)
-  var required = 272 + natural.encode(JamNatural(value.prerequisiteCount)).len +
-      32*value.prerequisiteCount + natural.encode(JamNatural(value.core)).len + 32 + natural.encode(
-      JamNatural(value.authGas)).len + natural.encode(JamNatural(total)).len + total +
-      natural.encode(JamNatural(value.lookupCount)).len + 64*value.lookupCount + natural.encode(
+  var required = 272 + codec_natural.encode(JamNatural(value.prerequisiteCount)).len +
+      32*value.prerequisiteCount + codec_natural.encode(JamNatural(value.core)).len + 32 +
+          codec_natural.encode(
+      JamNatural(value.authGas)).len + codec_natural.encode(JamNatural(total)).len + total +
+      codec_natural.encode(JamNatural(value.lookupCount)).len + 64*value.lookupCount +
+          codec_natural.encode(
       JamNatural(value.digestCount)).len
   # Validate the last digest before any earlier header or authorization bytes can be written.
   for i in 0..<value.digestCount:
@@ -309,7 +315,7 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
         digest.refine.extrinsicCount), uint64(digest.refine.extrinsicSize), uint64(
         digest.refine.exports)]
     # Each of the five bounded naturals contributes its canonical wire width.
-    for number in numbers: size += natural.encode(JamNatural(number)).len
+    for number in numbers: size += codec_natural.encode(JamNatural(number)).len
     # Subtraction protects host addition even on narrower address spaces.
     if size > high(int)-required: return compositeFailure(CompositeError.LengthOverflow)
     required += size
@@ -317,7 +323,7 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
 
 # Commit one canonical natural into a proven complete destination extent; no allocations are required.
 proc reportPutNatural(number: uint64, output: var openArray[byte], cursor: var int) {.raises: [].} =
-  let encoded = natural.encode(JamNatural(number))
+  let encoded = codec_natural.encode(JamNatural(number))
   # All target bytes belong to the enclosing encoder's preflighted extent.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len

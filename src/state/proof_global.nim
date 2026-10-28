@@ -4,16 +4,23 @@
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
 import std/assertions
-import ../codec/state_statistics
-import ../codec/state_outputs
-import ../codec/state_workqueues
-import ../codec/state_workqueues
-import ../codec/state_privileges
-import ../codec/state_availability
-import ../codec/state_disputes
-import ../codec/state_consensus
-import ../codec/[bounded, state_layout, state_safrole, state_composition, state_history, state_authorization]
-import ./[proof_plan, proof_view, trie_proof]
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_availability as codec_state_availability
+import ../codec/state_disputes as codec_state_disputes
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_history as codec_state_history
+import ../codec/state_authorization as codec_state_authorization
+import ./proof_plan as state_proof_plan
+import ./proof_view as state_proof_view
+import ./trie_proof as state_trie_proof
 
 type
   GlobalProofError* {.pure.} = enum ## Missing evidence, proven absence and malformed present values remain distinct.

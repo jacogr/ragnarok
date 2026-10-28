@@ -7,8 +7,14 @@
 ## Provides a test-process entry point that accepts trusted fixture requests and emits native
 ## observations for the independent Python harness.
 
-import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_layout, bounded, composite]
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/parseutils
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/composite as codec_composite
 
 # Select complete success before reading key, node, hash or consumed progress.
 proc checked[T](parsed: StateLayoutResult[T]): T =

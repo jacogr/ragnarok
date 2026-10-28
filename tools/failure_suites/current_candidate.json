@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/current_candidate_results.nim",
+  "source": "tests/native/state_current_candidate_results.nim",
   "build_name": "current-candidate-results",
   "crypto_library": "crypto",
   "cases": [

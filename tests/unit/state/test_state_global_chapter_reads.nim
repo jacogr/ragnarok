@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently authenticated chapter/time reads preserve missing, absent, malformed and bounded outcomes.
-import std/[assertions, syncio]
-import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_plan, proof_view]
-import ../../../src/codec/[bounded, assurances, state_layout, state_safrole, state_composition,
-    state_trie, state_consensus]
+import std/assertions
+import std/syncio
+import ../../support/state_proof_global_helpers
+import ../../../src/state/proof_global as state_proof_global
+import ../../../src/state/proof_plan as state_proof_plan
+import ../../../src/state/proof_view as state_proof_view
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_composition as codec_state_composition
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_consensus as codec_state_consensus
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained backend observer before checking hash-free typed reads.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

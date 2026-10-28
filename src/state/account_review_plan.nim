@@ -3,8 +3,17 @@
 
 ## Prepare all bounded complete account reports before content hashing; execute only frozen same-source policies.
 ## Prepared reports and targeted invariants grant neither trusted-root authority nor full global/STF validity.
-import ./[inventory, account_audit_plan, footprint_audit, preimage_content, preimage_linkage,
-  account_invariants, account_review, service_directory, supervision_table, economics_table, economic_profile]
+import ./inventory as state_inventory
+import ./account_audit_plan as state_account_audit_plan
+import ./footprint_audit as state_footprint_audit
+import ./preimage_content as state_preimage_content
+import ./preimage_linkage as state_preimage_linkage
+import ./account_invariants as state_account_invariants
+import ./account_review as state_account_review
+import ./service_directory as state_service_directory
+import ./supervision_table as state_supervision_table
+import ./economics_table as state_economics_table
+import ./economic_profile as state_economic_profile
 type
   AccountReviewPlanLimits* = object ## Caller-selected independent bounds are copied into a private immutable plan.
     audit*: AccountAuditLimits

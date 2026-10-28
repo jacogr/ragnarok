@@ -3,6 +3,6 @@
 
 ## Database identity and result backing stay private.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/storage/database_identity
+import ../../../src/storage/database_identity as storage_database_identity
 let hidden = default(IdentityResult[DatabaseIdentity])
 discard hidden.completed

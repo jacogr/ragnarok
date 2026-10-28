@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "globalReason"}
 
 ## Phase storage and successful state ownership remain private behind guarded accessors.
-import ../../../src/state/validated_checkpoint
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
 let private = default(ValidatedCheckpointResult)
 discard private.globalReason

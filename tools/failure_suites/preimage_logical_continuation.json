@@ -29,5 +29,5 @@
     "bandersnatch_observer",
     "bandersnatch"
   ],
-  "source": "tests/native/preimage_logical_continuation_results.nim"
+  "source": "tests/native/app_preimage_logical_continuation_results.nim"
 }

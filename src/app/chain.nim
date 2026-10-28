@@ -4,14 +4,23 @@
 ## Application-owned complete state and selected history, independent of optional RPC transport lifetime.
 ## Explicit RPC publication joins only matching histories; copies form independent immutable-parent branches.
 
-import ../chain/[genesis, provider, parameters]
-import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
-  accumulation_publication, accumulation_current_consensus, accumulation_current_update,
-  accumulation_storage_history, service_identity_history, request_identity_history]
-import ../codec/bounded
-import ../state/parent_profile
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../state/store as state_store
+import ../state/accumulation_chain as state_accumulation_chain
+import ../state/accumulation_finalization as state_accumulation_finalization
+import ../state/accumulation_completion as state_accumulation_completion
+import ../state/accumulation_publication as state_accumulation_publication
+import ../state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../state/accumulation_storage_history as state_accumulation_storage_history
+import ../state/service_identity_history as state_service_identity_history
+import ../state/request_identity_history as state_request_identity_history
+import ../codec/bounded as codec_bounded
+import ../state/parent_profile as state_parent_profile
 import ../rpc/server as rpc_server
-from ../rpc/protocol import configuredParameters, configuredGenesis
+from ../rpc/protocol as rpc_protocol import configuredParameters, configuredGenesis
 
 type
   ApplicationChain* = object ## Private independently updateable handle pair; copies share only immutable prior state/history.
@@ -72,7 +81,7 @@ func chainView*(chain: ApplicationChain): ChainView =
 proc captureParentProfile*(chain: ApplicationChain,
     limits: ParentProfileLimits): ParentProfileResult[SelectedParentProfile] =
   ## Borrow the original private view directly so profile admission precedes its whole-view/index copy.
-  parent_profile.captureParentProfile(chain.view, limits)
+  state_parent_profile.captureParentProfile(chain.view, limits)
 proc stateSnapshot*(chain: ApplicationChain): StateStoreResult[StateStoreSnapshot] =
   ## Retain the canonical complete-map version; default owners return the store's precise initialization error.
   chain.state.snapshot

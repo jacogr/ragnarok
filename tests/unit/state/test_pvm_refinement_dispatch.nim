@@ -4,13 +4,28 @@
 
 ## Original real guests verify bound refinement host inputs, transactional exports and shared heap behavior.
 
-import std/[assertions, syncio]
-import ../../../src/state/[refinement_dispatch, store]
-import ../../../src/pvm/[machine, program, step, gas, host_fetch, refinement_exports, inner_machines]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_trie, state_service_values,
-  state_requests, work_package, work_digest, work_report]
-import ../../support/arc_evidence
+import std/assertions
+import std/syncio
+import ../../../src/state/refinement_dispatch as state_refinement_dispatch
+import ../../../src/state/store as state_store
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/codec/state_requests as codec_state_requests
+import ../../../src/codec/work_package as codec_work_package
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/work_report as codec_work_report
+import ../../support/testing_arc_evidence
 
 proc parameters(): Parameters =
   ## Literal fixed-field maxima form a valid configured snapshot without a mutable parameter back door.

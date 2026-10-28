@@ -3,6 +3,6 @@
 
 ## Exact-source maintenance plans expose no mutable metadata or internal compaction candidate.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
 let hidden = default(PreparedLightMaintenance)
 discard hidden.data

@@ -3,10 +3,13 @@
 
 ## Strict computed stopped/finalization payload and selected child-reason probes with real completed guest controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_finalization, computed_execution, accumulation_driver,
-  accumulation_finalization]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_finalization as state_computed_finalization
+import ../../src/state/computed_execution as state_computed_execution
+import ../../src/state/accumulation_driver as state_accumulation_driver
+import ../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_computed_finalization
 
 proc expect[T](outcome: ComputedFinalizationResult[T], reason: ComputedFinalizationError) =

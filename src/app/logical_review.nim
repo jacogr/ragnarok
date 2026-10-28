@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Pair complete logical provenance with review of only its original current compact inventory and Parameters.
-import ../state/[current_logical, current_review, account_review_plan]
+import ../state/current_logical as state_current_logical
+import ../state/current_review as state_current_review
+import ../state/account_review_plan as state_account_review_plan
 type
   LogicalReviewPlan* = object ## The original logical owner and current review admission cannot be rebound independently.
     initialized: bool

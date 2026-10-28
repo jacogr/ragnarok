@@ -3,6 +3,6 @@
 
 ## Caller code cannot inspect or forge writer-owned page lookup metadata.
 # @@Verification={"group": "privacy", "expected": "recent"}
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 let writer = newScalarMemoryWriter(captureMemory([], PageLimit(0)).value).value
 discard writer.recent

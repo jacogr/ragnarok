@@ -3,11 +3,12 @@
 
 ## Capture explicitly trusted operator inputs once, independently of the checkpoint being restored.
 ## Checksums and sealed hashes bind bytes; the operator supplies authority, not this local decoder.
-import ./[checkpoint_identity, checkpoint_recovery]
-import ../codec/bounded
-import ../crypto/primitives
-import ../state/store
-import ../lib/atomic_file
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_recovery as app_checkpoint_recovery
+import ../codec/bounded as codec_bounded
+import ../crypto/primitives as crypto_primitives
+import ../state/store as state_store
+import ../lib/atomic_file as lib_atomic_file
 
 const MaxRecoveryHeaderBytes* = 256 * 1024 ## Match structural chain capture's existing sealed-header ceiling.
 type

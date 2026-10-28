@@ -7,8 +7,12 @@
 ## Exposes validateSafroleHeaderMarkers over parent/staged full-state snapshots and explicit
 ## marker policies.
 
-import ../codec/[state_safrole, state_consensus, state_layout, header]
-import ./[safrole_markers, store]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_layout as codec_state_layout
+import ../codec/header as codec_header
+import ./safrole_markers as state_safrole_markers
+import ./store as state_store
 
 ## Preserve absent/default/bounded state distinctions; lookup never hashes or mutates the map.
 func stateError(reason: StateStoreError): SafroleMarkerError =

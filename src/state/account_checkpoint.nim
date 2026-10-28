@@ -3,8 +3,15 @@
 
 ## Restore unchanged checkpoint bytes under an explicit expected root, then certify targeted account invariants.
 ## No raw restored source escapes failed serialization, capture or invariant checks; installation remains application-owned.
-import ../codec/[bounded, state_trie, state_composition]
-import ./[validated_checkpoint, inventory, account_invariants, footprint_audit, preimage_content, preimage_linkage]
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./validated_checkpoint as state_validated_checkpoint
+import ./inventory as state_inventory
+import ./account_invariants as state_account_invariants
+import ./footprint_audit as state_footprint_audit
+import ./preimage_content as state_preimage_content
+import ./preimage_linkage as state_preimage_linkage
 
 type
   AccountCheckpointLimits* = object ## All restoration/capture/predicate policies remain explicit and independently bounded.

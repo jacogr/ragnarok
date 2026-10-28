@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime-selected failed decodes grant no static control fact; valid targets and genuine invalid targets are positive controls.
-import std/[assertions, cmdline]
-import ../../src/pvm/program
+import std/assertions
+import std/cmdline
+import ../../src/pvm/program as pvm_program
 let origin = paramStr(1)
 var decoded = default(ProgramResult[Instruction])
 if origin == "invalid":

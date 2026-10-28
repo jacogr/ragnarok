@@ -5,5 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedReportLinks", "early": ["bindComputedState(", "[1] expected: ComputedReportLinks but got: ComputedGuaranteeTranscript"]}
 
-import ../../../src/state/[computed_state, computed_links, computed_guarantee, block_admission, store]
+import ../../../src/state/computed_state as state_computed_state
+import ../../../src/state/computed_links as state_computed_links
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
 discard bindComputedState(default(ComputedGuaranteeTranscript), default(BlockAdmissionResult))

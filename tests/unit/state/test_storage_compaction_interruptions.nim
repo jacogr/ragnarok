@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every actual epoch-replacement barrier resumes through consumed interruptions before success.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_compaction_faults
 proc main() {.raises.} =
   ## Count genuine baseline barriers, then interrupt each individually without changing selected state.

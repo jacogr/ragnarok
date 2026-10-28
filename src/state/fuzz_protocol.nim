@@ -4,9 +4,15 @@
 ## Pinned JAM fuzzer-v1 messages own bounded immutable wire and structurally validated children.
 ## Wire capture proves neither protocol negotiation nor genesis trust, STF success or logical completeness.
 import std/assertions
-import ./[store, trace_state]
-import ../codec/[bounded, natural, header, block_codec, state_layout, state_trie]
-import ../lib/utf8
+import ./store as state_store
+import ./trace_state as state_trace_state
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/header as codec_header
+import ../codec/block_codec as codec_block_codec
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../lib/utf8 as lib_utf8
 
 type
   FuzzKind* {.pure.} = enum ## Published one-byte discriminants have no alternate representation.
@@ -247,13 +253,13 @@ proc fuzzAncestors*(source: FuzzMessage): FuzzResult[seq[FuzzAncestor]] =
   var output = newSeq[FuzzAncestor](data.ancestors.len)
   for index in 0..<output.len: output[index] = data.ancestors[index]
   FuzzResult[seq[FuzzAncestor]](status: FuzzError.None, completed: output)
-proc fuzzRoot*(source: FuzzMessage): FuzzResult[state_trie.StateRoot] =
+proc fuzzRoot*(source: FuzzMessage): FuzzResult[codec_state_trie.StateRoot] =
   ## A StateRoot response is not interchangeable with a GetState header identity.
   let data = source.data
-  if data == nil: return fail[state_trie.StateRoot](FuzzError.InvalidOwner)
-  if data.kind != FuzzKind.StateRoot: return fail[state_trie.StateRoot](FuzzError.WrongKind)
-  FuzzResult[state_trie.StateRoot](status: FuzzError.None, completed: state_trie.StateRoot(
-      data.hash))
+  if data == nil: return fail[codec_state_trie.StateRoot](FuzzError.InvalidOwner)
+  if data.kind != FuzzKind.StateRoot: return fail[codec_state_trie.StateRoot](FuzzError.WrongKind)
+  FuzzResult[codec_state_trie.StateRoot](status: FuzzError.None,
+      completed: codec_state_trie.StateRoot(data.hash))
 proc fuzzRequestedHeader*(source: FuzzMessage): FuzzResult[FuzzHeaderHash] =
   ## Extract a complete fixed request identity only from GetState.
   let data = source.data
@@ -293,7 +299,7 @@ proc newFuzzPeer*(peer: FuzzPeer, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   wire.addNatural(uint64(peer.name.len))
   for character in peer.name: wire.add(byte(character))
   decodeFuzzMessage(wire, limits)
-proc newFuzzRoot*(root: state_trie.StateRoot, limits: FuzzLimits): FuzzResult[FuzzMessage] =
+proc newFuzzRoot*(root: codec_state_trie.StateRoot, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   ## Construct only a complete native root response under the same explicit message cap.
   if uint64(limits.bytes) < 33: return fail[FuzzMessage](FuzzError.LimitExceeded)
   var wire = @[2'u8]

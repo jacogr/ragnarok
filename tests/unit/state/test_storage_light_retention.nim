@@ -3,10 +3,18 @@
 
 ## An independent complete-root small-map model checks quota eviction, protected queries and atomic immutable admission.
 # @@Verification={"arc":"storage_light_retention_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[arc_evidence, storage_light_root, storage_light_journal]
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, full_state_trie]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../support/storage_light_root
+import ../../support/storage_light_journal
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/state_proof as storage_state_proof
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Clear provider observations independently of source/model construction.
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}

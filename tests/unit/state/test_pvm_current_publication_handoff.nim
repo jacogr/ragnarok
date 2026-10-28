@@ -3,12 +3,19 @@
 # @@Verification={"arc": "pvm_current_publication_handoff_arc_release"}
 
 ## Publishing freezes one genuine current update; only its exact installed child can complete the bounded host handoff.
-import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, current_handoff]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[store, accumulation_current_update]
-import ../../support/[accumulation_current_chain_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/app/chain as app_chain
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../support/state_accumulation_current_chain_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Host publication bookkeeping cannot repeat primitive work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

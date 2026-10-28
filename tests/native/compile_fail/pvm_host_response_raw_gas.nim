@@ -6,5 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: MachineGas"}
 
-import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/step as pvm_step
 discard HostResponse(gas: 1'u64)

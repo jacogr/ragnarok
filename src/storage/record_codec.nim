@@ -4,9 +4,12 @@
 ## Strict versioned physical trie-record batches; validates shape/budgets before node hashes.
 ## Record validation is local integrity, not complete graph verification or chain authority.
 
-import std/[algorithm, assertions]
-import ./node_records
-import ../codec/[state_trie, state_layout, bounded]
+import std/algorithm
+import std/assertions
+import ./node_records as storage_node_records
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_layout as codec_state_layout
+import ../codec/bounded as codec_bounded
 
 const
   CollectionMagic = "RAGNAROK-RECORDS-V1\n"

@@ -5,8 +5,12 @@
 ## This captures provenance and values, without certifying round membership or applying deferred credits.
 
 import std/algorithm
-import ../codec/[bounded, c2_records, state_accounts]
-import ./[accumulation_outcome, accumulation_effects, accumulation_annulment]
+import ../codec/bounded as codec_bounded
+import ../codec/c2_records as codec_c2_records
+import ../codec/state_accounts as codec_state_accounts
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_annulment as state_accumulation_annulment
 
 type
   AccumulationTransferSourceIndex* = distinct uint64 ## Source ordinal is distinct from a transfer's ordinal inside a selected context.

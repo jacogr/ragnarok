@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## 4096 spread public record copies retain their full independent payloads after source close and fixture retirement.
-import std/[assertions, syncio]
-import ../../support/[storage_lifetime_samples, storage_allocations]
+import std/assertions
+import std/syncio
+import ../../support/storage_lifetime_samples
+import ../../support/storage_allocations
 
 let baseline = occupiedStorageBytes()
 for count in [1024, 8192]:

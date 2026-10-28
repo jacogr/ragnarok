@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/validator_state_results.nim",
+  "source": "tests/native/state_validator_state_results.nim",
   "build_name": "validator-state-results",
   "crypto_library": "crypto",
   "native_libraries": [

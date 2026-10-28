@@ -7,8 +7,9 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/quic/integration
+import std/assertions
+import std/syncio
+import ../../../src/quic/integration as quic_integration
 assert not IntegrationEnabled
 let key = preimageKey([1'u8, 2, 3])
 assert key.error == IntegrationError.Crypto

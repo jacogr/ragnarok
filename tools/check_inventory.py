@@ -10,6 +10,7 @@ inconsistent verification declarations.
 from pathlib import Path
 import re
 import sys
+from module_naming import validate_module_names
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,6 +28,7 @@ def validate_e2e_groups(workflow):
 
 # Resolve local inventories only; pinned dependency trees retain their existing setup/provenance checks.
 def validate_inventory():
+    validate_module_names(ROOT)
     from failure_checks import FAILURE_SUITES
     from native_tests import unit_source
     from native_requirements import UNIT_LINKS

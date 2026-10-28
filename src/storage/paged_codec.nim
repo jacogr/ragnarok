@@ -4,9 +4,13 @@
 ## Fixed-size paged-light metadata and digest paths, without files, resident indexes or proof authority.
 ## Successful codecs establish shape/integrity only. Strict proof verification and native ownership are separate.
 import std/assertions
-import ./[database_identity, managed_manifest, light_delta]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import ./database_identity as storage_database_identity
+import ./managed_manifest as storage_managed_manifest
+import ./light_delta as storage_light_delta
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 
 const
   PagedPageBytes* = 4096     ## Logical pages are independent of the host's virtual-memory page size.

@@ -4,12 +4,22 @@
 ## Native empty-block authoring from an exact complete parent. Rotation, fallback eligibility
 ## and markers use the ordinary GP components. Returned blocks grant no adoption authority.
 
-import ../chain/[genesis, parameters]
-import ../codec/[bounded, header, block_codec, state_layout, state_safrole,
-  state_consensus, state_disputes]
-import ../state/[store, validator_state, sealer_schedule, safrole_markers, safrole_transition]
-import ../crypto/extrinsic_commitment
-import ../bandersnatch/bandersnatch
+import ../chain/genesis as chain_genesis
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../codec/block_codec as codec_block_codec
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_disputes as codec_state_disputes
+import ../state/store as state_store
+import ../state/validator_state as state_validator_state
+import ../state/sealer_schedule as state_sealer_schedule
+import ../state/safrole_markers as state_safrole_markers
+import ../state/safrole_transition as state_safrole_transition
+import ../crypto/extrinsic_commitment as crypto_extrinsic_commitment
+import ../bandersnatch/bandersnatch as bandersnatch_bandersnatch
 
 type
   BlockAuthorError* {.pure.} = enum ## Failure/default alternatives expose no partially signed block or staged state.
@@ -137,7 +147,7 @@ proc authorEmptyBlock*(parent: BlockSnapshot, target: HeaderSlot, key: BsKey,
     winners = presentWinners(tickets) # Marker derivation is authoritative even on a fallback epoch's closing boundary.
   let body = [0'u8, 0, 0, 0, 0, 0, 0]
   let extrinsic = decodeExtrinsic(body, frame)
-  if extrinsic.error != block_codec.FrameError.None:
+  if extrinsic.error != codec_block_codec.FrameError.None:
     return BlockAuthorResult(status: BlockAuthorError.EncodingFailure) # The body must satisfy the actual caller's complete frame policy.
   let commitment = extrinsicCommitment(extrinsic.value.owner, frame.maxBytes)
   if commitment.error != ExtrinsicCommitmentError.None:
@@ -153,7 +163,7 @@ proc authorEmptyBlock*(parent: BlockSnapshot, target: HeaderSlot, key: BsKey,
   let entropyProof = sign(key, context("jam_entropy", array[32, byte](output.value)), [])
   if entropyProof.error != BsError.None:
     return BlockAuthorResult(status: BlockAuthorError.CryptoFailure) # The entropy signature has empty additional data.
-  var source = header.Header(unsigned: UnsignedHeader(parent: HeaderParent(array[32, byte](
+  var source = codec_header.Header(unsigned: UnsignedHeader(parent: HeaderParent(array[32, byte](
       parent.blockHash)),
     priorState: PriorStateRoot(array[32, byte](state.commitment.root)),
     extrinsics: ExtrinsicRoot(array[32, byte](commitment.value)), slot: target,
@@ -177,6 +187,6 @@ proc authorEmptyBlock*(parent: BlockSnapshot, target: HeaderSlot, key: BsKey,
   wire.setLen(encoded.value)
   for octet in body: wire.add(octet)
   let captured = decodeBlock(wire, frame)
-  if captured.error != block_codec.FrameError.None or captured.value.consumed != wire.len:
+  if captured.error != codec_block_codec.FrameError.None or captured.value.consumed != wire.len:
     return BlockAuthorResult(status: BlockAuthorError.EncodingFailure) # Return only an immutable exact complete block.
   BlockAuthorResult(status: BlockAuthorError.None, completed: captured.value.owner)

@@ -3,10 +3,18 @@
 
 ## Preserve authenticated initial-round global ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
-import ../codec/[state_authorization, state_safrole]
-import ./[accumulation_global_phase, accumulation_provision_stage, accumulation_account_stage,
-  accumulation_block_guests, accumulation_round, accumulation_queue, report_admission,
-  block_transition, accumulation_global_roles, store]
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/state_safrole as codec_state_safrole
+import ./accumulation_global_phase as state_accumulation_global_phase
+import ./accumulation_provision_stage as state_accumulation_provision_stage
+import ./accumulation_account_stage as state_accumulation_account_stage
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./accumulation_global_roles as state_accumulation_global_roles
+import ./store as state_store
 
 type
   AccumulationGlobalStageError* = AccumulationGlobalPhaseError ## Preserve the existing public policy/reason shape while sharing the phase implementation.

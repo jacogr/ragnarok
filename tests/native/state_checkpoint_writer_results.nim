@@ -3,10 +3,13 @@
 
 ## A writer must own its lock before payload extraction and explicitly retire before destruction.
 
-import std/[cmdline, assertions]
+import std/cmdline
+import std/assertions
 import std/posix/posix
-import ../../src/state/[checkpoint_writer, checkpoint_file, store]
-import ../../src/codec/bounded
+import ../../src/state/checkpoint_writer as state_checkpoint_writer
+import ../../src/state/checkpoint_file as state_checkpoint_file
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
 
 proc forgotten() =
   ## Leaving a successfully opened owner active must reach the destructor's exact checked contract.

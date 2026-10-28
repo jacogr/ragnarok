@@ -19,5 +19,5 @@
     "bandersnatch"
   ],
   "quic_library": "quic",
-  "source": "tests/native/application_logical_source_export_results.nim"
+  "source": "tests/native/app_logical_source_export_results.nim"
 }

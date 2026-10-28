@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/extrinsic_commitment_results.nim",
+  "source": "tests/native/crypto_extrinsic_commitment_results.nim",
   "build_name": "extrinsic-commitment-results",
   "crypto_library": "observer",
   "native_libraries": [],

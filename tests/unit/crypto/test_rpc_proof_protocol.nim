@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict asynchronous proof method framing, transactional admission and bounded terminal notifications.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 include ../../../src/rpc/protocol
 
 let enabled = ClientInfo(proofs: true)

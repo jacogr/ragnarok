@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit moves of noncopyable sequence elements remain valid alongside rejection guards.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 type SequenceOwner = object ## Scalar-only owner mirrors the negative fixtures without fake cleanup.
   token: int
 proc `=copy`(target: var SequenceOwner, source: SequenceOwner) {.error.}

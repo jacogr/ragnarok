@@ -3,10 +3,14 @@
 
 ## Strict optimized lookup results include genuine original recent/state/admission and independent sealed-chain controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_lookup, computed_recent]
-import ../../src/codec/[bounded, header]
-import ../support/[pvm_computed_lookup, pvm_computed_lookup_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_lookup as state_computed_lookup
+import ../../src/state/computed_recent as state_computed_recent
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/header as codec_header
+import ../support/pvm_computed_lookup
+import ../support/pvm_computed_lookup_vectors
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse only after genuine source and chain fixture construction.

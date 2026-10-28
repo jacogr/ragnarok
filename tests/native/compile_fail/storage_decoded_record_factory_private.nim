@@ -3,6 +3,7 @@
 
 ## External callers cannot construct or access private encoded-admission authority.
 # @@Verification={"group":"privacy","expected":"storeDecodedRecord"}
-import ../../../src/storage/[node_repository, node_records]
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
 var raw = default(TrieRecord)
-discard node_repository.storeDecodedRecord(raw)
+discard storage_node_repository.storeDecodedRecord(raw)

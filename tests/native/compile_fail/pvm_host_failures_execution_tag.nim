@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/step
+import ../../../src/pvm/step as pvm_step
 
 # Test-local failure domain supplies the generic enum parameter.
 type Reason = enum

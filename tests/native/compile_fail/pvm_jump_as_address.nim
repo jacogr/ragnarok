@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: CodeAddress but got: JumpIndex", "early": ["instruction(", "[2] expected: CodeAddress but got: JumpIndex"]}
 
-import ../../../src/pvm/program
+import ../../../src/pvm/program as pvm_program
 discard instruction(default(Program), JumpIndex(0))

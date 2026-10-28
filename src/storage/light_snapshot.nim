@@ -3,10 +3,15 @@
 
 ## Canonical light proof-cache images bind explicit chain/root expectations and reverify every stored proof.
 ## Opaque prepared images retain immutable bytes/cache; file checksums never establish root trust.
-import std/[algorithm, assertions]
-import ./[light_state_cache, state_proof, database_identity]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import std/algorithm
+import std/assertions
+import ./light_state_cache as storage_light_state_cache
+import ./state_proof as storage_state_proof
+import ./database_identity as storage_database_identity
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 const
   Magic = "RAGNAROK-LIGHT-CACHE-V1\n"
   HeaderBytes = Magic.len+72

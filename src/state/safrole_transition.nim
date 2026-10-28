@@ -8,10 +8,21 @@
 ## Exposes advanceSafroleState with typed rotation, ticket, schedule, marker, authentication,
 ## entropy and publication failures.
 
-import ../codec/[state_safrole, state_consensus, state_layout, state_trie, header, tickets, bounded]
-from ../codec/disputes import OffenderKey
-import ./[store, validator_state, ticket_admission, sealer_schedule, safrole_markers,
-  safrole_authentication, entropy]
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_consensus as codec_state_consensus
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/header as codec_header
+import ../codec/tickets as codec_tickets
+import ../codec/bounded as codec_bounded
+from ../codec/disputes as codec_disputes import OffenderKey
+import ./store as state_store
+import ./validator_state as state_validator_state
+import ./ticket_admission as state_ticket_admission
+import ./sealer_schedule as state_sealer_schedule
+import ./safrole_markers as state_safrole_markers
+import ./safrole_authentication as state_safrole_authentication
+import ./entropy as state_entropy
 
 type
   SafroleTransitionConfig* = object ## One shared chain profile prevents incompatible epoch/roster parameters between substeps.

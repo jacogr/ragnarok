@@ -2,11 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic compaction result and candidate guards require complete native positive controls.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import std/posix/posix
-import ../../src/storage/[light_journal_cache, light_journal_replay, light_snapshot, light_delta,
-  managed_manifest, managed_io, file_errors]
-import ../../src/codec/bounded
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_delta as storage_light_delta
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/managed_io as storage_managed_io
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Guard fixtures own one process-specific namespace.
 proc main() {.raises.} =

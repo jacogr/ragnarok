@@ -6,15 +6,35 @@
 ## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../chain/parameters
-import ../pvm/[machine, step, gas, host_gas, host_log, host_fetch, host_heap]
-import ../codec/[state_outputs, composite, state_layout, state_accounts, state_service_values,
-    state_requests, state_privileges, state_authorization, work_report, state_safrole, assurances,
-    c2_records, bounded]
-import ./[accumulation_machine, accumulation_fetch, accumulation_context, accumulation_effects,
-    accumulation_invocation, store]
+import ../chain/parameters as chain_parameters
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/host_gas as pvm_host_gas
+import ../pvm/host_log as pvm_host_log
+import ../pvm/host_fetch as pvm_host_fetch
+import ../pvm/host_heap as pvm_host_heap
+import ../codec/state_outputs as codec_state_outputs
+import ../codec/composite as codec_composite
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../codec/state_privileges as codec_state_privileges
+import ../codec/state_authorization as codec_state_authorization
+import ../codec/work_report as codec_work_report
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/assurances as codec_assurances
+import ../codec/c2_records as codec_c2_records
+import ../codec/bounded as codec_bounded
+import ./accumulation_machine as state_accumulation_machine
+import ./accumulation_fetch as state_accumulation_fetch
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_effects as state_accumulation_effects
+import ./accumulation_invocation as state_accumulation_invocation
+import ./store as state_store
 
 type
   AccumulationDispatchError* {.pure.} = enum ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.

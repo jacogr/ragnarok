@@ -3,7 +3,9 @@
 
 ## Compose actual finalized computed execution with its authenticated report/block state through maintained phases.
 
-import ./[computed_finalization, accumulation_completion, accumulation_consensus]
+import ./computed_finalization as state_computed_finalization
+import ./accumulation_completion as state_accumulation_completion
+import ./accumulation_consensus as state_accumulation_consensus
 
 type
   ComputedCompositionError* {.pure.} = enum ## Only selected composition refusal carries its complete precise failed phase.

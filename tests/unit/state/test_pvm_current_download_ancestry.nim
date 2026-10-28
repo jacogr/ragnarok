@@ -2,18 +2,38 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current lookup demand drains native connections, resumes original input once, preserves deadlines and rejects a changed canonical parent.
-import std/[assertions, envvars, syncio, monotimes, times]
+import std/assertions
+import std/envvars
+import std/syncio
+import std/monotimes
+import std/times
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_download, current_block_input,
-  current_handoff,
-  candidate, chain, download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers,
-  current_block_download_session, current_block_download_stream]
-import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/state/[store, report_anchors, accumulation_current_update, accumulation_current_consensus]
-import ../../support/[current_application_context, current_services_disk_samples,
-  accumulation_current_chain_context, accumulation_current_candidate_context, block_download_transport]
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/current_block_download as app_current_block_download
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/app/candidate as app_candidate
+import ../../../src/app/chain as app_chain
+import ../../../src/app/download_schedule as app_download_schedule
+import ../../../src/quic/current_block_download_loop as quic_current_block_download_loop
+import ../../../src/quic/current_block_download_peers as quic_current_block_download_peers
+import ../../../src/quic/current_block_download_session as quic_current_block_download_session
+import ../../../src/quic/current_block_download_stream as quic_current_block_download_stream
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/provider as chain_provider
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/state/store as state_store
+import ../../../src/state/report_anchors as state_report_anchors
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/accumulation_current_consensus as state_accumulation_current_consensus
+import ../../support/state_current_application_context
+import ../../support/state_current_services_disk_samples
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/app_block_download_transport
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Resumption only validates/copies certified original context; it never hashes or repeats guest work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

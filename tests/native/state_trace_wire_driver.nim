@@ -2,9 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compare published RawState prefixes against independent exact bytes and complete checkpoint maps.
-import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/state/[trace_state, store, checkpoint]
-import ../../src/codec/[state_trie, bounded]
+import std/assertions
+import std/cmdline
+import std/strutils
+import std/syncio
+import std/parseutils
+import ../../src/state/trace_state as state_trace_state
+import ../../src/state/store as state_store
+import ../../src/state/checkpoint as state_checkpoint
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 proc unhex(text: string): seq[byte] =
   ## Decode only the maintained request transport; production codecs validate actual framing and roots.
   assert text.len mod 2 == 0

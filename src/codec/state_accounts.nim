@@ -7,7 +7,12 @@
 ## Exposes ServiceMetadata, nominal account resource fields, decodeServiceMetadata and
 ## serviceMetadataEntry.
 
-import ./[natural, bounded, composite, work_digest, state_layout, state_trie]
+import ./natural as codec_natural
+import ./bounded as codec_bounded
+import ./composite as codec_composite
+import ./work_digest as codec_work_digest
+import ./state_layout as codec_state_layout
+import ./state_trie as codec_state_trie
 export ServiceIndex, CodeHash, Gas
 
 const ServiceMetadataBytes* = 105 ## Version zero, code hash, supervisor pair, six E8 values and four E4 values.
@@ -65,7 +70,7 @@ proc decodeServiceMetadata*(input: openArray[byte], maxBytes: ByteLimit): Servic
   if uint64(maxBytes) < uint64(ServiceMetadataBytes):
     return ServiceMetadataResult[ServiceMetadataRead](
         status: ServiceMetadataError.LimitExceeded) # Current schema must fit caller policy before input work.
-  let version = natural.decode(input)
+  let version = codec_natural.decode(input)
   if not version.ok:
     if version.error == DecodeError.truncated:
       return ServiceMetadataResult[ServiceMetadataRead](

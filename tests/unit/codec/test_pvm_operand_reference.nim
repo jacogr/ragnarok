@@ -3,8 +3,10 @@
 
 ## All thirteen operand shapes retain independent frozen values and immutable source ownership.
 
-import std/[assertions, syncio, envvars]
-import ../../../src/pvm/program
+import std/assertions
+import std/syncio
+import std/envvars
+import ../../../src/pvm/program as pvm_program
 
 proc number(data: string, at, width: int): uint64 =
   ## Read bounded independent fixed fields; this does not reuse the production operand decoder.

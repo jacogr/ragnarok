@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real special inodes, incompatible identities, bounded files and partial tails refuse unchanged.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
 import ../../support/storage_samples
-import ../../../src/storage/[file_repository, node_repository, node_records, full_state_trie, database_identity]
-import ../../../src/codec/bounded
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
 
 proc creationMask(value: uint32): uint32 {.importc: "umask", cdecl, header: "<sys/stat.h>".}
   ## The SDK controls/restores actual permission bits; the pinned POSIX module omits this binding.

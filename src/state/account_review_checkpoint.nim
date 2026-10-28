@@ -3,9 +3,16 @@
 
 ## Explicit-root unchanged checkpoint restoration produces a same-source account review under caller-selected economic parameters.
 ## This synchronous consumer performs no I/O/installation, root discovery or universal funding/STF acceptance.
-import ../codec/[state_trie, state_composition]
-import ./[planned_account_checkpoint, account_invariants, account_review, service_directory,
-    footprint_audit, supervision_table, economics_table, economic_profile]
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_composition as codec_state_composition
+import ./planned_account_checkpoint as state_planned_account_checkpoint
+import ./account_invariants as state_account_invariants
+import ./account_review as state_account_review
+import ./service_directory as state_service_directory
+import ./footprint_audit as state_footprint_audit
+import ./supervision_table as state_supervision_table
+import ./economics_table as state_economics_table
+import ./economic_profile as state_economic_profile
 
 type
   AccountReviewCheckpointLimits* = object ## Each restoration/audit/report stage retains its own explicit independent policies.

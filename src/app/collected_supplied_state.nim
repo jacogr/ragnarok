@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Requalify complete explicitly supplied successor namespaces on a frozen genuine collected target.
-import ./[chain, collected_supplied_plan]
-import ../state/[current_state, current_logical, accumulation_current_update]
-import ../codec/state_composition
+import ./chain as app_chain
+import ./collected_supplied_plan as app_collected_supplied_plan
+import ../state/current_state as state_current_state
+import ../state/current_logical as state_current_logical
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../codec/state_composition as codec_state_composition
 type
   CollectedSuppliedError* {.pure.} = enum ## Invalid frozen source, stale canonical prior and original complete matching failures remain distinct.
     Uninitialized, None, InvalidPlan, StaleUpdate, StateFailure, LogicalFailure

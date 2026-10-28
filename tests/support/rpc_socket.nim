@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared real loopback WebSocket controls retain bounded polling and explicit native descriptor ownership.
-import std/[assertions, strutils, nativesocket]
+import std/assertions
+import std/strutils
+import std/nativesocket
 import std/posix/posix
-import ../../src/rpc/server
+import ../../src/rpc/server as rpc_server
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound local polling pauses through the host SDK.

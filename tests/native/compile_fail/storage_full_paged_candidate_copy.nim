@@ -3,7 +3,7 @@
 
 ## Actual ARC lowering rejects duplication of a full-state sealed candidate descriptor/capability.
 # @@Verification={"group":"ownership_compile","build_name":"storage-full-paged-candidate-copy","expected":"'=dup' is not available for type <FullPagedCandidate>"}
-import ../../../src/storage/full_paged_store
+import ../../../src/storage/full_paged_store as storage_full_paged_store
 proc duplicate(source: FullPagedCandidate): FullPagedCandidate =
   ## Returning a borrowed candidate would duplicate authoring and retirement authority.
   source

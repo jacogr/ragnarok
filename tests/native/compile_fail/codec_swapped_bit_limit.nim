@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## A bit-count resource ceiling cannot be supplied as a byte budget.
+##
+## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
+## Exposes no library API.
+
+# @@Verification={"group": "nominal", "expected": "[2] expected: BitLimit but got: ByteLimit"}
+
+import ../../../src/codec/bitstrings as codec_bitstrings
+import ../../../src/codec/bounded as codec_bounded
+var input: array[1, byte] = default(array[1, byte])
+discard decodeBits(input, ByteLimit(8))

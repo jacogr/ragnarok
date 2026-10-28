@@ -4,6 +4,6 @@
 ## Negative compiler fixture: Reject external access to the retained genesis header owner.
 # @@Verification={"group": "privacy", "expected": "sealedHeader"}
 
-import ../../../src/chain/genesis
+import ../../../src/chain/genesis as chain_genesis
 var view = default(Genesis)
 discard view.sealedHeader

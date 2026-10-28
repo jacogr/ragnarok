@@ -6,8 +6,9 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import std/[cmdline, syncio]
-import ../../src/codec/bitstrings
+import std/cmdline
+import std/syncio
+import ../../src/codec/bitstrings as codec_bitstrings
 let useDefault = paramStr(2) == "default"
 var output: seq[byte] = @[]
 case paramStr(1)

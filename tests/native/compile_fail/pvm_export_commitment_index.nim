@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ExportPageIndex", "early": ["commitmentPage(", "[2] expected: ExportPageIndex but got: ExportCount"]}
 
-import ../../../src/state/export_commitment
-import ../../../src/codec/work_digest
+import ../../../src/state/export_commitment as state_export_commitment
+import ../../../src/codec/work_digest as codec_work_digest
 discard commitmentPage(default(ExportCommitment), ExportCount(0))

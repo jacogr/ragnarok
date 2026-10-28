@@ -4,9 +4,17 @@
 
 ## Original raw guests verify all invoke exits, exact reservation/refund and immutable resumable machine state.
 
-import std/[assertions, syncio]
-import ../../../src/pvm/[inner_machines, machine, program, step, gas]
-import ../../support/[pvm_inner_lifecycle, pvm_inner_pages, pvm_inner_invoke, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/pvm/inner_machines as pvm_inner_machines
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../support/pvm_inner_lifecycle
+import ../../support/pvm_inner_pages
+import ../../support/pvm_inner_invoke
+import ../../support/testing_arc_evidence
 
 proc run(map: InnerMachines, memory = invokeMemory(), args = invokeArgs(), credit = 10000'u64):
     InnerMachineResult[InnerMachineTransition] =

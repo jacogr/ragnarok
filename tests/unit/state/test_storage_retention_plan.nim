@@ -3,10 +3,16 @@
 
 ## Explicit retention plans count shared physical records and preserve immutable source ownership.
 # @@Verification={"arc": "storage_retention_plan_arc_release"}
-import std/[assertions, syncio]
-import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[full_state_trie, node_records, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/storage_samples
+import ../../support/testing_arc_evidence
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 proc cycle() =
   ## Three revisions share one leaf; selecting first/last retains five of seven physical records.
   let limits = storageLimits()

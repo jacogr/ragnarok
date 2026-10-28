@@ -5,6 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "ByteLimit", "early": ["prepareErasureLayout(", "[3] expected: ByteLimit but got: BundleLength"]}
 
-import ../../../src/state/[erasure_layout, auditable_bundle, input_refinement]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure_layout as state_erasure_layout
+import ../../../src/state/auditable_bundle as state_auditable_bundle
+import ../../../src/state/input_refinement as state_input_refinement
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/work_report as codec_work_report
 discard prepareErasureLayout(default(AuditableBundle), ErasureShards(6), BundleLength(100))

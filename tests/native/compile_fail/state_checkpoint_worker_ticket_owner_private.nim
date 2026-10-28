@@ -3,6 +3,6 @@
 
 ## Private worker state and receipt alternatives cannot bypass lifecycle or success guards.
 # @@Verification={"group": "privacy", "expected": "owner"}
-import ../../../src/state/checkpoint_worker
+import ../../../src/state/checkpoint_worker as state_checkpoint_worker
 let owner = default(CheckpointTicket)
 discard owner.owner

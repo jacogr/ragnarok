@@ -4,10 +4,23 @@
 ## Update existing accumulated accounts' timestamps on a private finalized map using genuine statistics and block time.
 ## Pure projections return caller-owned writes; only statistics-bound preparation creates the immutable successor certificate.
 
-import ../codec/[bounded, composite, header, state_accounts, state_layout, state_trie, state_statistics]
-import ./[accumulation_statistics, accumulation_finalization, accumulation_outputs,
-  accumulation_execution, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, store]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_statistics as codec_state_statistics
+import ./accumulation_statistics as state_accumulation_statistics
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AccumulationAccountConfig* = object ## Traversal and aggregate selected existing metadata bytes have independent local ceilings.

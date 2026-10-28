@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic selected-profile payload guards retain genuine valid parameter selection as a control.
-import std/[assertions, cmdline, syncio]
-import ../support/economic_profile_context
-import ../../src/chain/parameters
-import ../../src/state/economic_profile
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_economic_profile_context
+import ../../src/chain/parameters as chain_parameters
+import ../../src/state/economic_profile as state_economic_profile
 proc extract(outcome: EconomicProfileResult[StateEconomicProfile]): StateEconomicProfile {.noinline.} =
   ## Default and invalid parameter capture cannot expose selected economic policy.
   outcome.value

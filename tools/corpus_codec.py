@@ -36,14 +36,14 @@ def early_corpus(family, adapter, observations, compiler, checks):
 @CORPORA.case
 def natural_corpus(compiler, report, checks, libraries):
     from test_codec import natural_requests
-    return early_corpus('natural', 'driver', natural_requests(), compiler, checks)
+    return early_corpus('natural', 'codec_driver', natural_requests(), compiler, checks)
 
 
 # Preserve the independent fixed corpus and its original native adapter.
 @CORPORA.case
 def fixed_corpus(compiler, report, checks, libraries):
     from test_codec import fixed_requests
-    return early_corpus('fixed', 'fixed_driver', fixed_requests(), compiler, checks)
+    return early_corpus('fixed', 'codec_fixed_driver', fixed_requests(), compiler, checks)
 
 
 # Preserve the independent bounded corpus and its original native adapter.
@@ -51,7 +51,7 @@ def fixed_corpus(compiler, report, checks, libraries):
 def bounded_corpus(compiler, report, checks, libraries):
     from bounded_checks import batch_requests
     from test_codec import reference_encode, reference_decode
-    return early_corpus('bounded', 'bounded_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+    return early_corpus('bounded', 'codec_bounded_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
 
 
 # Preserve the independent composite corpus and its original native adapter.
@@ -59,7 +59,7 @@ def bounded_corpus(compiler, report, checks, libraries):
 def composite_corpus(compiler, report, checks, libraries):
     from composite_checks import batch_requests
     from test_codec import reference_encode, reference_decode
-    return early_corpus('composite', 'composite_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+    return early_corpus('composite', 'codec_composite_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
 
 
 # Preserve the independent digest corpus and its original native adapter.
@@ -67,7 +67,7 @@ def composite_corpus(compiler, report, checks, libraries):
 def digest_corpus(compiler, report, checks, libraries):
     from digest_checks import batch_requests
     from test_codec import reference_encode, reference_decode
-    return early_corpus('digest', 'digest_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
+    return early_corpus('digest', 'codec_digest_driver', batch_requests(reference_encode, reference_decode), compiler, checks)
 
 
 # Run this independently declared corpus with its original checks and dependencies.
@@ -83,7 +83,7 @@ def report_corpus(compiler, report, checks, libraries):
     lines, expected = requests()
     source = BUILD/'report-requests.txt'
     # Compare all encoded bytes and decoded semantic fields, including malformed and published fixtures.
-    corpus = execute_corpus(ROOT / 'tests/native/report_driver.nim', 'report-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/state_report_driver.nim', 'report-codec',
                         source, lines, expected, 'report-corpus',
                         crypto_library=crypto_library)
     announce('independent report corpus', corpus['passed'])
@@ -151,7 +151,7 @@ def assurance_corpus(compiler, report, checks, libraries):
             expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
     source = BUILD/'assurance-requests.txt'
     # Compare complete named fields/bytes and errors; native assertions additionally protect atomic output/lifetimes.
-    corpus = execute_corpus(ROOT / 'tests/native/assurances_driver.nim', 'assurances-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_assurances_driver.nim', 'assurances-codec',
                         source, lines, expected, 'assurances-corpus',
                         metadata=dict(codec_requests=codec_count,
                                       inspection_requests=len(lines)-codec_count))
@@ -171,7 +171,7 @@ def assurance_context_corpus(compiler, report, checks, libraries):
     provider, lines, expected = assurance_context_requests()
     source = BUILD/'assurance-context-requests.txt'
     # Ordinary OpenSSL signatures and hashlib transcripts precede native execution; compare every complete result.
-    corpus = execute_corpus(ROOT / 'tests/native/assurance_crypto_driver.nim', 'assurance-context-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_assurance_crypto_driver.nim', 'assurance-context-codec',
                         source, lines, expected, 'assurance-context-corpus',
                         metadata=dict(provider=provider,
                                       scope='fixed transcript and stateless validator-key/parent checks; no state eligibility or point-policy change'), expected_hash=True, complete=len(lines) == 2087,
@@ -192,7 +192,7 @@ def guarantee_corpus(compiler, report, checks, libraries):
     lines, expected, counts = guarantee_requests()
     source = BUILD/'guarantee-requests.txt'
     # Native assertions additionally cover input mutation, copied metadata and whole-output atomicity.
-    corpus = execute_corpus(ROOT / 'tests/native/guarantees_driver.nim', 'guarantees-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_guarantees_driver.nim', 'guarantees-codec',
                         source, lines, expected, 'guarantees-corpus',
                         metadata=dict(request_groups=counts))
     announce('independent guarantee extrinsic/inspection/standalone corpus', corpus['passed'])
@@ -234,7 +234,7 @@ def ticket_corpus(compiler, report, checks, libraries):
             expected.append(parts[0]+' '+parts[2] if len(parts) == 3 else result)
     source = BUILD/'ticket-requests.txt'
     # Exact attempts/proofs and consumed metadata are observed independently after source mutation.
-    corpus = execute_corpus(ROOT / 'tests/native/tickets_driver.nim', 'tickets-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_tickets_driver.nim', 'tickets-codec',
                         source, lines, expected, 'tickets-corpus',
                         metadata=dict(original_requests=original_count,
                                       codec_requests=codec_count,
@@ -293,7 +293,7 @@ def dispute_corpus(compiler, report, checks, libraries):
                 expected.append(f'{verdicts} {culprits} {faults} {parts[0]}')
     source = BUILD/'dispute-requests.txt'
     # Native checks also protect owner copies, exact prefix retention and whole-output failure atomicity.
-    corpus = execute_corpus(ROOT / 'tests/native/disputes_driver.nim', 'disputes-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_disputes_driver.nim', 'disputes-codec',
                         source, lines, expected, 'disputes-corpus',
                         metadata=dict(original_requests=original_count,
                                       codec_requests=codec_count,
@@ -315,7 +315,7 @@ def package_corpus(compiler, report, checks, libraries):
     groups = {kind: sum(line.split(' ', 2)[1] == kind for line in lines) for kind in ('C', 'R', 'X', 'I', 'P')}
     source = BUILD/'package-requests.txt'
     # Every typed field/payload is observed independently after original input mutation; failures retain sentinels.
-    corpus = execute_corpus(ROOT / 'tests/native/package_driver.nim', 'package-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_package_driver.nim', 'package-codec',
                         source, lines, expected, 'package-corpus',
                         metadata=dict(request_groups=groups))
     announce('independent context/import/commitment/item/package corpus', corpus['passed'])
@@ -367,7 +367,7 @@ def header_corpus(compiler, report, checks, libraries):
                 expected.append(' '.join([parts[0], str(int(parts[0])-96), *parts[1:5], author, proof, offenders, parts[-1]]))
     source = BUILD/'header-requests.txt'
     # Independently observe every field after source erasure, marker retention and exact signing-prefix checks.
-    corpus = execute_corpus(ROOT / 'tests/native/header_driver.nim', 'header-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_header_driver.nim', 'header-codec',
                         source, lines, expected, 'header-corpus',
                         metadata=dict(original_requests=original_count,
                                       request_groups=groups,
@@ -390,7 +390,7 @@ def block_corpus(compiler, report, checks, libraries):
     groups = {operation+'-'+kind: sum(line.startswith(operation+' '+kind+' ') for line in lines)
               for operation in ('D', 'E') for kind in ('E', 'B')}
     # Compare all six exact child wires/counts after source erasure and on-demand materialization.
-    corpus = execute_corpus(ROOT / 'tests/native/block_driver.nim', 'block-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_block_driver.nim', 'block-codec',
                         source, lines, expected, 'block-corpus',
                         metadata=dict(request_groups=groups))
     announce('independent complete extrinsic/block corpus', corpus['passed'])
@@ -411,7 +411,7 @@ def bits_corpus(compiler, report, checks, libraries):
     groups = {operation: sum(line.startswith(operation+' ') for line in lines)
               for operation in ('BD', 'BE', 'D', 'E')}
     # Observe every logical bit/count/extent after input erasure and compare both owner framing forms.
-    corpus = execute_corpus(ROOT / 'tests/native/bits_driver.nim', 'bits-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_bits_driver.nim', 'bits-codec',
                         source, lines, expected, 'bits-corpus',
                         metadata=dict(request_groups=groups))
     announce('independent Boolean/fixed/variable bitstring corpus', corpus['passed'])
@@ -432,7 +432,7 @@ def collection_corpus(compiler, report, checks, libraries):
     groups = {kind: sum(line.split()[1] == kind for line in lines) for kind in ('F', 'S', 'M')}
     assert sum(groups.values()) == len(lines), groups
     # Compare copied logical fields, canonical wire, consumed progress and typed reasons after input erasure.
-    corpus = execute_corpus(ROOT / 'tests/native/collections_driver.nim', 'collection-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_collections_driver.nim', 'collection-codec',
                         source, lines, expected, 'collection-corpus',
                         metadata=dict(request_groups=groups))
     announce('independent canonical fixed/variable set/dictionary corpus', corpus['passed'])
@@ -458,7 +458,7 @@ def c2_corpus(compiler, report, checks, libraries):
         groups[key] = groups.get(key, 0)+1
     assert sum(groups.values()) == len(lines), groups
     # Observe every fixed field, payload/trace copy and exact owned wire after destructive caller mutation.
-    corpus = execute_corpus(ROOT / 'tests/native/c2_driver.nim', 'c2-codec',
+    corpus = execute_corpus(ROOT / 'tests/native/codec_c2_driver.nim', 'c2-codec',
                         source, lines, expected, 'c2-corpus',
                         metadata=dict(request_groups=groups))
     announce('independent availability/transfer/operand/accumulation corpus', corpus['passed'])

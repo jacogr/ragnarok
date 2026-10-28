@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent literal code hashes, complete source association, history boundaries and copy/work policies qualify the full-state catalogue.
-import std/[assertions, syncio, envvars, cmdline]
-import ../support/[state_inventory_context, arc_evidence]
-import ../../src/state/[code_availability, inventory]
-import ../../src/codec/[bounded, state_accounts, state_composition, state_requests]
-include composition_fixture
+import std/assertions
+import std/syncio
+import std/envvars
+import std/cmdline
+import ../support/state_inventory_context
+import ../support/testing_arc_evidence
+import ../../src/state/code_availability as state_code_availability
+import ../../src/state/inventory as state_inventory
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_accounts as codec_state_accounts
+import ../../src/codec/state_composition as codec_state_composition
+import ../../src/codec/state_requests as codec_state_requests
+include nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive counters and force real content backend failures after source capture.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

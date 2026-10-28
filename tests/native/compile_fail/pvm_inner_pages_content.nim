@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: PageAccess but wanted: PageContent"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 let item: PageContent = PageAccess.ReadOnly
 discard item

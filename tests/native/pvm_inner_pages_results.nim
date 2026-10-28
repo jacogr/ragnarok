@@ -4,9 +4,13 @@
 ## Optimized guards reject response extraction after local owner/capacity failures and reject
 ## engine-reason extraction from completed zero-gas OOG.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[inner_machines, machine, step]
-import ../support/[pvm_inner_lifecycle, pvm_inner_pages]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/step as pvm_step
+import ../support/pvm_inner_lifecycle
+import ../support/pvm_inner_pages
 
 proc check(outcome: InnerMachineResult[InnerMachineTransition], expected: InnerMachineError) =
   ## Confirm the intended refusal while leaving the caller's later incorrect access dynamically checked.

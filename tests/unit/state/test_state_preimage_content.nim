@@ -3,11 +3,17 @@
 
 ## Literal Blake2b-256 content, malformed complete maps and observer budgets qualify source-bound content checks.
 # @@Verification={"arc": "state_preimage_content_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[preimage_content, inventory, manifest, store]
-import ../../../src/codec/bounded
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/preimage_content as state_preimage_content
+import ../../../src/state/inventory as state_inventory
+import ../../../src/state/manifest as state_manifest
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and optionally reject all primitive hash calls.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

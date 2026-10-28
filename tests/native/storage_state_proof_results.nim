@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic proof-result/lookup misuse probes share a real successful empty-root control.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/state_proof
-import ../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/state_proof as storage_state_proof
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
+import ../../src/codec/bounded as codec_bounded
 proc main() =
   ## Arguments select runtime invalid/default objects; compiler success is not a runtime verdict.
   let member = paramStr(1)

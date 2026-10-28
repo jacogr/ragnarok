@@ -4,6 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "InventoryServiceIndex", "early": ["inventoryServiceAt(", "[2] expected: InventoryServiceIndex but got: ServiceIndex"]}
 
 ## Nominal coordinates and partial evidence cannot impersonate compact source authority.
-import ../../../src/state/inventory
-import ../../../src/codec/composite
+import ../../../src/state/inventory as state_inventory
+import ../../../src/codec/composite as codec_composite
 discard inventoryServiceAt(default(StateInventory), ServiceIndex(0))

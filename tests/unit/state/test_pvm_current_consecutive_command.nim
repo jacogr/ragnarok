@@ -2,13 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real authenticated current command downloads adopt two genuine successors and preserve one confirmed prefix on later resource refusal.
-import std/[assertions, syncio, envvars]
+import std/assertions
+import std/syncio
+import std/envvars
 import std/posix/posix
-import ../../../src/app/current_download_command
-import ../../../src/codec/[report_owned, bounded]
-import ../../support/[current_consecutive_context, current_rotated_sequence_context,
-  current_consecutive_download_context,
-  current_download_command_context, block_download_transport]
+import ../../../src/app/current_download_command as app_current_download_command
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/bounded as codec_bounded
+import ../../support/state_current_consecutive_context
+import ../../support/state_current_rotated_sequence_context
+import ../../support/state_current_consecutive_download_context
+import ../../support/state_current_download_command_context
+import ../../support/app_block_download_transport
 const
   ChainPath = "pvm-current-consecutive-command-chain"
   PolicyPath = "pvm-current-consecutive-command-policy"

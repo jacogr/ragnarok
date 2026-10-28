@@ -3,10 +3,13 @@
 
 ## Optimized bundle result/owner guards include genuine completed execution and full-wire success controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[auditable_bundle, input_refinement]
-import ../../src/codec/bounded
-import ../support/[pvm_auditable_bundle, pvm_bundle_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/auditable_bundle as state_auditable_bundle
+import ../../src/state/input_refinement as state_input_refinement
+import ../../src/codec/bounded as codec_bounded
+import ../support/pvm_auditable_bundle
+import ../support/pvm_bundle_vectors
 
 proc check(outcome: AuditableBundleResult[AuditableBundle], reason: AuditableBundleError) =
   ## Inspect runtime reasons without statically specializing later deliberate invalid extraction.

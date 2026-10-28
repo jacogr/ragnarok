@@ -3,9 +3,10 @@
 
 ## Fuzzer initial hash/slot facts remain distinct from actual child-header lookup-root evidence and production ancestry.
 import std/assertions
-import ./fuzz_protocol
-import ../codec/[bounded, header]
-import ../crypto/primitives
+import ./fuzz_protocol as state_fuzz_protocol
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ../crypto/primitives as crypto_primitives
 
 type
   FuzzAncestorIndex* = distinct int ## A context-bound ordinal is not a timeslot or a header identity.

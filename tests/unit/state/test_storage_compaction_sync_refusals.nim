@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A refused epoch barrier must retain uncertainty or an explicit confirmed-selection cleanup receipt.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_compaction_faults
 proc main() {.raises.} =
   ## Every observed real barrier has one independent EIO case with complete-map strict restart.

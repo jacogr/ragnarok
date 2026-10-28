@@ -3,11 +3,17 @@
 
 ## Complete-source service lookup preserves capture identity, sorted order, resource preflight and ARC retirement.
 # @@Verification={"arc": "state_service_directory_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[service_directory, inventory]
-import ../../../src/codec/[bounded, state_accounts, state_composition]
-include ../../native/composition_fixture
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_inventory_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/service_directory as state_service_directory
+import ../../../src/state/inventory as state_inventory
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_composition as codec_state_composition
+include ../../native/nimony_composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after fixture capture; directory work is descriptor-only.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

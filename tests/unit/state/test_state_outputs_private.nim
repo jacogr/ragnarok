@@ -8,8 +8,9 @@
 
 # @@Verification={"arc": "outputs_arc_release"}
 
-import ../../support/arc_evidence
-import std/[assertions, syncio]
+import ../../support/testing_arc_evidence
+import std/assertions
+import std/syncio
 include ../../../src/codec/state_outputs
 
 ## Independent source pairs preserve descending/repeated services and all fixed commitment octets.

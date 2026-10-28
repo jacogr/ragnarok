@@ -3,19 +3,45 @@
 # @@Verification={"arc": "pvm_authenticated_guests_arc_release"}
 
 ## Genuine signed rounds bind current guest coverage to admitted state, posterior entropy and profile.
-import std/[assertions, envvars, syncio]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, header, work_digest, assurances, report_owned,
-  state_safrole, state_layout,
-  state_privileges, state_workqueues, c2_records]
-import ../../../src/state/[accumulation_block_guests, accumulation_guest_runner,
-  accumulation_coverage, accumulation_annulment, accumulation_outcome, accumulation_effects,
-  accumulation_context,
-  accumulation_invocation, accumulation_inputs, accumulation_round, accumulation_queue,
-  accumulation_operands, accumulation_service, accumulation_skip, accumulation_absent,
-  report_admission, block_transition, block_admission, store]
-import ../../support/[accumulation_runner_context, accumulation_execution_context,
-  report_admission_context, accumulation_current_guests_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/composite as codec_composite
+import ../../../src/codec/header as codec_header
+import ../../../src/codec/work_digest as codec_work_digest
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_privileges as codec_state_privileges
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/state/accumulation_block_guests as state_accumulation_block_guests
+import ../../../src/state/accumulation_guest_runner as state_accumulation_guest_runner
+import ../../../src/state/accumulation_coverage as state_accumulation_coverage
+import ../../../src/state/accumulation_annulment as state_accumulation_annulment
+import ../../../src/state/accumulation_outcome as state_accumulation_outcome
+import ../../../src/state/accumulation_effects as state_accumulation_effects
+import ../../../src/state/accumulation_context as state_accumulation_context
+import ../../../src/state/accumulation_invocation as state_accumulation_invocation
+import ../../../src/state/accumulation_inputs as state_accumulation_inputs
+import ../../../src/state/accumulation_round as state_accumulation_round
+import ../../../src/state/accumulation_queue as state_accumulation_queue
+import ../../../src/state/accumulation_operands as state_accumulation_operands
+import ../../../src/state/accumulation_service as state_accumulation_service
+import ../../../src/state/accumulation_skip as state_accumulation_skip
+import ../../../src/state/accumulation_absent as state_accumulation_absent
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_runner_context
+import ../../support/state_accumulation_execution_context
+import ../../support/state_report_admission_context
+import ../../support/state_accumulation_current_guests_context
+import ../../support/testing_arc_evidence
 proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =
   ## A separately composed explicit run is an oracle for provider rows; only the block adapter supplies authority.
   let before = fixture.state.snapshot.value

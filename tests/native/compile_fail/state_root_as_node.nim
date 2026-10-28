@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "StateRoot"}
 
-import ../../../src/codec/[state_trie, state_layout]
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
 let root = default(StateRoot)
 let node = encodeStateBranch(root, root)
 discard node

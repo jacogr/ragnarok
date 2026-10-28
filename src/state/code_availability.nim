@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Resolve every complete-inventory service's current code identity, content and historical availability under independent bounded work policies.
-import ../codec/[bounded, state_accounts, state_layout, state_requests]
-import ../crypto/primitives
-import ./[inventory, manifest, store, preimage_history]
+import ../codec/bounded as codec_bounded
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_requests as codec_state_requests
+import ../crypto/primitives as crypto_primitives
+import ./inventory as state_inventory
+import ./manifest as state_manifest
+import ./store as state_store
+import ./preimage_history as state_preimage_history
 type
   CodeAvailabilityLimits* = object ## Full row/child visits, retained descriptors and selected content copies/hashes have separate ceilings.
     services*, visits*: ElementLimit

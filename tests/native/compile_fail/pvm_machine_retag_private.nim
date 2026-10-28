@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 var outcome = default(MachineResult[Memory])
 outcome.status = MachineError.None

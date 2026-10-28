@@ -210,7 +210,7 @@ class NativePreparationHarness(unittest.TestCase):
 
     # Partition preparation invokes a shared feature provider once and returns only requested manifests.
     def test_partition_fixture_provider_sharing(self):
-        names = ['accumulation_service', 'accumulation_skip', 'accumulation_complete_batch']
+        names = ['state_accumulation_service', 'state_accumulation_skip', 'state_accumulation_complete_batch']
         manifests = {name: ('fixture', Path('/fresh')/name, ()) for name in names[:2]}
         with patch.object(native_preparation, '_selected_fixture_provider',
                           return_value=(manifests, {'fresh': True})) as provider:
@@ -245,7 +245,7 @@ class NativePreparationHarness(unittest.TestCase):
             self.assertEqual(len(fixtures['quic_transport'][2]), 2)
             self.assertEqual(len(evidence['files']), 2)
             # Block downloads require both fresh transport identities and the frozen independent report.
-            for name in ('application_block_download', 'application_download_session'):
+            for name in ('app_block_download', 'app_download_session'):
                 # Each sibling must receive its own complete manifest without leaking the other suite's identity.
                 with self.subTest(suite=name):
                     block, observed = native_preparation.prepare_selected_fixture(folder, name, folder)
@@ -254,7 +254,7 @@ class NativePreparationHarness(unittest.TestCase):
                     self.assertEqual(set(block[name][1]),
                                      {'RAGNAROK_TEST_CERT', 'RAGNAROK_TEST_KEY', 'RAGNAROK_STATE_REPORT'})
                     self.assertEqual(len(observed['files']), 3)
-            for name in ('application_download_loop', 'application_download_peers', 'application_download_startup'):
+            for name in ('app_download_loop', 'app_download_peers', 'app_download_startup'):
                 # All consumers require independently hashed complete peer manifests.
                 peers, observed = native_preparation.prepare_selected_fixture(folder, name, folder)
                 self.assertEqual(set(peers), {name})

@@ -2,14 +2,24 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current updates use the existing native one-slot worker without losing IO receipts or touching canonical ownership.
-import std/[assertions, envvars, syncio]
+import std/assertions
+import std/envvars
+import std/syncio
 import std/posix/posix
-import ../../../src/app/[chain, disk_chain, disk_worker]
-import ../../../src/chain/provider
-import ../../../src/state/[store, disk_store, accumulation_current_update]
-import ../../../src/storage/[file_repository, node_repository, database_identity]
-import ../../../src/codec/[bounded, report_owned]
-import ../../support/[accumulation_current_chain_context, accumulation_current_disk_context]
+import ../../../src/app/chain as app_chain
+import ../../../src/app/disk_chain as app_disk_chain
+import ../../../src/app/disk_worker as app_disk_worker
+import ../../../src/chain/provider as chain_provider
+import ../../../src/state/store as state_store
+import ../../../src/state/disk_store as state_disk_store
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/storage/file_repository as storage_file_repository
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/database_identity as storage_database_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../support/state_accumulation_current_chain_context
+import ../../support/state_accumulation_current_disk_context
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged namespaces never replace another native test's artifact.
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode: int,

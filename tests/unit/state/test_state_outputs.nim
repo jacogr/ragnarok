@@ -7,8 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_outputs, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/bounded as codec_bounded
 
 ## Capture an immutable sequence that survives local source/wire scope and all later caller mutation.
 proc captured(config: OutputLogConfig): OutputLogSnapshot =

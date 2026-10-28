@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic result/count misuse requires optimized guards alongside genuine public controls.
-import std/[assertions, cmdline, syncio]
+import std/assertions
+import std/cmdline
+import std/syncio
 import ../support/storage_samples
-import ../../src/storage/[revision_retention, node_repository]
-import ../../src/codec/bounded
+import ../../src/storage/revision_retention as storage_revision_retention
+import ../../src/storage/node_repository as storage_node_repository
+import ../../src/codec/bounded as codec_bounded
 proc main() =
   ## Select dynamic valid/default/refused accesses so constant folding cannot replace contracts.
   let member = paramStr(1)

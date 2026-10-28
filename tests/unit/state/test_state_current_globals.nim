@@ -3,11 +3,21 @@
 
 ## Genuine ordinary/dispute/ticket/epoch current successors qualify all sixteen globals under their original derived profiles.
 # @@Verification={"arc": "state_current_globals_arc_release"}
-import std/[assertions, envvars, syncio]
-import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
-import ../../../src/state/[current_globals, current_profile, global_snapshot,
-    accumulation_current_update, store]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../support/state_current_checkpoint_context
+import ../../support/state_accumulation_current_chain_context
+import ../../support/testing_arc_evidence
+import ../../../src/state/current_globals as state_current_globals
+import ../../../src/state/current_profile as state_current_profile
+import ../../../src/state/global_snapshot as state_global_snapshot
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/store as state_store
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_composition as codec_state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hash primitives only after genuine current execution finishes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

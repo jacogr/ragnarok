@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/assured_execution
+import ../../../src/state/assured_execution as state_assured_execution
 var candidate: ExecutedAssuredAccumulation
 discard candidate.data

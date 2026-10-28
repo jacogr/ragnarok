@@ -4,9 +4,12 @@
 ## Actual finalized computed work with canonical original statistics and bounded maintained state-composition policies.
 
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_finalization, accumulation_completion]
-import ../../src/codec/[bounded, assurances]
-import ./[pvm_computed_finalization, accumulation_completion_context]
+import ../../src/state/computed_finalization as state_computed_finalization
+import ../../src/state/accumulation_completion as state_accumulation_completion
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/assurances as codec_assurances
+import ./pvm_computed_finalization
+import ./state_accumulation_completion_context
 
 proc compositionFixture*(withComposition = true, withChain = false,
     storage = ComputedStorageMode.Disabled): FinalizedComputedAccumulation =

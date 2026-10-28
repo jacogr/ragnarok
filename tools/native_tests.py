@@ -198,14 +198,14 @@ def unit_environment(compiler, name=None, base=None, fixtures=None, suites=None)
 # Preserve the historical numeric report fields, rejecting absent or malformed observations.
 def unit_evidence(compiler, name, directory=None):
     observed = json.loads(((directory or unit_evidence_directory(compiler))/(name+'.json')).read_text())
-    required = {'cycles', 'occupied_before', 'occupied_after'} | ({'schemas'} if name == 'ownership' else set())
+    required = {'cycles', 'occupied_before', 'occupied_after'} | ({'schemas'} if name == 'codec_ownership' else set())
     if not isinstance(observed, dict) or set(observed) != required or any(type(value) is not int or value < 0 for value in observed.values()):
         # Numeric evidence is not an arbitrary success flag or an unchecked JSON object.
         raise ValueError('Invalid native ARC observation: '+name)
     if observed['cycles'] != 1000 or observed['occupied_before'] != observed['occupied_after']:
         # This report consistency check retains the prior safeguard; the code assertion runs inside Nim too.
         raise ValueError('Native ARC workload did not return to baseline: '+name)
-    if name == 'ownership' and observed['schemas'] != 5:
+    if name == 'codec_ownership' and observed['schemas'] != 5:
         # A smaller schema workload cannot stand in for the original five-owner regression.
         raise ValueError('Incomplete native ARC schema workload')
     return observed

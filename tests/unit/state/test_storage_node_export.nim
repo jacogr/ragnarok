@@ -4,10 +4,14 @@
 ## Full/delta exports detach exact physical nodes, reuse cached identities and bound output.
 # @@Verification={"arc": "storage_node_export_arc_release"}
 
-import std/[assertions, syncio]
-import ../../support/arc_evidence
-import ../../../src/storage/[full_state_trie, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import std/assertions
+import std/syncio
+import ../../support/testing_arc_evidence
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/bounded as codec_bounded
 
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer proves detachment needs no fresh crypto work.

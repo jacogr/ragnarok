@@ -6,7 +6,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <UiServer>", "build_name": "ui-server-copy"}
 
-import ../../../src/ui/server
+import ../../../src/ui/server as ui_server
 var original = default(UiServer)
 var duplicate = original
 original.close()

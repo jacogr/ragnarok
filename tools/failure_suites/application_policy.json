@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/application_policy_results.nim",
+  "source": "tests/native/app_policy_results.nim",
   "build_name": "application-policy-results",
   "cases": [
     {"identity": {"reason": "default-count"}, "arguments": ["default-count"], "name": "application-policy-default-count", "diagnostic": "options.parsed", "description": "Application policy selected accessor guard default-count"},

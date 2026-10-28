@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_envelope
+import ../../../src/state/computed_envelope as state_computed_envelope
 var candidate: ComputedEnvelopeResult[ComputedGuaranteeEnvelope]
 discard candidate.status

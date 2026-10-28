@@ -3,8 +3,11 @@
 
 ## Bounded immutable path witnesses for the pinned state trie. Capture validates structure only;
 ## independently supplied roots and keys grant lookup authority through a separate verifier.
-import std/[algorithm, assertions]
-import ../codec/[bounded, state_layout, state_trie]
+import std/algorithm
+import std/assertions
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
 
 type
   StateProofLimits* = object ## Independent ceilings apply before path/value copying or hashing.

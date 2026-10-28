@@ -3,10 +3,15 @@
 
 ## Strict composed successor result guards with genuine success and selected driver/finalizer/composition refusals.
 
-import std/[assertions, cmdline]
-import ../../src/state/[assured_composition, assured_execution, accumulation_consensus,
-  accumulation_driver, accumulation_finalization, accumulation_completion]
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import ../../src/state/assured_composition as state_assured_composition
+import ../../src/state/assured_execution as state_assured_execution
+import ../../src/state/accumulation_consensus as state_accumulation_consensus
+import ../../src/state/accumulation_driver as state_accumulation_driver
+import ../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../src/state/accumulation_completion as state_accumulation_completion
+import ../../src/codec/bounded as codec_bounded
 import ../support/pvm_assured_composition
 
 proc expect[T](outcome: AssuredCompositionResult[T], reason: AssuredCompositionError) =

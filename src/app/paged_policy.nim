@@ -2,11 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Finite full paged application policy retains existing complete-state, physical, export and context ceilings.
-import ../state/[paged_state, disk_store]
-import ../storage/[full_paged_store, full_paged_stream, paged_codec, file_repository,
-  node_records, database_identity]
-import ../codec/[bounded, state_trie]
-import ../chain/provider
+import ../state/paged_state as state_paged_state
+import ../state/disk_store as state_disk_store
+import ../storage/full_paged_store as storage_full_paged_store
+import ../storage/full_paged_stream as storage_full_paged_stream
+import ../storage/paged_codec as storage_paged_codec
+import ../storage/file_repository as storage_file_repository
+import ../storage/node_records as storage_node_records
+import ../storage/database_identity as storage_database_identity
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../chain/provider as chain_provider
 
 type PagedApplicationPolicy* = object ## Native streaming and resident export staging remain independent bounded policies.
   contextBytes*: ByteLimit

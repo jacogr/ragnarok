@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "compositionReason"}
 
-import ../../../src/state/assured_composition
+import ../../../src/state/assured_composition as state_assured_composition
 var candidate: AssuredCompositionResult[ComposedAssuredState]
 discard candidate.compositionReason

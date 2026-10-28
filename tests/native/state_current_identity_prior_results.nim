@@ -2,10 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict completed-origin owner/default source guards with an actual two-child current positive control.
-import std/[assertions, cmdline, syncio]
-import ../support/[current_repeated_logical_context, current_identity_context]
-import ../../src/state/[current_identities, current_logical, accumulation_current_update]
-import ../../src/codec/report_owned
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../support/state_current_repeated_logical_context
+import ../support/state_current_identity_context
+import ../../src/state/current_identities as state_current_identities
+import ../../src/state/current_logical as state_current_logical
+import ../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../src/codec/report_owned as codec_report_owned
 proc extract(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## No default completed source grants an authenticated preservation prefix.
   discard value.value

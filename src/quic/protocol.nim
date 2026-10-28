@@ -7,7 +7,7 @@
 ## Exposes nominal peer/frame lengths, peer-name validation, frame inspection and checked
 ## parsing results.
 
-import ./transport
+import ./transport as quic_transport
 
 type
   FrameError* {.pure.} = enum ## Defaults, incomplete input and protocol failures never carry a successful extent.

@@ -3,12 +3,23 @@
 
 ## Bounded multi-update preparation keeps one final candidate; one-barrier append preserves exact prefix recovery and immutable readers.
 # @@Verification={"arc":"storage_light_journal_batches_arc_release"}
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import std/posix/posix
-import ../../support/[arc_evidence, storage_io, storage_light_journal]
-import ../../../src/storage/[light_journal_cache, light_journal_replay, light_journal_manifest,
-  light_delta, light_snapshot, light_state_cache, managed_io, managed_manifest, file_errors, durability]
-import ../../../src/codec/bounded
+import ../../support/testing_arc_evidence
+import ../../support/storage_io
+import ../../support/storage_light_journal
+import ../../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../../src/storage/light_journal_replay as storage_light_journal_replay
+import ../../../src/storage/light_journal_manifest as storage_light_journal_manifest
+import ../../../src/storage/light_delta as storage_light_delta
+import ../../../src/storage/light_snapshot as storage_light_snapshot
+import ../../../src/storage/light_state_cache as storage_light_state_cache
+import ../../../src/storage/managed_io as storage_managed_io
+import ../../../src/storage/managed_manifest as storage_managed_manifest
+import ../../../src/storage/file_errors as storage_file_errors
+import ../../../src/storage/durability as storage_durability
+import ../../../src/codec/bounded as codec_bounded
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation failures are independent from actual append IO and cannot poison an unchanged owner.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

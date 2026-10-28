@@ -5,11 +5,18 @@
 
 ## Genuine importer/exporter correspondence, exact ordinal binding, all-or-nothing failure and immutable lifetime.
 
-import std/[assertions, syncio]
-import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
-import ../../../src/codec/bounded
-import ../../../src/crypto/guarantee
-import ../../support/[pvm_computed_links, pvm_computed_report, pvm_computed_report_vectors, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/computed_links as state_computed_links
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/state/computed_report as state_computed_report
+import ../../../src/state/report_identity as state_report_identity
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/crypto/guarantee as crypto_guarantee
+import ../../support/pvm_computed_links
+import ../../support/pvm_computed_report
+import ../../support/pvm_computed_report_vectors
+import ../../support/testing_arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all new hashes only after real source preparation to prove the relation check repeats no work.

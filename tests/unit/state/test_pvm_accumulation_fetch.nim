@@ -6,12 +6,22 @@
 
 # @@Verification={"arc": "pvm_accumulation_fetch_arc_release"}
 
-import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_fetch]
-import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, c2_records, state_safrole]
-import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
-import ../../support/[pvm_accumulation_context, arc_evidence]
+import std/assertions
+import std/syncio
+import ../../../src/state/accumulation_machine as state_accumulation_machine
+import ../../../src/state/accumulation_fetch as state_accumulation_fetch
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/c2_records as codec_c2_records
+import ../../../src/codec/state_safrole as codec_state_safrole
+import ../../../src/pvm/initialize as pvm_initialize
+import ../../../src/pvm/program as pvm_program
+import ../../../src/pvm/machine as pvm_machine
+import ../../../src/pvm/host_fetch as pvm_host_fetch
+import ../../../src/pvm/step as pvm_step
+import ../../../src/pvm/gas as pvm_gas
+import ../../support/pvm_accumulation_context
+import ../../support/testing_arc_evidence
 
 ## Test-only provider refusal verifies setup never rehashes or reauthenticates prepared state.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

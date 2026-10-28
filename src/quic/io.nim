@@ -7,7 +7,10 @@
 ## Exposes dispatcher and UDP endpoint ownership, descriptor registration, bounded
 ## wait/send/receive and explicit close operations.
 
-import std/[assertions, oserrors, nativesocket, syncio]
+import std/assertions
+import std/oserrors
+import std/nativesocket
+import std/syncio
 import std/posix/posix
 
 const

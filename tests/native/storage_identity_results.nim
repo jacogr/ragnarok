@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/failed identity payloads and uninitialized scalar access require public contracts.
-import std/[assertions, cmdline, syncio]
-import ../../src/storage/database_identity
-import ../../src/codec/bounded
+import std/assertions
+import std/cmdline
+import std/syncio
+import ../../src/storage/database_identity as storage_database_identity
+import ../../src/codec/bounded as codec_bounded
 proc main() =
   ## Dynamic origins retain genuine valid controls under identical checked native flags.
   let member = paramStr(1)

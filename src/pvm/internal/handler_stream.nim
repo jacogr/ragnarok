@@ -3,11 +3,15 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
 import std/assertions
-import ../[program, machine, gas, gas_plan, gas_memo]
-import ./execution_types as oracle
-import ./register_ops
+import ../program as pvm_program
+import ../machine as pvm_machine
+import ../gas as pvm_gas
+import ../gas_plan as pvm_gas_plan
+import ../gas_memo as pvm_gas_memo
+import ./execution_types as pvm_execution_types
+import ./register_ops as pvm_register_ops
 when defined(pvmArm64Jit):
-  import ./arm64_jit
+  import ./arm64_jit as pvm_arm64_jit
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -59,10 +63,10 @@ type
   FlatFrame* = object ## One exclusively used execution instance; no cache stores an invocation's mutable register/memory state.
     plan: FlatPlan
     info*: MachineInfo
-    reason*: oracle.StepError
-    exit*: oracle.StepExit
+    reason*: pvm_execution_types.StepError
+    exit*: pvm_execution_types.StepExit
     faultPage*: PageAddress
-    hostCall*: oracle.HostCallId
+    hostCall*: pvm_execution_types.HostCallId
     handlers: seq[FlatHandler]
     arguments: seq[FlatArgs]
     sites: seq[uint32]
@@ -152,21 +156,21 @@ when defined(pvmArm64Jit):
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
 
-proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
+proc flatStopExit(f: var FlatFrame, off: uint32, kind: pvm_execution_types.StepExit,
     attempted: bool = true): uint32 =
   ## Rare exits materialize the exact source PC; ordinary handlers never publish physical PCs.
   f.exit = kind
   f.stoppedAt = off
   f.attemptedExit = attempted
   let fact = f.plan.facts[int(f.sites[int(off)])]
-  f.info.pc = if kind in [oracle.StepExit.Halt, oracle.StepExit.Panic]: CodeAddress(
-      0) else: CodeAddress(fact.pc)
+  f.info.pc = if kind in [pvm_execution_types.StepExit.Halt,
+      pvm_execution_types.StepExit.Panic]: CodeAddress(0) else: CodeAddress(fact.pc)
   flatStop
 
-proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
+proc flatLocal(f: var FlatFrame, off: uint32, error: pvm_execution_types.StepError): uint32 =
   ## A local refusal selects no successful snapshot; the caller restores any temporary budget barrier.
   f.reason = error
-  if error != oracle.StepError.StepLimitExceeded:
+  if error != pvm_execution_types.StepError.StepLimitExceeded:
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
   f.stoppedAt = off
   f.attemptedExit = false
@@ -175,16 +179,17 @@ proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
 proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   ## Only a partial block installs this synthetic barrier; folded no-ops still select their exact source boundary.
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
-  flatLocal(f, off, oracle.StepError.StepLimitExceeded)
+  flatLocal(f, off, pvm_execution_types.StepError.StepLimitExceeded)
 
 template flatReserve(f: var FlatFrame, off: uint32) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
   if f.remaining == 0:
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
-    return flatLocal(f, off, oracle.StepError.StepLimitExceeded)
+    return flatLocal(f, off, pvm_execution_types.StepError.StepLimitExceeded)
   let a = f.arguments[int(off)]
   if not f.info.blockCharged:
-    if uint64(f.info.gas) < a.x: return flatStopExit(f, off, oracle.StepExit.OutOfGas, false)
+    if uint64(f.info.gas) < a.x:
+      return flatStopExit(f, off, pvm_execution_types.StepExit.OutOfGas, false)
     f.info.gas = MachineGas(uint64(f.info.gas)-a.x)
     f.info.blockCharged = true
   let reserved = min(f.remaining, uint64(a.y))
@@ -212,11 +217,12 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   let selected = f.handlers[int(next)]
   selected(f, next)
 
-proc flatChargeFailure[Error: static[oracle.StepError]](f: var FlatFrame, off: uint32): uint32 =
+proc flatChargeFailure[Error: static[pvm_execution_types.StepError]](f: var FlatFrame,
+    off: uint32): uint32 =
   if f.remaining == 0:
     # Source-attempt exhaustion wins before a failed unused price on a newly reached header.
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
-    return flatLocal(f, off, oracle.StepError.StepLimitExceeded)
+    return flatLocal(f, off, pvm_execution_types.StepError.StepLimitExceeded)
 
   ## An already-paid resumed block may execute despite a failed unused pricing computation.
   if not f.info.blockCharged: return flatLocal(f, off, Error)
@@ -228,7 +234,7 @@ proc flatRegister[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(a.slots, a.x, byte(Code), f.info.registers, index, value, Code):
-    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+    return flatLocal(f, off, pvm_execution_types.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   off+1
 
@@ -238,7 +244,7 @@ proc flatRegisterPair[Code: static[int]](f: var FlatFrame, off: uint32): uint32 
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(a.slots, a.x, byte(Code), f.info.registers, index, value, Code):
-    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+    return flatLocal(f, off, pvm_execution_types.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   let next = off+1
   let selected = f.handlers[int(next)]
@@ -250,14 +256,14 @@ proc flatFusedRegisters[First, Second: static[int]](f: var FlatFrame, off: uint3
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(a.slots, a.x, byte(First), f.info.registers, index, value, First):
-    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+    return flatLocal(f, off, pvm_execution_types.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   let next = off+1
   # A partial reservation still observes the original second-instruction boundary before reading or mutating its operands.
   if f.barrier == next: return flatBudget(f, next)
   let b = f.arguments[int(next)]
   if not computeRegisterOperands(b.slots, b.x, byte(Second), f.info.registers, index, value, Second):
-    return flatLocal(f, next, oracle.StepError.UnsupportedInstruction)
+    return flatLocal(f, next, pvm_execution_types.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   next+1
 
@@ -423,11 +429,12 @@ proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
   if checked.error != MachineError.None:
     if checked.error == MachineError.Fault:
       f.faultPage = checked.faultPage
-      discard flatStopExit(f, off, oracle.StepExit.Fault)
-    elif checked.error == MachineError.Panic: discard flatStopExit(f, off, oracle.StepExit.Panic)
+      discard flatStopExit(f, off, pvm_execution_types.StepExit.Fault)
+    elif checked.error == MachineError.Panic: discard flatStopExit(f, off,
+        pvm_execution_types.StepExit.Panic)
     elif checked.error == MachineError.AmbiguousAccessOrder: discard flatLocal(f, off,
-        oracle.StepError.AmbiguousAccessOrder)
-    else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
+        pvm_execution_types.StepError.AmbiguousAccessOrder)
+    else: discard flatLocal(f, off, pvm_execution_types.StepError.InvalidMachine)
     return false
   value = 0
   for i in 0..<W: value = value or (uint64(flatByte(f, address+uint64(i))) shl (8*i))
@@ -439,11 +446,12 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
   if checked.error != MachineError.None:
     if checked.error == MachineError.Fault:
       f.faultPage = checked.faultPage
-      discard flatStopExit(f, off, oracle.StepExit.Fault)
-    elif checked.error == MachineError.Panic: discard flatStopExit(f, off, oracle.StepExit.Panic)
+      discard flatStopExit(f, off, pvm_execution_types.StepExit.Fault)
+    elif checked.error == MachineError.Panic: discard flatStopExit(f, off,
+        pvm_execution_types.StepExit.Panic)
     elif checked.error == MachineError.AmbiguousAccessOrder: discard flatLocal(f, off,
-        oracle.StepError.AmbiguousAccessOrder)
-    else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
+        pvm_execution_types.StepError.AmbiguousAccessOrder)
+    else: discard flatLocal(f, off, pvm_execution_types.StepError.InvalidMachine)
     return false
   flatMarkStore[W](f, address)
   for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
@@ -536,8 +544,8 @@ proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
 proc flatResolutionFailure(f: var FlatFrame, off: uint32): uint32 =
   ## Invalid guest destinations panic; local policy exhaustion has no successful guest outcome.
   if f.preparationFailure != FlatError.None: return flatLocal(f, off,
-      oracle.StepError.InvalidPreparedProgram)
-  flatStopExit(f, off, oracle.StepExit.Panic)
+      pvm_execution_types.StepError.InvalidPreparedProgram)
+  flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
 
 proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Resolve a source-owned sealed static target once and patch only this frame's private stream.
@@ -576,7 +584,7 @@ proc flatFusedRegisterBranch[First, Branch: static[int]](f: var FlatFrame, off: 
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(a.slots, a.x, byte(First), f.info.registers, index, value, First):
-    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+    return flatLocal(f, off, pvm_execution_types.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   let next = off+1
   # The second source boundary must still stop before reading its operands or clearing the paid flag.
@@ -604,7 +612,7 @@ template flatShapeRegister(f: var FlatFrame, off: uint32, Code: static[int]) =
     var index: range[0..12] = 0
     var value = RegisterValue(0)
     if not computeRegisterOperands(a.slots, a.x, byte(Code), f.info.registers, index, value, Code):
-      return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+      return flatLocal(f, off, pvm_execution_types.StepError.UnsupportedInstruction)
     f.info.registers[index] = value
 
 template flatChargedStep(f: var FlatFrame, off: uint32, First, Second, Branch: static[int],
@@ -709,7 +717,7 @@ proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   when Code == 80:
     let a = f.arguments[int(off)]
     f.info.registers[a.slots.aIndex] = RegisterValue(a.x)
-  flatStopExit(f, off, oracle.StepExit.Panic)
+  flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
 
 proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off: uint32): uint32 =
   ## Full sentinel/alignment/table membership rules match our control worker, with predecoded dense target facts.
@@ -719,8 +727,9 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   let delta = when Code == 50: a.x else: flatSext32(a.y)
   let address = (base+delta) and 0xffffffff'u64
   when Code == 180: f.info.registers[a.slots.aIndex] = RegisterValue(a.x)
-  if address == 0xffff0000'u64: return flatStopExit(f, off, oracle.StepExit.Halt)
-  if address == 0 or (address and 1) != 0: return flatStopExit(f, off, oracle.StepExit.Panic)
+  if address == 0xffff0000'u64: return flatStopExit(f, off, pvm_execution_types.StepExit.Halt)
+  if address == 0 or (address and 1) != 0:
+    return flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
   let index = address div 2-1
   let slot = int(index and 255'u64)
   let known = f.dynamicOffsets[slot]
@@ -731,15 +740,17 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   when Single:
     # A single instruction checks only its chosen original table ordinal; it never decodes the full table.
     let found = jumpTarget(f.plan.source, JumpIndex(index))
-    if found.error != ProgramError.None: return flatStopExit(f, off, oracle.StepExit.Panic)
+    if found.error != ProgramError.None:
+      return flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
     let starts = basicBlockStart(f.plan.source, found.value)
     target = FlatTarget(pc: uint32(uint64(found.value) and 0xffffffff'u64),
       valid: starts.error == ProgramError.None and starts.value)
   else:
     # Ordinary prepared execution retains the qualified dense-table lookup without a runtime mode branch.
-    if index >= uint64(f.plan.jumps.len): return flatStopExit(f, off, oracle.StepExit.Panic)
+    if index >= uint64(f.plan.jumps.len):
+      return flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
     target = f.plan.jumps[int(index)]
-  if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
+  if not target.valid: return flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
   if resolved == flatStop: return flatResolutionFailure(f, off)
   f.dynamicOffsets[slot] = ((index+1) shl 32) or uint64(resolved+1)
@@ -748,12 +759,12 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
 
 proc flatHost(f: var FlatFrame, off: uint32): uint32 =
   ## A genuine host exit is source-bound and preserves the sign-extended immediate in its complete register-width domain.
-  f.hostCall = oracle.HostCallId(f.arguments[int(off)].x)
-  flatStopExit(f, off, oracle.StepExit.Host)
+  f.hostCall = pvm_execution_types.HostCallId(f.arguments[int(off)].x)
+  flatStopExit(f, off, pvm_execution_types.StepExit.Host)
 
 proc flatTrap(f: var FlatFrame, off: uint32): uint32 =
   ## Recursive terminal normalization stays on the rare exit path.
-  flatStopExit(f, off, oracle.StepExit.Panic)
+  flatStopExit(f, off, pvm_execution_types.StepExit.Panic)
 
 proc flatNoop(f: var FlatFrame, off: uint32): uint32 =
   ## Available for isolated opcode witnesses; ordinary compilation folds unlikely while retaining source-budget facts.
@@ -761,7 +772,7 @@ proc flatNoop(f: var FlatFrame, off: uint32): uint32 =
 
 proc flatInvalid(f: var FlatFrame, off: uint32): uint32 =
   ## A missing successor for a nonterminator is a local invalid-machine refusal, not a fabricated guest trap.
-  flatLocal(f, off, oracle.StepError.InvalidMachine)
+  flatLocal(f, off, pvm_execution_types.StepError.InvalidMachine)
 
 func flatHandler(code: byte, valid, fallthrough: bool): nil FlatHandler {.inline.} =
   ## One canonical literal handler table is shared by ordinary preparation and specialized second-instruction selection.
@@ -1154,30 +1165,31 @@ proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint
   f.arguments.add(args)
   f.sites.add(site)
 
-proc flatPrice(f: var FlatFrame, start: CodeAddress, cost: var uint64): oracle.StepError =
+proc flatPrice(f: var FlatFrame, start: CodeAddress,
+    cost: var uint64): pvm_execution_types.StepError =
   ## Query the selected exact-owner pricing policy only when preparing a previously unseen suffix.
   if f.pricingKind == 1:
     let price = blockGas(f.pricingPlan, start)
-    if price.error != GasPlanError.None: return oracle.StepError.InvalidGasPlan
+    if price.error != GasPlanError.None: return pvm_execution_types.StepError.InvalidGasPlan
     cost = uint64(price.value)
-    return oracle.StepError.None
+    return pvm_execution_types.StepError.None
   if f.pricingKind == 2:
     let price = blockGas(f.pricingMemo, start)
     case price.error
     of GasMemoError.None:
       cost = uint64(price.value)
-      return oracle.StepError.None
-    of GasMemoError.CycleLimitExceeded: return oracle.StepError.GasCycleLimitExceeded
-    of GasMemoError.NegativeBranchTarget: return oracle.StepError.NegativeBranchTarget
-    else: return oracle.StepError.InvalidGasMemo
+      return pvm_execution_types.StepError.None
+    of GasMemoError.CycleLimitExceeded: return pvm_execution_types.StepError.GasCycleLimitExceeded
+    of GasMemoError.NegativeBranchTarget: return pvm_execution_types.StepError.NegativeBranchTarget
+    else: return pvm_execution_types.StepError.InvalidGasMemo
   let price = blockGas(f.plan.source, start, f.plan.cycles)
   case price.error
   of GasError.None:
     cost = uint64(price.value)
-    oracle.StepError.None
-  of GasError.CycleLimitExceeded: oracle.StepError.GasCycleLimitExceeded
-  of GasError.NegativeBranchTarget: oracle.StepError.NegativeBranchTarget
-  else: oracle.StepError.InvalidMachine
+    pvm_execution_types.StepError.None
+  of GasError.CycleLimitExceeded: pvm_execution_types.StepError.GasCycleLimitExceeded
+  of GasError.NegativeBranchTarget: pvm_execution_types.StepError.NegativeBranchTarget
+  else: pvm_execution_types.StepError.InvalidMachine
 
 proc flatMemoCharge(f: var FlatFrame, off: uint32): uint32 =
   ## Preparation alone must not populate a caller's lazy memo; only an attempted unpaid entry queries it.
@@ -1185,7 +1197,7 @@ proc flatMemoCharge(f: var FlatFrame, off: uint32): uint32 =
     let fact = f.plan.facts[int(f.sites[int(off)])]
     var cost = 0'u64
     let priced = flatPrice(f, f.plan.pricePcs[int(fact.priceIndex)], cost)
-    if priced != oracle.StepError.None: return flatLocal(f, off, priced)
+    if priced != pvm_execution_types.StepError.None: return flatLocal(f, off, priced)
     f.arguments[int(off)].x = cost
     f.handlers[int(off)] = flatCharge
   flatCharge(f, off)
@@ -1193,7 +1205,7 @@ proc flatMemoCharge(f: var FlatFrame, off: uint32): uint32 =
 proc flatSingleEnd(f: var FlatFrame, off: uint32): uint32 =
   ## A scalar successor publishes one completed source attempt without preparing its destination block.
   f.info.pc = CodeAddress(f.arguments[int(off)].x)
-  f.reason = oracle.StepError.StepLimitExceeded
+  f.reason = pvm_execution_types.StepError.StepLimitExceeded
   f.stoppedAt = off
   f.attemptedExit = false
   flatStop
@@ -1260,7 +1272,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       else:
         let priced = flatPrice(f, f.plan.pricePcs[int(fact.priceIndex)], needed)
         case priced
-        of oracle.StepError.None:
+        of pvm_execution_types.StepError.None:
           # Only these measured complete shapes specialize normal headers; folded prefixes and failed prices stay ordinary.
           if fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 131 and
               f.plan.facts[index+1].opcode == 88:
@@ -1272,11 +1284,11 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
               charge = flatChargedShapeCold[200, 139, 82]
             elif fact.opcode == 151 and second == 152 and last == 173:
               charge = flatChargedShapeCold[151, 152, 173]
-        of oracle.StepError.GasCycleLimitExceeded: charge = flatChargeFailure[
-            oracle.StepError.GasCycleLimitExceeded]
-        of oracle.StepError.NegativeBranchTarget: charge = flatChargeFailure[
-            oracle.StepError.NegativeBranchTarget]
-        else: charge = flatChargeFailure[oracle.StepError.InvalidMachine]
+        of pvm_execution_types.StepError.GasCycleLimitExceeded: charge = flatChargeFailure[
+            pvm_execution_types.StepError.GasCycleLimitExceeded]
+        of pvm_execution_types.StepError.NegativeBranchTarget: charge = flatChargeFailure[
+            pvm_execution_types.StepError.NegativeBranchTarget]
+        else: charge = flatChargeFailure[pvm_execution_types.StepError.InvalidMachine]
       flatEmit(f, charge, FlatArgs(x: needed, y: fact.sourceCount, slots: default(RegisterSlots)),
           uint32(index))
       first = false
@@ -1313,10 +1325,10 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   f.hostSnapshot = default(Memory)
   f.hostChanges = @[]
   f.info = info
-  f.reason = oracle.StepError.None
-  f.exit = oracle.StepExit.Continued
+  f.reason = pvm_execution_types.StepError.None
+  f.exit = pvm_execution_types.StepExit.Continued
   f.faultPage = PageAddress(0)
-  f.hostCall = oracle.HostCallId(0)
+  f.hostCall = pvm_execution_types.HostCallId(0)
   for page in 0..<f.sourceImages.len:
     let image = f.sourceImages[page]
     if image.access == PageAccess.Inaccessible: continue
@@ -1352,10 +1364,10 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
     dirtyPages: (if images.len == 0: @[] else: newSeq[uint64](16384)),
-        info: info, reason: oracle.StepError.None,
-    exit: oracle.StepExit.Continued,
-    faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
-        sites: @[],
+        info: info, reason: pvm_execution_types.StepError.None,
+    exit: pvm_execution_types.StepExit.Continued,
+    faultPage: PageAddress(0), hostCall: pvm_execution_types.HostCallId(0), handlers: @[],
+        arguments: @[], sites: @[],
     compiledForPc: @[], sourceMemory: memory, sourceImages: newSeqOfCap[PageImage](
         images.len),
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
@@ -1443,7 +1455,7 @@ when defined(pvmArm64Jit):
         assert int(destination) < f.handlers.len
         when ClearPaid: f.info.blockCharged = false
         return destination
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
 
   proc flatArmBranch(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial source prefixes always reenter the original checked operations and exact temporary barrier.
@@ -1451,7 +1463,7 @@ when defined(pvmArm64Jit):
       let original = f.armOriginal[int(offset)]
       assert original != nil
       if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+      return flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
     flatArmRunNext[true](f, offset)
 
   proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
@@ -1492,13 +1504,13 @@ when defined(pvmArm64Jit):
       let original = f.armOriginal[int(offset)]
       assert original != nil
       if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+      return flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
     block:
       # Native arithmetic cannot replace the frame-owned cache or invoke a host; the owner outlives this register borrow.
       let jit {.cursor.} = f.armJit
       assert jit != nil
       if jit != nil: return callArmEntry(jit, offset, f.info.registers)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
 
   proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
     ## First execution retains original branch resolution; only subsequent positive cached capability enables promotion.
@@ -1568,7 +1580,7 @@ when defined(pvmArm64Jit):
     ## A fresh invocation context never escapes this call; guarded returns resume the original checked header.
     let jit = f.armJit
     assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if jit == nil: return flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
     var headers, spans = default(array[3, uint32])
     var prices = default(array[3, uint64])
     for index in 0..<3:
@@ -1583,7 +1595,7 @@ when defined(pvmArm64Jit):
       let original = f.armOriginal[int(offset)]
       assert original != nil
       if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+      return flatLocal(f, offset, pvm_execution_types.StepError.InvalidPreparedProgram)
     var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64]
     let destination = callArmRegion(jit, f.info.registers, state)
     f.info.gas = MachineGas(state[0])
@@ -1591,14 +1603,14 @@ when defined(pvmArm64Jit):
     f.info.blockCharged = false
     assert int(destination) < f.handlers.len
     if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-        oracle.StepError.InvalidPreparedProgram)
+        pvm_execution_types.StepError.InvalidPreparedProgram)
     for header in headers:
       if destination == header:
         # This block has not begun: original reservation preserves gas-before-partial-prefix and exact source PC/paid flags.
         let original = f.armOriginal[int(header)]
         assert original != nil
         if original != nil: return original(f, header)
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+        return flatLocal(f, header, pvm_execution_types.StepError.InvalidPreparedProgram)
     destination
 
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool =
@@ -1697,7 +1709,8 @@ when defined(pvmArm64Jit):
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
     ## Only newly emitted suffix nodes are examined. Unsupported nodes keep the ordinary hot loop unchanged.
-    if not f.plan.allowNative: return # Decide before scanning, allocating storage or consulting a native cache.
+    if not f.plan.allowNative:
+      return # Decide before scanning, allocating storage or consulting a native cache.
     let before = armClock()
     var offset = origin
     while int(offset) < f.handlers.len:
@@ -1724,28 +1737,28 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.hostSnapshot = default(Memory)
   f.hostChanges = @[]
   f.remaining = limit
-  f.reason = oracle.StepError.None
-  f.exit = oracle.StepExit.Continued
+  f.reason = pvm_execution_types.StepError.None
+  f.exit = pvm_execution_types.StepExit.Continued
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
   if limit == 0:
-    f.reason = oracle.StepError.StepLimitExceeded
+    f.reason = pvm_execution_types.StepError.StepLimitExceeded
     return
   if f.plan == nil:
-    f.reason = oracle.StepError.InvalidMachine
+    f.reason = pvm_execution_types.StepError.InvalidMachine
     return
   if f.plan.singleStep:
     # Bounded adapter plans carry no whole-program maps and cannot authorize an ordinary invocation.
-    f.reason = oracle.StepError.InvalidPreparedProgram
+    f.reason = pvm_execution_types.StepError.InvalidPreparedProgram
     return
   if f.preparationFailure != FlatError.None:
-    f.reason = oracle.StepError.InvalidPreparedProgram
+    f.reason = pvm_execution_types.StepError.InvalidPreparedProgram
     return
   f.dynamicOffsets = default(array[256, uint64]) # Invocation reset remains inside execution timing.
   var offset = flatResolve(f, uint32(uint64(f.info.pc) and 0xffffffff'u64))
   if offset == flatStop:
-    f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
+    f.reason = if f.preparationFailure == FlatError.None: pvm_execution_types.StepError.InvalidMachine else: pvm_execution_types.StepError.InvalidPreparedProgram
     return
   while offset != flatStop:
     assert int(offset) < f.handlers.len
@@ -1757,7 +1770,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     if saved != nil: f.handlers[int(f.barrier)] = saved
     f.barrier = flatStop
     f.savedHandler = nil
-  if f.reason == oracle.StepError.None and f.attemptedExit:
+  if f.reason == pvm_execution_types.StepError.None and f.attemptedExit:
     let sourceFact = f.sites[int(f.stoppedAt)]
     if f.reservationEnd > sourceFact+1:
       f.remaining+=uint64(f.reservationEnd-sourceFact-1)
@@ -1767,18 +1780,18 @@ proc runFlatSingle*(f: var FlatFrame) =
   assert f.plan.singleStep and f.plan.facts.len == 1
   assert f.handlers.len == 0 and f.arguments.len == 0 and f.sites.len == 0
   f.remaining = 1
-  f.reason = oracle.StepError.None
-  f.exit = oracle.StepExit.Continued
+  f.reason = pvm_execution_types.StepError.None
+  f.exit = pvm_execution_types.StepExit.Continued
   let fact = f.plan.facts[0]
   var cost = 0'u64
   if not f.info.blockCharged:
     # Prepaid stepping does not query an unused price; unpaid entry still charges the genuine containing block.
     let start = containingBlockStart(f.plan.source, CodeAddress(uint64(fact.pc)))
     if start.error != ProgramError.None:
-      f.reason = oracle.StepError.InvalidMachine
+      f.reason = pvm_execution_types.StepError.InvalidMachine
       return
     let priced = flatPrice(f, start.value, cost)
-    if priced != oracle.StepError.None:
+    if priced != pvm_execution_types.StepError.None:
       f.reason = priced
       return
   flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0)
@@ -1846,7 +1859,8 @@ proc flatMemorySnapshot*(f: FlatFrame): Memory =
 
 proc observeFlatHostMemory*(f: var FlatFrame): Memory =
   ## Bind one genuine stopped host PC to a copied immutable snapshot, retained independently by callers.
-  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+  assert f.reason == pvm_execution_types.StepError.None and f.exit ==
+      pvm_execution_types.StepExit.Host
   var published = flatPublishMemory(f, true)
   f.hostSnapshot = published.memory
   f.hostChanges = move(published.changed)
@@ -1911,7 +1925,8 @@ proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: Ma
 proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: MachineGas,
     registers: RegisterFile) =
   ## The decoder-owned successor, not host-supplied PC/charged metadata, resumes an already paid block.
-  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+  assert f.reason == pvm_execution_types.StepError.None and f.exit ==
+      pvm_execution_types.StepExit.Host
   let pc = uint64(f.info.pc)
   assert pc < uint64(f.plan.factAt.len)
   let at = f.plan.factAt[int(pc)]
@@ -1960,22 +1975,24 @@ proc flatRefreshImages(f: var FlatFrame, changes: openArray[PageImage]) =
     f.sourceImages[slot] = changes[i]
 
 proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
-    registers: RegisterFile): oracle.StepError =
+    registers: RegisterFile): pvm_execution_types.StepError =
   ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
   ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
-  if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
+  if f.reason != pvm_execution_types.StepError.None or
+      f.exit != pvm_execution_types.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
-    return oracle.StepError.InvalidHostSuspension
+    return pvm_execution_types.StepError.InvalidHostSuspension
   let pc = uint64(f.info.pc)
-  if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
+  if pc >= uint64(f.plan.factAt.len): return pvm_execution_types.StepError.InvalidHostSuspension
   let fact = f.plan.factAt[int(pc)]
-  if fact < 0: return oracle.StepError.InvalidHostSuspension
+  if fact < 0: return pvm_execution_types.StepError.InvalidHostSuspension
   # Reject oversized host mappings before extracting a copied delta or any complete page array.
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
-    return oracle.StepError.InvalidHostResponse
+    return pvm_execution_types.StepError.InvalidHostResponse
   let delta = changedMemoryPages(f.hostSnapshot, posterior)
-  if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
+  if delta.error == MachineError.InvalidOwner:
+    return pvm_execution_types.StepError.InvalidHostResponse
   var info = f.info
   info.pc = CodeAddress(f.plan.facts[fact].next)
   info.gas = gas
@@ -1996,10 +2013,10 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       f.sourceMemory = posterior
       flatClearDirty(f)
       f.info = info
-      f.reason = oracle.StepError.None
-      f.exit = oracle.StepExit.Continued
+      f.reason = pvm_execution_types.StepError.None
+      f.exit = pvm_execution_types.StepExit.Continued
       f.faultPage = PageAddress(0)
-      f.hostCall = oracle.HostCallId(0)
+      f.hostCall = pvm_execution_types.HostCallId(0)
       f.remaining = 0
       f.reservationEnd = 0
       f.stoppedAt = 0
@@ -2012,20 +2029,20 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       f.hostSnapshot = default(Memory)
       inc f.fastResumes
       f.hostCopiedPages+=uint64(changes.len)
-      return oracle.StepError.None
+      return pvm_execution_types.StepError.None
   # Mapping/permission/RO replacement rebuilds all capabilities from a genuine validated snapshot.
   let complete = memoryImages(posterior)
-  if complete.error != MachineError.None: return oracle.StepError.InvalidHostResponse
+  if complete.error != MachineError.None: return pvm_execution_types.StepError.InvalidHostResponse
   let fast = f.fastResumes
   let fallbacks = f.fallbackResumes
   let pages = f.hostCopiedPages
   if replaceFlatMemoryChecked(f, complete.value, info) != FlatError.None:
-    return oracle.StepError.InvalidHostResponse
+    return pvm_execution_types.StepError.InvalidHostResponse
   f.sourceMemory = posterior # Preserve the host snapshot's local mapping policy as well as bytes/permissions.
   f.fastResumes = fast
   f.fallbackResumes = fallbacks+1
   f.hostCopiedPages = pages
-  oracle.StepError.None
+  pvm_execution_types.StepError.None
 
 func flatHostStats*(f: FlatFrame): array[3, uint64] =
   ## Copied diagnostic counters: resident resumes, full mapping replacements, copied host pages.
@@ -2111,14 +2128,15 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
       status: FlatError.InvalidMemory)
   FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, images.value, info, memory))
 
-proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.StepError =
+proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan,
+    memo: GasMemo): pvm_execution_types.StepError =
   ## Complete and lazy policy owners must match the exact immutable program before any execution.
   if gasPlanInfo(plan).error == GasPlanError.None:
-    if not matchesProgram(plan, f.plan.source): return oracle.StepError.InvalidGasPlan
+    if not matchesProgram(plan, f.plan.source): return pvm_execution_types.StepError.InvalidGasPlan
     f.pricingPlan = plan
     f.pricingKind = 1
   elif gasMemoInfo(memo).error == GasMemoError.None:
-    if not matchesProgram(memo, f.plan.source): return oracle.StepError.InvalidGasMemo
+    if not matchesProgram(memo, f.plan.source): return pvm_execution_types.StepError.InvalidGasMemo
     f.pricingMemo = memo
     f.pricingKind = 2
-  oracle.StepError.None
+  pvm_execution_types.StepError.None

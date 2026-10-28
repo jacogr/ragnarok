@@ -103,7 +103,7 @@ opaque entry. Native tests compare every embedded pre/post entry and independent
 embedding roots. Those roots are not presented as published complete JAM state roots, and these
 account/provision projections do not claim full C(13) publication or complete block execution.
 
-`tests/unit/state/test_preimage_transition.nim` replays all sixteen cases and adds literal raw-byte
+`tests/unit/state/test_codec_preimage_transition.nim` replays all sixteen cases and adds literal raw-byte
 versus hash/length-prefix ordering, numeric versus little-endian service ordering, duplicate/prefix
 and empty-blob cases, full-width slots/services, exact/one-below local limits and copied-value
 isolation. Missing/nonempty/malformed account/request cases remain distinct. Explicit separate

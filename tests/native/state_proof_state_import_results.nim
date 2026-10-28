@@ -2,10 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full, partial, absent and present-empty authenticated views exercise the checked completeness boundary and independent copy/store policies.
-import std/[assertions, syncio, envvars, cmdline]
-import ../support/arc_evidence
-import ../../src/state/[proof_state_import, proof_view, trie_proof, store]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import std/assertions
+import std/syncio
+import std/envvars
+import std/cmdline
+import ../support/testing_arc_evidence
+import ../../src/state/proof_state_import as state_proof_state_import
+import ../../src/state/proof_view as state_proof_view
+import ../../src/state/trie_proof as state_trie_proof
+import ../../src/state/store as state_store
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/state_layout as codec_state_layout
+import ../../src/codec/state_trie as codec_state_trie
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine root-construction refusal cannot become a successful complete import.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

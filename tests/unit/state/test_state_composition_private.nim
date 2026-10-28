@@ -9,9 +9,9 @@
 # @@Verification={"arc": "composition_arc_release"}
 
 import std/envvars
-import ../../support/arc_evidence
+import ../../support/testing_arc_evidence
 include ../../../src/codec/state_composition
-include ../../native/composition_fixture
+include ../../native/nimony_composition_fixture
 let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))
 let policy = StateChapterPolicy(items: ElementLimit(1000000), maxBytes: ByteLimit(8000000))

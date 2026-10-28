@@ -4,9 +4,13 @@
 ## Synchronous bounded paged-light construction, complete admission and authenticated disk-search algorithms.
 ## Callbacks are borrowed only during each call. Checked metadata owns no file, pin, callback or resident index.
 import std/assertions
-import ./[paged_codec, state_proof, light_state_cache]
-import ../codec/[bounded, state_layout, state_trie]
-import ../crypto/primitives
+import ./paged_codec as storage_paged_codec
+import ./state_proof as storage_state_proof
+import ./light_state_cache as storage_light_state_cache
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../crypto/primitives as crypto_primitives
 
 const PagedStreamFixedBytes* = 32768'u64 ## Conservative logical fixed-workspace reservation; not native RSS.
 type

@@ -4,10 +4,16 @@
 ## Commit to the original final ordered exports and expose GP paged-proof segments.
 ## This immutable source-bound component does not construct an erasure/availability certificate.
 
-import ../codec/[bounded, natural, work_digest, work_report]
-import ../crypto/primitives
-import ../pvm/host_fetch
-import ./[report_identity, authorized_refinement, refinement_digest, refinement_report]
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../crypto/primitives as crypto_primitives
+import ../pvm/host_fetch as pvm_host_fetch
+import ./report_identity as state_report_identity
+import ./authorized_refinement as state_authorized_refinement
+import ./refinement_digest as state_refinement_digest
+import ./refinement_report as state_refinement_report
 
 type
   ExportCommitmentError* {.pure.} = enum ## Default/refused results expose no partial tree or proof.

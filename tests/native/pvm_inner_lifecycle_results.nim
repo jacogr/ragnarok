@@ -3,8 +3,10 @@
 
 ## Optimized probes reject default/refused/missing lifecycle payload access after genuine positive controls.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[inner_machines, machine]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/inner_machines as pvm_inner_machines
+import ../../src/pvm/machine as pvm_machine
 import ../support/pvm_inner_lifecycle
 
 proc check[T](outcome: InnerMachineResult[T], reason: InnerMachineError) =

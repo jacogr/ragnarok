@@ -5,13 +5,30 @@
 
 ## Verify applied-state chain capture preserves exact ownership, bounds and inherited store policies.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie, header]
-import ../../../src/state/[store, accumulation_state, accumulation_finalization,
-  accumulation_times, accumulation_statistics, accumulation_validators, accumulation_activity,
-  accumulation_completion, report_admission, block_transition, block_admission]
-import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/chain/parameters as chain_parameters
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
+import ../../../src/codec/header as codec_header
+import ../../../src/state/store as state_store
+import ../../../src/state/accumulation_state as state_accumulation_state
+import ../../../src/state/accumulation_finalization as state_accumulation_finalization
+import ../../../src/state/accumulation_times as state_accumulation_times
+import ../../../src/state/accumulation_statistics as state_accumulation_statistics
+import ../../../src/state/accumulation_validators as state_accumulation_validators
+import ../../../src/state/accumulation_activity as state_accumulation_activity
+import ../../../src/state/accumulation_completion as state_accumulation_completion
+import ../../../src/state/report_admission as state_report_admission
+import ../../../src/state/block_transition as state_block_transition
+import ../../../src/state/block_admission as state_block_admission
+import ../../support/state_accumulation_activity_context
+import ../../support/state_accumulation_completion_context
+import ../../support/testing_arc_evidence
 
 # Resettable backend counters distinguish sealed-header hashing from unnecessary state Merklization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

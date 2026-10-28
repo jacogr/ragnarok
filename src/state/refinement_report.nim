@@ -4,10 +4,18 @@
 ## Execute original package items in order and apply GP I's shared blob/export result rules.
 ## Immutable results retain provenance; authorization, availability and state publication are separate.
 
-import ../codec/[bounded, composite, work_package, work_digest, work_report]
-import ../chain/parameters
-import ../pvm/[host_fetch, refinement_exports]
-import ./[store, refinement_bootstrap, refinement_outcome, refinement_dispatch]
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/work_package as codec_work_package
+import ../codec/work_digest as codec_work_digest
+import ../codec/work_report as codec_work_report
+import ../chain/parameters as chain_parameters
+import ../pvm/host_fetch as pvm_host_fetch
+import ../pvm/refinement_exports as pvm_refinement_exports
+import ./store as state_store
+import ./refinement_bootstrap as state_refinement_bootstrap
+import ./refinement_outcome as state_refinement_outcome
+import ./refinement_dispatch as state_refinement_dispatch
 
 type
   RefinementReportError* {.pure.} = enum ## Local refusals carry no partial item prefix or fabricated protocol result.

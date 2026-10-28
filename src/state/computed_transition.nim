@@ -3,10 +3,16 @@
 
 ## Bind configured original computation to its exact authenticated pre-report block prefix.
 
-import ../chain/parameters
-import ../codec/[bounded, header]
-import ./[computed_profile, computed_lookup, computed_recent, computed_state, block_admission,
-  block_transition, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/header as codec_header
+import ./computed_profile as state_computed_profile
+import ./computed_lookup as state_computed_lookup
+import ./computed_recent as state_computed_recent
+import ./computed_state as state_computed_state
+import ./block_admission as state_block_admission
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   ComputedTransitionError* {.pure.} = enum ## Refusals retain no detached or partially authenticated posterior state.

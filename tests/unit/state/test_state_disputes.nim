@@ -7,8 +7,10 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_disputes, bounded]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../../src/codec/bounded as codec_bounded
 
 ## Validate source/wire/copy/handle independence and typed errors through the public owner interface.
 proc main() =

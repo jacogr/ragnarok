@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[state_disputes, state_trie]
+import ../../../src/codec/state_disputes as codec_state_disputes
+import ../../../src/codec/state_trie as codec_state_trie
 var value = default(DisputeStateResult[DisputeStateInfo])
 value.error = DisputeStateError.None

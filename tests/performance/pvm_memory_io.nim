@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Measure native byte-range, page capture and image APIs; validate complete copied results outside both clocks.
-import std/[assertions, syncio, envvars, monotimes]
-import ../../src/pvm/machine
+import std/assertions
+import std/syncio
+import std/envvars
+import std/monotimes
+import ../../src/pvm/machine as pvm_machine
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Fail closed on unavailable process CPU accounting through the maintained OS wrapper.
 if getEnv("RAGNAROK_PVM_MEMORY_ASSERT_PROBE") == "1":

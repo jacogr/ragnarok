@@ -4,7 +4,8 @@
 # @@Verification={"group": "nominal", "expected": "StateRoot", "early": ["decodeValidatedCheckpoint(", "[2] expected: StateRoot but got: StateStoreSnapshot"]}
 
 ## Complete snapshots do not implicitly become independently supplied root authority.
-import ../../../src/state/[validated_checkpoint, store]
-import ../../../src/codec/state_composition
+import ../../../src/state/validated_checkpoint as state_validated_checkpoint
+import ../../../src/state/store as state_store
+import ../../../src/codec/state_composition as codec_state_composition
 discard decodeValidatedCheckpoint([], default(StateStoreSnapshot), [], default(StateProfile),
     default(StateCheckpointLimits))

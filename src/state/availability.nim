@@ -9,10 +9,17 @@
 ## checked contextual failure results.
 
 import std/assertions
-import ../codec/[assurances, bounded, natural, state_safrole, state_availability,
-  state_layout, state_trie, report_owned]
-import ../crypto/[primitives, assurance_context]
-import ./store
+import ../codec/assurances as codec_assurances
+import ../codec/bounded as codec_bounded
+import ../codec/natural as codec_natural
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_availability as codec_state_availability
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/report_owned as codec_report_owned
+import ../crypto/primitives as crypto_primitives
+import ../crypto/assurance_context as crypto_assurance_context
+import ./store as state_store
 
 type
   AvailabilityTransitionConfig* = object ## One chain profile plus independent roster, assignment and newly available report ceilings.
@@ -97,7 +104,7 @@ proc planAvailability*(assignments: AvailabilitySnapshot, active: ValidatorState
   let count = population.value
   if uint64(count) > ceiling or uint64(values.len) > uint64(count):
     fail(AvailabilityTransitionError.LimitExceeded) # Bound key/vote scratch before allocation.
-  if uint64(count)*336+uint64(natural.encode(JamNatural(count)).len) > uint64(
+  if uint64(count)*336+uint64(codec_natural.encode(JamNatural(count)).len) > uint64(
       config.rosters.maxBytes):
     fail(AvailabilityTransitionError.LimitExceeded) # Roster snapshot count was already codec-bounded to 1023.
   if info.value.cores != int(cores): fail(AvailabilityTransitionError.InvalidConfig) # No differently sized core owner.

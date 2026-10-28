@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_safrole
+import ../../../src/codec/state_safrole as codec_state_safrole
 let snapshot = ValidatorStateSnapshot(data: nil)
 discard snapshot

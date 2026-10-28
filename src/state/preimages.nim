@@ -5,10 +5,17 @@
 ## Exposes canonical outstanding-request queries, immutable admission/statistics certificates and atomic publication.
 ## Phase/slot binding is caller-owned; query/admission share exact account/history validation.
 
-import ../codec/[bounded, composite, owned, header, state_layout, state_trie, state_accounts,
-  state_service_values, state_requests]
-import ../crypto/primitives
-import ./store
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/owned as codec_owned
+import ../codec/header as codec_header
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_service_values as codec_state_service_values
+import ../codec/state_requests as codec_state_requests
+import ../crypto/primitives as crypto_primitives
+import ./store as state_store
 
 type
   ProvisionIndex* = distinct uint64 ## Statistics traversal addresses service groups rather than individual supplied blobs.

@@ -3,16 +3,30 @@
 # @@Verification={"arc": "pvm_current_history_finalization_arc_release"}
 
 ## Same-source C15 and C16 publish together after admitted-time metadata updates, retaining exact terminal progress.
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, report_owned, state_accounts, state_layout,
-  state_outputs, state_workqueues]
-import ../../../src/state/[accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_outputs, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_history, store]
-import ../../support/[accumulation_current_finalization_context,
-  accumulation_current_outputs_context,
-  accumulation_current_statistics_context, accumulation_current_sequence_context,
-  accumulation_current_driver_context, report_context, arc_evidence]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_outputs as codec_state_outputs
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/state/accumulation_current_finalization as state_accumulation_current_finalization
+import ../../../src/state/accumulation_current_accounts as state_accumulation_current_accounts
+import ../../../src/state/accumulation_current_outputs as state_accumulation_current_outputs
+import ../../../src/state/accumulation_current_driver as state_accumulation_current_driver
+import ../../../src/state/accumulation_current_sequence as state_accumulation_current_sequence
+import ../../../src/state/accumulation_history as state_accumulation_history
+import ../../../src/state/store as state_store
+import ../../support/state_accumulation_current_finalization_context
+import ../../support/state_accumulation_current_outputs_context
+import ../../support/state_accumulation_current_statistics_context
+import ../../support/state_accumulation_current_sequence_context
+import ../../support/state_accumulation_current_driver_context
+import ../../support/state_report_context
+import ../../support/testing_arc_evidence
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc main() {.raises.} =
   ## Sources are real signed terminal current sequences; expected C15 framing is authored independently.

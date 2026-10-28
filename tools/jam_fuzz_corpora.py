@@ -21,7 +21,7 @@ def jam_fuzzer_forks_corpus(compiler, report, checks, libraries):
     from native_fixture_contracts import FIXTURE_CONTRACTS
     validate_fixture_contracts(('jam_fuzzer_forks', 'state_report'))
     expected, evidence = expected_observations()
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_forks_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_forks_driver.nim',
         'jam-fuzzer-forks', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence)
@@ -41,7 +41,7 @@ def jam_fuzzer_ancestry_corpus(compiler, report, checks, libraries):
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-ancestry-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_ancestry_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_ancestry_driver.nim',
         'jam-fuzzer-ancestry', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence)
@@ -61,7 +61,7 @@ def jam_fuzzer_ancestry_retention_corpus(compiler, report, checks, libraries):
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-ancestry-retention-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_ancestry_retention_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_ancestry_retention_driver.nim',
         'jam-fuzzer-ancestry-retention', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence)
@@ -81,7 +81,7 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-report-forks-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_report_forks_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_report_forks_driver.nim',
         'jam-fuzzer-report-forks', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence)
@@ -102,7 +102,7 @@ def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, i
     label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
     source = checks.folder/(label+'.txt')
     source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_guest_replay.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_guest_replay.nim',
         'jam-fuzzer-guest-replay', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence)
@@ -834,7 +834,7 @@ def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     expected = expected_observations()
     evidence = verify_observations(expected)
     validate_fixture_contracts(('current_stf', 'state_report'))
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_stf_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_stf_driver.nim',
         'jam-fuzzer-stf', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
@@ -856,7 +856,7 @@ def jam_fuzzer_epoch_forks_corpus(compiler, report, checks, libraries):
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-epoch-forks-proofs.txt'
     source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_epoch_forks_driver.nim',
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/app_jam_fuzzer_epoch_forks_driver.nim',
         'jam-fuzzer-epoch-forks', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
@@ -878,7 +878,7 @@ def jam_fuzzer_wire_corpus(compiler, report, checks, libraries):
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-wire-requests.txt'
     return run_corpus(checks.build,checks.command,compiler,
-        ROOT/'tests/native/jam_fuzzer_wire_driver.nim','jam-fuzzer-wire',source,requests,expected,
+        ROOT/'tests/native/codec_jam_fuzzer_wire_driver.nim','jam-fuzzer-wire',source,requests,expected,
         'jam-fuzzer-wire-corpus',metadata=dict(**evidence,
             reference='pinned known JAM historical message bytes; independent current structural framing and complete opaque maps; no STF campaign execution'),
         crypto_library=libraries['crypto'])

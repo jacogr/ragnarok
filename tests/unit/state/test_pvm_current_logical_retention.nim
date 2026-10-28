@@ -3,19 +3,43 @@
 
 ## Exact-wire admitted plans from real Services collection retain original logical provenance beyond joined close and release every repeated ARC result.
 # @@Verification={"arc":"pvm_current_logical_retention_arc_release"}
-import std/[assertions, envvars, syncio]
+import std/assertions
+import std/envvars
+import std/syncio
 import std/posix/posix
-import ../../support/[current_namespace_execution_context, current_logical_history_context,
-    current_logical_collection_context, current_application_context, parent_profile_context,
-    parent_globals_context, supplied_logical_context, current_identity_context,
-    accumulation_current_candidate_context, current_logical_proof_context,
-    current_namespace_refresh_context, arc_evidence]
-import ../../../src/app/[services, options, current_block_input, current_handoff]
-import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_service_values]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    current_request_keys, current_refresh_plan, current_logical_refresh,
-    accumulation_current_update, store, block_admission, report_admission]
+import ../../support/state_current_namespace_execution_context
+import ../../support/state_current_logical_history_context
+import ../../support/state_current_logical_collection_context
+import ../../support/state_current_application_context
+import ../../support/state_parent_profile_context
+import ../../support/state_parent_globals_context
+import ../../support/codec_supplied_logical_context
+import ../../support/state_current_identity_context
+import ../../support/state_accumulation_current_candidate_context
+import ../../support/state_current_logical_proof_context
+import ../../support/state_current_namespace_refresh_context
+import ../../support/testing_arc_evidence
+import ../../../src/app/services as app_services
+import ../../../src/app/options as app_options
+import ../../../src/app/current_block_input as app_current_block_input
+import ../../../src/app/current_handoff as app_current_handoff
+import ../../../src/chain/provider as chain_provider
+import ../../../src/chain/genesis as chain_genesis
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/state_accounts as codec_state_accounts
+import ../../../src/codec/state_service_values as codec_state_service_values
+import ../../../src/state/parent_profile as state_parent_profile
+import ../../../src/state/parent_globals as state_parent_globals
+import ../../../src/state/parent_logical as state_parent_logical
+import ../../../src/state/current_identities as state_current_identities
+import ../../../src/state/current_request_keys as state_current_request_keys
+import ../../../src/state/current_refresh_plan as state_current_refresh_plan
+import ../../../src/state/current_logical_refresh as state_current_logical_refresh
+import ../../../src/state/accumulation_current_update as state_accumulation_current_update
+import ../../../src/state/store as state_store
+import ../../../src/state/block_admission as state_block_admission
+import ../../../src/state/report_admission as state_report_admission
 type RetainedHistoryPlan = object ## Only actual successful opaque plan construction grants this test descriptor; mutable fields grant no State authority.
   plan: CurrentLogicalRefreshPlan
   state: StateStoreSnapshot

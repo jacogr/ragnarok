@@ -4,10 +4,15 @@
 ## Failed machine-derived fetch assembly cannot expose a partial immutable context.
 
 import std/cmdline
-import ../../src/state/[accumulation_fetch, accumulation_machine]
-import ../../src/chain/parameters
-import ../../src/pvm/[initialize, program, machine, host_fetch]
-import ../../src/codec/[bounded, c2_records]
+import ../../src/state/accumulation_fetch as state_accumulation_fetch
+import ../../src/state/accumulation_machine as state_accumulation_machine
+import ../../src/chain/parameters as chain_parameters
+import ../../src/pvm/initialize as pvm_initialize
+import ../../src/pvm/program as pvm_program
+import ../../src/pvm/machine as pvm_machine
+import ../../src/pvm/host_fetch as pvm_host_fetch
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/c2_records as codec_c2_records
 import ../support/pvm_accumulation_context
 let prepared = initializeAccumulationMachine(pvmBootstrap(pvmEnvelope()),
   InitializationLimits(envelope: InitializationByteLimit(64), program: ProgramByteLimit(32),

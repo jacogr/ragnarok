@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/bundle_erasure
+import ../../../src/state/bundle_erasure as state_bundle_erasure
 var candidate: BundleErasureResult[BundleErasure]
 discard candidate.status

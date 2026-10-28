@@ -3,11 +3,20 @@
 
 ## Execute one authenticated current initial round once, preparing selected state, outputs and next-transfer accounting together.
 ## This complete parallel-round owner remains distinct from whole-block history/statistics/publication and recursive continuation.
-import ../chain/parameters
-import ./[accumulation_round, accumulation_block_guests, accumulation_guest_runner,
-  accumulation_account_stage, accumulation_provision_stage, accumulation_provisions,
-  accumulation_global_stage, accumulation_coverage, accumulation_annulment,
-  accumulation_annulled_outputs, accumulation_transfers, accumulation_pending_transfers, store]
+import ../chain/parameters as chain_parameters
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_block_guests as state_accumulation_block_guests
+import ./accumulation_guest_runner as state_accumulation_guest_runner
+import ./accumulation_account_stage as state_accumulation_account_stage
+import ./accumulation_provision_stage as state_accumulation_provision_stage
+import ./accumulation_provisions as state_accumulation_provisions
+import ./accumulation_global_stage as state_accumulation_global_stage
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_annulled_outputs as state_accumulation_annulled_outputs
+import ./accumulation_transfers as state_accumulation_transfers
+import ./accumulation_pending_transfers as state_accumulation_pending_transfers
+import ./store as state_store
 
 type
   CurrentAccumulationRoundLimits* = object ## Each genuine execution and subsequent phase owns its independent explicit resource policy.

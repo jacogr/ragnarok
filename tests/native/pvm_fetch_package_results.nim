@@ -4,8 +4,9 @@
 ## Isolated package-fetch capture misuse probes reject failed context payload extraction.
 
 import std/cmdline
-import ../../src/codec/[work_package, bounded]
-import ../../src/pvm/host_fetch
+import ../../src/codec/work_package as codec_work_package
+import ../../src/codec/bounded as codec_bounded
+import ../../src/pvm/host_fetch as pvm_host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 case paramStr(1)

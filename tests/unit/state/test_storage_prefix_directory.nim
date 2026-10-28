@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Indexed admission preserves every full physical address, empty prefix interval and held revision.
-import std/[assertions, syncio]
+import std/assertions
+import std/syncio
 import ../../support/storage_growth_samples
-import ../../../src/storage/[node_repository, node_records, full_state_trie]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/storage/node_repository as storage_node_repository
+import ../../../src/storage/node_records as storage_node_records
+import ../../../src/storage/full_state_trie as storage_full_state_trie
+import ../../../src/codec/state_layout as codec_state_layout
+import ../../../src/codec/state_trie as codec_state_trie
 
 proc checkRecords(view: RepositoryView, records: openArray[TrieRecord]) =
   ## Exact independently prepared records detect prefix-only equality or a range belonging to another owner.

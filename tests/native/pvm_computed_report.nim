@@ -3,10 +3,13 @@
 
 ## Optimized computed-report result guards include independent complete canonical-wire controls.
 
-import std/[assertions, cmdline]
-import ../../src/state/[computed_report, availability_specifier]
-import ../../src/codec/bounded
-import ../support/[pvm_computed_report, pvm_computed_report_vectors]
+import std/assertions
+import std/cmdline
+import ../../src/state/computed_report as state_computed_report
+import ../../src/state/availability_specifier as state_availability_specifier
+import ../../src/codec/bounded as codec_bounded
+import ../support/pvm_computed_report
+import ../support/pvm_computed_report_vectors
 
 proc check[T](outcome: ComputedReportResult[T], reason: ComputedReportError) =
   ## Inspect runtime alternatives before deliberate unsuccessful extraction.

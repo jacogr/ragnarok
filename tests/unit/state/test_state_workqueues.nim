@@ -6,8 +6,13 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, envvars, syncio]
-import ../../../src/codec/[state_workqueues, report_owned, owned, bounded]
+import std/assertions
+import std/envvars
+import std/syncio
+import ../../../src/codec/state_workqueues as codec_state_workqueues
+import ../../../src/codec/report_owned as codec_report_owned
+import ../../../src/codec/owned as codec_owned
+import ../../../src/codec/bounded as codec_bounded
 
 ## Scope exit must not release the child report retained through a copied item observation.
 proc detached(report: OwnedReport, config: WorkQueueConfig): OwnedReport =

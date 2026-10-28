@@ -3,6 +3,6 @@
 
 ## Paged codec metadata remains private behind validated constructors and guarded accessors.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/storage/paged_codec
+import ../../../src/storage/paged_codec as storage_paged_codec
 let hidden = default(PagedCodecResult[PagedHeader])
 discard hidden.completed

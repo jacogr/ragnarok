@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: PageLimit but got: uint32", "early": ["captureMemory(", "[2] expected: PageLimit but got: uint32"]}
 
-import ../../../src/pvm/machine
+import ../../../src/pvm/machine as pvm_machine
 discard captureMemory([], 1'u32)

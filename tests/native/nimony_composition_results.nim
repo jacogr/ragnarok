@@ -10,8 +10,8 @@
 ## rejection diagnostic and exit status.
 
 include ../../src/codec/state_composition
-include ./composition_fixture
-import ../support/probe_cases
+include ./nimony_composition_fixture
+import ../support/testing_probe_cases
 
 ## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.
 # @@ProbeCases

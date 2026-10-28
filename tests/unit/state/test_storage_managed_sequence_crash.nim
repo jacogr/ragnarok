@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A killed multi-publication writer leaves one exact complete prefix without losing earlier confirmed frames.
-import std/[assertions, syncio]
-import ../../support/[storage_io, storage_crash_sequences]
+import std/assertions
+import std/syncio
+import ../../support/storage_io
+import ../../support/storage_crash_sequences
 proc main() {.raises.} =
   ## Count four actual frame writes and twelve real barriers, then kill independently after every one.
   for operation in [writeIo, syncIo]:

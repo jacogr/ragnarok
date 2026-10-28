@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "callAddress"}
 
-import ../../../src/pvm/step
+import ../../../src/pvm/step as pvm_step
 let outcome = default(StepOutcome)
 discard outcome.callAddress

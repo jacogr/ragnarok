@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exclusive host-thread application checkpoint owner shares existing raw locks, durable replacement and bounded reads.
-import ./[chain, checkpoint_identity, checkpoint_transfer, checkpoint_file]
-import ../state/store
-import ../codec/bounded
-import ../lib/atomic_file_writer
+import ./chain as app_chain
+import ./checkpoint_identity as app_checkpoint_identity
+import ./checkpoint_transfer as app_checkpoint_transfer
+import ./checkpoint_file as app_checkpoint_file
+import ../state/store as state_store
+import ../codec/bounded as codec_bounded
+import ../lib/atomic_file_writer as lib_atomic_file_writer
 
 type ApplicationCheckpointWriter* = object ## The copied destination and sole lock descriptor remain private in the native child.
   native: AtomicFileWriter

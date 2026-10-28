@@ -3,9 +3,18 @@
 
 ## Psi_A's absent-account branch retains exact prior state and zero effects before incoming credit or code lookup.
 ## Pure and initial block-bound certificates never fabricate resolved services or executed outcomes.
-import ../codec/[composite, header, state_accounts, state_layout, work_digest]
-import ./[accumulation_inputs, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, store]
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_layout as codec_state_layout
+import ../codec/work_digest as codec_work_digest
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./block_admission as state_block_admission
+import ./store as state_store
 
 type
   AccumulationAbsentError* {.pure.} = enum ## Default/refused alternatives carry reasons alone.

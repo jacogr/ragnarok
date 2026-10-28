@@ -3,6 +3,6 @@
 
 ## Private result storage cannot bypass success contracts.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/state/checkpoint_head
+import ../../../src/state/checkpoint_head as state_checkpoint_head
 let outcome = default(CheckpointHeadResult[CheckpointHead])
 discard outcome.status

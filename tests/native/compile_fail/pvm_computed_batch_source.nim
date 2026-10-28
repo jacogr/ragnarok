@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal","expected": "openArray","early": ["prepareComputedBatch(","[1] expected: openArray[ComputedGuaranteeEnvelope] but got: array[0..0, Guarantee]"]}
 
-import ../../../src/state/computed_batch
-import ../../../src/codec/guarantees
+import ../../../src/state/computed_batch as state_computed_batch
+import ../../../src/codec/guarantees as codec_guarantees
 discard prepareComputedBatch([default(Guarantee)], ComputedBatchLimits())

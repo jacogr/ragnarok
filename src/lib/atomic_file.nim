@@ -5,7 +5,7 @@
 ## Callers serialize writers, keep the directory namespace stable and retain immutable input through the call.
 
 import std/posix/posix
-import ../codec/bounded
+import ../codec/bounded as codec_bounded
 
 type AtomicFileError* {.pure.} = enum ## Success is explicit; visible-but-unsynced publication never becomes None.
   Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, PublishedUnsynced, Busy

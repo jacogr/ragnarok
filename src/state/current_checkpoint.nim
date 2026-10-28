@@ -3,9 +3,14 @@
 
 ## Bounded unchanged-format checkpoint qualification retains one genuine authenticated current update.
 ## Child prior commitment, computed posterior commitment and explicitly retained finality remain separate facts.
-import ./[accumulation_current_update, checkpoint, store]
-import ../chain/[genesis, provider]
-import ../codec/[bounded, state_trie, header]
+import ./accumulation_current_update as state_accumulation_current_update
+import ./checkpoint as state_checkpoint
+import ./store as state_store
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
+import ../codec/header as codec_header
 type
   CurrentCheckpointInfo* = object ## Copied fixed identities do not replace the retained execution certificate or grant independent finality.
     child*, parent*: BlockHash

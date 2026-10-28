@@ -4,9 +4,11 @@
 ## Full-state checkpoint ownership delegates native locking to a mode-independent raw file owner.
 ## Typed state encoding and independently trusted roots remain at the state adapter boundary.
 
-import ../lib/atomic_file_writer
-import ./[checkpoint_file, store]
-import ../codec/[bounded, state_trie]
+import ../lib/atomic_file_writer as lib_atomic_file_writer
+import ./checkpoint_file as state_checkpoint_file
+import ./store as state_store
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 
 type CheckpointWriter* = object ## Exclusive composite owns its native child; callers cannot bypass full-state adapters.
   native: AtomicFileWriter

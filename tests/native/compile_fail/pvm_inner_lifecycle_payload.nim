@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/inner_machines
+import ../../../src/pvm/inner_machines as pvm_inner_machines
 var item: InnerMachineResult[InnerMachineTransition]
 discard item.completed

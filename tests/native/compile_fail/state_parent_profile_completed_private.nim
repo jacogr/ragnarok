@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Selected parent/source and tagged result storage remain private.
-import ../../../src/state/parent_profile
+import ../../../src/state/parent_profile as state_parent_profile
 var owner = default(ParentProfileResult[SelectedParentProfile])
 discard owner.completed

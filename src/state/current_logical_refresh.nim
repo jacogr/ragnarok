@@ -3,10 +3,21 @@
 
 ## Freeze complete actual current logical continuation policy and requalify reconstructed same-identity declarations through existing APIs.
 ## Exact original/genuine producer provenance never substitutes full actual map matching or grants broader STF/root authority.
-import ./[current_refresh_plan, current_refresh, current_request_keys, current_identities,
-    supplied_logical_inventory, inventory, manifest, store, current_profile, current_globals,
-    current_state, current_logical, accumulation_current_update, global_snapshot]
-import ../codec/bounded
+import ./current_refresh_plan as state_current_refresh_plan
+import ./current_refresh as state_current_refresh
+import ./current_request_keys as state_current_request_keys
+import ./current_identities as state_current_identities
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./inventory as state_inventory
+import ./manifest as state_manifest
+import ./store as state_store
+import ./current_profile as state_current_profile
+import ./current_globals as state_current_globals
+import ./current_state as state_current_state
+import ./current_logical as state_current_logical
+import ./accumulation_current_update as state_accumulation_current_update
+import ./global_snapshot as state_global_snapshot
+import ../codec/bounded as codec_bounded
 type
   CurrentLogicalRefreshLimits* = object ## Component decoders, full logical matching/capture, complete scans and newly retained compact/raw-key arrays have independent ceilings.
     profile*: CurrentProfileLimits
@@ -139,7 +150,7 @@ proc planCurrentLogicalRefresh*(source: CurrentRefreshPlan,
   let valueBudget = bytes
   # Cached actual target extents bound all later whole-composition payload copies.
   for i in 0..<map.entries:
-    let key = target.keyAt(store.StateEntryIndex(i)).value
+    let key = target.keyAt(state_store.StateEntryIndex(i)).value
     let extent = uint64(target.lookup(key).value.byteLength)
     if extent > uint64(matching.serialized.perValue) or extent > bytes: refuse(
         LogicalRefreshRefusal.Mapping)

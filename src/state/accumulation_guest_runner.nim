@@ -3,14 +3,31 @@
 
 ## Run current explicit-input accumulation guests under one parameter/profile configuration, retaining exact provider coverage.
 ## Ready code executes; unavailable code and absent accounts keep distinct genuine no-execution proofs. No caller state is published.
-import ../lib/logging
+import ../lib/logging as lib_logging
 
-import ../chain/parameters
-import ../codec/[bounded, composite, header, state_safrole]
-import ../pvm/[initialize, machine, step, gas, host_fetch]
-import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
-  accumulation_machine, accumulation_dispatch, accumulation_outcome, accumulation_skip,
-  accumulation_absent, accumulation_annulment, accumulation_coverage, accumulation_effects, store]
+import ../chain/parameters as chain_parameters
+import ../codec/bounded as codec_bounded
+import ../codec/composite as codec_composite
+import ../codec/header as codec_header
+import ../codec/state_safrole as codec_state_safrole
+import ../pvm/initialize as pvm_initialize
+import ../pvm/machine as pvm_machine
+import ../pvm/step as pvm_step
+import ../pvm/gas as pvm_gas
+import ../pvm/host_fetch as pvm_host_fetch
+import ./accumulation_inputs as state_accumulation_inputs
+import ./accumulation_service as state_accumulation_service
+import ./accumulation_invocation as state_accumulation_invocation
+import ./accumulation_context as state_accumulation_context
+import ./accumulation_machine as state_accumulation_machine
+import ./accumulation_dispatch as state_accumulation_dispatch
+import ./accumulation_outcome as state_accumulation_outcome
+import ./accumulation_skip as state_accumulation_skip
+import ./accumulation_absent as state_accumulation_absent
+import ./accumulation_annulment as state_accumulation_annulment
+import ./accumulation_coverage as state_accumulation_coverage
+import ./accumulation_effects as state_accumulation_effects
+import ./store as state_store
 
 type
   AccumulationGuestLimits* = object ## All fields bound actual guest work or retained proof preparation; no unused legacy publication policy.

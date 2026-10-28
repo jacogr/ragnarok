@@ -3,8 +3,9 @@
 
 ## Resolve one effective supervisor from a complete immutable service directory under the pinned incarnation rule.
 ## This source-bound observation does not mutate privileges or replace runtime authorization checks.
-import ../codec/state_accounts
-import ./[inventory, service_directory]
+import ../codec/state_accounts as codec_state_accounts
+import ./inventory as state_inventory
+import ./service_directory as state_service_directory
 
 type
   SupervisionDecision* {.pure.} = enum ## Missing or recreated nominees fall back to self without recursive resolution.

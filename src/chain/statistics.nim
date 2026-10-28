@@ -4,9 +4,12 @@
 ## Read validated GP 0.8.0 activity statistics from a configured genesis snapshot.
 ## Exposes statistics with a guarded immutable value result; missing chapters are errors, not empty data.
 
-import ./genesis
-import ../state/store
-import ../codec/[state_layout, state_safrole, state_statistics, bounded]
+import ./genesis as chain_genesis
+import ../state/store as state_store
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_safrole as codec_state_safrole
+import ../codec/state_statistics as codec_state_statistics
+import ../codec/bounded as codec_bounded
 export StateValue, bytes, ByteLimit
 
 type

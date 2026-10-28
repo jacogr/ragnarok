@@ -4,11 +4,23 @@
 ## Synchronous exclusive-owner disk coordination: publish nodes/context before canonical or RPC installation.
 ## Call only during startup or on an explicitly excluded native worker, never from dispatcher callbacks.
 import std/assertions
-import ./[chain, disk_history, paged_policy]
-import ../chain/[genesis, provider, parameters]
-import ../state/[store, disk_store, accumulation_publication, accumulation_current_update]
-import ../storage/[file_repository, node_repository, database_identity, managed_repository, managed_manifest]
-import ../codec/[bounded, state_trie]
+import ./chain as app_chain
+import ./disk_history as app_disk_history
+import ./paged_policy as app_paged_policy
+import ../chain/genesis as chain_genesis
+import ../chain/provider as chain_provider
+import ../chain/parameters as chain_parameters
+import ../state/store as state_store
+import ../state/disk_store as state_disk_store
+import ../state/accumulation_publication as state_accumulation_publication
+import ../state/accumulation_current_update as state_accumulation_current_update
+import ../storage/file_repository as storage_file_repository
+import ../storage/node_repository as storage_node_repository
+import ../storage/database_identity as storage_database_identity
+import ../storage/managed_repository as storage_managed_repository
+import ../storage/managed_manifest as storage_managed_manifest
+import ../codec/bounded as codec_bounded
+import ../codec/state_trie as codec_state_trie
 import ../rpc/server as rpc_server
 
 type

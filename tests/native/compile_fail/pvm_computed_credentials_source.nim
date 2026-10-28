@@ -5,7 +5,10 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedGuarantors", "early": ["verifyComputedCredentials(", "[1] expected: ComputedGuarantors but got: ComputedGuaranteeTranscript"]}
 
-import ../../../src/state/[computed_credentials, computed_guarantors, computed_guarantee]
-import ../../../src/codec/[guarantees, state_safrole]
+import ../../../src/state/computed_credentials as state_computed_credentials
+import ../../../src/state/computed_guarantors as state_computed_guarantors
+import ../../../src/state/computed_guarantee as state_computed_guarantee
+import ../../../src/codec/guarantees as codec_guarantees
+import ../../../src/codec/state_safrole as codec_state_safrole
 discard verifyComputedCredentials(default(ComputedGuaranteeTranscript), GuaranteeSlot(0), newSeq[
     GuaranteeCredential](0))

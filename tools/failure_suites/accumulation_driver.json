@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_driver_results.nim",
+  "source": "tests/native/state_accumulation_driver_results.nim",
   "build_name": "accumulation-driver-results",
   "crypto_library": "crypto",
   "cases": [

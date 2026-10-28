@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture unchanged-format complete checkpoints only from the original producer retained by complete logical qualification.
-import ../state/[current_logical, current_checkpoint]
-import ../codec/bounded
+import ../state/current_logical as state_current_logical
+import ../state/current_checkpoint as state_current_checkpoint
+import ../codec/bounded as codec_bounded
 type
   LogicalCheckpointError* {.pure.} = enum ## Default logical source and the exact existing checkpoint refusal remain distinct.
     Uninitialized, None, InvalidLogical, CheckpointFailure

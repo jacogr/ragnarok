@@ -3,9 +3,12 @@
 
 ## Optimized probes reject default/refused results and invalid immutable export access.
 
-import std/[assertions, cmdline]
-import ../../src/pvm/[refinement_exports, machine]
-import ../../src/codec/[bounded, work_digest]
+import std/assertions
+import std/cmdline
+import ../../src/pvm/refinement_exports as pvm_refinement_exports
+import ../../src/pvm/machine as pvm_machine
+import ../../src/codec/bounded as codec_bounded
+import ../../src/codec/work_digest as codec_work_digest
 
 proc checkRefusal(outcome: RefinementExportResult) =
   ## Positive control confirms missing invocation exports before forbidden extraction.

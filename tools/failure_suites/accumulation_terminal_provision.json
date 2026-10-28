@@ -1,5 +1,5 @@
 {
-  "source": "tests/native/accumulation_terminal_provision_results.nim",
+  "source": "tests/native/state_accumulation_terminal_provision_results.nim",
   "build_name": "accumulation-terminal-provision-results",
   "crypto_library": "observer",
   "cases": [

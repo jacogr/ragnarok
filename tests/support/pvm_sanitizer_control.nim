@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Deliberate sanitizer controls never execute from ordinary native test discovery.
-import std/[assertions, syncio, envvars]
+import std/assertions
+import std/syncio
+import std/envvars
 proc rawRead(bytes: ptr byte, offset: uint64): byte {.importc: "pvm_sanitizer_read",
     header: "pvm_sanitizer_control.h".}
   ## Verification-only raw addressing bypasses Nim's logical bounds check for the requested negative witness.

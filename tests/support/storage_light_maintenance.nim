@@ -3,9 +3,13 @@
 
 ## Real nonempty maintenance fixtures preserve one independent root and explicit canonical epoch ownership.
 import std/assertions
-import ./[storage_light_root, storage_light_journal]
-import ../../src/storage/[light_snapshot, light_journal_cache, managed_manifest, file_errors]
-import ../../src/codec/bounded
+import ./storage_light_root
+import ./storage_light_journal
+import ../../src/storage/light_snapshot as storage_light_snapshot
+import ../../src/storage/light_journal_cache as storage_light_journal_cache
+import ../../src/storage/managed_manifest as storage_managed_manifest
+import ../../src/storage/file_errors as storage_file_errors
+import ../../src/codec/bounded as codec_bounded
 func maintenanceLimits*(): LightMaintenanceLimits =
   ## One ordinary frame requests compaction and at most one old canonical pair, without retaining earlier epochs.
   LightMaintenanceLimits(frames: ElementLimit(1), first: ManagedEpoch(1), epochs: ElementLimit(1))

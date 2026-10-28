@@ -4,9 +4,18 @@
 ## Execute frozen admitted service reconstruction using actual successor payloads/metadata/histories and original namespace identities.
 ## Output is detached mutable declarations only; complete current logical qualification and authority remain separate.
 import std/assertions
-import ./[current_refresh_plan, current_request_keys, current_identities,
-    supplied_logical_inventory, inventory, store, accumulation_current_update]
-import ../codec/[bounded, state_layout, state_accounts, state_composition, state_requests]
+import ./current_refresh_plan as state_current_refresh_plan
+import ./current_request_keys as state_current_request_keys
+import ./current_identities as state_current_identities
+import ./supplied_logical_inventory as state_supplied_logical_inventory
+import ./inventory as state_inventory
+import ./store as state_store
+import ./accumulation_current_update as state_accumulation_current_update
+import ../codec/bounded as codec_bounded
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_accounts as codec_state_accounts
+import ../codec/state_composition as codec_state_composition
+import ../codec/state_requests as codec_state_requests
 type
   CurrentRefreshError* {.pure.} = enum ## Invalid plans, missing actual data, exact codec reasons and unconsumed histories remain distinct.
     Uninitialized, None, InvalidPlan, MissingValue, MetadataFailure, RequestFailure, TrailingRequest

@@ -6,7 +6,8 @@
 ## Genuine checkpoint protection selection retains checkpoint deletion through full canonical publication.
 
 import std/syncio
-import ../../support/[pvm_assured_checkpoint, pvm_computed_storage_program]
+import ../../support/pvm_assured_checkpoint
+import ../../support/pvm_computed_storage_program
 
 verifyCheckpointDeletion(ComputedStorageMode.ReadCheckpointProtection, "pvm_assured_checkpoint_protection")
 echo "PVM assured checkpoint protection passed"

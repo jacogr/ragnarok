@@ -7,8 +7,11 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, syncio]
-import ../../../src/codec/[state_history, bounded, assurances]
+import std/assertions
+import std/syncio
+import ../../../src/codec/state_history as codec_state_history
+import ../../../src/codec/bounded as codec_bounded
+import ../../../src/codec/assurances as codec_assurances
 
 ## Verify parent/dictionary/peak copies survive input destruction and handle/value replacement.
 proc main() =

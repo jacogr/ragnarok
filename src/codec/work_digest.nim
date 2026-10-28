@@ -6,7 +6,10 @@
 ## Exposes nominal digest fields, WorkDigest and borrowed
 ## encodeDigestBorrowed/decodeDigestBorrowed results.
 
-import ./[natural, fixed_unsigned, bounded, composite]
+import ./natural as codec_natural
+import ./fixed_unsigned as codec_fixed_unsigned
+import ./bounded as codec_bounded
+import ./composite as codec_composite
 
 type
   CodeHash* = distinct array[32, byte] ## Owned 32-byte code hash, nominally separate from a payload hash; no hashing is performed here.
@@ -81,7 +84,7 @@ proc encodeDigestBorrowed*(source: WorkDigest, pool: openArray[byte], limit: Byt
   required += work.written
   # Encode each bounded-size metric locally and prove each subsequent extent before adding it.
   for i, metric in metrics(value.refine):
-    suffix[i] = natural.encode(JamNatural(metric))
+    suffix[i] = codec_natural.encode(JamNatural(metric))
     if required > high(int) - suffix[i].len: return compositeFailure(CompositeError.LengthOverflow) # Safe sum.
     required += suffix[i].len
   # Require the entire tuple, including its final metric, to fit before mutation.
@@ -117,10 +120,10 @@ proc decodeDigestBorrowed*(input: openArray[byte], limit: ByteLimit): DigestResu
   var numbers: array[5, uint64] = default(array[5, uint64])
   # Every metric must be canonical and complete; a failing final field returns no digest.
   for i in 0..<5:
-    let parsed = natural.decode(input.toOpenArray(cursor, input.len - 1))
+    let parsed = codec_natural.decode(input.toOpenArray(cursor, input.len - 1))
     if not parsed.ok:
       return DigestResult(status: if parsed.error ==
-          natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
+          codec_natural.truncated: CompositeError.Truncated else: CompositeError.NonCanonical)
     numbers[i] = uint64(parsed.value)
     cursor += parsed.consumed
   var value: WorkDigest = default(WorkDigest)

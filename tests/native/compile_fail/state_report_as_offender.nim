@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: DisputeHash but wanted: OffenderKey"}
 
-import ../../../src/codec/state_disputes
+import ../../../src/codec/state_disputes as codec_state_disputes
 let hash = default(DisputeHash)
 let key: OffenderKey = hash
 discard key

@@ -5,9 +5,21 @@
 ## Provides a bounded pure ring projection and an opaque source-bound candidate; C(14)/whole-block publication remain separate.
 
 import std/algorithm
-import ../codec/[bounded, owned, report_owned, work_report, state_workqueues, state_layout, state_trie]
-import ./[accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, store]
+import ../codec/bounded as codec_bounded
+import ../codec/owned as codec_owned
+import ../codec/report_owned as codec_report_owned
+import ../codec/work_report as codec_work_report
+import ../codec/state_workqueues as codec_state_workqueues
+import ../codec/state_layout as codec_state_layout
+import ../codec/state_trie as codec_state_trie
+import ./accumulation_finalization as state_accumulation_finalization
+import ./accumulation_outputs as state_accumulation_outputs
+import ./accumulation_execution as state_accumulation_execution
+import ./accumulation_round as state_accumulation_round
+import ./accumulation_queue as state_accumulation_queue
+import ./report_admission as state_report_admission
+import ./block_transition as state_block_transition
+import ./store as state_store
 
 type
   AccumulationHistoryConfig* = object ## Work for supplied/processed report hashes is independent of input/output ring storage policy.
