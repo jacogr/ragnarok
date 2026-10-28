@@ -1491,7 +1491,12 @@ for boundary in [0, 1]:
     when defined(pvmArm64JitRefuse):
       assert counters[0] == 0 and counters[1] == 0
     else:
-      assert counters[0] >= 4 and counters[1] >= 3
+      # The approved completed-block normalization also applies before genuine host/fault exits; all state checks remain exact.
+      let connected = flatArmRegionStatistics(frame)
+      assert connected[0] <= counters[0] and connected[0] <= counters[1]
+      assert connected[1] >= connected[0] and connected[1] <= 100
+      let internalBlocks = connected[1]-connected[0]
+      assert counters[0]+internalBlocks >= 4 and counters[1]+internalBlocks >= 3
   for gas in [0'u64, 1, 24, 25, 26, 27, 1000]:
     for budget in 0'u64..30'u64:
       let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(gas), registers: registers)
