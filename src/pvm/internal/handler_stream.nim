@@ -1470,6 +1470,22 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   takeValue(prepared)
 
 when defined(pvmX86Jit):
+  proc flatX86Score(frequencies: var array[13, uint32], opcode: byte,
+      slots: RegisterSlots, branch: bool) =
+    ## A bounded cold scan counts explicit source/destination traffic, with deterministic lowest-coordinate ties.
+    if branch:
+      inc frequencies[slots.aIndex]
+      if opcode >= 170: inc frequencies[slots.bIndex]
+    else:
+      inc frequencies[slots.destinationIndex]
+      if opcode in {100'u8, 107..110}:
+        inc frequencies[slots.aIndex]
+      elif opcode >= 190:
+        inc frequencies[slots.aIndex]
+        inc frequencies[slots.bIndex]
+      elif opcode notin {20'u8, 51}:
+        inc frequencies[slots.bIndex]
+
   proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool
     ## Cold admission is defined after exact branch-capability checking.
 
@@ -1673,13 +1689,13 @@ when defined(pvmX86Jit):
     let headers = [first, second]
     let before = x86Clock()
     var blocks = default(array[2, X86RegionBlock])
+    var frequencies = default(array[13, uint32])
     for index in 0..<active:
       let header = headers[index]
       if int(header) >= f.handlers.len: return false
       if f.handlers[int(header)] != flatX86Whole and f.handlers[int(header)] !=
           flatX86ProbeWhole: return false
       let charge = f.arguments[int(header)]
-      var native = default(X86Block)
       var current = header+1
       var terminal = false
       while int(current) < f.handlers.len and current-header <= 65:
@@ -1690,16 +1706,33 @@ when defined(pvmX86Jit):
           if not flatX86CachedBranch(f, current) or
               f.sites[int(current)]+1 != f.sites[int(header)]+charge.y: return false
           let args = f.arguments[int(current)]
-          emitX86Branch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and
-              0xffffffff'u64)), uint32(args.x shr 32), args.y)
+          flatX86Score(frequencies, fact.opcode, args.slots, true)
           blocks[index] = X86RegionBlock(header: header, span: charge.y, operations: current-header,
-              yes: uint32(args.x shr 32), no: args.y, price: charge.x, body: move(native))
+              yes: uint32(args.x shr 32), no: args.y, price: charge.x)
           terminal = true
           break
         if not fact.fallthrough or not supportedX86Opcode(fact.opcode): return false
-        emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
+        flatX86Score(frequencies, fact.opcode, fact.args.slots, false)
         inc current
       if not terminal: return false
+    var selected: range[0..12] = 0
+    for slot in 1..<13:
+      if frequencies[slot] > frequencies[selected]: selected = range[0..12](slot)
+    for index in 0..<active:
+      # Only validated immutable facts are revisited; no callback, mutable price lookup or invocation address enters emission.
+      var native = if frequencies[selected] >= 3: newX86ResidentBlock(selected) else: default(X86Block)
+      let header = headers[index]
+      let last = header+blocks[index].operations
+      var current = header+1
+      while current < last:
+        let fact = f.plan.facts[int(f.sites[int(current)])]
+        emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
+        inc current
+      let fact = f.plan.facts[int(f.sites[int(last)])]
+      let args = f.arguments[int(last)]
+      emitX86Branch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and
+          0xffffffff'u64)), blocks[index].yes, blocks[index].no)
+      blocks[index].body = move(native)
     let admitted = publishX86Region(jit, blocks, active)
     jit.compilationNs += x86Clock()-before
     if not admitted: return false

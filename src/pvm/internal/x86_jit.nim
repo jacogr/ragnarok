@@ -20,6 +20,8 @@ proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32
 type
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
+    resident: bool # Only connected-region publication supplies and retires the optional R11 guest cache.
+    residentSlot: range[0..12]
   X86Entry = object ## Only exact source coordinates own callable code offsets; zero is uncompiled and one is refused.
     code, ending, operations: uint32
     conditional: bool
@@ -60,6 +62,10 @@ func supportedX86Opcode*(opcode: byte): bool =
   opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
       190..192, 197..202, 207..217, 222..226}
 
+func newX86ResidentBlock*(slot: range[0..12]): X86Block =
+  ## One cold-selected coordinate remains in caller-saved R11 only inside a connected pure invocation.
+  X86Block(bytes: @[], resident: true, residentSlot: slot)
+
 proc put(fragment: var X86Block, bytes: openArray[byte]) =
   ## Every copied byte belongs to the cold builder, never to a source or invocation view.
   for value in bytes: fragment.bytes.add(value)
@@ -71,7 +77,11 @@ proc immediate(fragment: var X86Block, operation: byte, value: uint64) =
 
 proc readSlot(fragment: var X86Block, slot: range[0..12], right: bool) =
   ## Eight-byte array offsets fit a positive disp8; RDI remains the sole borrowed array base.
-  put(fragment, [0x48'u8, 0x8b, (if right: 0x4f'u8 else: 0x47'u8), byte(int(slot)*8)])
+  if fragment.resident and slot == fragment.residentSlot:
+    # Both source scratches read the latest cached value before any destination write, preserving aliases.
+    put(fragment, [0x4c'u8, 0x89, (if right: 0xd9'u8 else: 0xd8'u8)])
+  else:
+    put(fragment, [0x48'u8, 0x8b, (if right: 0x4f'u8 else: 0x47'u8), byte(int(slot)*8)])
 
 proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlots, value: uint64) =
   ## Scratch RAX/RCX/RDX/R8 obey SysV caller-save rules; all aliases consume their old inputs first.
@@ -133,7 +143,11 @@ proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlot
       else: put(fragment, [0x48'u8, 0x01, 0xc8]) # 149/200 full-width wrapping addition.
       if opcode in {131'u8, 135, 138..141, 160, 190..192, 197..199, 223}:
         put(fragment, [0x48'u8, 0x63, 0xc0]) # MOVSXD RAX,EAX restores the GP's signed low-word result.
-  put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slots.destinationIndex)*8)])
+  if fragment.resident and slots.destinationIndex == fragment.residentSlot:
+    # MOV R11,RAX replaces only this coordinate's private-array store; the common region exit publishes it.
+    put(fragment, [0x49'u8, 0x89, 0xc3])
+  else:
+    put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slots.destinationIndex)*8)])
 
 proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
     value: uint64, yes, no: uint32) =
@@ -181,7 +195,7 @@ proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
 proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block,
     conditional: bool = false, shortPrefix: bool = false): bool =
   ## Only complete bounded pure spans become executable, with no guest pointer encoded in their bytes.
-  if jit.unavailable or int(offset) >= jit.entries.len:
+  if fragment.resident or jit.unavailable or int(offset) >= jit.entries.len:
     return false
   let previous = jit.entries[int(offset)]
   if previous.code != 0 and not conditional:
@@ -293,8 +307,15 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.
   assert jit.region.status == 0
   jit.region.status = 1
+  let resident = blocks[0].body.resident
+  let residentSlot = blocks[0].body.residentSlot
+  for index in 0..<count:
+    # All connected bodies must agree on the private coordinate that the sole prologue/epilogue transfers.
+    if blocks[index].body.resident != resident or
+        (resident and blocks[index].body.residentSlot != residentSlot): return false
   var code = default(X86Block)
-  # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch only RAX/RCX/RDX/R8.
+  if resident: put(code, [0x4c'u8, 0x8b, 0x5f, byte(int(residentSlot)*8)]) # MOV R11,[RDI+slot*8].
+  # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch RAX/RCX/RDX/R8 plus the explicitly selected R11 guest cache.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
   var labels = default(array[2, int])
   var fixes: seq[X86RegionFixup] = @[]
@@ -344,6 +365,8 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     returns.add(code.bytes.len)
     regionWord(code, 0)
   let epilogue = code.bytes.len
+  if resident: put(code, [0x4c'u8, 0x89, 0x5f, byte(int(
+      residentSlot)*8)]) # Every guard/external exit commits R11.
   put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
   if code.bytes.len >= 4096 or jit.fragments >= 1024: return false
   for at in returns:
