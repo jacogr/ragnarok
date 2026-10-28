@@ -540,11 +540,11 @@ func armRegionStatus*(jit: ArmJit): uint8 =
   ## Zero allows one compile attempt, one is refused, and two denotes an immutable published region.
   jit.region.status
 
-func armRegionCount*(jit: ArmJit): range[2..3] =
+func armRegionCount*(jit: ArmJit): range[1..3] =
   ## Only completely published bounded regions expose an active source-block count.
   let count = jit.region.blockCount
-  assert jit.region.status == 2 and count >= 2 and count <= 3
-  range[2..3](count)
+  assert jit.region.status == 2 and count >= 1 and count <= 3
+  range[1..3](count)
 
 func armRegionHeader*(jit: ArmJit, index: range[0..2]): uint32 =
   ## Guarded exits may reenter only active captured original charged workers.
@@ -562,7 +562,7 @@ func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
   true
 
 proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
-    count: range[2..3] = 3): bool =
+    count: range[1..3] = 3): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
   assert jit.region.status == 0
   jit.region.status = 1 # Any refusal remains interpreted and avoids repeated compilation attempts.
@@ -671,12 +671,12 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     jit.region.spans[index] = blocks[index].span
     jit.region.prices[index] = blocks[index].price
     jit.region.operations[index] = blocks[index].operations
-  if count == 2:
-    # No fake source block is emitted or charged; the third context counter stays untouched and unpublished.
-    jit.region.headers[2] = high(uint32)
-    jit.region.spans[2] = 0
-    jit.region.prices[2] = 0
-    jit.region.operations[2] = 0
+  for index in count..<3:
+    # Inactive context lanes never name a source block or incur any native charge.
+    jit.region.headers[index] = high(uint32)
+    jit.region.spans[index] = 0
+    jit.region.prices[index] = 0
+    jit.region.operations[index] = 0
   jit.region.blockCount = uint32(count)
   jit.region.status = 2
   true
@@ -707,7 +707,9 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
     accounted+=attempts
     jit.operations+=state[index+2]*count
     jit.region.blocks+=state[index+2]
-  if jit.region.blockCount == 2: assert state[4] == 0
+  for index in jit.region.blockCount..<3:
+    # Only actual guarded blocks may increment a visit lane.
+    assert state[int(index)+2] == 0
   assert accounted == consumed
   destination
 

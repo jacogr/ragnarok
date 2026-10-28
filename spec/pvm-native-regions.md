@@ -37,3 +37,17 @@ sealed admitted binaries/inputs, and must match native activity exactly except c
 Report process-median distributions separately from within-process reused samples and cold/owner
 costs. Ordinary CI and the existing scoped-profile dispatch are unchanged. No runtime change is
 mixed into this validation. Native code remains CI-only.
+
+
+## ARM one-block admission trial
+
+Independent second layer: reuse the accepted resident ARM emitter for one observed self-loop,
+in addition to its existing two/three-block regions. Gas/source guards, register allocation,
+code storage and five-word context ABI are unchanged. Inactive proof/counter lanes remain empty;
+only actual source blocks are charged. Independent source-step comparisons require actual native
+region counters and cover960 paid/gas/prefix/initial-value boundaries, with forced refusal.
+
+The normal comparison can now take the same explicit pinned parent on ARM as x86; an empty
+input retains the previous current-source A/A control. This avoids interpreting a current/current
+ARM control as a paired optimization result. All native verification and timings remain on CI.
+Status: pending; no claimed gain and no decision to keep either runtime trial yet.

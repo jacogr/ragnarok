@@ -83,6 +83,8 @@ def qualify(checks, compiler, *, native=True):
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        if name.startswith('witness') and 'ARM_SELF_REGION_CASES,960\n' not in checked['output']:
+            raise ValueError('Missing complete one-block region boundary witness')
         checked['build'] = {key:value for key,value in built.items() if key != 'output'}
         if name == 'witness-refused' or (native and name == 'witness'):
             # The existing independent witness must prove real publication/calls or an exact zero-count refusal.
