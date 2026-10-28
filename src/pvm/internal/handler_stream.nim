@@ -1953,7 +1953,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       let charge = f.arguments[int(headers[index])]
       if not armRegionChargeMatches(jit, range[0..2](index), headers[index], charge.y, charge.x):
         matched = false
-    for index in active..<3:
+    for index in int(active)..<3:
       # Inactive records retain the original full sentinel/zero checks, including the unused third lane of a two-block region.
       if not armRegionChargeMatches(jit, range[0..2](index), flatStop, 0, 0): matched = false
     if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or

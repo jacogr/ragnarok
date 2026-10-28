@@ -29,3 +29,9 @@ helper/wrapper delta while retaining useful tests and measured rejection evidenc
 Constructor/cold/reused public calls, retained-frame lifecycle and reference restoration
 remain separate. Paired ARM explicit-marker profiles retain exact source/image/native
 activity, thirteen checked calls and all calibration controls. Qualification pending.
+
+The first native attempt40752812240 stopped before execution: a `range[2..3]`
+iterator start caused the pinned iterator to form an invalid narrow value1.
+The inactive-record loop now explicitly widens its cursor to `int`; the checked
+`range[0..2]` record conversion remains. This is not a passing runtime or timing
+receipt, and no checks/deadlines are weakened. A fresh exact-head run is required.
