@@ -642,3 +642,8 @@ bench-pvm-x86-applications: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_x86_jit_applications.py
+
+# Profiles consume the already complete same-job cohort; instrumented clocks never enter timing tables.
+.PHONY: profile-pvm-x86-jit
+profile-pvm-x86-jit:
+	$(PYTHON) tools/pvm_x86_jit_profile.py

@@ -4,6 +4,7 @@
 import unittest
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
+from pvm_x86_jit_profile import selected_symbol, profile_environment
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -41,3 +42,25 @@ class NativeApplicationPolicyTests(unittest.TestCase):
         self.assertEqual(application_defines('x86_64','baseline',False),['pvmArm64Jit'])
         self.assertEqual(application_defines('x86_64','baseline',True),['pvmX86Jit'])
         with self.assertRaises(ValueError): application_defines('x86','jit',True)
+
+
+class X86ProfileScopeTests(unittest.TestCase):
+    """Profiles require one actual text symbol and exactly the checked application policy/input framing."""
+    def test_exact_symbol_and_refusals(self):
+        """Caller references, absent symbols and duplicated definitions cannot authorize a scope."""
+        self.assertEqual(selected_symbol('100 t runPreparedKernel_17_step\n', 'runPreparedKernel'),
+                         'runPreparedKernel_17_step')
+        for text in ('', ' U runPreparedKernel_17_step\n',
+                     '100 d runPreparedKernel_17_step\n',
+                     '100 t runPreparedKernel_17_step\n200 T runPreparedKernel_18_step\n'):
+            with self.assertRaises(ValueError): selected_symbol(text, 'runPreparedKernel')
+
+    def test_maintained_workload_environment(self):
+        """Both policy profiles retain thirteen complete calls and the same reference-prepared bytes."""
+        for case, limit in (('sieve',100000), ('pinky',1), ('tick',0)):
+            left, right = (profile_environment(case, limit, role) for role in ('interpreted','jit'))
+            self.assertEqual(left.pop('RAGNAROK_PVM_BACKEND'), 'interpreted')
+            self.assertEqual(right.pop('RAGNAROK_PVM_BACKEND'), 'jit')
+            self.assertEqual(left, right)
+            self.assertEqual(left['RAGNAROK_PVM_SIEVE_SAMPLES'], '13')
+            self.assertEqual(left['RAGNAROK_PVM_LOCAL_ONECALL'], '0')
