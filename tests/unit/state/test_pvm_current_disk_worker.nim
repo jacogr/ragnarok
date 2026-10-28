@@ -4,12 +4,13 @@
 ## Genuine current updates use the existing native one-slot worker without losing IO receipts or touching canonical ownership.
 import std/[assertions, envvars, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, disk_chain, disk_worker]
+import ../../support/report_context as signed_fixture
+import ../../../src/app/[chain, disk_chain, disk_worker, historical_disk]
 import ../../../src/chain/provider
 import ../../../src/state/[store, disk_store, accumulation_current_update]
-import ../../../src/storage/[file_repository, node_repository, database_identity]
+import ../../../src/storage/[file_repository, node_repository, database_identity, history_index]
 import ../../../src/codec/[bounded, report_owned]
-import ../../support/[accumulation_current_chain_context, accumulation_current_disk_context]
+import ../../support/[accumulation_current_chain_context, accumulation_current_disk_context, accumulation_provision_integration]
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged namespaces never replace another native test's artifact.
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode: int,
@@ -31,10 +32,13 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode:
   defer:
     discard worker.close # Every native borrower retires before any publication, disk or canonical graph alias.
     if disk.opened: discard disk.close
-  let before = if paged: initializePagedDiskChain(disk, path, identity, owner, limits).value
+  let initialized = if paged: initializePagedDiskChain(disk, path, identity, owner, limits).value
     else: initializeDiskChain(disk, path, identity, owner, limits).value
   defer:
     if not paged: discard posix.unlink(path.toCString()) # Paged directory artifacts remain in the ignored runner namespace for inspection.
+  let before = configureDiskHistory(disk, owner, identity, archiveHistoryPolicy(),
+      limits.contextBytes).value
+  assert uint64(before) >= uint64(initialized)
   publication = prepareDiskPublication(disk, owner, update, identity, limits.contextBytes,
       replay = replay).value
   assert worker.start()
@@ -58,6 +62,12 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode:
     assert sameStateSnapshot(disk.snapshot.value, update.currentUpdateState)
     owner.installPrepared(publication.chainUpdate) # Only the host installs after collection/join has ended every borrowed activation.
     assert sameStateSnapshot(owner.stateSnapshot.value, disk.snapshot.value)
+    let saved = readDiskHistoricalSnapshot(disk, owner, identity,
+      owner.chainView.bestBlock.value.blockHash,
+      signed_fixture.limits(), limits.contextBytes).value
+    assert saved.chainView.bestBlock.value.blockBody == owner.chainView.bestBlock.value.blockBody
+    assert array[32, byte](saved.stateSnapshot.value.commitment.root) == array[32, byte](
+        owner.stateSnapshot.value.commitment.root)
     if mode == 0:
       let stale = worker.submit(disk, publication).value
       worker.waitCurrentDiskDone()

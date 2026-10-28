@@ -8,13 +8,21 @@
 
 import ./[genesis, reports, memory_history]
 import ../storage/history_index
-import ../codec/bounded
+import ../codec/[bounded, header, assurances]
+import ../crypto/primitives
 from ../state/store import sameStateSnapshot
 
+const ValidationHeaderCapacity* = 8 ## Bounded exact ancestor inputs are retained as headers only, independent of full-state history.
 const MaxRetainedBlocks* = 8 # Compatibility name for the default local window; no protocol-history guarantee.
 
 type
+  ValidationHeaderIndex* = distinct int ## Ordinal in the bounded header-only validation suffix, never a state-snapshot index.
+  ValidationHeaderContext* = object ## Copied header facts contain no historical full-state owner or block body.
+    header*: OwnedHeader
+    hash*, parent*: BlockHash
+    slot*: uint32
   ChainView* = object ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
+    validation: seq[ValidationHeaderContext] # At most eight immutable header owners; no evicted state survives through this cache.
     historical: MemoryHistory # Optional immutable memory-backend index; protocol lookups still use only the rolling view.
     capacity: ElementLimit # Positive configured window; zero belongs only to an uninitialized view.
     snapshot: seq[BlockSnapshotResult]
@@ -66,12 +74,23 @@ func retentionLimit*(view: ChainView): ElementLimit =
   ## Copy the configured snapshot window; an uninitialized view has no retention policy.
   view.capacity
 
+func headerContext(saved: BlockSnapshot): ValidationHeaderContext =
+  ## Project only immutable sealed-header ownership and cached scalar link identity.
+  ValidationHeaderContext(header: saved.header, hash: saved.blockHash, parent: saved.parentHash,
+      slot: saved.slot)
+func validationHeaderCount*(view: ChainView): int =
+  ## Header-only validation anchors do not count as retained complete historical states.
+  view.validation.len
+func validationHeaderAt*(view: ChainView, index: ValidationHeaderIndex): ValidationHeaderContext {.requires:
+    int(index) >= 0 and int(index) < view.validation.len.} =
+  ## Copy one bounded owner/fact projection without exporting mutable cache storage.
+  view.validation[int(index)]
 proc genesisView*(source: GenesisResult,
     limit = ElementLimit(MaxRetainedBlocks)): ChainView =
   ## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
   if validHistoryLimit(limit) and source.error == GenesisError.None and
       not source.value.fuzzSeedOnly:
-    return ChainView(capacity: limit, snapshot: @[
+    return ChainView(capacity: limit, validation: @[headerContext(source.value)], snapshot: @[
         source]) # Private container retains the structurally checked owner.
   default(ChainView) # Failed inputs expose no payload.
 
@@ -79,8 +98,10 @@ proc fuzzSeedView*(source: GenesisResult): ChainView =
   ## Explicitly seed a test-only domain; matching map/header owners cannot erase its origin.
   result = default(ChainView)
   if source.error == GenesisError.None:
-    result = ChainView(capacity: ElementLimit(MaxRetainedBlocks), snapshot: @[source],
-        fuzzOrigin: true) # Explicit test origin cannot be erased through genesisView.
+    result = ChainView(capacity: ElementLimit(MaxRetainedBlocks), validation: @[headerContext(
+        source.value)], snapshot: @[source],
+
+fuzzOrigin: true) # Explicit test origin cannot be erased through genesisView.
 func fuzzOnly*(view: ChainView): bool =
   ## Expose only the immutable domain, never a public retagging operation.
   view.fuzzOrigin
@@ -101,7 +122,9 @@ type ChainViewRetentionInfo* = object ## Fixed copied accounting bounds explicit
   bytes*: uint64
 func viewRetentionInfo*(view: ChainView): ChainViewRetentionInfo =
   ## Inspect private slots directly, avoiding temporary copies of each snapshot's key/service indexes.
-  var bytes = uint64(sizeof(ChainView)) + uint64(view.snapshot.len) * uint64(sizeof(BlockSnapshotResult))
+  var bytes = uint64(sizeof(ChainView)) + uint64(view.snapshot.len) * uint64(sizeof(
+      BlockSnapshotResult)) +
+    uint64(view.validation.len) * uint64(sizeof(ValidationHeaderContext))
   for index in 0..<view.snapshot.len:
     let extent = blockSnapshotRetention(view.snapshot[index]).indexBytes
     if extent > high(uint64)-bytes:
@@ -152,6 +175,12 @@ func sameChainView*(left, right: ChainView): bool =
       left.fuzzOrigin != right.fuzzOrigin or left.snapshot.len == 0 or left.snapshot.len !=
       right.snapshot.len:
     return false # Defaults and different retained windows cannot authorize shared publication.
+  if left.validation.len != right.validation.len: return false
+  for index in 0..<left.validation.len:
+    let before = left.validation[index]
+    let after = right.validation[index]
+    if array[32, byte](before.hash) != array[32, byte](after.hash) or before.slot != after.slot:
+      return false # Extra validation headers are part of exact shared authority even after their full states expire.
   for index in 0..<left.snapshot.len:
     if not sameRetainedBlock(left.snapshot[index].value, right.snapshot[index].value):
       return false # Every retained block keeps its exact state version and chain profile.
@@ -189,13 +218,19 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
     if appended.error != HistoryError.None:
       return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # A refused historical index update cannot publish either live handle.
     historical = appended.value
+  let validationFirst = if view.validation.len == ValidationHeaderCapacity: 1 else: 0
+  var validation = newSeq[ValidationHeaderContext](view.validation.len-validationFirst+1)
+  for index in validationFirst..<view.validation.len:
+    validation[index-validationFirst] = view.validation[
+        index] # Preserve only header owners when old complete states leave the requested window.
+  validation[validation.len-1] = headerContext(next)
   let first = if uint64(view.snapshot.len) == uint64(view.capacity): 1 else: 0 # Retain the newest bounded suffix.
   var saved = newSeq[BlockSnapshotResult](view.snapshot.len - first + 1)
   for index in first..<view.snapshot.len:
     saved[index - first] = view.snapshot[index] # Copy owner handles into a fresh private container.
   saved[saved.len - 1] = child
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: view.capacity,
-      historical: historical,
+      validation: validation, historical: historical,
 
 snapshot: saved, finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
 
@@ -220,8 +255,9 @@ proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
     if selected.value.slot < view.finalized.value.slot:
       return ViewFinalizeResult(status: ViewFinalizeError.Regression) # The linear history already proves increasing slots.
   ViewFinalizeResult(status: ViewFinalizeError.None,
-    completed: ChainView(capacity: view.capacity, historical: view.historical,
-        snapshot: view.snapshot, finalized: selected, fuzzOrigin: view.fuzzOrigin))
+    completed: ChainView(capacity: view.capacity, validation: view.validation,
+        historical: view.historical, snapshot: view.snapshot, finalized: selected,
+            fuzzOrigin: view.fuzzOrigin))
 
 type RetainedBlockIndex* = distinct int ## Oldest-to-newest ordinal belongs only to this immutable retained view.
 func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshotResult =
@@ -271,6 +307,7 @@ proc withRetentionLimit*(view: ChainView, limit: ElementLimit): ViewAdvanceResul
   for index in 0..<count:
     saved[index] = view.snapshot[first+index] # Old readers retain their original private owner container.
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: limit,
+    validation: view.validation,
     historical: view.historical,
     snapshot: saved, finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
 
@@ -297,3 +334,42 @@ func historicalBlockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
   if view.finalized.error == GenesisError.None:
     if array[32, byte](hash) == array[32, byte](view.finalized.value.blockHash): return view.finalized
   unavailableGenesis()
+
+proc withValidationHeaders*(view: ChainView, headers: openArray[OwnedHeader]): ViewAdvanceResult =
+  ## Restore only exact linked header anchors ending at this head; no old header becomes a complete-state snapshot.
+  let head = view.bestBlock
+  let minimum = min(view.retainedCount, ValidationHeaderCapacity)
+  if head.error != GenesisError.None or headers.len < minimum or headers.len > ValidationHeaderCapacity:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+  var saved: seq[ValidationHeaderContext] = @[]
+  for source in headers:
+    let info = source.headerInfo
+    if info.error != HeaderError.None or info.value.consumed == 0 or info.value.consumed > 256*1024:
+      return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+    var bytes = newSeq[byte](info.value.consumed)
+    if encodeOwnedHeader(source, bytes).error != HeaderError.None:
+      return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+    let config = HeaderConfig(cores: head.value.cores,
+      authorValidators: ValidatorCount(uint64(head.value.cores)*3),
+          epochSlots: head.value.epochSlots,
+      maxBytes: ByteLimit(256*1024)) # Existing captured heads prove core count <=341 before multiplication.
+    let decoded = decodeHeader(bytes, config)
+    if decoded.error != HeaderError.None or decoded.value.consumed != bytes.len:
+      return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+    let digest = blake2b256(bytes)
+    if digest.error != CryptoError.None: return ViewAdvanceResult(
+        status: ViewAdvanceError.InvalidSnapshot)
+    let context = ValidationHeaderContext(header: decoded.value.owner,
+      hash: BlockHash(array[32, byte](digest.value)),
+      parent: BlockHash(array[32, byte](info.value.unsigned.parent)), slot: uint32(
+          info.value.unsigned.slot))
+    if saved.len > 0:
+      if array[32, byte](context.parent) != array[32, byte](saved[^1].hash) or context.slot <=
+          saved[^1].slot:
+        return ViewAdvanceResult(status: ViewAdvanceError.NotChild)
+    saved.add(context)
+  if saved.len == 0 or array[32, byte](saved[^1].hash) != array[32, byte](head.value.blockHash):
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+  var selected = view
+  selected.validation = saved
+  ViewAdvanceResult(status: ViewAdvanceError.None, completed: selected)

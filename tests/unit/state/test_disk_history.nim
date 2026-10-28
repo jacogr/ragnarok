@@ -50,6 +50,21 @@ proc main() {.raises.} =
       let key = expected.stateSnapshot.keyAt(StateEntryIndex(ordinal)).value
       assert selected.stateSnapshot.lookup(key).value.bytes == expected.stateSnapshot.lookup(
           key).value.bytes
+  # Previously published V2 has no extra header prefix; exact authority remains compatible.
+  var window = newSeq[byte](wire.len-8)
+  for index in 0..<HistoryPrefixBytes-32: window[index] = wire[index]
+  window["RAGNAROK-DISK-CHAIN-V".len] = byte('2')
+  for index in HistoryPrefixBytes-32..<window.len: window[index] = wire[index+8]
+  let windowOwner = restoreDiskHistory(window, chain, generation,
+    fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).value
+  assert encodeMatchingDiskHistory(windowOwner, chain, generation, limit, window).value == window
+  assert encodeDiskHistory(windowOwner, chain, generation, limit).value == wire
+  # Independent header-count bounds refuse before allocating any declared header collection.
+  var invalidHeaders = wire
+  invalidHeaders[HistoryPrefixBytes-32] = 8
+  assert restoreDiskHistory(invalidHeaders, chain, generation,
+    fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
+        DiskHistoryError.InvalidFormat
   let legacy = legacyHistoryBytes(wire)
   let legacyOwner = restoreDiskHistory(legacy, chain, generation,
     fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).value
@@ -72,7 +87,7 @@ proc main() {.raises.} =
     else:
       assert sameStateSnapshot(decoded.finalizedBlock.value.stateSnapshot,
         decoded.retainedBlockAt(RetainedBlockIndex(tag-1)).value.stateSnapshot)
-  # V2 persists available count separately from selected capacity, including values above one byte.
+  # V3 persists available count separately from selected capacity, including values above one byte.
   for capacity in [1, 3, 12, 300]:
     let configured = owner.chainView.withRetentionLimit(ElementLimit(capacity)).value
     let selected = initApplicationChain(configured).value

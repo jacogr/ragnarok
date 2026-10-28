@@ -8,6 +8,7 @@ import std/posix/posix
 import ./[history_index, database_identity]
 import ../lib/atomic_file
 import ../codec/bounded
+import ../crypto/primitives
 
 const IdentityMagic = "RAGNAROK-FULL-HISTORY-V1\n"
 type
@@ -75,15 +76,18 @@ func historyCursor*(selection: CheckedHistorySelection): HistoryCursor {.require
   ## Return copied scalar metadata, never an archive-sized table or mutable cache.
   selection.cursor
 proc openHistoryFiles*(folder: string, chain: StorageChainId,
-    create = false): HistoryResult[HistoryFiles] =
+    create = false, exclusive = false): HistoryResult[HistoryFiles] =
   ## Validate a separate full-node chain identity; opening never adopts a different mode/schema or chain.
   if folder.len == 0 or folder.len > high(int)-128:
     return historyFailure[HistoryFiles](HistoryError.IoFailure)
   for character in folder:
     if character == char(0): return historyFailure[HistoryFiles](HistoryError.IoFailure)
   var name = folder
-  if create and posix.mkdir(name.toCString(), Mode(0o700)) != 0 and errno() != EEXIST:
-    return historyFailure[HistoryFiles](HistoryError.IoFailure)
+  if exclusive and not create: return historyFailure[HistoryFiles](HistoryError.InvalidFormat)
+  if create and posix.mkdir(name.toCString(), Mode(0o700)) != 0:
+    if errno() != EEXIST: return historyFailure[HistoryFiles](HistoryError.IoFailure)
+    if exclusive: return historyFailure[HistoryFiles](
+        HistoryError.AlreadyExists) # A migration never adopts or replaces an existing destination catalog.
   var metadata = default(Stat)
   if posix.stat(name.toCString(), metadata) != 0 or not S_ISDIR(metadata.st_mode):
     return historyFailure[HistoryFiles](HistoryError.IoFailure)
@@ -187,6 +191,41 @@ proc stageHistoryEntry*(files: HistoryFiles, append: HistoryAppend,
   let alias = replaceAtomicFile(hashPath(files, row.blockHash), encoded.value, ByteLimit(HistoryRowBytes))
   if alias != AtomicFileError.None: return historyFailure[HistoryCursor](fileReason(alias))
   historySuccess(append.nextCursor)
+proc advanceCheckedHistorySelection*(before: CheckedHistorySelection, append: HistoryAppend,
+    recordBytes: ByteLimit): HistoryResult[CheckedHistorySelection] =
+  ## An immutable already checked prefix plus one fully staged row admits a successor in constant metadata work.
+  if not before.ready or not append.ready:
+    return historyFailure[CheckedHistorySelection](HistoryError.Uninitialized)
+  if not sameHistoryCursor(before.cursor, append.previousCursor):
+    return historyFailure[CheckedHistorySelection](HistoryError.StaleSelection)
+  let expected = append.indexRow
+  let row = readRawRow(before.files, expected.ordinal)
+  if row.error != HistoryError.None: return historyFailure[CheckedHistorySelection](row.error)
+  if row.value.rowDigest != expected.rowDigest:
+    return historyFailure[CheckedHistorySelection](HistoryError.ChecksumMismatch)
+  let alias = readBoundedFile(hashPath(before.files, expected.blockHash), ByteLimit(HistoryRowBytes))
+  if alias.error != AtomicFileError.None:
+    return historyFailure[CheckedHistorySelection](fileReason(alias.error))
+  let indexed = decodeHistoryRow(alias.value)
+  if indexed.error != HistoryError.None or indexed.value.rowDigest != expected.rowDigest:
+    return historyFailure[CheckedHistorySelection](HistoryError.ChecksumMismatch)
+  let present = recordPresent(before.files, expected.ordinal, recordBytes)
+  if present != HistoryError.None: return historyFailure[CheckedHistorySelection](present)
+  historySuccess(CheckedHistorySelection(ready: true, files: before.files,
+      cursor: append.nextCursor))
+func reselectCheckedHistory*(before: CheckedHistorySelection,
+    cursor: HistoryCursor): HistoryResult[CheckedHistorySelection] =
+  ## An unchanged checked terminal row permits only policy changes that preserve or shrink the available suffix.
+  if not before.ready or not cursor.initialized:
+    return historyFailure[CheckedHistorySelection](HistoryError.Uninitialized)
+  if array[32, byte](before.cursor.chainId) != array[32, byte](cursor.chainId) or
+      before.cursor.lastOrdinal != cursor.lastOrdinal or
+      cursor.firstOrdinal < before.cursor.firstOrdinal or
+      before.cursor.selectedHash != cursor.selectedHash or
+      before.cursor.selectedDigest != cursor.selectedDigest or before.cursor.selectedSlot !=
+          cursor.selectedSlot:
+    return historyFailure[CheckedHistorySelection](HistoryError.StaleSelection)
+  historySuccess(CheckedHistorySelection(ready: true, files: before.files, cursor: cursor))
 proc rowAt*(selection: CheckedHistorySelection, ordinal: HistoryOrdinal): HistoryResult[HistoryRow] =
   ## Indexed ordinal addressing does not scan or allocate an archive-sized container.
   if not selection.ready: return historyFailure[HistoryRow](HistoryError.Uninitialized)
@@ -229,7 +268,52 @@ proc unlinkIfPresent(path: string): HistoryError =
   var name = path
   if posix.unlink(name.toCString()) == 0 or errno() == ENOENT: return HistoryError.None
   HistoryError.IoFailure
-proc pruneHistoryFiles*(files: HistoryFiles, before, selected: HistoryCursor): HistoryResult[uint64] =
+proc cleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryResult[uint64] =
+  ## A checksum-protected watermark tracks physical reclamation only; the canonical cursor alone selects availability.
+  const magic = "RAGNAROK-HISTORY-CLEANUP-V1\n"
+  let path = files.folder & "/CLEANUP"
+  if absent(path): return historySuccess(1'u64)
+  let read = readBoundedFile(path, ByteLimit(112))
+  if read.error != AtomicFileError.None: return historyFailure[uint64](fileReason(read.error))
+  let bytes = read.value
+  if bytes.len != 112: return historyFailure[uint64](HistoryError.InvalidFormat)
+  for index in 0..<32:
+    let expected = if index < magic.len: byte(magic[index]) else: 0'u8
+    if bytes[index] != expected: return historyFailure[uint64](HistoryError.InvalidFormat)
+  let chain = array[32, byte](files.chain)
+  for index in 0..<32:
+    if bytes[32+index] != chain[index]: return historyFailure[uint64](HistoryError.WrongChain)
+  var first = 0'u64
+  var last = 0'u64
+  for index in 0..<8:
+    first = first or (uint64(bytes[64+index]) shl (index*8))
+    last = last or (uint64(bytes[72+index]) shl (index*8))
+  if first == 0 or first > uint64(cursor.firstOrdinal) or last > uint64(cursor.lastOrdinal):
+    return historyFailure[uint64](HistoryError.StaleSelection)
+  let digest = blake2b256(bytes.toOpenArray(0, 79))
+  if digest.error != CryptoError.None: return historyFailure[uint64](HistoryError.BackendFailure)
+  let expected = array[32, byte](digest.value)
+  for index in 0..<32:
+    if bytes[80+index] != expected[index]: return historyFailure[uint64](
+        HistoryError.ChecksumMismatch)
+  historySuccess(first)
+proc saveCleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryError =
+  ## Publish a progress acknowledgement only after every older file deletion and directory sync succeeded.
+  const magic = "RAGNAROK-HISTORY-CLEANUP-V1\n"
+  var bytes = default(array[112, byte])
+  for index, character in magic: bytes[index] = byte(character)
+  let chain = array[32, byte](files.chain)
+  for index in 0..<32: bytes[32+index] = chain[index]
+  for index in 0..<8:
+    bytes[64+index] = byte((uint64(cursor.firstOrdinal) shr (index*8)) and 255)
+    bytes[72+index] = byte((uint64(cursor.lastOrdinal) shr (index*8)) and 255)
+  let digest = blake2b256(bytes.toOpenArray(0, 79))
+  if digest.error != CryptoError.None: return HistoryError.BackendFailure
+  let hash = array[32, byte](digest.value)
+  for index in 0..<32: bytes[80+index] = hash[index]
+  fileReason(replaceAtomicFile(files.folder & "/CLEANUP", bytes, ByteLimit(112)))
+proc pruneHistoryFiles*(files: HistoryFiles, before, selected: HistoryCursor,
+    resetProgress = false): HistoryResult[uint64] =
   ## Call only after confirmed canonical selection. Failures never roll back the selected cursor or invalidate loaded readers.
   if not files.ready or not before.initialized or not selected.initialized:
     return historyFailure[uint64](HistoryError.Uninitialized)
@@ -239,7 +323,14 @@ proc pruneHistoryFiles*(files: HistoryFiles, before, selected: HistoryCursor): H
   if uint64(selected.firstOrdinal) < uint64(before.firstOrdinal) or
       uint64(selected.lastOrdinal) < uint64(before.lastOrdinal):
     return historyFailure[uint64](HistoryError.StaleSelection)
-  var index = uint64(before.firstOrdinal)
+  if uint64(selected.lastOrdinal) == 0: return historySuccess(0'u64)
+  if resetProgress:
+    let reset = unlinkIfPresent(files.folder & "/CLEANUP")
+    if reset != HistoryError.None: return historyFailure[uint64](
+        reset) # A newly selected legacy seed has its own complete staged ordinal inventory.
+  let progress = cleanupProgress(files, selected)
+  if progress.error != HistoryError.None: return historyFailure[uint64](progress.error)
+  var index = progress.value
   var retired = 0'u64
   while index > 0 and index < uint64(selected.firstOrdinal):
     let path = ordinalPath(files, HistoryOrdinal(index), false)
@@ -254,6 +345,41 @@ proc pruneHistoryFiles*(files: HistoryFiles, before, selected: HistoryCursor): H
       if removed != HistoryError.None: return historyFailure[uint64](removed)
     inc retired
     inc index # index is strictly below selected.first, so both increments cannot overflow.
+  if retired == 0 and not resetProgress: return historySuccess(
+      0'u64) # Confirmed progress avoids rescanning a long already reclaimed prefix.
   let synced = syncDirectory(files.folder)
   if synced != HistoryError.None: return historyFailure[uint64](synced)
+  let recorded = saveCleanupProgress(files, selected)
+  if recorded != HistoryError.None: return historyFailure[uint64](recorded)
   historySuccess(retired)
+
+proc copyHistoricalSelection*(source: CheckedHistorySelection, folder: string,
+    recordBytes: ByteLimit): HistoryResult[CheckedHistorySelection] =
+  ## Stream a selected suffix into an exclusively created destination before its primary canonical context is selected.
+  ## A failed copy leaves an unselected forensic namespace; callers never replace an existing published catalog.
+  if not source.ready: return historyFailure[CheckedHistorySelection](HistoryError.Uninitialized)
+  let opened = openHistoryFiles(folder, source.cursor.chainId, create = true, exclusive = true)
+  if opened.error != HistoryError.None: return historyFailure[CheckedHistorySelection](opened.error)
+  let files = opened.value
+  var ordinal = uint64(source.cursor.firstOrdinal)
+  if uint64(source.cursor.lastOrdinal) != 0:
+    while true:
+      let row = source.rowAt(HistoryOrdinal(ordinal))
+      if row.error != HistoryError.None: return historyFailure[CheckedHistorySelection](row.error)
+      let record = source.readHistoryRecord(row.value, recordBytes)
+      if record.error != HistoryError.None: return historyFailure[CheckedHistorySelection](record.error)
+      let encoded = encodeHistoryRow(row.value)
+      if encoded.error != HistoryError.None: return historyFailure[CheckedHistorySelection](encoded.error)
+      let payload = replaceAtomicFile(ordinalPath(files, row.value.ordinal, true), record.value, recordBytes)
+      if payload != AtomicFileError.None: return historyFailure[CheckedHistorySelection](fileReason(payload))
+      let indexed = replaceAtomicFile(ordinalPath(files, row.value.ordinal, false), encoded.value,
+          ByteLimit(HistoryRowBytes))
+      if indexed != AtomicFileError.None: return historyFailure[CheckedHistorySelection](fileReason(indexed))
+      let alias = replaceAtomicFile(hashPath(files, row.value.blockHash), encoded.value, ByteLimit(HistoryRowBytes))
+      if alias != AtomicFileError.None: return historyFailure[CheckedHistorySelection](fileReason(alias))
+      if ordinal == uint64(source.cursor.lastOrdinal): break # Terminal equality proves increment cannot wrap.
+      inc ordinal
+  # No excluded prefix ever existed in this fresh namespace; record that fact without scanning missing ordinals.
+  let acknowledged = saveCleanupProgress(files, source.cursor)
+  if acknowledged != HistoryError.None: return historyFailure[CheckedHistorySelection](acknowledged)
+  validateHistorySelection(files, source.cursor, recordBytes)

@@ -1,0 +1,25 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "application_checkpoint",
+    "state_report"
+  ],
+  "includes": [
+    "crypto",
+    "bandersnatch"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch",
+    "observer"
+  ],
+  "observers": [
+    "verify",
+    "setup_new",
+    "setup_free",
+    "commit",
+    "ring_verify"
+  ],
+  "prepared": false
+}

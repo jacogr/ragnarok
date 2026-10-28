@@ -12,6 +12,8 @@ import ../../../src/storage/[history_index, history_files, database_identity]
 import ../../../src/lib/atomic_file
 import ../../../src/codec/[bounded, header]
 
+proc historyPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
+  ## Failed assertion artifacts never collide with a later process-owned witness.
 func hashName(hash: BlockHash): string =
   ## Test-owned filenames use all 256 header bits and no directory traversal bytes.
   const digits = "0123456789abcdef"
@@ -29,6 +31,8 @@ proc cleanup(folder: string, blocks: openArray[BlockSnapshotResult]) =
     discard posix.unlink(row.toCString())
     discard posix.unlink(record.toCString())
     discard posix.unlink(alias.toCString())
+  var progress = folder & "/CLEANUP"
+  discard posix.unlink(progress.toCString())
   var identity = folder & "/identity"
   var path = folder
   discard posix.unlink(identity.toCString())
@@ -45,7 +49,7 @@ proc main() {.raises.} =
     assert blocks[index].error == GenesisError.None
   let chain = default(StorageChainId)
   let limit = ByteLimit(8388608)
-  let folder = "historical-records"
+  let folder = "historical-records-" & $historyPid()
   let files = openHistoryFiles(folder, chain, true).value
   defer: cleanup(folder, blocks)
   var cursor = initHistoryCursor(chain, archiveHistoryPolicy()).value
@@ -100,9 +104,16 @@ proc main() {.raises.} =
   assert posix.rmdir(blocked.toCString()) == 0
   let narrow = future.withHistoryPolicy(boundedHistoryPolicy(3).value).value
   assert uint64(narrow.firstOrdinal) == 11
-  assert pruneHistoryFiles(files, future, narrow).value == 10
+  var interrupted = folder & "/record-5"
+  assert posix.unlink(interrupted.toCString()) == 0
+  assert posix.mkdir(interrupted.toCString(), Mode(0o700)) == 0
+  assert pruneHistoryFiles(files, future, narrow).error == HistoryError.IoFailure
+  assert validateHistorySelection(files, narrow, limit).error == HistoryError.None
+  assert posix.rmdir(interrupted.toCString()) == 0
   assert pruneHistoryFiles(files, future, narrow).value ==
-      10 # Interrupted cleanup can safely repeat its exact inventory.
+      10 # Retry skips already removed prefix files before acknowledging progress.
+  assert pruneHistoryFiles(files, future, narrow).value ==
+      0 # Durable acknowledgement avoids rescanning the reclaimed prefix.
   let reopened = openHistoryFiles(folder, chain).value
   let pruned = validateHistorySelection(reopened, narrow, limit).value
   assert pruned.rowAt(HistoryOrdinal(2)).error == HistoryError.Pruned

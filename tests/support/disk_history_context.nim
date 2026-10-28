@@ -59,13 +59,18 @@ proc legacyHistoryBytes*(current: seq[byte]): seq[byte] =
   ## Independent test-only V2-to-V1 fixture encoder; production never creates new V1 publications.
   const magic = "RAGNAROK-DISK-CHAIN-V1\n"
   assert current.len >= HistoryPrefixBytes
+  let validation = current[magic.len-2] == byte('3')
+  let scalar = magic.len+(if validation: 8 else: 0)
+  if validation:
+    for index in 0..<8: assert current[magic.len+index] ==
+        0 # This legacy fixture has no extra validation headers.
   var capacity = 0'u64
   var count = 0'u64
   var finality = 0'u64
   for index in 0..<8:
-    capacity = capacity or (uint64(current[magic.len+index]) shl (index*8))
-    count = count or (uint64(current[magic.len+8+index]) shl (index*8))
-    finality = finality or (uint64(current[magic.len+16+index]) shl (index*8))
+    capacity = capacity or (uint64(current[scalar+index]) shl (index*8))
+    count = count or (uint64(current[scalar+8+index]) shl (index*8))
+    finality = finality or (uint64(current[scalar+16+index]) shl (index*8))
   assert capacity == 8 and count > 0 and count <= 8
   assert finality <= count or finality == high(uint64)
   result = newSeq[byte](magic.len+2+current.len-HistoryPrefixBytes)
