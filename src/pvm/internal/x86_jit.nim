@@ -14,11 +14,15 @@ proc publishNative(handle: nil pointer, bytes: pointer, length: uint32): int32 {
 proc callNative(handle: nil pointer, offset: uint32, registers: pointer): cint {.cdecl,
     importc: "pvm_x86_arena_call", header: "x86_memory.h".}
 
+proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32 {.cdecl,
+    importc: "pvm_x86_arena_next", header: "x86_memory.h".}
+
 type
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
   X86Entry = object ## Only exact source coordinates own callable code offsets; zero is uncompiled and one is refused.
     code, ending, operations: uint32
+    conditional: bool
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
@@ -26,6 +30,7 @@ type
     entries: seq[X86Entry]
     unavailable: bool
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
+    branchCalls*, headerCalls*: uint64
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
 proc `=dup`(source: X86Arena): X86Arena {.error.}
@@ -121,6 +126,38 @@ proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlot
         put(fragment, [0x48'u8, 0x63, 0xc0]) # MOVSXD RAX,EAX restores the GP's signed low-word result.
   put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slots.destinationIndex)*8)])
 
+proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
+    value: uint64, yes, no: uint32) =
+  ## Positive checked stream destinations become immediate scalar results; MOV/CMOV preserve the full-width comparison.
+  assert opcode in {81'u8..90, 170..175}
+  assert yes < 2147483646'u32 and no < 2147483646'u32
+  readSlot(fragment, slots.aIndex, false)
+  if opcode <= 90: immediate(fragment, 0xb9, value)
+  else: readSlot(fragment, slots.bIndex, true)
+  put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX consumes both original register/immediate values.
+  put(fragment, [0xb8'u8]) # MOV EAX,no leaves comparison flags intact and defines the complete return value.
+  for part in 0..<4: fragment.bytes.add(byte((no shr (part*8)) and 255))
+  put(fragment, [0xba'u8]) # MOV EDX,yes also preserves flags; RDX is caller-saved.
+  for part in 0..<4: fragment.bytes.add(byte((yes shr (part*8)) and 255))
+  let condition = case opcode
+    of 81, 170: 0x44'u8 # Equal.
+    of 82, 171: 0x45'u8 # Not equal.
+    of 83, 172: 0x42'u8 # Unsigned below.
+    of 84: 0x46'u8      # Unsigned below or equal.
+    of 85, 174: 0x43'u8 # Unsigned above or equal.
+    of 86: 0x47'u8      # Unsigned above.
+    of 87, 173: 0x4c'u8 # Signed less.
+    of 88: 0x4e'u8      # Signed less or equal.
+    of 89, 175: 0x4d'u8 # Signed greater or equal.
+    else: 0x4f'u8       # Signed greater.
+  put(fragment, [0x0f'u8, condition, 0xc2]) # CMOVcc EAX,EDX selects a scalar offset, never a host address.
+
+proc x86Ending*(jit: X86Jit, offset: uint32): uint32 =
+  ## Only a previously admitted arithmetic record supplies its immutable trailing source coordinate.
+  assert int(offset) < jit.entries.len
+  jit.entries[int(offset)].ending
+
+
 proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
   ## The coordinate map and physical publications have independent finite ceilings.
   if jit.unavailable or nodes > 262144 or offset >= nodes: return 1
@@ -129,13 +166,22 @@ proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
 
 proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
   ## A cold refusal is exact to one stream coordinate and never changes another admitted entry.
-  if int(offset) < jit.entries.len: jit.entries[int(offset)].code = 1
+  if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
+    jit.entries[int(offset)].code = 1
 
-proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block): bool =
+proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block,
+    conditional: bool = false, shortPrefix: bool = false): bool =
   ## Only complete bounded pure spans become executable, with no guest pointer encoded in their bytes.
-  if jit.unavailable or int(offset) >= jit.entries.len or jit.entries[int(offset)].code != 0:
+  if jit.unavailable or int(offset) >= jit.entries.len:
     return false
-  if count < 4 or count > 64 or ending <= offset or ending > uint32(jit.entries.len) or
+  let previous = jit.entries[int(offset)]
+  if previous.code != 0 and not conditional:
+    return false
+  if conditional and (previous.code < 2 or previous.conditional or previous.ending != ending or
+      count != previous.operations+1): return false
+  let minimum = if shortPrefix: 1'u32 else: 4'u32
+  if (not conditional and count < minimum) or count > (if conditional: 65'u32 else: 64'u32) or
+      ending <= offset or ending > uint32(jit.entries.len) or
       jit.fragments >= 1024 or fragment.bytes.len == 0 or fragment.bytes.len >= 4096:
     refuseX86Entry(jit, offset)
     return false
@@ -151,7 +197,8 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   if code < 0:
     refuseX86Entry(jit, offset)
     return false
-  jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count)
+  jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count,
+      conditional: conditional)
   inc jit.fragments
   jit.codeBytes = uint64(code)+uint64(bytes.len)
   true
@@ -160,8 +207,20 @@ proc callX86Entry*(jit: X86Jit, offset: uint32, registers: var RegisterFile): ui
   ## The frame's original complete reservation authorizes these pure operations; no CPU or memory is retained.
   if int(offset) >= jit.entries.len: return high(uint32)
   let entry = jit.entries[int(offset)]
-  if entry.code < 2 or jit.arena.handle == nil: return high(uint32)
+  if entry.code < 2 or entry.conditional or jit.arena.handle == nil: return high(uint32)
   if callNative(jit.arena.handle, entry.code-2, addr registers[0]) == 0: return high(uint32)
   inc jit.calls
   jit.operations += uint64(entry.operations)
   entry.ending
+
+
+proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
+  ## The exclusive source record selects only its two checked scalar destinations; invocation registers are borrowed afresh.
+  assert int(offset) < jit.entries.len
+  let entry = jit.entries[int(offset)]
+  assert entry.code >= 2 and entry.conditional and jit.arena.handle != nil
+  result = nextNative(jit.arena.handle, entry.code-2, addr registers[0])
+  if result == high(uint32): return
+  inc jit.calls
+  inc jit.branchCalls
+  jit.operations += uint64(entry.operations)

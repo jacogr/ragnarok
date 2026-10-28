@@ -88,4 +88,16 @@ static int pvm_x86_arena_call(void *handle, uint32_t offset, void *registers) {
     return 0;
 #endif
 }
+/* Return one previously admitted scalar stream offset; no guest or invocation pointer is returned. */
+static uint32_t pvm_x86_arena_next(void *handle, uint32_t offset, void *registers) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || !registers || offset >= owner->used || (offset & 15)) return UINT32_MAX;
+    uint32_t (*entry)(void *) = (uint32_t (*)(void *))((unsigned char *)owner->executable + offset);
+    return entry(registers);
+#else
+    (void)handle; (void)offset; (void)registers;
+    return UINT32_MAX;
+#endif
+}
 #endif

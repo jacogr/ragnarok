@@ -91,6 +91,6 @@ when defined(pvmArm64Jit) or defined(pvmX86Jit):
 
 when defined(pvmArm64JitControlReceipt):
   # Only the current experimental role emits this versioned optional control receipt; older exact baselines retain their ABI.
-  let control = when defined(pvmX86Jit): default(array[2, uint64])
+  let control = when defined(pvmX86Jit): flatX86ControlStatistics(frame)
     else: flatArmControlStatistics(frame)
   echo "ARM_CONTROL,", guest, ",", control[0], ",", control[1]

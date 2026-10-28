@@ -29,6 +29,13 @@ int main(void) {
         assert(registers[0] == UINT64_C(0x1122334455667799));
         assert(pvm_x86_arena_call(owner, first, registers) == 1);
         assert(registers[0] == UINT64_C(0x1122334455667788));
+        /* Conditional leaves return a checked scalar coordinate, with immutable earlier entries still callable. */
+        const unsigned char next_bytes[] = {0xb8, 42, 0, 0, 0, 0xc3};
+        int32_t next = pvm_x86_arena_publish(owner, next_bytes, sizeof(next_bytes));
+        assert(next == 32);
+        assert(pvm_x86_arena_next(owner, next, registers) == 42);
+        assert(pvm_x86_arena_next(owner, next + 1, registers) == UINT32_MAX);
+        assert(pvm_x86_arena_next(NULL, next, registers) == UINT32_MAX);
         if (repeat == 0) {
             /* Fill the physical arena without executing padding; refusal must preserve the original code. */
             unsigned char fill[4096];

@@ -331,3 +331,102 @@ let retained = flatX86Statistics(second)
 when defined(pvmX86JitRefuse): assert retained[0] == 0 and retained[1] == 0 and retained[2] == 0
 else: assert retained[0] == 1 and retained[1] == 2 and retained[2] == 8
 stdout.writeLine("X86_CACHE_REUSE_OK")
+
+
+var branchLiteralCases = 0
+let identityProgram = owner([@[100'u8, 0xcc], @[0'u8]])
+let identitySlots = instructionRegisters(instruction(identityProgram, CodeAddress(0)))
+for opcode in 0..255:
+  if byte(opcode) notin {81'u8..90, 170..175}: continue
+  let part = if opcode <= 90: @[byte(opcode), 0x10, 0, 0, 0, 0, 0]
+    else: @[byte(opcode), 0x10, 0, 0, 0, 0]
+  let program = owner([part, @[0'u8]])
+  let slots = instructionRegisters(instruction(program, CodeAddress(0)))
+  for vector in highProducts:
+    # Immediate branches compare the Gray Paper's signed low-word extension; register branches retain all64bits.
+    let right = if opcode > 90: vector[1]
+      elif (vector[1] and 0x80000000'u64) != 0: (vector[1] and 0xffffffff'u64) or 0xffffffff00000000'u64
+      else: vector[1] and 0xffffffff'u64
+    let left = vector[0]
+    let lessSigned = (left xor 0x8000000000000000'u64) < (right xor 0x8000000000000000'u64)
+    let greaterSigned = (left xor 0x8000000000000000'u64) > (right xor 0x8000000000000000'u64)
+    let taken = case opcode
+      of 81, 170: left == right
+      of 82, 171: left != right
+      of 83, 172: left < right
+      of 84: left <= right
+      of 85, 174: left >= right
+      of 86: left > right
+      of 87, 173: lessSigned
+      of 88: not greaterSigned
+      of 89, 175: not lessSigned
+      else: greaterSigned
+    let jit = newX86Jit()
+    discard x86Entry(jit, 0, 8)
+    var arithmetic = default(X86Block)
+    for instruction in 0..<4: emitX86Operation(arithmetic, 100, identitySlots, 0)
+    let first = publishX86Entry(jit, 0, 4, 4, arithmetic)
+    var control = default(X86Block)
+    for instruction in 0..<4: emitX86Operation(control, 100, identitySlots, 0)
+    emitX86Branch(control, byte(opcode), slots, right, 6, 7)
+    let promoted = publishX86Entry(jit, 0, 4, 5, control, conditional = true)
+    when defined(pvmX86JitRefuse): assert not first and not promoted
+    else:
+      # Returned values are scalar stream coordinates; comparison/selection must not write any guest register.
+      assert first and promoted
+      var registers = default(RegisterFile)
+      for index in 0..<13: registers[index] = RegisterValue(uint64(index)+100)
+      registers[slots.aIndex] = RegisterValue(left)
+      if opcode > 90: registers[slots.bIndex] = RegisterValue(right)
+      let original = registers
+      assert callX86Branch(jit, 0, registers) == (if taken: 6'u32 else: 7'u32)
+      assert registers == original
+      assert jit.branchCalls == 1 and jit.operations == 5
+    inc branchLiteralCases
+stdout.writeLine("X86_BRANCH_LITERAL_CASES," & $branchLiteralCases)
+
+# A short ordinary charged block loops through a positive cached conditional, then reaches a genuine panic instruction.
+let branchProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
+let branchPlan = newFlatPlan(branchProgram, GasCycleLimit(100000))
+var interpretedCapture = prepareFlatPlan(branchProgram, GasCycleLimit(100000), defaultFlatLimits(), false)
+assert interpretedCapture.error == FlatError.None
+let interpretedPlan = takeValue(interpretedCapture)
+var warmInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+warmInfo.registers[1] = RegisterValue(32)
+var branchFrame = newFlatFrame(branchPlan, [], warmInfo)
+var interpretedFrame = newFlatFrame(interpretedPlan, [], warmInfo)
+for visit in 0..<2:
+  # Warming the same exact owner must resolve both destinations and execute the compiled whole-block path.
+  resetFlatFrame(branchFrame, warmInfo)
+  runFlat(branchFrame, 1000)
+  assert branchFrame.reason == StepError.None and branchFrame.exit == StepExit.Panic
+when defined(pvmX86JitRefuse): assert flatX86ControlStatistics(branchFrame) == default(array[2, uint64])
+else:
+  let control = flatX86ControlStatistics(branchFrame)
+  assert control[0] > 0 and control[1] > 0
+var branchPrefixCases = 0
+for initial in [0'u64, 5, 31]:
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 2, 3, 4, 5, 64, 65, high(uint64)]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 100]:
+        # Reused native blocks retain exact source-attempt, gas, exit-PC, paid-state and register behavior at every boundary.
+        var info = warmInfo
+        info.registers[0] = RegisterValue(initial)
+        info.blockCharged = paid
+        info.gas = MachineGas(gas)
+        resetFlatFrame(branchFrame, info)
+        resetFlatFrame(interpretedFrame, info)
+        runFlat(branchFrame, budget)
+        runFlat(interpretedFrame, budget)
+        assert branchFrame.reason == interpretedFrame.reason and branchFrame.exit ==
+            interpretedFrame.exit
+        assert branchFrame.remaining == interpretedFrame.remaining
+        assert branchFrame.info.pc == interpretedFrame.info.pc
+        assert branchFrame.info.gas == interpretedFrame.info.gas
+        assert branchFrame.info.gasDeficit == interpretedFrame.info.gasDeficit
+        assert branchFrame.info.blockCharged == interpretedFrame.info.blockCharged
+        assert branchFrame.info.registers == interpretedFrame.info.registers
+        checkFlatSource(branchFrame)
+        checkFlatSource(interpretedFrame)
+        inc branchPrefixCases
+stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)

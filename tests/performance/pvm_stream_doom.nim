@@ -226,7 +226,7 @@ when defined(pvmArm64JitOwnerReceipt):
   # Retained-frame native counters use the same seven-field evidence schema as public prepared ownership.
   let native = when defined(pvmX86Jit): flatX86Statistics(frame)
     else: flatArmStatistics(frame)
-  let control = when defined(pvmX86Jit): default(array[2, uint64])
+  let control = when defined(pvmX86Jit): flatX86ControlStatistics(frame)
     else: flatArmControlStatistics(frame)
   echo "ARM_OWNER,", phase, ",", native[0], ",", native[1], ",", native[2], ",",
     native[3], ",", native[4], ",", control[0], ",", control[1]

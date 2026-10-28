@@ -1479,6 +1479,117 @@ when defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatX86RunNext[ClearPaid: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
+    ## Only complete reserved pure prefixes enter native control; the cache borrow ends before an error can materialize frame state.
+    var destination = flatStop
+    block:
+      let jit {.cursor.} = f.x86Jit
+      assert jit != nil
+      if jit != nil: destination = callX86Branch(jit, offset, f.info.registers)
+    if destination == flatStop or int(destination) >= f.handlers.len:
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    when ClearPaid: f.info.blockCharged = false
+    destination
+
+  proc flatX86Branch(f: var FlatFrame, offset: uint32): uint32 =
+    ## A partial source reservation must stop through original handlers, including its exact temporary barrier.
+    if f.barrier != flatStop:
+      let original = f.x86Original[int(offset)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    flatX86RunNext[true](f, offset)
+
+  proc flatX86Enter(f: var FlatFrame, offset: uint32): uint32 =
+    ## Preserve canonical zero-budget, gas, resumed-block and partial-prefix ordering before the native handoff.
+    flatReserve(f, offset)
+    if f.barrier != flatStop:
+      let selected = f.handlers[int(offset+1)]
+      return selected(f, offset+1)
+    block:
+      let jit {.cursor.} = f.x86Jit
+      assert jit != nil
+      if jit != nil: inc jit.headerCalls
+    flatX86RunNext[true](f, offset+1)
+
+  proc flatX86Whole(f: var FlatFrame, offset: uint32): uint32 =
+    ## A complete pure block observes neither intermediate paid state nor a source PC; every partial/resumed/error path stays checked.
+    let args = f.arguments[int(offset)]
+    if f.barrier != flatStop or f.info.blockCharged or f.remaining < uint64(args.y) or
+        uint64(f.info.gas) < args.x:
+      return flatX86Enter(f, offset)
+    f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
+    f.remaining -= uint64(args.y)
+    f.reservationEnd = f.sites[int(offset)]+args.y
+    block:
+      let jit {.cursor.} = f.x86Jit
+      assert jit != nil
+      if jit != nil: inc jit.headerCalls
+    flatX86RunNext[false](f, offset+1)
+
+  func flatX86CachedBranch(f: FlatFrame, offset: uint32): bool =
+    ## Exact original worker identity certifies that both scalar destinations passed checked source/target admission.
+    let opcode = f.plan.facts[int(f.sites[int(offset)])].opcode
+    case opcode
+    of 81: f.handlers[int(offset)] == flatBranch[81]
+    of 82: f.handlers[int(offset)] == flatBranch[82]
+    of 83: f.handlers[int(offset)] == flatBranch[83]
+    of 84: f.handlers[int(offset)] == flatBranch[84]
+    of 85: f.handlers[int(offset)] == flatBranch[85]
+    of 86: f.handlers[int(offset)] == flatBranch[86]
+    of 87: f.handlers[int(offset)] == flatBranch[87]
+    of 88: f.handlers[int(offset)] == flatBranch[88]
+    of 89: f.handlers[int(offset)] == flatBranch[89]
+    of 90: f.handlers[int(offset)] == flatBranch[90]
+    of 170: f.handlers[int(offset)] == flatBranch[170]
+    of 171: f.handlers[int(offset)] == flatBranch[171]
+    of 172: f.handlers[int(offset)] == flatBranch[172]
+    of 173: f.handlers[int(offset)] == flatBranch[173]
+    of 174: f.handlers[int(offset)] == flatBranch[174]
+    of 175: f.handlers[int(offset)] == flatBranch[175]
+    else: false
+
+  proc flatX86Upgrade(f: var FlatFrame, offset: uint32): bool =
+    ## Promote one existing arithmetic leaf only after both original branch arms have positive cached capabilities.
+    let jit = f.x86Jit
+    if jit == nil: return false
+    let ending = x86Ending(jit, offset)
+    if not flatX86CachedBranch(f, ending): return false
+    let before = x86Clock()
+    var native = default(X86Block)
+    var current = offset
+    while current < ending:
+      # Rebuild only immutable pure facts already admitted by this exact source record.
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
+      inc current
+    let args = f.arguments[int(ending)]
+    let branch = f.plan.facts[int(f.sites[int(ending)])]
+    emitX86Branch(native, branch.opcode, args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
+        uint32(args.x shr 32), args.y)
+    let promoted = publishX86Entry(jit, offset, ending, ending-offset+1, native, conditional = true)
+    jit.compilationNs += x86Clock()-before
+    if not promoted:
+      # A full/refused arena preserves its already working arithmetic leaf and removes repeated promotion attempts.
+      f.handlers[int(offset)] = flatX86Execute
+      return false
+    f.handlers[int(offset)] = flatX86Branch
+    if offset > 0:
+      let header = offset-1
+      let plain: FlatHandler = flatCharge
+      if f.handlers[int(header)] == plain and
+          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
+        # Only an exact ordinary header owning this entire pure source suffix may fold its complete reservation.
+        f.x86Original[int(header)] = plain
+        assert f.arguments[int(header)].y > 0
+        f.handlers[int(header)] = flatX86Whole
+    true
+
+  proc flatX86Pending(f: var FlatFrame, offset: uint32): uint32 =
+    ## Original first execution admits both branch arms; only a later full reservation may promote native control.
+    if f.barrier == flatStop and flatX86Upgrade(f, offset): return flatX86Branch(f, offset)
+    flatX86Execute(f, offset)
+
   proc flatX86Prepare(f: var FlatFrame, origin: uint32) =
     ## Compile bounded same-block pure spans only, leaving pricing, branches, memory, hosts and faults checked.
     if not f.plan.allowNative: return
@@ -1504,13 +1615,24 @@ when defined(pvmX86Jit):
         emitX86Operation(fragment, fact.opcode, fact.args.slots, fact.args.x)
         inc ending
         inc count
-      if count < 4 or not publishX86Entry(jit, offset, ending, count, fragment):
+      let terminal = if int(ending) < f.sites.len:
+          f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
+      let conditional = terminal in {81'u8..90, 170..175}
+      var whole = false
+      if conditional and offset > 0 and int(ending) < f.sites.len:
+        # Short native handoffs pay off only with a complete ordinary charge entry; interior prefixes retain fused checked workers.
+        let header = offset-1
+        let plain: FlatHandler = flatCharge
+        whole = f.handlers[int(header)] == plain and
+            f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y
+      if count == 0 or (count < 4 and not whole) or
+          not publishX86Entry(jit, offset, ending, count, fragment, shortPrefix = whole):
         refuseX86Entry(jit, offset)
         inc offset
         continue
       if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
       f.x86Original[int(offset)] = f.handlers[int(offset)]
-      f.handlers[int(offset)] = flatX86Execute
+      f.handlers[int(offset)] = if conditional: flatX86Pending else: flatX86Execute
       offset = ending
     jit.compilationNs += x86Clock()-before
 
@@ -2345,13 +2467,20 @@ when defined(pvmX86Jit):
     ## Copy diagnostics only; the code mapping and all mutable owner state remain private.
     let jit = stream.x86Jit
     if jit == nil: return default(array[7, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs, 0'u64, 0'u64]
+    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs, jit.branchCalls,
+        jit.headerCalls]
 
   func flatX86Statistics*(frame: FlatFrame): array[5, uint64] =
     ## Focused internal witnesses distinguish native execution from complete checked fallback.
     let jit = frame.x86Jit
     if jit == nil: return default(array[5, uint64])
     [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs]
+
+  func flatX86ControlStatistics*(frame: FlatFrame): array[2, uint64] =
+    ## Copied native branch/header counts prove control executed without exposing the exclusive cache.
+    let jit = frame.x86Jit
+    if jit == nil: return default(array[2, uint64])
+    [jit.branchCalls, jit.headerCalls]
 
 when defined(pvmArm64JitOwnerReceipt):
   func streamArmStatistics*(stream: FlatStream): array[7, uint64] =

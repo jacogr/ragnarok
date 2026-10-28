@@ -201,3 +201,135 @@ The existing CI-only native qualifier additionally moves a genuinely published
 arena through a consuming call, observes its cleared source, executes the retained
 entry and retires the destination, repeating 1,000 times. Its duplicate twin must
 fail with the exact arena ownership-lowering diagnostic. Qualification is pending.
+
+## Conditional/block-entry trial (qualification pending)
+
+This dependent increment targets the measured checked-entry cost. It independently emits all
+sixteen immediate/register conditional forms as full-width CMP and scalar CMOV returns. An
+arithmetic leaf can promote only when its exact original conditional worker already certifies
+two valid cached source destinations. A failed promotion preserves the old arithmetic entry.
+Append-only storage, coordinate/byte/publication caps and exclusive code-only ownership remain
+unchanged. No native memory access, host callback, unchecked target or connected loop is added.
+
+An exact ordinary header may select a complete pure native block only when its sealed source
+extent ends at that cached conditional. Full gas and source quotas are checked before debit;
+resumed, partial, zero-budget and insufficient-gas cases use canonical reservation and original
+source handlers. Observable exits still materialize canonical PCs. Comparison leaves retain no
+invocation state and return only positive scalar stream offsets. Branch/header counters must
+prove the path executed. Production defaults remain unchanged during qualification.
+
+Tests add1,296direct conditional cases,540reused loop-prefix/gas/paid-state cases, typed return
+storage controls, and preserve all existing scalar/literal/opcode/memory/host/source/ownership
+checks. Qualification and same-runner paired timings against the accepted foundation are pending;
+these are test plans, not passing native evidence. All native work remains on CI.
+
+
+### First conditional-entry measurement: revise before default enablement
+
+[Run40677330666](https://github.com/jacogr/ragnarok/actions/runs/40677330666) at
+`b49a2e04895976cd5626abc90673ba2e964cd5f6` passes all thirteen native gates, the complete
+70process/910call/115control/16build/eight-pair application cohort and all six calibrated
+profiles. Independent source/raw-log/profile/native-working-set audits pass731identities.
+Report SHA256: `1c20c01381e8a316b200970679c860442397258cd036d5d7adb8db305cab9b32`.
+The explicit paired parent is `7d21d39a4c1c482452e5e0d009898388e26ee669`.
+Runner: AMD EPYC7763, a different model from the earlier foundation cohorts; only this cohort's
+own pairings are ratios. Reused public CPU milliseconds, forward/reverse:
+
+| Case | Public interpreter | Parent foundation JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.987 / 3.956 | 4.541 / 4.488 | 3.893 / 3.817 | 3.766 / 3.767 | 6.042 / 6.181 | 0.976 / 0.965 | 0.644 / 0.617 |
+| minimal 100000 | 6.678 / 6.716 | 7.104 / 6.981 | 6.604 / 6.599 | 6.405 / 6.547 | 7.525 / 7.522 | 0.989 / 0.982 | 0.878 / 0.877 |
+| memset 100000 | 4.641 / 4.595 | 5.380 / 5.407 | 4.898 / 4.735 | 3.849 / 4.057 | 4.187 / 4.180 | 1.055 / 1.031 | 1.170 / 1.133 |
+| pinky 1 | 160.856 / 163.821 | 140.381 / 146.368 | 127.584 / 128.013 | 131.936 / 121.493 | 186.008 / 178.611 | 0.793 / 0.781 | 0.686 / 0.717 |
+| sieve 10000000 | 378.005 / 386.179 | 436.356 / 441.785 | 375.838 / 387.193 | 395.259 / 397.063 | 444.489 / 443.516 | 0.994 / 1.003 | 0.846 / 0.873 |
+| init 0 | 757.908 / 751.752 | 562.297 / 561.514 | 762.361 / 561.070 | 562.311 / 562.350 | 775.442 / 775.050 | 1.006 / 0.746 | 0.983 / 0.724 |
+| tick 0 | 58.636 / 58.118 | 55.407 / 56.307 | 60.217 / 59.437 | 47.838 / 48.623 | 53.494 / 52.613 | 1.027 / 1.023 | 1.126 / 1.130 |
+
+Conditional entries improve sieve12–15% and Pinky9–13% versus the paired arithmetic foundation,
+but gameplay regresses6–9%. Initialization has an unresolved forward-order outlier; the two
+orders have identical native calls/operations/code occupancy. This is not qualified for a
+production default switch. Initialization reaches1,024publications; gameplay reaches736, so
+its regression cannot be attributed to a full publication cache.
+
+Corrected reused profiles show43,530,924interpreter versus47,163,490JIT instructions on
+sieve100k, and587,243,798versus623,919,864on gameplay. The whole native-entry worker costs
+81self instructions per call; the branch worker costs60. These counters identify substantial
+handoff work, without proving a hardware latency cause. Compared paths retain the same checked
+source/gas/memory/host behavior.
+
+The next isolated revision seals an executable callable capability during publication. Cache
+records keep the exclusive mapping alive and expose no address to callers; dispatch retains
+bounds, source reservation, target validation and fresh register borrows. Immutable append-only
+mapping extent/alignment can then be validated once at capability creation rather than looked
+up again through the arena on every transition. This revision requires fresh native/state and
+same-runner timing/profile qualification; no gain is claimed yet.
+
+
+### Sealed-call trial rejected; restrict short-span admission next
+
+[Run40682889735](https://github.com/jacogr/ragnarok/actions/runs/40682889735) at
+`32a291f02a863962ce6465d8a7aa08df79f0428b` passes native/state/ownership controls,
+70processes/910calls/115controls/16builds/eight equal-image pairs and all six scoped profiles.
+Independent source/raw-log/profile audits pass731identities. Application report SHA256:
+`0c3e52827fb9016a4a51379c9227b2bf4f4639ba3df3e574be6d502b8a37e7cb`.
+Its paired parent is `b49a2e04895976cd5626abc90673ba2e964cd5f6`; this runner is Intel Xeon
+Platinum8573C, so its numbers are not combined with the previous AMD cohort.
+
+The sealed record reduces sieve100k instructions from47,163,490to45,046,626 and gameplay
+from623,919,864to610,226,596. CPU timing rejects this exact trial: long sieve increases from
+223.371/223.753ms to246.253/245.661ms, and short sieve from2.442/2.475ms to2.671/2.687ms.
+Gameplay improves42.595/42.368ms to41.163/40.191ms, but that does not justify the repeated
+roughly10% sieve regression. Restore the prior arena/offset ABI and sixteen-byte source
+record; retain the measured rejection and original publication/lifetime/return controls.
+The counters do not establish the CPU cause of the divergence.
+
+The next isolated admission trial retains short arithmetic+conditional prefixes only when
+an exact ordinary header owns the complete pure source suffix. Interior prefixes shorter than
+four operations keep original fused workers. Existing longer arithmetic/native candidates,
+positive target preparation, gas/quota/partial/error handling and storage caps remain unchanged.
+Gameplay's first conditional trial made20,548,116branch calls but only1,809,870header calls
+across13invocations; short interior handoffs were plentiful. This policy tests that cost,
+without adding a program-size cutoff or changing native opcodes. It remains pending native,
+complete-state, same-runner parent timing and calibrated-profile qualification.
+
+
+### Retained admission verdict
+
+[Run40690097483](https://github.com/jacogr/ragnarok/actions/runs/40690097483) qualifies
+`18d568777fbf062fcd0d30fa20d7e62b3e36e884` against unfiltered conditional parent
+`b49a2e04895976cd5626abc90673ba2e964cd5f6`, after reconciling the native stack with master
+`67aa11188442f5f7de805289df4f82da2192afe5`. Master changed application/MCP/CI code, with no
+PVM, codec, native-JIT or compiler-pin changes. The sole runtime difference from that paired
+parent is the short-span admission guard. The rejected sealed-pointer ABI is fully restored.
+
+All thirteen native gates pass, including2,070single-result product/comparison literals,
+1,296conditional literals and540reused gas/source-prefix/paid-state boundaries per relevant
+profile. Independent source/raw-log/equal-image/state/host audits verify70processes/910calls,
+115controls,16fresh builds/eight pairs and734identities. All six calibrated cold/reused profiles,
+exclusive event sums and actual native working-set agreement pass. Report SHA256:
+`5a59a02b406d41645d69927d8eb02b1c2610d98ebf9e2bf89bebd61377b194a0`.
+Runner: AMD EPYC7763. Reused public CPU milliseconds, forward/reverse:
+
+| Case | Public interpreter | Unfiltered conditional parent JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 4.486 / 4.599 | 4.156 / 3.795 | 3.953 / 3.908 | 3.342 / 3.314 | 6.029 / 6.028 | 0.881 / 0.850 | 0.656 / 0.648 |
+| minimal 100000 | 6.983 / 6.909 | 6.528 / 6.616 | 7.057 / 7.102 | 6.318 / 6.320 | 7.490 / 7.586 | 1.010 / 1.028 | 0.942 / 0.936 |
+| memset 100000 | 5.147 / 5.033 | 4.843 / 4.777 | 4.868 / 5.017 | 3.828 / 3.523 | 4.189 / 4.192 | 0.946 / 0.997 | 1.162 / 1.197 |
+| pinky 1 | 165.787 / 161.904 | 126.573 / 130.648 | 131.508 / 130.944 | 124.783 / 121.238 | 187.335 / 184.648 | 0.793 / 0.809 | 0.702 / 0.709 |
+| sieve 10000000 | 422.219 / 427.707 | 378.063 / 374.364 | 393.328 / 394.079 | 373.830 / 345.446 | 443.331 / 446.417 | 0.932 / 0.921 | 0.887 / 0.883 |
+| init 0 | 564.178 / 571.436 | 566.923 / 571.458 | 560.083 / 559.666 | 554.319 / 557.264 | 751.719 / 759.362 | 0.993 / 0.979 | 0.745 / 0.737 |
+| tick 0 | 57.144 / 57.938 | 59.708 / 59.897 | 54.262 / 56.234 | 49.698 / 49.840 | 52.421 / 52.443 | 0.950 / 0.971 | 1.035 / 1.072 |
+
+Retain the conservative policy as the balanced default candidate. Gameplay improves6–9%
+against the unfiltered parent and3–5% against current forced interpretation. The tradeoff is
+about4–5% slower long sieve than that parent, while remaining7–8% faster than interpretation.
+Pinky remains19–21% faster than interpretation; its small movement against the conditional
+parent is not a claimed gain. Minimal's negligible native coverage and small differences do
+not establish a native benefit. Fill and gameplay still trail the reference's raw call clocks;
+reference restoration/teardown and our immutable publication remain separate scopes.
+
+Reused gameplay instructions fall from623,919,864in the unfiltered model to584,274,041,
+compared with587,243,798for current interpretation. This supports the admission diagnosis,
+without explaining CPU behavior solely from counts. Complete checks, unchanged source-prefix
+semantics and checked fallback qualify this as the engine for the dependent production-build
+selection. The default integration still needs its native platform/real CLI/build checks.
