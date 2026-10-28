@@ -1744,7 +1744,7 @@ when defined(pvmArm64Jit):
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## Admit only a first unsigned indirect word load with at least three pure suffix operations, preserving every source coordinate.
+    ## Admit a first indirect scalar load with at least three pure suffix operations, preserving every source coordinate.
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return offset
@@ -1763,7 +1763,8 @@ when defined(pvmArm64Jit):
       refuseArmEntry(jit, offset)
       return offset
     let args = f.arguments[int(offset)]
-    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending)
+    let opcode = f.plan.facts[int(f.sites[int(offset)])].opcode
+    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending, opcode)
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
@@ -1778,7 +1779,8 @@ when defined(pvmArm64Jit):
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
     if entry != 0: return offset
     if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
-    if f.plan.facts[int(f.sites[int(offset)])].opcode == 130: return flatArmCompileMemory(f, offset)
+    if f.plan.facts[int(f.sites[int(offset)])].opcode in {
+        124'u8..130'u8}: return flatArmCompileMemory(f, offset)
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32

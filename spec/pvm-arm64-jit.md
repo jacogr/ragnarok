@@ -2347,3 +2347,19 @@ execution receipt remains interpreted. Completed operations still require a publ
 a call; forced interpretation and unavailable native policies still require every native counter
 to be zero. Parser tests cover both the honest refusal and forged activity claims. Earlier timing
 tables remain evidence for their recorded source heads, not measurements of this reconciled tree.
+
+
+## Guarded scalar read-width trial (October 28; qualification pending)
+
+Scope: extend the existing first-read/pure-suffix leaf from opcode130 to indirect loads124–130,
+including signed8/16/32-bit extension. GP source/width/sign semantics remain those of the existing
+checked memory handlers; pinned specification/toolchain inputs are unchanged. Native code uses
+the same three invocation-owned descriptors and conservative complete-eight-byte guard for every
+width. Narrow loads near a region end deliberately retain the canonical fallback rather than
+introduce new descriptors or relax any bound. Source budgets, pricing, faults, host invalidation,
+cache limits and transactional register publication are unchanged.
+
+Acceptance requires independent literal width/sign/alias cases, the existing complete-state memory
+matrix expanded across all seven opcodes, native/refused and backend-policy gates, followed by a
+paired public application cohort against the reconciled parent. Constructors, cold compilation and
+publication remain measured. No performance verdict is established by opcode coverage alone.
