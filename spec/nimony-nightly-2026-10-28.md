@@ -97,3 +97,17 @@ post-adaptation checks; no test predicate, compiler check or runtime assertion w
 Local raw release metadata, checksums, commit review, probes, module audits and native/guard
 receipts live under ignored `build/ci/nimony-oct28/`. Native Linux PR smoke remains a separate
 qualification step; no Linux runtime result is claimed here.
+
+## Master integration
+
+Integrated master `6a8a98a5` (#1779, Ubuntu 26.04 runner centralization). Its changes do
+not alter production Nim sources, so the ownership and compiler evidence above still applies.
+The new explicit Clang selection exposed a retained CMake-cache migration failure: CMake's
+automatic compiler reset discarded the same invocation's Release and TLS options. The QUIC
+builder now resolves absolute Clang drivers and discards only incompatible generated CMake
+configuration before configuring. Matching compiler caches and other build output are retained.
+
+All 67 affected workflow and compiler-cache Python tests pass, including compiler changes,
+ordinary cache reuse and missing-compiler failure. `make unit SUITE=quic_transport` rebuilds
+the native dependencies and passes, with Release, PIC and explicit TLS paths confirmed in both
+CMake caches. Evidence is under `build/ci/nimony-oct28/master-1779/`.
