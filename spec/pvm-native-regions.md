@@ -17,9 +17,9 @@ block paths with each external edge; exact zero/partial/full budgets, gas limits
 unsigned64 gas; full native/refusal opcode/memory/host/ownership gates. Same-runner both-order
 public application comparison against the pinned parent, including cold/preparation/publication.
 All native work stays on CI. Keep only a useful measured benefit without material regressions.
-Status: x86 native/state/profile qualification passes with a provisional sieve benefit;
-[paired results and limitations](pvm-x86-regions-results.md) record the exact measured head.
-A second cohort remains required for cold outliers and the final keep/reject verdict.
+Status: retain x86 after four qualified paired cohorts and fresh-process validation;
+[paired results and limitations](pvm-x86-regions-results.md) preserve exact measured heads.
+Stable gains are claimed for sieve; process outliers and other workload limits remain explicit.
 
 ARM follow-up: inspect remaining exits and accounting in the already connected region engine;
 choose a separate bounded change from native evidence. Background compilation and relaxed gas
@@ -29,8 +29,8 @@ interruption are outside this experiment. No compiler/dependency pin or public d
 ## Bounded fresh-process validation
 
 A second x86 cohort at5ba781f7 confirms sieve gains and does not reproduce the first cold
-Pinky outlier, but shows initialization slower in one process order. The keep decision stays
-held. Manual `jit-x86-replay` runs the unchanged complete70-process cohort and refusal controls,
+Pinky outlier, but shows initialization slower in one process order. Subsequent qualified
+replication shows overlapping parent/current distributions and supports retaining x86. Manual `jit-x86-replay` runs the unchanged complete70-process cohort and refusal controls,
 then36 additional processes /468 complete checked calls across init/minimal/Pinky and paired
 parent/current roles. Six fresh processes per role/case alternate relative order, reuse only the
 sealed admitted binaries/inputs, and must match native activity exactly except compilation CPU.
