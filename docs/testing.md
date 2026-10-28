@@ -57,8 +57,8 @@ In the PR sidebar, add one label to request heavier verification of the current 
 | Label | Requested checks |
 | --- | --- |
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
-| `ci:e2e` | End-to-end networking tests only |
-| `ci:interop` | All Interop jobs: official MCP SDK, PVM reference comparisons and JAM Tart interoperability |
+| `ci:e2e` | End-to-end networking tests, including official MCP SDK message exchange |
+| `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
 | `ci:docker` | Docker image build and selftests only, without native archive packaging |
 | `ci:perf` | All Perf jobs, including interpreted PVM and DOOM reference comparisons |
 | `ci:full` | All verification, Interop and Perf jobs |

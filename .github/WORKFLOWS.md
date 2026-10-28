@@ -9,7 +9,7 @@ the root README on the repository landing page.
 It runs the maintained Make targets on native Linux runners, plus macOS for binary builds,
 with a unified **Build** matrix for Smoke, Tooling, Linux & Docker and macOS. Other jobs cover
 native units/corpora, runtime failures,
-E2E networking, official MCP SDK message exchange and JAM Tart telemetry interoperability. **Build / Linux & Docker** combines
+E2E networking (including official MCP SDK message exchange) and JAM Tart telemetry interoperability. **Build / Linux & Docker** combines
 Linux archive packaging with the isolated Docker image build/smoke check on `ubuntu-latest`.
 It runs on master pushes, full requests and manual `build` requests. The `ci:docker` label and
 manual `docker` scope select only the image check; no image is published. A separate PVM

@@ -4,7 +4,7 @@
 
 """Exchange real MCP messages between the pinned official SDK and the built Ragnarök peer.
 
-Make owns SDK provisioning and compilation. This optional Interop gate owns bounded process/client
+Make owns SDK provisioning and compilation. This optional E2E gate owns bounded process/client
 lifetimes, independent fixture checks and recorded HTTP/JSON-RPC messages; no SDK internals are patched.
 """
 import argparse
@@ -22,6 +22,7 @@ import sys
 import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
+CI_GROUP = 'mcp'
 SDK_VERSION = '1.26.0'
 PROTOCOL = '2025-11-25'
 CASES = ('configured', 'canonical', 'unconfigured')

@@ -134,10 +134,11 @@ acknowledgment, unique request IDs and exactly one correlated response per reque
 session, connection, message size and wait is bounded; cleanup kills/joins failed processes.
 `build/tests/mcp-interop/results.json` records SDK/protocol/environment, actual executable hash,
 requirements/driver/fixture hashes and per-scenario verdicts; per-session JSONL and peer logs retain failure context.
-Interop CI runs the same Make target and uploads only these result/message/log files, excluding
+E2E / MCP CI runs the same Make target and uploads only these result/message/log files, excluding
 TLS fixture keys and dependency environments. Failed/incomplete cases must fail the group.
 
-This SDK gate complements the self-contained native/E2E checks. It does not test public deployment,
+This end-to-end SDK gate also checks interoperability with an independent MCP implementation.
+It complements the self-contained native and raw HTTP checks. It does not test public deployment,
 archive history, subscriptions, signing or consensus/finality validation.
 
 Observed locally on 2026-10-28 (macOS ARM64, Python 3.14): `make check-mcp-interop` passed
