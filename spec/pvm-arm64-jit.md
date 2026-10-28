@@ -2076,3 +2076,133 @@ reserved connected publication and failed-replacement preservation remain exerci
 Evidence: `build/pvm-arm64-jit/post-merge/shared-images/`, including the prototype, exact-head
 qualification, complete measured receipts and independent verification. The next bounded
 investigation is broader native continuations, not more coverage through extra tiny handoffs.
+
+
+## Bounded two-block native continuations (October 28)
+
+Measured runtime `296c6d08fd307a010f1e50a0d2c9e6229b7d0917` against accepted parent
+`01419192effe695267a99b1c51624c8de69bebec`. The independent Linux gate is recorded below.
+This extends the existing single bounded connected region from three blocks to two or three,
+without increasing its publication allowance, executable arena, source map or invocation-context ABI.
+All block gas/source guards, checked memory, host behavior, partial/paid fallbacks and default selection remain unchanged.
+
+An ignored, untimed trace of the first 100,000 complete native-header edges per workload identified
+81,993 adjacent eligible edges in long sieve and a repeated closed two-block round. Initialization
+and gameplay did not show a frequent distinct closed pair in that bounded prefix. All three traced
+processes passed thirteen complete checked calls; their clocks were discarded. This is source-edge
+evidence for a general closed-round compiler, not a source-PC/opcode-specific optimization or a
+claim about every program's complete working set.
+
+Discovery observes at most eight complete visits per promoted header. An actual adjacent A→B→A
+round admits two sealed pure blocks only after both existing branch capabilities are positive.
+The non-executable header's existing scalar operation-count lane holds the cold probe budget;
+executable body entries keep their genuine counts and the 12-byte entry layout is unchanged.
+After expiry or region admission/refusal, the handler becomes the original ordinary native-header
+worker, with no ongoing status/history test. Saved guard fallbacks cannot overwrite the connected
+root handler. Partial/paid/gas-refused visits do not consume probes. Invocation history is cleared
+on every run/host stop; cached source code retains no CPU, guest pointer or history.
+
+The first variant `68900f8fb0aedce1998120a7733ffb2e4f78b9f0` observed every eligible native
+header. Its complete 70-process cohort improved long sieve247.434/247.977→232.643/233.753ms,
+but Pinky regressed70.061/70.317→71.626/71.794ms. That unbounded observation policy is superseded,
+with its exact sources and independently verified receipts retained in `whole-observer-applications`.
+
+### Public reused CPU, same-runner forward / reverse
+
+Apple M1 Max; pinned October26 Nimony `358b9bce4dd855453f57a80a0c499b0b2e27d7ee`,
+checked release/ARC/Clang ThinLTO. CPU ms; medians of calls3..12. Public calls include fresh
+invocation regions and immutable publication; retained core has separate reset/publication.
+Reference raw calls exclude invocation restoration/teardown and module construction.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.490 / 3.395 | 2.671 / 2.531 | 2.450 / 2.376 | 2.804 / 2.193 | 7.085 / 5.911 | 0.702 / 0.700 | 0.346 / 0.402 |
+| minimal 100000 | 5.196 / 4.904 | 5.091 / 4.870 | 5.002 / 4.913 | 4.981 / 4.915 | 6.216 / 5.991 | 0.963 / 1.002 | 0.805 / 0.820 |
+| memset 100000 | 4.564 / 4.341 | 3.439 / 3.482 | 3.405 / 3.529 | 2.916 / 2.696 | 4.140 / 3.948 | 0.746 / 0.813 | 0.822 / 0.894 |
+| pinky 1 | 87.806 / 84.984 | 72.463 / 70.119 | 75.750 / 70.013 | 72.775 / 70.338 | 98.579 / 94.050 | 0.863 / 0.824 | 0.768 / 0.744 |
+| sieve 10000000 | 337.984 / 333.735 | 249.425 / 248.216 | 230.797 / 229.419 | 233.208 / 228.480 | 374.420 / 371.062 | 0.683 / 0.687 | 0.616 / 0.618 |
+| init 0 | 329.519 / 321.672 | 212.742 / 196.048 | 199.165 / 195.827 | 206.269 / 198.981 | 681.082 / 682.395 | 0.604 / 0.609 | 0.292 / 0.287 |
+| tick 0 | 40.416 / 40.640 | 36.975 / 37.184 | 36.176 / 36.425 | 33.550 / 33.474 | 43.900 / 44.033 | 0.895 / 0.896 | 0.824 / 0.827 |
+
+### Balanced independent process repeats
+
+Five balanced ABBA blocks per case, ten processes per role, thirteen fully checked calls per
+process. Each process statistic uses calls1..12. Sieve improves7.3–7.5% with non-overlapping
+process ranges and all five paired blocks favoring the trial. Gameplay improves1.9%, likewise
+non-overlapping and favored in all five blocks. Pinky, minimal, fill and initialization have
+overlapping ranges; no material regression or useful speed gain is claimed for those cases.
+Pinky's first forward-order slowdown did not recur in reverse order or balanced repeats.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.569 (2.548–2.596) | 2.377 (2.341–2.424) | 0.925 | 0.928, 0.928, 0.914, 0.924, 0.929 |
+| minimal 100000 | 4.868 (4.824–4.926) | 4.866 (4.850–4.896) | 1.000 | 0.997, 1.004, 0.995, 1.008, 0.997 |
+| memset 100000 | 3.433 (3.373–3.526) | 3.428 (3.373–3.542) | 0.999 | 1.013, 0.992, 1.027, 0.984, 0.985 |
+| pinky 1 | 70.138 (69.821–70.487) | 70.106 (69.900–70.901) | 1.000 | 0.999, 1.003, 1.003, 1.003, 0.998 |
+| sieve 10000000 | 247.612 (247.386–248.703) | 229.652 (229.222–231.994) | 0.927 | 0.928, 0.929, 0.927, 0.929, 0.927 |
+| init 0 | 196.498 (195.645–198.062) | 195.774 (194.888–198.367) | 0.996 | 0.998, 0.994, 1.001, 0.990, 1.001 |
+| tick 0 | 37.176 (36.815–37.517) | 36.455 (36.212–36.623) | 0.981 | 0.985, 0.969, 0.982, 0.984, 0.983 |
+
+### Constructor and cold-call scopes
+
+Prepared-owner construction is outside the call clock and remains visible below. The first call
+includes lazy compilation/publication. These single forward/reverse cold observations are not
+repeat-stable startup claims. Balanced cold process medians baseline→trial were Pinky73.671→73.533ms,
+long sieve252.995→235.175ms, initialization214.922→215.024ms and gameplay48.067→47.628ms.
+
+| Case | Constructor baseline | Constructor trial | Cold baseline | Cold trial |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.630 / 1.521 | 1.577 / 1.665 | 7.840 / 7.911 | 7.687 / 7.736 |
+| minimal 100000 | 0.012 / 0.010 | 0.013 / 0.010 | 5.990 / 4.942 | 5.074 / 5.027 |
+| memset 100000 | 0.054 / 0.053 | 0.050 / 0.050 | 4.787 / 4.645 | 4.664 / 4.714 |
+| pinky 1 | 0.473 / 0.461 | 0.490 / 0.463 | 75.277 / 72.955 | 86.815 / 73.728 |
+| sieve 10000000 | 1.590 / 1.566 | 1.656 / 1.593 | 254.293 / 254.451 | 234.229 / 235.736 |
+| init 0 | 8.587 / 7.706 | 8.486 / 7.597 | 225.754 / 219.585 | 225.645 / 213.433 |
+| tick 0 | 7.770 / 7.701 | 7.701 / 7.764 | 46.334 / 47.263 | 50.706 / 47.704 |
+
+Reference gameplay reused lifecycle medians (calls3..12) are reported separately:
+Forward restore2.046ms, call43.900ms, teardown0.005ms, total45.926ms;
+reverse restore2.216ms, call44.033ms, teardown0.005ms, total46.291ms.
+Individual component medians need not sum to the median of per-call totals. Neither these
+lifecycles nor retained-core clocks substitute for our full public-call measurements.
+
+### Coverage, capacity and correctness
+
+Across thirteen long-sieve calls, native handoffs fall395,149,781→200,149,825 while lowered
+operations stay924,983,123. Native-header entries fall390,020,971→195,021,015.
+Publication occupancy changes261→262 and bytes24,860→25,172: one additional312-byte connected
+image. Pinky remains518publications/47,884bytes, initialization1,024/82,972 and gameplay736/55,504,
+with identical lowered-operation and native-call counts on those workloads. Initialization
+retains the previous three-block region. Gameplay's timing gain cannot be attributed to fewer
+native transitions there; it is a whole-image/code-generation effect without a proven hardware
+cause. No hardware counters or branch-miss measurements were collected.
+
+All nine native gates pass, including728literal two-block gas/price/quota cases and6,486
+whole-source two-block boundary cases against checked single stepping, both entry rotations,
+partial/paid execution, faults, hosts, pricing policies and exclusive owner transfer. The unused
+third counter lane stays zero for two-block code. Existing139-opcode/mixed, three-block, memory,
+capacity/refusal and ownership suites remain. Probe-expiry controls prove exactly eight complete
+visits without generating code themselves.
+
+The primary cohort passes70processes/910calls/115positive/refusal controls,16fresh builds/eight
+equal-image pairs and715source/input/compiler/image identities. Independent re-parsing binds
+accepted and candidate source hashes to their exact commits. Balanced repeats pass140processes/
+1,820calls and recheck the same seals, complete CPU/gas/register/page/permission/source snapshots
+and ordered host events. Primary report SHA256:
+`1fe99e4105345cf1f47647478c480b9fe4517330ce79ada334a6106ec8f1314c`; repeated report:
+`bc8eb19570329ef407fdff38ca422f18f51190c92ac6109326749f8568466f79`.
+Records: `build/pvm-arm64-jit/post-merge/two-block/` and the sealed application cohort.
+
+Linux ARM64 qualification passes the same nine native gates, four public builds, fourteen
+processes/182checked calls and32refusal controls. Independent re-parsing verifies2,869staged
+source/input seals, every staged project file against measured296c6d08, the official pinned
+compiler/archive identity, exact container image and network isolation. Native output has728literal
+cases and positive transfer receipts; forced-storage refusal has no executable literal marker and
+zero native transfers, while both run6,486source boundary cases. An initial independent verifier
+incorrectly required the native-only literal marker in refused output; that local expectation was
+corrected without changing runtime/tests/receipts. Container clocks are diagnostic only. This
+satisfies the retention gate; no default change or merge is part of this trial.
+
+The next bounded experiment is a checked native memory family. The earlier Nim-prechecked head
+load remains rejected: a new trial must address boundary work itself and preserve fault/source
+prefixes, permissions, fresh invocation ownership and canonical fallback.
