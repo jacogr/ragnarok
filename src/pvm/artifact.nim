@@ -260,7 +260,9 @@ proc loadArtifact*(path: string, limits: ArtifactLimits = defaultArtifactLimits(
   var chunk = default(array[4096, byte])
   while true:
     let count = readBuffer(file, addr chunk[0], chunk.len)
-    if count == 0: break # Normal EOF finishes the single exact artifact snapshot.
+    if count == 0:
+      if failed(file): return ArtifactResult[Artifact](status: ArtifactError.IoError)
+      break # Only clean EOF finishes the single exact artifact snapshot.
     if count < 0: return ArtifactResult[Artifact](status: ArtifactError.IoError)
     if uint64(bytes.len) > limits.bytes or uint64(count) > limits.bytes-uint64(bytes.len):
       return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)

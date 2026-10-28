@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full-container boundary, immutable ownership and bounded standalone CLI witnesses.
-import std/[assertions, syncio, strutils, os]
+import std/[assertions, syncio, strutils, tempfiles, paths, files]
 import ../../../src/pvm/[artifact, program, machine, step, gas]
 import ../../../src/codec/natural
 import ../../../src/app/[options, pvm_command]
@@ -62,12 +62,12 @@ assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10
 assert load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault
 assert store(memory, MemoryAddress(65536), AccessWidth(1), RegisterValue(1)).error ==
     MachineError.Fault
-let machine = initialMachine(owned, "main", MachineGas(100))
-assert machine.error == ArtifactError.None
-let info = machineInfo(machine.value).value
+let initial = initialMachine(owned, "main", MachineGas(100))
+assert initial.error == ArtifactError.None
+let info = machineInfo(initial.value).value
 assert uint64(info.registers[0]) == 0xffff0000'u64
 assert uint64(info.registers[1]) == 0xfffe0000'u64
-let execution = execute(machine.value, ExecutionStepLimit(10), GasCycleLimit(100),
+let execution = execute(initial.value, ExecutionStepLimit(10), GasCycleLimit(100),
     PvmBackend.Interpreted)
 assert execution.error == StepError.None and execution.value.exit == StepExit.Halt
 var changed = raw
@@ -138,7 +138,9 @@ for rejected in [@["--pvm-entry", "main"], @["--pvm-code"],
   assert not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0
 assert parseOptions(@["--pvm-code", "/missing/pvm-artifact-test.polkavm"], parsed, diagnostic)
 assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic
-let path = getTempDir() / "ragnarok-artifact-cli-" & $getCurrentProcessId() & ".polkavm"
+let temporary = createTempFile("ragnarok-artifact-cli-", ".polkavm")
+close(temporary.cfile)
+let path = $temporary.path
 try:
   # Real bounded file IO and the command handler use the same production parser and interpreter owner.
   var contents = newString(raw.len)
@@ -156,6 +158,19 @@ try:
   writeFile(path, contents)
   assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
   assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic
+  let loop = fixture(code = @[0'u8, 0, 2, 40, 0, 1])
+  contents = newString(loop.len)
+  for i, octet in loop: contents[i] = char(octet)
+  writeFile(path, contents)
+  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted", "--pvm-steps", "1"],
+      parsed, diagnostic)
+  assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic
+  let panic = fixture(code = @[0'u8, 0, 1, 0, 1])
+  contents = newString(panic.len)
+  for i, octet in panic: contents[i] = char(octet)
+  writeFile(path, contents)
+  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
+  assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic
 finally:
-  removeFile(path) # The fixture never persists outside this test's explicit lifetime.
+  removeFile(temporary.path) # The fixture never persists outside this test's explicit lifetime.
 stdout.writeLine("pvm artifact tests passed")
