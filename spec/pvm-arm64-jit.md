@@ -18,12 +18,14 @@ sections do not describe the current implementation.
   selection are unchanged. Native generation is qualified on macOS ARM64 and Linux ARM64;
   Linux x86-64 generation remains future work.
 - Lower 53 pure register opcodes and 16 conditional opcodes from sealed source facts. Complete
-  pure headers can share native charging/dispatch, and one validated three-block register loop
-  keeps registers resident across guarded internal edges. Guest memory and host calls remain
-  in the checked engine. All other operations and eligibility/resource refusals use that engine.
+  pure headers can share native charging/dispatch, and one validated two/three-block register loop
+  keeps registers resident across guarded internal edges. One unsigned indirect64-bit load family
+  guards invocation-owned readable regions in native code before its pure arithmetic suffix.
+  Other memory operations, hosts and eligibility/resource refusals retain the checked engine.
 - Exact-plan prepared owners retain exclusive code/cache ownership across public calls. Native
   bodies borrow only the current thirteen-register file and, for connected execution, a fresh
-  bounded scalar gas/budget/count context. They retain no guest-memory or invocation pointer.
+  bounded scalar gas/budget/count context. Guarded load leaves additionally borrow the current
+  frame's three read-region descriptors; compiled code retains no guest-memory/invocation pointer.
   Whole-block gas and source guards precede each connected block; partial/paid/error handling,
   fault/exit PCs, source snapshots and ordered host transitions keep their existing workers.
 - Immutable arenas remain one MiB with at most 1,024 publications, including one reserved
@@ -2206,3 +2208,142 @@ satisfies the retention gate; no default change or merge is part of this trial.
 The next bounded experiment is a checked native memory family. The earlier Nim-prechecked head
 load remains rejected: a new trial must address boundary work itself and preserve fault/source
 prefixes, permissions, fresh invocation ownership and canonical fallback.
+
+
+## Native guarded unsigned word loads — retained (October 28)
+
+Measured runtime `e4784c8811ee5b686ddc0bc93fa1903ce08a3411` against accepted continuation
+parent `dda984bb539fd96176461ac5e9d17f6425d294df`. This isolated family lowers opcode130
+(unsigned indirect64-bit load) followed by at least three pure register operations. All later
+loads, stores, branches, hosts and unsupported boundaries remain ordinary source nodes.
+The compiler admits at most64operations per fragment under the existing source-map, publication
+and one-MiB arena caps; the reserved connected region and its block guards are unchanged.
+
+Unlike the rejected earlier head-load trial, Nim does not precheck or preload the successful
+memory word. Native code implements modulo-2^32 addressing, protected-prefix and conservative
+last-address guards, then unsigned offset/extent checks against genuine readable private regions.
+A readable contiguous extent permits one unaligned eight-byte load plus the pure suffix.
+Otherwise it returns untouched to the exact original memory worker, which owns fragmented
+access, permission/fault ordering and source-PC handling. Partial reservations never enter the
+leaf. Full gas/source reservation and paid-block ordering remain in the existing workers.
+
+The frame owns three base/extent/borrowed-pointer descriptors,72bytes in total, for stack/RW/RO.
+They are captured after final private byte allocation and moves; in-place reset/host updates
+never resize those byte buffers. Mapping/permission replacement constructs a fresh frame and
+fresh descriptors before transferring its code cache. FlatStream transfers no descriptor.
+Native code embeds no guest pointer and borrows the current frame's descriptors/registers only
+for the synchronous call. Guard failure changes no guest register storage or memory. Successful
+register publication follows the load and pure suffix. Read-only lowering needs no dirty marking.
+
+### Public reused CPU, forward / reverse
+
+Apple M1 Max, unchanged October26 Nimony `358b9bce4dd855453f57a80a0c499b0b2e27d7ee`,
+checked release/ARC/Clang ThinLTO; CPU ms, calls3..12. Public calls include fresh private regions
+and immutable result publication; core reset/publication remains separate. Reference raw calls
+exclude restoration/teardown/module construction.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.410 / 3.456 | 2.369 / 2.414 | 2.299 / 2.333 | 2.147 / 2.176 | 5.952 / 6.016 | 0.674 / 0.675 | 0.386 / 0.388 |
+| minimal 100000 | 4.873 / 4.952 | 4.870 / 4.904 | 4.843 / 4.923 | 4.823 / 4.883 | 6.005 / 6.096 | 0.994 / 0.994 | 0.806 / 0.808 |
+| memset 100000 | 4.375 / 4.368 | 3.374 / 3.446 | 3.436 / 3.432 | 2.705 / 2.713 | 3.930 / 3.997 | 0.785 / 0.786 | 0.874 / 0.859 |
+| pinky 1 | 84.970 / 86.051 | 69.954 / 70.743 | 69.659 / 70.273 | 70.606 / 71.132 | 95.807 / 95.150 | 0.820 / 0.817 | 0.727 / 0.739 |
+| sieve 10000000 | 336.588 / 336.245 | 229.300 / 232.731 | 219.379 / 222.413 | 226.894 / 229.565 | 367.190 / 370.923 | 0.652 / 0.661 | 0.597 / 0.600 |
+| init 0 | 324.197 / 320.964 | 197.208 / 194.917 | 197.049 / 197.159 | 195.587 / 195.591 | 678.323 / 676.841 | 0.608 / 0.614 | 0.290 / 0.291 |
+| tick 0 | 41.032 / 40.545 | 37.248 / 37.037 | 36.317 / 36.017 | 33.304 / 32.946 | 44.331 / 44.291 | 0.885 / 0.888 | 0.819 / 0.813 |
+
+### Balanced independent process repeats
+
+Five balanced ABBA blocks/case, ten processes per role, thirteen checked calls/process, each
+process statistic using calls1..12. Keep:long sieve improves4.4%, short sieve3.0%, gameplay1.2%;
+all five paired blocks favor each and the process ranges do not overlap. Other differences are
+within overlapping ranges; no material regression or useful gain is claimed for those cases.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.371 (2.358–2.401) | 2.301 (2.293–2.331) | 0.970 | 0.971, 0.967, 0.971, 0.969, 0.976 |
+| minimal 100000 | 4.872 (4.849–4.907) | 4.854 (4.840–4.901) | 0.996 | 1.001, 0.997, 1.003, 0.996, 0.991 |
+| memset 100000 | 3.446 (3.361–3.480) | 3.409 (3.367–3.472) | 0.989 | 0.997, 1.008, 0.992, 0.993, 0.987 |
+| pinky 1 | 70.160 (69.918–71.023) | 69.862 (69.681–70.320) | 0.996 | 0.997, 0.995, 0.997, 0.996, 0.993 |
+| sieve 10000000 | 229.503 (228.995–231.781) | 219.470 (218.987–220.654) | 0.956 | 0.956, 0.958, 0.957, 0.960, 0.952 |
+| init 0 | 195.655 (194.788–197.941) | 195.888 (195.542–197.707) | 1.001 | 1.006, 0.999, 1.004, 0.999, 1.001 |
+| tick 0 | 36.691 (36.504–36.763) | 36.263 (36.033–36.398) | 0.988 | 0.990, 0.988, 0.989, 0.989, 0.986 |
+
+### Construction and cold execution
+
+Prepared-owner construction remains separate from the first execution, which includes lazy
+emission/publication and fresh invocation memory. CPU ms forward/reverse:
+
+| Case | Constructor parent | Constructor trial | Cold parent | Cold trial |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 1.510 / 1.751 | 1.539 / 1.560 | 7.572 / 7.567 | 7.344 / 7.566 |
+| minimal 100000 | 0.010 / 0.011 | 0.010 / 0.010 | 4.916 / 5.035 | 4.883 / 4.979 |
+| memset 100000 | 0.052 / 0.055 | 0.051 / 0.056 | 4.628 / 4.935 | 4.656 / 4.864 |
+| pinky 1 | 0.465 / 0.459 | 0.462 / 0.499 | 73.283 / 73.555 | 73.266 / 74.967 |
+| sieve 10000000 | 1.561 / 1.579 | 1.564 / 1.569 | 234.851 / 237.776 | 224.449 / 229.473 |
+| init 0 | 7.958 / 8.015 | 7.737 / 7.559 | 232.886 / 222.723 | 216.789 / 215.748 |
+| tick 0 | 7.775 / 7.618 | 7.810 / 7.750 | 47.714 / 46.552 | 46.075 / 46.073 |
+
+Balanced cold medians parent→trial:short sieve7.487→7.628ms, long sieve234.521→225.609,
+Pinky73.579→73.179, initialization214.566→215.569, gameplay44.896→44.642. Short sieve's
+approximately0.14ms additional cold cost and larger native images are explicit tradeoffs; no
+universal startup gain is claimed. Initialization adds about1ms in cold medians despite unchanged
+reused speed. Independent component medians do not substitute for paired per-call totals.
+
+Reference gameplay invocation lifecycle medians (calls3..12), separately from raw calls:
+Forward restoration2.093ms/call44.331ms/teardown0.004ms/total46.408ms.
+reverse restoration2.271ms/call44.291ms/teardown0.006ms/total46.617ms.
+
+### Native coverage and capacity
+
+Across thirteen calls, these are lowering counters, not hardware instruction counts:
+
+| Case | Publications parent→trial | Bytes parent→trial | Native calls parent→trial | Lowered operations parent→trial |
+|---|---:|---:|---:|---:|
+| sieve 10000000 | 262→426 | 25,172→68,840 | 200,149,825→266,580,709 | 924,983,123→1,191,218,731 |
+| pinky 1 | 518→525 | 47,884→50,064 | 31,512,494→32,354,595 | 165,076,876→168,521,851 |
+| init 0 | 1,024→1,024 | 82,972→100,312 | 21,370,154→21,420,711 | 2,287,273,247→2,287,897,715 |
+| tick 0 | 736→758 | 55,504→64,924 | 24,407,266→26,300,313 | 73,275,388→83,240,962 |
+
+More operations move from checked handlers into native code; native calls increase rather than
+decrease. These timings support the bounded family without making transition count a CPU-cost
+oracle. Initialization still reaches1,024physical publications; the same limits remain effective.
+No hardware instruction/cache/branch-miss counters were collected.
+
+### Verification and provenance
+
+Guard instruction encodings were checked against a local Clang ARM64 assembler reference.
+Nine native gates pass, including507literal aliases/three-region/refusal cases and existing4,800
+load/address/permission/partial-paid/pricing/source/owner cases. Guarded reads survive host map
+changes, fast updates and transferred caches; unmapping proves native guard refusal executes no
+load/suffix and the original checked worker reports the exact fault. Forced-storage refusal
+executes zero native operations. Existing pure/register/branch/two-three-block, host and exclusive
+ownership witnesses remain passing. The formatter rejected a one-line when/let test declaration;
+it was corrected before final qualification and all timing.
+
+Primary comparison passes70processes/910calls/115controls, sixteen fresh builds/eight equal-image
+pairs and715source/input/compiler/image seals; balanced repeats pass140processes/1,820calls.
+Independent re-parsing binds both runtime revisions, generated images, complete CPU/gas/register/
+page/permission/source snapshots and ordered host events. Primary report SHA256:
+`ed8f173412315e7c48d7eb9b9b48952634c4656f22ce962424e405b62e53fba7`; repeated report:
+`36cd523d7192a5f1f3ca1d38761a2f9e8544b4691c4c7b1c5c1f38b6dd4aa1c8`.
+Linux ARM64 passes nine gates, four public builds, fourteen processes/182checked calls and
+32refusal controls. Independent exact-source/compiler/archive/image verification is recorded
+with the local Linux receipt:2,869staged seals, all project source/helper/test/pin files bound to
+measured e4784c88, official compiler archive and exact isolated ARM64 image. All container clocks
+are diagnostic only.
+Records: `build/pvm-arm64-jit/post-merge/checked-loads/` and the sealed public application cohort.
+No default, backend, dependency or merge change is included.
+
+
+### Backend-policy reconciliation (October 28)
+
+The optimization stack is rebased onto master `ef44cba8cc3f87e00dfba7384db2f6b84cdf57ae`,
+including the merged prepared-owner backend policy. Immutable `allowNative` still refuses native
+preparation before scanning or allocating; frame-owned read descriptors never enter the code cache.
+The comparison policy accepts a guarded native call with zero completed native operations: a
+refused load guard leaves registers unchanged and resumes its canonical checked worker. Its actual
+execution receipt remains interpreted. Completed operations still require a published fragment and
+a call; forced interpretation and unavailable native policies still require every native counter
+to be zero. Parser tests cover both the honest refusal and forged activity claims. Earlier timing
+tables remain evidence for their recorded source heads, not measurements of this reconciled tree.

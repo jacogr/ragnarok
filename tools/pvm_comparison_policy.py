@@ -21,7 +21,8 @@ def policy_receipt(output, requested):
         raise ValueError('PVM policy actual/fallback disagreement')
     if (requested == 'interpreted' or not built or not supported) and any((fragments, calls, operations)):
         raise ValueError('Native activity under interpreted or unavailable policy')
-    if supported and not built or bool(calls) != bool(operations) or calls and not fragments:
+    # Guarded native entry can refuse before lowering an operation; completed operations still require a call.
+    if supported and not built or operations and not calls or calls and not fragments:
         raise ValueError('Impossible PVM policy native counters')
     return '\n'.join(lines)+'\n', dict(version=1, requested=requested, actual=actual,
         jit_built=bool(built), platform_supported=bool(supported), fallback_enabled=bool(fallback),

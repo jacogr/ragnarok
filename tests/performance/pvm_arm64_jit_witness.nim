@@ -47,6 +47,41 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 
 
 when defined(pvmArm64Jit):
+  var guardedLoadCases = 0
+  when not defined(pvmArm64JitRefuse):
+    for destination in 0..<13:
+      for addressSlot in 0..<13:
+        # Every decoded alias pair must compute its address before overwriting the loaded register.
+        let source = owner([@[130'u8, byte(addressSlot*16+destination), 0, 0, 0, 0], @[0'u8]])
+        let decoded = instruction(source, CodeAddress(0))
+        assert decoded.error == ProgramError.None
+        let slots = instructionRegisters(decoded)
+        assert int(slots.aIndex) == destination and int(slots.bIndex) == addressSlot
+        let memoryJit = newArmJit()
+        assert armEntry(memoryJit, 0, 1) == 0
+        var memoryBody = default(ArmBlock)
+        var memoryWords = armMemoryInstructions(memoryBody, slots, 0, 37)
+        assert publishArmEntry(memoryJit, 0, 37, 1, memoryWords)
+        var literalBytes = default(array[16, byte])
+        for at in 0..<16: literalBytes[at] = byte(at)
+        for selectedRegion in 0..<3:
+          var descriptors = default(array[3, array[3, uint64]])
+          descriptors[selectedRegion] = [65536'u64, 9'u64, cast[uint64](addr literalBytes[0])]
+          var input = default(RegisterFile)
+          for slot in 0..<13: input[slot] = RegisterValue(0x1122334455667788'u64+uint64(slot))
+          input[addressSlot] = RegisterValue(65539)
+          let original = input
+          assert callArmMemory(memoryJit, 0, input, descriptors) == 37
+          for slot in 0..<13:
+            # A successful unaligned little-endian load publishes exactly its own destination.
+            assert input[slot] == (if slot == destination: RegisterValue(
+                0x0a09080706050403'u64) else: original[slot])
+          descriptors = default(array[3, array[3, uint64]])
+          input = original
+          assert callArmMemory(memoryJit, 0, input, descriptors) == high(uint32)
+          assert input == original
+          inc guardedLoadCases
+  echo "ARM_GUARDED_LOAD_LITERAL_CASES,", guardedLoadCases
   let probeOwner = newArmJit()
   assert armEntry(probeOwner, 0, 1) == 0
   armStartProbe(probeOwner, 0)
@@ -835,8 +870,9 @@ for layout in 0..<8:
         when defined(pvmArm64JitRefuse):
           assert stats[2] == 0
         else:
-          # The rejected head-load leaf is absent; three trailing operations retain the accepted floor.
-          assert stats[2] == 0
+          # Valid private maps execute the guarded load plus its three-operation suffix; absent maps preserve checked faults.
+          if layout == 0: assert stats[2] == 0
+          else: assert stats[2] > 0
       # Same-plan replacement and a transferred stream must read the new invocation's word.
       var changed: seq[PageImage] = @[]
       for original in images:
@@ -917,11 +953,15 @@ let changedRegisters = hostLoadFrame.info.registers
 assert resumeFlatHostMemory(hostLoadFrame, changedHostMemory, changedGas,
     changedRegisters) == StepError.None
 let resumedLoadInfo = hostLoadFrame.info
+when defined(pvmArm64Jit):
+  let beforePartialLoad = flatArmStatistics(hostLoadFrame)
 verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 6, [secondWord])
 when defined(pvmArm64Jit):
   let partialLoadStats = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert partialLoadStats[2] == 0
-  else: assert partialLoadStats[1] == 0 and partialLoadStats[2] == 0
+  else:
+    # A partial reservation must not enter even a previously published memory leaf.
+    assert partialLoadStats[1] == beforePartialLoad[1] and partialLoadStats[2] == beforePartialLoad[2]
 # Include the jump and the complete six-instruction target block, even though its host exit refunds the final jump.
 verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 7, [secondWord])
 assert hostLoadFrame.exit == StepExit.Host and flatHostStats(hostLoadFrame)[1] == 1
@@ -929,7 +969,7 @@ assert pageImage(originalHostMemory, PageIndex(16)).value.bytes == firstWord.byt
 when defined(pvmArm64Jit):
   let beforeUnmapping = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert beforeUnmapping[2] == 0
-  else: assert beforeUnmapping[0] == 0 and beforeUnmapping[1] == 0 and beforeUnmapping[2] == 0
+  else: assert beforeUnmapping[0] > 0 and beforeUnmapping[1] > 0 and beforeUnmapping[2] > 0
   discard observeFlatHostMemory(hostLoadFrame)
   let absentHostMemory = captureMemory([], PageLimit(2)).value
   let unmappedGas = hostLoadFrame.info.gas
@@ -939,7 +979,12 @@ when defined(pvmArm64Jit):
   let unmappedLoadInfo = hostLoadFrame.info
   verifyControl(hostLoadFrame, loadLoop, unmappedLoadInfo, 7)
   assert hostLoadFrame.exit == StepExit.Fault
-  assert flatArmStatistics(hostLoadFrame) == beforeUnmapping
+  let afterUnmapping = flatArmStatistics(hostLoadFrame)
+  when defined(pvmArm64JitRefuse): assert afterUnmapping == beforeUnmapping
+  else:
+    # The stale code sees only the new empty descriptors; its failed guard cannot execute a load or suffix.
+    assert afterUnmapping[0] == beforeUnmapping[0] and afterUnmapping[1] == beforeUnmapping[1]+1
+    assert afterUnmapping[2] == beforeUnmapping[2] and afterUnmapping[3] == beforeUnmapping[3]
 
 echo "ARM_HEAD_HOST_MAP,1"
 
