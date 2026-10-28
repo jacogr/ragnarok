@@ -436,6 +436,7 @@ stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
 let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
     @[149'u8, 2, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 var regionCases = 0
+var residentProductionCases = 0
 for paired in [false, true]:
   # Use independently admitted interpreted owners; a cached native region cannot turn its own result into the oracle.
   let program = if paired: pairedProgram else: branchProgram
@@ -453,6 +454,8 @@ for paired in [false, true]:
   when defined(pvmX86JitRefuse):
     assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64])
   else:
+    assert flatX86ResidentRegister(nativeFrame) == 0
+    inc residentProductionCases
     let connected = flatX86RegionStatistics(nativeFrame)
     assert connected[0] > 0 and connected[1] > connected[0]
   for initial in [0'u64, 5, 31]:
@@ -479,6 +482,7 @@ for paired in [false, true]:
           checkFlatSource(checkedFrame)
           inc regionCases
 stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
+stdout.writeLine("X86_RESIDENT_SLOT_PRODUCTION_CASES," & $residentProductionCases)
 
 proc checkRegionContext(addSlots, compareSlots: RegisterSlots, resident: int): int =
   ## One independent scalar oracle covers every complete/partial block, including zero-block publication of each cached guest coordinate.

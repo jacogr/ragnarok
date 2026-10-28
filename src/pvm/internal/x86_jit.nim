@@ -28,6 +28,7 @@ type
     probes: uint8 # A cold header gets at most eight discovery visits; exhausted probes restore the hot worker.
   X86RegionCache = object ## One bounded exact-source region, with no mutable invocation address.
     status: uint8
+    residentTag: uint8 # Zero is ordinary;1..13 identifies a resident coordinate in the existing alignment padding.
     count: uint32
     code: uint32
     headers, spans, operations: array[2, uint32]
@@ -55,6 +56,7 @@ proc `=destroy`(owner: X86Arena) =
 
 proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
+  assert sizeof(X86RegionCache) == 72 # A diagnostic scalar consumes padding without expanding the hot source cache.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 func supportedX86Opcode*(opcode: byte): bool =
@@ -285,6 +287,11 @@ func x86RegionHeader*(jit: X86Jit, index: range[0..1]): uint32 =
   assert jit.region.status == 2 and uint32(index) < jit.region.count
   jit.region.headers[index]
 
+func x86RegionResidentRegister*(jit: X86Jit): uint32 =
+  ## Report only copied cold selection evidence; no mutable register value or executable capability escapes.
+  if jit.region.status != 2 or jit.region.residentTag == 0: high(uint32)
+  else: uint32(jit.region.residentTag)-1
+
 func x86RegionMatches*(jit: X86Jit, headers, spans: array[2, uint32],
     prices: array[2, uint64]): bool =
   ## Every fresh invocation must match the captured charge context, including inactive zero slots.
@@ -394,6 +401,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     jit.region.prices[index] = blocks[index].price
     jit.region.operations[index] = blocks[index].operations
   jit.region.count = uint32(count)
+  jit.region.residentTag = if resident: uint8(residentSlot+1) else: 0'u8
   jit.region.status = 2
   inc jit.fragments
   jit.codeBytes = uint64(published)+uint64(code.bytes.len)

@@ -62,7 +62,8 @@ def qualify(checks, compiler, rows=None):
             # Resident regions must exercise every cached coordinate and the complete supported arithmetic matrix.
             for marker,count in [('X86_RESIDENT_SLOT_CONTEXT_CASES',18720),
                                  ('X86_RESIDENT_SLOT_ARITHMETIC_CASES',27560),
-                                 ('X86_RESIDENT_SLOT_REFUSALS',2)]:
+                                 ('X86_RESIDENT_SLOT_REFUSALS',2),
+                                 ('X86_RESIDENT_SLOT_PRODUCTION_CASES',2)]:
                 expected = 0 if refused else count
                 if marker+','+str(expected)+'\n' not in run['output']:
                     raise ValueError('incomplete resident guest-slot witness: '+marker)

@@ -1740,6 +1740,12 @@ when defined(pvmX86Jit):
     destination = flatX86Region(f, first)
     true
 
+  func flatX86ResidentRegister*(f: FlatFrame): uint32 =
+    ## A focused witness observes the production cold selector independently of direct builder tests.
+    let jit = f.x86Jit
+    if jit == nil: high(uint32)
+    else: x86RegionResidentRegister(jit)
+
   proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
     ## A witness requires real connected execution separately from normal arithmetic/conditional leaves.
     let jit = f.x86Jit

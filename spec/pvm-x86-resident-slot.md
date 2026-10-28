@@ -35,3 +35,9 @@ otherwise restore this runtime delta while retaining meaningful tests/evidence.
 Constructors/cold/reused/core/reference lifecycle stay separate in both process
 orders. Simulated branch misses do not establish hardware behavior. No timing
 claim before qualification; the earlier counter/immediate trials remain rejected.
+
+A read-only scalar selection tag consumes existing region-record padding (the
+record remains72 bytes), allowing the maintained production-loop witness to prove
+that both one/two-block cold selectors actually cached guest R0. This adds no
+hot-path branch and retains no guest value. Two mismatched-coordinate/builder-mode
+publication refusals remain explicit negative controls.
