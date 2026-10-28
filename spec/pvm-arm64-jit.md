@@ -2448,3 +2448,24 @@ The retained runtime equals parent `b1171011350b044f78523b659842ab859ba366f4` by
 pass507/0literal cases and30,144complete-state load cases each. Twelve focused Python checks
 pass; a separate26-call replay on the sealed identical images verifies explicit interpreted
 zero-native and JIT-positive profiling policies, with all clocks discarded.
+
+
+## Transactional read-span trial (October 28; qualification pending)
+
+Scope: combine multiple opcode130 reads and existing pure arithmetic inside one reserved source
+block, with at least four operations and the existing64-operation/1,024-word publication bounds.
+Single-read leaves, all other widths, stores, branches, hosts and connected-block rules retain
+the accepted implementation. No protocol, pin, default, cache capacity or memory policy changes.
+
+The cold builder computes live-ins across the whole span. Native code keeps registers private
+until every load guard succeeds; a failed later guard returns without any guest mutation, then
+the original checked node replays the read/arithmetic prefix and reports its exact fault. Loads
+read only exclusively owned invocation bytes. X17 retains the invocation descriptor pointer
+across arithmetic's X1 scratch, without touching Apple's reserved X18 or callee-saved registers.
+Code caches retain no invocation pointer. Partial reservations use original handlers throughout.
+Oversized mixed code falls back to the accepted first-load path.
+
+Qualification requires independent literal alias/derived-address/rollback witnesses; complete
+state checks across later-read faults, protected/top/fragmented maps, every attempt prefix, gas,
+pricing modes, host memory replacement and warm cache transfer; native/refused/owner-policy gates;
+then paired complete public timings against parent1755. Coverage alone supplies no keep verdict.

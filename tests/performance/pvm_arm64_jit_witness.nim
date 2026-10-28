@@ -82,6 +82,52 @@ when defined(pvmArm64Jit):
           assert input == original
           inc guardedLoadCases
   echo "ARM_GUARDED_LOAD_LITERAL_CASES,", guardedLoadCases
+  var readSpanLiteralCases = 0
+  when not defined(pvmArm64JitRefuse):
+    for destination in 0..<13:
+      for addressSlot in 0..<13:
+        # Derived addresses exercise all first-read aliases while arithmetic deliberately destroys X1 scratch.
+        let bridge = (destination+1) mod 13
+        let last = (destination+2) mod 13
+        let fixture = owner([@[130'u8, byte(addressSlot*16+destination), 0, 0, 0, 0],
+          @[149'u8, byte(destination*16+bridge), 9],
+          @[130'u8, byte(bridge*16+last), 0, 0, 0, 0],
+          @[149'u8, byte(last*16+last), 1], @[0'u8]])
+        var span = default(ArmReadSpan)
+        emitArmRead(span, instructionRegisters(instruction(fixture, CodeAddress(0))), 0)
+        emitArmReadArithmetic(span, 149, instructionRegisters(instruction(fixture, CodeAddress(6))), 9)
+        emitArmRead(span, instructionRegisters(instruction(fixture, CodeAddress(9))), 0)
+        emitArmReadArithmetic(span, 149, instructionRegisters(instruction(fixture, CodeAddress(
+            15))), 1)
+        let jit = newArmJit()
+        assert armEntry(jit, 0, 1) == 0
+        var words = armReadInstructions(span, 37)
+        assert publishArmEntry(jit, 0, 37, 4, words)
+        var bytes = default(array[64, byte])
+        for selectedRegion in 0..<3:
+          for refusal in 0..<3:
+            # A later refusal must roll back the successful first load and its arithmetic; an early refusal is identical.
+            let firstValue = if refusal == 2: 65526'u64 else: 65544'u64
+            for at in 0..<8:
+              bytes[3+at] = byte((firstValue shr (at*8)) and 255)
+              bytes[17+at] = byte((0x9988776655443322'u64 shr (at*8)) and 255)
+            var regions = default(array[3, array[3, uint64]])
+            regions[selectedRegion] = [65536'u64, 57'u64, cast[uint64](addr bytes[0])]
+            var registers = default(RegisterFile)
+            for slot in 0..<13: registers[slot] = RegisterValue(0x123456789abcdef0'u64+uint64(slot))
+            registers[addressSlot] = RegisterValue(if refusal == 1: 65535'u64 else: 65539'u64)
+            var expected = registers
+            if refusal == 0:
+              # These independent literal equations include the exact derived address and second load's suffix.
+              expected[destination] = RegisterValue(65544)
+              expected[bridge] = RegisterValue(65553)
+              expected[last] = RegisterValue(0x9988776655443323'u64)
+            let operations = jit.operations
+            assert callArmMemory(jit, 0, registers, regions) == (if refusal == 0: 37'u32 else: high(uint32))
+            assert registers == expected
+            assert jit.operations == operations+(if refusal == 0: 4'u64 else: 0'u64)
+            inc readSpanLiteralCases
+  echo "ARM_READ_SPAN_LITERAL_CASES,", readSpanLiteralCases
   let probeOwner = newArmJit()
   assert armEntry(probeOwner, 0, 1) == 0
   armStartProbe(probeOwner, 0)
@@ -933,10 +979,112 @@ for folded in [false, true]:
 
 echo "ARM_HEAD_LOAD_CASES,", loadCases
 
+var readSpanCases = 0
+for layout in 0..<8:
+  let base = if layout == 7: 0xfffff000'u64 else: 65536'u64
+  for aliased in [false, true]:
+    let first = if aliased: 1 else: 0
+    let last = if aliased: 2 else: 3
+    let program = owner([@[130'u8, byte(0x10+first), 0, 0, 0, 0],
+      @[149'u8, byte(first*16+2), 9], @[130'u8, byte(0x20+last), 0, 0, 0, 0],
+      @[149'u8, byte(last*16+4), 1], @[0'u8]])
+    for target in [0'u64, 65535, base+17, base+4092, base+4096, base+8192,
+        0xfffffff8'u64, 0xffffffff'u64]:
+      var images: seq[PageImage] = @[]
+      if layout != 0:
+        # The first read derives the second address; adjacent/split/absent/inaccessible/fragmented maps exercise later guards.
+        var page = PageImage(index: PageIndex(uint32(base shr 12)),
+          access: (if layout == 2 or layout == 7: PageAccess.ReadWrite else: PageAccess.ReadOnly),
+              bytes: default(array[4096, byte]))
+        for at in 0..<4096: page.bytes[at] = byte((at*17+layout) mod 256)
+        let pointer = target-9'u64
+        for at in 0..<8: page.bytes[3+at] = byte((pointer shr (at*8)) and 255)
+        images.add(page)
+        if layout in [1, 2, 3, 5, 6]:
+          var second = PageImage(index: PageIndex(if layout == 6: 18'u32 else: 17'u32),
+            access: (if layout == 5: PageAccess.Inaccessible elif layout in [2, 3]:
+            PageAccess.ReadWrite else: PageAccess.ReadOnly), bytes: default(array[4096, byte]))
+          if second.access != PageAccess.Inaccessible:
+            for at in 0..<4096: second.bytes[at] = byte((at*23+79) mod 256)
+          images.add(second)
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+      info.registers[1] = RegisterValue(base+3+(if aliased: 0x100000000'u64 else: 0'u64))
+      for policy in 0..<3:
+        let sourcePlan = newFlatPlan(program, GasCycleLimit(100000))
+        var frame = newFlatFrame(sourcePlan, images, info)
+        if policy == 1:
+          let plan = newGasPlan(program, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+            blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+          assert plan.error == GasPlanError.None
+          assert selectFlatPrices(frame, plan.value, default(GasMemo)) == StepError.None
+        elif policy == 2:
+          let memo = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+              cycles: GasCycleLimit(100000)))
+          assert memo.error == GasMemoError.None
+          assert selectFlatPrices(frame, default(GasPlan), memo.value) == StepError.None
+        verifyControl(frame, program, info, 100, images)
+        when defined(pvmArm64Jit):
+          let stats = flatArmStatistics(frame)
+          when defined(pvmArm64JitRefuse): assert stats[1] == 0 and stats[2] == 0
+          else:
+            if layout != 0 and target == base+17:
+              # Two reads and their arithmetic use one native handoff, including the derived-address alias.
+              assert stats[1] == 1 and stats[2] == 4
+        for paid in [false, true]:
+          for gas in [0'u64, 1, 4, 5, 6, 1000]:
+            for budget in 0'u64..8'u64:
+              # Refused speculation replays exact successful prefixes and later fault/PC/gas without double debit.
+              var input = info
+              input.gas = MachineGas(gas)
+              input.blockCharged = paid
+              verifyControl(frame, program, input, budget, images)
+              inc readSpanCases
+        var cache = takeFlatStream(frame)
+        var fresh = newFlatFrame(sourcePlan, images, info)
+        # Same-plan code retains no descriptor pointer; a new invocation owns fresh bytes and can replace them.
+        restoreFlatStream(fresh, cache)
+        verifyControl(fresh, program, info, 100, images)
+        assert replaceFlatMemoryChecked(fresh, [], info) == FlatError.None
+        verifyControl(fresh, program, info, 100)
+        readSpanCases+=2
+
+# Multiple guard relocations and publication refusal retain the same exact source semantics at both native caps.
+for depth in [2, 3, 16, 32, 63, 64, 65]:
+  for badAt in [-1, 0, depth div 2, depth-1]:
+    var parts: seq[seq[byte]] = @[]
+    for at in 0..<depth:
+      # A selected later read faults at the protected prefix after any successful earlier source effects.
+      let displacement = if at == badAt: 0xffffffff'u32 else: uint32(at*8)
+      var load = @[130'u8, 0x10]
+      for shift in 0..<4: load.add(byte((displacement shr (shift*8)) and 255))
+      parts.add(load)
+    parts.add(@[149'u8, 0x02, 1])
+    parts.add(@[133'u8, 0x23, 0x7f])
+    parts.add(@[149'u8, 0x34, 0xff])
+    parts.add(@[0'u8])
+    let program = owner(parts)
+    var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+    for at in 0..<4096: page.bytes[at] = byte((at*43+17) mod 256)
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+    info.registers[1] = RegisterValue(65536)
+    var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+    for paid in [false, true]:
+      for gas in [0'u64, uint64(depth+3), uint64(depth+4), high(uint64)]:
+        for budget in 0..depth+5:
+          # Every attempt prefix covers a partial reservation, a complete span and any oversized span's checked fallback.
+          var input = info
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          verifyControl(frame, program, input, uint64(budget), [page])
+          inc readSpanCases
+
+echo "ARM_READ_SPAN_CONTROL_CASES,", readSpanCases
+
 # A host call changes the map before a static jump revisits the same checked load.
 let loadLoop = owner([@[130'u8, 0x10, 0, 0, 0, 0], @[149'u8, 0x02, 1],
-  @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[10'u8, 7],
-  @[40'u8, 0xef, 0xff, 0xff, 0xff]])
+  @[130'u8, 0x15, 8, 0, 0, 0], @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[10'u8, 7],
+  @[40'u8, 0xe9, 0xff, 0xff, 0xff]])
 var firstWord = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
     bytes: default(array[4096, byte]))
 for at in 0..<4096: firstWord.bytes[at] = byte((at*7+19) mod 256)
@@ -956,15 +1104,15 @@ assert resumeFlatHostMemory(hostLoadFrame, changedHostMemory, changedGas,
 let resumedLoadInfo = hostLoadFrame.info
 when defined(pvmArm64Jit):
   let beforePartialLoad = flatArmStatistics(hostLoadFrame)
-verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 6, [secondWord])
+verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 7, [secondWord])
 when defined(pvmArm64Jit):
   let partialLoadStats = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert partialLoadStats[2] == 0
   else:
     # A partial reservation must not enter even a previously published memory leaf.
     assert partialLoadStats[1] == beforePartialLoad[1] and partialLoadStats[2] == beforePartialLoad[2]
-# Include the jump and the complete six-instruction target block, even though its host exit refunds the final jump.
-verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 7, [secondWord])
+# Include the jump and the complete seven-instruction target block, even though its host exit refunds the final jump.
+verifyControl(hostLoadFrame, loadLoop, resumedLoadInfo, 8, [secondWord])
 assert hostLoadFrame.exit == StepExit.Host and flatHostStats(hostLoadFrame)[1] == 1
 assert pageImage(originalHostMemory, PageIndex(16)).value.bytes == firstWord.bytes
 when defined(pvmArm64Jit):
@@ -978,7 +1126,7 @@ when defined(pvmArm64Jit):
   assert resumeFlatHostMemory(hostLoadFrame, absentHostMemory, unmappedGas,
       unmappedRegisters) == StepError.None
   let unmappedLoadInfo = hostLoadFrame.info
-  verifyControl(hostLoadFrame, loadLoop, unmappedLoadInfo, 7)
+  verifyControl(hostLoadFrame, loadLoop, unmappedLoadInfo, 8)
   assert hostLoadFrame.exit == StepExit.Fault
   let afterUnmapping = flatArmStatistics(hostLoadFrame)
   when defined(pvmArm64JitRefuse): assert afterUnmapping == beforeUnmapping

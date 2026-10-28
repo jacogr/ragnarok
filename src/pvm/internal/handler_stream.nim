@@ -1743,6 +1743,38 @@ when defined(pvmArm64Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
+    ## Combine only multiple unsigned word reads and pure arithmetic within one already-reserved source block.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return offset
+    var native = default(ArmReadSpan)
+    var ending = offset
+    var count = 0'u32
+    var reads = 0'u32
+    while int(ending) < f.sites.len and count < 64:
+      # Headers, stores, narrower reads, branches, hosts and every observable exit end the speculative prefix.
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough: break
+      if fact.opcode == 130:
+        emitArmRead(native, fact.args.slots, uint32(fact.args.x and 0xffffffff'u64))
+        inc reads
+      elif supportedArmOpcode(fact.opcode):
+        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+      else:
+        break # Unsupported semantics remain their original checked source node.
+      inc ending
+      inc count
+    if reads < 2 or count < 4: return offset
+    var words = armReadInstructions(native, ending)
+    if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
+    if not publishArmEntry(jit, offset, ending, count, words): return offset
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(offset)] = f.handlers[int(offset)]
+    f.handlers[int(offset)] = flatArmMemory
+    ending
+
   proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
     ## Admit only a first unsigned indirect word load with at least three pure suffix operations, preserving every source coordinate.
     let jit = f.armJit
@@ -1759,6 +1791,10 @@ when defined(pvmArm64Jit):
       emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
       inc ending
       inc count
+    if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode == 130:
+      # Only an encountered second word read can justify the transactional span builder.
+      let combined = flatArmCompileReadSpan(f, offset)
+      if combined != offset: return combined
     if count < 4:
       refuseArmEntry(jit, offset)
       return offset
