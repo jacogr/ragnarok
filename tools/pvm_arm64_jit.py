@@ -84,14 +84,11 @@ def qualify(checks, compiler, *, native=True):
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
         if name.startswith('witness'):
-            # The terminal byte-store witness must prove real native mutation and exact full-state checked fallback.
-            expected = 13520 if native and name == 'witness' else 0
-            if 'ARM_BYTE_STORE_LITERAL_CASES,'+str(expected)+'\n' not in checked['output']:
-                raise ValueError('Missing complete terminal byte-store literal controls')
-            if 'ARM_BYTE_STORE_CONTROL_CASES,43904\n' not in checked['output']:
-                raise ValueError('Missing complete terminal byte-store source/gas controls')
-            if 'ARM_BYTE_STORE_SECOND_EXIT_CASES,320\n' not in checked['output']:
-                raise ValueError('Missing complete later checked-store exit controls')
+            # Rejected native stores leave meaningful checked-store/native-arithmetic and complete snapshot fallback coverage.
+            if 'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n' not in checked['output']:
+                raise ValueError('Missing complete checked-store source/gas/host controls')
+            if 'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' not in checked['output']:
+                raise ValueError('Missing complete native-arithmetic/later checked-store exit controls')
             region_receipts = [line for line in checked['output'].splitlines()
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:

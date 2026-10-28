@@ -243,3 +243,58 @@ remain unchanged; the manual ARM profile target opts in. Eight scoped profiles/
 104 checked calls use the same eight diagnostic images/four equal-image pairs and
 all four collection controls. This measures the regressed workload before any
 further store/branch experiment; profiled clocks remain unusable as CPU timings.
+
+## Final store verdict: remove the runtime extension
+
+[Diagnostic run40782041524](https://github.com/jacogr/ragnarok/actions/runs/40782041524)
+measured unchanged runtime at `9fdd2b2fed5090e435f58eabec8b220f2e701e4a` versus
+`203cce5615a51aa2f8656d925b4e2be9c3ecb233`. Independent audits pass the normal
+70-process/910-call/115-control/16-build/eight-pair cohort, nine native gates/two
+policies, eight profiles/104 calls/eight diagnostic builds/four equal-image pairs
+and four collection controls. Every reference state, source/image/compiler hash,
+source snapshot and ordered host event remains checked.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.993/3.004 | 2.916/2.936 | 3.479/3.507 | 6.106/6.383 | 0.478/0.460 |
+| Minimal100k | 5.991/5.995 | 6.384/6.312 | 6.266/6.197 | 5.492/5.479 | 1.162/1.152 |
+| Memory fill100k | 4.412/4.538 | 4.412/4.588 | 4.513/4.538 | 3.728/3.739 | 1.183/1.227 |
+| Pinky | 86.977/87.315 | 86.999/87.310 | 95.554/95.702 | 87.746/87.475 | 0.991/0.998 |
+| Sieve10m | 285.057/284.056 | 288.316/287.426 | 344.599/338.374 | 333.650/333.489 | 0.864/0.862 |
+| DOOM initialization | 310.987/327.889 | 320.885/320.000 | 525.619/537.278 | 625.188/628.332 | 0.513/0.509 |
+| DOOM gameplay | 46.499/46.710 | 46.191/46.313 | 49.658/49.427 | 40.082/40.076 | 1.152/1.156 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.947/2.866 | 2.901/2.838 | 10.546/10.454 | 10.497/10.427 |
+| Minimal100k | 0.015/0.015 | 0.018/0.017 | 6.225/6.228 | 6.616/6.569 |
+| Memory fill100k | 0.056/0.056 | 0.068/0.057 | 8.733/8.275 | 8.632/8.843 |
+| Pinky | 0.735/0.744 | 0.778/0.743 | 91.066/91.360 | 91.291/91.603 |
+| Sieve10m | 3.091/2.836 | 3.035/2.844 | 292.731/293.287 | 296.746/295.518 |
+| DOOM initialization | 8.543/8.579 | 8.653/8.740 | 335.883/351.111 | 341.930/345.115 |
+| DOOM gameplay | 8.667/8.589 | 8.552/8.702 | 64.223/64.471 | 64.057/64.871 |
+
+
+Minimal has exactly96,243,959 Ir,14,206,713 conditional branches,2,000,161 indirect
+branches and1,400,027 simulated indirect misses on both sides. Its dominant self
+rows and software native activity are identical. Existing hot-kernel functions
+also have identical disassembled instruction sequences after relocation. Their
+addresses/alignment differ; without hardware measurements this neither establishes
+a CPU cause nor justifies blaming added runtime checks. The new store path is not
+used by this workload. It deliberately exercises indirect function calls and
+counter/pointer memory traffic, so its boundary mix differs from the long loops.
+
+All three store variants fail the useful-gain/no-material-regression gate. Restore
+arm64_jit.nim and handler_stream.nim exactly from the accepted non-store parent;
+remove store contexts, builders, lowering and dispatch. Keep the strengthened
+complete-memory/source-snapshot oracle,43,904 checked-store/gas/host/remap controls,
+and adapt the later-store witness to four genuinely native pure operations between
+two checked stores:360 complete-state cases plus positive native-activity evidence.
+Remove direct literals and native-mutation assertions that require the rejected
+emitter. Optional minimal profiling and the exact measured rejection evidence stay.
+This is not a retained native store feature or an accepted speedup.
+
+Applications SHA256 `546cd5992b2edf286c8dbfa0b88e5e88399dca5d3eabbbe02790692d23506912`;
+native `3a8a225576bf6815c88bd638acd6c3c991965c3601bda4fdd9bae821a1a9a475`;
+profiles `90db66fda27c92de9d06500ed7b9ed7f627f3ec5914b26b3a3d91a9c426ecf63`.
+Ignored evidence: `build/pvm-arm-byte-store/minimal-profile/tests`.

@@ -2058,21 +2058,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
-  proc flatArmStore(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial reservations and any failed speculative guard replay the original untouched prefix through checked handlers.
-    if f.barrier == flatStop:
-      block:
-        # The code-only lease borrows fresh private bytes/bitmap only for this call, before mutable fallback can run.
-        let jit {.cursor.} = f.armJit
-        assert jit != nil
-        if jit != nil:
-          let destination = callArmStore(jit, offset, f.info.registers, f.armMemory, f.dirtyPages)
-          if destination != flatStop: return destination
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
   proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
     ## Combine only multiple unsigned word reads and pure arithmetic within one already-reserved source block.
     let jit = f.armJit
@@ -2107,7 +2092,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     if reads < 2 or count < 4: return offset
     if last-first > 4088: window = false
-    var native = default(ArmMemorySpan)
+    var native = default(ArmReadSpan)
     if window:
       # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
       for current in offset..<ending:
@@ -2124,7 +2109,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         else: emitArmRead(native, fact.args.slots, displacement)
       else:
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
-    var words = finishArmMemorySpan(native, ending)
+    var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
@@ -2185,34 +2170,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     let terminal = if int(ending) < f.sites.len:
         f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-    if count < 64 and terminal == 120 and
-        not (int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]):
-      # Exactly one store may separate pure prefix/suffix work; every guard still precedes the only memory mutation.
-      let storeOffset = ending
-      let storeFact = f.plan.facts[int(f.sites[int(storeOffset)])]
-      var following = ending+1
-      var operations = count+1
-      if not storeFact.ending and storeFact.fallthrough:
-        while int(following) < f.sites.len and operations < 64:
-          # A second memory operation, header, host or branch would invalidate transactional replay and ends this span.
-          if int(following)+1 < f.sites.len and f.sites[int(following)] == f.sites[int(
-              following)+1]: break
-          let suffix = f.plan.facts[int(f.sites[int(following)])]
-          if suffix.ending or not suffix.fallthrough or not supportedArmOpcode(suffix.opcode): break
-          inc following
-          inc operations
-        if operations >= 4:
-          var span = takeArmStorePrefix(native)
-          emitArmByteStore(span, storeFact.args.slots, uint32(storeFact.args.x and 0xffffffff'u64))
-          for current in storeOffset+1..<following:
-            let suffix = f.plan.facts[int(f.sites[int(current)])]
-            emitArmReadArithmetic(span, suffix.opcode, suffix.args.slots, suffix.args.x)
-          var words = finishArmMemorySpan(span, following)
-          if not publishArmEntry(jit, offset, following, operations, words): return offset
-          if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-          f.armOriginal[int(offset)] = f.handlers[int(offset)]
-          f.handlers[int(offset)] = flatArmStore
-          return following
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
