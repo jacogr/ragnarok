@@ -42,3 +42,8 @@ a top-level `registers` value resolved as the imported module in the new capacit
 block. Renamed it `capacityRegisters`; no runtime assertion, bounds guard or source
 case was removed. Originating logs are retained under ignored build/. A fresh
 exact-head native/timing/profile run is required.
+
+Attempt40773957482 exposed the same top-level `when` scope issue for two other
+capacity locals. The complete capacity check now lives in a procedure with explicit
+slot arguments, eliminating module-level local collisions as a class. All controls
+remain; neither compile failure is a passing native receipt.

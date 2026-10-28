@@ -745,8 +745,9 @@ for start in [0'u64, 11, 24]:
     inc threeControls
 stdout.writeLine("X86_THREE_SOURCE_CASES," & $threeControls)
 
-var reservedRegionCases = 0
-when not defined(pvmX86JitRefuse):
+proc verifyReservedRegion(identitySlots, addSlots, compareSlots: RegisterSlots): int =
+  ## Keep every temporary scoped to one owner; a full ordinary cache must leave its region slot callable.
+  result = 0
   # Consume all ordinary publication slots while leaving ample space inside the unchanged1MiB physical arena.
   let jit = newX86Jit()
   discard x86Entry(jit, 0, 1030)
@@ -758,8 +759,6 @@ when not defined(pvmX86JitRefuse):
   var refused = default(X86Block)
   for operation in 0..<4: emitX86Operation(refused, 100, identitySlots, 0)
   assert not publishX86Entry(jit, 1023, 1027, 4, refused)
-  let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
-  let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
   var blocks = default(array[3, X86RegionBlock])
   for index in 0..<3:
     var body = default(X86Block)
@@ -779,5 +778,11 @@ when not defined(pvmX86JitRefuse):
   assert callX86Entry(jit, 0, capacityRegisters) == 4
   assert not publishX86Entry(jit, 1023, 1027, 4, refused)
   assert jit.fragments == 1024
-  inc reservedRegionCases
+  result = 1
+
+var reservedRegionCases = 0
+when not defined(pvmX86JitRefuse):
+  reservedRegionCases = verifyReservedRegion(identitySlots,
+    instructionRegisters(instruction(branchProgram, CodeAddress(0))),
+    instructionRegisters(instruction(branchProgram, CodeAddress(3))))
 stdout.writeLine("X86_RESERVED_REGION_CASES," & $reservedRegionCases)
