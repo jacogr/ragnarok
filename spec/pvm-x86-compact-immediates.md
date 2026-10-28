@@ -22,3 +22,9 @@ profiles. Keep only useful same-runner benefit without material regressions. If
 rejected, restore only this emitter delta and retain useful literals and evidence.
 Separate constructors/cold/reused/core and reference lifecycle, both process orders;
 never interpret simulated branch misses as hardware measurements.
+
+The first CI attempt40756924671 stopped during semantic compilation before native
+execution: `compactWidth` returned an unconstrained int, so the caller could not
+prove the narrowing to1..4. The helper now declares its actual0..4 result range;
+the existing nonzero guards preserve the lower bound. No assertion, range or
+bounds check was disabled. The failed receipt is retained locally.

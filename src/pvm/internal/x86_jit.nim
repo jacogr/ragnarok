@@ -73,7 +73,7 @@ proc readSlot(fragment: var X86Block, slot: range[0..12], right: bool) =
   ## Eight-byte array offsets fit a positive disp8; RDI remains the sole borrowed array base.
   put(fragment, [0x48'u8, 0x8b, (if right: 0x4f'u8 else: 0x47'u8), byte(int(slot)*8)])
 
-func compactWidth(value: uint64): int =
+func compactWidth(value: uint64): range[0..4] =
   ## x86 sign-extends both immediate widths; use a compact form only when every original bit is reproduced.
   if value <= 127 or value >= 0xffffffffffffff80'u64: 1
   elif value <= 0x7fffffff'u64 or value >= 0xffffffff80000000'u64: 4
