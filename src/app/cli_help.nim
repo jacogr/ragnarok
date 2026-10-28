@@ -100,6 +100,6 @@ proc helpRequest*(arguments: seq[string], topic: var string): bool =
       topic.add(arguments[index])
     return true
   if arguments[^1] in ["--help", "-h"]:
-    topic = commandTopic(arguments)
+    topic = if arguments[0].startsWith("--pvm-"): "" else: commandTopic(arguments)
     return true
   false

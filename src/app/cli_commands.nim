@@ -42,7 +42,10 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   if arguments.len == 0: return true # The entry point prints overview help without opening services.
   let topic = commandTopic(arguments)
   let known = commandIndex(topic) >= 0
-  let start = if arguments[0] == "tiny-devnet": 2 else: 1
+  let standalone = arguments[0].startsWith("--") and arguments[0] notin ["--version", "--help",
+      "--selftest", "--io-selftest", "--mesh-selftest", "--integration-selftest",
+      "--offload-selftest", "--offload-held-shutdown"]
+  let start = if standalone: 0 elif arguments[0] == "tiny-devnet": 2 else: 1
   var fields = default(array[OptionSpecs.len, seq[string]])
   var service: seq[string] = @[]
   var bare: seq[string] = @[]
@@ -51,8 +54,9 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   template refuse(reason: string): untyped =
     diagnostic = reason
     return false
-  if not known and arguments[0] notin ["--version", "--help", "-h", "--selftest", "--io-selftest",
-      "--mesh-selftest", "--integration-selftest", "--offload-selftest", "--offload-held-shutdown"]:
+  if not standalone and not known and arguments[0] notin ["--version", "--help", "-h", "--selftest",
+      "--io-selftest", "--mesh-selftest", "--integration-selftest", "--offload-selftest",
+          "--offload-held-shutdown"]:
     refuse("Unknown command: " & topic & "; use ragnarok --help")
   while index < arguments.len:
     let token = arguments[index]
@@ -95,7 +99,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     refuse("Unexpected positional argument: " & bare[0] & "; use named command flags (ragnarok " &
         topic & " --help)")
   if not named:
-    normalized.add(arguments[0]) # Standalone information/selftest flags have no command values.
+    if not standalone: normalized.add(arguments[0]) # Standalone information/selftest flags have no command values.
     for value in service: normalized.add(value)
     return true
   var recipe: seq[string] = @[]
