@@ -10,7 +10,6 @@ import subprocess
 
 from native_checks import NativeChecks, ROOT
 from pvm_guest_compare import unchanged
-from pvm_native_ci import host_identity
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-x86-jit'
@@ -94,6 +93,7 @@ def run():
         (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
     save()
     try:
+        from pvm_native_ci import host_identity
         host = host_identity()
         if host['system'] != 'Linux' or host['architecture'] != 'x86_64':
             raise ValueError('x86 qualification requires actual native Linux x86-64')

@@ -13,6 +13,8 @@ import sys
 from native_checks import NativeChecks, ROOT
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
+from pvm_jit_platform import native_defines
+from pvm_x86_jit import qualify as qualify_x86
 from setup_nimony import host_pins, installed
 
 BUILD = ROOT/'build/tests/pvm-native'
@@ -76,6 +78,14 @@ def qualify_policy(checks):
     return rows
 
 
+def qualify_host(checks, compiler, host):
+    """The production host flag plan selects the matching native gate; unsupported hosts retain explicit fallback qualification."""
+    flags = native_defines(host['system'], host['machine'])
+    if flags == ['pvmX86Jit']:
+        return qualify_x86(checks, compiler)
+    return qualify(checks, compiler, native=bool(flags))
+
+
 def run():
     """Retain incomplete evidence on every failure and require all maintained correctness gates before success."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -89,8 +99,10 @@ def run():
         report['compiler_identity'] = (compiler.parent.parent/'NIGHTLY.txt').read_text()
         report['revision'] = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
-                 ROOT/'tools/pvm_arm64_jit.py', ROOT/'tools/pvm_native_ci.py', ROOT/'spec/toolchain.json',
+                 ROOT/'tools/pvm_arm64_jit.py', ROOT/'tools/pvm_native_ci.py', ROOT/'tools/pvm_x86_jit.py',
+                 ROOT/'tools/pvm_jit_platform.py', ROOT/'spec/toolchain.json',
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
+                 *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
                  ROOT/'tests/unit/codec/test_pvm_stream_all_opcodes.nim',
                  ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim',
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
@@ -99,12 +111,13 @@ def run():
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
-        native = report['host']['architecture'] == 'arm64'
-        report['coverage'] = 'ARM64 native and forced refusal' if native else 'interpreter and unavailable ARM64 fallback'
-        report['qualification'] = qualify(NativeChecks(BUILD), compiler, native=native)
+        native = bool(native_defines(report['host']['system'], report['host']['machine']))
+        report['coverage'] = report['host']['architecture']+' native and forced refusal' if native else 'checked interpreter fallback'
+        report['qualification'] = qualify_host(NativeChecks(BUILD), compiler, report['host'])
         report['policy_qualification'] = qualify_policy(NativeChecks(BUILD))
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],
-            native_jit_available=native, jit_unavailable_actual='interpreted')
+            native_jit_available=native, native_build_defines=native_defines(report['host']['system'], report['host']['machine']),
+            jit_unavailable_actual='interpreted')
         report['status'] = 'passed'
     except BaseException as error:
         # Exceptions and interruptions must leave a current failed receipt, never a previous green report.

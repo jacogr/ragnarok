@@ -353,14 +353,16 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     def test_checked_build_profile(self):
         compiler, output = Path('/fixture/nimony'), ROOT/'build/ragnarok'
         libraries = [Path('/fixture/libcrypto'), Path('/fixture/libbandersnatch'), Path('/fixture/libquic')]
-        for system in ('Linux', 'Darwin'):
+        for system,machine,native_flag in (('Linux','x86_64','pvmX86Jit'), ('Linux','aarch64','pvmArm64Jit'),
+                                    ('Darwin','arm64','pvmArm64Jit'), ('Darwin','x86_64',None)):
             # Compare the commands used by the real builder rather than a duplicated test-only flag list.
-            with self.subTest(system=system), patch.object(build.platform, 'system', return_value=system):
+            with self.subTest(system=system,machine=machine), patch.object(build.platform, 'system', return_value=system), patch.object(build.platform, 'machine', return_value=machine):
                 arguments = build.build_command(compiler, output, *libraries)
                 for flag in ('--mm:arc', '--cc:clang', '--boundchecks:on', '--passC:-flto=thin',
-                             '--passL:-flto=thin', '-d:integration', '-d:offload', '-d:pvmArm64Jit'):
+                             '--passL:-flto=thin', '-d:integration', '-d:offload'):
                     # Feature selection must not switch runtime checks off in an optimized build.
                     self.assertIn(flag, arguments)
+                self.assertEqual([a for a in arguments if a in ('-d:pvmArm64Jit','-d:pvmX86Jit')], ['-d:'+native_flag] if native_flag else [])
                 self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
                 self.assertTrue(all('--passL:'+str(library) in arguments for library in libraries))
                 self.assertFalse(any('observed' in argument or 'observer' in argument for argument in arguments))

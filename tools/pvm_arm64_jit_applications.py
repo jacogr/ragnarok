@@ -104,7 +104,7 @@ def run(architecture="arm64", build=None, baseline=None):
     folder.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',architecture=architecture,baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-policy-v2',
-                  policies=dict(interpreter='interpreted', jit='jit', baseline='historical pinned default',
+                  policies=dict(interpreter='interpreted', jit='jit', baseline='matching available native build; checked fallback without x86 support',
                                 core='retained core JIT', reference='polkavm-interpreted'))
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (folder/'summary.md').write_text('Application comparison incomplete.\n')

@@ -36,6 +36,20 @@ class NativeHostTests(unittest.TestCase):
                 self.assertEqual(report['toolchain_platform'],pin)
                 self.assertEqual(report['architecture'],arch)
 
+    def test_production_flag_plan_selects_its_native_gates(self):
+        """Ordinary x86 CI must execute x86 lowering gates, while ARM and unsupported-host controls retain their proper paths."""
+        for system,machine,x86,native in (('Linux','x86_64',True,True),
+            ('Linux','aarch64',False,True), ('Darwin','arm64',False,True),
+            ('Darwin','x86_64',False,False)):
+            with self.subTest(system=system,machine=machine), patch.object(ci,'qualify_x86',return_value=['x86']) as xgate, patch.object(ci,'qualify',return_value=['arm']) as agate:
+                checks,compiler=object(),object()
+                result=ci.qualify_host(checks,compiler,dict(system=system,machine=machine))
+                self.assertEqual(result,['x86'] if x86 else ['arm'])
+                if x86:
+                    xgate.assert_called_once_with(checks,compiler);agate.assert_not_called()
+                else:
+                    agate.assert_called_once_with(checks,compiler,native=native);xgate.assert_not_called()
+
     def test_foreign_declared_runner_and_uname(self):
         """Neither a mislabeled runner nor emulated/mismatched process can claim the requested native host."""
         for kwargs in [dict(declared='x86_64'),dict(runner='X64'),dict(uname='Linux x86_64'),
@@ -111,7 +125,7 @@ class QualificationTests(unittest.TestCase):
         return qualify(checks,Path('/compiler'),native=native),checks.builds
 
     def test_native_and_unavailable_profiles(self):
-        """ARM requires positive native receipts; x86 selects checked interpreter plus forced refusal."""
+        """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
             self.assertEqual(len(rows),9)

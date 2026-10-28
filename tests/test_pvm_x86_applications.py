@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Host and build-policy tests for the shared exact-state native application cohort; never execute a compiler."""
 import unittest
+from pvm_jit_platform import native_defines
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
 from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs
@@ -36,6 +37,8 @@ class NativeApplicationPolicyTests(unittest.TestCase):
             self.assertEqual(left,right)
         self.assertEqual(application_defines('x86_64','jit',True),['pvmX86Jit'])
         self.assertEqual(application_defines('arm64','jit',True),['pvmArm64Jit'])
+        for architecture,machine in (('arm64','aarch64'),('x86_64','x86_64')):
+            self.assertEqual(application_defines(architecture,'jit',True),native_defines('Linux',machine))
 
     def test_historical_baseline_remains_buildable_and_explicit(self):
         """A master predating x86 generation retains its real interpreted fallback; later x86 parents can reuse that backend."""
@@ -81,3 +84,14 @@ class X86ProfileScopeTests(unittest.TestCase):
         for changed in (raw.replace('fn=child\n0 7 2', 'fn=child\n0 6 2'),
                         raw.replace('positions: line', 'positions: instr line')):
             with self.assertRaises(ValueError): exclusive_costs(changed)
+
+
+class ProductionJitPlatformTests(unittest.TestCase):
+    """Only maintained OS/CPU pairs enable a native backend in the shipped peer and real CLI driver."""
+    def test_supported_and_unsupported_matrix(self):
+        """Thirty-two-bit x86 and untested hosts cannot accidentally select either 64-bit emitter."""
+        for system in ('Linux','Darwin','Windows','FreeBSD'):
+            for machine in ('x86_64','AMD64','arm64','aarch64','i686','riscv64'):
+                expected = ['pvmX86Jit'] if system=='Linux' and machine in ('x86_64','AMD64') else (
+                    ['pvmArm64Jit'] if system in ('Linux','Darwin') and machine in ('arm64','aarch64') else [])
+                self.assertEqual(native_defines(system,machine), expected)
