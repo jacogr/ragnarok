@@ -12,8 +12,8 @@ export cli_defaults
 
 type
   OptionGroup* {.pure.} = enum ## Ordered help sections keep activation flags beside their dependent settings.
-    General, Network, Ui, Rpc, Management, Telemetry, State, Storage, Recovery, Download, Trace,
-      Devnet, Fuzz
+    General, PVM, Network, Ui, Rpc, Management, Telemetry, State, Storage, Recovery, Download,
+      Trace, Devnet, Fuzz
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
     Required, None, Disabled, Embedded, RpcPort, UiPort, Timeout, PeerMode, Mode, Storage,
     Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
@@ -29,6 +29,7 @@ type
 const
   OptionGroups* = [
     "General",
+    "PVM",
     "Network and TLS",
     "Browser UI",
     "WebSocket RPC",
@@ -65,8 +66,8 @@ const
       description: "off|fatal|error|warn|info|debug|trace; optional target=level filters.",
       fallback: OptionDefault.Logging, commands: "",
       repeatable: false),
-    OptionSpec(name: "--pvm-backend", value: "MODE", group: OptionGroup.General,
-      description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses checked fallback.",
+    OptionSpec(name: "--pvm-backend", value: "MODE", group: OptionGroup.PVM,
+      description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses interpreted fallback.",
       fallback: OptionDefault.PvmBackend, commands: "", repeatable: false),
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535); required.", fallback: OptionDefault.Required,
