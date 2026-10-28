@@ -291,3 +291,45 @@ Gameplay's first conditional trial made20,548,116branch calls but only1,809,870h
 across13invocations; short interior handoffs were plentiful. This policy tests that cost,
 without adding a program-size cutoff or changing native opcodes. It remains pending native,
 complete-state, same-runner parent timing and calibrated-profile qualification.
+
+
+### Retained admission verdict
+
+[Run40690097483](https://github.com/jacogr/ragnarok/actions/runs/40690097483) qualifies
+`18d568777fbf062fcd0d30fa20d7e62b3e36e884` against unfiltered conditional parent
+`b49a2e04895976cd5626abc90673ba2e964cd5f6`, after reconciling the native stack with master
+`67aa11188442f5f7de805289df4f82da2192afe5`. Master changed application/MCP/CI code, with no
+PVM, codec, native-JIT or compiler-pin changes. The sole runtime difference from that paired
+parent is the short-span admission guard. The rejected sealed-pointer ABI is fully restored.
+
+All thirteen native gates pass, including2,070single-result product/comparison literals,
+1,296conditional literals and540reused gas/source-prefix/paid-state boundaries per relevant
+profile. Independent source/raw-log/equal-image/state/host audits verify70processes/910calls,
+115controls,16fresh builds/eight pairs and734identities. All six calibrated cold/reused profiles,
+exclusive event sums and actual native working-set agreement pass. Report SHA256:
+`5a59a02b406d41645d69927d8eb02b1c2610d98ebf9e2bf89bebd61377b194a0`.
+Runner: AMD EPYC7763. Reused public CPU milliseconds, forward/reverse:
+
+| Case | Public interpreter | Unfiltered conditional parent JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 4.486 / 4.599 | 4.156 / 3.795 | 3.953 / 3.908 | 3.342 / 3.314 | 6.029 / 6.028 | 0.881 / 0.850 | 0.656 / 0.648 |
+| minimal 100000 | 6.983 / 6.909 | 6.528 / 6.616 | 7.057 / 7.102 | 6.318 / 6.320 | 7.490 / 7.586 | 1.010 / 1.028 | 0.942 / 0.936 |
+| memset 100000 | 5.147 / 5.033 | 4.843 / 4.777 | 4.868 / 5.017 | 3.828 / 3.523 | 4.189 / 4.192 | 0.946 / 0.997 | 1.162 / 1.197 |
+| pinky 1 | 165.787 / 161.904 | 126.573 / 130.648 | 131.508 / 130.944 | 124.783 / 121.238 | 187.335 / 184.648 | 0.793 / 0.809 | 0.702 / 0.709 |
+| sieve 10000000 | 422.219 / 427.707 | 378.063 / 374.364 | 393.328 / 394.079 | 373.830 / 345.446 | 443.331 / 446.417 | 0.932 / 0.921 | 0.887 / 0.883 |
+| init 0 | 564.178 / 571.436 | 566.923 / 571.458 | 560.083 / 559.666 | 554.319 / 557.264 | 751.719 / 759.362 | 0.993 / 0.979 | 0.745 / 0.737 |
+| tick 0 | 57.144 / 57.938 | 59.708 / 59.897 | 54.262 / 56.234 | 49.698 / 49.840 | 52.421 / 52.443 | 0.950 / 0.971 | 1.035 / 1.072 |
+
+Retain the conservative policy as the balanced default candidate. Gameplay improves6–9%
+against the unfiltered parent and3–5% against current forced interpretation. The tradeoff is
+about4–5% slower long sieve than that parent, while remaining7–8% faster than interpretation.
+Pinky remains19–21% faster than interpretation; its small movement against the conditional
+parent is not a claimed gain. Minimal's negligible native coverage and small differences do
+not establish a native benefit. Fill and gameplay still trail the reference's raw call clocks;
+reference restoration/teardown and our immutable publication remain separate scopes.
+
+Reused gameplay instructions fall from623,919,864in the unfiltered model to584,274,041,
+compared with587,243,798for current interpretation. This supports the admission diagnosis,
+without explaining CPU behavior solely from counts. Complete checks, unchanged source-prefix
+semantics and checked fallback qualify this as the engine for the dependent production-build
+selection. The default integration still needs its native platform/real CLI/build checks.
