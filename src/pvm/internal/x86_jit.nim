@@ -296,6 +296,12 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   var code = default(X86Block)
   # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch only RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
+  # SSE2 is baseline x86-64: caller-saved XMM0/XMM1 hold exact integer visits, XMM2 holds all-one increment lanes.
+  # Initial visits are checked zero before entry. Integer PSUBQ changes neither FP state nor condition flags.
+  put(code, [0x66'u8, 0x0f, 0xef, 0xc0, 0x66, 0x0f, 0xef, 0xc9,
+      0x66, 0x0f, 0x76, 0xd2])
+  # R11 retains the complete incoming endpoint, including a sentinel when no complete block can begin.
+  put(code, [0x4c'u8, 0x8b, 0x5e, 32])
   var labels = default(array[2, int])
   var fixes: seq[X86RegionFixup] = @[]
   for index in 0..<count:
@@ -317,8 +323,10 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     regionEdge(code, fixes, item.header, 0x82, true)
     put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea])
     regionWord(code, item.span)
-    # Invocation-local visits and last completed header preserve counters and exact reservation endpoint on every exit.
-    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8), 0x48, 0xc7, 0x46, 32])
+    # Every admitted block increments only its resident visit count; the source quota bounds it below overflow.
+    put(code, [0x66'u8, 0x0f, 0xfb, byte(0xc2+index*8)]) # PSUBQ XMMindex,XMM2 adds one to both integer lanes.
+    # Headers fit the already checked stream coordinate ceiling; the dword write zero-extends the exact last endpoint.
+    put(code, [0x41'u8, 0xbb]) # MOV R11D,header leaves guest branch flags available to the body.
     regionWord(code, item.header)
     for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
     regionEdge(code, fixes, item.yes, condition+0x40'u8, false)
@@ -344,7 +352,9 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     returns.add(code.bytes.len)
     regionWord(code, 0)
   let epilogue = code.bytes.len
-  put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
+  # Flush the original scalar context once on every native or guarded return; no invocation data survives this call.
+  put(code, [0x66'u8, 0x0f, 0xd6, 0x46, 16, 0x66, 0x0f, 0xd6, 0x4e, 24,
+      0x4c, 0x89, 0x5e, 32, 0x4c, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
   if code.bytes.len >= 4096 or jit.fragments >= 1024: return false
   for at in returns:
     let relative = uint32(epilogue-at-4)
