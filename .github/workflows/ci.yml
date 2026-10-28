@@ -54,17 +54,16 @@ env:
 
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
-  # Keep PR Smoke independent; source and rejection checks share one full-CI runner.
-  compile:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
-    name: Compile / ${{ matrix.family.name }}
+  # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
+  build:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
+    name: Build / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:
       fail-fast: false
       matrix:
-        os: &ci-os [ubuntu-latest]
-        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke"},{"name":"Source","group":"modules"},{"name":"Reference & Tooling","group":"python"}]' || '[{"name":"Smoke","group":"smoke"}]') }}
-    runs-on: ${{ matrix.os }}
+        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""},{"name":"Tooling","group":"python","os":"ubuntu-latest","platform":""},{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""},{"name":"Tooling","group":"python","os":"ubuntu-latest","platform":""},{"name":"Linux Checks","group":"checks","os":"ubuntu-latest","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""}]') }}
+    runs-on: ${{ matrix.family.os }}
     steps:
       - &checkout
         name: Checkout
@@ -93,25 +92,7 @@ jobs:
             build/ci/*.log
             build/tests/smoke/*.log
             build/tests/smoke/results.json
-      - name: Compile source
-        if: ${{ matrix.family.group == 'modules' }}
-        run: make check-modules
-      - name: Show verification coverage
-        if: ${{ always() && matrix.family.group == 'modules' }}
-        run: make summary-${{ matrix.family.group }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: ${{ always() && matrix.family.group == 'modules' }}
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-modules-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/modules/*.log
-            build/tests/modules/results.json
-      - name: Compile reference & tooling
+      - name: Check references and tooling
         if: ${{ matrix.family.group == 'python' }}
         run: make check-python
       - name: Show verification coverage
@@ -122,26 +103,70 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-python-${{ github.run_attempt }}
+          name: ${{ matrix.family.os }}-python-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
             build/ci/*.log
             build/tests/python/*.log
             build/tests/python/results.json
-      - name: Compile rejection guards
+      - name: Build, package and smoke-test relocated peer
+        if: ${{ matrix.family.group == 'binary' }}
+        run: make package-binary
+      - name: Retain downloadable binary archive
+        if: ${{ matrix.family.group == 'binary' }}
+        uses: *upload-artifact
+        with:
+          name: ragnarok-${{ matrix.family.platform }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
+      - name: Retain binary build diagnostics
+        if: ${{ always() && matrix.family.group == 'binary' }}
+        uses: *upload-artifact
+        with:
+          name: binary-${{ matrix.family.platform }}-diagnostics-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log
+      - name: Check every production module in release mode
+        if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        run: make check-modules
+      - name: Show verification coverage
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        run: make summary-modules SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.family.os }}-modules-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/modules/*.log
+            build/tests/modules/results.json
+      - name: Check compiler rejection guards
         # A failed source check must not suppress the independent rejection checks.
-        if: ${{ !cancelled() && matrix.family.group == 'modules' }}
+        if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         run: make check-guards
       - name: Show verification coverage
-        if: ${{ always() && matrix.family.group == 'modules' }}
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
-        if: ${{ always() && matrix.family.group == 'modules' }}
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
+          name: ${{ matrix.family.os }}-guards-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -150,21 +175,35 @@ jobs:
             build/tests/guards/results.json
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
+      # The image keeps its isolated build and still runs after a native archive failure.
+      - name: Build and smoke-test Docker image
+        if: ${{ !cancelled() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        run: make check-docker
+      - name: Retain Docker build diagnostics
+        if: ${{ always() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        uses: *upload-artifact
+        with:
+          name: docker-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/docker-build.log
+            build/ci/docker-smoke.log
 
-  compile-status:
-    name: Compile
+  build-status:
+    name: Build
     timeout-minutes: *ci-job-timeout
-    needs: compile
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
+    needs: build
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
     strategy: &os-strategy
       fail-fast: false
       matrix:
-        os: *ci-os
+        os: &ci-os [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every Compile family
+      - name: Require every Build family
         env:
-          SHARDS_RESULT: ${{ needs.compile.result }}
+          SHARDS_RESULT: ${{ needs.build.result }}
         run: test "$SHARDS_RESULT" = success
 
   models:
@@ -535,74 +574,6 @@ jobs:
           BACKENDS_RESULT: ${{ needs.pvm-doom-backends.result }}
           FOCUSED: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'pvm-backends' }}
         run: test "$BACKENDS_RESULT" = success && (test "$SHARDS_RESULT" = success || (test "$FOCUSED" = true && test "$SHARDS_RESULT" = skipped))
-
-  build:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) }}
-    name: Build / ${{ matrix.family.name }}
-    timeout-minutes: *ci-job-timeout
-    strategy:
-      fail-fast: false
-      matrix:
-        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""}]' || '[{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]') }}
-    runs-on: ${{ matrix.family.os }}
-    steps:
-      - *checkout
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Build, package and smoke-test relocated peer
-        if: ${{ matrix.family.group == 'binary' }}
-        run: make package-binary
-      - name: Retain downloadable binary archive
-        if: ${{ matrix.family.group == 'binary' }}
-        uses: *upload-artifact
-        with:
-          name: ragnarok-${{ matrix.family.platform }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
-            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
-      - name: Retain binary build diagnostics
-        if: ${{ always() && matrix.family.group == 'binary' }}
-        uses: *upload-artifact
-        with:
-          name: binary-${{ matrix.family.platform }}-diagnostics-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
-      # The image keeps its isolated build and still runs after a native archive failure.
-      - name: Build and smoke-test Docker image
-        if: ${{ !cancelled() && (matrix.family.group == 'docker' || matrix.family.platform == 'linux-amd64') }}
-        run: make check-docker
-      - name: Retain Docker build diagnostics
-        if: ${{ always() && (matrix.family.group == 'docker' || matrix.family.platform == 'linux-amd64') }}
-        uses: *upload-artifact
-        with:
-          name: docker-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/docker-build.log
-            build/ci/docker-smoke.log
-
-  build-status:
-    name: Build
-    timeout-minutes: *ci-job-timeout
-    needs: build
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Require every Build family
-        env:
-          SHARDS_RESULT: ${{ needs.build.result }}
-        run: test "$SHARDS_RESULT" = success
 
   perf:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}

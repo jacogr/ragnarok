@@ -7,7 +7,8 @@ the root README on the repository landing page.
 
 [`workflows/ci.yml`](workflows/ci.yml) defines GitHub Actions verification and evidence collection.
 It runs the maintained Make targets on native Linux runners, plus macOS for binary builds,
-with separate jobs for source compilation, Python references/tooling, native units/corpora, runtime failures, compiler guards,
+with a unified **Build** matrix for Smoke, Tooling, Linux & Docker and macOS. Other jobs cover
+native units/corpora, runtime failures,
 E2E networking and JAM Tart telemetry interoperability. **Build / Linux & Docker** combines
 Linux archive packaging with the isolated Docker image build/smoke check on `ubuntu-latest`.
 It runs on master pushes, full requests and manual `build` requests. The `ci:docker` label and
@@ -19,8 +20,8 @@ full/Perf requests, with a standalone `bench-pvm` scope also available, and publ
 one speed table with raw samples. The current baseline compares Ragnarök
 and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
-Pushes to `master` request full verification, including **Compile / Smoke**.
-PR opening, reopening and source updates automatically run **Compile / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
+Pushes to `master` request full verification, including **Build / Smoke**.
+PR opening, reopening and source updates automatically run **Build / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
 and the production peer main. Heavy
 checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:docker`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
@@ -41,20 +42,22 @@ See [the performance monitoring contract](../spec/pvm-ci-performance.md).
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
 
-The **Compile** aggregate also runs for automatic PR updates and manual `smoke` requests,
-requiring **Compile / Smoke** alone. Master pushes and `unit`/`full` requests require all four
-Compile children. Complete group requests expose concise aggregate checks: **Compile**, **Unit**, **Contract**,
-**E2E**, **Interop**, **Perf**, **Build** and **Fuzz**. Each aggregate requires every child in its group to succeed,
-including rejecting unexpected skips and cancellations.
+The **Build** aggregate requires every selected Build family. Automatic PR updates and manual
+`smoke` requests select **Build / Smoke** alone. Master/full requests select **Smoke**, **Tooling**,
+**Linux & Docker** and **macOS**. Complete group checks are **Build**, **Unit**, **Contract**,
+**E2E**, **Interop**, **Perf** and **Fuzz**; unexpected failures, skips and cancellations stay red.
 
-Compile, Interop, Perf and Build each use one actual matrix job, with a
-`Group / ${{ matrix.family.name }}` display pattern. Fuzz already uses a single matrix job.
-Job conditions run before matrix expansion, so skipped groups produce one child entry each.
-The matrices select only the requested families: ordinary PR updates and manual `smoke` run
-Compile / Smoke alone, while standalone requests such as `ref-pvm`, `bench-storage` and `docker`
-select only that workload. Full requests place the Linux archive and Docker checks sequentially on one
-Build / Linux & Docker runner, with Build / macOS on its own runner. Standalone manual workload scopes
-(such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
+**Build / Linux & Docker** runs native packaging, the checked-release audit of every production
+module, compiler rejection guards, then isolated Docker validation. Checks retain independent
+failure status, summaries and artifacts, and still run after an earlier packaging/check failure.
+Smoke retains its fast unoptimized audit and formatting; Tooling retains Python references.
+`unit` / `ci:unit` requests select Smoke, Tooling and **Linux Checks**, running the same source/guard
+checks without adding archive packaging or Docker. Manual `build` selects Linux & Docker and
+macOS; manual `docker` / `ci:docker` selects Docker alone and omits the complete-group gate.
+
+Build, Interop and Perf each use one matrix job with `Group / ${{ matrix.family.name }}` display
+names. Job conditions run before matrix expansion. Standalone manual workload scopes such as
+`ref-pvm` or `bench-storage` select only their workload and omit the complete-group gate.
 
 **Build / Linux & Docker** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
 for Linux x86-64 and macOS ARM64. The complete Build group runs on master/full requests and

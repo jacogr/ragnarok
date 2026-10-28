@@ -39,13 +39,16 @@ is a failure, not evidence of coverage.
 
 ## Requesting CI
 
-Master pushes and PR opening, reopening and source updates automatically run **Compile / Smoke**:
+Master pushes and PR opening, reopening and source updates automatically run **Build / Smoke**:
 complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
-locally. The **Compile** aggregate requires this Smoke job on automatic PR updates and manual
-`smoke` requests; master pushes and `unit`/`full` requests additionally require Source and
-Reference & Tooling. Source and rejection checks share a runner; Smoke remains independent
-for ordinary PR updates. Source audits apply no formatting and link no native libraries. Master/full/unit source audits use the same complete graph with their checked-release profile.
+locally. The **Build** aggregate requires every selected family. Automatic PR updates and manual
+`smoke` requests run Smoke alone. Master/full requests add Tooling, Linux & Docker and macOS.
+Linux & Docker reuses native packaging setup for the checked-release every-source audit and compiler
+rejection guards, retaining separate summaries/artifacts and independent failures. Smoke remains
+unchanged; Tooling runs Python references. Source audits apply no formatting and link no native
+libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
+coverage without adding binary packaging or Docker. Manual `build` selects Linux & Docker and macOS.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:
 
