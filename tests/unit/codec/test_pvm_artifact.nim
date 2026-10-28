@@ -141,7 +141,9 @@ for rejected in [@["--pvm-entry", "main"], @["--pvm-code"],
   assert not parseOptions(rejected, parsed, diagnostic), "artifact witness 140: not parseOptions(rejected, parsed, diagnostic)"
   assert not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0, "artifact witness 141: not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0"
 assert parseOptions(@["--pvm-code", "/missing/pvm-artifact-test.polkavm"], parsed, diagnostic), "artifact witness 142: parseOptions(@[\"--pvm-code\", \"/missing/pvm-artifact-test.polkavm\"], parsed, diagnostic)"
-assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic, "artifact witness 143: not runPvmCode(parsed, diagnostic) and \"IoError\" in diagnostic"
+assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic,
+    "artifact witness 143: not runPvmCode(parsed, diagnostic) and \"IoError\" in diagnostic" &
+    " outcome=" & diagnostic
 try:
   # Filesystem failures terminate this witness rather than bypassing its assertions.
   let temporary = createTempFile("ragnarok-artifact-cli-", ".polkavm")
@@ -157,26 +159,34 @@ try:
     assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic, "artifact witness 156: \"PVM_CODE_OK\" in diagnostic and \"actual=interpreted\" in diagnostic"
     assert loadArtifact(path).error == ArtifactError.None, "artifact witness 157: loadArtifact(path).error == ArtifactError.None"
     assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic), "artifact witness 158: parseOptions(@[\"--pvm-code\", path, \"--pvm-entry\", \"missing\"], parsed, diagnostic)"
-    assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic, "artifact witness 159: not runPvmCode(parsed, diagnostic) and \"MissingExport\" in diagnostic"
-    let host = fixture(code = @[0'u8, 0, 2, 10, 0, 1])
+    assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic,
+        "artifact witness 159: not runPvmCode(parsed, diagnostic) and \"MissingExport\" in diagnostic" &
+        " outcome=" & diagnostic
+    let host = fixture(code = @[0'u8, 0, 4, 10, 0, 50, 0, 5])
     contents = newString(host.len)
     for i, octet in host: contents[i] = char(octet)
     writeFile(path, contents)
     assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic), "artifact witness 164: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
-    assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic, "artifact witness 165: not runPvmCode(parsed, diagnostic) and \"unbound-host=0\" in diagnostic"
+    assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic,
+        "artifact witness 165: not runPvmCode(parsed, diagnostic) and \"unbound-host=0\" in diagnostic" &
+        " outcome=" & diagnostic
     let loop = fixture(code = @[0'u8, 0, 2, 40, 0, 1])
     contents = newString(loop.len)
     for i, octet in loop: contents[i] = char(octet)
     writeFile(path, contents)
     assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted", "--pvm-steps", "1"],
         parsed, diagnostic), "artifact witness 170: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\", \"--pvm-steps\", \"1\"],"
-    assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic, "artifact witness 172: not runPvmCode(parsed, diagnostic) and \"StepLimitExceeded\" in diagnostic"
+    assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic,
+        "artifact witness 172: not runPvmCode(parsed, diagnostic) and \"StepLimitExceeded\" in diagnostic" &
+        " outcome=" & diagnostic
     let panic = fixture(code = @[0'u8, 0, 1, 0, 1])
     contents = newString(panic.len)
     for i, octet in panic: contents[i] = char(octet)
     writeFile(path, contents)
     assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic), "artifact witness 177: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
-    assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic, "artifact witness 178: not runPvmCode(parsed, diagnostic) and \"Panic\" in diagnostic"
+    assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic,
+        "artifact witness 178: not runPvmCode(parsed, diagnostic) and \"Panic\" in diagnostic" &
+        " outcome=" & diagnostic
   finally:
     removeFile(temporary.path) # The fixture never persists outside this test's explicit lifetime.
 except:
