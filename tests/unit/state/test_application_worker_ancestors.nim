@@ -21,7 +21,8 @@ proc waitDone(worker: var PreparationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Actual work runs on the single fixed-address native worker.
-proc cycle(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader], cancel: int) {.raises.} =
+proc scenario(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader],
+    cancel: int) {.raises.} =
   ## Late cancellation at either stage never publishes or exposes a complete unwanted successor.
   var chain = initialized(context)
   var input = default(BlockInput)
@@ -44,7 +45,8 @@ proc cycle(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader], cance
     assert input.cancel(id) # Collection restored host access before suspended input retires.
     return
   assert discovered.kind == PreparationCompletionKind.Completed
-  assert discovered.value.error == BlockInputError.NeedsAncestors
+  assert discovered.value.error == BlockInputError.NeedsAncestors, "discovery: " &
+      $discovered.value.error
   assert discovered.value.ancestorDemand.missingLookups.value == 1
   assert input.stage == BlockInputStage.AwaitingAncestors
   assert worker.submit(input, id, chain).error == PreparationError.NotReady
@@ -61,9 +63,14 @@ proc cycle(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader], cance
     assert completed.kind == PreparationCompletionKind.Cancelled
   else:
     assert completed.kind == PreparationCompletionKind.Completed
-    assert completed.value.error == BlockInputError.None
+    assert completed.value.error == BlockInputError.None, "resumed completion: " &
+        $completed.value.error
     assert completed.value.value.finalAccumulationInfo.value.outputs.executions == 2
   assert input.stage == BlockInputStage.Idle
+proc cycle(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader]) {.raises.} =
+  ## Each measured cycle covers success and both cancellations, keeping deferred-free accounting at the same phase.
+  for cancel in 0..2:
+    scenario(context, wire, older, cancel) # Every alternative joins before the next lease starts.
 proc main() {.raises.} =
   ## Retain immutable signed fixture inputs across leases, touching them again only after each cycle joins.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -75,12 +82,12 @@ proc main() {.raises.} =
   var wire = newSeq[byte](blockOwner.blockInfo.value.consumed)
   assert encodeOwnedBlock(blockOwner, wire).error == FrameError.None
   let older = report_context.authored(base).older
-  for cancel in 0..2: cycle(context, wire, older, cancel) # Genuine success and both cancelled alternatives prime the ownership check.
+  cycle(context, wire, older) # Warm the complete success/cancellation cycle measured below.
   let before = getOccupiedMem()
-  for index in 0..<1000: cycle(context, wire, older,
-      index mod 3) # Each activation closes its actual worker before the next measurement.
+  for index in 0..<1000:
+    cycle(context, wire, older) # Each full cycle closes all three actual workers before returning.
   let after = getOccupiedMem()
-  assert before == after
+  assert before == after, "ARC occupied before=" & $before & " after=" & $after
   recordArcRelease("application_worker_ancestors", 1000, before, after)
   echo "worker-ancestors: ok"
   echo "ARC_RELEASE cycles=1000 unchanged"

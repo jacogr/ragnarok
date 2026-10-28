@@ -62,8 +62,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""},{"name":"Tooling","group":"python","os":"ubuntu-latest","platform":""},{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""},{"name":"Tooling","group":"python","os":"ubuntu-latest","platform":""},{"name":"Linux Checks","group":"checks","os":"ubuntu-latest","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","os":"ubuntu-latest","platform":""}]') }}
-    runs-on: ${{ matrix.family.os }}
+        os:
+          - &ubuntu-x86-version ubuntu-26.04
+        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","platform":""}]') }}
+    runs-on: ${{ matrix.family.os || matrix.os }}
     steps:
       - &checkout
         name: Checkout
@@ -103,7 +105,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os }}-python-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.os }}-python-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -147,7 +149,7 @@ jobs:
         if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os }}-modules-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.os }}-modules-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -166,7 +168,7 @@ jobs:
         if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os }}-guards-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.os }}-guards-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -198,7 +200,7 @@ jobs:
     strategy: &os-strategy
       fail-fast: false
       matrix:
-        os: &ci-os [ubuntu-latest]
+        os: &ci-os [*ubuntu-x86-version]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Require every Build family
@@ -542,7 +544,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON('[{"name":"Linux ARM64","arch":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","arch":"x86_64","os":"ubuntu-26.04"}]') }}
+        family:
+          - name: Linux ARM64
+            arch: arm64
+            os: &ubuntu-arm-version ubuntu-26.04-arm
+          - name: Linux x86-64
+            arch: x86_64
+            os: *ubuntu-x86-version
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
@@ -603,7 +611,7 @@ jobs:
       fail-fast: false
       matrix:
         family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm-all"},{"name":"Storage","group":"bench-storage"}]') }}
-    runs-on: ubuntu-latest
+    runs-on: *ubuntu-x86-version
     steps:
       - *checkout
       - *python
@@ -775,7 +783,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON('[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
+        family:
+          - name: Linux ARM64
+            group: arm64
+            os: *ubuntu-arm-version
+          - name: Linux x86-64
+            group: x86_64
+            os: *ubuntu-x86-version
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
@@ -858,7 +872,7 @@ jobs:
       fail-fast: false
       matrix:
         family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM (1/3)","group":"jam-interface","shard":"1/3"},{"name":"JAM (2/3)","group":"jam-interface","shard":"2/3"},{"name":"JAM (3/3)","group":"jam-interface","shard":"3/3"},{"name":"JAM Network","group":"jam-network"}]') }}
-    runs-on: ubuntu-latest
+    runs-on: *ubuntu-x86-version
     env:
       FUZZ_RUNS: "10000"
       JAM_FUZZ_SHARD: ${{ matrix.family.shard }}

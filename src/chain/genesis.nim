@@ -11,8 +11,8 @@
 
 import std/[algorithm, assertions]
 import ./parameters
-import ../codec/[header, assurances, bounded, state_layout, state_trie, state_safrole,
-    state_accounts, state_consensus]
+import ../codec/[block_codec, composite, tickets, header, assurances, bounded, state_layout,
+    state_trie, state_safrole, state_accounts, state_consensus]
 import ../state/store
 import ../crypto/primitives
 
@@ -30,8 +30,12 @@ type
     hash*: BlockHash
     slot*: uint32
     validators*: ValidatorCount
+  BlockBodyData = ref object ## Immutable exact complete block bytes; no transport framing or mutable input survives.
+    wire: seq[byte]
+    digest: array[32, byte]
   BlockSnapshot* = object ## Private immutable retained state with copied descriptor fields; no mutable store escapes.
     ready: bool
+    body: nil BlockBodyData          # Legacy headers/checkpoint seeds explicitly lack complete block bytes.
     fuzzSeed: bool                   # Only explicit fuzzer capture may retain unrelated seed header/state clocks.
     state: StateStoreSnapshot
     sealedHeader: OwnedHeader        # Retain the codec owner of the exact hashed wire bytes.
@@ -92,6 +96,30 @@ func invalidGenesis*(): GenesisResult =
 func blockHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
   ## Return the copied block identity.
   value.identity
+func hasBlockBody*(value: BlockSnapshot): bool =
+  ## A header-only seed or legacy history never implies an available complete block.
+  value.ready and value.body != nil
+func blockBodyLength*(value: BlockSnapshot): int {.requires: value.hasBlockBody.} =
+  ## Inspect exact retained extent before admitting a copied body against the caller's budget.
+  let body = value.body
+  assert body != nil
+  body.wire.len
+func blockBodyDigest*(value: BlockSnapshot): array[32, byte] {.requires: value.hasBlockBody.} =
+  ## Copy cached complete-byte identity for historical index admission without allocating body-sized storage.
+  let body = value.body
+  assert body != nil
+  body.digest
+proc blockBody*(value: BlockSnapshot): seq[byte] {.requires: value.hasBlockBody.} =
+  ## Return an independent byte copy; callers cannot mutate the snapshot's immutable storage.
+  let body = value.body
+  assert body != nil
+  body.wire
+func sameBlockBody*(left, right: BlockSnapshot): bool =
+  ## Compare availability and cached complete-byte identity without allocating body-sized copies.
+  let a = left.body
+  let b = right.body
+  if a == nil or b == nil: return a == nil and b == nil
+  a.digest == b.digest
 func parentHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
   ## Return the header's claimed parent identity; only a provider lookup establishes parent availability.
   value.parentIdentity
@@ -326,6 +354,43 @@ proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Ordinary snapshots require exact equality between header slot and posterior state clock.
   captureSnapshot(wire, state, parameters, false)
+proc withBlockBody*(snapshot: BlockSnapshot, wire: openArray[byte]): BlockSnapshotResult =
+  ## Bind a complete canonical block to an exact snapshot header; this structural helper grants no execution authority.
+  if not snapshot.ready or wire.len == 0:
+    return invalidGenesis() # Defaults and absent bytes cannot fabricate an accepted empty block.
+  let maximum = ByteLimit(uint64(wire.len))
+  let config = FrameConfig(cores: snapshot.corePopulation,
+    validators: ValidatorCount(uint64(snapshot.corePopulation)*3), epochSlots: snapshot.epochLength,
+    ticketLimit: TicketLimit(16), maxBytes: maximum,
+    preimages: PreimageLimits(items: ElementLimit(uint64(wire.len)), perBlob: maximum,
+      totalBlobBytes: maximum)) # Input-derived resource ceilings never infer consensus admission.
+  let decoded = decodeBlock(wire, config)
+  if decoded.error != FrameError.None or decoded.value.consumed != wire.len:
+    return invalidGenesis() # Reject malformed bodies and unrelated suffix/transport bytes before retaining storage.
+  let header = snapshot.sealedHeader.headerInfo
+  let info = blockInfo(decoded.value.owner)
+  if header.error != HeaderError.None or info.error != FrameError.None or
+      header.value.consumed != info.value.headerBytes:
+    return invalidGenesis() # Body and separately retained sealed header must have identical extents.
+  var sealed = newSeq[byte](header.value.consumed)
+  if encodeOwnedHeader(snapshot.sealedHeader, sealed).error != HeaderError.None:
+    return invalidGenesis()
+  for index in 0..<sealed.len:
+    if sealed[index] != wire[index]: return invalidGenesis() # Exact bytes bind this body to its header/hash and posterior map.
+  let digest = blake2b256(wire)
+  if digest.error != CryptoError.None: return invalidGenesis()
+  var copied = newSeq[byte](wire.len)
+  for index, octet in wire: copied[index] = octet # Borrowed input ends before immutable publication.
+  var retained = snapshot
+  retained.body = BlockBodyData(wire: copied, digest: array[32, byte](digest.value))
+  GenesisResult(status: GenesisError.None, completed: retained)
+proc withBlockBody*(snapshot: BlockSnapshot, source: OwnedBlock): BlockSnapshotResult =
+  ## Retain only bytes from the producer's actual admitted owner, excluding rejected traffic and transport frames.
+  let info = blockInfo(source)
+  if info.error != FrameError.None: return invalidGenesis()
+  var wire = newSeq[byte](info.value.consumed)
+  if encodeOwnedBlock(source, wire).error != FrameError.None: return invalidGenesis()
+  withBlockBody(snapshot, wire)
 proc captureFuzzSeedSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Preserve the explicit fuzz-v1 genesis-like pair exactly, retaining all structural bounds and a permanent seed marker.

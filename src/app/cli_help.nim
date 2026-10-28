@@ -30,6 +30,10 @@ func visible(spec: OptionSpec, topic: string): bool =
   if topic in ["fuzz", "serve-fuzz", "serve-fuzz-preset"]:
     return spec.name == "--log-level"
   if topic.startsWith("tiny-devnet") or topic == "diagnostics": return spec.name == "--log-level"
+  if spec.name.startsWith("--history-"): return topic == "history"
+  if topic == "history":
+    return spec.name in ["--log-level", "--chain", "--with-state", "--state-storage", "--state-db",
+      "--state-layout", "--state-writes", "--state-write-bytes"]
   if topic == "check-traces":
     return spec.name in ["--log-level", "--chain", "--with-state", "--state-writes",
         "--state-write-bytes", "--trace-observations"]

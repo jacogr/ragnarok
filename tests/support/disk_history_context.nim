@@ -4,7 +4,7 @@
 ## Structurally captured linked histories exercise durable retention without fabricating execution certificates.
 import std/assertions
 import ./application_checkpoint_context
-import ../../src/app/chain
+import ../../src/app/[chain, disk_history]
 import ../../src/chain/[genesis, provider]
 import ../../src/state/store
 import ../../src/codec/[header, bounded, state_trie, state_layout]
@@ -13,9 +13,10 @@ type DiskHistoryFixture* = object ## Every authored header has its exact complet
   view*: ChainView
   blocks*: seq[BlockSnapshotResult]
   policy*: StateStoreLimits
-proc diskHistoryFixture*(children = 12, withFinality = true): DiskHistoryFixture {.raises.} =
+proc diskHistoryFixture*(children = 12, withFinality = true,
+    limit = ElementLimit(MaxRetainedBlocks)): DiskHistoryFixture {.raises.} =
   ## Only local history/capture contracts are tested; these modified seals are never execution certificates.
-  assert children >= 0 and children <= 16
+  assert children >= 0 and children <= 300
   let original = checkpointFixture().chainView.bestBlock.value
   var policy = genesisStoreLimits()
   policy.writes = ElementLimit(1)
@@ -30,7 +31,7 @@ proc diskHistoryFixture*(children = 12, withFinality = true): DiskHistoryFixture
   assert encodeOwnedHeader(original.header, wire).error == HeaderError.None
   let first = captureBlockSnapshot(wire, state.snapshot.value, original.chainParameters)
   assert first.error == GenesisError.None
-  var view = genesisView(first)
+  var view = genesisView(first, limit)
   if withFinality: view = view.finalizeView(first.value.blockHash).value
   var blocks = @[first]
   assert original.slot <= high(uint32)-uint32(children)
@@ -53,3 +54,29 @@ proc diskHistoryFixture*(children = 12, withFinality = true): DiskHistoryFixture
     view = view.advanceView(child).value
     blocks.add(child)
   DiskHistoryFixture(view: view, blocks: blocks, policy: policy)
+
+proc legacyHistoryBytes*(current: seq[byte]): seq[byte] =
+  ## Independent test-only V2-to-V1 fixture encoder; production never creates new V1 publications.
+  const magic = "RAGNAROK-DISK-CHAIN-V1\n"
+  assert current.len >= HistoryPrefixBytes
+  let validation = current[magic.len-2] == byte('3')
+  let scalar = magic.len+(if validation: 8 else: 0)
+  if validation:
+    for index in 0..<8: assert current[magic.len+index] ==
+        0 # This legacy fixture has no extra validation headers.
+  var capacity = 0'u64
+  var count = 0'u64
+  var finality = 0'u64
+  for index in 0..<8:
+    capacity = capacity or (uint64(current[scalar+index]) shl (index*8))
+    count = count or (uint64(current[scalar+8+index]) shl (index*8))
+    finality = finality or (uint64(current[scalar+16+index]) shl (index*8))
+  assert capacity == 8 and count > 0 and count <= 8
+  assert finality <= count or finality == high(uint64)
+  result = newSeq[byte](magic.len+2+current.len-HistoryPrefixBytes)
+  for index, character in magic: result[index] = byte(character)
+  result[magic.len] = byte(count)
+  result[magic.len+1] = if finality == high(uint64): 255'u8 else: byte(finality)
+  for index in HistoryPrefixBytes..<current.len:
+    result[magic.len+2+index-HistoryPrefixBytes] = current[
+        index] # Preserve exact independently checked entry bytes.

@@ -11,10 +11,11 @@ import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, fuzz_target, devnet_command, pvm_command, startup]
+    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command, startup]
 import ./pvm/step
 import ./version
-import ./lib/logging
+import ./lib/[logging, json_writer]
+import ./storage/history_index
 
 proc writeFailure(logger: var Logger, message: string) =
   ## Command producers have retired; drain and join stderr logging before its final CLI line.
@@ -102,6 +103,13 @@ proc main(): int =
       return 0 # Standalone execution retires all prepared/native owners before process teardown.
 
     log(options.logWriter, LogTarget.Startup, LogLevel.Info, "Ragnarok " & AppVersion & " " & AppRevision)
+    if options.argumentCount() == 1 and options.argument(1) == "history":
+      let outcome = runHistoricalQuery(options)
+      if outcome.error == HistoryError.None:
+        stdout.writeLine($outcome.value)
+        return 0
+      writeFailure(logger, "HISTORY_QUERY_FAILED " & $outcome.error)
+      return 2 # Query refusal never substitutes a genesis/current state for the requested identity.
     if options.argumentCount() >= 1 and options.argument(1) == "check-traces":
       let outcome = runTraceChecks(options)
       if outcome.error == TraceCheckCommandError.None:

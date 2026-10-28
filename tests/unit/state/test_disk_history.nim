@@ -50,6 +50,28 @@ proc main() {.raises.} =
       let key = expected.stateSnapshot.keyAt(StateEntryIndex(ordinal)).value
       assert selected.stateSnapshot.lookup(key).value.bytes == expected.stateSnapshot.lookup(
           key).value.bytes
+  # Previously published V2 has no extra header prefix; exact authority remains compatible.
+  var window = newSeq[byte](wire.len-8)
+  for index in 0..<HistoryPrefixBytes-32: window[index] = wire[index]
+  window["RAGNAROK-DISK-CHAIN-V".len] = byte('2')
+  for index in HistoryPrefixBytes-32..<window.len: window[index] = wire[index+8]
+  let windowOwner = restoreDiskHistory(window, chain, generation,
+    fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).value
+  assert encodeMatchingDiskHistory(windowOwner, chain, generation, limit, window).value == window
+  assert encodeDiskHistory(windowOwner, chain, generation, limit).value == wire
+  # Independent header-count bounds refuse before allocating any declared header collection.
+  var invalidHeaders = wire
+  invalidHeaders[HistoryPrefixBytes-32] = 8
+  assert restoreDiskHistory(invalidHeaders, chain, generation,
+    fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
+        DiskHistoryError.InvalidFormat
+  let legacy = legacyHistoryBytes(wire)
+  let legacyOwner = restoreDiskHistory(legacy, chain, generation,
+    fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).value
+  assert encodeDiskHistory(legacyOwner, chain, generation, limit).value == wire
+  assert encodeMatchingDiskHistory(legacyOwner, chain, generation, limit, legacy).value == legacy
+  assert encodeMatchingDiskHistory(owner, chain, generation, limit, [0'u8]).error ==
+      DiskHistoryError.InvalidFormat
   # Absent and in-window finality have distinct exact encodings and preserve owner sharing.
   var retained: seq[BlockSnapshotResult] = @[]
   for index in 0..<fixture.view.retainedCount:
@@ -65,6 +87,37 @@ proc main() {.raises.} =
     else:
       assert sameStateSnapshot(decoded.finalizedBlock.value.stateSnapshot,
         decoded.retainedBlockAt(RetainedBlockIndex(tag-1)).value.stateSnapshot)
+  # V3 persists available count separately from selected capacity, including values above one byte.
+  for capacity in [1, 3, 12, 300]:
+    let configured = owner.chainView.withRetentionLimit(ElementLimit(capacity)).value
+    let selected = initApplicationChain(configured).value
+    let encoded = encodeDiskHistory(selected, chain, generation, limit).value
+    let decoded = restoreDiskHistory(encoded, chain, generation,
+      fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).value
+    assert uint64(decoded.chainView.retentionLimit) == uint64(capacity)
+    assert decoded.chainView.retainedCount == min(capacity, owner.chainView.retainedCount)
+    assert encodeDiskHistory(decoded, chain, generation, limit).value == encoded
+    assert sameStateSnapshot(decoded.stateSnapshot.value, disk.snapshot.value)
+    assert decoded.chainView.finalizedBlock.error == GenesisError.None
+    if capacity != MaxRetainedBlocks:
+      assert encodeMatchingDiskHistory(selected, chain, generation, limit, legacy).error ==
+          DiskHistoryError.ChainFailure
+  # Huge counts/capacities/tags refuse before count-derived allocation or any graph restore.
+  for field in 0..<3:
+    var invalid = wire
+    let offset = HistoryPrefixBytes-24+field*8
+    for index in 0..<8: invalid[offset+index] = 255
+    if field < 2:
+      assert restoreDiskHistory(invalid, chain, generation,
+        fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
+            DiskHistoryError.InvalidFormat
+  for field in 0..<2:
+    var invalid = wire
+    let offset = HistoryPrefixBytes-24+field*8
+    for index in 0..<8: invalid[offset+index] = 0
+    assert restoreDiskHistory(invalid, chain, generation,
+      fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
+          DiskHistoryError.InvalidFormat
   # Every truncation, impossible length, unknown tag and changed hint refuses without publishing.
   for stop in 0..<wire.len:
     assert restoreDiskHistory(wire.toOpenArray(0, stop-1), chain, generation,
@@ -109,8 +162,54 @@ proc main() {.raises.} =
   assert restoreDiskHistory(missing, chain, RepositoryGeneration(1),
     fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
         DiskHistoryError.StoreFailure
+proc wideWitness() {.raises.} =
+  ## A real 256-entry journal proves count/finality ordinals no longer truncate to a single byte.
+  let fixture = diskHistoryFixture(255, false, ElementLimit(300))
+  let selected = fixture.view.finalizeView(fixture.blocks[^1].value.blockHash).value
+  let owner = initApplicationChain(selected).value
+  let chain = default(StorageChainId)
+  let limit = ByteLimit(1048576)
+  let limits = JournalLimits(repository: RepositoryLimits(codec: RecordLimits(
+    trie: fixture.policy.trie, records: TrieExportLimits(records: TrieNodeLimit(100000),
+      valueBytes: ByteLimit(1048576)), encoded: ByteLimit(4194304)),
+    records: ElementLimit(100000), valueBytes: ByteLimit(16777216)),
+    bytes: ByteLimit(33554432), contextBytes: limit)
+  var path = "disk-history-wide.db"
+  var disk = default(DiskStateStore)
+  defer:
+    if disk.opened: discard disk.close # Retained maps outlive the native journal owner.
+    discard posix.unlink(path.toCString())
+  discard initializeDiskStateStore(disk, path, chain, fixture.blocks[0].value.stateSnapshot,
+    limits, StorageSchema.FullStateV1, [1'u8]).value
+  for index in 1..<fixture.blocks.len:
+    discard disk.commit(disk.snapshot.value, fixture.blocks[index].value.stateSnapshot, [1'u8]).value
+  let generation = RepositoryGeneration(uint64(disk.generation.value)+1)
+  let encoded = encodeDiskHistory(owner, chain, generation, limit).value
+  discard disk.commit(disk.snapshot.value, owner.stateSnapshot.value, encoded).value
+  assert disk.close == FileError.None
+  discard openLocalDiskStateStore(disk, path, chain, fixture.policy, limits).value
+  let restored = restoreDiskHistory(disk.snapshotContext.value, chain, generation,
+    selected.bestBlock.value.chainParameters, disk, fixture.policy, limit).value.chainView
+  assert restored.retainedCount == 256 and uint64(restored.retentionLimit) == 300
+  assert sameStateSnapshot(restored.bestBlock.value.stateSnapshot, disk.snapshot.value)
+  assert sameStateSnapshot(restored.finalizedBlock.value.stateSnapshot, disk.snapshot.value)
+  for index in 0..<fixture.blocks.len:
+    let expected = fixture.blocks[index].value
+    let actual = restored.blockAt(expected.blockHash).value
+    assert array[32, byte](actual.stateRoot) == array[32, byte](expected.stateRoot)
+  # A well-formed ordinal is still bounded by count; declared count cannot exceed actual entries.
+  for field in [1, 2]:
+    var invalid = encoded
+    let offset = HistoryPrefixBytes-24+field*8
+    for index in 0..<8: invalid[offset+index] = 0
+    invalid[offset] = 1
+    invalid[offset+1] = 1 # 257 claims one more entry than the encoded context contains.
+    assert restoreDiskHistory(invalid, chain, generation,
+      selected.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
+          DiskHistoryError.InvalidFormat
 try:
   main()
+  wideWitness()
 except:
   quit(2) # Fixture and real IO failures cannot satisfy restoration witnesses.
 echo "PASS disk history: durable bounded suffix, evicted finality, exact head owner and malformed-context refusals"

@@ -34,13 +34,17 @@ def build_native(paths):
     assert system in ('Darwin', 'Linux'), system
     library = BUILD / ('libquic_proof.dylib' if system == 'Darwin' else 'libquic_proof.so')
     native = ROOT / 'native/quic'
+    # Use the same Clang toolchain as the bridges rather than the host default C/C++ compiler.
     # The exact native configure/build output is retained instead of hidden behind a success claim.
     with (BUILD / 'build.log').open('w') as log:
         run(['cmake', '-S', bssl, '-B', ROOT / 'build/native/boringssl', '-DCMAKE_BUILD_TYPE=Release',
+             '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++',
              '-DBUILD_TESTING=OFF', '-DOPENSSL_NO_ASM=ON', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'], log)
         run(['cmake', '--build', ROOT / 'build/native/boringssl', '--target', 'ssl', 'crypto', '-j', '4'], log)
         run(['cmake', '-S', paths['lsquic'], '-B', ROOT / 'build/native/lsquic', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
-             '-DCMAKE_BUILD_TYPE=Release', '-DLSQUIC_BIN=OFF', '-DLSQUIC_TESTS=OFF', '-DLSQUIC_SHARED_LIB=OFF',
+             '-DCMAKE_BUILD_TYPE=Release',
+             '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++',
+             '-DLSQUIC_BIN=OFF', '-DLSQUIC_TESTS=OFF', '-DLSQUIC_SHARED_LIB=OFF',
              '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', f'-DBORINGSSL_INCLUDE={bssl / "include"}',
              f'-DBORINGSSL_LIB_ssl={ROOT / "build/native/boringssl/libssl.a"}', f'-DBORINGSSL_LIB_crypto={ROOT / "build/native/boringssl/libcrypto.a"}'], log)
         run(['cmake', '--build', ROOT / 'build/native/lsquic', '-j', '4'], log)

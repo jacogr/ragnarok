@@ -4,10 +4,11 @@
 ## Synchronous exclusive-owner disk coordination: publish nodes/context before canonical or RPC installation.
 ## Call only during startup or on an explicitly excluded native worker, never from dispatcher callbacks.
 import std/assertions
-import ./[chain, disk_history, paged_policy]
+import ./[chain, disk_history, disk_sources, paged_policy, historical_context, historical_disk]
 import ../chain/[genesis, provider, parameters]
 import ../state/[store, disk_store, accumulation_publication, accumulation_current_update]
-import ../storage/[file_repository, node_repository, database_identity, managed_repository, managed_manifest]
+import ../storage/[file_repository, node_repository, database_identity, managed_repository,
+    managed_manifest, history_index, history_files, full_paged_store]
 import ../codec/[bounded, state_trie]
 import ../rpc/server as rpc_server
 
@@ -18,6 +19,7 @@ type
     update: PreparedChainUpdate
     context, previous: seq[byte]
     history: seq[StateStoreSnapshot]
+    historical: PreparedHistoricalRecord # Fixed append metadata and one exact source, never the archive catalog.
     replay: bool
     next: RepositoryGeneration
   CurrentDiskPublicationData = ref object # One immutable current update and its validated disk context are retained together.
@@ -25,6 +27,7 @@ type
     update: PreparedCurrentChainUpdate
     context, previous: seq[byte]
     history: seq[StateStoreSnapshot]
+    historical: PreparedHistoricalRecord # Fixed append metadata and one exact source, never the archive catalog.
     replay: bool
     next: RepositoryGeneration
   PreparedCurrentDiskPublication* = object ## Defaults grant no current-PVM publication or update extraction authority.
@@ -32,6 +35,7 @@ type
   DiskPublicationContext = object # Preflight captures each validated generation/context once for either update family.
     bytes, previous: seq[byte]
     history: seq[StateStoreSnapshot]
+    historical: PreparedHistoricalRecord # Fixed append metadata and one exact source, never the archive catalog.
     next: RepositoryGeneration
   PreparedDiskMaintenance* = object ## Exact canonical context, state revision and physical epoch authorize one excluded maintenance attempt.
     initialized: bool
@@ -42,7 +46,7 @@ type
     roots: seq[StateRoot]
   DiskChainError* {.pure.} = enum ## Default/refused results grant no partial canonical successor.
     Uninitialized, None, Busy, CanonicalMismatch, GenerationOverflow, StoreFailure, ContextFailure,
-      FileFailure, MaintenanceFailure
+      FileFailure, MaintenanceFailure, HistoryFailure
   DiskChainResult*[T] = object ## Preserve actual storage IO uncertainty and context refusals behind guarded access.
     case status: DiskChainError
     of None: completed: T
@@ -50,6 +54,7 @@ type
     of ContextFailure: contextReason: DiskHistoryError
     of FileFailure: fileReason: FileError
     of MaintenanceFailure: maintenanceReason: DiskStoreResult[ManagedCompaction]
+    of HistoryFailure: historyReason: HistoryError
     else: discard # Canonical mismatch and default outcomes have no candidate payload.
 
 const BootstrapMagic = "RAGNAROK-DISK-BOOTSTRAP-V1\n" # Deliberately cannot decode as a canonical disk history.
@@ -77,26 +82,16 @@ func maintenanceFailure*[T](outcome: DiskChainResult[T]): DiskStoreResult[
     outcome.status == DiskChainError.MaintenanceFailure.} =
   ## Only an actual failed managed physical replacement exposes its guarded nested reason.
   outcome.maintenanceReason
+func historyError*[T](outcome: DiskChainResult[T]): HistoryError {.requires:
+    outcome.status == DiskChainError.HistoryFailure.} =
+  ## Historical file/codec/counter failures never expose a usable successor or ordinary IO receipt.
+  outcome.historyReason
 proc diskSources(owner: ApplicationChain): DiskChainResult[seq[StateStoreSnapshot]] =
-  ## Collect rolling roots and separated explicit finality under the existing complete-state policy.
-  let current = owner.stateSnapshot
-  let view = owner.chainView
-  if current.error != StateStoreError.None or view.retainedCount == 0:
+  ## Reuse one live validation/finality root contract across normal publication and historical policy changes.
+  let sources = liveDiskSources(owner)
+  if sources.error != HistoryError.None:
     return DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.CanonicalMismatch)
-  var sources: seq[StateStoreSnapshot] = @[]
-  let finalized = view.finalizedBlock
-  var inside = false
-  if finalized.error == GenesisError.None:
-    for index in 0..<view.retainedCount:
-      if array[32, byte](view.retainedBlockAt(RetainedBlockIndex(index)).value.blockHash) ==
-          array[32, byte](finalized.value.blockHash): inside = true
-    if not inside: sources.add(finalized.value.stateSnapshot)
-  for index in 0..<view.retainedCount:
-    sources.add(view.retainedBlockAt(RetainedBlockIndex(index)).value.stateSnapshot)
-  for source in sources:
-    if not sameStateStorePolicy(current.value, source):
-      return DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.CanonicalMismatch)
-  DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.None, completed: sources)
+  DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.None, completed: sources.value)
 proc initializePagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: JournalLimits, replay = false): DiskChainResult[
         RepositoryGeneration] =
@@ -127,7 +122,7 @@ proc initializePagedDiskChain*(disk: var DiskStateStore, path: string, chain: St
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
 proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: JournalLimits): DiskChainResult[RepositoryGeneration] =
-  ## Exclusive creation provisions at most nine complete roots, then one atomic canonical context.
+  ## Exclusive creation provisions the configured rolling roots/finality, then one atomic canonical context.
   ## Intermediate bootstrap frames are forensic evidence, never a resumable canonical fallback.
   if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
   let current = owner.stateSnapshot
@@ -212,6 +207,13 @@ proc acquireDiskChain(disk: var DiskStateStore, path: string, chain: StorageChai
   if restored.error != DiskHistoryError.None:
     return DiskChainResult[ApplicationChain](status: DiskChainError.ContextFailure,
       contextReason: restored.error)
+  if hasHistoricalContext(context.value):
+    let checked = checkedDiskHistory(disk, restored.value, chain, limits.contextBytes)
+    if checked.error != HistoryError.None:
+      return DiskChainResult[ApplicationChain](status: DiskChainError.HistoryFailure,
+          historyReason: checked.error)
+    discard completeHistorySelection(disk, checked.value.historyCursor,
+        checked.value) # Reclaim only already unselected files; cleanup diagnostics remain separate from canonical recovery.
   adopted = true
   DiskChainResult[ApplicationChain](status: DiskChainError.None, completed: restored.value)
 proc openDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
@@ -234,6 +236,9 @@ proc openPagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageC
 proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: ChainView,
     chain: StorageChainId, limit: ByteLimit): DiskChainResult[DiskPublicationContext] =
   ## Preflight exact canonical/disk authority and all fallible context encoding before IO begins.
+  if owner.chainView.hasHistoricalIndex or view.hasHistoricalIndex:
+    return DiskChainResult[DiskPublicationContext](
+        status: DiskChainError.CanonicalMismatch) # A resident memory archive requires explicit migration, not a silent disk adoption.
   let maximum = ByteLimit(min(uint64(limit), uint64(disk.applicationContextLimit)))
   let current = disk.snapshot
   let canonical = owner.stateSnapshot
@@ -247,7 +252,7 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   if selected.error != FileError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.FileFailure,
         fileReason: selected.error)
-  let previous = encodeDiskHistory(owner, chain, generation.value, maximum)
+  let previous = encodeMatchingDiskHistory(owner, chain, generation.value, maximum, selected.value)
   if previous.error != DiskHistoryError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
         contextReason: previous.error)
@@ -256,11 +261,26 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   let target = initApplicationChain(view)
   if target.error != ApplicationChainError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.CanonicalMismatch)
+  let historical = prepareHistoricalRecord(selected.value, view.bestBlock, chain, maximum)
+  if historical.error != HistoryError.None:
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.HistoryFailure,
+        historyReason: historical.error)
+  let overhead = if historical.value.ready: uint64(HistoricalContextPrefixBytes) else: 0'u64
+  if uint64(maximum) <= overhead:
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
+        contextReason: DiskHistoryError.LimitExceeded)
   let context = encodeDiskHistory(target.value, chain,
-    RepositoryGeneration(uint64(generation.value)+1), maximum)
+    RepositoryGeneration(uint64(generation.value)+1), ByteLimit(uint64(maximum)-overhead))
   if context.error != DiskHistoryError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
         contextReason: context.error)
+  var bytes = context.value
+  if historical.value.ready:
+    let wrapped = encodeHistoricalContext(historical.value.nextCursor, bytes, maximum)
+    if wrapped.error != HistoryError.None:
+      return DiskChainResult[DiskPublicationContext](status: DiskChainError.HistoryFailure,
+          historyReason: wrapped.error)
+    bytes = wrapped.value
   let next = RepositoryGeneration(uint64(generation.value)+1)
   var history: seq[StateStoreSnapshot] = @[]
   if disk.pagedStorage:
@@ -271,8 +291,8 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
     let sources = roots.value
     for index in 0..<sources.len-1: history.add(sources[
         index]) # Do not count the separately supplied current snapshot twice.
-  let captured = DiskPublicationContext(bytes: context.value, previous: selected.value,
-    history: history, next: next)
+  let captured = DiskPublicationContext(bytes: bytes, previous: selected.value,
+    history: history, historical: historical.value, next: next)
   DiskChainResult[DiskPublicationContext](status: DiskChainError.None, completed: captured)
 func ready*(publication: PreparedDiskPublication): bool =
   ## Defaults never authorize worker publication or canonical update access.
@@ -290,6 +310,9 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
   let context = prepareContextView(disk, owner, prepared.chainView, chain, limit)
   if context.error != DiskChainError.None:
     case context.error
+    of DiskChainError.HistoryFailure:
+      return DiskChainResult[PreparedDiskPublication](status: DiskChainError.HistoryFailure,
+          historyReason: context.historyError)
     of DiskChainError.ContextFailure:
       return DiskChainResult[PreparedDiskPublication](status: DiskChainError.ContextFailure,
         contextReason: context.contextError)
@@ -303,7 +326,8 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
   DiskChainResult[PreparedDiskPublication](status: DiskChainError.None,
     completed: PreparedDiskPublication(initialized: true, parent: owner.stateSnapshot.value,
       update: prepared, context: context.value.bytes, previous: context.value.previous,
-      history: context.value.history, replay: replay, next: context.value.next))
+      history: context.value.history, historical: context.value.historical, replay: replay,
+      next: context.value.next))
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
@@ -320,6 +344,10 @@ proc commitDiskPublication*(disk: var DiskStateStore,
   if generation.error != DiskStoreError.None or uint64(generation.value) != uint64(
       publication.next)-1:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let historical = stagePreparedHistory(disk, publication.historical)
+  if historical.error != HistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: historical.error)
   let committed = if publication.replay:
     disk.retryPagedCommit(publication.parent, publication.update.stateSnapshot, publication.context,
         publication.history)
@@ -329,11 +357,16 @@ proc commitDiskPublication*(disk: var DiskStateStore,
   if committed.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: committed)
+  discard completePreparedHistory(disk, publication.historical,
+      historical.value) # Confirmed publication survives cleanup refusal, available through disk.historyCleanupError.
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: publication.next)
 proc stageFailure[T](failed: DiskChainResult[T]): DiskChainResult[
     RepositoryGeneration] =
   ## Propagate only actual guarded preparation refusals without synthesizing missing variant payloads.
   case failed.error
+  of DiskChainError.HistoryFailure:
+    DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: failed.historyError)
   of DiskChainError.ContextFailure:
     DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
         contextReason: failed.contextError)
@@ -385,6 +418,9 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
   let context = prepareContextView(disk, owner, prepared.currentUpdateView, chain, limit)
   if context.error != DiskChainError.None:
     case context.error
+    of DiskChainError.HistoryFailure:
+      return DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.HistoryFailure,
+          historyReason: context.historyError)
     of DiskChainError.ContextFailure:
       return DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.ContextFailure,
         contextReason: context.contextError)
@@ -401,7 +437,8 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
     completed: PreparedCurrentDiskPublication(data: CurrentDiskPublicationData(
       parent: owner.stateSnapshot.value,
       update: prepared, context: context.value.bytes, previous: context.value.previous,
-      history: context.value.history, replay: replay, next: context.value.next)))
+      history: context.value.history, historical: context.value.historical, replay: replay,
+      next: context.value.next)))
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedCurrentDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
@@ -419,6 +456,10 @@ proc commitDiskPublication*(disk: var DiskStateStore,
   if generation.error != DiskStoreError.None or uint64(generation.value) != uint64(
       data.next)-1:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let historical = stagePreparedHistory(disk, data.historical)
+  if historical.error != HistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: historical.error)
   let committed = if data.replay:
     disk.retryPagedCommit(data.parent, data.update.currentUpdateState, data.context, data.history)
   else:
@@ -427,6 +468,8 @@ proc commitDiskPublication*(disk: var DiskStateStore,
   if committed.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: committed)
+  discard completePreparedHistory(disk, data.historical,
+      historical.value) # Confirmed publication survives cleanup refusal, available through disk.historyCleanupError.
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: data.next)
 
 proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
@@ -487,14 +530,15 @@ proc prepareDiskMaintenance*(disk: DiskStateStore, owner: ApplicationChain,
   if usage.error != FileError.None:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
         fileReason: usage.error)
-  let context = encodeDiskHistory(owner, chain, usage.value.generation, limit)
-  if context.error != DiskHistoryError.None:
-    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.ContextFailure,
-        contextReason: context.error)
   let previous = disk.snapshotContext
   if previous.error != FileError.None:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
         fileReason: previous.error)
+  let context = encodeMatchingDiskHistory(owner, chain, usage.value.generation, limit,
+      previous.value)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
   if previous.value != context.value:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.CanonicalMismatch)
   let sources = diskSources(owner)
@@ -551,14 +595,15 @@ proc migrateDiskChain*(source: DiskStateStore, destination: var DiskStateStore, 
   if generation.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
         fileReason: generation.fileError)
-  let context = encodeDiskHistory(owner, chain, generation.value, limits.contextBytes)
-  if context.error != DiskHistoryError.None:
-    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
-        contextReason: context.error)
   let previous = source.snapshotContext
   if previous.error != FileError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
         fileReason: previous.error)
+  let context = encodeMatchingDiskHistory(owner, chain, generation.value, limits.contextBytes,
+      previous.value)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
   if previous.value != context.value:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
   let captured = diskSources(owner)
@@ -566,8 +611,100 @@ proc migrateDiskChain*(source: DiskStateStore, destination: var DiskStateStore, 
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
   var roots: seq[StateRoot] = @[]
   for selected in captured.value: roots.add(selected.commitment.root)
+  if hasHistoricalContext(previous.value):
+    # Preserve the admitted scalar selection and stream complete records before publishing the destination core.
+    let decoded = decodeHistoricalContext(previous.value, chain, limits.contextBytes)
+    if decoded.error != HistoryError.None:
+      return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+          historyReason: decoded.error)
+    let files = openHistoryFiles(source.databasePath & ".history", chain)
+    if files.error != HistoryError.None:
+      return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+          historyReason: files.error)
+    let selected = validateHistorySelection(files.value, decoded.value.historicalCursor, DefaultHistoricalRecordBytes)
+    if selected.error != HistoryError.None:
+      return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+          historyReason: selected.error)
+    let historical = copyHistoricalSelection(selected.value, path & ".history", DefaultHistoricalRecordBytes)
+    if historical.error != HistoryError.None:
+      return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+          historyReason: historical.error)
   let copied = migrateDiskStateStore(source, destination, path, chain, roots, limits)
   if copied.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: copied)
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation.value)
+
+proc retireHistoryPredecessor(disk: var DiskStateStore): HistoryError =
+  ## Context-only paged policy publications obey the same bounded predecessor/pinned-reader retirement contract as blocks.
+  if not disk.pagedRetirementPending: return HistoryError.None
+  let prepared = disk.preparePagedRetirement
+  if prepared.error != DiskStoreError.None: return HistoryError.IoFailure
+  let retired = disk.commitPagedRetirement(prepared.value)
+  if retired.error == DiskStoreError.FileFailure:
+    if retired.fileError == FileError.Busy: return HistoryError.Busy
+    if retired.fileError == FileError.PublishedUnsynced: return HistoryError.PublishedUnsynced
+  if retired.error != DiskStoreError.None: return HistoryError.IoFailure
+  if retired.value.retirementError != FileError.None: return HistoryError.PublishedUnsynced
+  HistoryError.None
+proc configureDiskHistory*(disk: var DiskStateStore, owner: var ApplicationChain,
+    chain: StorageChainId, policy: HistoryPolicy, limit: ByteLimit,
+    recordBytes = DefaultHistoricalRecordBytes): DiskChainResult[RepositoryGeneration] =
+  ## Startup-only policy migration stages complete history, atomically selects context, then reclaims excluded records.
+  let current = disk.snapshot
+  let canonical = owner.stateSnapshot
+  if current.error != DiskStoreError.None or canonical.error != StateStoreError.None or
+      not sameStateSnapshot(current.value, canonical.value):
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let generation = disk.generation
+  if generation.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: HistoryError.IoFailure)
+  let previous = disk.snapshotContext
+  if previous.error != FileError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
+        fileReason: previous.error)
+  let maximum = ByteLimit(min(uint64(limit), uint64(disk.applicationContextLimit)))
+  let authority = encodeMatchingDiskHistory(owner, chain, generation.value, maximum, previous.value)
+  if authority.error != DiskHistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
+        contextReason: authority.error)
+  if authority.value != previous.value:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let configured = prepareHistoryConfiguration(disk, owner, chain, policy, previous.value,
+    generation.value, maximum, recordBytes)
+  if configured.error != HistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: configured.error)
+  let prepared = configured.value
+  if not prepared.changed:
+    discard completeHistorySelection(disk, prepared.cleanupFrom, prepared.selection)
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.None,
+        completed: generation.value)
+  let nextOwner = prepared.configuredOwner
+  let retirement = retireHistoryPredecessor(disk)
+  if retirement != HistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+        historyReason: retirement)
+  let sources = liveDiskSources(nextOwner)
+  if sources.error != HistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  var history: seq[StateStoreSnapshot] = @[]
+  if disk.pagedStorage:
+    let retained = sources.value
+    for index in 0..<retained.len-1: history.add(retained[
+        index]) # Keep the exact old live/finality roots during a context-only paged publication.
+  let committed = disk.commit(current.value, current.value, prepared.context, history)
+  if committed.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
+        storeReason: committed)
+  owner = nextOwner # Assignment-only live-window replacement follows confirmed canonical context publication.
+  discard completeHistorySelection(disk, prepared.cleanupFrom, prepared.selection,
+      prepared.reseeded)
+  let retired = retireHistoryPredecessor(disk)
+  if retired != HistoryError.None:
+    disk.recordHistoryCleanup(retired) # A foreign pinned reader is explicit backpressure after the new policy is already selected.
+    if retired != HistoryError.Busy:
+      return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
+          historyReason: HistoryError.PublishedUnsynced)
+  DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: prepared.generation)

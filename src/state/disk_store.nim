@@ -8,7 +8,7 @@ import std/assertions
 import ./[store, paged_state]
 import ../storage/[file_repository, node_repository, node_records, full_state_trie,
   database_identity, durability, managed_repository, file_migration, managed_manifest,
-  full_paged_store, full_paged_codec, full_paged_stream]
+  full_paged_store, full_paged_codec, full_paged_stream, history_index, history_files]
 import ../codec/[state_trie, bounded]
 
 type
@@ -50,6 +50,9 @@ type
     state: StateStore
     limits: JournalLimits
     schema: StorageSchema
+    location: string # Historical records use a deterministic sibling namespace under this exact writer lease.
+    historical: CheckedHistorySelection # Passive checked index metadata stays constant-sized as the archive grows.
+    historyCleanup: HistoryError # A cleanup refusal cannot undo a confirmed canonical publication.
 
 const
   PagedContextMagic = "RAGNAROK-STATE-PAGED-CONTEXT-V1\n"
@@ -66,6 +69,8 @@ proc `=destroy`*(store: DiskStateStore) =
   `=destroy`(store.paged)
   `=destroy`(store.pagedCache)
   `=destroy`(store.state)
+  `=destroy`(store.historical) # Passive catalog metadata still owns its namespace string.
+  `=destroy`(store.location) # Release the copied path after the required explicit native retirement.
 
 func error*[T](outcome: DiskStoreResult[T]): DiskStoreError =
   ## Inspect success without granting access to another variant's payload.
@@ -222,6 +227,23 @@ func applicationContextLimit*(store: DiskStateStore): ByteLimit =
   let cap = uint64(store.pagedConfig.limits.contextBytes)
   if cap <= uint64(PagedDiskContextOverhead): return ByteLimit(0)
   ByteLimit(cap-uint64(PagedDiskContextOverhead))
+func databasePath*(store: DiskStateStore): string {.requires: store.opened.} =
+  ## Copy the exact selected native path; this performs no IO and grants no second writer lease.
+  store.location
+func historyCleanupError*(store: DiskStateStore): HistoryError {.requires: store.opened.} =
+  ## Inspect confirmed-publication reclamation diagnostics only while the storage owner is not borrowed by a worker.
+  store.historyCleanup
+proc recordHistoryCleanup*(store: var DiskStateStore,
+    reason: HistoryError) {.requires: store.opened.} =
+  ## The excluded owner records cleanup uncertainty separately from accepted canonical publication.
+  store.historyCleanup = reason
+func checkedHistorySelection*(store: DiskStateStore): CheckedHistorySelection {.requires: store.opened.} =
+  ## Return only passive cached metadata; absence forces independent selected-suffix admission before historical IO.
+  store.historical
+proc recordHistorySelection*(store: var DiskStateStore,
+    selection: CheckedHistorySelection) {.requires: store.opened and selection.initialized.} =
+  ## The excluded owner caches a fully checked selection only after its matching canonical context is confirmed.
+  store.historical = selection
 proc close*(store: var DiskStateStore): FileError =
   ## Retire the exclusive lock exactly once; independently held memory snapshots remain readable.
   if not store.opened: return FileError.Uninitialized # Preserve the existing closed-owner refusal.
@@ -235,6 +257,9 @@ proc close*(store: var DiskStateStore): FileError =
   store.pagedConfig = default(FullPagedNativeConfig)
   store.pagedTransport = default(PagedStateLimits)
   store.state = default(StateStore)
+  store.location = ""
+  store.historyCleanup = HistoryError.Uninitialized
+  store.historical = default(CheckedHistorySelection)
   store.limits = default(JournalLimits)
   reason
 proc snapshot*(store: DiskStateStore): DiskStoreResult[StateStoreSnapshot] =
@@ -304,6 +329,8 @@ proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: S
   store.state = candidate.value
   store.limits = limits
   store.schema = schema
+  store.location = path
+  store.historyCleanup = HistoryError.None
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
 proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
@@ -351,6 +378,8 @@ proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: Stora
   store.state = candidate.value
   store.limits = limits
   store.schema = schema
+  store.location = path
+  store.historyCleanup = HistoryError.None
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
 proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
@@ -670,6 +699,8 @@ proc initializeManagedDiskStateStore*(store: var DiskStateStore, path: string,
   store.state = candidate.value
   store.limits = journalPolicy(limits)
   store.schema = schema
+  store.location = path
+  store.historyCleanup = HistoryError.None
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
 proc openManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
@@ -739,6 +770,8 @@ fileReason: FileError.UnsupportedLayout) # No implicit conversion from a context
   destination.state = candidate.value
   destination.limits = journalPolicy(limits)
   destination.schema = source.schema
+  destination.location = path
+  destination.historyCleanup = HistoryError.None
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: selected.value)
 
 proc cleanupManagedDiskFiles*(store: var DiskStateStore): FileError =
@@ -803,6 +836,8 @@ proc initializePagedDisk(store: var DiskStateStore, path: string,
   store.pagedTransport = transport
   store.pagedMode = true
   store.schema = StorageSchema.FullStateV1
+  store.location = path
+  store.historyCleanup = HistoryError.None
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
 proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
@@ -856,6 +891,8 @@ proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
   store.pagedTransport = transport
   store.pagedMode = true
   store.schema = StorageSchema.FullStateV1
+  store.location = path
+  store.historyCleanup = HistoryError.None
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None,
       completed: store.state.snapshot.value)

@@ -7,7 +7,7 @@
 
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
+import ../../../src/codec/[header, bounded, report_owned, block_codec, state_layout, state_trie]
 import ../../../src/state/[store, accumulation_chain, accumulation_state, accumulation_completion,
   accumulation_finalization, accumulation_times, accumulation_statistics, accumulation_validators,
   accumulation_activity, accumulation_consensus, report_admission, block_transition, block_admission]
@@ -64,15 +64,21 @@ proc unchanged(state: StateStore, view: ChainView, prior: StateStoreSnapshot, ol
       old.finalizedBlock.value.blockHash)
 
 proc witness(context: ChainFixture) =
-  ## Compare against independently spelled state apply, source-header capture and direct-child append.
+  ## Compare independent state apply, exact header/body capture and direct-child append.
   let parent = context.source.finalAccumulationParent.value
   let original = seeded(context)
-  let header = context.source.finalAccumulationAdmission.value.reportBlockStage.value.value.admitted.admittedHeader
+  let binding = context.source.finalAccumulationAdmission.value.reportBlockStage.value.value.admitted
+  let header = binding.admittedHeader
   var expectedState = forkStateStore(parent).value
   failHash(0)
   let expected = applyAccumulationState(expectedState, context.source, completionLimits().composition).value
   let child = captureBlockSnapshot(bytes(header), expected, settings())
-  let expectedView = original.advanceView(child).value
+  assert child.error == GenesisError.None
+  let headerHashes = hashCalls()
+  let retained = withBlockBody(child.value, binding.admittedBlock)
+  assert retained.error == GenesisError.None
+  assert hashCalls() == headerHashes + 1, "retaining the exact admitted body adds one digest"
+  let expectedView = original.advanceView(retained).value
   let expectedHashes = hashCalls()
   assert expectedHashes > 1
   var state = forkStateStore(parent).value
@@ -82,8 +88,11 @@ proc witness(context: ChainFixture) =
   failHash(0)
   let applied = applyAccumulationChain(state, view, context.source, completionLimits().composition)
   assert applied.error == AccumulationChainError.None, $applied.error
-  assert hashCalls() == expectedHashes, "compose once and hash only the admitted sealed header afterward"
+  assert hashCalls() == expectedHashes, "compose once, then hash the admitted sealed header and retained body"
   let actual = applied.value
+  var admittedWire = newSeq[byte](blockInfo(binding.admittedBlock).value.consumed)
+  assert encodeOwnedBlock(binding.admittedBlock, admittedWire).error == FrameError.None
+  assert actual.hasBlockBody and actual.blockBody == admittedWire
   assert sameStateSnapshot(actual.stateSnapshot, state.snapshot.value)
   assert sameStateSnapshot(actual.stateSnapshot, view.bestBlock.value.stateSnapshot)
   assert view.retainedCount == 2 and original.retainedCount == 1
@@ -203,6 +212,13 @@ proc failures(context: ChainFixture) =
   failHash(0)
   assert captureRefused.error == AccumulationChainError.CaptureFailure and
       captureRefused.captureError == GenesisError.Invalid
+  unchanged(state, view, parent, original)
+  # A body digest refusal follows successful composition and sealed-header capture without publication.
+  failAfter(compositionHashes + 1)
+  let bodyRefused = applyAccumulationChain(state, view, context.source, policy)
+  failHash(0)
+  assert bodyRefused.error == AccumulationChainError.CaptureFailure and
+      bodyRefused.captureError == GenesisError.Invalid
   unchanged(state, view, parent, original)
   var changed = bytes(context.parent.value.header)
   changed[changed.len - 1] = changed[changed.len -

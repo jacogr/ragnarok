@@ -38,6 +38,7 @@ const
   DefaultFuzzWriteBytes* = 4194304'u64        ## Existing conformance-only byte ceiling.
   DefaultCompactionBytes* = 64'u64*1024*1024  ## Soft managed maintenance threshold.
   MaximumCompactionBytes* = 128'u64*1024*1024 ## Maximum admitted managed threshold.
+  DefaultRetainedBlocks* = 8'u64 ## Default accepted block/state window, independent of protocol history.
   DefaultDownloadBlocks* = 1 ## A download requests one actual successive adoption unless overridden.
   MaxDownloadPeers* = 16                      ## Bounded catalog of primary plus additional pinned peers.
   MaxDownloadArguments* = 8+2*(MaxDownloadPeers-1) ## Internal normalized download shape, derived from the peer cap.

@@ -10,7 +10,7 @@ It runs the maintained Make targets on native Linux runners, plus macOS for bina
 with a unified **Build** matrix for Smoke, Tooling, Linux & Docker and macOS. Other jobs cover
 native units/corpora, runtime failures,
 E2E networking (including official MCP SDK message exchange) and JAM Tart telemetry interoperability. **Build / Linux & Docker** combines
-Linux archive packaging with the isolated Docker image build/smoke check on `ubuntu-latest`.
+Linux archive packaging with the isolated Docker image build/smoke check on `ubuntu-26.04`.
 It runs on master pushes, full requests and manual `build` requests. The `ci:docker` label and
 manual `docker` scope select only the image check; no image is published. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
@@ -63,3 +63,7 @@ names. Job conditions run before matrix expansion. Standalone manual workload sc
 for Linux x86-64 and macOS ARM64. The complete Build group runs on master/full requests and
 manual `build` requests. Each archive includes maintained native ABIs, licenses, a provenance
 manifest and a checksum; a separately unpacked copy must pass peer selftests before upload.
+
+Ubuntu runner versions are defined once per architecture in `ci.yml`: `ubuntu-x86-version`
+selects `ubuntu-26.04`, and `ubuntu-arm-version` selects `ubuntu-26.04-arm`. Update these
+anchors when changing the shared runner images.
