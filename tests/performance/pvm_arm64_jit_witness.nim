@@ -1538,31 +1538,38 @@ when defined(pvmArm64Jit):
 echo "ARM_MAPPING_REENTRY,1"
 
 
-# One pure block previously returned through ordinary dispatch on every trip despite resident-region support.
-let selfRegionProgram = owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
-let selfRegionPlan = newFlatPlan(selfRegionProgram, GasCycleLimit(100000))
-var selfInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
-var selfRegion = newFlatFrame(selfRegionPlan, [], selfInfo)
-for visit in 0..<3:
-  # The existing independent source-step oracle checks both cold discovery and actual reused connected execution.
-  echo "ARM_SELF_WARM_BEGIN,", visit
-  verifyControl(selfRegion, selfRegionProgram, selfInfo, 1000)
-  echo "ARM_SELF_WARM_END,", visit
-when defined(pvmArm64Jit):
-  let observed = flatArmRegionStatistics(selfRegion)
-  echo "ARM_SELF_NATIVE,", observed[0], ",", observed[1]
-  when defined(pvmArm64JitRefuse): assert observed == default(array[2, uint64])
-  else: assert observed[0] > 0 and observed[1] > observed[0]
+# Ordinary headers admit resident self-loops; an existing specialized shape deliberately retains its accepted interpreter.
 var selfRegionCases = 0
-for paid in [false, true]:
-  for initial in [0'u64, 30, 31, 32]:
-    for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:
-      for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 127, 128, 129]:
-        # Every native guard retains exact source/gas/paid-state ordering, including a branch that leaves immediately.
-        var bounded = selfInfo
-        bounded.registers[0] = RegisterValue(initial)
-        bounded.gas = MachineGas(gas)
-        bounded.blockCharged = paid
-        verifyControl(selfRegion, selfRegionProgram, bounded, budget)
-        inc selfRegionCases
+for specialized in [false, true]:
+  let source = if specialized:
+      owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
+    else:
+      owner([@[149'u8, 0, 1], @[172'u8, 0x10, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
+  let plan = newFlatPlan(source, GasCycleLimit(100000))
+  var warm = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+  warm.registers[1] = RegisterValue(32)
+  var frame = newFlatFrame(plan, [], warm)
+  for visit in 0..<3:
+    # The source-step oracle checks cold discovery and actual reused execution without using the region's own results.
+    verifyControl(frame, source, warm, 1000)
+  when defined(pvmArm64Jit):
+    let observed = flatArmRegionStatistics(frame)
+    when defined(pvmArm64JitRefuse): assert observed == default(array[2, uint64])
+    else:
+      if specialized:
+        # Exact ordinary-header identity is required: do not silently broaden admission to a different optimized worker.
+        assert observed == default(array[2, uint64])
+      else:
+        assert observed[0] > 0 and observed[1] > observed[0]
+  for paid in [false, true]:
+    for initial in [0'u64, 30, 31, 32]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:
+        for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 127, 128, 129]:
+          # Both paths retain exact gas, source-prefix and paid-state ordering, including immediately untaken loops.
+          var bounded = warm
+          bounded.registers[0] = RegisterValue(initial)
+          bounded.gas = MachineGas(gas)
+          bounded.blockCharged = paid
+          verifyControl(frame, source, bounded, budget)
+          inc selfRegionCases
 echo "ARM_SELF_REGION_CASES,", selfRegionCases

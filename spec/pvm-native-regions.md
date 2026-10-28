@@ -45,9 +45,19 @@ Independent second layer: reuse the accepted resident ARM emitter for one observ
 in addition to its existing two/three-block regions. Gas/source guards, register allocation,
 code storage and five-word context ABI are unchanged. Inactive proof/counter lanes remain empty;
 only actual source blocks are charged. Independent source-step comparisons require actual native
-region counters and cover960 paid/gas/prefix/initial-value boundaries, with forced refusal.
+region counters and cover1920 ordinary/specialized-header paid/gas/prefix/initial-value boundaries, with forced refusal.
 
 The normal comparison can now take the same explicit pinned parent on ARM as x86; an empty
 input retains the previous current-source A/A control. This avoids interpreting a current/current
 ARM control as a paired optimization result. All native verification and timings remain on CI.
 Status: pending; no claimed gain and no decision to keep either runtime trial yet.
+
+
+ARM admission witness refinement: the `131 + 88` shape uses an existing specialized charge
+worker and is intentionally excluded by ordinary-header identity checks. It remains a negative
+region-admission witness with complete state coverage. A `149 + 172` ordinary header supplies
+the actual positive self-loop witness. No runtime admission was broadened to make a test pass.
+The maintainer approved expressing existing control-count minima in completed-block units:
+CI at581c5b57 showed3 branch entries /2 header entries including one region completing17 blocks.
+Replacing one aggregate entry by those17 completed blocks preserves the original4/3 thresholds;
+all independent CPU/gas/PC/host/fault/source checks remain unchanged.
