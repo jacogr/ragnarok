@@ -96,7 +96,8 @@ class X86ProfileScopeTests(unittest.TestCase):
             self.assertEqual(env['RAGNAROK_PVM_DOOM_PHASE'],'init')
             self.assertEqual(env['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
             self.assertEqual(env['RAGNAROK_PVM_LOCAL_ONECALL'],'0')
-        with self.assertRaises(ValueError):profile_plan('arm64',include_init=True)
+        self.assertEqual(profile_plan('arm64',include_init=True)['cases'],
+                         profile_plan('arm64')['cases'])
         make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
         self.assertIn('tools/pvm_x86_jit_profile.py --paired-baseline --include-init',make)
 

@@ -74,7 +74,6 @@ def profile_plan(architecture, paired_baseline=False, include_init=False, includ
         return dict(folder=BUILD, cohort=COHORT, roles=('baseline','jit') if paired_baseline else ('interpreter','jit'),
                     cases=(('sieve',100000),('pinky',1),*((('init',0),) if include_init else ()),('tick',0)))
     if architecture == 'arm64':
-        if include_init: raise ValueError('ARM plan already includes initialization')
         return dict(folder=ROOT/'build/tests/pvm-arm64-profiles',
                     cohort=ROOT/'build/tests/pvm-arm64-applications', roles=('baseline','jit'),
                     cases=(('sieve',100000),*((('minimal',100000),) if include_minimal else ()),('init',0),('tick',0)))
@@ -248,5 +247,6 @@ if __name__ == '__main__':
     parser.add_argument('--paired-baseline',action='store_true')
     parser.add_argument('--include-init',action='store_true')
     parser.add_argument('--include-minimal',action='store_true',help='Include the ARM minimal workload in the paired diagnostic')
+
     options=parser.parse_args()
     run(options.architecture,options.calibrate_only,options.paired_baseline,options.include_init,include_minimal=options.include_minimal)
