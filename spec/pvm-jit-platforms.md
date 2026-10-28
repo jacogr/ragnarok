@@ -32,6 +32,6 @@ host events. Existing mutation/refusal controls remain required. All native comp
 execution, performance and profiling stay on CI during this work.
 
 Status: build/CI integration prepared; native platform qualification, real continuing-frame
-checks and final timings are pending. Publication/default recommendation remains held while
+checks and final timings are pending. Default readiness recommendation remains held while
 its isolated x86 admission/performance parent is qualified. Passing local Python flag-plan,
 workflow and receipt-parser tests is not native execution evidence. No PR merge is authorized.
