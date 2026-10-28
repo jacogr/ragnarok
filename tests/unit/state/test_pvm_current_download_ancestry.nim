@@ -42,7 +42,7 @@ proc scenario(context: CurrentChainFixture, witness: AncestryWitness) {.raises.}
     servers.close()
     owner.close() # Every native worker and callback retires before its stable canonical owner.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current ancestry")
   let parent = owner.stateSnapshot.value
   var expected = default(array[42, byte])

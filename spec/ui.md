@@ -6,7 +6,7 @@ The independent HTTP listener serves assets embedded in the client binary at
 It requires no runtime asset directory, extraction or working-directory convention.
 The embedded browser prototype is compiled from Nimony; see [the browser contract](ui-browser.md).
 
-For development, append `--dev-ui-dir /path/to/static` alongside `--with-ui`.
+For development, append `--ui-dev-dir /path/to/static` alongside `--with-ui`.
 This replaces the embedded asset source with precompressed `.gz` files from that directory;
 rebuilt files are visible on the next request. Use `build/ui` after `make ui-assets`.
 Missing development files return 404 without falling back to the bundle.
@@ -42,7 +42,7 @@ bytes without changing public filenames. Browser verification in CI exercises mi
 `--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
 `--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
 UI and RPC ports must differ. `--with-telemetry` independently enables telemetry and
-requires both `--telemetry HOST:PORT` and `--chain FILE`. Endpoint configuration alone
+requires both `--telemetry-endpoint HOST:PORT` and `--chain FILE`. Endpoint configuration alone
 never enables a service. Duplicate switches, malformed ports and enabled listener/root
 failures fail startup. Controls are trailing and may be ordered freely.
 

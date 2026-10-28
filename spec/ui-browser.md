@@ -88,7 +88,7 @@ thread-owned Nim scalar state bridge browser-owned WebSocket/timer/JSON objects 
 roughly 249 KiB of JavaScript before build-time gzip and reserves a 64 MiB linear heap;
 modern browser BigInt support is required. This is a feasibility prototype, not a payload/memory optimization milestone.
 
-For live development use `--with-ui --dev-ui-dir build/ui` and rerun `make ui-assets` after
+For live development use `--with-ui --ui-dev-dir build/ui` and rerun `make ui-assets` after
 source edits. Development overrides replace the complete asset directory, so HTML/CSS alone
 without generated `app.js.gz` do not run the application. Every asset is precompressed at build
 time; the server requires gzip acceptance and never serves identity bytes.

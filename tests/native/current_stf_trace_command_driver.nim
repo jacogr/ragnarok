@@ -57,7 +57,7 @@ proc main() {.raises.} =
       arguments.add("--trace-observations")
       arguments.add(path(fields[1])) # Explicit observation directory is a separate comparison input, never a replacement expected trace.
     var options = default(Options)
-    assert parseOptions(arguments, options)
+    assert parseCanonicalOptions(arguments, options)
     let checked = runTraceChecks(options)
     if checked.error == TraceCheckCommandError.None:
       echo "C ", checked.error, " ", checked.checkedBlocks, " ", hex(array[32, byte](

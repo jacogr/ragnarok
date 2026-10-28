@@ -46,7 +46,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
       args.add("--with-rpc")
       args.add("--rpc-port")
       args.add($port) # Append individual explicit arguments supported by the pinned compiler.
-    assert parseOptions(args, options)
+    assert parseCanonicalOptions(args, options)
   else:
     options = currentDiskOptions(path, database, layout == 2, port)
   var input = default(CurrentBlockInput)

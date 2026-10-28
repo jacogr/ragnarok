@@ -34,7 +34,7 @@ proc diskOptions(managed: bool): Options =
     args.add("--state-layout")
     args.add("managed") # Physical layout never changes expected canonical history or complete-map semantics.
   result = default(Options)
-  assert parseOptions(args, result)
+  assert parseCanonicalOptions(args, result)
 proc pause() =
   ## Keep the independent responder nonblocking and bounded while the production process runs.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)

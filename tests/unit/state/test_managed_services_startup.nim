@@ -10,7 +10,7 @@ import ../../../src/storage/managed_manifest
 proc configured(path: string, layout: string): Options =
   ## Harness-owned configured genesis is captured before listeners or storage become observable.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-db", path, "--state-layout", layout], result)
 proc main() {.raises.} =

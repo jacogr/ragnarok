@@ -29,7 +29,7 @@ proc configured(path: string, layout: string, resume = false, readOnly = false):
     arguments.add("--state-write-bytes"); arguments.add(
         "0") # Independent imports retain their exact zero-budget recovery policy.
   result = default(Options)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 proc imported() {.raises.} =
   ## Independently trusted checkpoint import creates exclusively; ordinary local restart preserves its selected header instead of genesis.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)
@@ -44,7 +44,7 @@ proc imported() {.raises.} =
       ByteLimit(4194304))
   let path = "paged-services-import-" & $appPid()
   var selected = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-layout", "paged", "--state-db", path,
     "--state-writes", "0", "--state-write-bytes", "0"], selected)

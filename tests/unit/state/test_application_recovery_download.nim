@@ -49,7 +49,7 @@ proc selectedOptions(port: uint16, disk = false): Options =
     "--state-checkpoint-bytes", "1000000"]
   if disk:
     for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExecutionFixture,
     mode: Scenario) {.raises.} =
   ## Each fork starts before parent command workers exist; command teardown joins them before the next fork.
@@ -105,7 +105,8 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
     assert readFile(DiskPath) == before # Import cannot replace or roll back an existing durable successor.
   elif mode == DiskValid:
     var selected = default(Options)
-    assert parseOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes", "1000",
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes",
+      "1000",
       "--state-write-bytes", "1000000", "--state-storage", "disk", "--state-db", DiskPath], selected)
     var owner = default(Services)
     defer: owner.close()

@@ -119,7 +119,7 @@ proc running(expectedKey: DownloadPeerKey, base: OwnedReport) {.raises.} =
   writeFile("download-running-chain.json", context.seed)
   defer: discard posix.unlink("download-running-chain.json")
   var selected = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "download-running-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "download-running-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], selected), "running state options"
   var owner = default(Services)
   assert owner.start(selected, "running download"), "running canonical owner"
@@ -168,7 +168,7 @@ proc main() {.raises.} =
   writeFile("download-load-chain.json", context.text)
   defer: discard posix.unlink("download-load-chain.json")
   var selected = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "download-load-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "download-load-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], selected), "explicit state options"
   var owner = default(Services)
   assert owner.start(selected, "download load"), "canonical Services startup"

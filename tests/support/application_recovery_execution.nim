@@ -35,7 +35,7 @@ proc recoveryOptions*(path: string, limits: StateStoreLimits, port = 0'u16): Opt
     arguments.add("--rpc-port")
     arguments.add($port) # Port configuration never changes the checkpoint's inherited state policy.
   result = default(Options)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 proc startRecoveredExecution*(owner: var Services, fixture: RecoveryExecutionFixture,
     path: string, limits: StateStoreLimits, port = 0'u16) {.raises.} =
   ## The temporary restored result retires on return, leaving no host canonical alias across later execution leases.

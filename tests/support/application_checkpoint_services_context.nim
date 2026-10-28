@@ -10,7 +10,7 @@ import ./application_candidate_context as candidate_context
 proc checkpointServicesOptions*(path: string): Options =
   ## Service state mutation ceilings are explicit; listeners remain disabled in component verification.
   result = default(Options)
-  assert parseOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
     "--state-write-bytes", "1000000"], result)
 proc startCheckpointServices*(owner: var Services, path: string) {.raises.} =
   ## Author seed text from the pinned signed-block fixture, then retire that unrelated graph before any canonical lease.

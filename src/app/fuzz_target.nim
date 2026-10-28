@@ -4,6 +4,8 @@
 ## Explicit JAM_FUZZ startup runs only ephemeral full-state sessions with host-supplied Parameters and execution policy.
 import ../lib/logging
 
+from ./cli_defaults import DefaultFuzzWrites, DefaultFuzzWriteBytes
+
 import std/[assertions, atomics, envvars, monotimes, os, syncio]
 import std/posix/posix
 import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate, fuzz_policy]
@@ -158,29 +160,63 @@ proc prepareDirectory(path: string): bool =
   if readStatus(nativePath.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
       uint32(status.st_uid) != effectiveUid(): return false
   chmod(nativePath.toCString(), Mode(0o700)) == 0
+proc resolveFuzzEnvironment*(base: FuzzEnvironment, overrides: openArray[string],
+    environment: var FuzzEnvironment): bool =
+  ## Merge explicit pairs over a captured environment; malformed pairs expose no partial configuration.
+  environment = default(FuzzEnvironment)
+  var selected = base
+  if overrides.len mod 2 != 0: return false
+  var index = 0
+  while index < overrides.len:
+    let value = overrides[index+1]
+    if value.len == 0: return false
+    case overrides[index]
+    of "--fuzz-spec": selected.spec = value
+    of "--fuzz-data-path": selected.dataPath = value
+    of "--fuzz-sock-path": selected.socketPath = value
+    of "--fuzz-log-level": selected.logLevel = value
+    else: return false # Only catalog-approved environment equivalents belong to this boundary.
+    index += 2
+  environment = selected
+  true
+
 proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
     LogWriter)): int {.raises.} =
   ## The ordinary executable selects conformance mode from standard environment variables and owns the complete startup lifecycle.
-  let automatic = arguments.len == 0 or (arguments.len == 1 and arguments[0] == "--help")
-  var namedPreset = automatic or (arguments.len == 4 and arguments[0] == "serve-fuzz-preset")
-  let environment = FuzzEnvironment(enabled: existsEnv("JAM_FUZZ"), spec: getEnv("JAM_FUZZ_SPEC"),
+  let automatic = arguments.len == 0
+  let builtIn = automatic or (arguments.len >= 3 and arguments[0] == "fuzz")
+  let namedPreset = builtIn or (arguments.len >= 4 and arguments[0] == "serve-fuzz-preset")
+  let captured = FuzzEnvironment(enabled: automatic and existsEnv("JAM_FUZZ") or not automatic,
+      spec: getEnv("JAM_FUZZ_SPEC"),
     dataPath: getEnv("JAM_FUZZ_DATA_PATH"), socketPath: getEnv("JAM_FUZZ_SOCK_PATH"),
     logLevel: getEnv("JAM_FUZZ_LOG_LEVEL"))
   var policyPath = ""
   var parameterPath = ""
-  var writeText = "1000"
-  var byteText = "4194304"
+  var writeText = $DefaultFuzzWrites
+  var byteText = $DefaultFuzzWriteBytes
+  var overrideStart = 0
   if automatic:
     discard # The public conformance contract needs only upstream environment variables and built-in policy.
-  elif namedPreset or (arguments.len == 5 and arguments[0] == "serve-fuzz"):
+  elif builtIn:
+    writeText = arguments[1]
+    byteText = arguments[2]
+    overrideStart = 3
+  elif namedPreset or (arguments.len >= 5 and arguments[0] == "serve-fuzz"):
     # Internal explicit-policy regression callers retain their established positional contract.
     policyPath = arguments[1]
     let offset = if namedPreset: 2 else: 3
     if not namedPreset: parameterPath = arguments[2]
     writeText = arguments[offset]
     byteText = arguments[offset+1]
+    overrideStart = offset+2
   else:
     stderr.writeLine("FUZZ_START_FAILED arguments")
+    return 2
+  var environment = default(FuzzEnvironment)
+  var overrides: seq[string] = @[]
+  for index in overrideStart..<arguments.len: overrides.add(arguments[index])
+  if not resolveFuzzEnvironment(captured, overrides, environment):
+    stderr.writeLine("FUZZ_START_FAILED environment overrides")
     return 2
   var writes = 0'u64
   var writeBytes = 0'u64
@@ -196,8 +232,8 @@ proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
     stderr.writeLine("FUZZ_START_FAILED InvalidSpec")
     return 2
   var policy = fuzzPresetPolicy(preset)
-  if not automatic:
-    # Legacy test-host overrides remain bounded; automatic third-party launch never needs a policy file.
+  if not builtIn:
+    # Explicit test-host overrides remain bounded; public conformance launch needs no policy file.
     let loadedPolicy = readBoundedFile(policyPath, ByteLimit(CurrentDownloadPolicyBytes))
     if loadedPolicy.error != AtomicFileError.None:
       stderr.writeLine("FUZZ_START_FAILED configuration files")

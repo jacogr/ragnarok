@@ -114,7 +114,7 @@ def exercise(binary, policy_binary, folder):
         parameters = directory/'parameters.json'
         subprocess.run([str(policy_binary), str(policy)], check=True, timeout=30)
         parameters.write_text(job['config'])
-        arguments = [str(binary), 'serve-fuzz', str(policy), str(parameters), '1000', '1000000']
+        arguments = [str(binary), 'serve-fuzz', '--fuzz-policy', str(policy), '--fuzz-parameters', str(parameters), '--fuzz-state-writes', '1000', '--fuzz-state-write-bytes', '1000000']
         environment = {k:v for k,v in os.environ.items() if not k.startswith('JAM_FUZZ')}
         environment.update(JAM_FUZZ='1', JAM_FUZZ_SPEC='tiny', JAM_FUZZ_DATA_PATH=str(directory),
                            JAM_FUZZ_SOCK_PATH=str(endpoint), JAM_FUZZ_LOG_LEVEL='error')

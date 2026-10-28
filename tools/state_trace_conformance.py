@@ -316,8 +316,8 @@ def verify_observations(bundle, observations, profile_path, checker, selected=No
     executable_hash = hashlib.sha256(regular_bytes(executable, 128*1024*1024)).hexdigest()
     results = []
     for case in cases:
-        arguments = [str(executable), 'check-traces', str(member(bundle, manifest['policy'])),
-                     str(member(bundle, case['genesis'])), *[str(member(bundle, name)) for name in case['traces']],
+        arguments = [str(executable), 'check-traces', '--trace-policy', str(member(bundle, manifest['policy'])),
+                     '--trace-genesis', str(member(bundle, case['genesis'])), *[word for trace_file in ([str(member(bundle, name)) for name in case['traces']]) for word in ('--trace-file', trace_file)],
                      '--with-state', '--chain', str(member(bundle, case['chain'])),
                      '--state-writes', '1000', '--state-write-bytes', '1000000',
                      '--trace-observations', str((observations/case['id']).resolve())]

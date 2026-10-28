@@ -330,12 +330,14 @@ proc refreshLogicalSource(path: string, source: CurrentLogicalState,
 proc performDownloads(options: Options, adopted: var int): CurrentDownloadCommandResult {.raises.} =
   ## One Services owner retains every confirmed prefix; per-child barriers precede ancestry mutation and final shutdown joins.
   adopted = 0
-  if not options.valid or options.argumentCount < 8 or
-      options.argumentCount > 38 or (options.argumentCount - 8) mod 2 != 0 or options.argument(1) !=
-          "download-current" or
-      not options.stateEnabled or options.telemetryEnabled:
-    return CurrentDownloadCommandResult.InvalidOptions # This command cannot silently discard requested outgoing telemetry.
-  let timeout = number(options.argument(7), 120000)
+  let commandWords = options.argumentCount
+  if not options.valid or commandWords < 8 or commandWords > MaxDownloadArguments:
+    return CurrentDownloadCommandResult.InvalidOptions # Prove every normalized endpoint position before access.
+  if (commandWords-8) mod 2 != 0 or options.argument(1) != "download-current":
+    return CurrentDownloadCommandResult.InvalidOptions # Additional peers are complete port/key pairs.
+  if not options.stateEnabled or options.telemetryEnabled:
+    return CurrentDownloadCommandResult.InvalidOptions # Downloads require state and cannot discard requested outgoing telemetry.
+  let timeout = number(options.argument(7), uint64(MaxPeerTimeoutMs))
   if timeout == 0: return CurrentDownloadCommandResult.InvalidEndpoint
   let policy = loadCurrentDownloadPolicy(options.argument(8))
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy

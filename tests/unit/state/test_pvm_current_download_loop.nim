@@ -73,7 +73,7 @@ proc transfer(context: CurrentChainFixture, witness = LoopWitness.Adopt,
   if disk:
     options = currentDiskOptions(path, database, managed, port)
   else:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current dispatcher")
   let parent = owner.stateSnapshot.value
   var request = default(array[42, byte])
@@ -151,7 +151,7 @@ proc proofs(context: CurrentChainFixture) {.raises.} =
     dispatcher.close()
     owner.close()
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current dispatcher proof exclusion")
   let parent = owner.stateSnapshot.value
   let selected = owner.chainView.bestBlock.value.blockHash

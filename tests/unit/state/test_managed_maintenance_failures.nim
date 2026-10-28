@@ -36,7 +36,7 @@ proc ignore(value: cint) {.cdecl, raises: [].} =
 proc configured(chainPath, path, threshold: string): Options =
   ## Threshold policy is explicit and never changes the admitted local chain identity.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
     "--state-db", path, "--state-layout", "managed", "--state-compact-bytes", threshold], result)
 proc waitFinished(owner: var Services) =
   ## Only scalar phase and dispatcher ticks run during native publication or maintenance.

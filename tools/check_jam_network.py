@@ -37,7 +37,7 @@ def complete(report):
 
 
 def socket_check(binary, folder):
-    """Freeze independent messages first, then exercise the ordinary binary flags and complete native STF."""
+    """Freeze independent messages first, then exercise environment-only startup and complete native STF."""
     from nimony_fuzz_guests import reference_sessions, session_evidence, exercise_sessions
     import jam_fuzzer_network_oracle as reference
     jobs, proof = reference_sessions(reference,'jam_fuzzer_network',[reference.parameters()]*17,spec='fuzz',fork_capacity=8)
@@ -58,8 +58,10 @@ def socket_check(binary, folder):
             assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
             assert not endpoint.exists()
         for extra in (['--fuzz'],['--unknown','x']):
+            # Unknown command spellings fail at the public CLI boundary before fuzz startup.
             rejected = subprocess.run(arguments+extra,env=environment,capture_output=True,timeout=30)
-            assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
+            expected = ('Unknown command: '+extra[0]+'; use ragnarok --help').encode()
+            assert rejected.returncode == 2 and rejected.stderr.strip() == expected
             assert not endpoint.exists()
         assert not (directory/'data').exists()
         version = subprocess.run([str(binary),'--version'],env=environment,capture_output=True,timeout=30)

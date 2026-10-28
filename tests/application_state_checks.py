@@ -29,8 +29,8 @@ def standalone(binary, certificates, chain, folder, policy):
     folder.mkdir(parents=True, exist_ok=True)
     log, stop = folder/'peer.log', folder/'stop'
     stop.unlink(missing_ok=True)
-    command = [str(binary), 'server', peer_port(), str(certificates/'a.cert.pem'),
-               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
+    command = [str(binary), 'server', '--net-port', peer_port(), '--net-cert', str(certificates/'a.cert.pem'),
+               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '30000', '--net-mode', 'service',
                '--chain', str(chain), *policy]
     with log.open('wb') as output:
         process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
@@ -61,10 +61,10 @@ def mesh(binary, certificates, chain, folder, policy):
                 other = 'b' if role == 'a' else 'a'
                 logs[role] = folder/(role+'.log')
                 peaks[role] = {}
-                command = [str(binary), 'mesh', str(selected[index]), str(selected[1-index]),
-                           str(certificates/(role+'.cert.pem')), str(certificates/(role+'.key.pem')),
-                           str(certificates/(role+'.pub')), str(certificates/(other+'.pub')),
-                           'jamnp-s/1/00000000', str(gate), '--chain', str(chain), *policy]
+                command = [str(binary), 'mesh', '--net-local-port', str(selected[index]), '--net-remote-port', str(selected[1-index]),
+                           '--net-cert', str(certificates/(role+'.cert.pem')), '--net-key', str(certificates/(role+'.key.pem')),
+                           '--net-local-key', str(certificates/(role+'.pub')), '--net-peer-key', str(certificates/(other+'.pub')),
+                           '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(gate), '--chain', str(chain), *policy]
                 output = handles.enter_context(logs[role].open('wb'))
                 processes[role] = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
                     env={**os.environ, 'RAGNAROK_MESH_ROUNDS': '1', 'RAGNAROK_MESH_FALLBACK': '0',
@@ -102,13 +102,14 @@ def run(binary, certificates, folder):
     mesh(binary, certificates, chain, folder/'mesh', policy)
     rpc = rpc_run(binary, certificates, folder/'rpc', chain, state_policy=(1000, 1000000))
     assert rpc['passed']
-    # The RPC harness mutates its input after startup; restore the complete seed before negative cases.
+    # Keep malformed-input cases independent of the preceding RPC workload.
     chain.write_text(seed)
-    base = [str(binary), 'server', peer_port(), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid']
-    mesh_base = [str(binary), 'mesh', *map(str, ports()), str(certificates/'a.cert.pem'),
-                 str(certificates/'a.key.pem'), str(certificates/'a.pub'), str(certificates/'b.pub'),
-                 'jamnp-s/1/00000000', str(folder)]
+    base = [str(binary), 'server', '--net-port', peer_port(), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid']
+    mesh_ports = ports()
+    mesh_base = [str(binary), 'mesh', '--net-local-port', str(mesh_ports[0]), '--net-remote-port', str(mesh_ports[1]), '--net-cert', str(certificates/'a.cert.pem'),
+                 '--net-key', str(certificates/'a.key.pem'), '--net-local-key', str(certificates/'a.pub'), '--net-peer-key', str(certificates/'b.pub'),
+                 '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(folder)]
     for command in (base, mesh_base):
         for text in ('{}', seed.replace('genesis_state', 'missing_state')):
             chain.write_text(text)

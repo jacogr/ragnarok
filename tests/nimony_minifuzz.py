@@ -54,7 +54,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
         target_env.update(JAM_FUZZ='1', JAM_FUZZ_SPEC=spec, JAM_FUZZ_DATA_PATH=str(directory),
                           JAM_FUZZ_SOCK_PATH=str(endpoint), JAM_FUZZ_LOG_LEVEL='error')
         with log_path.open('wb') as log:
-            process = subprocess.Popen([str(binary), 'serve-fuzz', str(policy), str(configured), '1000', '4194304' if spec == 'full' else '1000000'],
+            process = subprocess.Popen([str(binary), 'serve-fuzz', '--fuzz-policy', str(policy), '--fuzz-parameters', str(configured), '--fuzz-state-writes', '1000', '--fuzz-state-write-bytes', '4194304' if spec == 'full' else '1000000'],
                                        env=target_env, stdout=log, stderr=log)
             try:
                 deadline = time.monotonic()+30

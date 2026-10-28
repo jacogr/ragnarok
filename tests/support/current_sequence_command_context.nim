@@ -69,7 +69,7 @@ proc exchangeCurrentSequence*(fixture: CurrentConsecutiveFixture, start, request
     for index in 8..<arguments.len: paired.add(arguments[index])
     arguments = paired # Both explicit authenticated identities remain paired with their authored ports.
   var options = default(Options)
-  assert parseOptions(arguments, options)
+  assert parseCanonicalOptions(arguments, options)
   let outcome = runCurrentDownloads(options)
   writeFile(stopPath, "stop")
   var status = 0.cint

@@ -9,8 +9,9 @@ For three additional children, using your existing certificate/key, peer pin,
 configured ALPN and complete versioned policy:
 
 ```sh
-./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
-  "$configured_alpn" 30000 download-policy.conf \
+./build/ragnarok download --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key peer-public.bin \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --download-policy download-policy.conf \
   --with-state --chain chain.json --download-blocks 3 \
   --state-storage disk --state-db local-state.db
 ```

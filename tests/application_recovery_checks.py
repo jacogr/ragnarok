@@ -64,8 +64,8 @@ def serving(binary, certificates, folder, paths, selected):
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         rpc_port = reservation.getsockname()[1]
-    command = [str(binary), 'server', peer_port(), str(certificates/'a.cert.pem'),
-               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
+    command = [str(binary), 'server', '--net-port', peer_port(), '--net-cert', str(certificates/'a.cert.pem'),
+               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '30000', '--net-mode', 'service',
                *policy(paths, len(selected['checkpoint'])), '--with-rpc', '--rpc-port', str(rpc_port)]
     with log.open('wb') as output:
         process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT,
@@ -108,11 +108,12 @@ def serving(binary, certificates, folder, paths, selected):
 # Refusals must occur before readiness in both executable peer shapes and preserve all input bytes.
 def refusals(binary, certificates, folder, paths, selected):
     folder.mkdir(parents=True, exist_ok=True)
-    server = [str(binary), 'server', peer_port(), str(certificates/'a.cert.pem'),
-              str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid']
-    mesh = [str(binary), 'mesh', *map(str, ports()), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), str(certificates/'a.pub'), str(certificates/'b.pub'),
-            'jamnp-s/1/00000000', str(folder)]
+    server = [str(binary), 'server', '--net-port', peer_port(), '--net-cert', str(certificates/'a.cert.pem'),
+              '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid']
+    mesh_ports = ports()
+    mesh = [str(binary), 'mesh', '--net-local-port', str(mesh_ports[0]), '--net-remote-port', str(mesh_ports[1]), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-local-key', str(certificates/'a.pub'), '--net-peer-key', str(certificates/'b.pub'),
+            '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(folder)]
     rows = []
     cases = [('zero-budget', None, None, 0), ('short-budget', None, None, len(selected['checkpoint'])-1)]
     for key in ('identity', 'header', 'checkpoint'):

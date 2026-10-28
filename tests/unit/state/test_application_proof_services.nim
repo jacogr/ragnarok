@@ -24,7 +24,7 @@ proc main() {.raises.} =
   let path = "application-proof-services-chain.json"
   writeFile(path, context.text)
   var options = default(Options)
-  assert parseOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
     "--state-write-bytes", "1000000"], options)
   var owner = default(Services)
   let limits = queryLimits()

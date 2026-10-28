@@ -40,7 +40,7 @@ proc scenario(context: CurrentChainFixture, mode: DownloadTransferMode, wrongKey
     servers.close()
     owner.close() # Catalog callbacks retire before session/receiver/canonical owners leave scope.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current native download")
   let parent = owner.stateSnapshot.value
   assert peers.configure(ElementLimit(1)) == CurrentDownloadPeerError.None

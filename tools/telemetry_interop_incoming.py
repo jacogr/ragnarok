@@ -89,9 +89,9 @@ def run_incoming(binary, collector, report, folder, rejected):
         report['registrations'] = relay.registrations
         report['server_identity'], report['clients'] = server_identity, clients
         pin = certificates/'b.pub' if rejected else '-'
-        server = session.launch('server', [binary, 'server', udp_port, certificates/'a.cert.pem',
-            certificates/'a.key.pem', pin, 'jamnp-s/1/245becfe', '60000', 'service',
-            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', f'127.0.0.1:{relay.port}'],
+        server = session.launch('server', [binary, 'server', '--net-port', udp_port, '--net-cert', certificates/'a.cert.pem',
+            '--net-key', certificates/'a.key.pem', '--net-peer-key', pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'service',
+            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{relay.port}'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         session.ready(server, 'server')
         deadline = time.monotonic() + 45
@@ -111,8 +111,8 @@ def run_incoming(binary, collector, report, folder, rejected):
             with reply_gate(udp_port) as (port, released):
                 relay_ports.append(port)
                 name = f'client-{generation}'
-                client = session.launch(name, [binary, 'client', port, certificates/f'{key}.cert.pem',
-                    certificates/f'{key}.key.pem', certificates/'a.pub', 'jamnp-s/1/245becfe', '30000', 'mixed'])
+                client = session.launch(name, [binary, 'client', '--net-port', port, '--net-cert', certificates/f'{key}.cert.pem',
+                    '--net-key', certificates/f'{key}.key.pem', '--net-peer-key', certificates/'a.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'mixed'])
                 observed = until(lambda rows: any(row['event_type'] == 21 for row in rows))
                 if generation == 0:
                     # The held server reply prevents the client's certificate/Finished flight before restart.

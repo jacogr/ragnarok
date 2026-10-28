@@ -212,7 +212,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, mutation = false,
     elif layout == 1: discard posix.unlink(database.toCString()) # Clean only the explicit namespace after joined owner shutdown.
   var options = default(Options)
   if layout == 0:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   else: options = currentDiskOptions(path, database, layout == 2, 0)
   var download = default(CurrentBlockDownload)
   var owner = default(Services)

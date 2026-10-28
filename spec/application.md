@@ -15,18 +15,24 @@ and reports exact-map agreement; listener, disk, recovery and download controls 
 refused for this command.
 
 
-Existing `server`, `client`, `mesh`, bounded fixture modes and no-socket selftest flags retain
-arguments, exit codes, lifecycle markers and cleanup. `build/ragnarok --help` lists the command
-shapes and service flags. These commands are development workloads, not a complete node loop.
+Commands use the [named CLI](../docs/cli.md). `cli_catalog.nim` owns the shared option
+metadata and grouping; `cli_defaults.nim` owns typed defaults and bounds.
+`cli_commands.nim` admits strict named inputs and supplies an owned normalized representation to existing bounded handlers.
+`cli_help.nim` renders overview and command-specific help from the same catalog.
+Long positional command forms are rejected. Networking fields use `--net-*`;
+download, trace, devnet and conformance fields use their own descriptive prefixes.
+Dedicated conformance budgets retain separate defaults. Syntax inspection precedes
+file IO, logging and service startup; explicit help wins over conformance environment activation.
 
-`app/options.nim` parses command-line input once into private owned configuration. Its output is
-cleared on any failure; ports are bounded before narrowing and all trailing controls are unique.
-`--with-telemetry` requires explicit `--telemetry HOST:PORT --chain FILE`; `--with-rpc` enables
-RPC; `--with-ui` enables UI and RPC together. Existing default ports remain 19800/8888, with
-`--rpc-port`, `--ui-port` and `--dev-ui-dir` configuring enabled services. Configuration alone
-never enables a listener/exporter. UI/RPC port collisions and malformed controls fail before startup. Listener flags
-remain restricted to network commands; offline trace checking accepts only its explicit
-state/trust controls. No service module re-reads process arguments.
+`app/options.nim` parses shared controls atomically. Its output is cleared on any failure;
+ports are bounded before narrowing and nonrepeatable controls are unique.
+`--with-telemetry` requires `--telemetry-endpoint HOST:PORT --chain FILE`; `--with-rpc`
+enables RPC; `--with-ui` enables UI and RPC together. Each enable switch precedes its
+related settings in help, and configuration alone never enables a service. Named flags
+may be interleaved and value options accept `--name=value`. Existing lifecycle markers,
+exit meanings, protocol policies and owned cleanup remain unchanged. Internal component
+fixtures may validate normalized configuration through `parseCanonicalOptions`; this is
+not a process-input compatibility path. See the CLI guide for examples and migration.
 
 `app/services.nim` centralizes listener startup, bounded chain capture, RPC validation and actual
 certificate/socket-based telemetry setup. Its composite owner forbids copying. Both session
@@ -105,6 +111,68 @@ No passing unaffected workload was rerun. Evidence remains in `build/ci/ragnarok
 RPC verdict, with the successful corrected rerun recorded separately. Canonical Linux CI remains
 separate evidence.
 
-Next bounded work is
-to design the long-running node configuration/lifecycle as real import and consensus become
-available, replacing proof-workload positional controls without adding competing app entry points.
+The named CLI rework passed a checked ARC/Clang ThinLTO production build and thirteen
+selected native suites: CLI grammar/help/defaults, shared options/logging, disk/layout/migration,
+light mode, recovery, download/ancestry controls and fuzz startup/candidate handling. The CLI
+ownership witness retained the same occupied bytes across 1000 cycles. Formatting and inventory
+checks passed. Real process checks passed the authenticated CE matrix and repeated cold starts,
+eight retained mesh rounds with resource/retirement checks, and the RPC plus embedded UI HTTP workload.
+The RPC harness now selects networking fields by flag instead of slicing a positional prefix.
+
+Conformance retains the official environment-only launch. `fuzz` activates the built-in policy;
+its four `--fuzz-*` environment equivalents also work with explicit-policy commands and override
+only supplied fields. Eight public process checks passed environment-only, flags-only, mixed and
+invalid-environment overrides, help isolation and graceful socket removal. The container default
+passes no arguments so environment activation works in the ordinary image too; nine focused
+network/packaging tooling tests passed. Evidence is retained in `build/cli-fuzz-review/`,
+`build/cli-live/`, `build/cli-review/` and `build/cli-*.log`. These are local macOS checks;
+canonical Linux CI and a container image rebuild remain separate evidence.
+
+Full Python discovery ran 1538 tests with two skips. Its only two errors were the two
+browser-mode subcases of the RPC deadline fixture, which still indexed the old positional
+timeout. That fixture now finds `--net-timeout-ms`; all three tests in its owning module
+passed in a focused rerun. The original full-run failure is preserved in
+`build/tests/python/results.json`, with the corrected rerun in
+`build/cli-rpc-regression.log`; passing unrelated tests were not repeated.
+
+Next bounded work is to design the long-running node configuration/lifecycle as real import
+and consensus become available without adding competing app entry points.
+
+
+The canonical-only follow-up removes option alias metadata and lookup entirely. Former
+spellings are tested as unknown options; all executable callers, component fixtures and
+documentation use the advertised names. The checked production build, four selected native
+suites (`app_cli`, `app_options`, `light_runtime_options`, `application_services`), 50 focused
+Python regressions, changed-source formatting/syntax checks and real canonical RPC,
+development UI and telemetry startup passed. The public executable also refused all three
+removed spellings. Evidence remains under `build/cli-no-alias-*`.
+
+
+CI run 40539775711 exposed an accidentally committed `{}` in `rpc-genesis.json`: the
+local RPC retention check had been passed the tracked fixture and deliberately rewrote it.
+All sixteen native test shards stopped at its pinned checksum, and the application startup
+checks consumed the same invalid input. The fixture is restored byte-for-byte. The RPC
+harness now copies supplied chains into a unique owned directory before retention mutation;
+a regression test checks both the actual launch path and unchanged caller bytes.
+
+The separate JAM Network failure was its obsolete unknown-command diagnostic expectation.
+Its negative controls now require the exact public CLI rejection before listener startup;
+missing conformance environment fields still require `FUZZ_START_FAILED`.
+
+The repair passed all static fixture checks across 978 suites (54 unique files), native
+`application_checkpoint_transfer` and `disk_chain`, thirteen focused RPC/network tooling
+tests, and the previously failed live RPC/browser, development UI, canonical-state,
+checkpoint-import and JAM Network socket checks. The live replay verifies the tracked
+fixture hash after every workload. Evidence is in `build/cli-ci-*`; these local results do
+not replace the new Linux CI run.
+
+
+CI job 122337219655 exposed one remaining caller dependency on the old RPC mutation:
+`parameter_checks` expected its chain to have become `{}` after the live workload. It now
+writes that incomplete configuration explicitly before its refusal assertion. A nonmutating
+live-check stub verifies the owning parameter-check function still constructs all five
+negative startup attempts independently. All five RPC unit tests and the complete owning
+RPC E2E workload passed locally, including browser and development UI, configured parameters,
+shared telemetry, service queries and invalid startup. The tracked genesis fixture stayed
+unchanged. Evidence is in `build/cli-ci-rpc-parameter-unit.log` and
+`build/cli-ci-rpc-complete/`; a fresh full Linux run is requested separately.

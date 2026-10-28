@@ -39,7 +39,7 @@ proc startLogicalServices*(owner: var Services, fixture: CurrentRepeatedLogicalF
     for argument in ["--state-storage", "disk", "--state-db", database]: args.add(argument)
     if managed:
       for argument in ["--state-layout", "managed", "--state-compact-bytes", "0"]: args.add(argument)
-  assert parseOptions(args, options)
+  assert parseCanonicalOptions(args, options)
   assert owner.start(options, "collected logical state")
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value

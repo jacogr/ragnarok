@@ -41,7 +41,7 @@ proc scenario(fixture: NamespaceExecutionFixture, restore: bool, layout: int) {.
     elif layout == 1: discard posix.unlink(database.toCString())
   var options = default(Options)
   if layout == 0:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   else: options = currentDiskOptions(path, database, layout == 2, 0)
   var input = default(CurrentBlockInput)
   var owner = default(Services)

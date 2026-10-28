@@ -19,7 +19,7 @@ RPC URL is editable for nondefault endpoints.
 Make compiles the browser with the pinned Nimony JS backend and gzips the static assets into an
 embedded manifest. CI minifies JS/CSS with pinned native esbuild; local builds enable the same
 step with `UI_MINIFY=1`. The HTTP server requires gzip acceptance and has no uncompressed fallback.
-For development, append `--dev-ui-dir build/ui` alongside `--with-ui` and rebuild with
+For development, append `--ui-dev-dir build/ui` alongside `--with-ui` and rebuild with
 `make ui-assets`.
 
 [Application services](../app/README.md) own both listeners and drive them from the peer

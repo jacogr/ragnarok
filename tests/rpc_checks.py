@@ -5,6 +5,7 @@
 
 Exposes socket helpers and run for live protocol checks; parameter_checks verifies configured
 parameters and service queries, shared telemetry startup, immutable configuration and rejected invalid inputs.
+Retention checks mutate private chain copies and preserve caller-owned fixture bytes.
 """
 import base64
 import hashlib
@@ -15,6 +16,7 @@ import os
 import socket
 import struct
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -92,6 +94,11 @@ def ready(process, log):
 # Exercise RPC on a real retained peer while an independent QUIC client completes application work.
 def run(binary, certificates, folder, chain=None, telemetry=False, service_queries=False, ui=False, dev_ui=False, browser=False, state_policy=None):
     folder.mkdir(parents=True, exist_ok=True)
+    if chain is not None:
+        # Retention tests deliberately mutate this file; own a copy instead of changing caller fixtures.
+        supplied = chain.read_bytes()
+        chain = Path(tempfile.mkdtemp(prefix='rpc-chain-', dir=folder))/'chain.json'
+        chain.write_bytes(supplied)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
     with socket.socket() as reservation:
@@ -118,21 +125,21 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     log = folder/'peer.log'
     # The normal RPC budget starts after the optional browser allowance; success still stops immediately.
     service_seconds = RPC_SERVICE_SECONDS + (BROWSER_TIMEOUT_SECONDS if browser else 0)
-    command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
-               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', str(service_seconds*1000), 'service',
+    command = [str(binary), 'server', '--net-port', str(peer_port), '--net-cert', str(certificates/'a.cert.pem'),
+               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', str(service_seconds*1000), '--net-mode', 'service',
                '--with-rpc', '--rpc-port', str(rpc_port)]
     if ui:
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
         command += ['--with-ui', '--ui-port', str(ui_port)]
         if dev_ui:
-            command += ['--dev-ui-dir', str(static)]
+            command += ['--ui-dev-dir', str(static)]
     if chain is not None:
         command += ['--chain', str(chain)] # The same CLI supports RPC with and without telemetry.
     if state_policy is not None:
         # Explicit executable mutation budgets activate the same canonical service seed as component callers.
         command += ['--with-state', '--state-writes', str(state_policy[0]), '--state-write-bytes', str(state_policy[1])]
     if telemetry:
-        command += ['--with-telemetry', '--telemetry', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
+        command += ['--with-telemetry', '--telemetry-endpoint', '127.0.0.1:1'] # A down collector must not prevent configured RPC service.
     expected_genesis = None
     if chain is not None and 'genesis_state' in json.loads(chain.read_text()):
         # This harness uses the frozen synthetic genesis for every configured chain view.
@@ -147,8 +154,8 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
             occupied.bind(('127.0.0.1', 0))
             occupied.listen()
             port = str(occupied.getsockname()[1])
-            inactive = command[:9] + ['--rpc-port', port, '--ui-port', port,
-                                      '--dev-ui-dir', str(folder/'missing'), '--telemetry', 'invalid']
+            inactive = command[:command.index('--net-mode')+2] + ['--rpc-port', port, '--ui-port', port,
+                                      '--ui-dev-dir', str(folder/'missing'), '--telemetry-endpoint', 'invalid']
             child = subprocess.Popen(inactive,
                                      env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(disabled_stop)},
                                      stdout=output, stderr=subprocess.STDOUT)
@@ -441,9 +448,9 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 try:
                     # The retained service's existing proof contract requires three concurrent peers.
                     for identity in ('b', 'c', 'd'):
-                        clients.append(subprocess.Popen([str(binary), 'client', str(peer_port),
-                                       str(certificates/f'{identity}.cert.pem'), str(certificates/f'{identity}.key.pem'),
-                                       str(certificates/'a.pub'), 'jamnp-s/1/00000000', '5000', 'mixed'],
+                        clients.append(subprocess.Popen([str(binary), 'client', '--net-port', str(peer_port),
+                                       '--net-cert', str(certificates/f'{identity}.cert.pem'), '--net-key', str(certificates/f'{identity}.key.pem'),
+                                       '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '5000', '--net-mode', 'mixed'],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE))
                     for client in clients:
                         stdout, stderr = client.communicate(timeout=8)
@@ -582,9 +589,10 @@ def parameter_checks(binary, certificates, folder):
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         rpc_port = reservation.getsockname()[1]
-    # The preceding run changed its source file to {}; startup must now reject that incomplete configuration.
-    arguments = [str(binary), 'server', '19899', str(certificates/'a.cert.pem'),
-                 str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '100', 'valid',
+    # Construct the incomplete input explicitly; live retention tests preserve their caller's files.
+    chain.write_text('{}')
+    arguments = [str(binary), 'server', '--net-port', '19899', '--net-cert', str(certificates/'a.cert.pem'),
+                 '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid',
                  '--with-rpc', '--rpc-port', str(rpc_port), '--chain', str(chain)]
     failed = subprocess.run(arguments, capture_output=True, timeout=5)
     assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr

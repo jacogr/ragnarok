@@ -93,7 +93,7 @@ proc exchangeDownloads*(context: DownloadChainFixture, responses: seq[seq[byte]]
         index]) # Additional peer tuples stay before every service control.
     arguments = pairs
   var options = default(Options)
-  assert parseOptions(arguments, options)
+  assert parseCanonicalOptions(arguments, options)
   let outcome = runDownloads(options)
   writeFile(stopPath, "stop")
   var state = 0.cint

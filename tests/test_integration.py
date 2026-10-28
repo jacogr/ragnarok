@@ -71,9 +71,9 @@ def service(language, certificates, wires, rounds, warmup, *, binaries=None, dir
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
     server_output = log.open('w')
-    server = subprocess.Popen([str(binaries[language]), 'server', str(port),
-                               str(certificates / 'a.cert.pem'), str(certificates / 'a.key.pem'), '-',
-                               'jamnp-s/1/00000000', '120000', 'integration'], env=environment,
+    server = subprocess.Popen([str(binaries[language]), 'server', '--net-port', str(port),
+                               '--net-cert', str(certificates / 'a.cert.pem'), '--net-key', str(certificates / 'a.key.pem'), '--net-peer-key', '-',
+                               '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '120000', '--net-mode', 'integration'], env=environment,
                               stdout=server_output, stderr=subprocess.STDOUT)
     try:
         observe(server, log, lambda text: 'READY\n' in text, peaks)
@@ -84,9 +84,9 @@ def service(language, certificates, wires, rounds, warmup, *, binaries=None, dir
                 path = directory / f'{iteration}-{index}.client.log'
                 output = path.open('w')
                 handles.append(output)
-                process = subprocess.Popen([str(binaries[client_language]), 'client', str(port),
-                                            str(certificates / f'{identity}.cert.pem'), str(certificates / f'{identity}.key.pem'),
-                                            str(certificates / 'a.pub'), 'jamnp-s/1/00000000', '5000', 'integrated'],
+                process = subprocess.Popen([str(binaries[client_language]), 'client', '--net-port', str(port),
+                                            '--net-cert', str(certificates / f'{identity}.cert.pem'), '--net-key', str(certificates / f'{identity}.key.pem'),
+                                            '--net-peer-key', str(certificates / 'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '5000', '--net-mode', 'integrated'],
                                            env=environment, stdout=output, stderr=subprocess.STDOUT)
                 children.append(process)
                 active.append((process, path, client_language))

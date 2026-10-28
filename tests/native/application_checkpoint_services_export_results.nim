@@ -7,7 +7,7 @@ import ../../src/app/[services, options, checkpoint_file]
 proc started(): Options =
   ## No listeners, chain or fixtures are needed to test a genuine stable service lifecycle.
   result = default(Options)
-  assert parseOptions(@["server"], result)
+  assert parseCanonicalOptions(@["server"], result)
 proc forgotten() {.raises.} =
   ## An actual native export worker must not outlive aggregate destruction.
   var owner = default(Services)

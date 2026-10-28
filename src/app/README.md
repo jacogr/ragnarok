@@ -8,6 +8,7 @@ configuration rather than reading command-line globals themselves.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`cli_defaults.nim`](cli_defaults.nim), [`cli_catalog.nim`](cli_catalog.nim), [`cli_commands.nim`](cli_commands.nim), [`cli_help.nim`](cli_help.nim) | Shared defaults, named command grammar and grouped [CLI help](../../docs/cli.md) |
 | [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, UI and optional canonical state through startup and shutdown |
 | [`chain.nim`](chain.nim), [`candidate.nim`](candidate.nim), [`handoff.nim`](handoff.nim) | Retain the selected complete-state head, prepare finalized candidates and acknowledge deferred adoption |
 | [`block_input.nim`](block_input.nim), [`block_download.nim`](block_download.nim) | Bound received block bytes and hand them to explicit preparation outside transport callbacks |

@@ -25,7 +25,7 @@ proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFin
 proc configured(chainPath, diskPath: string, threshold: string): Options =
   ## Explicit zero and a one-byte soft threshold exercise disabled and enabled scheduling without widening limits.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
     "--state-db", diskPath, "--state-layout", "managed", "--state-compact-bytes", threshold], result)
 proc cycle(fixture: RecoveryExecutionFixture, automatic: bool) {.raises.} =
   ## Automatic reclamation holds the completed adoption behind the same publication backpressure until every lease ends.

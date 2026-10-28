@@ -28,7 +28,7 @@ proc currentDiskOptions*(path, database: string, managed: bool, port: uint16): O
     args.add("--rpc-port")
     args.add($port) # Only the test-owned loopback reservation chooses this listener.
   result = default(Options)
-  assert parseOptions(args, result)
+  assert parseCanonicalOptions(args, result)
 proc currentDiskChildBytes*(context: CurrentChainFixture): seq[byte] =
   ## Capture signed wire bytes before native Services ownership can be borrowed.
   let child = context.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock

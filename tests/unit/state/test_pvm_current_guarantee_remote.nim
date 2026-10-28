@@ -66,7 +66,7 @@ proc check(fixture: CurrentGuaranteeSequenceFixture, layout: int, mode: RemoteCa
     if layout == 2:
       for argument in ["--state-layout", "managed", "--state-compact-bytes", "0"]: extra.add(argument)
   var options = default(Options)
-  assert parseOptions(currentCommandArguments(port, 2, ChainPath, PolicyPath, extra,
+  assert parseCanonicalOptions(currentCommandArguments(port, 2, ChainPath, PolicyPath, extra,
     (if mode == RemoteCase.Timeout: "4000" else: "10000")), options)
   let outcome = runCurrentDownloads(options)
   writeFile(stopPath, "stop")

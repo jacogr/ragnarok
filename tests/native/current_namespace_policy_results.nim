@@ -74,19 +74,19 @@ proc main() {.raises.} =
   let pair = @["--download-logical-source", "source.txt", "--download-logical-policy", "logical.txt"]
   let extra = @["--download-namespace-policy", "namespace.txt"]
   var options = default(Options)
-  assert parseOptions(joined(joined(base, pair), extra), options)
+  assert parseCanonicalOptions(joined(joined(base, pair), extra), options)
   assert options.logicalDownloadEnabled and options.namespaceDownloadPolicyPath == "namespace.txt"
   for invalid in [joined(base, extra), joined(joined(joined(base, pair), extra), extra), joined(
       joined(base, pair), @["--download-namespace-policy", "a\0b"]), joined(joined(@["server",
       "--with-state"], pair), extra)]:
-    assert not parseOptions(invalid, options)
+    assert not parseCanonicalOptions(invalid, options)
     assert options.namespaceDownloadPolicyPath.len == 0 and not options.logicalDownloadEnabled
   let update = @["--download-update-logical-source"]
-  assert parseOptions(joined(joined(base, pair), update), options) and
+  assert parseCanonicalOptions(joined(joined(base, pair), update), options) and
       options.updateLogicalDownloadSource
-  assert not parseOptions(joined(base, update), options)
+  assert not parseCanonicalOptions(joined(base, update), options)
   assert not options.updateLogicalDownloadSource
-  assert not parseOptions(joined(joined(joined(base, pair), update), update), options)
+  assert not parseCanonicalOptions(joined(joined(joined(base, pair), update), update), options)
   assert not options.updateLogicalDownloadSource
   var path = "current-namespace-policy-file"
   discard posix.unlink(path.toCString())
