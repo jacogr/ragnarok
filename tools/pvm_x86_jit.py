@@ -47,6 +47,22 @@ def qualify(checks, compiler, rows=None):
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         rows.append(dict(name=name, build=build, run=run))
+    for moving in (True, False):
+        # The private owner must disarm actual published authority, and still reject duplication.
+        name = 'arena-move' if moving else 'arena-copy'
+        build, binary = checks.build(compiler, ROOT/'tests/performance/pvm_x86_jit_arena_owner.nim',
+            name, defines=[] if moving else ['pvmX86ArenaCopy'],
+            cflags=['-I'+str(ROOT/'native/pvm_jit')])
+        if moving:
+            if build['exit_code']: raise RuntimeError(build['output'][-3000:])
+            run = checks.command([binary], name+'-run')
+            if run['exit_code'] or run['output'] != 'X86_ARENA_MOVE_OK,1000\n':
+                raise ValueError('published x86 arena move failed')
+            rows.append(dict(name=name, build=build, run=run))
+        else:
+            if build['exit_code'] == 0 or "'=dup' is not available for type <X86Arena>" not in build['output']:
+                raise ValueError('missing intended x86 arena-copy lowering refusal')
+            rows.append(dict(name=name, build=build))
     for frame in (False, True):
         for moving in (False, True):
             # The same maintained source forces real lowering; unrelated compile failures cannot satisfy ownership.

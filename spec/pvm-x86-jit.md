@@ -188,3 +188,16 @@ new default-enable claim follows from these counters.
 The next bounded runtime experiment extends only positive cached conditional capabilities and
 complete pure charged blocks. Checked gas/source-prefix/error ordering, original partial handlers,
 memory and genuine exits must remain unchanged. Default enablement is a later integration step.
+
+## October 28 compiler compatibility
+
+Reconciled with master `bf82cf784e97e9bef1b2bcb169b5759037caaf97` and its
+Nimony `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` pin. `X86Arena` now
+explicitly clears its native handle in a non-destroying move-reset hook. Copy and
+duplication remain forbidden. Historical timing receipts below the old pin remain
+historical; this change does not requalify their performance under the new compiler.
+
+The existing CI-only native qualifier additionally moves a genuinely published
+arena through a consuming call, observes its cleared source, executes the retained
+entry and retires the destination, repeating 1,000 times. Its duplicate twin must
+fail with the exact arena ownership-lowering diagnostic. Qualification is pending.

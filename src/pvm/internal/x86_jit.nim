@@ -29,6 +29,10 @@ type
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
 proc `=dup`(source: X86Arena): X86Arena {.error.}
+proc `=wasMoved`(owner: var X86Arena) {.nodestroy, inline.} =
+  ## Moving transfers executable authority; the source must no longer own the native allocation.
+  owner.handle = nil
+
 proc `=destroy`(owner: X86Arena) =
   ## A default/moved-from arena has no mapping to retire.
   if owner.handle != nil: destroyNative(owner.handle)
