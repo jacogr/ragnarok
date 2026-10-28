@@ -40,7 +40,7 @@ import ./current_logical as collected_logical
 import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
 import ../state/[proof_service, proof_plan, proof_view, trie_proof]
-import ./[disk_chain, disk_worker]
+import ./[disk_chain, disk_worker, historical_disk, historical_context]
 import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
 import ../codec/bounded
 import ../crypto/primitives
@@ -49,7 +49,7 @@ import ./chain as application_chain
 import ../state/[store, disk_store, accumulation_finalization, accumulation_completion,
     accumulation_publication, accumulation_current_update]
 import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
-    managed_repository, managed_manifest, full_paged_store]
+    managed_repository, managed_manifest, full_paged_store, history_index]
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/transport
@@ -109,6 +109,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   management*: ManagementServer
   telemetry*: Client
   chainText: string
+  historyLimits: StateStoreLimits   # Historical decoding inherits the exact startup complete-map policy.
+  historyLog: LogWriter             # Borrowed writer outlives Services and its joined disk worker.
   canonical: ApplicationChain
   adoption: AccumulationHandoff
   currentAdoption: CurrentAccumulationHandoff
@@ -235,6 +237,14 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.adoption)
   `=destroy`(services.currentAdoption)
 
+proc reportHistoryCleanup(services: Services) =
+  ## Called only after native graph exclusion ends; an actual reclamation failure never revokes a confirmed block.
+  if services.disk.opened:
+    let reason = services.disk.historyCleanupError
+    if reason notin [HistoryError.None, HistoryError.Uninitialized]:
+      log(services.historyLog, LogTarget.Storage, LogLevel.Warn,
+          "Historical cleanup deferred reason=" & $reason)
+
 proc finishDiskRetirement(services: var Services, completion: DiskPublicationCompletion) =
   ## Cleanup has its own receipt: never replace a completed canonical publication with a cleanup failure.
   services.retirementCompletion = completion
@@ -275,6 +285,7 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
 proc finishCurrentDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Collection/join ends all borrows before exact receipt/context checks and canonical/RPC installation.
   if completion.kind == DiskCompletionKind.Completed:
+    services.reportHistoryCleanup() # Collection/join has ended every worker borrow.
     let receipt = completion.value
     services.diskCommitOutcome = receipt # Preserve the actual IO result, including uncertainty, independently of handoff status.
     if receipt.error != DiskChainError.None:
@@ -324,6 +335,7 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
   of ServiceDiskOperation.Publication:
     discard # Preserve the existing legacy receipt/install path below.
   if completion.kind == DiskCompletionKind.Completed:
+    services.reportHistoryCleanup() # Native IO has retired before diagnostics read its passive metadata.
     services.diskCommitOutcome = completion.value
     if completion.value.error == DiskChainError.None:
       let prepared = services.diskPublication.chainUpdate
@@ -428,6 +440,8 @@ proc close*(services: var Services) =
   services.diskFaulted = false
   services.diskTicket = default(DiskPublicationTicket)
   services.canonical = default(ApplicationChain)
+  services.historyLimits = default(StateStoreLimits)
+  services.historyLog = default(LogWriter)
   services.started = false
   services.chainRpc = false
   services.chainText = ""
@@ -587,12 +601,19 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
     if opened.error == DiskChainError.None:
       services.canonical = opened.value # Local restart preserves bounded history and explicit finality.
     else:
+      if options.argumentCount > 0 and options.argument(1) ==
+          "history": return false # Offline reads never create a database or substitute configured genesis.
       if opened.error != DiskChainError.StoreFailure: return false
       if opened.storeFailure.error != DiskStoreError.FileFailure: return false
       if opened.storeFailure.fileError != FileError.IoFailure: return false
       let created = services.initializeSelectedDisk(options.stateDatabase)
       if created.error != DiskChainError.None:
         return false # O_EXCL prevents a failed open from overwriting any existing or concurrently created file.
+  if options.retentionSpecified:
+    let configured = configureDiskHistory(services.disk, services.canonical, services.diskId,
+      options.retentionPolicy, services.diskLimits.contextBytes)
+    if configured.error != DiskChainError.None: return false
+  services.reportHistoryCleanup() # Existing indexed policies remain selected when no override was supplied.
   services.diskRetirement = default(PreparedPagedRetirement)
   services.retirementCompletion = default(DiskPublicationCompletion)
   services.retirementDelayed = false
@@ -636,6 +657,8 @@ proc startServices(services: var Services, options: Options, role: string,
 
   if options.recoveryEnabled and recovered.chainView.retainedCount == 0:
     return false # Parsed import intent cannot silently select ordinary genesis startup.
+  services.historyLimits = limits
+  services.historyLog = options.logWriter
   services.chainText = boundedFile(options.chainPath(), MaxChainBytes)
   var identity = default(ChainIdentity)
   if withState:
@@ -661,6 +684,24 @@ proc startServices(services: var Services, options: Options, role: string,
     if not withState or not services.setupDisk(options, limits, recovered.chainView.retainedCount > 0):
       services.close()
       return false # Backend failure never falls back to ephemeral memory or another chain.
+  elif withState and options.retentionSpecified:
+    # Seed the independent memory index before shrinking its complete-state live window.
+    let indexed = services.canonical.chainView.withHistoricalPolicy(options.retentionPolicy)
+    if indexed.error != HistoryError.None:
+      services.close()
+      return false
+    let policy = options.retentionPolicy
+    let count = if policy.archive: DefaultRetainedBlocks else: min(DefaultRetainedBlocks,
+        policy.retainedBlocks)
+    let window = indexed.value.withRetentionLimit(ElementLimit(count))
+    if window.error != ViewAdvanceError.None:
+      services.close()
+      return false
+    let selected = initApplicationChain(window.value)
+    if selected.error != ApplicationChainError.None:
+      services.close()
+      return false
+    services.canonical = selected.value # Complete current state and header-only validation inputs are unchanged.
   if not services.ui.start(options.uiPort(), options.devUiDirectory()):
     stderr.writeLine("Invalid UI listener or --ui-dev-dir")
     services.close() # Failed startup cannot retain a directory, seed or partially opened listener.
@@ -834,6 +875,38 @@ func chainView*(services: Services): ChainView {.requires: not (services.proofin
     services.preparing or services.publishing).} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
+
+proc historicalSnapshot*(services: var Services, hash: BlockHash): HistoryResult[ApplicationChain] =
+  ## Synchronous startup/offline or explicitly excluded IO only; never call from a dispatcher callback.
+  if not services.started: return historyFailure[ApplicationChain](HistoryError.Uninitialized)
+  if services.light.active: return historyFailure[ApplicationChain](HistoryError.InvalidPolicy)
+  if services.proofing or services.preparing or services.publishing:
+    return historyFailure[ApplicationChain](HistoryError.Busy)
+  if services.diskEnabled:
+    return readDiskHistoricalSnapshot(services.disk, services.canonical, services.diskId, hash,
+      services.historyLimits, services.diskLimits.contextBytes)
+  let saved = services.canonical.chainView.historicalBlockAt(hash)
+  if saved.error != GenesisError.None: return historyFailure[ApplicationChain](
+      HistoryError.Unavailable)
+  let owner = initApplicationChain(genesisView(saved))
+  if owner.error != ApplicationChainError.None: return historyFailure[ApplicationChain](
+      HistoryError.InvalidFormat)
+  historySuccess(owner.value)
+proc historicalSnapshot*(services: var Services, ordinal: HistoryOrdinal): HistoryResult[
+    ApplicationChain] =
+  ## Local ordinal addressing is a disk-index capability; memory callers select an exact block hash.
+  if not services.started: return historyFailure[ApplicationChain](HistoryError.Uninitialized)
+  if services.light.active: return historyFailure[ApplicationChain](HistoryError.InvalidPolicy)
+  if services.proofing or services.preparing or services.publishing:
+    return historyFailure[ApplicationChain](HistoryError.Busy)
+  if not services.diskEnabled: return historyFailure[ApplicationChain](HistoryError.Unavailable)
+  readDiskHistoricalSnapshot(services.disk, services.canonical, services.diskId, ordinal,
+    services.historyLimits, services.diskLimits.contextBytes)
+func historicalCleanupError*(services: Services): HistoryError =
+  ## Observe actual cleanup diagnostics only when no worker can mutate the disk owner.
+  if services.proofing or services.preparing or services.publishing: return HistoryError.Busy
+  if not services.diskEnabled: return HistoryError.Unavailable
+  services.disk.historyCleanupError
 
 proc startCheckpointExport*(services: var Services,
     path: string): ApplicationCheckpointFileError {.raises.} =

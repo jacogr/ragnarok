@@ -42,6 +42,31 @@ proc main() {.raises.} =
   assert replaceAtomicFile("missing-parent/file", bytes, ByteLimit(5)) == AtomicFileError.IoFailure
   assert replaceAtomicFile(directory, bytes, ByteLimit(5)) == AtomicFileError.IoFailure
   assert readFile(FileName) == actual # Failed independent publications cannot truncate the existing complete file.
+  # Exclusive publication never replaces an occupied name, including empty files, aliases and dangling links.
+  assert createAtomicFile(FileName, bytes, ByteLimit(5)) == AtomicFileError.Busy
+  assert readFile(FileName) == actual
+  var fresh = "state-atomic-file-new.bin"
+  defer: discard posix.unlink(fresh.toCString())
+  assert createAtomicFile(fresh, bytes, ByteLimit(4)) == AtomicFileError.LimitExceeded
+  assert createAtomicFile(fresh, bytes, ByteLimit(5)) == AtomicFileError.None
+  assert readFile(fresh) == actual
+  assert createAtomicFile(fresh, [], ByteLimit(0)) == AtomicFileError.Busy
+  var alias = "state-atomic-file-link.bin"
+  assert posix.symlink(path.toCString(), alias.toCString()) == 0
+  defer: discard posix.unlink(alias.toCString())
+  assert createAtomicFile(alias, [], ByteLimit(0)) == AtomicFileError.Busy
+  assert readFile(path) == actual and readFile(alias) == actual
+  var hard = "state-atomic-file-hard.bin"
+  assert posix.link(path.toCString(), hard.toCString()) == 0
+  defer: discard posix.unlink(hard.toCString())
+  assert createAtomicFile(hard, [], ByteLimit(0)) == AtomicFileError.Busy
+  assert readFile(hard) == actual
+  var dangling = "state-atomic-file-dangling.bin"
+  var missing = "state-atomic-file-missing-target"
+  assert posix.symlink(missing.toCString(), dangling.toCString()) == 0
+  defer: discard posix.unlink(dangling.toCString())
+  assert createAtomicFile(dangling, bytes, ByteLimit(5)) == AtomicFileError.Busy
+  assert createAtomicFile(directory, bytes, ByteLimit(5)) == AtomicFileError.Busy
   cycle(bytes)
   let before = getOccupiedMem()
   for iteration in 0..<1000:

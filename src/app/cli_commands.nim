@@ -113,6 +113,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   of "download", "download-current":
     recipe = @["--net-port", "--net-cert", "--net-key", "--net-peer-key", "--net-alpn",
         "--net-timeout-ms", "--download-policy"]
+  of "history": discard # Query selectors belong to validated service controls, with no positional recipe.
   of "check-traces": recipe = @["--trace-policy", "--trace-genesis"]
   of "tiny-devnet init": recipe = @["--devnet-output"]
   of "tiny-devnet identity": recipe = @["--devnet-index"]

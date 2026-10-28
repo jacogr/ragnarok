@@ -13,7 +13,7 @@ zero. These are local resource policies, not protocol constants. The parent dire
 exist. The default `journal` layout uses an exclusively locked regular file and refuses
 symlinks, a competing owner, incompatible identity/schema and corrupt or incomplete journals.
 Each file belongs to one configured genesis header, complete genesis state root and full parameter
-profile. Memory/disk selection is independent of the future full/light node mode.
+profile. Memory/disk selection is independent of the full/light node mode.
 
 To run ephemerally, omit both backend controls or select `--state-storage memory` and omit
 `--state-db`. A memory run does not alter or resume a previous disk database.
@@ -27,15 +27,15 @@ By default it restores up to eight retained blocks and any explicitly selected f
 older finalized anchor. No block becomes finalized merely because it was persisted or reopened.
 RPC starts with this same restored history and exact current snapshot owner.
 
-New history contexts use V2 metadata with an explicit snapshot window and 64-bit counts.
-Existing V1 contexts reopen with their original eight-snapshot policy; the next successful
-durable publication upgrades the context atomically. Opening alone does not rewrite history.
-Older binaries that only understand V1 cannot reopen a V2 context. Keep a pre-upgrade database
-backup if rollback to such a binary is required.
+New live contexts use V3 metadata with separate bounded validation headers and 64-bit snapshot
+counts. Existing V1/V2 contexts remain readable and exact authority is preserved; the next successful
+publication writes V3 atomically. Older binaries cannot open newer formats.
 
-The internal snapshot API permits a different positive window, subject to storage budgets.
-The application default remains eight; archive and retention CLI controls are pending the
-disk historical index. Newly accepted blocks retain exact complete block bytes with their
+Use `--retain-blocks N`, `--archive` or its `--retain-blocks -1` alias for full-node historical retention.
+An indexed database reopened without an explicit selector preserves its stored policy. See
+[historical retention and queries](block-retention.md) for counting, finality/validation exceptions,
+policy transitions, complete-state exports, disk growth and migration/backfill limits.
+Newly accepted blocks retain exact complete block bytes with their
 headers and complete states. Legacy entries and checkpoint seeds explicitly lack block bodies;
 an upgrade does not reconstruct missing bytes. Body-bearing records use single-head V2 metadata,
 which older V1-only binaries cannot reopen. The rolling window remains bounded. See the

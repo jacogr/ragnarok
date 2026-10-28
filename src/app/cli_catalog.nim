@@ -17,7 +17,7 @@ type
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
     Required, None, Disabled, Embedded, RpcPort, McpPort, UiPort, Timeout, PeerMode, Mode, Storage,
     Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
-      Logging, PvmBackend
+      Logging, PvmBackend, RetainedBlocks
   OptionSpec* = object ## Immutable catalog row; an empty commands string denotes shared service controls.
     name*, value*, description*, commands*: string
     fallback*: OptionDefault
@@ -50,6 +50,7 @@ const
     CommandSpec(name: "mesh", description: "Run a retained two-way peer workload."),
     CommandSpec(name: "download", description: "Download and adopt sealed children using an explicit policy."),
     CommandSpec(name: "download-current", description: "Download and execute children using a current download policy."),
+    CommandSpec(name: "history", description: "Read an existing full database block/state; optionally export its checkpoint."),
     CommandSpec(name: "check-traces", description: "Validate consecutive trace files against an explicit Genesis."),
     CommandSpec(name: "tiny-devnet init", description: "Write a tiny chain JSON file."),
     CommandSpec(name: "tiny-devnet identity", description: "Print one development validator identity."),
@@ -207,6 +208,21 @@ const
       repeatable: false),
 
     # State storage options. Keep additions in this group.
+    OptionSpec(name: "--retain-blocks", value: "N", group: OptionGroup.Storage,
+      description: "Positive accepted block/state count including head; -1 selects archive. Full state only.",
+      fallback: OptionDefault.RetainedBlocks, commands: "", repeatable: false),
+    OptionSpec(name: "--archive", value: "", group: OptionGroup.Storage,
+      description: "Keep every future accepted full block/state; conflicts with --retain-blocks.",
+      fallback: OptionDefault.Disabled, commands: "", repeatable: false),
+    OptionSpec(name: "--history-block", value: "HASH", group: OptionGroup.Storage,
+      description: "history only: exact 64-digit lowercase header hash; select this or --history-ordinal.",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+    OptionSpec(name: "--history-ordinal", value: "NUMBER", group: OptionGroup.Storage,
+      description: "history only: positive local acceptance ordinal (not slot or global height).",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+    OptionSpec(name: "--history-checkpoint", value: "FILE", group: OptionGroup.Storage,
+      description: "history only: atomically export the selected complete-state checkpoint (16 MiB cap).",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
     OptionSpec(name: "--state-storage", value: "memory|disk", group: OptionGroup.Storage,
       description: "Disk requires --state-db and --with-state.", fallback: OptionDefault.Storage,
       commands: "",
@@ -405,3 +421,4 @@ proc defaultValue*(spec: OptionSpec): string =
   of OptionDefault.Blocks: $DefaultDownloadBlocks
   of OptionDefault.Logging: $DefaultLogLevel
   of OptionDefault.PvmBackend: $DefaultPvmBackend
+  of OptionDefault.RetainedBlocks: $DefaultRetainedBlocks

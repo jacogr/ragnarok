@@ -84,8 +84,8 @@ proc parent(path: string): string =
   for index in 0..<slash:
     result.add(path[index]) # The discovered separator proves each copied parent coordinate.
 
-proc replaceAtomicFile*(path: string, bytes: openArray[byte],
-    limit: ByteLimit): AtomicFileError =
+proc publishAtomicFile(path: string, bytes: openArray[byte],
+    limit: ByteLimit, replace: bool): AtomicFileError =
   ## Preflight path and complete payload before creating a sibling; perform file-sync/rename/directory-sync.
   if path.len == 0 or path.len > high(int) - 16:
     return AtomicFileError.InvalidPath # Prove suffix arithmetic before any owned path construction.
@@ -119,12 +119,26 @@ proc replaceAtomicFile*(path: string, bytes: openArray[byte],
   if posix.close(closing) != 0:
     return AtomicFileError.IoFailure # Report the close refusal before publication.
   var destination = path
-  if replaceFile(temporaryName, destination.toCString()) != 0:
-    return AtomicFileError.IoFailure # The prior destination remains published on ordinary rename refusal.
+  if replace:
+    if replaceFile(temporaryName, destination.toCString()) != 0:
+      return AtomicFileError.IoFailure # The prior destination remains published on ordinary rename refusal.
+  else:
+    # Hard-link publication creates exactly one new name atomically; an existing inode or symlink is never replaced.
+    if posix.link(temporaryName, destination.toCString()) != 0:
+      return if errno() == EEXIST: AtomicFileError.Busy else: AtomicFileError.IoFailure
+    if posix.unlink(temporaryName) != 0:
+      return AtomicFileError.PublishedUnsynced # The complete destination is already visible even if sibling cleanup failed.
   renamed = true
   if synchronize(directory) != 0:
     return AtomicFileError.PublishedUnsynced # New complete bytes are visible, but durability must not be claimed.
   AtomicFileError.None
+
+proc replaceAtomicFile*(path: string, bytes: openArray[byte], limit: ByteLimit): AtomicFileError =
+  ## Atomically replace an explicitly authorized target after syncing complete bytes; preserve existing replacement semantics.
+  publishAtomicFile(path, bytes, limit, true)
+proc createAtomicFile*(path: string, bytes: openArray[byte], limit: ByteLimit): AtomicFileError =
+  ## Publish a new synced file without clobbering any existing file, directory or symlink; an occupied name returns Busy.
+  publishAtomicFile(path, bytes, limit, false)
 
 proc syncAtomicFile*(path: string): AtomicFileError =
   ## Confirm an already visible regular file and its parent directory before a caller reuses older transaction data.
