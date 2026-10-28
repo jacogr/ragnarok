@@ -2441,3 +2441,10 @@ Receipts:`build/pvm-arm64-jit/post-merge/read-widths/`, with the complete cohort
 `measured-applications`; original report paths retain their pre-archive locations. No Linux timing
 or correctness claim is made for the rejected runtime; the retained runtime is byte-identical to
 the reconciled parent, whose native qualification passed.
+
+Native restacking after the tooling reconciliation preserves measured source identity: rebased
+trial `27a9c1cd2600999419faa671b3d74ab74a70385b` has identical production/native/witness bytes to measured `b5b8ee3e`.
+The retained runtime equals parent `b1171011350b044f78523b659842ab859ba366f4` byte-for-byte. Restored native/refused witnesses
+pass507/0literal cases and30,144complete-state load cases each. Twelve focused Python checks
+pass; a separate26-call replay on the sealed identical images verifies explicit interpreted
+zero-native and JIT-positive profiling policies, with all clocks discarded.
