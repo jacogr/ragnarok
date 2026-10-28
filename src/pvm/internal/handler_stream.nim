@@ -2199,18 +2199,34 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     let terminal = if int(ending) < f.sites.len:
         f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-    if count >= 3 and count < 64 and terminal == 120 and
+    if count < 64 and terminal == 120 and
         not (int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]):
-      # Only one non-exiting terminal byte store can follow this already reserved pure prefix; no header is crossed.
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if not fact.ending and fact.fallthrough:
-        var words = armStoreInstructions(native, fact.args.slots,
-          uint32(fact.args.x and 0xffffffff'u64), ending+1)
-        if not publishArmEntry(jit, offset, ending+1, count+1, words): return offset
-        if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-        f.armOriginal[int(offset)] = f.handlers[int(offset)]
-        f.handlers[int(offset)] = flatArmStore
-        return ending+1
+      # Exactly one store may separate pure prefix/suffix work; every guard still precedes the only memory mutation.
+      let storeOffset = ending
+      let storeFact = f.plan.facts[int(f.sites[int(storeOffset)])]
+      var following = ending+1
+      var operations = count+1
+      if not storeFact.ending and storeFact.fallthrough:
+        while int(following) < f.sites.len and operations < 64:
+          # A second memory operation, header, host or branch would invalidate transactional replay and ends this span.
+          if int(following)+1 < f.sites.len and f.sites[int(following)] == f.sites[int(
+              following)+1]: break
+          let suffix = f.plan.facts[int(f.sites[int(following)])]
+          if suffix.ending or not suffix.fallthrough or not supportedArmOpcode(suffix.opcode): break
+          inc following
+          inc operations
+        if operations >= 4:
+          var span = takeArmMemoryPrefix(native)
+          emitArmByteStore(span, storeFact.args.slots, uint32(storeFact.args.x and 0xffffffff'u64))
+          for current in storeOffset+1..<following:
+            let suffix = f.plan.facts[int(f.sites[int(current)])]
+            emitArmReadArithmetic(span, suffix.opcode, suffix.args.slots, suffix.args.x)
+          var words = armReadInstructions(span, following)
+          if not publishArmEntry(jit, offset, following, operations, words): return offset
+          if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+          f.armOriginal[int(offset)] = f.handlers[int(offset)]
+          f.handlers[int(offset)] = flatArmStore
+          return following
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):

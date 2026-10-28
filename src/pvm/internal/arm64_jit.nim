@@ -40,6 +40,7 @@ type
   ArmReadSpan* = object ## Cold guarded-memory builder; speculative arithmetic commits registers only after every memory guard.
     body: ArmBlock
     guards: seq[ArmReadGuard]
+    stored: bool # No later guard/memory operation may follow the sole committed byte store.
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
@@ -269,6 +270,7 @@ proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
 
 proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
   ## Address aliases consume the current resident value before the load writes its destination.
+  assert not span.stored
   let source = armRead(span.body, slots.bIndex)
   let destination = armWrite(span.body, slots.aIndex)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots modulo-2^32 base.
@@ -300,6 +302,7 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
 
 proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last: uint32) =
   ## A stable guest base admits one nonwrapping readable window before any speculative register mutation.
+  assert not span.stored
   assert span.body.words.len == 0 and last >= first and last-first <= 4088
   let distance = last-first
   let source = armRead(span.body, slot)
@@ -337,6 +340,7 @@ proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last:
 
 proc emitArmWindowRead*(span: var ArmReadSpan, slot: range[0..12], displacement: uint32) =
   ## One earlier whole-window proof covers this aligned relative offset, including an unaligned original base.
+  assert not span.stored
   assert displacement <= 4088 and displacement mod 8 == 0
   let destination = armWrite(span.body, slot)
   span.body.words.add(0xf9400220'u32 or ((displacement div 8) shl 10) or destination)
@@ -369,11 +373,13 @@ proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
     result[at] = result[at] or (if guard.conditional: distance shl 5 else: distance)
 
 
-proc armStoreInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32): seq[uint32] =
-  ## A pure prefix and one terminal byte store publish only after exact writable extent and dirty-word guards.
-  var span = default(ArmReadSpan)
-  span.body = move(fragment)
+proc takeArmMemoryPrefix*(fragment: var ArmBlock): ArmReadSpan =
+  ## Move a pure speculative prefix into the guarded-memory builder without copying its words or publishing registers.
+  ArmReadSpan(body: move(fragment), guards: @[], stored: false)
+
+proc emitArmByteStore*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+  ## Every guard precedes the sole byte mutation; only pure non-exiting arithmetic may follow it.
+  assert not span.stored
   let source = armRead(span.body, slots.bIndex)
   let value = armRead(span.body, slots.aIndex)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # Snapshot the resident modulo32 address base in W3.
@@ -417,6 +423,13 @@ proc armStoreInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
   span.body.words.add(0xf9000041'u32) # STR X1,[X2] follows the checked worker's mark-before-byte order.
   span.body.words.add(0x9e660001'u32) # FMOV X1,D0 restores the fully admitted byte pointer.
   span.body.words.add(0x39000020'u32 or value) # STRB Wvalue,[X1] cannot cross a page boundary.
+  span.stored = true
+
+proc armStoreInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
+    displacement, ending: uint32): seq[uint32] =
+  ## The original prefix-only direct witness retains the same guard and complete publication finish.
+  var span = takeArmMemoryPrefix(fragment)
+  emitArmByteStore(span, slots, displacement)
   armReadInstructions(span, ending)
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,

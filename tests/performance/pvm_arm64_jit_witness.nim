@@ -1626,59 +1626,63 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
         byte(addressSlot*16+valueSlot), 0], @[0'u8]])
       let arithmetic = instructionRegisters(instruction(source, CodeAddress(0)))
       let slots = instructionRegisters(instruction(source, CodeAddress(9)))
-      for mode in 0..<10:
-        # Full64 address inputs and displacements wrap once; separate modes refuse before any publication.
-        let rawBase = case mode
-          of 1: 65535'u64
-          of 2: 0xffffffff'u64
-          of 3: 65600'u64
-          of 4: 0xfffffff0'u64
-          of 7: 0x40011'u64
-          of 8: 0x3ffff'u64
-          of 9: 0x100010011'u64
-          else: 65553'u64
-        let displacement = if mode == 4: 65552'u32 else: 0'u32
-        let address = (rawBase+uint64(displacement)) and 0xffffffff'u64
-        let first = if mode == 7: 0x40000'u64 elif mode == 8: 0x3ffc0'u64 else: 65536'u64
-        let success = mode in [0, 4, 7, 8, 9]
-        let jit = newArmJit()
-        assert armEntry(jit, 0, 1) == 0
-        var body = default(ArmBlock)
-        for index in 0..<3: emitArmOperation(body, 149, arithmetic, 1)
-        var words = armStoreInstructions(body, slots, displacement, 37)
-        assert publishArmEntry(jit, 0, 37, 4, words)
-        for selected in 0..<2:
-          # Stack and RW share exact access proofs; no read-only descriptor is ever admitted for stores.
-          var bytes = default(array[64, byte])
-          for index in 0..<64: bytes[index] = byte(index+17)
-          let originalBytes = bytes
-          var dirty = [0x8000000000000000'u64, 0x10'u64]
-          let originalDirty = dirty
-          var regions = default(array[3, array[3, uint64]])
-          if mode != 5: regions[selected] = [first, 64'u64, cast[uint64](addr bytes[0])]
-          regions[2] = [0'u64, (if mode == 6: 0'u64 else: 2'u64), cast[uint64](addr dirty[0])]
-          var registers = default(RegisterFile)
-          for index in 0..<13: registers[index] = RegisterValue(0x123456789abc0010'u64+uint64(index))
-          registers[addressSlot] = RegisterValue(rawBase-(if valueSlot ==
-              addressSlot: 3'u64 else: 0'u64))
-          let originalRegisters = registers
-          var expectedRegisters = registers
-          var expectedBytes = bytes
-          var expectedDirty = dirty
-          if success:
-            # Three complete wrapping increments precede the store; failed speculation commits none of them.
-            let stored = uint64(registers[valueSlot])+3
-            expectedRegisters[valueSlot] = RegisterValue(stored)
-            assert address >= first and address-first < 64
-            expectedBytes[int(address-first)] = byte(stored and 255)
-            let word = int(address shr 18)
-            assert word >= 0 and word < expectedDirty.len
-            expectedDirty[word] = expectedDirty[word] or (1'u64 shl int((address shr 12) and 63))
-          assert callArmMemory(jit, 0, registers, regions) == (if success: 37'u32 else: high(uint32))
-          assert registers == expectedRegisters and bytes == expectedBytes and dirty == expectedDirty
-          if not success:
-            assert registers == originalRegisters and bytes == originalBytes and dirty == originalDirty
-          inc storeLiteralCases
+      for placement in 0..<4:
+        for mode in 0..<10:
+          # Full64 address inputs and displacements wrap once; separate modes refuse before any publication.
+          let rawBase = case mode
+            of 1: 65535'u64
+            of 2: 0xffffffff'u64
+            of 3: 65600'u64
+            of 4: 0xfffffff0'u64
+            of 7: 0x40011'u64
+            of 8: 0x3ffff'u64
+            of 9: 0x100010011'u64
+            else: 65553'u64
+          let displacement = if mode == 4: 65552'u32 else: 0'u32
+          let address = (rawBase+uint64(displacement)) and 0xffffffff'u64
+          let first = if mode == 7: 0x40000'u64 elif mode == 8: 0x3ffc0'u64 else: 65536'u64
+          let success = mode in [0, 4, 7, 8, 9]
+          let jit = newArmJit()
+          assert armEntry(jit, 0, 1) == 0
+          var body = default(ArmBlock)
+          for index in 0..<placement: emitArmOperation(body, 149, arithmetic, 1)
+          var span = takeArmMemoryPrefix(body)
+          emitArmByteStore(span, slots, displacement)
+          for index in placement..<3: emitArmReadArithmetic(span, 149, arithmetic, 1)
+          var words = armReadInstructions(span, 37)
+          assert publishArmEntry(jit, 0, 37, 4, words)
+          for selected in 0..<2:
+            # Stack and RW share exact access proofs; no read-only descriptor is ever admitted for stores.
+            var bytes = default(array[64, byte])
+            for index in 0..<64: bytes[index] = byte(index+17)
+            let originalBytes = bytes
+            var dirty = [0x8000000000000000'u64, 0x10'u64]
+            let originalDirty = dirty
+            var regions = default(array[3, array[3, uint64]])
+            if mode != 5: regions[selected] = [first, 64'u64, cast[uint64](addr bytes[0])]
+            regions[2] = [0'u64, (if mode == 6: 0'u64 else: 2'u64), cast[uint64](addr dirty[0])]
+            var registers = default(RegisterFile)
+            for index in 0..<13: registers[index] = RegisterValue(0x123456789abc0010'u64+uint64(index))
+            registers[addressSlot] = RegisterValue(rawBase-(if valueSlot ==
+                addressSlot: uint64(placement) else: 0'u64))
+            let originalRegisters = registers
+            var expectedRegisters = registers
+            var expectedBytes = bytes
+            var expectedDirty = dirty
+            if success:
+              # The stored byte uses only earlier increments; successful suffix increments publish afterward, while refusal commits nothing.
+              let stored = uint64(registers[valueSlot])+uint64(placement)
+              expectedRegisters[valueSlot] = RegisterValue(uint64(registers[valueSlot])+3)
+              assert address >= first and address-first < 64
+              expectedBytes[int(address-first)] = byte(stored and 255)
+              let word = int(address shr 18)
+              assert word >= 0 and word < expectedDirty.len
+              expectedDirty[word] = expectedDirty[word] or (1'u64 shl int((address shr 12) and 63))
+            assert callArmMemory(jit, 0, registers, regions) == (if success: 37'u32 else: high(uint32))
+            assert registers == expectedRegisters and bytes == expectedBytes and dirty == expectedDirty
+            if not success:
+              assert registers == originalRegisters and bytes == originalBytes and dirty == originalDirty
+            inc storeLiteralCases
 echo "ARM_BYTE_STORE_LITERAL_CASES,", storeLiteralCases
 
 var storeControls = 0
@@ -1698,38 +1702,67 @@ for layout in 0..<8:
       var extra = image
       extra.index = PageIndex(20)
       images.add(extra)
-  for hosted in [false, true]:
-    var parts = @[@[149'u8, 0, 1], @[149'u8, 0, 1], @[149'u8, 0, 1], @[120'u8, 0x10, 0]]
-    if hosted: parts.add(@[10'u8, 7])
-    parts.add(@[0'u8])
-    let program = owner(parts)
-    for address in [0'u64, 65535, base, base+4095, base+4096, 0xffffffff'u64,
-        base+17+0x100000000'u64]:
-      let plan = newFlatPlan(program, GasCycleLimit(100000))
-      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
-      info.registers[0] = RegisterValue(0x123456789abcdef0'u64)
-      info.registers[1] = RegisterValue(address)
-      var frame = newFlatFrame(plan, images, info)
-      verifyControl(frame, program, info, 100, images)
-      when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
-        if layout in [1, 3, 5, 6, 7] and (address == base or address == base+17+0x100000000'u64):
-          # A genuine writable prefix/store is one native call; fallback-only tests cannot satisfy this receipt.
-          let stats = flatArmStatistics(frame)
-          assert stats[1] == 1 and stats[2] == 4
-      for paid in [false, true]:
-        for gas in [0'u64, 1, 3, 4, 5, 1000]:
-          for budget in 0'u64..7'u64:
-            # Every source attempt, initial paid state and gas prefix matches the independent one-step engine.
-            var input = info
-            input.gas = MachineGas(gas)
-            input.blockCharged = paid
-            verifyControl(frame, program, input, budget, images)
-            inc storeControls
-      var cache = takeFlatStream(frame)
-      var fresh = newFlatFrame(plan, images, info)
-      restoreFlatStream(fresh, cache)
-      verifyControl(fresh, program, info, 100, images)
-      assert replaceFlatMemoryChecked(fresh, [], info) == FlatError.None
-      verifyControl(fresh, program, info, 100)
-      storeControls+=2
+  for placement in 0..<4:
+    for hosted in [false, true]:
+      var parts: seq[seq[byte]] = @[]
+      for index in 0..<placement: parts.add(@[149'u8, 0, 1])
+      parts.add(@[120'u8, 0x10, 0])
+      for index in placement..<3: parts.add(@[149'u8, 0, 1])
+      if hosted: parts.add(@[10'u8, 7])
+      parts.add(@[0'u8])
+      let program = owner(parts)
+      for address in [0'u64, 65535, base, base+4095, base+4096, 0xffffffff'u64,
+          base+17+0x100000000'u64]:
+        let plan = newFlatPlan(program, GasCycleLimit(100000))
+        var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+        info.registers[0] = RegisterValue(0x123456789abcdef0'u64)
+        info.registers[1] = RegisterValue(address)
+        var frame = newFlatFrame(plan, images, info)
+        verifyControl(frame, program, info, 100, images)
+        when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+          if layout in [1, 3, 5, 6, 7] and (address == base or address == base+17+0x100000000'u64):
+            # A genuine writable prefix/store is one native call; fallback-only tests cannot satisfy this receipt.
+            let stats = flatArmStatistics(frame)
+            assert stats[1] == 1 and stats[2] == 4
+        for paid in [false, true]:
+          for gas in [0'u64, 1, 3, 4, 5, 1000]:
+            for budget in 0'u64..7'u64:
+              # Every source attempt, initial paid state and gas prefix matches the independent one-step engine.
+              var input = info
+              input.gas = MachineGas(gas)
+              input.blockCharged = paid
+              verifyControl(frame, program, input, budget, images)
+              inc storeControls
+        var cache = takeFlatStream(frame)
+        var fresh = newFlatFrame(plan, images, info)
+        restoreFlatStream(fresh, cache)
+        verifyControl(fresh, program, info, 100, images)
+        assert replaceFlatMemoryChecked(fresh, [], info) == FlatError.None
+        verifyControl(fresh, program, info, 100)
+        storeControls+=2
 echo "ARM_BYTE_STORE_CONTROL_CASES,", storeControls
+
+
+var secondStoreControls = 0
+let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],
+    @[149'u8, 0, 1], @[120'u8, 0x20, 0], @[0'u8]])
+var storePage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+for index in 0..<4096: storePage.bytes[index] = byte(index mod 256)
+for secondAddress in [65535'u64, 0xffffffff'u64, 69632'u64, 69631'u64]:
+  # A later checked store can fault after the first native store; its earlier byte and register effects must remain visible.
+  let plan = newFlatPlan(twoStores, GasCycleLimit(100000))
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+  info.registers[0] = RegisterValue(0xb0)
+  info.registers[1] = RegisterValue(65553)
+  info.registers[2] = RegisterValue(secondAddress)
+  var frame = newFlatFrame(plan, [storePage], info)
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 4, 5, 1000]:
+      for budget in 0'u64..7'u64:
+        var input = info
+        input.gas = MachineGas(gas)
+        input.blockCharged = paid
+        verifyControl(frame, twoStores, input, budget, [storePage])
+        inc secondStoreControls
+echo "ARM_BYTE_STORE_SECOND_EXIT_CASES,", secondStoreControls
