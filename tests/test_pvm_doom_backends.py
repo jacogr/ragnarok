@@ -65,8 +65,8 @@ class DoomBackendTests(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = job_section(text, 'pvm-doom-backends')
         self.assertIn('Interop / PVM Backends', section)
-        self.assertIn('ubuntu-26.04-arm', section)
-        self.assertIn('ubuntu-26.04', section)
+        self.assertIn('&ubuntu-arm-version ubuntu-26.04-arm', section)
+        self.assertIn('os: *ubuntu-x86-version', section)
         self.assertIn('make check-pvm-doom-backends', section)
         self.assertIn('needs: [interop, pvm-doom-backends]', job_section(text, 'interop-status'))
         for context in (event_context('push'), event_context('workflow_dispatch', suite='pvm-backends'),
