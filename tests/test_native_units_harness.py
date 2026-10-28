@@ -371,16 +371,17 @@ class NativeUnitHarness(unittest.TestCase):
                         if profile is not None:
                             # Native-free socket/disabled-provider cases must not acquire an accidental crypto dependency.
                             self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
-                            include = 'bandersnatch' if name == 'bandersnatch_owners' else 'quic' if profile == 'quic' else 'crypto'
-                            self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
                             # Combined service suites intentionally select observed primitives and QUIC together.
                             selected = native_tests.NATIVE_REQUIREMENTS[name]
                             for library, path in libraries.items():
                                 self.assertEqual('--forward:--passL:'+str(path.resolve()) in args,
                                                  library in selected['libraries'])
 
-                        else:
-                            self.assertFalse(any('--passC:-I' in arg for arg in args))
+                        # Header-only JIT profiles also declare includes without selecting a library.
+                        selected = native_tests.NATIVE_REQUIREMENTS[name]
+                        self.assertEqual({arg for arg in args if arg.startswith('--forward:--passC:-I')},
+                                         {'--forward:--passC:-I'+str(ROOT/'native'/include)
+                                          for include in selected['includes']})
                         self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
                         if name in ('validator_state', 'ticket_admission', 'ticket_state'):
                             # Rotation combines real ring primitives with independent setup/commit/hash refusal observers.
