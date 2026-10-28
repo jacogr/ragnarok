@@ -137,7 +137,7 @@ class NimonyCISafeguards(unittest.TestCase):
         groups = {'compile': ['smoke', 'modules', 'python'],
                   'interop': ['pvm-reference', 'telemetry-interop'],
                   'perf': ['bench-pvm-all', 'bench-storage'],
-                  'build': ['docker', 'binary', 'binary']}
+                  'build': ['binary', 'binary']}
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
                       event_context('pull_request', 'labeled', 'ci:full')):
             # Full requests include every family, with both native binary hosts retained.
@@ -280,7 +280,7 @@ class NimonyCISafeguards(unittest.TestCase):
         seen = set()
         for merged in (False, True):
             # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
-            for label in ('ci:full', 'ci:unit', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'unrelated'):
+            for label in ('ci:full', 'ci:unit', 'ci:docker', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'unrelated'):
                 event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
                 event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
                 for job in jobs:
@@ -296,7 +296,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
-                    "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
+                    "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
@@ -445,14 +445,14 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(status == 0, result == 'success')
 
     def test_binary_builds_match_pinned_hosts_and_publish_only_archives(self):
-        """The combined Build matrix keeps Docker and both supported native archive hosts distinct."""
+        """Linux owns its native archive and isolated Docker build; macOS keeps its qualified host."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = family_section(text, 'build', 'binary', 'Linux')
+        section = family_section(text, 'build', 'binary', 'Linux & Docker')
         rows = selected_families(text, 'build', event_context())
         binary = [row for row in rows if row['group'] == 'binary']
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
         # Available compiler archives also serve local experiments; CI release hosts are qualified explicitly.
-        archive_hosts = {'Linux': ('linux-amd64', 'Linux', 'x86_64'),
+        archive_hosts = {'Linux & Docker': ('linux-amd64', 'Linux', 'x86_64'),
                          'macOS': ('macos-arm64', 'Darwin', 'arm64')}
         self.assertEqual({row['name']: row['platform'] for row in binary},
                          {name: values[0] for name, values in archive_hosts.items()})
@@ -463,11 +463,11 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertEqual(selected['system'], system)
             self.assertIn(machine, selected['machines'])
         self.assertEqual([(row['name'], row['os']) for row in rows],
-                         [('Docker', 'ubuntu-latest'), ('Linux', 'ubuntu-24.04'), ('macOS', 'macos-15')])
+                         [('Linux & Docker', 'ubuntu-latest'), ('macOS', 'macos-15')])
         self.assertIn('fail-fast: false', section)
         self.assertIn('name: Build / ${{ matrix.family.name }}', section)
         self.assertIn('run: make package-binary', section)
-        self.assertNotIn('run: make check-docker', section)
+        self.assertIn('run: make check-docker', section)
         self.assertIn('if-no-files-found: error', section)
         self.assertIn('build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256', section)
         self.assertNotIn('contents: write', text)
@@ -476,6 +476,46 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('package-binary: export BINARY_PACKAGE = 1', make)
         self.assertIn('package-binary: build\n\t$(PYTHON) tools/package_binary.py', make)
         self.assertIn('if [ "$(BINARY_PACKAGE)" = 1 ]; then packages="$$packages patchelf"; fi;', make)
+
+    def test_linux_docker_runner_and_focused_requests(self):
+        """Full Build reuses one Linux runner; Docker-only requests and failure evidence stay scoped."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        linux = family_section(text, 'build', 'binary', 'Linux & Docker')
+        macos = family_section(text, 'build', 'binary', 'macOS')
+        self.assertEqual(linux.count('run: make package-binary\n'), 1)
+        self.assertEqual(linux.count('run: make check-docker\n'), 1)
+        self.assertLess(linux.index('run: make package-binary\n'), linux.index('run: make check-docker\n'))
+        self.assertNotIn('run: make check-docker', macos)
+        self.assertIn('FROM ubuntu:24.04@', (ROOT/'Dockerfile').read_text())
+        self.assertIn('build\n', (ROOT/'.dockerignore').read_text())
+        for context in (event_context('workflow_dispatch', suite='docker'),
+                        event_context('pull_request', 'labeled', 'ci:docker')):
+            # The pre-existing Docker-only selector never expands into either native archive build.
+            rows = selected_families(text, 'build', context)
+            self.assertEqual(rows, [dict(name='Docker', group='docker', os='ubuntu-latest', platform='')])
+            focused = family_section(text, 'build', 'docker', context=context)
+            self.assertEqual(focused.count('run: make check-docker\n'), 1)
+            self.assertNotIn('run: make package-binary', focused)
+            self.assertNotIn('name: Retain downloadable binary archive', focused)
+            for job in ('compile', 'interop', 'perf'):
+                # Label-triggered Docker validation cannot accidentally request an unrelated heavy group.
+                if context['github']['event_name'] == 'pull_request':
+                    self.assertEqual(selected_families(text, job, context), [])
+        for path in ('build/ci/docker-build.log', 'build/ci/docker-smoke.log',
+                     'build/ci/*.log', 'build/crypto/build.log', 'build/quic/build.log'):
+            self.assertIn(path, linux)
+        self.assertIn('name: docker-${{ github.run_attempt }}', linux)
+        self.assertIn('name: binary-${{ matrix.family.platform }}-diagnostics-', linux)
+        self.assertNotIn('continue-on-error', linux)
+        self.assertIn("if: ${{ !cancelled() && (matrix.family.group == 'docker'", linux)
+        cancelled = family_section(text, 'build', 'binary', 'Linux & Docker',
+                                   context=dict(event_context(), cancelled=True))
+        self.assertNotIn('run: make check-docker', cancelled)
+        # The explicit status condition lets Docker execute after a failed earlier archive/summary step.
+        step = linux.split('      - name: Build and smoke-test Docker image\n', 1)[1].split('      - name:', 1)[0]
+        guard = re.search(r'        if: (.+)', step).group(1)
+        self.assertTrue(expression(guard, dict(event_context(), cancelled=False,
+            matrix=dict(family=dict(group='binary', platform='linux-amd64')))))
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):
@@ -486,7 +526,7 @@ class NimonyCISafeguards(unittest.TestCase):
                                     ('compile', 'modules', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
-                                    ('perf', 'bench-storage', 'bench-storage-growth'), ('build', 'docker', 'check-docker')]:
+                                    ('perf', 'bench-storage', 'bench-storage-growth'), ('build', 'binary', 'check-docker')]:
             section = family_section(text, job, family)
             self.assertEqual(section.count('name: Validate verification inventory'), 1)
             self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make '+target))
@@ -547,7 +587,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling']),
                              ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage']),
-                             ('build', ['Docker', 'Linux', 'macOS'])]:
+                             ('build', ['Linux & Docker', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))
             self.assertEqual(text.count('    name: '+group.title()+' / ${{ matrix.family.name }}'), 1)

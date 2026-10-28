@@ -26,9 +26,11 @@ and `make modules` aliases `check-modules`. The additional `check-telemetry-inte
 builds the pinned JAM Tart collector and verifies interoperability, including failed handshakes
 and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 
-The additional `check-docker` job builds and smoke-tests the [container image](containers.md)
-on master pushes, full requests and manual `build`/`docker` requests, retaining logs without publishing an image.
-The Build group also checks [downloadable binary archives](binaries.md) on Linux x86-64 and macOS ARM64.
+The **Build / Linux & Docker** job packages the Linux x86-64 [binary archive](binaries.md) and
+then builds/smoke-tests the [container image](containers.md) on one `ubuntu-latest` runner.
+**Build / macOS** packages the ARM64 archive separately. Master pushes, full requests and manual
+`build` requests run both jobs. `ci:docker` and manual `docker` requests run only the container
+check. Separate archives and native/Docker diagnostics are retained; no image is published.
 
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
@@ -52,6 +54,7 @@ In the PR sidebar, add one label to request heavier verification of the current 
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
+| `ci:docker` | Docker image build and selftests only, without native archive packaging |
 | `ci:perf` | All Perf jobs, including interpreted PVM and DOOM reference comparisons |
 | `ci:full` | All verification, Interop and Perf jobs |
 

@@ -31,7 +31,7 @@ permissions:
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -482,32 +482,19 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   build:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'docker' && '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""}]' || '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""},{"name":"Linux","group":"binary","os":"ubuntu-24.04","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]') }}
+        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","os":"ubuntu-latest","platform":""}]' || '[{"name":"Linux & Docker","group":"binary","os":"ubuntu-latest","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]') }}
     runs-on: ${{ matrix.family.os }}
     steps:
       - *checkout
       - *python
       - name: Validate verification inventory
         run: *inventory-run
-      - name: Build and smoke-test Docker image
-        if: ${{ matrix.family.group == 'docker' }}
-        run: make check-docker
-      - name: Retain Docker build diagnostics
-        if: ${{ always() && matrix.family.group == 'docker' }}
-        uses: *upload-artifact
-        with:
-          name: docker-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/docker-build.log
-            build/ci/docker-smoke.log
       - name: Build, package and smoke-test relocated peer
         if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
@@ -534,6 +521,20 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+      # The image keeps its isolated build and still runs after a native archive failure.
+      - name: Build and smoke-test Docker image
+        if: ${{ !cancelled() && (matrix.family.group == 'docker' || matrix.family.platform == 'linux-amd64') }}
+        run: make check-docker
+      - name: Retain Docker build diagnostics
+        if: ${{ always() && (matrix.family.group == 'docker' || matrix.family.platform == 'linux-amd64') }}
+        uses: *upload-artifact
+        with:
+          name: docker-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/docker-build.log
+            build/ci/docker-smoke.log
 
   build-status:
     name: Build
