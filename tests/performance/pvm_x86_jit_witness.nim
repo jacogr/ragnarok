@@ -492,7 +492,8 @@ when not defined(pvmX86JitRefuse):
     discard x86Entry(jit, 0, 32)
     var warm = default(X86Block)
     for operation in 0..<4: emitX86Operation(warm, 149, addSlots, 1)
-    assert publishX86Entry(jit, 0, 4, 4, warm)
+    if active < 3: assert publishX86Entry(jit, 0, 4, 4, warm)
+    else: assert jit.fragments == 0 # A valid three-block region must allocate without any prior ordinary leaf.
     var blocks = default(array[3, X86RegionBlock])
     for index in 0..<active:
       # Each block increments R0 and branches on R0<R1, with distinct gas prices and original header coordinates.

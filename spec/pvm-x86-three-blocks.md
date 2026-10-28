@@ -47,3 +47,12 @@ Attempt40773957482 exposed the same top-level `when` scope issue for two other
 capacity locals. The complete capacity check now lives in a procedure with explicit
 slot arguments, eliminating module-level local collisions as a class. All controls
 remain; neither compile failure is a passing native receipt.
+
+Native attempt40774762322 passed all original/literal/raw-context matrices before
+the new source-shape warm assertion failed. Inspection identifies a missing
+allocation path: these exact short shapes intentionally admit no ordinary leaf,
+while the old region publisher required an existing arena. Region publication now
+uses the same lazy exclusive arena allocation/sticky refusal contract as ordinary
+publication, preserving the explicit refusal define. The raw three-block contexts
+also start with zero ordinary fragments to prove this prerequisite independently.
+Focused state/warm diagnostics remain; no source or native assertion is weakened.

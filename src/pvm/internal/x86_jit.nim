@@ -294,6 +294,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
   ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.
   assert jit.region.status == 0
   jit.region.status = 1
+  if jit.unavailable: return false
   var code = default(X86Block)
   # RDI is the borrowed register array, RSI the fresh six-word context; bodies touch only RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
@@ -362,7 +363,13 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
     let origin = fix.at+4
     let relative = if target >= origin: uint32(target-origin) else: 0'u32-uint32(origin-target)
     for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
-  if jit.arena.handle == nil: return false
+  if jit.arena.handle == nil:
+    # Exact charged shapes may have no admitted ordinary leaf; region publication owns the same lazy allocation/refusal contract.
+    when defined(pvmX86JitRefuse): discard
+    else: jit.arena.handle = createNative()
+  if jit.arena.handle == nil:
+    jit.unavailable = true
+    return false
   let published = publishNative(jit.arena.handle, addr code.bytes[0], uint32(code.bytes.len))
   if published < 0: return false
   jit.region.code = uint32(published)
