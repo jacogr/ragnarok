@@ -115,9 +115,9 @@ class QualificationTests(unittest.TestCase):
                     output=('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if native
                             else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
                 elif name=='witness-run':
-                    output=receipt if receipt is not None else (('TRANSFER_STATS,1,2\n' if native else '')+'ARM_SELF_REGION_CASES,1920\nARM_REGION_POOL_STREAM_CASES,264\n'+('ARM_REGION_POOL_CASES,320\n' if native else ''))
+                    output=receipt if receipt is not None else (('TRANSFER_STATS,1,2\n' if native else '')+'ARM_SELF_REGION_CASES,1920\n')
                 elif name=='witness-refused-run':
-                    output='TRANSFER_STATS,0,0\nARM_SELF_REGION_CASES,1920\nARM_REGION_POOL_STREAM_CASES,264\n'
+                    output='TRANSFER_STATS,0,0\nARM_SELF_REGION_CASES,1920\n'
                 elif '-move-run' in name:
                     output='0\n0\n'
                 return dict(exit_code=0,output=output)
@@ -138,7 +138,7 @@ class QualificationTests(unittest.TestCase):
         """Zero, missing or duplicate native counters and failed compilation never qualify the runner."""
         for receipt in ('','TRANSFER_STATS,0,0\n','TRANSFER_STATS,1,2\nTRANSFER_STATS,1,2\n'):
             with self.subTest(receipt=receipt),self.assertRaises(ValueError):
-                self.check(True,receipt+'ARM_SELF_REGION_CASES,1920\nARM_REGION_POOL_STREAM_CASES,264\nARM_REGION_POOL_CASES,320\n')
+                self.check(True,receipt+'ARM_SELF_REGION_CASES,1920\n')
         with self.assertRaisesRegex(RuntimeError,'compiler failure'):
             self.check(True,build_error=True)
 
@@ -149,18 +149,6 @@ class QualificationTests(unittest.TestCase):
                        'ARM_SELF_REGION_CASES,1920\nARM_SELF_REGION_CASES,1920\n'):
             with self.subTest(marker=marker),self.assertRaisesRegex(ValueError,'one-block'):
                 self.check(True,'TRANSFER_STATS,1,2\n'+marker)
-
-    def test_complete_pool_receipts_are_required(self):
-        """Native transfers cannot substitute for complete multi-root state and fixed-capacity coverage."""
-        base='TRANSFER_STATS,1,2\nARM_SELF_REGION_CASES,1920\n'
-        for marker in ('', 'ARM_REGION_POOL_STREAM_CASES,263\n',
-                       'ARM_REGION_POOL_STREAM_CASES,264\nARM_REGION_POOL_STREAM_CASES,264\n'):
-            with self.subTest(marker=marker), self.assertRaisesRegex(ValueError,'multi-region'):
-                self.check(True,base+marker)
-        for marker in ('', 'ARM_REGION_POOL_CASES,319\n',
-                       'ARM_REGION_POOL_CASES,320\nARM_REGION_POOL_CASES,320\n'):
-            with self.subTest(marker=marker), self.assertRaisesRegex(ValueError,'capacity'):
-                self.check(True,base+'ARM_REGION_POOL_STREAM_CASES,264\n'+marker)
 
 
 if __name__=='__main__':

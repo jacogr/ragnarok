@@ -1827,7 +1827,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if f.pricingKind != 0 or armRegionStatus(jit, offset) != 0:
+    if f.pricingKind != 0 or armRegionStatus(jit) != 0:
       # A saved region fallback may still refer to this worker; never overwrite the region's active root handler.
       if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
       return flatArmWhole(f, offset)
@@ -1846,8 +1846,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if closed:
       var connected = destination
       if flatArmCycle(f, previous, offset, flatStop, connected): return connected
-    if armRegionStatus(jit, offset) != 0:
-      # Failed publication refuses only this root; retain its original checked continuation without retrying.
+    if armRegionStatus(jit) != 0:
+      # Failed publication can mark the sole region refused; retain its original checked continuation without retrying.
       if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
     elif armFinishProbe(jit, offset):
       # Exhaustion permanently restores the existing hot worker, with no status or history test on subsequent visits.
@@ -1929,7 +1929,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
         f.armOriginal[int(header)] = plain
         assert f.arguments[int(header)].y > 0
-        if f.pricingKind == 0 and armRegionStatus(jit, header) == 0:
+        if f.pricingKind == 0 and armRegionStatus(jit) == 0:
           # Header coordinates already exist in the bounded source map; no extra table or per-iteration policy is needed.
           armStartProbe(jit, header)
           f.handlers[int(header)] = flatArmProbeWhole
@@ -1943,25 +1943,25 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let active = armRegionCount(jit, offset)
+    let active = armRegionCount(jit)
     var headers = [flatStop, flatStop, flatStop]
     var spans = default(array[3, uint32])
     var prices = default(array[3, uint64])
     for index in 0..<active:
       # The exact-source cache has stable header coordinates; reject any mismatched invocation metadata before native entry.
-      headers[index] = armRegionHeader(jit, range[0..2](index), offset)
+      headers[index] = armRegionHeader(jit, range[0..2](index))
       assert int(headers[index]) < f.arguments.len
       spans[index] = f.arguments[int(headers[index])].y
       prices[index] = f.arguments[int(headers[index])].x
     if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        offset != headers[0] or not armRegionMatches(jit, headers, spans, prices, offset):
+        offset != headers[0] or not armRegionMatches(jit, headers, spans, prices):
       # Already-paid, partial or differently priced execution retains its original complete ordering.
       let original = f.armOriginal[int(offset)]
       assert original != nil
       if original != nil: return original(f, offset)
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64]
-    let destination = callArmRegion(jit, f.info.registers, state, offset)
+    let destination = callArmRegion(jit, f.info.registers, state)
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
@@ -1979,24 +1979,21 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     destination
 
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool =
-    ## A bounded source-owned region follows an actual closed two/three-block round; all refusal paths keep checked dispatch.
+    ## One source-owned region follows an actual closed two/three-block round; all refusal paths keep checked dispatch.
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
     let jit = f.armJit
     if jit == nil: return false
-    let status = armRegionStatus(jit, first)
+    let status = armRegionStatus(jit)
     if status == 1: return false
     if status == 2:
       # A different rotation or independent loop returns to the ordinary dispatch rather than borrowing another root's code.
-      if armRegionHeader(jit, 0, first) != first: return false
+      if armRegionHeader(jit, 0) != first: return false
       destination = flatArmRegion(f, first)
       return true
     if f.handlers.len > 262144: return false
     discard armEntry(jit, first, uint32(f.handlers.len))
     let active: range[2..3] = if last == flatStop: 2 else: 3
     let headers = [first, middle, last]
-    for index in 0..<active:
-      # A second region must never capture a live region handler as its canonical guard fallback.
-      if armRegionStatus(jit, headers[index]) == 2: return false
     # Include successful regional body emission in the diagnostic bracket; full cold-call clocks already include it.
     let before = armClock()
     var blocks = default(array[3, ArmRegionBlock])

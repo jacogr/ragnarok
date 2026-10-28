@@ -21,12 +21,10 @@ proc nextArena(arena: nil pointer, offset: uint32,
 proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer): uint32 {.cdecl,
     importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
 
-const armRegionLimit* = 8 ## Fixed connected-code capacity shares the existing publication and arena limits.
-
 type
   ArmEntryRecord = object ## Executable records bind code, operation count and successor; uncompiled headers may hold a bounded probe budget.
     code, operations, ending: uint32
-  ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters; records never move.
+  ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
     headers, spans, operations: array[3, uint32]
     prices: array[3, uint64]
@@ -46,8 +44,7 @@ type
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
     arena: ArenaOwner
-    regions: array[armRegionLimit, ArmRegionCache]
-    regionCount: int
+    region: ArmRegionCache
     entries: seq[ArmEntryRecord]
     branchCalls*, headerCalls*: uint64
     fragments*: uint64
@@ -73,8 +70,8 @@ proc newArmJit*(): ArmJit =
   ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
-  ArmJit(arena: ArenaOwner(handle: nil), regions: default(array[armRegionLimit, ArmRegionCache]),
-      regionCount: 0, entries: @[], unavailable: false)
+  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[],
+      unavailable: false)
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -456,12 +453,12 @@ proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
 
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =
-  ## Reserve bounded connected slots within the same 1,024 publication limit; OS/capacity refusal preserves checked execution.
+  ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
   if jit.unavailable:
     # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
     refuseArmEntry(jit, offset)
     return false
-  let ceiling = if region: 1024'u64 else: uint64(1024-armRegionLimit+jit.regionCount)
+  let ceiling = if region: 1024'u64 else: 1023'u64
   if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
     refuseArmEntry(jit, offset)
     return false
@@ -539,62 +536,36 @@ proc armRegionEdge(words: var seq[uint32], fixes: var seq[ArmRegionFixup], targe
   fixes.add(ArmRegionFixup(at: words.len, target: target, condition: condition, guard: guard))
   words.add(0)
 
-func armRegionSlot(jit: ArmJit, root: uint32): range[0..armRegionLimit-1] =
-  ## Published root records encode a one-based pool coordinate in their otherwise unused ending lane.
-  assert int(root) < jit.entries.len
-  let entry = jit.entries[int(root)]
-  let slot = entry.ending
-  assert entry.code >= 2 and entry.operations == 0 and slot >= 1 and slot <= uint32(armRegionLimit)
-  let index = range[0..armRegionLimit-1](slot-1)
-  assert jit.regions[index].status == 2 and jit.regions[index].headers[0] == root
-  index
+func armRegionStatus*(jit: ArmJit): uint8 =
+  ## Zero allows one compile attempt, one is refused, and two denotes an immutable published region.
+  jit.region.status
 
-func armRegionStatus*(jit: ArmJit, root: uint32): uint8 =
-  ## Each root independently admits or refuses; filling the bounded pool disables only further discovery.
-  if int(root) < jit.entries.len:
-    let entry = jit.entries[int(root)]
-    if entry.code == 1: return 1
-    if entry.code >= 2 and entry.operations == 0 and entry.ending > 0:
-      discard armRegionSlot(jit, root)
-      return 2
-  if jit.unavailable or jit.regionCount >= armRegionLimit: return 1
-  0
-
-func armRegionCount*(jit: ArmJit, root: uint32 = 0): range[2..3] =
+func armRegionCount*(jit: ArmJit): range[2..3] =
   ## Only completely published bounded regions expose an active source-block count.
-  let slot = armRegionSlot(jit, root)
-  let count = jit.regions[slot].blockCount
-  assert count >= 2 and count <= 3
+  let count = jit.region.blockCount
+  assert jit.region.status == 2 and count >= 2 and count <= 3
   range[2..3](count)
 
-func armRegionHeader*(jit: ArmJit, index: range[0..2], root: uint32 = 0): uint32 =
-  ## Guarded exits may reenter only active captured original charged workers of this exact root.
-  let slot = armRegionSlot(jit, root)
-  assert uint32(index) < jit.regions[slot].blockCount
-  jit.regions[slot].headers[index]
+func armRegionHeader*(jit: ArmJit, index: range[0..2]): uint32 =
+  ## Guarded exits may reenter only active captured original charged workers.
+  assert jit.region.status == 2 and uint32(index) < jit.region.blockCount
+  jit.region.headers[index]
 
 func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
-    prices: array[3, uint64], root: uint32 = 0): bool =
+    prices: array[3, uint64]): bool =
   ## Exact scalar charge coordinates must still match before borrowing a new invocation's registers.
-  if armRegionStatus(jit, root) != 2: return false
-  let slot = armRegionSlot(jit, root)
+  if jit.region.status != 2: return false
   for index in 0..<3:
     # Matching all scalar charges prevents a cached region from crossing a changed pricing context.
-    if jit.regions[slot].headers[index] != headers[index]: return false
-    if jit.regions[slot].spans[index] != spans[index]: return false
-    if jit.regions[slot].prices[index] != prices[index]: return false
+    if jit.region.headers[index] != headers[index] or jit.region.spans[index] != spans[index] or
+        jit.region.prices[index] != prices[index]: return false
   true
 
 proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     count: range[2..3] = 3): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
-  let root = blocks[0].header
-  if armRegionStatus(jit, root) != 0: return false
-  let used = jit.regionCount
-  assert used >= 0 and used < armRegionLimit
-  let slot = range[0..armRegionLimit-1](used)
-  # A root refusal is local; other observed loops retain an opportunity to use the bounded pool.
-  refuseArmEntry(jit, root)
+  assert jit.region.status == 0
+  jit.region.status = 1 # Any refusal remains interpreted and avoids repeated compilation attempts.
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
@@ -693,30 +664,27 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     words[fix.at] = if fix.condition < 16:
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
-  if not publishArmEntry(jit, root, uint32(slot)+1, 0, words, true): return false
+  if not publishArmEntry(jit, blocks[0].header, 0, 0, words, true): return false
   for index in 0..<count:
     # The source owner retains only scalar proof facts and executable offsets, never invocation addresses.
-    jit.regions[slot].headers[index] = blocks[index].header
-    jit.regions[slot].spans[index] = blocks[index].span
-    jit.regions[slot].prices[index] = blocks[index].price
-    jit.regions[slot].operations[index] = blocks[index].operations
+    jit.region.headers[index] = blocks[index].header
+    jit.region.spans[index] = blocks[index].span
+    jit.region.prices[index] = blocks[index].price
+    jit.region.operations[index] = blocks[index].operations
   if count == 2:
     # No fake source block is emitted or charged; the third context counter stays untouched and unpublished.
-    jit.regions[slot].headers[2] = high(uint32)
-    jit.regions[slot].spans[2] = 0
-    jit.regions[slot].prices[2] = 0
-    jit.regions[slot].operations[2] = 0
-  jit.regions[slot].blockCount = uint32(count)
-  jit.regions[slot].status = 2
-  inc jit.regionCount
+    jit.region.headers[2] = high(uint32)
+    jit.region.spans[2] = 0
+    jit.region.prices[2] = 0
+    jit.region.operations[2] = 0
+  jit.region.blockCount = uint32(count)
+  jit.region.status = 2
   true
 
-proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5, uint64],
-    root: uint32 = 0): uint32 =
+proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5, uint64]): uint32 =
   ## Borrow registers and a fresh scalar context for one complete connected run; all pointers expire on return.
-  let slot = armRegionSlot(jit, root)
-  assert sizeof(RegisterFile) == 104
-  let entry = jit.entries[int(jit.regions[slot].headers[0])]
+  assert jit.region.status == 2 and sizeof(RegisterFile) == 104
+  let entry = jit.entries[int(jit.region.headers[0])]
   assert entry.code >= 2
   let available = state[1]
   let gas = state[0]
@@ -728,25 +696,21 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
   inc jit.calls
   inc jit.branchCalls
   inc jit.headerCalls
-  inc jit.regions[slot].calls
-  for index in 0..<armRegionCount(jit, root):
+  inc jit.region.calls
+  for index in 0..<armRegionCount(jit):
     # Each block consumes at least as many source attempts as lowered operations; each individual product is bounded.
-    let count = uint64(jit.regions[slot].operations[index])
-    let span = uint64(jit.regions[slot].spans[index])
+    let count = uint64(jit.region.operations[index])
+    let span = uint64(jit.region.spans[index])
     assert count > 0 and span >= count and state[index+2] <= consumed div span
     let attempts = state[index+2]*span
     assert accounted <= consumed and attempts <= consumed-accounted
     accounted+=attempts
     jit.operations+=state[index+2]*count
-    jit.regions[slot].blocks+=state[index+2]
-  if jit.regions[slot].blockCount == 2: assert state[4] == 0
+    jit.region.blocks+=state[index+2]
+  if jit.region.blockCount == 2: assert state[4] == 0
   assert accounted == consumed
   destination
 
 func armRegionStatistics*(jit: ArmJit): array[2, uint64] =
   ## Distinguish connected calls from complete guarded blocks without labelling guest operations as CPU instructions.
-  result = default(array[2, uint64])
-  for slot in 0..<jit.regionCount:
-    # Statistics are cold observations; execution uses the root's direct slot rather than scanning the pool.
-    result[0]+=jit.regions[slot].calls
-    result[1]+=jit.regions[slot].blocks
+  [jit.region.calls, jit.region.blocks]

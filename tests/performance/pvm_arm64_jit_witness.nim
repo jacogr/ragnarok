@@ -715,15 +715,15 @@ when defined(pvmArm64Jit):
     echo "ARM_REPLACEMENT_REFUSAL,", successes
 
   when not defined(pvmArm64JitRefuse):
-    # Eight connected publications fit after ordinary leaves exhaust their shared reserved budget; total stays 1,024.
+    # One connected publication fits after ordinary leaves exhaust their reserved 1,023-slot budget; total stays 1,024.
     let bounded = newArmJit()
-    assert armEntry(bounded, 0, 27) == 0
-    for slot in 0..<1024-armRegionLimit:
+    assert armEntry(bounded, 0, 3) == 0
+    for slot in 0..<1023:
       # Distinct scratch-only MOVZ bodies consume actual publication slots, without modifying guest registers.
       var words = @[0xd2800001'u32 or (uint32(slot) shl 5)]
-      assert publishArmEntry(bounded, 26, 0, 1, words)
+      assert publishArmEntry(bounded, 0, 0, 1, words)
     var refused = @[0xd503201f'u32]
-    assert not publishArmEntry(bounded, 26, 0, 1, refused)
+    assert not publishArmEntry(bounded, 0, 0, 1, refused)
     let source = owner([@[131'u8, 0, 1], @[0'u8]])
     let slots = instructionRegisters(instruction(source, CodeAddress(0)))
     var blocks = default(array[3, ArmRegionBlock])
@@ -734,48 +734,8 @@ when defined(pvmArm64Jit):
       emitArmBranch(body, 81, slots, 99, 77, uint32((index+1) mod 3))
       blocks[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
           price: 1, yes: 77, no: uint32((index+1) mod 3), body: move(body))
-    var invalidBlocks = default(array[3, ArmRegionBlock])
-    invalidBlocks[0].header = 24
-    assert not publishArmRegion(bounded, invalidBlocks)
-    assert armRegionStatus(bounded, 24) == 1
-    for region in 0..<armRegionLimit:
-      # Every slot has independent root/proof metadata; filling later slots must preserve earlier executable images.
-      let root = uint32(region*3)
-      for index in 0..<3:
-        var body = default(ArmBlock)
-        emitArmOperation(body, 131, slots, 1)
-        let next = root+uint32((index+1) mod 3)
-        emitArmBranch(body, 81, slots, 99, 77, next)
-        blocks[index] = ArmRegionBlock(header: root+uint32(index), span: 2, operations: 2,
-            price: 1, yes: 77, no: next, body: move(body))
-      assert armRegionStatus(bounded, root) == 0
-      assert publishArmRegion(bounded, blocks)
-      assert armRegionStatus(bounded, root) == 2
-      assert armRegionCount(bounded, root) == 3
+    assert publishArmRegion(bounded, blocks)
     assert bounded.fragments == 1024
-    assert armRegionStatus(bounded, 25) == 1
-    # The ninth root and duplicate root refuse without replacing any of the eight sealed capabilities.
-    assert not publishArmRegion(bounded, blocks)
-    blocks[0].header = 25
-    assert not publishArmRegion(bounded, blocks)
-    for region in 0..<armRegionLimit:
-      let root = uint32(region*3)
-      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
-        for gas in [0'u64, 1, 2, 3, 100]:
-          # Fresh invocation arrays and literal visit equations prove every region still executes its own sealed code.
-          var registers = default(RegisterFile)
-          var state = [gas, budget, 0'u64, 0'u64, 0'u64]
-          let count = min(gas, budget div 2)
-          assert callArmRegion(bounded, registers, state, root) == root+uint32(count mod 3)
-          assert uint64(registers[0]) == count
-          for slot in 1..<13: assert uint64(registers[slot]) == 0
-          assert state[0] == gas-count and state[1] == budget-count*2
-          for index in 0..<3:
-            assert state[index+2] == count div 3+uint64(uint64(index) < count mod 3)
-      let headers = [root, root+1, root+2]
-      assert armRegionMatches(bounded, headers, [2'u32, 2, 2], [1'u64, 1, 1], root)
-      assert not armRegionMatches(bounded, headers, [2'u32, 3, 2], [1'u64, 1, 1], root)
-      assert not armRegionMatches(bounded, headers, [2'u32, 2, 2], [1'u64, 2, 1], root)
     for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
       for gas in [0'u64, 1, 2, 3, 100]:
         # Literal expected counts do not use the emitter or guest evaluator; all unexecuted registers remain unchanged.
@@ -794,7 +754,6 @@ when defined(pvmArm64Jit):
     var finalRefusal = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
     echo "ARM_REGION_CAPACITY,1024"
-    echo "ARM_REGION_POOL_CASES,320"
 
     # Two-block regions retain the same five-word ABI with a genuinely inactive third counter lane.
     var pairLiteralCases = 0
@@ -820,7 +779,7 @@ when defined(pvmArm64Jit):
           pairBlocks[index] = ArmRegionBlock(header: (if phase == 0: 11'u32 else: 22'u32),
               span: 2, operations: 2, price: prices[phase], yes: 99, no: next, body: move(body))
         assert publishArmRegion(pairJit, pairBlocks, 2)
-        assert armRegionCount(pairJit, pairBlocks[0].header) == 2
+        assert armRegionCount(pairJit) == 2
         for gas in [0'u64, 1, 2, 3, 4095, 4096, high(uint64)]:
           for budget in 0'u64..12'u64:
             var registers = default(RegisterFile)
@@ -837,8 +796,7 @@ when defined(pvmArm64Jit):
               inc visits[phase]
               phase = 1-phase
             var state = [gas, budget, 0'u64, 0'u64, 0'u64]
-            assert callArmRegion(pairJit, registers, state, pairBlocks[0].header) == (if phase ==
-                0: 11'u32 else: 22'u32)
+            assert callArmRegion(pairJit, registers, state) == (if phase == 0: 11'u32 else: 22'u32)
             assert state[0] == expectedGas and state[1] == expectedBudget and state[4] == 0
             assert state[2] == visits[if rotated: 1 else: 0]
             assert state[3] == visits[if rotated: 0 else: 1]
@@ -1363,48 +1321,6 @@ for start in [0'u64, 11, 24]:
     inc regionCases
   checkFlatSource(fresh)
 echo "ARM_REGION_CASES,", regionCases
-
-# Two disjoint copies share one exclusive stream; both must retain independently executable connected roots.
-var poolParts: seq[seq[byte]] = @[]
-for copy in 0..<2:
-  # Relative branch operands are unchanged in the relocated copy; no source-step oracle uses region metadata.
-  for part in [@[131'u8, 0, 1], @[88'u8, 0x10, 31, 8, 0, 0, 0], @[0'u8],
-      @[151'u8, 0x22, 1], @[152'u8, 0x22, 1], @[173'u8, 0x43, 7, 0, 0, 0], @[0'u8],
-      @[200'u8, 0x65, 5], @[139'u8, 0x77, 1], @[82'u8, 0x18, 0, 0xe2, 0xff, 0xff, 0xff], @[0'u8]]:
-    poolParts.add(part)
-let poolProgram = owner(poolParts)
-let poolPlan = newFlatPlan(poolProgram, GasCycleLimit(100000))
-var poolInput = MachineInfo(gas: MachineGas(100000), registers: default(RegisterFile))
-poolInput.registers[2] = RegisterValue(high(uint64))
-poolInput.registers[4] = RegisterValue(1)
-poolInput.registers[6] = RegisterValue(0x8000000000000000'u64)
-poolInput.registers[7] = RegisterValue(high(uint64))
-poolInput.registers[8] = RegisterValue(1)
-var poolFrame = newFlatFrame(poolPlan, [], poolInput)
-for start in [0'u64, 38, 0, 38]:
-  # Revisiting both roots proves later publication does not replace the earlier slot or borrow its invocation state.
-  var input = poolInput
-  input.pc = CodeAddress(start)
-  when defined(pvmArm64Jit):
-    let before = flatArmRegionStatistics(poolFrame)
-  verifyControl(poolFrame, poolProgram, input, 1000)
-  when defined(pvmArm64Jit):
-    when defined(pvmArm64JitRefuse): assert flatArmRegionStatistics(poolFrame)[0] == 0
-    else: assert flatArmRegionStatistics(poolFrame)[0] > before[0]
-var poolStreamCases = 0
-for start in [0'u64, 38]:
-  for paid in [false, true]:
-    for gas in [0'u64, 1, 2, 6, 7, 1000]:
-      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 11, 1000]:
-        # Canonical partial/paid/guard exits retain full CPU, gas, source and permission snapshots at each independent root.
-        var input = poolInput
-        input.pc = CodeAddress(start)
-        input.gas = MachineGas(gas)
-        input.blockCharged = paid
-        verifyControl(poolFrame, poolProgram, input, budget)
-        inc poolStreamCases
-checkFlatSource(poolFrame)
-echo "ARM_REGION_POOL_STREAM_CASES,", poolStreamCases
 
 var controlCases = 0
 # Both formerly excluded short suffixes and the accepted four-operation shape retain all boundary checks.
