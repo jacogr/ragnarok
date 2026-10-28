@@ -155,3 +155,52 @@ Local checked release/ARC verification passed `historical_index`, `historical_re
 as did the existing application lifecycle. Cursor/policy privacy fixtures reject with their
 exact private member diagnostics and successful frontend controls. Registration inventory,
 pinned formatting and whitespace checks remain part of this layer's publication evidence.
+
+## Durable selection, policy changes and bounded live roots
+
+Indexed disk histories use a versioned wrapper around the fixed cursor and the small live restart
+context. Both real opaque update coordinators stage the complete record and both indexes before
+ordinary canonical publication. Only a confirmed receipt installs the cached selection and permits
+pruning; staging, rejected/stale attempts and uncertain core writes do not grant historical availability.
+The existing exclusive native worker owns this IO. It carries one immutable append source, never an
+archive-length list. A failed cleanup remains an explicit diagnostic without revoking a confirmed block.
+
+The configured disk live view keeps at most `min(N, 8)` complete states (eight in archive mode),
+plus explicit finality when outside that suffix. The historical index carries the remaining requested
+states. Eight is a local header-input bound, not a protocol requirement for eight complete states:
+a separate immutable cache retains at most eight linked headers without state/body owners. V3 restart
+contexts persist only the older headers absent from the complete-state suffix. Strict V1/V2 authority
+and restoration remain supported; the next publication writes V3. GP recent-history state is unchanged.
+
+Startup policy application stages the available seed records, then publishes the exact new cursor,
+window and finality roots as a context-only generation. The canonical owner changes only after
+confirmed IO. Reapplying the same policy consumes no generation. Shrink raises the first available
+ordinal; archive/expansion preserves that floor. Old inline seeds can have complete states without
+complete bodies, and never gain fabricated bytes. The paged predecessor/pinned-reader contract also
+applies to these policy publications: busy retirement cannot silently discard a live reader.
+
+Physical cleanup has a separate checksummed, chain-bound `CLEANUP` watermark. Deletions and the
+directory are synced before acknowledging progress. Interrupted cleanup resumes from the previous
+acknowledgement and skips already absent files. This watermark never selects availability; the core
+cursor alone does. Completed historical reads own their body and complete state independently of
+pruning/compaction, while passive metadata capabilities require the caller to keep files stable during IO.
+
+Journal-to-managed migration streams the selected rows and complete records, one at a time, into an
+exclusively created sibling namespace before publishing the destination core. Existing catalogs are
+refused. The destination acknowledges its absent excluded prefix without scanning arbitrary missing
+ordinals. Failed staging leaves unselected forensic files and never mutates the source selection.
+Managed compaction touches only the bounded live trie/finality roots; historical records survive it.
+The initial record layout has a 16 MiB complete-record ceiling independent of archive length and
+retains full checkpoints per entry, so disk growth can be substantial. A larger state may be refused
+explicitly; no incomplete checkpoint or silent historical gap is accepted.
+
+Local checked release/ARC verification for durable selection passed `disk_retention`,
+`historical_records`, `disk_history`, `local_history_restoration`, `application_chain`,
+`application_local_ancestors`, `application_ancestor_inputs`, `disk_chain`,
+`managed_maintenance_plan` and `pvm_current_disk_worker`. The dedicated storage witness migrates
+261 complete entries, compacts, reopens and reads the old exact body/root; it also checks all three
+layouts, retained readers, finality, no-backfill transitions and a child process exiting between
+staging and selection. Cleanup interruption is exercised partway through the obsolete prefix,
+then retried through a durable no-work acknowledgement. The current worker exercises indexed
+journal/paged publication, replay and joined shutdown. These remain scoped macOS ARM64 results;
+full CI and final CLI integration are distinct acceptance evidence.

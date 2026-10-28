@@ -16,7 +16,7 @@ type
   HistoryError* {.pure.} = enum ## Refusals never expose a partial selection, record or successful IO prefix.
     Uninitialized, None, InvalidPolicy, InvalidFormat, LimitExceeded, CounterExhausted,
     NotChild, SlotNotIncreasing, BackendFailure, ChecksumMismatch, Unavailable, Pruned,
-    IoFailure, PublishedUnsynced, WrongChain, StaleSelection
+    IoFailure, PublishedUnsynced, WrongChain, StaleSelection, Busy, AlreadyExists
   HistoryResult*[T] = object ## Only complete success grants an owned payload.
     case status: HistoryError
     of None: completed: T
