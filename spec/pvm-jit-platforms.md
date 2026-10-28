@@ -35,3 +35,30 @@ Status: build/CI integration prepared; native platform qualification, real conti
 checks and final timings are pending. Default readiness recommendation remains held while
 its isolated x86 admission/performance parent is qualified. Passing local Python flag-plan,
 workflow and receipt-parser tests is not native execution evidence. No PR merge is authorized.
+
+
+## Exact-head production and continuing-frame qualification
+
+[Run40691521892](https://github.com/jacogr/ragnarok/actions/runs/40691521892) at
+`0031e64cdd6066f56471011303d4bf647605c1ec` passes real CLI-selected continuing DOOM on both
+native Linux architectures. Both calls report actual `jit`, with positive compilation/execution
+counters and supported native flags. All state, gas, ordered host-event and RGBA hashes match
+PolkaVM interpreted, and the same two distinct frame hashes match across both architectures.
+Six mutation/refusal controls pass per architecture. Independent source/build/raw-log audits
+verify the exact compiler pin, expected native define and recorded outputs.
+
+Frame RGBA SHA256 values:
+
+- `44f42f5bed248db9caadf2caf329a2857e1c54a084b69d6b44fba83df4e5422b`
+- `ce5f398853f8fb00db2e01c84e3248a08bd716ad2dae3fccba3591e64b3e2ce1`
+
+[Run40692892088](https://github.com/jacogr/ragnarok/actions/runs/40692892088) at that same head
+passes the real checked production builds, packaging and relocated-peer smoke tests for
+Linux/Docker and macOS. Native engine/runtime sources, production flag selection and CLI driver
+remain identical after subsequent documentation/report-formatting changes; measured-head
+provenance is retained rather than claiming a new executable test from documentation alone.
+
+The ordinary comparison report now retains constructor/cold/reused scopes, retained-core reset
+and immutable publication, reference restoration/teardown and software native/source counters.
+The formatter has been exercised against seven complete retained cohorts without running native
+code locally. Final ordinary two-architecture PVM comparison remains pending.
