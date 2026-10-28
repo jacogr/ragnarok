@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, jit-x86, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -74,10 +74,11 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_opt_in_x86_qualification_uses_one_native_comparison_job(self):
         """The experimental backend runs only by explicit CI dispatch, without activating ordinary ARM work."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        context = event_context('workflow_dispatch', suite='jit-x86')
-        self.assertTrue(expression(job_condition(text, 'pvm-comparison'), context))
-        self.assertEqual(selected_families(text, 'pvm-comparison', context),
-            [dict(name='Linux x86-64', group='x86_64', os='ubuntu-26.04')])
+        for suite in ('jit-x86', 'jit-x86-replay'):
+            context = event_context('workflow_dispatch', suite=suite)
+            self.assertTrue(expression(job_condition(text, 'pvm-comparison'), context))
+            self.assertEqual(selected_families(text, 'pvm-comparison', context),
+                [dict(name='Linux x86-64', group='x86_64', os='ubuntu-26.04')])
         self.assertEqual(len(selected_families(text, 'pvm-comparison', event_context())), 2)
         section = job_section(text, 'pvm-comparison')
         self.assertIn('run: make check-pvm-x86-jit', section)

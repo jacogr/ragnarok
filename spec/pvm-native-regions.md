@@ -24,3 +24,16 @@ A second cohort remains required for cold outliers and the final keep/reject ver
 ARM follow-up: inspect remaining exits and accounting in the already connected region engine;
 choose a separate bounded change from native evidence. Background compilation and relaxed gas
 interruption are outside this experiment. No compiler/dependency pin or public default changes.
+
+
+## Bounded fresh-process validation
+
+A second x86 cohort at5ba781f7 confirms sieve gains and does not reproduce the first cold
+Pinky outlier, but shows initialization slower in one process order. The keep decision stays
+held. Manual `jit-x86-replay` runs the unchanged complete70-process cohort and refusal controls,
+then36 additional processes /468 complete checked calls across init/minimal/Pinky and paired
+parent/current roles. Six fresh processes per role/case alternate relative order, reuse only the
+sealed admitted binaries/inputs, and must match native activity exactly except compilation CPU.
+Report process-median distributions separately from within-process reused samples and cold/owner
+costs. Ordinary CI and the existing scoped-profile dispatch are unchanged. No runtime change is
+mixed into this validation. Native code remains CI-only.
