@@ -128,7 +128,7 @@ when defined(pvmArm64Jit):
             15))), 1)
         let jit = newArmJit()
         assert armEntry(jit, 0, 1) == 0
-        var words = finishArmReadSpan(span, 37)
+        var words = armReadInstructions(span, 37)
         assert publishArmEntry(jit, 0, 37, 4, words)
         var bytes = default(array[64, byte])
         for selectedRegion in 0..<3:
@@ -174,7 +174,7 @@ when defined(pvmArm64Jit):
           emitArmWindowRead(span, slots.bIndex, distance)
           let jit = newArmJit()
           assert armEntry(jit, 0, 1) == 0
-          var words = finishArmReadSpan(span, 37)
+          var words = armReadInstructions(span, 37)
           assert publishArmEntry(jit, 0, 37, 3, words)
           var bytes = default(array[8192, byte])
           for at in 0..<8192: bytes[at] = byte((at*29+17) mod 256)
