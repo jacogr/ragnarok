@@ -105,6 +105,7 @@ type
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
+      armStoreMemory: array[3, array[3, uint64]] # Stack/RW byte extents and dirty-bitmap word extent belong only to this invocation.
 
 
 
@@ -1368,6 +1369,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
+  proc flatArmWriteRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+    ## Byte stores need a full byte extent, unlike word reads; empty regions never authorize a pointer access.
+    result = [first, 0'u64, 0'u64]
+    if bytes.len > 0:
+      result[1] = uint64(bytes.len)
+      result[2] = cast[uint64](addr bytes[0])
+
 proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo,
     memory: Memory): FlatFrame =
   ## Own checked private region copies without borrowing caller byte storage; arbitrary fragmented layouts retain a genuine slow preflight owner.
@@ -1453,6 +1461,12 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     result.armMemory[0] = flatArmReadRegion(result.stackBase, result.stack)
     result.armMemory[1] = flatArmReadRegion(result.rwBase, result.rw)
     result.armMemory[2] = flatArmReadRegion(result.roBase, result.ro)
+    result.armStoreMemory[0] = flatArmWriteRegion(result.stackBase, result.stack)
+    result.armStoreMemory[1] = flatArmWriteRegion(result.rwBase, result.rw)
+    result.armStoreMemory[2] = [0'u64, uint64(result.dirtyPages.len), 0'u64]
+    if result.dirtyPages.len > 0:
+      # All byte storage and the fixed bitmap remain stable until an entire frame replacement rebuilds these descriptors.
+      result.armStoreMemory[2][2] = cast[uint64](addr result.dirtyPages[0])
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -2058,6 +2072,21 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatArmStore(f: var FlatFrame, offset: uint32): uint32 =
+    ## Partial reservations and any failed speculative guard replay the original untouched prefix through checked handlers.
+    if f.barrier == flatStop:
+      block:
+        # The code-only lease borrows fresh private bytes/bitmap only for this call, before mutable fallback can run.
+        let jit {.cursor.} = f.armJit
+        assert jit != nil
+        if jit != nil:
+          let destination = callArmMemory(jit, offset, f.info.registers, f.armStoreMemory)
+          if destination != flatStop: return destination
+    let original = f.armOriginal[int(offset)]
+    assert original != nil
+    if original != nil: return original(f, offset)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
   proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
     ## Combine only multiple unsigned word reads and pure arithmetic within one already-reserved source block.
     let jit = f.armJit
@@ -2170,6 +2199,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     let terminal = if int(ending) < f.sites.len:
         f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
+    if count >= 3 and count < 64 and terminal == 120 and
+        not (int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]):
+      # Only one non-exiting terminal byte store can follow this already reserved pure prefix; no header is crossed.
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if not fact.ending and fact.fallthrough:
+        var words = armStoreInstructions(native, fact.args.slots,
+          uint32(fact.args.x and 0xffffffff'u64), ending+1)
+        if not publishArmEntry(jit, offset, ending+1, count+1, words): return offset
+        if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+        f.armOriginal[int(offset)] = f.handlers[int(offset)]
+        f.handlers[int(offset)] = flatArmStore
+        return ending+1
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):

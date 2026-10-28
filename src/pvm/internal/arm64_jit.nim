@@ -37,7 +37,7 @@ type
   ArmReadGuard = object ## A code-relative refusal edge publishes no speculative register prefix.
     at: int
     conditional: bool
-  ArmReadSpan* = object ## Cold-only builder; all reads and arithmetic commit their guest registers together.
+  ArmReadSpan* = object ## Cold guarded-memory builder; speculative arithmetic commits registers only after every memory guard.
     body: ArmBlock
     guards: seq[ArmReadGuard]
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
@@ -368,6 +368,56 @@ proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
     let distance = uint32(failure-at)
     result[at] = result[at] or (if guard.conditional: distance shl 5 else: distance)
 
+
+proc armStoreInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
+    displacement, ending: uint32): seq[uint32] =
+  ## A pure prefix and one terminal byte store publish only after exact writable extent and dirty-word guards.
+  var span = default(ArmReadSpan)
+  span.body = move(fragment)
+  let source = armRead(span.body, slots.bIndex)
+  let value = armRead(span.body, slots.aIndex)
+  span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # Snapshot the resident modulo32 address base in W3.
+  span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+  span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+  span.body.words.add(0x0b020063'u32) # ADD W3,W3,W2 preserves the original wrapping displacement.
+  span.body.words.add(0xf140407f'u32) # CMP X3,#65536 retains canonical protected-prefix handling.
+  armReadRefusal(span, 0x54000003'u32, true)
+  span.body.words.add(0x12800022'u32) # MOV W2,#0xfffffffe is the checked byte worker's conservative upper bound.
+  span.body.words.add(0xeb02007f'u32)
+  armReadRefusal(span, 0x54000008'u32, true)
+  var accepted = default(array[2, int])
+  for region in 0..<2:
+    # Only the invocation's genuine stack/RW descriptors can authorize mutation; RO/extra maps replay checked execution.
+    span.body.words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+    span.body.words.add(0xcb010061'u32) # SUB X1,X3,base; a below-base address wraps above the bounded extent.
+    span.body.words.add(0xeb02003f'u32)
+    span.body.words.add(0x540000a2'u32) # HS skips pointer extraction/addition, bit transfer and acceptance.
+    span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
+    span.body.words.add(0x8b010041'u32) # ADD X1,X2,X1 computes the admitted host byte pointer.
+    span.body.words.add(0x9e670020'u32) # FMOV D0,X1 preserves pointer bits in caller-saved scratch, without FP arithmetic.
+    accepted[region] = span.body.words.len
+    span.body.words.add(0x14000000'u32)
+  armReadRefusal(span, 0x14000000'u32, false)
+  let after = span.body.words.len
+  for index in accepted:
+    # A writable descriptor rejoins before bitmap validation; nothing has been published or written yet.
+    assert index >= 0 and index < after
+    span.body.words[index] = span.body.words[index] or uint32(after-index)
+  span.body.words.add(0xf9401e22'u32) # LDR X2,[X17,#56] loads the owned dirty bitmap word count.
+  span.body.words.add(0xd352fc61'u32) # LSR X1,X3,#18 selects the address's 64-page bitmap word.
+  span.body.words.add(0xeb02003f'u32)
+  armReadRefusal(span, 0x54000002'u32, true) # HS refuses before any byte, register or dirty bit changes.
+  span.body.words.add(0xf9402222'u32) # LDR X2,[X17,#64] borrows this invocation's bitmap allocation.
+  span.body.words.add(0x8b010c42'u32) # ADD X2,X2,X1,LSL#3 proves the complete selected uint64 word.
+  span.body.words.add(0xd34cfc61'u32) # LSR X1,X3,#12; variable LSL consumes exactly the low six page-index bits.
+  span.body.words.add(0xd2800031'u32) # MOV X17,#1; descriptor base is dead after the final guard.
+  span.body.words.add(0x9ac12231'u32) # LSLV X17,X17,X1 forms one exact page bit.
+  span.body.words.add(0xf9400041'u32) # LDR X1,[X2].
+  span.body.words.add(0xaa110021'u32) # ORR X1,X1,X17 preserves every previously dirty page.
+  span.body.words.add(0xf9000041'u32) # STR X1,[X2] follows the checked worker's mark-before-byte order.
+  span.body.words.add(0x9e660001'u32) # FMOV X1,D0 restores the fully admitted byte pointer.
+  span.body.words.add(0x39000020'u32 or value) # STRB Wvalue,[X1] cannot cross a page boundary.
+  armReadInstructions(span, ending)
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32): seq[uint32] =

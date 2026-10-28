@@ -84,6 +84,12 @@ def qualify(checks, compiler, *, native=True):
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
         if name.startswith('witness'):
+            # The terminal byte-store witness must prove real native mutation and exact full-state checked fallback.
+            expected = 3380 if native and name == 'witness' else 0
+            if 'ARM_BYTE_STORE_LITERAL_CASES,'+str(expected)+'\n' not in checked['output']:
+                raise ValueError('Missing complete terminal byte-store literal controls')
+            if 'ARM_BYTE_STORE_CONTROL_CASES,10976\n' not in checked['output']:
+                raise ValueError('Missing complete terminal byte-store source/gas controls')
             region_receipts = [line for line in checked['output'].splitlines()
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
