@@ -422,9 +422,15 @@ class FormatterHarness(unittest.TestCase):
             with self.subTest(check=check), patch.object(format_tool.subprocess, 'run') as run:
                 run.return_value.returncode = 0
                 self.assertTrue(format_tool.format_rust(check))
-                arguments = run.call_args.args[0]
-                self.assertEqual(arguments[:4], ['rustup', 'run', json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust'], 'cargo'])
-                self.assertEqual('--check' in arguments, check)
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(len(commands), 2)
+                pin = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
+                for command, formatter in zip(commands, ('cargo', 'rustfmt')):
+                    self.assertEqual(command[:4], ['rustup', 'run', pin, formatter])
+                    self.assertEqual('--check' in command, check)
+                # Optional formatting must work in Smoke without provisioning its vendor dependency tree.
+                self.assertNotIn('--manifest-path', commands[1])
+                self.assertIn(str(ROOT/'native/polkavm/src/lib.rs'), commands[1])
                 run.return_value.returncode = 1
                 self.assertFalse(format_tool.format_rust(check))
 

@@ -21,11 +21,11 @@ def validate_requirements(records):
         raise ValueError('Native requirements must cover exactly the discovered suites')
     fields = {'directory', 'libraries', 'includes', 'observers', 'defines', 'prepared'}
     allowed = {
-        'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'},
-        'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io'},
+        'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io', 'polkavm'},
+        'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm'},
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
         # This fixed test-only cap exercises early refusal without allowing arbitrary compiler switches.
-        'defines': {'integration', 'nimMaxHeap=1'},
+        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime'},
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.

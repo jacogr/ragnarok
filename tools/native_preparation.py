@@ -21,7 +21,7 @@ def record_evidence(record, name, evidence):
 
 # Prepare pristine pinned libraries once, retaining each provider's original evidence fields.
 def prepare_libraries(folder, record=None, required=None):
-    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'}
+    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io', 'polkavm'}
     requested = available if required is None else set(required)
     if not requested <= available:
         # Refuse unknown providers before any native build or partial evidence is published.
@@ -40,6 +40,11 @@ def prepare_libraries(folder, record=None, required=None):
         bs, bs_observer, evidence['bandersnatch_native'] = prepare_bandersnatch(folder)
         record_evidence(record, 'bandersnatch_native', evidence['bandersnatch_native'])
         libraries.update(bandersnatch=bs, bandersnatch_observer=bs_observer)
+    if 'polkavm' in requested:
+        # Optional runtime preparation is explicit; ordinary independent suites never link it.
+        from build_polkavm import prepare as prepare_polkavm
+        libraries['polkavm'], evidence['polkavm_native'] = prepare_polkavm(folder)
+        record_evidence(record, 'polkavm_native', evidence['polkavm_native'])
     if 'quic' in requested:
         # Only transport consumers need the QUIC build and its generated certificates.
         from nimony_quic import prepare as prepare_quic

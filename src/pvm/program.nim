@@ -288,6 +288,20 @@ proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
   ## Original bytes remain owned verbatim; caller limits apply before semantic normalization.
   decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Jam)
 
+func isJamProgram*(program: Program): bool =
+  ## Only the captured JAM profile authorizes a JamV1 runtime adapter; absent/raw-paper owners do not.
+  let data = program.data
+  data != nil and data.profile == DecodeProfile.Jam
+
+proc programBytes*(program: Program): ProgramResult[seq[byte]] =
+  ## Copy the complete captured wire encoding for an optional public runtime adapter.
+  let data = program.data
+  if data == nil: return ProgramResult[seq[byte]](status: ProgramError.Uninitialized)
+  var bytes = newSeq[byte](data.bytes.len)
+  for index in 0..<data.bytes.len:
+    bytes[index] = data.bytes[index] # A caller can never mutate the captured program owner.
+  ProgramResult[seq[byte]](status: ProgramError.None, completed: bytes)
+
 proc codeLength*(program: Program): ProgramResult[uint64] =
   ## Return logical code size without publishing backing storage; default handles are typed failures.
   # A default handle has no validated storage to inspect.

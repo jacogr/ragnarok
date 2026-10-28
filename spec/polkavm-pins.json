@@ -2,7 +2,7 @@
   "repository": "paritytech/polkavm",
   "path": "vendor/polkavm",
   "commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
-  "role": "test-only implementation cross-check; Gray Paper is primary; approved fixture exceptions are documented in spec/graypaper-discrepancies.md",
+  "role": "optional explicit runtime engine and implementation cross-check; Gray Paper is primary; approved fixture exceptions are documented in spec/graypaper-discrepancies.md",
   "source_sha256": {
     "crates/polkavm/src/interpreter.rs": "315d0267e74c456ff71a8beaa196481d27ab9400a2b5daab9ef5ca2d0b07b5a9",
     "crates/polkavm/src/tests.rs": "9ff58513983fea317d1d118980ebe69fa24d566457a214a8e3e387414cd307c6",

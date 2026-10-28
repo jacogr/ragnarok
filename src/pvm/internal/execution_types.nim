@@ -12,4 +12,6 @@ type
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
       InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo,
-        InvalidPreparedProgram, PreparedProgramBusy
+        InvalidPreparedProgram, PreparedProgramBusy, BackendNotBuilt, BackendUnavailable,
+        BackendReentryUnsupported, BackendRevisionMismatch, BackendProgramUnsupported,
+          BackendCapabilityUnsupported, BackendFailure
