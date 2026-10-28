@@ -86,6 +86,11 @@ class X86ProfileScopeTests(unittest.TestCase):
                 self.assertEqual(environment['RAGNAROK_PVM_DOOM_PHASE'],case)
             else:
                 self.assertIn('pvm-arm64-applications/inputs',environment['RAGNAROK_PVM_SIEVE_INPUT'])
+        baseline=profile_environment('sieve',100000,'baseline','arm64')
+        current=profile_environment('sieve',100000,'jit','arm64')
+        self.assertEqual(baseline.pop('RAGNAROK_PVM_BACKEND'),'')
+        self.assertEqual(current.pop('RAGNAROK_PVM_BACKEND'),'jit')
+        self.assertEqual(baseline,current)
         with self.assertRaises(ValueError):profile_plan('riscv64')
         self.assertEqual(profile_plan('x86_64')['roles'],('interpreter','jit'))
 

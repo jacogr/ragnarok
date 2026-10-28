@@ -44,7 +44,8 @@ def profile_environment(case, limit, role, architecture="x86_64"):
     doom = case in ('init', 'tick')
     cohort = profile_plan(architecture)['cohort']
     prepared = ROOT/'build/tests/pvm-doom/prepared'
-    env = dict(os.environ, RAGNAROK_PVM_GUEST=case, RAGNAROK_PVM_BACKEND=role,
+    env = dict(os.environ, RAGNAROK_PVM_GUEST=case,
+        RAGNAROK_PVM_BACKEND='' if role == 'baseline' else role,
         RAGNAROK_PVM_PRICING='prepared', RAGNAROK_PVM_SIEVE_SAMPLES='13',
         RAGNAROK_PVM_SIEVE_CLOCK='1', RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',
         RAGNAROK_PVM_DOOM_PRICING='prepared', RAGNAROK_PVM_DOOM_PREPARATION='1',
@@ -192,7 +193,7 @@ def run(architecture="x86_64", calibration_only=False):
                 name = case+'-'+role
                 unchanged(identities)
                 executed, final = collect(checks, binary, name, scope,
-                    profile_environment(case, limit, 'interpreted' if role == 'interpreter' else 'jit', architecture),
+                    profile_environment(case, limit, 'interpreted' if role == 'interpreter' else role, architecture),
                     1200, dump_symbols=(scope,), executions=13, requests=architecture=="arm64")
                 if hashlib.sha256(binary.read_bytes()).hexdigest()!=image_hash:
                     raise ValueError('Diagnostic image changed during profiling')
