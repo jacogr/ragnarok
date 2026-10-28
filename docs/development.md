@@ -52,7 +52,7 @@ reference, negative-probe and orchestration responsibilities.
 
 | Command | Action |
 | --- | --- |
-| `make` / `make build` | Build `build/ragnarok`, the current authenticated proof peer |
+| `make build` | Build `build/ragnarok`, the current authenticated proof peer |
 | `make clean` | Remove all of `build/`, including installed tools and cached archives |
 | `make setup` | Ensure pinned compiler/formatter, initialize pristine source gitlinks, install pinned Rust/rustfmt and fetch locked Cargo dependencies |
 | `make check` / `make test` | Complete canonical verification |
@@ -64,11 +64,11 @@ reference, negative-probe and orchestration responsibilities.
 | `make check-guards` | Compiler rejection guards (741 probes) |
 | `make check-e2e` | Peer/service/resilience/soak/offload scenarios |
 | `make format` / `make format-check` | Apply or check both pinned Nim and Rust formatters |
-| `make help` | List commands without provisioning/building |
+| `make` / `make help` | List commands without provisioning/building |
 
 Make owns setup dependencies, logging and verification sequencing. `make clean` followed by
 `make check` needs no activation, manual directories, downloads or native-build pre-steps.
-`make`, `make runtime` and `make unit` also provision their dependencies automatically.
+`make build`, `make runtime` and `make unit` also provision their dependencies automatically.
 `PYTHON=/path/to/python3` selects the host interpreter; Rust comes from the shared pin.
 Healthy compiler/formatter installations are verified and reused; missing or changed tools use
 checksum/identity-verified installation. Archives are cached by checksum, and corrupt archives fail.

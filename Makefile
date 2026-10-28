@@ -5,7 +5,7 @@
 # inventory and independent verification targets with their dependency sequencing.
 
 # Make owns setup dependencies and command sequencing; helpers retain validation and native logic.
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := help
 # Put flags in SHELL for both macOS Make 3.81 and newer Linux Make.
 SHELL := /bin/bash -eu -o pipefail
 # Native preparations and tests share build directories; serialize top-level targets.
@@ -471,7 +471,8 @@ summary-e2e:
 
 # List public commands without provisioning or building anything.
 help:
-	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
+	@printf '%s\n' 'make / make help   List commands without provisioning or building' \
+	  'make build         Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
 	  'make check-smoke   Check all formatting and semantically compile every production module' \
 	  'make package-binary  Build and smoke-test a relocatable native archive in build/dist/' \

@@ -26,28 +26,17 @@ on Linux. Make installs missing Ubuntu native packages; macOS requires its nativ
 tools to be available. See the [development guide](docs/development.md) for setup details.
 
 ```sh
+make help    # List available commands (also the default for make).
 make check   # Provision dependencies and run complete verification.
-make         # Build the development proof peer as build/ragnarok.
+make build   # Build the development proof peer as build/ragnarok.
 ```
-
-A [Docker build and runtime image](docs/containers.md) is also available via `make check-docker`.
 
 Make provisions the pinned Nimony compiler and formatter, Rust toolchain and dependency sources.
 A global Nim installation is not required. Generated tools, binaries, fixtures and logs stay
 under ignored `build/`.
 
-Use `make help` to list targets, `make format` to format Nim and Rust, and `make format-check`
-to check formatting. The [development guide](docs/development.md) describes individual check
-groups; the [testing guide](docs/testing.md) explains their coverage.
-
-A [six-node Tiny devnet](docs/tiny-devnet.md) can author and consume real signed blocks locally
-with `make devnet`. Use `make check-devnet` to include independent whole-map verification and
-a stopped-node restart/catch-up check. `make check-devnet-smoke` runs the two-block CI variant.
-
-Downloads support [bounded successive children](docs/download-progress.md) and
-[explicit sealed ancestor files](docs/download-ancestors.md) for report lookup validation.
-External full-state checkpoints support [explicit trusted import startup](docs/checkpoint-import.md),
-resuming one selected head with finality unset.
+The [development guide](docs/development.md) describes individual check groups; the
+[testing guide](docs/testing.md) explains their coverage.
 
 ## Q&A
 
