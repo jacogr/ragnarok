@@ -24,6 +24,10 @@ proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer):
 type
   ArmEntryRecord = object ## One scalar record binds a published code offset to its hot operation count and cold successor.
     code, operations, ending: uint32
+  ArmImageRecord = object ## An immutable emitted body can share one arena offset across independent source tuples.
+    words: seq[uint32]
+    fingerprint: uint64
+    code: uint32
   ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
     headers, spans, operations: array[3, uint32]
@@ -43,6 +47,7 @@ type
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
     unavailable: bool
+    images: seq[ArmImageRecord] # Cold-only bounded publication facts; hot entry layout and calls stay unchanged.
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
 proc `=dup`(source: ArenaOwner): ArenaOwner {.error.}
@@ -60,7 +65,7 @@ proc newArmJit*(): ArmJit =
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
   ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[],
-      unavailable: false)
+      unavailable: false, images: @[])
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -265,6 +270,27 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
 
+func armImageFingerprint(words: seq[uint32]): uint64 =
+  ## Wrapping mixing only narrows cold lookup candidates; exact word equality always decides sharing.
+  result = 14695981039346656037'u64
+  for word in words:
+    # This nonsemantic fingerprint needs no collision assumption or guest/source-derived trust.
+    result = (result xor uint64(word))*1099511628211'u64
+
+func sharedArmImage(jit: ArmJit, words: seq[uint32], fingerprint: uint64): uint32 =
+  ## Search at most 1,023 immutable ordinary bodies without retaining any mutable caller storage.
+  for index in 0..<jit.images.len:
+    let image {.cursor.} = jit.images[index]
+    if image.fingerprint != fingerprint or image.words.len != words.len: continue
+    var equal = true
+    for position in 0..<words.len:
+      # Fingerprint collisions remain ordinary misses unless every generated word is identical.
+      if image.words[position] != words[position]:
+        equal = false
+        break
+    if equal: return image.code
+  0'u32
+
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =
   ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
@@ -272,8 +298,18 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
     refuseArmEntry(jit, offset)
     return false
+  if instructions.len == 0 or instructions.len >= 1024:
+    refuseArmEntry(jit, offset)
+    return false
+  let fingerprint = if region: 0'u64 else: armImageFingerprint(instructions)
+  if not region:
+    # Sharing consumes no new bytes/publication slot, including after a full arena; source metadata stays per entry.
+    let shared = sharedArmImage(jit, instructions, fingerprint)
+    if shared >= 2:
+      jit.entries[int(offset)] = ArmEntryRecord(code: shared, operations: count, ending: ending)
+      return true
   let ceiling = if region: 1024'u64 else: 1023'u64
-  if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
+  if jit.fragments >= ceiling:
     refuseArmEntry(jit, offset)
     return false
   if jit.arena.handle == nil:
@@ -293,6 +329,13 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
       ending: ending)
   inc jit.fragments
   jit.codeBytes+=uint64(instructions.len)*4
+  if not region:
+    # Retain an independent immutable copy of the emitted body, excluding the uniform final RET.
+    var captured = newSeq[uint32](instructions.len-1)
+    for index in 0..<captured.len: captured[index] = instructions[index]
+    jit.images.add(ArmImageRecord(words: move(captured), fingerprint: fingerprint,
+        code: uint32(address)+2))
+    assert jit.images.len <= 1023
   true
 
 proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): uint32 =

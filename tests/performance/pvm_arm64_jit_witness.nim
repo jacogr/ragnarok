@@ -530,6 +530,35 @@ when defined(pvmArm64Jit):
   echo "ARM_BRANCH_PREDICATES,", branchPredicates
   echo "ARM_REGION_BRANCH_PREDICATES,", regionBranchPredicates
 
+  when not defined(pvmArm64JitRefuse):
+    # Two different source tuples share only immutable machine bytes, never their counts, successors or registers.
+    let shared = newArmJit()
+    assert armEntry(shared, 0, 2) == 0
+    var firstWords = @[0xd2800024'u32, 0xf9000004'u32] # MOV X4,#1; STR X4,[X0].
+    var secondWords = firstWords
+    assert publishArmEntry(shared, 0, 77, 1, firstWords)
+    firstWords[0] = 0xd2800064'u32 # Mutating caller storage cannot alter cached words or executable bytes.
+    assert publishArmEntry(shared, 1, 88, 9, secondWords)
+    assert shared.fragments == 1 and shared.codeBytes == 12
+    for offset in 0'u32..1'u32:
+      # Independent poisoned invocation state and per-source accounting survive both shared entry coordinates.
+      var registers = default(RegisterFile)
+      for slot in 0..<13: registers[slot] = RegisterValue(uint64(slot)+100)
+      let original = registers
+      let before = shared.operations
+      assert callArmEntry(shared, offset, registers) == (if offset == 0: 77'u32 else: 88'u32)
+      assert shared.operations-before == (if offset == 0: 1'u64 else: 9'u64)
+      assert uint64(registers[0]) == 1
+      for slot in 1..<13: assert registers[slot] == original[slot]
+    # Replacing one tuple cannot redirect another tuple's shared entry or accounting.
+    var changedWords = @[0xd2800044'u32, 0xf9000004'u32] # MOV X4,#2; STR X4,[X0].
+    assert publishArmEntry(shared, 0, 99, 2, changedWords)
+    var replacementFile = default(RegisterFile)
+    assert callArmEntry(shared, 1, replacementFile) == 88 and uint64(replacementFile[0]) == 1
+    assert callArmEntry(shared, 0, replacementFile) == 99 and uint64(replacementFile[0]) == 2
+    assert shared.fragments == 2
+    echo "ARM_SHARED_IMAGES,2"
+
   # A full arena must retain the last valid entry after a failed replacement publication.
   let capacity = newArmJit()
   assert armEntry(capacity, 0, 1) == 0
@@ -550,6 +579,9 @@ when defined(pvmArm64Jit):
     assert admitted
     var successes = 1
     while true:
+      # Distinct unreachable tail words prevent exact-image reuse from hiding physical byte exhaustion.
+      assert successes <= 256
+      pages[pages.len-1] = 0xd2800001'u32 or (uint32(successes) shl 5)
       var next = pages
       if not publishArmEntry(capacity, 0, 77, 1, next): break
       inc successes
@@ -569,7 +601,8 @@ when defined(pvmArm64Jit):
     let bounded = newArmJit()
     assert armEntry(bounded, 0, 3) == 0
     for slot in 0..<1023:
-      var words = @[0xd503201f'u32]
+      # Distinct scratch-only MOVZ bodies consume actual publication slots, without modifying guest registers.
+      var words = @[0xd2800001'u32 or (uint32(slot) shl 5)]
       assert publishArmEntry(bounded, 0, 0, 1, words)
     var refused = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, refused)
@@ -602,6 +635,13 @@ when defined(pvmArm64Jit):
           assert state[index+2] == visits
     var finalRefusal = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
+    # Existing immutable words remain shareable when both physical publication budgets are exhausted.
+    var existingWords = @[0xd2800001'u32]
+    assert publishArmEntry(bounded, 2, 99, 3, existingWords)
+    assert bounded.fragments == 1024
+    var sharedRegisters = default(RegisterFile)
+    assert callArmEntry(bounded, 2, sharedRegisters) == 99
+    assert armEnding(bounded, 0) != 99
     echo "ARM_REGION_CAPACITY,1024"
 
     # Price width and source-budget width are independent: exercise both sides of the immediate boundary and full u64.
