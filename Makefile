@@ -585,6 +585,11 @@ bench-pvm-arm64-applications: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_arm64_jit_applications.py
 
+# Scoped stack diagnostics consume a complete application receipt and discard all sampled clocks.
+.PHONY: profile-pvm-arm64-jit
+profile-pvm-arm64-jit: bench-pvm-arm64-applications
+	$(PYTHON) tools/pvm_arm64_jit_profile.py
+
 # Local Linux ARM64 native qualification consumes sealed fixtures from the application comparison.
 .PHONY: stage-pvm-arm64-jit-linux check-pvm-arm64-jit-linux
 stage-pvm-arm64-jit-linux:
