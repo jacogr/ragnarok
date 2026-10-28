@@ -917,8 +917,7 @@ jobs:
           if-no-files-found: warn
           path: |
             build/tests/jam-network/*.log
-            build/tests/jam-network/results.json
-            build/tests/jam-network/plan.json
+            build/tests/jam-network/*.json
             build/tests/jam-network/summary.md
 
   # Future subsystem campaigns join this aggregate so one green child cannot conceal another failure.

@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 import check_jam_network as network
 import jam_fuzzer_network_oracle as reference
 import jam_fuzzer_full_profile_oracle as full
@@ -143,6 +144,7 @@ class NetworkReadiness(unittest.TestCase):
         self.assertIn("if: matrix.family.group == 'jam-network'",workflow)
         self.assertIn('run: make check-jam-network',workflow)
         self.assertIn('jam-network-${{ github.run_attempt }}',workflow)
+        self.assertIn('build/tests/jam-network/*.json',workflow)
         self.assertIn('check-jam-network: setup check-inventory',(ROOT/'Makefile').read_text())
 
     def test_container_uses_environment_only_ordinary_binary(self):
@@ -158,3 +160,64 @@ class NetworkReadiness(unittest.TestCase):
         self.assertIn('arguments = [str(binary)]',runner)
         self.assertIn("JAM_FUZZ='1'",runner)
         self.assertNotIn('jam_fuzz_entrypoint',runner)
+
+
+class NetworkStartup(unittest.TestCase):
+    """Startup probes retain exact refusals and diagnostics without executing a native target locally."""
+
+    def environment(self):
+        """Supply only the public configuration keys needed by the preflight controls."""
+        return dict(JAM_FUZZ='1',JAM_FUZZ_SPEC='fuzz',JAM_FUZZ_DATA_PATH='/unused',JAM_FUZZ_SOCK_PATH='/unused.sock')
+
+    def reply(self,arguments,**options):
+        """Model the established public CLI boundary independently from probe classification."""
+        extra = arguments[1:]
+        if not extra:
+            return SimpleNamespace(returncode=2,stdout=b'',stderr=b'FUZZ_START_FAILED environment overrides\n')
+        if extra == ['--version']:
+            return SimpleNamespace(returncode=0,stdout=b'Ragnarok fixture\n',stderr=b'')
+        if extra[0].startswith('--'):
+            return SimpleNamespace(returncode=2,stdout=b'',stderr=('Unknown option: '+extra[0]+'\n').encode())
+        return SimpleNamespace(returncode=2,stdout=b'',stderr=b'Unknown command: not-a-command; use ragnarok --help\n')
+
+    def test_complete_startup_receipts(self):
+        """All missing-environment, option, command and positive version controls leave bounded evidence."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); evidence = root/'evidence'; evidence.mkdir()
+            with patch.object(network.subprocess,'run',side_effect=self.reply) as run:
+                network.startup_checks(['/peer'],self.environment(),evidence,root/'target.sock')
+            self.assertEqual(run.call_count,7)
+            self.assertEqual({p.stem for p in evidence.glob('*.json')},
+                {'missing-jam_fuzz_spec','missing-jam_fuzz_data_path','missing-jam_fuzz_sock_path',
+                 'legacy-option','unknown-option','unknown-command','version'})
+            self.assertEqual(json.loads((evidence/'legacy-option.json').read_text())['stderr'],
+                             'Unknown option: --fuzz\n')
+            self.assertEqual(json.loads((evidence/'version.json').read_text())['exit_code'],0)
+
+    def test_wrong_refusal_keeps_receipt(self):
+        """Unrelated crashes, wrong status and extra diagnostics never satisfy a negative control."""
+        for status,message in ((1,b'Unknown option: --fuzz'),(2,b'Segmentation fault'),
+                               (2,b'Unknown option: --fuzz\nextra')):
+            with self.subTest(status=status,message=message), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder); evidence = root/'evidence'; evidence.mkdir()
+                def reply(arguments,**options):
+                    # Corrupt only the legacy-option result; preceding missing-environment controls still pass.
+                    if arguments[1:] == ['--fuzz']:
+                        return SimpleNamespace(returncode=status,stdout=b'',stderr=message)
+                    return self.reply(arguments,**options)
+                with patch.object(network.subprocess,'run',side_effect=reply), self.assertRaisesRegex(
+                        AssertionError,'legacy-option'):
+                    network.startup_checks(['/peer'],self.environment(),evidence,root/'target.sock')
+                observed = json.loads((evidence/'legacy-option.json').read_text())
+                self.assertEqual((observed['exit_code'],observed['stderr']),(status,message.decode()))
+
+    def test_startup_timeout_keeps_bounded_output(self):
+        """A stalled probe records its partial output and remains an error before any listener work."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            error = network.subprocess.TimeoutExpired(['/peer'],30,output=b'x'*5000,stderr=b'partial')
+            with patch.object(network.subprocess,'run',side_effect=error), self.assertRaises(
+                    network.subprocess.TimeoutExpired):
+                network.startup_checks(['/peer'],self.environment(),root,root/'target.sock')
+            observed = json.loads((root/'missing-jam_fuzz_spec.json').read_text())
+            self.assertEqual(observed,dict(exit_code=124,stdout='x'*4000,stderr='partial'))

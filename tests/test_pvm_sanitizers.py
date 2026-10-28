@@ -92,9 +92,25 @@ class IntegratedSanitizers(unittest.TestCase):
                             if target and target.startswith('asan:')]
             self.assertCountEqual(normal, UNIT_SUITES)
             self.assertCountEqual(instrumented, SUITES)
-            # The additional workload is spread among workers rather than appended to one heavy shard.
-            self.assertLessEqual(max(sum(target.startswith('asan:') for _, _, target in tasks)
-                                     for tasks in partitions), 3)
+            # Real source weights evolve; a worker may receive more small ASan tasks than a sibling.
+            # Exact coverage above remains mandatory independently of the current cost distribution.
+
+    def test_equal_cost_instrumented_block_spreads_across_workers(self):
+        """A controlled cost block checks spreading without imposing counts on evolving source graphs."""
+        from native_tests import unit_partition
+        names = ['suite_'+str(index) for index in range(32)]
+        ordinary = [(name, (name,), name) for name in names]
+        tasks = ordinary+[("asan:"+name, (), "asan:"+name) for name in names[:4]]
+        weights = dict.fromkeys(names, 1)
+        for seed in ('40080775112', '40080775113', 'ci2'):
+            # Equal ordinary costs put the four double-weight ASan tasks in one complete stratum.
+            with patch('native_tests.unit_tasks', return_value=tasks), patch(
+                    'native_tests.unit_dependency_weights', return_value=weights):
+                partitions = [unit_partition((index, 4), seed, 'suites')[0]
+                              for index in range(1, 5)]
+            self.assertEqual([sum(target.startswith('asan:') for _, _, target in partition)
+                              for partition in partitions], [1, 1, 1, 1])
+            self.assertCountEqual([row for partition in partitions for row in partition], tasks)
 
     def test_failed_calibration_keeps_report_and_summary(self):
         """Partial controls and unexecuted selections remain visible after an early failure."""

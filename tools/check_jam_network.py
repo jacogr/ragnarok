@@ -36,6 +36,42 @@ def complete(report):
             and observed.get('retained_siblings') == 3)
 
 
+def startup_checks(arguments,environment,folder,endpoint):
+    """Require exact public CLI refusals before socket startup and retain bounded per-probe receipts."""
+    def probe(name,extra,selected):
+        """Record status/output before assertions so an early readiness failure remains diagnosable."""
+        try:
+            result = subprocess.run(arguments+extra,env=selected,capture_output=True,timeout=30)
+        except subprocess.TimeoutExpired as error:
+            # A stalled startup is a failed probe, with partial output retained before propagation.
+            receipt = dict(exit_code=124,stdout=(error.stdout or b'').decode(errors='replace')[-4000:],
+                           stderr=(error.stderr or b'').decode(errors='replace')[-4000:])
+            (folder/(name+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
+            raise
+        receipt = dict(exit_code=result.returncode,stdout=result.stdout.decode(errors='replace')[-4000:],
+                       stderr=result.stderr.decode(errors='replace')[-4000:])
+        (folder/(name+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
+        return result
+
+    for variable in ('JAM_FUZZ_SPEC','JAM_FUZZ_DATA_PATH','JAM_FUZZ_SOCK_PATH'):
+        # The upstream environment contract must refuse missing configuration before any listener opens.
+        missing = dict(environment); del missing[variable]
+        rejected = probe('missing-'+variable.lower(),[],missing)
+        assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr, 'Missing '+variable+' did not refuse startup'
+        assert not endpoint.exists(), 'Missing '+variable+' opened a listener'
+    for name,extra,expected in (
+            ('legacy-option',['--fuzz'],b'Unknown option: --fuzz'),
+            ('unknown-option',['--unknown','x'],b'Unknown option: --unknown'),
+            ('unknown-command',['not-a-command'],b'Unknown command: not-a-command; use ragnarok --help')):
+        # Option and command failures have distinct exact diagnostics; neither may enter fuzz startup.
+        rejected = probe(name,extra,environment)
+        assert rejected.returncode == 2 and rejected.stderr.strip() == expected, name+' returned the wrong CLI refusal'
+        assert not endpoint.exists(), name+' opened a listener'
+    assert not (endpoint.parent/'data').exists(), 'Rejected CLI created runtime data'
+    version = probe('version',['--version'],environment)
+    assert version.returncode == 0 and b'Ragnarok' in version.stdout, 'Version inspection failed'
+
+
 def socket_check(binary, folder):
     """Freeze independent messages first, then exercise environment-only startup and complete native STF."""
     from nimony_fuzz_guests import reference_sessions, session_evidence, exercise_sessions
@@ -51,21 +87,7 @@ def socket_check(binary, folder):
         arguments = [str(binary)]
         environment.update(JAM_FUZZ='1',JAM_FUZZ_SPEC='fuzz',JAM_FUZZ_DATA_PATH=str(directory/'data/nested'),
             JAM_FUZZ_SOCK_PATH=str(endpoint),JAM_FUZZ_LOG_LEVEL='error')
-        for variable in ('JAM_FUZZ_SPEC','JAM_FUZZ_DATA_PATH','JAM_FUZZ_SOCK_PATH'):
-            # The upstream launch contract alone configures the actual binary; missing inputs must refuse before IO.
-            missing = dict(environment); del missing[variable]
-            rejected = subprocess.run(arguments,env=missing,capture_output=True,timeout=30)
-            assert rejected.returncode == 2 and b'FUZZ_START_FAILED' in rejected.stderr
-            assert not endpoint.exists()
-        for extra in (['--fuzz'],['--unknown','x']):
-            # Unknown command spellings fail at the public CLI boundary before fuzz startup.
-            rejected = subprocess.run(arguments+extra,env=environment,capture_output=True,timeout=30)
-            expected = ('Unknown command: '+extra[0]+'; use ragnarok --help').encode()
-            assert rejected.returncode == 2 and rejected.stderr.strip() == expected
-            assert not endpoint.exists()
-        assert not (directory/'data').exists()
-        version = subprocess.run([str(binary),'--version'],env=environment,capture_output=True,timeout=30)
-        assert version.returncode == 0 and b'Ragnarok' in version.stdout # Version inspection remains available to external launchers.
+        startup_checks(arguments,environment,folder,endpoint)
         with (folder/'target.log').open('wb') as log:
             process = subprocess.Popen(arguments,env=environment,stdout=log,stderr=log)
             try:
