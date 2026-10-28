@@ -770,13 +770,13 @@ when not defined(pvmX86JitRefuse):
       yes: following, no: 10, body: move(body))
   assert publishX86Region(jit, blocks, 3)
   assert jit.fragments == 1024
-  var registers = default(RegisterFile)
-  registers[1] = RegisterValue(5)
+  var capacityRegisters = default(RegisterFile)
+  capacityRegisters[1] = RegisterValue(5)
   var context = [100'u64, 20'u64, 0'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
-  assert callX86Region(jit, registers, context) == 10
-  assert uint64(registers[0]) == 5
+  assert callX86Region(jit, capacityRegisters, context) == 10
+  assert uint64(capacityRegisters[0]) == 5
   assert context == [95'u64, 10'u64, 2'u64, 2'u64, 1'u64, 8'u64]
-  assert callX86Entry(jit, 0, registers) == 4
+  assert callX86Entry(jit, 0, capacityRegisters) == 4
   assert not publishX86Entry(jit, 1023, 1027, 4, refused)
   assert jit.fragments == 1024
   inc reservedRegionCases

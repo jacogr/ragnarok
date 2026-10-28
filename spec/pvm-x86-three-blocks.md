@@ -36,3 +36,9 @@ host/memory/ownership/literal controls remain. No cache-count lookup policy, asy
 gas or relaxed memory semantics is introduced. All native work is CI-only; no speed
 claim before complete-state same-runner paired timing and eight calibrated profiles.
 If unhelpful, restore only this runtime delta, retaining meaningful tests/evidence.
+
+The first CI attempt40772401188 stopped during witness semantic compilation:
+a top-level `registers` value resolved as the imported module in the new capacity
+block. Renamed it `capacityRegisters`; no runtime assertion, bounds guard or source
+case was removed. Originating logs are retained under ignored build/. A fresh
+exact-head native/timing/profile run is required.
