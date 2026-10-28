@@ -1,10 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 immutable stepping/execution and trusted host adapters over one checked handler-stream engine.
+## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
 ## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
 import std/assertions
-import ./[program, machine, registers, gas, gas_plan, gas_memo]
+import ./[program, machine, registers, gas, gas_plan, gas_memo, backend]
+export backend
+when defined(polkavmRuntime):
+  import std/algorithm
+  import ./internal/polkavm
 import ./internal/[handler_stream, execution_types]
 export execution_types
 
@@ -13,6 +17,7 @@ type
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
   StepOutcome* = object ## Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
     machine*: Machine
+    engine: PvmBackend # The actual selected engine survives host suspension and terminal responses.
     case kind: StepExit
     of Fault:
       # Only a fault carries a physical aligned page address; no default page is fabricated.
@@ -127,6 +132,10 @@ func terminalExit(kind: StepExit): bool {.inline.} =
 func exit*(outcome: StepOutcome): StepExit =
   ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
   outcome.kind
+func backend*(outcome: StepOutcome): PvmBackend =
+  ## Completed outcomes identify actual execution; local refusals carry no receipt.
+  outcome.engine
+
 func faultPage*(outcome: StepOutcome): PageAddress {.requires: outcome.kind == StepExit.Fault.} =
   ## A page address is available only after selecting the fault alternative.
   outcome.failedPage
@@ -198,7 +207,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     else: captureTerminalMachine(cursor.program, cursor.memory, cursor.info))
   if captured.error != MachineError.None:
     return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
-  StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
+  StepResult(status: StepError.None, completed: StepOutcome(engine: suspension.engine, kind: exit,
+      machine: captured.value))
 
 const executionClasses = # Immutable byte metadata: r registers, m memory, h host, c terminating control, u unlikely, - unsupported.
   "ccu-------h-----" & # Opcodes0..15.
@@ -218,6 +228,17 @@ const executionClasses = # Immutable byte metadata: r registers, m memory, h hos
   "rrrrrrr---------" & # Opcodes224..239.
   "----------------"   # Opcodes240..255.
 
+when defined(polkavmRuntime):
+  type ForeignOwner = object ## Owning foreign lifetime stays inside one prepared identity.
+    handle: PolkaHandle
+  proc `=copy`(destination: var ForeignOwner, source: ForeignOwner) {.error.}
+    ## Copying would duplicate the exclusive raw instance lifetime.
+  proc `=dup`(source: ForeignOwner): ForeignOwner {.error.}
+    ## Implicit duplication must never alias one destructible foreign handle.
+  proc `=destroy`(owner: ForeignOwner) =
+    ## ARC retires the sole native instance after all synchronous leases have returned.
+    if owner.handle != nil: discard polkaDestroy(owner.handle)
+
 type
   ExecutionLimits* = FlatLimits ## Explicit logical admission ceilings, independent of guest gas and source attempts.
   ExecutionFactLimit* = FlatFactLimit ## Maximum decoded instruction facts retained by one prepared owner.
@@ -227,22 +248,34 @@ type
     resources*: ExecutionLimits
     cycles*: GasCycleLimit
   PreparationError* {.pure.} = enum ## Preparation has no partially usable success owner.
-    Uninitialized, None, InvalidProgram, LimitExceeded
+    Uninitialized, None, InvalidProgram, LimitExceeded, BackendNotBuilt, BackendUnavailable,
+      BackendProgramUnsupported, BackendRevisionMismatch, BackendCapabilityUnsupported, BackendFailure
   PreparationResult*[T] = object ## Failed/default alternatives publish only their reason.
     case status: PreparationError
     of None: completed: T
     else: discard
-  PreparedData = ref object ## Exclusive cached executable facts never retain an invocation's CPU, memory or callbacks.
+  PreparedData = ref PreparedStorage ## Copies share one exclusive source/cache identity.
+  PreparedStorage = object ## Exclusive cached executable facts never retain an invocation's CPU, memory or callbacks.
     source: Program
     plan: FlatPlan
     stream: FlatStream
     limits: PreparedLimits
     busy: bool
+    selected: PvmBackend
+    prices: GasMemo # Source-bound lazy prices share the same exclusive invocation lease.
+    when defined(polkavmRuntime):
+      foreign: ForeignOwner
   PreparedProgram* = object ## Copies share one source-bound cache identity; synchronous same-owner reentry is refused.
     data: nil PreparedData
   PreparedInfo* = object ## Copied bounded occupancy; capacity and allocator overhead are not an RSS claim.
     codeBytes*, decodedInstructions*, streamNodes*, preparationUnits*: uint64
     limits*: PreparedLimits
+    backend*: PvmBackend
+
+proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
+  ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
+proc `=dup`(source: PreparedStorage): PreparedStorage {.error.}
+  ## Prepared storage is allocated once and never implicitly duplicated by a container or return.
 
 func defaultExecutionLimits*(): ExecutionLimits =
   ## Current supported finite profile; applications may select smaller budgets before preparation.
@@ -287,7 +320,7 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   PreparationResult[PreparedInfo](status: PreparationError.None, completed: PreparedInfo(
     codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(data.plan),
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
-        limits: data.limits))
+        limits: data.limits, backend: data.selected))
 
 when defined(pvmArm64JitOwnerReceipt):
   proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
@@ -344,9 +377,19 @@ proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
   else:
     StepResult(status: StepError.None, completed: StepOutcome(kind: kind, machine: captured.value))
 
+proc runForeignFrame(source: Machine, prepared: PreparedProgram,
+    limit: ExecutionStepLimit): StepResult
+  ## Implemented by the included optional adapter below the common host/result declarations.
+
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
   ## Borrow only the prepared stream; CPU and private memory are created and retired inside this invocation.
+  let selectedData = prepared.data
+  if selectedData != nil and selectedData.selected != PvmBackend.Interpreted:
+    if single or gasPlanInfo(plan).error == GasPlanError.None or gasMemoInfo(memo).error ==
+        GasMemoError.None:
+      return StepResult(status: StepError.BackendProgramUnsupported)
+    return runForeignFrame(source, prepared, limit)
   let data = prepared.data
   assert data != nil
   var cpu = default(MachineInfo)
@@ -528,6 +571,8 @@ type
     response: nil ResponseCallback[Context]
     fallible: nil FallibleCallback[Context, Reason]
 
+include ./internal/backend_execution
+
 proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     frame: var FlatFrame, owner: Program, context: var Context, callbacks: HostCallbacks[Context,
         Reason],
@@ -585,6 +630,16 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
     steps: ExecutionStepLimit, calls: HostCallLimit, plan: GasPlan,
         memo: GasMemo): HostExecutionResult[Reason] =
   ## Validate and create private memory before moving the exclusively leased executable cache.
+  let selectedData = prepared.data
+  if selectedData != nil and selectedData.selected != PvmBackend.Interpreted:
+    when Fallible:
+      let selected = callbacks.fallible
+      assert selected != nil
+      return runForeignHost(source, prepared, context, selected, steps, calls)
+    else:
+      let selected = callbacks.response
+      assert selected != nil
+      return executionResult[Reason](runForeignHost(source, prepared, context, selected, steps, calls))
   let data = prepared.data
   assert data != nil
   var cpu = default(MachineInfo)
@@ -732,3 +787,39 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
     return StepResult(status: StepError.InvalidGasMemo)
   responseResult(hostPolicy[Context, ResponseOnly, false](source, context, HostCallbacks[Context,
       ResponseOnly](response: handler), stepLimit, hostLimit, settings.value.cycleLimit, memo = memo))
+
+proc execute*(source: Machine, steps: ExecutionStepLimit, cycles: GasCycleLimit,
+    selected: PvmBackend): StepResult =
+  ## Convenience calls still bind one prepared identity; retained callers can reuse that owner directly.
+  let code = programOf(source)
+  if code.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  let prepared = newPreparedProgram(code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error != PreparationError.None: return StepResult(status: preparationFailure(
+      prepared.error))
+  execute(source, steps, prepared.value)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend): HostExecutionResult[Reason] =
+  ## Engine choice cannot change while callbacks borrow one prepared identity.
+  let code = programOf(source)
+  if code.error != MachineError.None: return executionResult[Reason](StepResult(
+      status: StepError.InvalidMachine))
+  let prepared = newPreparedProgram(code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error != PreparationError.None:
+    return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
+  executeWithHost(source, context, handler, steps, calls, prepared.value)
+
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend): StepResult =
+  ## Ordinary hosts use the same prepared API without retaining a context pointer between invocations.
+  let code = programOf(source)
+  if code.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  let prepared = newPreparedProgram(code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error != PreparationError.None: return StepResult(status: preparationFailure(
+      prepared.error))
+  executeWithHost(source, context, handler, steps, calls, prepared.value)

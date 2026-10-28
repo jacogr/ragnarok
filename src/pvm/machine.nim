@@ -316,6 +316,27 @@ proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   for i in 0..<data.pages.len: images.add(imageFromPage(data.pages[i]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
 
+proc pageIndices*(memory: Memory): MachineResult[seq[PageIndex]] =
+  ## Copy only retained sorted page identities; sparse holes and snapshot storage remain private.
+  let data = memory.data
+  if data == nil: return MachineResult[seq[PageIndex]](status: MachineError.InvalidOwner)
+  var indices = newSeq[PageIndex](data.pages.len)
+  for index in 0..<data.pages.len:
+    indices[index] = data.pages[index].index # Copying ordinals grants no mutable page access.
+  MachineResult[seq[PageIndex]](status: MachineError.None, completed: indices)
+
+proc samePage*(left, right: Memory, index: PageIndex): bool =
+  ## Identity comparison avoids copying unchanged immutable pages at a foreign continuation boundary.
+  let a = left.data
+  let b = right.data
+  if a == nil or b == nil or uint32(index) >= 0x100000'u32: return false
+  let ai = lowerBound(a, uint32(index))
+  let bi = lowerBound(b, uint32(index))
+  let ap = ai < a.pages.len and uint32(a.pages[ai].index) == uint32(index)
+  let bp = bi < b.pages.len and uint32(b.pages[bi].index) == uint32(index)
+  if not ap or not bp: return not ap and not bp # Two absent pages have the same inaccessible content.
+  a.pages[ai] == b.pages[bi]
+
 proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   ## Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
   ## This is setup/remapping, not a guest write: it may change read-only/inaccessible page contents.

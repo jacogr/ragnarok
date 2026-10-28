@@ -596,3 +596,8 @@ check-pvm-arm64-jit-linux: compiler-tools
 check-pvm-arm64-jit-docker: stage-pvm-arm64-jit-linux
 	$(DOCKER) build --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
 	$(PYTHON) tools/pvm_arm64_jit_linux.py --docker
+
+# Optional runtime ABI shares pristine source/tool provisioning without affecting normal application linking.
+.PHONY: build-pvm-runtime
+build-pvm-runtime: setup
+	$(PYTHON) tools/build_polkavm.py

@@ -51,3 +51,7 @@ history, complete state and authenticated original block provenance. State's
 state owns history/statistics/authorization/consensus composition and exact-parent
 final publication. Neither side accepts a detached map as a replacement execution
 certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
+
+Optional public PolkaVM engines enter through the same prepared-owner and immutable host/result
+boundaries. Engine identity and exclusive cache ownership are fixed before invocation; no raw
+foreign storage escapes. See the [engine API contract](../../spec/pvm-engines.md).

@@ -1,0 +1,14 @@
+{
+  "defines": [
+    "polkavmRuntime"
+  ],
+  "directory": "state",
+  "includes": [
+    "polkavm"
+  ],
+  "libraries": [
+    "polkavm"
+  ],
+  "observers": [],
+  "prepared": false
+}
