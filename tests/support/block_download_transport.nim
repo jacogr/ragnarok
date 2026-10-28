@@ -47,7 +47,7 @@ proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   if borrowed == nil:
     assert false, "missing stable producer borrow"
     return # Native callbacks must never outlive or precede producer binding.
-  let receiver: ptr BlockDownload = borrowed # Preserve a checked non-null borrow across successive mutable receiver calls.
+  let receiver = borrowed # The nil guard remains valid across successive mutable pointee calls.
   if event == 0:
     assert client.stream == NativeStream(nil)
     client.stream = stream
@@ -266,7 +266,7 @@ proc sessionEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rai
   if borrowed == nil or token == nil:
     assert false, "missing session callback context"
     return # No callback can precede setup or outlive the retained session.
-  let session: ptr BlockDownloadSession = borrowed
+  let session = borrowed
   if event == 0:
     client.stream = stream
     var limits = DownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3),
