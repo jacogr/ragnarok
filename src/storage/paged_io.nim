@@ -58,10 +58,18 @@ proc requireClosed(directory: PagedDirectory) {.requires: not directory.opened.}
 proc requireClosed(file: PagedFile) {.requires: not file.opened.} =
   ## Retiring the same reused descriptor number twice is forbidden.
   discard
+proc `=wasMoved`*(directory: var PagedDirectory) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(directory.data)
+
 proc `=destroy`*(directory: PagedDirectory) =
   ## Moved/default values pass; live native leases require explicit close.
   requireClosed(directory)
   `=destroy`(directory.data)
+proc `=wasMoved`*(file: var PagedFile) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(file.data)
+
 proc `=destroy`*(file: PagedFile) =
   ## The caller must retire a live file even after integrity/IO poison.
   requireClosed(file)

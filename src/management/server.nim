@@ -85,6 +85,17 @@ proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.err
   ## Copying an aggregate must not duplicate native ownership.
 proc `=dup`*(source: ManagementServer): ManagementServer {.error.}
   ## Implicit duplication is forbidden as well as assignment copies.
+proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(server.opened)
+  `=wasMoved`(server.bound)
+  `=wasMoved`(server.fd)
+  `=wasMoved`(server.path)
+  `=wasMoved`(server.identity)
+  `=wasMoved`(server.info)
+  `=wasMoved`(server.resources)
+  `=wasMoved`(server.connections)
+
 proc `=destroy`*(server: ManagementServer) =
   ## Partial startup and normal ARC retirement close every native and dynamic owner.
   for slot in server.connections:

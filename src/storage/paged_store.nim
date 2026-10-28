@@ -97,14 +97,26 @@ proc closed(candidate: PagedCandidate) {.requires: not candidate.opened.} =
 proc closed(reader: PagedReader) {.requires: not reader.opened.} =
   ## A retained native pin cannot silently outlive its last exported owner.
   discard
+proc `=wasMoved`*(writer: var PagedWriter) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(writer.data)
+
 proc `=destroy`*(writer: PagedWriter) =
   ## Default/moved values pass; live leases require explicit close.
   closed(writer)
   `=destroy`(writer.data)
+proc `=wasMoved`*(candidate: var PagedCandidate) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(candidate.data)
+
 proc `=destroy`*(candidate: PagedCandidate) =
   ## Explicit close preserves forensic files and reports native retirement failure.
   closed(candidate)
   `=destroy`(candidate.data)
+proc `=wasMoved`*(reader: var PagedReader) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(reader.data)
+
 proc `=destroy`*(reader: PagedReader) =
   ## Owned verified lookups have independent lifetime; the native reader pin must retire explicitly.
   closed(reader)

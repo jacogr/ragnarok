@@ -77,6 +77,14 @@ proc requirePreparationRetired(download: CurrentBlockDownload) {.requires:
     download.pending.status != CurrentBlockDownloadStage.Preparing.} =
   ## Destruction cannot release input/history still borrowed by the Services worker.
   discard
+proc `=wasMoved`*(download: var CurrentBlockDownload) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(download.next)
+  `=wasMoved`(download.pending)
+  `=wasMoved`(download.input)
+  `=wasMoved`(download.ticket)
+  `=wasMoved`(download.logicalResult)
+
 proc `=destroy`*(download: CurrentBlockDownload) =
   ## Explicit collection/join must precede retirement of every captured ARC alias.
   requirePreparationRetired(download)

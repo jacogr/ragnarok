@@ -4,7 +4,8 @@ Read the owning `../docs/design/<module>.md` before changing architectural bound
 
 - Give composite native/thread owners their own explicit non-copyable contracts and lowering
   probes; membership in a non-copyable field alone is not sufficient evidence. Keep worker-pool
-  addresses stable until join.
+  addresses stable until join. Written destructors require explicit `=wasMoved` hooks; delegate
+  to child move hooks, retain closed/joined preconditions, and update both hooks when owner fields change.
 
 - Preserve assertions, bounds checks and explicit protocol range/overflow validation in optimized
   builds. Nimony arithmetic intentionally wraps; do not emulate Nim 2 overflow exceptions or treat

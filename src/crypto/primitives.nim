@@ -71,6 +71,11 @@ func value*[T](value: CryptoResult[T]): T {.inline, requires: value.status == Cr
   value.completed
 
 # Last-owner destruction explicitly erases retained bytes without depending on ordinary assignment optimization.
+proc `=wasMoved`(storage: var SeedStorage) {.raises: [], gcsafe.} =
+  ## Erase the transferred secret scratch without releasing the destination owner.
+  wipe(cast[pointer](addr storage.bytes[0]), 32)
+  storage.alive = false
+
 proc `=destroy`(storage: SeedStorage) {.raises: [], gcsafe.} =
   wipe(cast[pointer](unsafeAddr storage.bytes[0]), 32)
 

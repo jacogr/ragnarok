@@ -55,6 +55,27 @@ proc `=dup`*(source: PreparationWorker): PreparationWorker {.error.}
 proc requireClosed(worker: PreparationWorker) {.requires: not worker.started.} =
   ## Destruction cannot silently abandon a thread borrowing host memory.
   discard
+proc `=wasMoved`*(worker: var PreparationWorker) {.nodestroy, inline,
+    requires: not worker.started.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(worker.lock)
+  `=wasMoved`(worker.changed)
+  `=wasMoved`(worker.thread)
+  `=wasMoved`(worker.started)
+  `=wasMoved`(worker.stopping)
+  `=wasMoved`(worker.cancelled)
+  `=wasMoved`(worker.phase)
+  `=wasMoved`(worker.next)
+  `=wasMoved`(worker.identity)
+  `=wasMoved`(worker.input)
+  `=wasMoved`(worker.chain)
+  `=wasMoved`(worker.id)
+  `=wasMoved`(worker.outcome)
+  `=wasMoved`(worker.operation)
+  `=wasMoved`(worker.currentInput)
+  `=wasMoved`(worker.currentId)
+  `=wasMoved`(worker.currentOutcome)
+
 proc `=destroy`*(worker: PreparationWorker) =
   ## Host cleanup joins explicitly while all borrowed inputs and aliases still exist.
   requireClosed(worker)

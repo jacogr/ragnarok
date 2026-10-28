@@ -241,6 +241,10 @@ when defined(polkavmRuntime):
     ## Copying would duplicate the exclusive raw instance lifetime.
   proc `=dup`(source: ForeignOwner): ForeignOwner {.error.}
     ## Implicit duplication must never alias one destructible foreign handle.
+  proc `=wasMoved`(owner: var ForeignOwner) {.nodestroy, inline.} =
+    ## A moved native handle has no allocation left to release.
+    owner.handle = nil
+
   proc `=destroy`(owner: ForeignOwner) =
     ## ARC retires the sole native instance after all synchronous leases have returned.
     if owner.handle != nil: discard polkaDestroy(owner.handle)
