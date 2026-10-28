@@ -49,6 +49,23 @@ proc requireClosed(dispatcher: BlockDownloadLoop) {.requires:
     dispatcher.status in [DownloadLoopStage.Uninitialized, DownloadLoopStage.Closed].} =
   ## Even an endpoint-free configured dispatcher must release its Services borrow explicitly.
   discard
+proc `=wasMoved`*(dispatcher: var BlockDownloadLoop) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(dispatcher.catalog)
+  `=wasMoved`(dispatcher.session)
+  `=wasMoved`(dispatcher.owner)
+  `=wasMoved`(dispatcher.peers)
+  `=wasMoved`(dispatcher.ancestors)
+  `=wasMoved`(dispatcher.limits)
+  `=wasMoved`(dispatcher.current)
+  `=wasMoved`(dispatcher.status)
+  `=wasMoved`(dispatcher.lastTick)
+  `=wasMoved`(dispatcher.started)
+  `=wasMoved`(dispatcher.requested)
+  `=wasMoved`(dispatcher.hasCompletion)
+  `=wasMoved`(dispatcher.completion)
+  `=wasMoved`(dispatcher.refusal)
+
 proc `=destroy`*(dispatcher: BlockDownloadLoop) =
   ## Destruction checks retirement rather than invoking callbacks through possibly expired borrows.
   requireClosed(dispatcher)

@@ -45,6 +45,14 @@ proc `=dup`*(source: CurrentDownloadPeers): CurrentDownloadPeers {.error.}
 proc requireRetired(catalog: CurrentDownloadPeers) {.requires: catalog.count == 0.} =
   ## Keep the explicit-close obligation as a runtime/compiler contract, including optimized destructor lowering.
   discard
+proc `=wasMoved`*(catalog: var CurrentDownloadPeers) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(catalog.slots)
+  `=wasMoved`(catalog.limit)
+  `=wasMoved`(catalog.count)
+  `=wasMoved`(catalog.configured)
+  `=wasMoved`(catalog.draining)
+
 proc `=destroy`*(catalog: CurrentDownloadPeers) =
   ## Close is explicit so native callbacks retire while every borrowed session is still alive.
   requireRetired(catalog)

@@ -2,10 +2,10 @@
 
 ## Scope and contract
 
-This fixes native ownership transfer independently of the October 28 compiler upgrade (#1788).
+This fixes native ownership transfer after the October 28 compiler upgrade (#1788).
 No protocol interpretation, dependency pin, copy permission or worker relocation precondition changes.
-The base is master `41a747900`; the pinned compiler is October 26 Nimony
-`358b9bce4dd855453f57a80a0c499b0b2e27d7ee`.
+The updated base is master `bf82cf784e97e9bef1b2bcb169b5759037caaf97`; the pinned compiler
+is October 28 Nimony `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`.
 
 A moved-from native owner must report no ownership. Closing, reusing or destroying that source
 must not close descriptors, release locks, remove socket paths or retire directory streams that
@@ -61,9 +61,16 @@ Run the affected native suites with `make unit SUITE=<name>`:
 Existing scoped ARC evidence and copy/dup rejection fixtures remain applicable. Local validation
 uses checked release builds on macOS ARM64; full native Linux verification remains in CI.
 
-The independent fix adds several hooks also introduced by #1788. When reconciling the two PRs,
-retain these explicit native sentinels and connection-array resets instead of scalar delegation.
+The reconciliation with merged #1788 retains these explicit native sentinels and connection-array
+resets instead of generic scalar delegation. All other upstream hooks, including the managed
+directory reference hook and worker relocation preconditions, remain intact.
 
-Local result: all ten suites above and all eight affected copy/dup lowering rejection fixtures
+Original October 26 local result: all ten suites above and all eight affected copy/dup lowering rejection fixtures
 passed. The UDP, sampler, lock-writer and journal suites retained their existing unchanged-occupancy
 ARC checks. Verification inventory passed without registering another suite.
+
+After reconciling merged #1788, all ten suites and eight exact copy/dup lowering rejection
+fixtures passed again with pinned October 28 compiler `63fed6cb4`. Formatting and inventory
+also passed. ARC occupancy remained 608/608 (UDP), 528/528 (sampler), 432/432 (lock writer)
+and 416/416 (journal) over each suite's 1000-cycle check. These are local macOS ARM64 results;
+updated-head Linux CI is reported separately.

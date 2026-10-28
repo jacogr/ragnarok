@@ -42,6 +42,10 @@ proc `=dup`*(source: ManagedDirectory): ManagedDirectory {.error.}
 proc requireClosed(directory: ManagedDirectory) {.requires: not directory.opened.} =
   ## Explicit retirement keeps native close failures observable.
   discard
+proc `=wasMoved`*(directory: var ManagedDirectory) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(directory.data)
+
 proc `=destroy`*(directory: ManagedDirectory) =
   ## Destruction may not silently abandon the persistent lock.
   requireClosed(directory)

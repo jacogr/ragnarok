@@ -96,10 +96,18 @@ proc closed(writer: FullPagedWriter) {.requires: not writer.opened.} =
 proc closed(candidate: FullPagedCandidate) {.requires: not candidate.opened.} =
   ## Even failed authoring must retire its forensic descriptor explicitly.
   discard
+proc `=wasMoved`*(writer: var FullPagedWriter) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(writer.data)
+
 proc `=destroy`*(writer: FullPagedWriter) =
   ## Default/moved values release only their managed private reference; live resources require close.
   closed(writer)
   `=destroy`(writer.data)
+proc `=wasMoved`*(candidate: var FullPagedCandidate) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(candidate.data)
+
 proc `=destroy`*(candidate: FullPagedCandidate) =
   ## A retained incarnation reference never grants destructor permission to silently close live native resources.
   closed(candidate)
@@ -115,6 +123,10 @@ proc `=dup`*(source: FullPagedReader): FullPagedReader {.error.}
 proc closed(reader: FullPagedReader) {.requires: not reader.opened.} =
   ## A live native descriptor cannot silently disappear through a destructor.
   discard
+proc `=wasMoved`*(reader: var FullPagedReader) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(reader.data)
+
 proc `=destroy`*(reader: FullPagedReader) =
   ## Moved/default values are harmless; a live native owner requires explicit error-aware close.
   closed(reader)

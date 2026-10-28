@@ -36,6 +36,24 @@ proc `=copy`*(destination: var DevnetNetwork, source: DevnetNetwork) {.error:
   ## Neither endpoint nor its per-stream routing can be duplicated.
 proc `=dup`*(source: DevnetNetwork): DevnetNetwork {.error.}
   ## Sequence retention must not introduce an implicit exclusive-owner copy.
+proc `=wasMoved`*(owner: var DevnetNetwork) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(owner.incoming)
+  `=wasMoved`(owner.outgoing)
+  `=wasMoved`(owner.peers)
+  `=wasMoved`(owner.expected)
+  `=wasMoved`(owner.responses)
+  `=wasMoved`(owner.catalog)
+  `=wasMoved`(owner.client)
+  `=wasMoved`(owner.request)
+  `=wasMoved`(owner.response)
+  `=wasMoved`(owner.sent)
+  `=wasMoved`(owner.active)
+  `=wasMoved`(owner.dialed)
+  `=wasMoved`(owner.opened)
+  `=wasMoved`(owner.complete)
+  `=wasMoved`(owner.failed)
+
 proc `=destroy`*(owner: DevnetNetwork) =
   ## Teardown remains explicit while callbacks can still borrow this exact owner address.
   assert not owner.active, "DevnetNetwork requires close before destruction"

@@ -2,6 +2,10 @@
 
 Filed by the maintainer as [nim-lang/nimony#2809](https://github.com/nim-lang/nimony/issues/2809) on October 27, 2026.
 
+## Upstream resolution and local retest
+
+Fixed upstream by [#2811](https://github.com/nim-lang/nimony/pull/2811), followed by [#2813](https://github.com/nim-lang/nimony/pull/2813). The official October 28 archive `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` compiles and executes the inferred-pointer reproducer and explicitly typed control, including nil input. The guarded block/session and ancestor callback annotations are removed with a native regression and affected consumer checks; see the [upgrade audit](../nimony-nightly-2026-10-28.md). Original failing output follows as historical evidence.
+
 ## Nim Version
 
 ```text

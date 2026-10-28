@@ -94,6 +94,10 @@ func value*[T](value: BsResult[T]): T {.inline, requires: value.status == BsErro
   value.completed
 
 # Release native allocations exactly once, including when the last retained ARC reference leaves scope.
+proc `=wasMoved`(state: var NativeState) {.raises: [], gcsafe.} =
+  ## A moved native handle has no allocation left to release.
+  state.handle = nil
+
 proc `=destroy`(state: NativeState) {.raises: [], gcsafe.} =
   # Explicit close already releases its native allocation.
   if state.handle == nil: return
