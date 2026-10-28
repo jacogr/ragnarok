@@ -460,7 +460,7 @@ jobs:
       fail-fast: false
       matrix:
         os: *ci-os
-        family: ${{ fromJSON(inputs.suite == 'ref-pvm' && '[{"name":"PVM","group":"pvm-reference"}]' || '[{"name":"PVM","group":"pvm-reference"},{"name":"Telemetry","group":"telemetry-interop"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'ref-pvm' && '[{"name":"PVM","group":"pvm-reference"}]' || '[{"name":"MCP","group":"mcp-interop"},{"name":"PVM","group":"pvm-reference"},{"name":"Telemetry","group":"telemetry-interop"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -494,6 +494,22 @@ jobs:
             build/tests/pvm-reference/summary.md
             build/tests/native/selected/pvm_*.log
             build/tests/native/preparation/selected-pvm_*.json
+      - name: Exchange real messages with the pinned official MCP SDK
+        if: ${{ matrix.family.group == 'mcp-interop' }}
+        run: make check-mcp-interop
+      # Preserve protocol and failed-run evidence; exclude generated TLS keys and dependency environments.
+      - name: Retain MCP SDK interoperability evidence
+        if: ${{ always() && matrix.family.group == 'mcp-interop' }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-mcp-interop-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/mcp-interop*.log
+            build/tests/mcp-interop/results.json
+            build/tests/mcp-interop/*/*.jsonl
+            build/tests/mcp-interop/*/peer.log
       - name: Build pinned collector and verify real peer events
         if: ${{ matrix.family.group == 'telemetry-interop' }}
         run: make check-telemetry-interop-ci

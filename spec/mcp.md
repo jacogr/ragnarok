@@ -109,3 +109,40 @@ PVM settings and MCP port 14141. The CLI suite, formatting/inventory, 464 produc
 the entry point, executable build and real-process MCP workload passed again. MCP transport,
 query adapter, canonical service integration and light metadata code are unchanged from the native
 suite evidence above; unchanged suites were not repeated.
+
+## Official SDK interoperability
+
+`make check-mcp-interop` provisions the unmodified official Python
+[MCP SDK v1.26.0](https://github.com/modelcontextprotocol/python-sdk/tree/v1.26.0) in
+`build/mcp-interop-python/` using the complete hash-locked closure in
+`tools/mcp-interop-requirements.txt`. This test-only SDK pin implements protocol 2025-11-25;
+it changes no runtime dependency, compiler, Gray Paper or JIP pin. Make also builds the peer and
+the driver generates disposable native TLS fixtures under ignored `build/`.
+
+The SDK's public `ClientSession` and `streamable_http_client` send actual initialize, initialized,
+ping, list and tool-call messages over loopback to the real executable. Three independent peer
+scenarios cover configured service state, canonical complete state and missing chain configuration;
+each uses two freshly initialized SDK clients. Every advertised tool is called, result schemas are
+validated, raw service/preimage values are checked against independent frozen fixtures, decimal
+precision and empty/null distinctions are preserved, and protocol errors arrive as SDK `McpError`
+while chain lookup failures remain `isError` results. Successful concurrent ping/discovery after
+errors verifies continued session usability.
+
+Public HTTPX observation hooks record actual requests and replies without rewriting messages or
+patching the SDK. Trace validation requires lifecycle order, negotiated headers, notification
+acknowledgment, unique request IDs and exactly one correlated response per request. Each peer,
+session, connection, message size and wait is bounded; cleanup kills/joins failed processes.
+`build/tests/mcp-interop/results.json` records SDK/protocol/environment, actual executable hash,
+requirements/driver/fixture hashes and per-scenario verdicts; per-session JSONL and peer logs retain failure context.
+Interop CI runs the same Make target and uploads only these result/message/log files, excluding
+TLS fixture keys and dependency environments. Failed/incomplete cases must fail the group.
+
+This SDK gate complements the self-contained native/E2E checks. It does not test public deployment,
+archive history, subscriptions, signing or consensus/finality validation.
+
+Observed locally on 2026-10-28 (macOS ARM64, Python 3.14): `make check-mcp-interop` passed
+with SDK 1.26.0 and the unmodified server implementation. The three scenarios completed six SDK
+sessions, 92 MCP messages, 86 correlated replies and 56 tool calls. Notification acknowledgments
+are separate HTTP 202 responses. The 68 focused SDK-harness, CI and inventory safeguards passed;
+workflow YAML parsing and inventory preflight also passed. Linux/Python 3.12 remains separate CI
+execution evidence. Detailed results and message traces are retained under `build/tests/mcp-interop/`.

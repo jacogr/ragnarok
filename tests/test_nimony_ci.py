@@ -153,7 +153,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """Full and focused requests retain exact coverage under the unified Build matrix."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         groups = {'build': ['smoke', 'python', 'binary', 'binary'],
-                  'interop': ['pvm-reference', 'telemetry-interop'],
+                  'interop': ['mcp-interop', 'pvm-reference', 'telemetry-interop'],
                   'perf': ['bench-pvm-all', 'bench-storage']}
         unit = ['smoke', 'python', 'checks']
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
@@ -539,6 +539,7 @@ class NimonyCISafeguards(unittest.TestCase):
         for job, family, target in [('build', 'binary', 'check-modules'), ('build', 'python', 'check-python'),
                                     ('build', 'binary', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
+                                    ('interop', 'mcp-interop', 'check-mcp-interop'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
                                     ('perf', 'bench-storage', 'bench-storage-growth'), ('build', 'binary', 'check-docker')]:
             section = family_section(text, job, family)
@@ -547,6 +548,18 @@ class NimonyCISafeguards(unittest.TestCase):
         for job in ('unit', 'failures', 'e2e', 'pvm-fuzz', 'models'):
             self.assertIn('run: *inventory-run', job_section(text, job))
         self.assertNotIn('continue-on-error:', text)
+
+    def test_mcp_interop_keeps_real_sdk_and_wire_evidence(self):
+        """MCP joins the required Interop matrix with explicit message evidence and no test-key upload."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = family_section(text, 'interop', 'mcp-interop')
+        self.assertIn('run: make check-mcp-interop', section)
+        self.assertIn("always() && matrix.family.group == 'mcp-interop'", section)
+        self.assertIn('build/tests/mcp-interop/results.json', section)
+        self.assertIn('build/tests/mcp-interop/*/*.jsonl', section)
+        self.assertNotIn('build/tests/mcp-interop/**\n', section)
+        self.assertNotIn('build/mcp-interop-python', section)
+        self.assertNotIn('continue-on-error:', section)
 
     def test_pvm_reference_evidence_scope(self):
         """The separate full-scope job keeps failed-run evidence without silently allowing failure."""
@@ -599,7 +612,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_one_matrix_per_display_group(self):
         """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        for group, names in [('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage']),
+        for group, names in [('interop', ['MCP', 'PVM', 'Telemetry']), ('perf', ['PVM', 'Storage']),
                              ('build', ['Smoke', 'Tooling', 'Linux & Docker', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))
