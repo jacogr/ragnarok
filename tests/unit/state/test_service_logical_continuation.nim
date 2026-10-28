@@ -100,7 +100,7 @@ proc check(source: Fixture, count: int): CurrentLogicalState =
   assert sameStateSnapshot(logical.currentLogicalUpdate.value.currentUpdateState,
       source.update.currentUpdateState)
   let services = copySuppliedServices(logical.currentLogicalInventory.value, policy().projection).value
-  assert services.len == count
+  assert services.len == count, "continued services expected=" & $count & " actual=" & $services.len
   logical
 proc main() {.raises.} =
   if getEnv("RAGNAROK_STATE_REPORT").len == 0:
@@ -295,7 +295,13 @@ proc main() {.raises.} =
   let repeated = continueCurrentNamespaces(continued, receipt.currentValue.value, policy())
   assert repeated.error == LogicalContinuationError.None, $repeated.error
   assert copySuppliedServices(repeated.value.currentLogicalInventory.value, policy().projection).value.len == 4
-  for i in 0..<25: discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value # Warm complete roster reconstruction/current qualification.
+  for i in 0..<25:
+    # Warm the complete measured workload, including deferred frees from prior worker fixtures.
+    discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
+    discard continueCurrentNamespaces(retired.parent, retired.update, policy()).value
+    discard continueCurrentNamespaces(reused.parent, reused.update, policy()).value
+    discard continueCurrentNamespaces(postBirth.parent, postBirth.update, policy()).value
+    discard continueCurrentNamespaces(checkpoint.parent, checkpoint.update, policy()).value
   let before = getOccupiedMem()
   for i in 0..<1000:
     # Both ordinary additions and retired-generation aliases must release every temporary owner.
@@ -305,7 +311,7 @@ proc main() {.raises.} =
     discard continueCurrentNamespaces(postBirth.parent, postBirth.update, policy()).value
     discard continueCurrentNamespaces(checkpoint.parent, checkpoint.update, policy()).value
   let after = getOccupiedMem()
-  assert before == after
+  assert before == after, "ARC occupied before=" & $before & " after=" & $after
   recordArcRelease("service_logical_continuation", 1000, before, after)
   echo "service-logical-continuation: ok"
 try:
