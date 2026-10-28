@@ -42,7 +42,7 @@ is a failure, not evidence of coverage.
 
 ## Requesting CI
 
-Master pushes and PR opening, reopening and source updates automatically run **Build / Smoke**:
+Master pushes and PR opening, reopening, source updates and adding `lgtm` automatically run **Build / Smoke**:
 complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. Each named workload reports its own result, without separate aggregate jobs.

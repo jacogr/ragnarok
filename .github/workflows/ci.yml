@@ -38,7 +38,7 @@ permissions:
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm') && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -57,7 +57,7 @@ jobs:
   # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
   # Build group: named workloads report their own results.
   build:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:

@@ -21,7 +21,7 @@ one speed table with raw samples. The current baseline compares Ragnarök
 and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
 Pushes to `master` request full verification, including **Build / Smoke**.
-PR opening, reopening and source updates automatically run **Build / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
+PR opening, reopening, source updates and adding `lgtm` automatically run **Build / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
 and the production peer main. Heavy
 checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:docker`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.

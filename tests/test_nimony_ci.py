@@ -91,6 +91,26 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('format.py --check', plan)
         self.assertIn('test_modules.py --compiler "$NIMONY" --smoke', plan)
 
+    def test_lgtm_requests_only_smoke_without_cancelling_heavy_runs(self):
+        """Review approval creates fresh Smoke evidence on the same head, isolated from heavy requests."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        event = event_context('pull_request', 'labeled', 'lgtm')
+        self.assertEqual([row['name'] for row in selected_families(text, 'build', event)], ['Smoke'])
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        for job in jobs:
+            self.assertEqual(bool(expression(job_condition(text, job), event)), job == 'build')
+        key = re.search(r'^  group: ci-\$\{\{ github.workflow \}\}-\$\{\{ (.*) \}\}$',
+                        text, re.MULTILINE).group(1)
+        keys = {}
+        for label in ('lgtm', 'ci:full', 'unrelated'):
+            request = event_context('pull_request', 'labeled', label)
+            request['github'].update(run_id=100, ref='refs/pull/1791/merge')
+            request['github']['event']['pull_request']['number'] = 1791
+            keys[label] = expression(key, request)
+        self.assertEqual(keys['lgtm'], 'smoke-1791')
+        self.assertNotEqual(keys['lgtm'], keys['ci:full'])
+        self.assertNotEqual(keys['lgtm'], keys['unrelated'])
+
     # Ordinary PR updates retain only the named lightweight workload.
     def test_smoke_build_scope(self):
         """A lightweight request expands only Smoke without an extra aggregate runner."""
@@ -162,7 +182,7 @@ class NimonyCISafeguards(unittest.TestCase):
             for job in groups:
                 rows = selected_families(text, job, event_context('pull_request', action))
                 self.assertEqual([row['group'] for row in rows], ['smoke'] if job == 'build' else [])
-        labels = {'ci:unit': {'build': unit}, 'ci:docker': {'build': ['docker']},
+        labels = {'lgtm': {'build': ['smoke']}, 'ci:unit': {'build': unit}, 'ci:docker': {'build': ['docker']},
                   'ci:interop': {'interop': groups['interop']}, 'ci:perf': {'perf': groups['perf']}}
         for label in (*labels, 'ci:e2e', 'ci:fuzz', 'unrelated'):
             for job in groups:
@@ -284,7 +304,7 @@ class NimonyCISafeguards(unittest.TestCase):
         seen = set()
         for merged in (False, True):
             # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
-            for label in ('ci:full', 'ci:unit', 'ci:docker', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'unrelated'):
+            for label in ('ci:full', 'ci:unit', 'ci:docker', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'lgtm', 'unrelated'):
                 event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
                 event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
                 for job in jobs:
@@ -299,7 +319,7 @@ class NimonyCISafeguards(unittest.TestCase):
     # Automatic smoke updates and explicit heavy requests use separate cancellation groups.
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm') && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)

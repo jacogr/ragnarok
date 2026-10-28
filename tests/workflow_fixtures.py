@@ -46,6 +46,8 @@ def expression(source, context):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id == 'fromJSON' and len(node.args) == 1:
                 return json.loads(value(node.args[0]))
+            if node.func.id == 'format' and node.args:
+                return value(node.args[0]).format(*(value(arg) for arg in node.args[1:]))
             if node.func.id == 'always' and not node.args:
                 return True
             if node.func.id == 'cancelled' and not node.args:
