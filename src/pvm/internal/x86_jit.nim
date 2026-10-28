@@ -23,10 +23,19 @@ type
   X86Entry = object ## Only exact source coordinates own callable code offsets; zero is uncompiled and one is refused.
     code, ending, operations: uint32
     conditional: bool
+    probes: uint8 # A cold header gets at most eight discovery visits; exhausted probes restore the hot worker.
+  X86RegionCache = object ## One bounded exact-source region, with no mutable invocation address.
+    status: uint8
+    count: uint32
+    code: uint32
+    headers, spans, operations: array[2, uint32]
+    prices: array[2, uint64]
+    calls, blocks: uint64
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
     arena: X86Arena
+    region: X86RegionCache
     entries: seq[X86Entry]
     unavailable: bool
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
@@ -224,3 +233,175 @@ proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): u
   inc jit.calls
   inc jit.branchCalls
   jit.operations += uint64(entry.operations)
+
+
+type
+  X86RegionBlock* = object ## Captured pure source block and its already-checked scalar successors.
+    header*, span*, operations*, yes*, no*: uint32
+    price*: uint64
+    body*: X86Block
+  X86RegionFixup = object ## Bounded rel32 branch, distinguishing guard exits from native successors.
+    at: int
+    target: uint32
+    guard: bool
+
+func x86RegionStatus*(jit: X86Jit): uint8 =
+  ## A refused region never retries; ordinary arithmetic entries are retained.
+  jit.region.status
+
+proc x86StartProbe*(jit: X86Jit, header: uint32) =
+  ## Header coordinates share the existing bounded entry table without enlarging hot records.
+  assert int(header) < jit.entries.len
+  jit.entries[int(header)].probes = 8
+
+proc x86FinishProbe*(jit: X86Jit, header: uint32): bool =
+  ## Exhaustion removes discovery from subsequent ordinary block visits.
+  assert int(header) < jit.entries.len
+  if jit.entries[int(header)].probes > 0: dec jit.entries[int(header)].probes
+  jit.entries[int(header)].probes == 0
+
+func x86RegionCount*(jit: X86Jit): range[1..2] =
+  ## Only published proof records expose active block coordinates.
+  assert jit.region.status == 2 and jit.region.count in 1'u32..2'u32
+  range[1..2](jit.region.count)
+
+func x86RegionHeader*(jit: X86Jit, index: range[0..1]): uint32 =
+  ## The region retains exact-source headers rather than host-code addresses.
+  assert jit.region.status == 2 and uint32(index) < jit.region.count
+  jit.region.headers[index]
+
+func x86RegionMatches*(jit: X86Jit, headers, spans: array[2, uint32],
+    prices: array[2, uint64]): bool =
+  ## Every fresh invocation must match the captured charge context, including inactive zero slots.
+  jit.region.status == 2 and jit.region.headers == headers and jit.region.spans == spans and
+      jit.region.prices == prices
+
+proc regionWord(fragment: var X86Block, value: uint32) =
+  ## Emit a complete little-endian rel32/immediate without native host-endian assumptions.
+  for shift in 0..<4: fragment.bytes.add(byte((value shr (shift*8)) and 255))
+
+proc regionEdge(fragment: var X86Block, fixes: var seq[X86RegionFixup], target: uint32,
+    condition: byte, guard: bool) =
+  ## Conditional and unconditional edges reserve four displacement bytes for bounded relocation.
+  if condition == 0: put(fragment, [0xe9'u8])
+  else: put(fragment, [0x0f'u8, condition])
+  fixes.add(X86RegionFixup(at: fragment.bytes.len, target: target, guard: guard))
+  regionWord(fragment, 0)
+
+proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
+  ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.
+  assert jit.region.status == 0
+  jit.region.status = 1
+  var code = default(X86Block)
+  # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch only RAX/RCX/RDX/R8.
+  put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
+  var labels = default(array[2, int])
+  var fixes: seq[X86RegionFixup] = @[]
+  for index in 0..<count:
+    let item = blocks[index]
+    if item.header >= 262144 or item.span < 2 or item.span > 65 or
+        item.operations != item.span or item.body.bytes.len < 16: return false
+    let terminal = item.body.bytes.len
+    # Only the existing emitter's MOV/MOV/CMOV scalar-selection tail can be replaced by native edges.
+    if item.body.bytes[terminal-13] != 0xb8 or item.body.bytes[terminal-8] != 0xba or
+        item.body.bytes[terminal-3] != 0x0f or item.body.bytes[terminal-1] != 0xc2: return false
+    let condition = item.body.bytes[terminal-2]
+    if condition notin {0x42'u8..0x47, 0x4c..0x4f}: return false
+    labels[index] = code.bytes.len
+    put(code, [0x49'u8, 0x81, 0xfa]) # CMP R10,wholeSourceSpan; partial blocks return before debit.
+    regionWord(code, item.span)
+    regionEdge(code, fixes, item.header, 0x82, true)
+    immediate(code, 0xb8, item.price)
+    put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX is an unsigned full64 gas guard.
+    regionEdge(code, fixes, item.header, 0x82, true)
+    put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea])
+    regionWord(code, item.span)
+    # Invocation-local visits and last completed header preserve counters and exact reservation endpoint on every exit.
+    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8), 0x48, 0xc7, 0x46, 32])
+    regionWord(code, item.header)
+    for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
+    regionEdge(code, fixes, item.yes, condition+0x40'u8, false)
+    regionEdge(code, fixes, item.no, 0, false)
+  var exits: seq[uint32] = @[]
+  var exitLabels: seq[int] = @[]
+  for fix in fixes:
+    var internal = false
+    if not fix.guard:
+      for index in 0..<count:
+        if blocks[index].header == fix.target: internal = true
+    if internal: continue
+    var known = false
+    for target in exits:
+      if target == fix.target: known = true
+    if not known: exits.add(fix.target)
+  var returns: seq[int] = @[]
+  for target in exits:
+    exitLabels.add(code.bytes.len)
+    put(code, [0xb8'u8])
+    regionWord(code, target)
+    put(code, [0xe9'u8])
+    returns.add(code.bytes.len)
+    regionWord(code, 0)
+  let epilogue = code.bytes.len
+  put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
+  if code.bytes.len >= 4096 or jit.fragments >= 1024: return false
+  for at in returns:
+    let relative = uint32(epilogue-at-4)
+    for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
+  for fix in fixes:
+    var target = -1
+    if not fix.guard:
+      for index in 0..<count:
+        if blocks[index].header == fix.target: target = labels[index]
+    if target < 0:
+      for index in 0..<exits.len:
+        if exits[index] == fix.target: target = exitLabels[index]
+    assert target >= 0 and target < code.bytes.len
+    let origin = fix.at+4
+    let relative = if target >= origin: uint32(target-origin) else: 0'u32-uint32(origin-target)
+    for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
+  if jit.arena.handle == nil: return false
+  let published = publishNative(jit.arena.handle, addr code.bytes[0], uint32(code.bytes.len))
+  if published < 0: return false
+  jit.region.code = uint32(published)
+  for index in 0..<count:
+    jit.region.headers[index] = blocks[index].header
+    jit.region.spans[index] = blocks[index].span
+    jit.region.prices[index] = blocks[index].price
+    jit.region.operations[index] = blocks[index].operations
+  jit.region.count = uint32(count)
+  jit.region.status = 2
+  inc jit.fragments
+  jit.codeBytes = uint64(published)+uint64(code.bytes.len)
+  true
+
+proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
+    {.cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
+
+proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5, uint64]): uint32 =
+  ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.
+  assert jit.region.status == 2 and state[2] == 0 and state[3] == 0
+  let available = state[1]
+  let gas = state[0]
+  result = regionNative(jit.arena.handle, jit.region.code, addr registers, addr state)
+  assert state[1] <= available and state[0] <= gas
+  let consumed = available-state[1]
+  var accounted = 0'u64
+  for index in 0..<x86RegionCount(jit):
+    let span = uint64(jit.region.spans[index])
+    let count = state[index+2]
+    assert count <= consumed div span
+    let attempts = count*span
+    assert accounted <= consumed and attempts <= consumed-accounted
+    accounted += attempts
+    jit.operations += count*uint64(jit.region.operations[index])
+    jit.region.blocks += count
+  assert accounted == consumed
+  inc jit.calls
+  inc jit.branchCalls
+  inc jit.headerCalls
+  inc jit.region.calls
+
+func x86RegionStatistics*(jit: X86Jit): array[2, uint64] =
+  ## Distinguish connected entries from completed logical blocks without claiming hardware instruction counts.
+  [jit.region.calls, jit.region.blocks]
