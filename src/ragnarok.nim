@@ -11,7 +11,7 @@ import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, fuzz_target, devnet_command]
+    trace_check_command, fuzz_target, devnet_command, pvm_command]
 import ./pvm/step
 import ./version
 import ./lib/logging
@@ -90,6 +90,14 @@ proc main(): int =
       writeFailure(logger, "PVM_BACKEND_UNAVAILABLE requested=" & $options.pvmBackend & " reason=" & $available)
       return 2
     log(options.logWriter, LogTarget.Pvm, LogLevel.Info, backendSummary(options.pvmBackend))
+    if options.pvmCodePath.len > 0:
+      var report = ""
+      if not runPvmCode(options, report):
+        writeFailure(logger, report)
+        return 2
+      stdout.writeLine(report)
+      return 0 # Standalone execution retires all prepared/native owners before process teardown.
+
     log(options.logWriter, LogTarget.Startup, LogLevel.Info, "Ragnarok " & AppVersion & " " & AppRevision)
     if options.argumentCount() >= 1 and options.argument(1) == "check-traces":
       let outcome = runTraceChecks(options)

@@ -73,6 +73,19 @@ const
       description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses interpreted fallback.",
       fallback: OptionDefault.PvmBackend, commands: "", repeatable: false),
 
+    OptionSpec(name: "--pvm-code", value: "FILE", group: OptionGroup.PVM,
+      description: "Execute a standalone JamV1 .polkavm artifact.",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+    OptionSpec(name: "--pvm-entry", value: "NAME", group: OptionGroup.PVM,
+      description: "Artifact export to execute (default: main); requires --pvm-code.",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+    OptionSpec(name: "--pvm-gas", value: "NUMBER", group: OptionGroup.PVM,
+      description: "Artifact gas budget, 1..1000000000000 (default: 10000000).",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+    OptionSpec(name: "--pvm-steps", value: "NUMBER", group: OptionGroup.PVM,
+      description: "Artifact instruction budget, 1..1000000000 (default: 10000000).",
+      fallback: OptionDefault.None, commands: "", repeatable: false),
+
     # Network and TLS options. Keep additions in this group.
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535); required.", fallback: OptionDefault.Required,

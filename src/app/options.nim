@@ -24,6 +24,8 @@ type Options* = object ## Validated service controls; command handlers validate 
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
   mode: NodeMode
+  codePath, codeEntry: string
+  codeGas, codeSteps: uint64
   pvmSelection: PvmBackend
   backend: StateStorage
   layout: StateDiskLayout
@@ -41,6 +43,19 @@ proc valid*(options: Options): bool =
 func pvmBackend*(options: Options): PvmBackend =
   ## Only the immutable parsed selection reaches invocation policy; failed parsing grants no startup authority.
   options.pvmSelection
+
+func pvmCodePath*(options: Options): string =
+  ## Only a complete standalone parse exposes an artifact filename.
+  if options.parsed: options.codePath else: ""
+func pvmEntry*(options: Options): string =
+  ## The selected export is meaningful only for explicit standalone execution.
+  if options.parsed: options.codeEntry else: ""
+func pvmGas*(options: Options): uint64 =
+  ## Finite validated gas never derives from an untrusted artifact declaration.
+  if options.parsed: options.codeGas else: 0
+func pvmSteps*(options: Options): uint64 =
+  ## A separate instruction allowance bounds loops independently of gas.
+  if options.parsed: options.codeSteps else: 0
 
 func nodeMode*(options: Options): NodeMode =
   ## Mode observation grants no startup authority when parsing failed.
@@ -202,9 +217,10 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
     diagnostic: var string): bool =
   ## Internal configuration boundary: command values are already normalized; validate shared controls atomically.
   options = default(Options)
-  var candidate = Options(logging: initLogPolicy(), rpcNumber: DefaultRpcPort,
-      uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode,
-          backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
+  var candidate = Options(codeEntry: "main", codeGas: 10000000, codeSteps: 10000000,
+      logging: initLogPolicy(), rpcNumber: DefaultRpcPort, uiNumber: DefaultUiPort,
+          downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode, backend: DefaultStateStorage,
+              pvmSelection: DefaultPvmBackend,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
@@ -249,6 +265,22 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         return false
       diagnostic = "Invalid value for " & name & ": " & spec.description
       case name
+      of "--pvm-code", "--pvm-entry":
+        if value.len > 4096: return false
+        for character in value:
+          if ord(character) < 32 or ord(character) ==
+              127: return false # Preserve exact native paths and bounded terminal diagnostics.
+        if name == "--pvm-code": candidate.codePath = value
+        else: candidate.codeEntry = value
+      of "--pvm-gas", "--pvm-steps":
+        var amount = 0'u64
+        if not unsignedValue(value, amount) or amount == 0: return false
+        if name == "--pvm-gas":
+          if amount > 1000000000000'u64: return false
+          candidate.codeGas = amount
+        else:
+          if amount > 1000000000'u64: return false
+          candidate.codeSteps = amount
       of "--log-level":
         if not parseLogPolicy(value, candidate.logging): return false
       of "--telemetry-endpoint": candidate.endpoint = value
@@ -437,6 +469,18 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         candidate.positional.len == 0 or candidate.positional[0] != "download-current" or
             not candidate.state:
       return false # Neither unpaired controls nor other commands can silently ignore a logical startup request.
+  if candidate.codePath.len > 0:
+    if candidate.positional.len != 0:
+      diagnostic = "--pvm-code cannot accompany another command"
+      return false
+    for control in seen:
+      if control notin ["--pvm-code", "--pvm-entry", "--pvm-gas", "--pvm-steps", "--pvm-backend",
+          "--log-level"]:
+        diagnostic = "Standalone PVM execution does not accept " & control
+        return false # No service configuration is silently ignored.
+  elif "--pvm-entry" in seen or "--pvm-gas" in seen or "--pvm-steps" in seen:
+    diagnostic = "Standalone PVM options require --pvm-code FILE"
+    return false
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true
@@ -474,6 +518,10 @@ proc parseOptions*(arguments: seq[string], options: var Options, diagnostic: var
   var normalized: seq[string] = @[]
   if not normalizeCommand(arguments, normalized, diagnostic): return false
   if not parseCanonicalOptions(normalized, options, diagnostic): return false
+  if normalized.len > 0 and options.argumentCount == 0 and options.pvmCodePath.len == 0:
+    options = default(Options)
+    diagnostic = "Standalone PVM options require --pvm-code FILE"
+    return false # Internal canonical parsing can describe backend-only harnesses; process input must select a workload.
   diagnostic = ""
   true
 
