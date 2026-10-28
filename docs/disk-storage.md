@@ -23,9 +23,21 @@ To run ephemerally, omit both backend controls or select `--state-storage memory
 A missing path is created exclusively from the configured complete genesis. A normal restart opens
 its own validated durable head without external checkpoint files. Startup verifies chain identity,
 journal integrity, complete reachable state graphs and the stored header/profile/state bindings.
-It restores up to eight retained blocks and any explicitly selected finalized block, including an
+By default it restores up to eight retained blocks and any explicitly selected finalized block, including an
 older finalized anchor. No block becomes finalized merely because it was persisted or reopened.
 RPC starts with this same restored history and exact current snapshot owner.
+
+New history contexts use V2 metadata with an explicit snapshot window and 64-bit counts.
+Existing V1 contexts reopen with their original eight-snapshot policy; the next successful
+durable publication upgrades the context atomically. Opening alone does not rewrite history.
+Older binaries that only understand V1 cannot reopen a V2 context. Keep a pre-upgrade database
+backup if rollback to such a binary is required.
+
+The internal snapshot API permits a different positive window, subject to storage budgets.
+The application default remains eight; archive and retention CLI controls are pending the
+disk historical index and accepted block-body implementation. These snapshots retain headers
+and complete states, rather than an archive of raw block bodies. See the
+[retention contract](../spec/block-state-retention.md) for scope and remaining work.
 
 Invalid existing data never falls back to genesis or memory. Interrupted initialization keeps its
 forensic bytes; bootstrap-only metadata cannot become a canonical head. Keep the database path and

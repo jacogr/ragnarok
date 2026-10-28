@@ -30,8 +30,8 @@ proc main() {.raises.} =
   assert prepareDiskMaintenance(disk, owner, default(StorageChainId), limits.contextBytes).error ==
       DiskChainError.CanonicalMismatch
   let generation = RepositoryGeneration(uint64(disk.generation.value)+1)
-  let context = encodeDiskHistory(owner, default(StorageChainId), generation,
-      limits.contextBytes).value
+  let context = legacyHistoryBytes(encodeDiskHistory(owner, default(StorageChainId), generation,
+      limits.contextBytes).value) # Compaction preserves exact V1 bytes until a normal successor upgrades them.
   assert disk.commit(transient, owner.stateSnapshot.value, context).error == DiskStoreError.None
   assert commitDiskMaintenance(disk, stale).error == DiskChainError.CanonicalMismatch
   let prepared = prepareDiskMaintenance(disk, owner, default(StorageChainId),

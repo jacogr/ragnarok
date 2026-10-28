@@ -81,7 +81,9 @@ selected; its receipt and strict reopen determine the result. Cleanup failure ne
 
 Managed mode inherits the existing graph and physical budgets: 4,194,304 physical records,
 128 MiB physical value bytes, 64 MiB encoded batch, 4 MiB application context, and 256 MiB ceilings
-for each selected snapshot and journal. Reclamation retains at most nine distinct roots. These
+for each selected snapshot and journal. The default application window retains at most nine distinct
+roots during reclamation. Internal callers can select a different positive snapshot window,
+subject to the same physical budgets; see [retention](../spec/block-state-retention.md). These
 finite ceilings remain separate from protocol rules and caller mutation budgets. Selected-file
 usage excludes staged/retired files and memory held by readers; unknown files can still consume disk.
 

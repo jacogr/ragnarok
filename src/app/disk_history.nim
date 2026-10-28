@@ -21,8 +21,10 @@ type
     root: StateRoot
 
 const
-  HistoryMagic = "RAGNAROK-DISK-CHAIN-V1\n"
-  HistoryPrefixBytes* = HistoryMagic.len+2 ## Version followed by retained count and explicit finality tag.
+  LegacyHistoryMagic = "RAGNAROK-DISK-CHAIN-V1\n"
+  HistoryMagic = "RAGNAROK-DISK-CHAIN-V2\n"
+  HistoryPrefixBytes* = HistoryMagic.len+24 ## E8 capacity, count and explicit finality ordinal.
+  LegacyHistoryPrefixBytes = LegacyHistoryMagic.len+2 # Read/authority compatibility only; new writes use V2.
   EntryPrefixBytes = 40 # Complete posterior-root hint plus E8 exact single-head context length.
 
 func error*[T](outcome: DiskHistoryResult[T]): DiskHistoryError =
@@ -39,29 +41,41 @@ func number(bytes: openArray[byte], offset: int): uint64 =
 proc putNumber(bytes: var seq[byte], offset: int, value: uint64) =
   ## The measured complete output owns every written field.
   for index in 0..<8: bytes[offset+index] = byte((value shr (index*8)) and 255)
-proc encodeDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
-    generation: RepositoryGeneration, limit: ByteLimit): DiskHistoryResult[seq[byte]] =
-  ## Measure all at-most-nine sealed headers before encoding; absent finality stays explicitly absent.
+func hasMagic(bytes: openArray[byte], magic: string): bool =
+  ## Inspect a known exact version prefix only after proving its complete extent.
+  if bytes.len < magic.len: return false
+  for index, character in magic:
+    if bytes[index] != byte(character): return false # No alternate-version fallback on a mismatched prefix.
+  true
+proc encodeHistory(owner: ApplicationChain, chain: StorageChainId,
+    generation: RepositoryGeneration, limit: ByteLimit, legacy: bool): DiskHistoryResult[seq[byte]] =
+  ## Measure all selected sealed headers before encoding; absent finality stays explicitly absent.
   let view = owner.chainView
   let count = view.retainedCount
-  if count == 0 or count > MaxRetainedBlocks:
+  let capacity = view.retentionLimit
+  if count == 0 or not validHistoryLimit(capacity) or uint64(count) > uint64(capacity) or
+      (legacy and uint64(capacity) != uint64(MaxRetainedBlocks)):
     return DiskHistoryResult[seq[byte]](status: DiskHistoryError.ChainFailure)
+  let maximum = min(uint64(limit), uint64(high(int)))
+  let prefix = if legacy: LegacyHistoryPrefixBytes else: HistoryPrefixBytes
+  if uint64(prefix) > maximum or
+      uint64(count) > (maximum-uint64(prefix)) div uint64(EntryPrefixBytes+DiskHeadPrefixBytes+1):
+    return DiskHistoryResult[seq[byte]](status: DiskHistoryError.LimitExceeded)
   var saved: seq[BlockSnapshotResult] = @[]
   for index in 0..<count: saved.add(view.retainedBlockAt(RetainedBlockIndex(index)))
-  var finality = 0'u8
+  var finality = 0'u64
   let finalized = view.finalizedBlock
   if finalized.error == GenesisError.None:
     for index in 0..<count:
       if array[32, byte](saved[index].value.blockHash) == array[32, byte](
           finalized.value.blockHash):
-        finality = byte(index+1) # In-window finality must reuse this same restored block owner.
+        finality = uint64(index)+1 # In-window finality must reuse this same restored block owner.
     if finality == 0:
-      finality = 255
-      saved.add(finalized) # Only an explicitly selected older anchor consumes the ninth slot.
+      finality = high(uint64)
+      saved.add(finalized) # Only an explicitly selected older anchor consumes one additional slot.
   elif finalized.error != GenesisError.Unavailable:
     return DiskHistoryResult[seq[byte]](status: DiskHistoryError.ChainFailure)
-  let maximum = min(uint64(limit), uint64(high(int)))
-  var extent = uint64(HistoryPrefixBytes)
+  var extent = uint64(prefix)
   if extent > maximum: return DiskHistoryResult[seq[byte]](status: DiskHistoryError.LimitExceeded)
   for selected in saved:
     let info = selected.value.header.headerInfo
@@ -72,10 +86,18 @@ proc encodeDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
       return DiskHistoryResult[seq[byte]](status: DiskHistoryError.LimitExceeded)
     extent += fixed+uint64(info.value.consumed) # Subtraction checks prove both arithmetic and host allocation bounds.
   var bytes = newSeq[byte](int(extent))
-  for index, character in HistoryMagic: bytes[index] = byte(character)
-  bytes[HistoryMagic.len] = byte(count)
-  bytes[HistoryMagic.len+1] = finality
-  var offset = HistoryPrefixBytes
+  if legacy:
+    # V1 re-encoding authorizes only an exact existing V1 context, never a nondefault policy.
+    for index, character in LegacyHistoryMagic: bytes[index] = byte(character)
+    bytes[LegacyHistoryMagic.len] = byte(count)
+    bytes[LegacyHistoryMagic.len+1] = if finality == high(uint64): 255'u8 else: byte(finality)
+  else:
+    # V2 widens every ordinal and persists policy independently of the number of available entries.
+    for index, character in HistoryMagic: bytes[index] = byte(character)
+    putNumber(bytes, HistoryMagic.len, uint64(capacity))
+    putNumber(bytes, HistoryMagic.len+8, uint64(count))
+    putNumber(bytes, HistoryMagic.len+16, finality)
+  var offset = prefix
   for selected in saved:
     let single = initApplicationChain(genesisView(selected))
     if single.error != ApplicationChainError.None:
@@ -91,6 +113,17 @@ proc encodeDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
     for index, octet in head: bytes[offset+index] = octet
     offset += head.len
   DiskHistoryResult[seq[byte]](status: DiskHistoryError.None, completed: bytes)
+proc encodeDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
+    generation: RepositoryGeneration, limit: ByteLimit): DiskHistoryResult[seq[byte]] =
+  ## New durable publications always write V2; format migration shares normal atomic publication.
+  encodeHistory(owner, chain, generation, limit, false)
+proc encodeMatchingDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
+    generation: RepositoryGeneration, limit: ByteLimit,
+    reference: openArray[byte]): DiskHistoryResult[seq[byte]] =
+  ## Re-encode authority in the stored version for an exact byte comparison before mutation.
+  if hasMagic(reference, HistoryMagic): return encodeHistory(owner, chain, generation, limit, false)
+  if hasMagic(reference, LegacyHistoryMagic): return encodeHistory(owner, chain, generation, limit, true)
+  DiskHistoryResult[seq[byte]](status: DiskHistoryError.InvalidFormat)
 proc restoreDiskHistory*(bytes: openArray[byte], chain: StorageChainId,
     generation: RepositoryGeneration, configuration: Parameters, disk: DiskStateStore,
     policy: StateStoreLimits, limit: ByteLimit): DiskHistoryResult[ApplicationChain] =
@@ -98,18 +131,29 @@ proc restoreDiskHistory*(bytes: openArray[byte], chain: StorageChainId,
   ## Validate every extent before graph restoration and preserve the disk owner's exact current snapshot.
   if uint64(bytes.len) > uint64(limit):
     return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.LimitExceeded)
-  if bytes.len < HistoryPrefixBytes:
+  let legacy = hasMagic(bytes, LegacyHistoryMagic)
+  let prefix = if legacy: LegacyHistoryPrefixBytes else: HistoryPrefixBytes
+  if (not legacy and not hasMagic(bytes, HistoryMagic)) or bytes.len < prefix:
     return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.InvalidFormat)
-  for index, character in HistoryMagic:
-    if bytes[index] != byte(character):
-      return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.InvalidFormat)
-  let count = int(bytes[HistoryMagic.len])
-  let tag = int(bytes[HistoryMagic.len+1])
-  if count == 0 or count > MaxRetainedBlocks or (tag > count and tag != 255):
+  let capacity = if legacy: uint64(MaxRetainedBlocks) else: number(bytes, HistoryMagic.len)
+  let countValue = if legacy: uint64(bytes[LegacyHistoryMagic.len]) else: number(bytes,
+      HistoryMagic.len+8)
+  let rawTag = if legacy: uint64(bytes[LegacyHistoryMagic.len+1]) else: number(bytes,
+      HistoryMagic.len+16)
+  let tag = if legacy and rawTag == 255: high(uint64) else: rawTag
+  if not validHistoryLimit(ElementLimit(capacity)) or countValue == 0 or countValue > capacity or
+      (tag > countValue and tag != high(uint64)):
     return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.InvalidFormat)
-  let total = count+(if tag == 255: 1 else: 0)
-  var extents = default(array[MaxRetainedBlocks+1, HeadExtent])
-  var offset = HistoryPrefixBytes
+  let extra = if tag == high(uint64): 1'u64 else: 0'u64
+  # A minimal entry requires both fixed prefixes and at least one header byte. Prove a count-sized
+  # allocation from actual input bytes before converting counts or reserving extent storage.
+  let available = uint64((bytes.len-prefix) div (EntryPrefixBytes+DiskHeadPrefixBytes+1))
+  if countValue > available or extra > available-countValue:
+    return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.InvalidFormat)
+  let count = int(countValue)
+  let total = count+int(extra) # Input-derived bound also proves host addition and allocation extents.
+  var extents = newSeq[HeadExtent](total)
+  var offset = prefix
   for index in 0..<total:
     if bytes.len-offset < EntryPrefixBytes:
       return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.InvalidFormat)
@@ -146,9 +190,9 @@ proc restoreDiskHistory*(bytes: openArray[byte], chain: StorageChainId,
       return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.HeadFailure)
     restored.add(head.value.chainView.bestBlock)
   let finalized = if tag == 0: unavailableGenesis()
-    elif tag == 255: restored[count]
-    else: restored[tag-1]
-  let history = restoreLocalChainView(restored.toOpenArray(0, count-1), finalized)
+    elif tag == high(uint64): restored[count]
+    else: restored[int(tag)-1]
+  let history = restoreLocalChainView(restored.toOpenArray(0, count-1), finalized, ElementLimit(capacity))
   if history.error != ViewAdvanceError.None:
     return DiskHistoryResult[ApplicationChain](status: DiskHistoryError.ChainFailure)
   let owner = initApplicationChain(history.value)
