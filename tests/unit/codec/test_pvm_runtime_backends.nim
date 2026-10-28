@@ -53,6 +53,7 @@ proc respond(context: var Context, stopped: StepOutcome): HostResult[HostFailure
   let info = machineInfo(stopped.machine).value
   assert uint64(info.pc) == uint64(context.calls*2)
   if context.reentry:
+    assert preparedInfo(context.prepared).error == PreparationError.Busy
     let nested = execute(stopped.machine, ExecutionStepLimit(1), context.prepared)
     assert nested.error == StepError.PreparedProgramBusy # The busy lease survives callback publication.
   inc context.calls

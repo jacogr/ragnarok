@@ -12,11 +12,12 @@ export cli_defaults
 
 type
   OptionGroup* {.pure.} = enum ## Ordered help sections keep activation flags beside their dependent settings.
-    General, Network, Ui, Rpc, Management, Telemetry, State, Storage, Recovery, Download, Trace,
-      Devnet, Fuzz
+    General, PVM, Network, Ui, Rpc, Management, Telemetry, State, Storage, Recovery, Download,
+      Trace, Devnet, Fuzz
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
     Required, None, Disabled, Embedded, RpcPort, UiPort, Timeout, PeerMode, Mode, Storage,
-    Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks, Logging
+    Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
+      Logging, PvmBackend
   OptionSpec* = object ## Immutable catalog row; an empty commands string denotes shared service controls.
     name*, value*, description*, commands*: string
     fallback*: OptionDefault
@@ -28,6 +29,7 @@ type
 const
   OptionGroups* = [
     "General",
+    "PVM",
     "Network and TLS",
     "Browser UI",
     "WebSocket RPC",
@@ -56,6 +58,7 @@ const
     CommandSpec(name: "serve-fuzz-preset", description: "Run conformance with explicit policy and the environment preset.")
   ]
   OptionSpecs* = [
+    # General options. Keep additions in this group.
     OptionSpec(name: "--chain", value: "FILE", group: OptionGroup.General,
       description: "Shared chain JSON for state, RPC and telemetry.", fallback: OptionDefault.None,
       commands: "",
@@ -64,6 +67,13 @@ const
       description: "off|fatal|error|warn|info|debug|trace; optional target=level filters.",
       fallback: OptionDefault.Logging, commands: "",
       repeatable: false),
+
+    # PVM options. Keep additions in this group.
+    OptionSpec(name: "--pvm-backend", value: "MODE", group: OptionGroup.PVM,
+      description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses interpreted fallback.",
+      fallback: OptionDefault.PvmBackend, commands: "", repeatable: false),
+
+    # Network and TLS options. Keep additions in this group.
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535); required.", fallback: OptionDefault.Required,
       commands: "server|client|download|download-current",
@@ -108,6 +118,12 @@ const
       description: "Mesh readiness gate path; required.", fallback: OptionDefault.Required,
       commands: "mesh",
       repeatable: false),
+    OptionSpec(name: "--net-peer", value: "PORT:KEY_FILE", group: OptionGroup.Network,
+      description: "Additional pinned peer; repeat in order (at most " & $(MaxDownloadPeers-1) &
+          ").", fallback: OptionDefault.None, commands: "download|download-current",
+      repeatable: true),
+
+    # Browser UI options. Keep additions in this group.
     OptionSpec(name: "--with-ui", value: "", group: OptionGroup.Ui,
       description: "Enable the browser UI and its RPC listener.", fallback: OptionDefault.Disabled,
       commands: "",
@@ -119,6 +135,8 @@ const
       description: "Serve development assets from this directory.",
       fallback: OptionDefault.Embedded, commands: "",
       repeatable: false),
+
+    # WebSocket RPC options. Keep additions in this group.
     OptionSpec(name: "--with-rpc", value: "", group: OptionGroup.Rpc,
       description: "Enable the WebSocket RPC listener independently.",
       fallback: OptionDefault.Disabled, commands: "",
@@ -127,6 +145,8 @@ const
       description: "Loopback WebSocket port (1..65535); must differ from UI.",
       fallback: OptionDefault.RpcPort, commands: "",
       repeatable: false),
+
+    # Local management options. Keep additions in this group.
     OptionSpec(name: "--with-management", value: "", group: OptionGroup.Management,
       description: "Enable local management; requires --management-socket.",
       fallback: OptionDefault.Disabled, commands: "",
@@ -135,6 +155,8 @@ const
       description: "Absolute socket path in an owned private directory.",
       fallback: OptionDefault.None, commands: "",
       repeatable: false),
+
+    # Telemetry options. Keep additions in this group.
     OptionSpec(name: "--with-telemetry", value: "", group: OptionGroup.Telemetry,
       description: "Enable telemetry; requires --telemetry-endpoint and --chain.",
       fallback: OptionDefault.Disabled, commands: "",
@@ -143,6 +165,8 @@ const
       description: "Explicit telemetry collector address.", fallback: OptionDefault.None,
       commands: "",
       repeatable: false),
+
+    # State execution options. Keep additions in this group.
     OptionSpec(name: "--with-state", value: "", group: OptionGroup.State,
       description: "Enable state; requires --chain.", fallback: OptionDefault.Disabled,
       commands: "",
@@ -159,6 +183,8 @@ const
       description: "Maximum value bytes written per batch; zero is permitted.",
       fallback: OptionDefault.WriteBytes, commands: "",
       repeatable: false),
+
+    # State storage options. Keep additions in this group.
     OptionSpec(name: "--state-storage", value: "memory|disk", group: OptionGroup.Storage,
       description: "Disk requires --state-db and --with-state.", fallback: OptionDefault.Storage,
       commands: "",
@@ -183,6 +209,8 @@ const
       description: "Managed layout only; source must differ from the new --state-db.",
       fallback: OptionDefault.None, commands: "",
       repeatable: false),
+
+    # Checkpoint import and light trust options. Keep additions in this group.
     OptionSpec(name: "--state-checkpoint", value: "FILE", group: OptionGroup.Recovery,
       description: "Full-state import; requires trust, header and byte limit.",
       fallback: OptionDefault.None, commands: "",
@@ -199,44 +227,12 @@ const
       description: "Explicit full-checkpoint import ceiling; required for import.",
       fallback: OptionDefault.None, commands: "",
       repeatable: false),
+
+    # Block downloads options. Keep additions in this group.
     OptionSpec(name: "--download-policy", value: "FILE", group: OptionGroup.Download,
       description: "Explicit versioned download policy; required.",
       fallback: OptionDefault.Required,
       commands: "download|download-current"),
-    OptionSpec(name: "--trace-policy", value: "FILE", group: OptionGroup.Trace,
-      description: "Current execution policy for offline trace checking; required.",
-      fallback: OptionDefault.Required,
-      commands: "check-traces"),
-    OptionSpec(name: "--devnet-policy", value: "FILE", group: OptionGroup.Devnet,
-      description: "Current execution policy for the development validator; required.",
-      fallback: OptionDefault.Required,
-      commands: "tiny-devnet node"),
-    OptionSpec(name: "--fuzz-spec", value: "PRESET", group: OptionGroup.Fuzz,
-      description: "tiny|full|fuzz; overrides JAM_FUZZ_SPEC.",
-      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-data-path", value: "DIR", group: OptionGroup.Fuzz,
-      description: "Private runtime directory; overrides JAM_FUZZ_DATA_PATH.",
-      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-sock-path", value: "PATH", group: OptionGroup.Fuzz,
-      description: "Unix listener socket path; overrides JAM_FUZZ_SOCK_PATH.",
-      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-log-level", value: "LEVEL", group: OptionGroup.Fuzz,
-      description: "error|warn|info|debug|trace; overrides JAM_FUZZ_LOG_LEVEL.",
-      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-policy", value: "FILE", group: OptionGroup.Fuzz,
-      description: "Conformance resource policy; required for explicit fuzz commands.",
-      fallback: OptionDefault.Required,
-      commands: "serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-state-writes", value: "COUNT", group: OptionGroup.Fuzz,
-      description: "Maximum conformance state writes.", fallback: OptionDefault.FuzzWrites,
-      commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--fuzz-state-write-bytes", value: "BYTES", group: OptionGroup.Fuzz,
-      description: "Maximum conformance state value bytes.", fallback: OptionDefault.FuzzWriteBytes,
-      commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
-    OptionSpec(name: "--net-peer", value: "PORT:KEY_FILE", group: OptionGroup.Network,
-      description: "Additional pinned peer; repeat in order (at most " & $(MaxDownloadPeers-1) &
-          ").", fallback: OptionDefault.None, commands: "download|download-current",
-      repeatable: true),
     OptionSpec(name: "--download-blocks", value: "COUNT", group: OptionGroup.Download,
       description: "Successive adoptions (1.." & $MaxDownloadBlocks & ").",
       fallback: OptionDefault.Blocks, commands: "",
@@ -273,6 +269,12 @@ const
       description: "Update the qualified logical source after actual adoption.",
       fallback: OptionDefault.Disabled, commands: "",
       repeatable: false),
+
+    # Offline trace checking options. Keep additions in this group.
+    OptionSpec(name: "--trace-policy", value: "FILE", group: OptionGroup.Trace,
+      description: "Current execution policy for offline trace checking; required.",
+      fallback: OptionDefault.Required,
+      commands: "check-traces"),
     OptionSpec(name: "--trace-genesis", value: "FILE", group: OptionGroup.Trace,
       description: "Independently selected Genesis bytes; required.",
       fallback: OptionDefault.Required, commands: "check-traces",
@@ -285,6 +287,12 @@ const
       description: "Compare step-0000.bin and following published RawState files.",
       fallback: OptionDefault.None, commands: "",
       repeatable: false),
+
+    # Local development network options. Keep additions in this group.
+    OptionSpec(name: "--devnet-policy", value: "FILE", group: OptionGroup.Devnet,
+      description: "Current execution policy for the development validator; required.",
+      fallback: OptionDefault.Required,
+      commands: "tiny-devnet node"),
     OptionSpec(name: "--devnet-output", value: "FILE", group: OptionGroup.Devnet,
       description: "Destination chain JSON file; required.", fallback: OptionDefault.Required,
       commands: "tiny-devnet init",
@@ -309,6 +317,30 @@ const
       description: "Bounded stop slot (2..64); required.", fallback: OptionDefault.Required,
       commands: "tiny-devnet node",
       repeatable: false),
+
+    # Conformance testing options. Keep additions in this group.
+    OptionSpec(name: "--fuzz-spec", value: "PRESET", group: OptionGroup.Fuzz,
+      description: "tiny|full|fuzz; overrides JAM_FUZZ_SPEC.",
+      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-data-path", value: "DIR", group: OptionGroup.Fuzz,
+      description: "Private runtime directory; overrides JAM_FUZZ_DATA_PATH.",
+      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-sock-path", value: "PATH", group: OptionGroup.Fuzz,
+      description: "Unix listener socket path; overrides JAM_FUZZ_SOCK_PATH.",
+      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-log-level", value: "LEVEL", group: OptionGroup.Fuzz,
+      description: "error|warn|info|debug|trace; overrides JAM_FUZZ_LOG_LEVEL.",
+      fallback: OptionDefault.Environment, commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-policy", value: "FILE", group: OptionGroup.Fuzz,
+      description: "Conformance resource policy; required for explicit fuzz commands.",
+      fallback: OptionDefault.Required,
+      commands: "serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-state-writes", value: "COUNT", group: OptionGroup.Fuzz,
+      description: "Maximum conformance state writes.", fallback: OptionDefault.FuzzWrites,
+      commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
+    OptionSpec(name: "--fuzz-state-write-bytes", value: "BYTES", group: OptionGroup.Fuzz,
+      description: "Maximum conformance state value bytes.", fallback: OptionDefault.FuzzWriteBytes,
+      commands: "fuzz|serve-fuzz|serve-fuzz-preset"),
     OptionSpec(name: "--fuzz-parameters", value: "FILE", group: OptionGroup.Fuzz,
       description: "Explicit chain parameters; required for serve-fuzz.",
       fallback: OptionDefault.Required, commands: "serve-fuzz",
@@ -349,3 +381,4 @@ proc defaultValue*(spec: OptionSpec): string =
   of OptionDefault.CompactBytes: $DefaultCompactionBytes
   of OptionDefault.Blocks: $DefaultDownloadBlocks
   of OptionDefault.Logging: $DefaultLogLevel
+  of OptionDefault.PvmBackend: $DefaultPvmBackend

@@ -1,0 +1,13 @@
+{
+  "defines": [
+    "pvmArm64Jit",
+    "pvmArm64JitRefuse"
+  ],
+  "directory": "state",
+  "includes": [
+    "pvm_jit"
+  ],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

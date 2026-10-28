@@ -12,6 +12,7 @@ import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
     trace_check_command, fuzz_target, devnet_command]
+import ./pvm/step
 import ./version
 import ./lib/logging
 
@@ -44,8 +45,13 @@ proc main(): int =
       if not normalizeCommand(arguments, normalized, diagnostic):
         stderr.writeLine(diagnostic)
         return 2
+      var withoutBackend: seq[string] = @[]
+      var backend = DefaultPvmBackend
+      if not extractPvmBackend(normalized, withoutBackend, backend):
+        stderr.writeLine("Invalid --pvm-backend: use jit|interpreted|polkavm-interpreted|polkavm-compiled")
+        return 2
       var logging = initLogPolicy()
-      if not extractLoggingOptions(normalized, commandArguments, logging):
+      if not extractLoggingOptions(withoutBackend, commandArguments, logging):
         stderr.writeLine("Invalid --log-level filter")
         return 2
       let fuzzCommand = arguments.len == 0 or arguments[0] != "tiny-devnet"
@@ -58,9 +64,14 @@ proc main(): int =
           stderr.writeLine("Invalid --fuzz-log-level / JAM_FUZZ_LOG_LEVEL")
           return 2
       if not logger.start(logging): return 2
+      let available = backendAvailability(backend)
+      if available != StepError.None:
+        writeFailure(logger, "PVM_BACKEND_UNAVAILABLE requested=" & $backend & " reason=" & $available)
+        return 2
+      log(logger.writer, LogTarget.Pvm, LogLevel.Info, backendSummary(backend))
       if arguments.len > 0 and arguments[0] == "tiny-devnet":
-        return runDevnet(commandArguments, logger.writer)
-      return runFuzzTarget(commandArguments, logger.writer)
+        return runDevnet(commandArguments, logger.writer, backend)
+      return runFuzzTarget(commandArguments, logger.writer, backend)
     var options = default(Options)
     var diagnostic = ""
     if not parseOptions(arguments, options, diagnostic):
@@ -74,6 +85,11 @@ proc main(): int =
       return 0
     if not logger.start(options.loggingPolicy): return 2
     options.attachLogWriter(logger.writer)
+    let available = backendAvailability(options.pvmBackend)
+    if available != StepError.None:
+      writeFailure(logger, "PVM_BACKEND_UNAVAILABLE requested=" & $options.pvmBackend & " reason=" & $available)
+      return 2
+    log(options.logWriter, LogTarget.Pvm, LogLevel.Info, backendSummary(options.pvmBackend))
     log(options.logWriter, LogTarget.Startup, LogLevel.Info, "Ragnarok " & AppVersion & " " & AppRevision)
     if options.argumentCount() >= 1 and options.argument(1) == "check-traces":
       let outcome = runTraceChecks(options)

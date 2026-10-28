@@ -28,6 +28,7 @@ type
     logging*: LogWriter
     steps*: ExecutionStepLimit
     calls*: HostCallLimit
+    backend*: PvmBackend ## Explicit guest engine, independent of every local resource ceiling.
     cycles*: GasCycleLimit
     output*: OutputByteLimit
   AuthorizationInvocationInfo* = object ## Copied final facts cannot replace retained code, source owners, core or trace.
@@ -258,7 +259,8 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
     copy: limits.copy,
     first: PageIndex(uint32(32+((ro+65535) div 65536)*16)),
     past: PageIndex(uint32((0xfefd0000'u64-((stack+65535) div 65536)*65536) div 4096)))
-  let executed = executeWithHost(initialized.value, context, dispatch, limits.steps, limits.calls, limits.cycles)
+  let executed = executeWithHost(initialized.value, context, dispatch, limits.steps, limits.calls,
+      limits.cycles, limits.backend)
   case executed.error
   of HostExecutionError.None:
     discard # Only a terminal guest outcome has gas and a result suitable for Psi_M normalization.

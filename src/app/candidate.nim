@@ -7,6 +7,7 @@
 import ../lib/logging
 
 import ./[chain, handoff]
+import ../pvm/backend
 import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
 import ../state/[fuzz_ancestry, store, block_transition, report_transition, report_admission,
@@ -411,3 +412,13 @@ proc selectLogging*(limits: var CurrentCandidateLimits, writer: LogWriter) =
   ## Current execution keeps logging outside serialized resource policy and state authority.
   limits.completion.execution.initial.guests.logging = writer
   limits.completion.execution.execution.round.guests.logging = writer
+
+proc selectPvmBackend*(limits: var ApplicationCandidateLimits, selected: PvmBackend) =
+  ## Initial services and later continuation/reentry rounds share one caller-selected engine.
+  limits.execution.backend = selected
+  limits.driver.execution.backend = selected
+
+proc selectPvmBackend*(limits: var CurrentCandidateLimits, selected: PvmBackend) =
+  ## Current initial and later guest cohorts retain the same explicit engine through completion.
+  limits.completion.execution.initial.guests.backend = selected
+  limits.completion.execution.execution.round.guests.backend = selected

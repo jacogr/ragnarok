@@ -21,6 +21,7 @@ type
     logging*: LogWriter
     steps*: ExecutionStepLimit
     calls*: HostCallLimit
+    backend*: PvmBackend ## Explicit engine applies equally to outer and nested guest execution.
     cycles*: GasCycleLimit
     output*: OutputByteLimit
     inner*: InnerMachineLimits
@@ -150,7 +151,8 @@ proc runRefinementInvocation*(bootstrap: PreparedRefinementBootstrap, trace: ope
       status: RefinementInvocationError.BootstrapFailure,
       bootstrapReason: captured.error) # Preserve local capture/input policy details without a protocol result.
   let evaluated = executeRefinement(captured.value, limits.copy, limits.exports,
-    limits.steps, limits.calls, limits.cycles, limits.inner, limits.logging)
+    limits.steps, limits.calls, limits.cycles, limits.inner, limits.logging,
+    backend = limits.backend)
   case evaluated.error
   of RefinementDispatchError.None:
     discard # Only a completed guest exit has terminal gas and an export selection to normalize.

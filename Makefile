@@ -17,6 +17,8 @@ export PYTHONUNBUFFERED := 1
 export RUSTUP_TOOLCHAIN = $(shell $(PYTHON) -c 'import json; print(json.load(open("spec/bandersnatch-pins.json"))["rust"])')
 # Bound compatible codec runs and independent compiler checks to the Linux runner's four CPUs.
 export COMPILE_CHECK_JOBS ?= 4
+# The independent default remains self-contained; optional foreign engines are explicitly linked.
+export PVM_POLKAVM ?= 0
 # Local builds retain readable assets; CI uses the native JS/CSS minifier. Override with 0 or 1.
 export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 # Optional one-suite selection is passed through the environment, never interpolated as shell code.

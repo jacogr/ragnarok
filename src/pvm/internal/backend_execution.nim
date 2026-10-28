@@ -282,13 +282,14 @@ when declared(ExecutionCursor):
   proc newPreparedProgram*(source: Program, limits: PreparedLimits,
       selected: PvmBackend): PreparationResult[PreparedProgram] =
     ## Engine choice is immutable and bound to this source/cache identity before any invocation.
-    if selected == PvmBackend.Interpreted: return newPreparedProgram(source, limits)
+    if selected in [PvmBackend.Interpreted, PvmBackend.Jit]: return prepareIndependent(source,
+        limits, selected)
     when defined(polkavmRuntime):
       if not isJamProgram(source): return PreparationResult[PreparedProgram](
           status: PreparationError.BackendProgramUnsupported)
       if fromCString(polkaRevision()) != PolkaVmRevision:
         return PreparationResult[PreparedProgram](status: PreparationError.BackendRevisionMismatch)
-      let prepared = newPreparedProgram(source, limits)
+      let prepared = prepareIndependent(source, limits, PvmBackend.Interpreted)
       if prepared.error != PreparationError.None: return prepared
       let length = codeLength(source).value
       if length > high(uint64) div 8: return PreparationResult[PreparedProgram](
@@ -302,8 +303,8 @@ when declared(ExecutionCursor):
         return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
       let data = prepared.value.data
       assert data != nil
-      let created = polkaCreate(uint32(ord(selected)), unsafeAddr wire.value[0], csize_t(
-          wire.value.len), data.foreign.handle)
+      let created = polkaCreate((if selected == PvmBackend.PolkaInterpreted: 1'u32 else: 2'u32),
+          unsafeAddr wire.value[0], csize_t(wire.value.len), data.foreign.handle)
       if created != 0:
         return PreparationResult[PreparedProgram](status: (if created == 2:
           PreparationError.BackendUnavailable elif created ==

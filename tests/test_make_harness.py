@@ -358,7 +358,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             with self.subTest(system=system), patch.object(build.platform, 'system', return_value=system):
                 arguments = build.build_command(compiler, output, *libraries)
                 for flag in ('--mm:arc', '--cc:clang', '--boundchecks:on', '--passC:-flto=thin',
-                             '--passL:-flto=thin', '-d:integration', '-d:offload'):
+                             '--passL:-flto=thin', '-d:integration', '-d:offload', '-d:pvmArm64Jit'):
                     # Feature selection must not switch runtime checks off in an optimized build.
                     self.assertIn(flag, arguments)
                 self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
@@ -366,6 +366,12 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 self.assertFalse(any('observed' in argument or 'observer' in argument for argument in arguments))
                 self.assertEqual(arguments[-1], str(ROOT/'src/ragnarok.nim'))
                 self.assertIn('--out:'+str(output), arguments)
+                self.assertIn('--passC:-I'+str(ROOT/'native/pvm_jit'), arguments)
+                self.assertNotIn('-d:polkavmRuntime', arguments)
+                optional = Path('/fixture/libragnarok_polkavm.so')
+                selected = build.build_command(compiler, output, *libraries, polkavm=optional)
+                self.assertIn('-d:polkavmRuntime', selected)
+                self.assertIn('--passL:'+str(optional), selected)
 
 
 # Combined formatting must retain read-only checks and fail if either language needs attention.

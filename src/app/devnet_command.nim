@@ -7,6 +7,7 @@
 import ../lib/logging
 
 import std/[os, strutils, times, monotimes, syncio]
+import ../pvm/backend
 import ./[chain, candidate, block_author, tiny_genesis, current_download_policy]
 import ../chain/[genesis, provider, parameters]
 import ../codec/[bounded, header, block_codec]
@@ -95,7 +96,7 @@ proc observation(chain: ApplicationChain, folder: string, index: int, source: st
   flushFile(stdout)
   true
 
-proc node(arguments: openArray[string], logging: LogWriter): int {.raises.} =
+proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend): int {.raises.} =
   ## One native process owns one public development signer, an independent complete chain and two QUIC engines.
   if arguments.len != 8: return 2
   var index, base, start, stop = 0'u64
@@ -114,6 +115,7 @@ proc node(arguments: openArray[string], logging: LogWriter): int {.raises.} =
     return 2
   var limits = policy.value.candidate
   limits.selectLogging(logging)
+  limits.selectPvmBackend(selected)
   var storeLimits = genesisStoreLimits()
   storeLimits.writes = ElementLimit(1000)
   storeLimits.writeValueBytes = ByteLimit(1048576)
@@ -222,7 +224,8 @@ proc node(arguments: openArray[string], logging: LogWriter): int {.raises.} =
   flushFile(stdout)
   0
 
-proc runDevnet*(arguments: seq[string], logging: LogWriter = default(LogWriter)): int {.raises.} =
+proc runDevnet*(arguments: seq[string], logging: LogWriter = default(LogWriter),
+    selected: PvmBackend = DefaultPvmBackend): int {.raises.} =
   ## Explicit development-only commands are parsed before ordinary service startup.
   if arguments.len == 3 and arguments[1] == "identity":
     var index = 0'u64
@@ -249,6 +252,6 @@ proc runDevnet*(arguments: seq[string], logging: LogWriter = default(LogWriter))
       return 2
     stdout.writeLine("DEVNET_GENESIS_OK")
     return 0
-  if arguments.len > 1 and arguments[1] == "node": return node(arguments, logging)
+  if arguments.len > 1 and arguments[1] == "node": return node(arguments, logging, selected)
   stderr.writeLine("Usage: ragnarok tiny-devnet init CHAIN_JSON | node DIRECTORY INDEX BASE_PORT START_UNIX_MS STOP_SLOT CURRENT_POLICY")
   2

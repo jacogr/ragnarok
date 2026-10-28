@@ -24,6 +24,7 @@ type
     logging*: LogWriter
     steps*: ExecutionStepLimit               ## Attempted instructions per ready guest.
     calls*: HostCallLimit                    ## Host dispatches per ready guest.
+    backend*: PvmBackend                     ## One immutable selection governs every invocation in this policy.
     cycles*: GasCycleLimit                   ## Bounded basic-block gas inspection.
     provisions*: AccumulationProvisionLimits ## Retained provide effects per guest.
     transfers*, accountWriteKeys*, createdAccounts*,
@@ -184,7 +185,7 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
       limits.provisions,
       limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
       limits.deletedAccounts, limits.modifiedAccounts, limits.accountWriteFacts,
-      limits.storageFacts, limits.requestFacts, logging = limits.logging)
+      limits.storageFacts, limits.requestFacts, logging = limits.logging, backend = limits.backend)
     if executed.error != AccumulationDispatchError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.DispatchFailure,
           dispatchReason: executed) # Preserve actual step/refusal detail; prior successful guests remain private and release.
