@@ -24,6 +24,7 @@ DRIVERS = {"kernel": ROOT/"tests/performance/pvm_stream_lifecycle.nim",
            "doom": ROOT/"tests/performance/pvm_stream_doom.nim"}
 BUILD = ROOT/'build/tests/pvm-interpreter-linux'
 sys.path.insert(0, str(ROOT/'tools'))
+from pvm_comparison_policy import policy_receipt
 from native_checks import NativeChecks
 from pvm_guest_inputs import prepare_inputs, digest
 from pvm_guest_compare import revision, unchanged
@@ -177,8 +178,9 @@ def summary(report):
     lines = ['Exact master: `'+report['master']+'`; candidate: `'+report['candidate']+'`.', '',
         'CPU milliseconds. Both process orders; reused medians exclude the first three calls.',
         'Master and ordinary public calls use complete pricing. Prepared API reuses source facts and stream,',
-        'but still creates private invocation memory and publishes an immutable result inside every call.', '',
-        '| Workload | Order | Master API | Ours prepared API | PolkaVM | Prepared / ref | Ours ordinary API (diagnostic) | Ordinary / ref |',
+        'but still creates private invocation memory and publishes an immutable result inside every call.',
+        'Current prepared policy is forced interpreted; x86-64 has no native JIT emitter.', '',
+        '| Workload | Order | Master API | Ours prepared API (interpreted) | PolkaVM interpreted | Prepared / ref | Ours ordinary API (diagnostic) | Ordinary / ref |',
         '|---|---|---:|---:|---:|---:|---:|---:|']
     for case in [x[0] for x in CASES]+['init', 'tick']:
         for order in range(2):
@@ -276,11 +278,15 @@ class Comparison:
             # Resolve the prior image once and preserve its exact identity in all later tables and controls.
             self.report['prepared_baseline'] = revision(prepared_baseline)
         self.report['roles'] = self.roles
+        self.report['comparison_protocol'] = 'interpreted-policy-v2'
+        self.report['policies'] = dict(prepared='interpreted', reference='polkavm-interpreted',
+            master='historical pinned default', baseline='historical pinned default',
+            public='ordinary checked API', candidate='retained checked core')
         self.identities = {p:digest(p) for p in [
             *sorted((ROOT/'src/pvm').rglob('*.nim')), *DRIVERS.values(), Path(__file__).resolve(),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_doom.nim',
             ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/polkavm_doom/src/main.rs',
-            ROOT/'tools/native_checks.py',
+            ROOT/'tools/native_checks.py',ROOT/'tools/pvm_comparison_policy.py',
             ROOT/'tools/pvm_prepared_blocks.py',ROOT/'tools/pvm_sieve_report.py',
             ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_guest_inputs.py',
             ROOT/'tools/setup_nimony.py',ROOT/'spec/toolchain.json']}
@@ -364,7 +370,8 @@ class Comparison:
             RAGNAROK_PVM_DOOM_ASSERT='0', RAGNAROK_PVM_LOCAL_ONECALL='0',
             RAGNAROK_PVM_DOOM_PRICING='prepared' if role in ('prepared','baseline') else 'planned',
             RAGNAROK_PVM_DOOM_PREPARATION='1' if role in ('master','public','prepared','baseline') else '0',
-            RAGNAROK_PVM_DOOM_LIFECYCLE='1' if doom and role=='reference' else '0')
+            RAGNAROK_PVM_DOOM_LIFECYCLE='1' if doom and role=='reference' else '0',
+            RAGNAROK_PVM_BACKEND='interpreted' if role=='prepared' else '')
         if doom:
             rom = ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'
             env.update(RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'), RAGNAROK_PVM_DOOM_PHASE=case,
@@ -407,6 +414,10 @@ class Comparison:
                     controlled.write_bytes(original)
         row, output = self.command(args,f'{case}-{order}-{role}',env)
         raw_output = output
+        policy = None
+        if role == 'prepared':
+            # Only the current public owner accepts explicit mode selection; historical images keep their policy.
+            output, policy = policy_receipt(output, 'interpreted')
         event_bytes = len((DOOM/'prepared'/(case+'.events')).read_bytes()) if doom else 0
         if role == 'candidate':
             parsed = parse_candidate(output,case,doom,event_bytes)
@@ -418,7 +429,7 @@ class Comparison:
         else:
             parsed = parse_process_output(output,'polkavm_interpreter' if role=='reference' else 'ragnarok_planned',limit,guest=case)
         unchanged(self.identities)
-        self.report['runs'].append(dict(case=case,order=order,role=role,run=row,stdout=raw_output,parsed=parsed));self.save()
+        self.report['runs'].append(dict(case=case,order=order,role=role,run=row,stdout=raw_output,parsed=parsed,policy=policy));self.save()
         print('PASS complete state',case,order,role,flush=True)
 
     def run(self):

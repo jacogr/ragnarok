@@ -124,6 +124,16 @@ let source = captureMachine(owner, memory, info).value
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
 assert pricing in ["", "dynamic", "planned", "memo", "prepared"]
 let preparedMode = pricing == "prepared"
+# Resolve the optional comparison policy before any constructor or execution clock.
+let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
+assert requestedBackend in ["", "jit", "interpreted"]
+when declared(DefaultPvmBackend):
+  var selectedBackend = reference.DefaultPvmBackend
+  if requestedBackend.len > 0:
+    assert reference.parsePvmBackend(requestedBackend, selectedBackend)
+else:
+  # Archived runtimes retain their original constructor and cannot honor current policy overrides.
+  assert requestedBackend.len == 0
 let clocked = getEnv("RAGNAROK_PVM_SIEVE_CLOCK") != "0"
 let plannedMode = pricing == "planned"
 let memoMode = pricing == "memo"
@@ -164,7 +174,12 @@ if preparedMode:
   # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
-  let created = reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)))
+  let created = when declared(DefaultPvmBackend):
+    # The owner captures selection and prepares capabilities inside the existing constructor clock.
+    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
+  else:
+    # Historical source snapshots preserve their original public API and engine policy.
+    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)))
   let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
   let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == reference.PreparationError.None
@@ -208,6 +223,17 @@ for sample in 0..<samples:
 if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
   echo "GAS_MEMO_END,", gasMemoInfo(memo).value.pricedBlocks
+
+when declared(DefaultPvmBackend):
+  if requestedBackend.len > 0:
+    # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
+    assert preparedMode
+    let policy = reference.preparedInfo(prepared).value
+    assert policy.backend == selectedBackend
+    let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
+    echo "PVM_POLICY,1,", requestedBackend, ",", int(policy.jitBuilt), ",",
+      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
+      policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
 
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.

@@ -32,6 +32,32 @@ class NativeOwnerReceiptTests(unittest.TestCase):
                 with self.subTest(role=role),self.assertRaisesRegex(ValueError,'Missing native owner receipt'):
                     parse_run('full-state\n',role,'tick',0)
 
+    def test_same_image_runtime_policies_require_matching_receipts(self):
+        """Current interpreted/JIT roles seal policy and owner counters, while archived v1 framing stays usable."""
+        for role, requested, counts, actual in (
+                ('interpreter', 'interpreted', '0,0,0,0,0,0,0', 'interpreted'),
+                ('jit', 'jit', '2,20,80,128,1000,10,8', 'jit')):
+            fallback = int(requested == 'jit')
+            native = counts.split(',')[:3]
+            receipt = (f'PVM_POLICY,1,{requested},1,1,{fallback},{actual},'+','.join(native)+'\n'+
+                       'ARM_OWNER,tick,'+counts+'\n')
+            with patch('pvm_arm64_jit_applications.parse_public', return_value={'validated': True}):
+                parsed = parse_run('full-state\n'+receipt, role, 'tick', 0,
+                                   protocol='matched-owner-policy-v2')
+                self.assertEqual(parsed['policy']['actual'], actual)
+                with self.assertRaises(ValueError):
+                    parse_run('full-state\n'+receipt.replace('PVM_POLICY,1,','PVM_POLICY,2,'),
+                              role, 'tick', 0, protocol='matched-owner-policy-v2')
+                with self.assertRaises(ValueError):
+                    parse_run('full-state\nARM_OWNER,tick,'+counts+'\n', role, 'tick', 0,
+                              protocol='matched-owner-policy-v2')
+        # Zero operations cannot disguise code publication in the forced-interpreted owner.
+        with patch('pvm_arm64_jit_applications.parse_public', return_value={}):
+            with self.assertRaisesRegex(ValueError, 'native owner activity'):
+                parse_run('full-state\nPVM_POLICY,1,interpreted,1,1,0,interpreted,0,0,0\n'+
+                          'ARM_OWNER,tick,0,0,0,0,1,0,0\n', 'interpreter', 'tick', 0,
+                          protocol='matched-owner-policy-v2')
+
     def test_foreign_partial_and_noninteger_receipts(self):
         """Only the selected phase's complete bounded scalar receipt can claim native execution."""
         for receipt in ('', 'ARM_OWNER,init,2,20,80,128,1000,10,8\n',
