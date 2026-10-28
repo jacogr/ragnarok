@@ -159,7 +159,7 @@ def run(panel='combined'):
         save()
         binary=None
         if panel != 'growth':
-            # The ordinary comparison and growth execute on independent CI runners.
+            # The comparison retains its own binary/report even when CI runs both panels on one runner.
             build,binary=NativeChecks(BUILD).build(compiler,source,'storage-native',crypto_library=library)
             build.pop('output',None);report['checks'].append(build);save()
             if build['exit_code']!=0:
@@ -203,11 +203,11 @@ def run(panel='combined'):
 
 # Imports expose inert orchestration for tests; Make alone owns provisioning and execution sequencing.
 if __name__=='__main__':
-    # Direct combined runs remain available; Make selects the two independent CI scopes explicitly.
+    # Direct combined reports remain available; Make selects independently validated panel reports.
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--panel',choices=('comparison','growth','combined'),default='combined')
     args=parser.parse_args()
     if args.panel=='growth':
-        # Local sequential runs keep each job's public report and compiler outputs independently.
+        # Sequential runs keep each panel's public report and compiler outputs independent.
         BUILD=ROOT/'build/tests/storage-growth-benchmark'
     run(args.panel)

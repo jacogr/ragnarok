@@ -4,8 +4,8 @@
 
 This tranche starts at merged `dae0b46d54aa535e8d450336ecf3f95ee39427f7` with the
 existing toolchain and Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` unchanged.
-The independent Perf Storage Growth job owns the sustained-publication panel beside the
-Perf Storage comparison/resource job. Memory, synchronized journal and managed repositories receive matching
+The Perf Storage job runs the sustained-publication panel after its comparison/resource panels.
+The growth report remains an independently validated scope. Memory, synchronized journal and managed repositories receive matching
 prepared physical changes through the public API. No format, default, state interface, checkpoint
 trust or protocol serialization change is implied.
 
@@ -154,31 +154,35 @@ Real fresh-child positive controls, stale-artifact failure checks, both host uni
 unchanged speed-sample coverage qualify this boundary. OS caches remain unchanged; page faults
 alone neither establish cold-cache behavior nor count physical device reads.
 
-## Independent growth CI ownership
+## Shared Storage CI ownership
 
-The maintainer requested a job split after Linux run39778196839 took27m16s against the
-30-minute Perf Storage budget. Retained command receipts attribute13m21s to sustained
-growth, including9m09s in32,768-entry cases. These are baseline observations, not a forecast.
+The earlier split followed Linux run39778196839 taking27m16s against a30-minute budget.
+The current job budget is60minutes. In [run40632891297](https://github.com/jacogr/ragnarok/actions/runs/40632891297),
+Storage took9m04s and Growth14m32s, a sum of23m36s. Growth spent about1m45s in cold setup
+before entering the benchmark driver. Consolidation reuses installed tools and the existing
+locked Rust provider release build; distinct native comparison/growth/SDK binaries still build
+with their original profiles. Roughly20–22minutes is an estimate, pending an observed combined
+Linux run. The consolidation releases one concurrent runner rather than reducing measured work.
 
-`make bench-storage-growth` runs the unchanged full sustained matrix and independent SDK
-IO controls in `Perf Storage Growth`. `Perf Storage` retains its short comparison and resource
-panels. Both jobs have the same Perf/full/master policy, no dependency between them, and
-30-minute budgets. Individual dispatch choices select only their named job. No case, warmup,
-measured repetition, checked native profile or validation assertion is removed. The additional
-runner repeats setup; this reduces serial workload rather than total CI work.
+Group/full/master requests now run comparison, resource panels, memory ceilings, sustained growth
+and SDK IO in one `Perf / Storage` job. `make bench-storage` and `make bench-storage-growth`
+remain separate commands and keep their original workload/report scopes. Individual dispatch
+choices still select only comparison/resources or only growth/SDK controls, using the same
+Storage display name. No case, warmup, measured repetition, checked native profile, timeout or
+validation assertion is removed. Execution is sequential; no CPU benchmark overlaps another.
 
-Each job has separate local output and artifact ownership. Growth writes its parent provenance
-report/summary under `build/tests/storage-growth-benchmark/` and its raw child matrix/SDK
-evidence under `growth/`. The parent scope is `growth`; its short passes/checks/cases must
-be empty, while the complete sustained matrix, source/crypto/compiler identities and ordinary/
-observed executable hashes remain required. Short scope `comparison` cannot embed growth
-evidence. Existing combined reports and direct combined script runs remain supported;
-comparison tools require matching scopes and validate all measurements owned by that scope.
+Growth runs after an earlier comparison/resource/summary failure unless the job is cancelled.
+A failed earlier step remains a job failure even if growth passes. Both panels' always-run
+summaries and uploads remain separate, preserving their original artifact names and retention.
+The stable Perf aggregate continues to require every matrix family to succeed.
 
-Local verification passed118 focused checks across benchmark/scoped execution, comparisons,
-input freezing, growth/SDK validators, Make and CI safeguards. Inventory, workflow YAML and
-whitespace checks passed. Historical Linux raw observations reparse under the combined and
-both split report scopes. The Make growth plan selects only growth after setup; a missing
-growth report produces a failing setup-free summary. Native workload sources and sample
-counts remain unchanged. Actual new per-job Linux durations remain unmeasured until a
-subsequent Perf request or master push.
+Growth writes its parent provenance report/summary under `build/tests/storage-growth-benchmark/`
+and its raw child matrix/SDK evidence under `growth/`. Its parent scope is `growth`; its short
+passes/checks/cases must be empty, while complete sustained matrix, source/crypto/compiler
+identities and ordinary/observed executable hashes remain required. Short scope `comparison`
+cannot embed growth evidence. Existing combined reports and direct combined script runs remain
+supported; comparison tools require matching scopes and validate all owned measurements.
+
+CI safeguards cover full/master/label routing, both individual dispatches, exact-once panel
+commands, ordering, failure/cancellation conditions and both artifact inventories. The benchmark
+workloads themselves are unchanged; only CI ownership and stale explanatory comments change.

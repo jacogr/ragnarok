@@ -136,7 +136,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         groups = {'compile': ['smoke', 'modules', 'python'],
                   'interop': ['pvm-reference', 'telemetry-interop'],
-                  'perf': ['bench-pvm-all', 'bench-storage', 'bench-storage-growth'],
+                  'perf': ['bench-pvm-all', 'bench-storage'],
                   'build': ['docker', 'binary', 'binary']}
         for event in (event_context(), event_context('workflow_dispatch', suite='full'),
                       event_context('pull_request', 'labeled', 'ci:full')):
@@ -486,7 +486,7 @@ class NimonyCISafeguards(unittest.TestCase):
                                     ('compile', 'modules', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
-                                    ('perf', 'bench-storage-growth', 'bench-storage-growth'), ('build', 'docker', 'check-docker')]:
+                                    ('perf', 'bench-storage', 'bench-storage-growth'), ('build', 'docker', 'check-docker')]:
             section = family_section(text, job, family)
             self.assertEqual(section.count('name: Validate verification inventory'), 1)
             self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make '+target))
@@ -546,7 +546,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling']),
-                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage', 'Storage Growth']),
+                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage']),
                              ('build', ['Docker', 'Linux', 'macOS'])]:
             self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
             self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))
@@ -570,30 +570,50 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('needs:', section)
 
-    def test_storage_growth_is_an_independent_perf_family(self):
-        """Growth preserves dispatch/group triggers, strict failure and artifacts without serial dependencies."""
-        text=(ROOT/'.github/workflows/ci.yml').read_text()
-        short=family_section(text, 'perf', 'bench-storage')
-        growth=family_section(text, 'perf', 'bench-storage-growth')
-        self.assertIn('name: Perf / ${{ matrix.family.name }}',growth)
-        self.assertIn('Storage Growth',growth)
-        for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage-growth'",
-                        "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
-            # An explicit short-only dispatch remains short-only; group requests still execute both jobs.
-            self.assertIn(trigger,growth)
-        self.assertEqual(growth.count('run: make bench-storage-growth\n'),1)
-        self.assertIn('summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',growth)
-        self.assertIn('timeout-minutes: *ci-job-timeout',growth)
-        self.assertIn('always()',growth)
-        self.assertIn('name: bench-storage-growth-${{ github.run_attempt }}',growth)
-        for name in ('results.json','summary.md','growth/results.json','growth/samples.csv',
-                     'growth/publications.csv','growth/io/*.log','growth/io/results.json','growth/io/calls.csv'):
-            self.assertIn('build/tests/storage-growth-benchmark/'+name,growth)
-        for section in (short,growth):
-            # A failed panel remains a failure and independent runners cannot serialize each other.
-            self.assertNotIn('needs:',section)
-            self.assertNotIn('continue-on-error',section)
-        self.assertNotIn('/growth/',short)
+    def test_storage_growth_shares_the_storage_runner(self):
+        """One full-request family retains both panels, separate evidence and scoped manual dispatches."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        full = family_section(text, 'perf', 'bench-storage')
+        comparison = family_section(text, 'perf', 'bench-storage', context=event_context(
+            'workflow_dispatch', suite='bench-storage'))
+        growth = family_section(text, 'perf', 'bench-storage-growth', context=event_context(
+            'workflow_dispatch', suite='bench-storage-growth'))
+        for context in (event_context(), event_context('workflow_dispatch', suite='perf'),
+                        event_context('workflow_dispatch', suite='full'),
+                        event_context('pull_request', 'labeled', 'ci:perf'),
+                        event_context('pull_request', 'labeled', 'ci:full')):
+            # Group requests allocate one Storage runner and execute both original commands once.
+            families = selected_families(text, 'perf', context)
+            self.assertEqual([row['name'] for row in families], ['PVM', 'Storage'])
+            section = family_section(text, 'perf', 'bench-storage', context=context)
+            self.assertEqual(section.count('run: make bench-storage\n'), 1)
+            self.assertEqual(section.count('run: make bench-storage-growth\n'), 1)
+        self.assertIn('run: make bench-storage\n', comparison)
+        self.assertNotIn('run: make bench-storage-growth\n', comparison)
+        self.assertIn('run: make bench-storage-growth\n', growth)
+        for command in ('bench-storage', 'bench-storage-memory-ceilings', 'bench-storage-resources'):
+            # Growth-only requests keep their original workload rather than silently expanding scope.
+            self.assertNotIn('run: make '+command+'\n', growth)
+        self.assertNotIn('Storage Growth', job_section(text, 'perf'))
+        for section in (full, growth):
+            # A failed short/resource panel cannot suppress growth; cancellation still stops work.
+            self.assertIn("if: ${{ !cancelled() && (matrix.family.group == 'bench-storage-growth'", section)
+            self.assertIn('summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
+            self.assertIn('name: bench-storage-growth-${{ github.run_attempt }}', section)
+            self.assertIn('timeout-minutes: *ci-job-timeout', section)
+            for name in ('results.json', 'summary.md', 'growth/results.json', 'growth/samples.csv',
+                         'growth/publications.csv', 'growth/io/*.log', 'growth/io/results.json', 'growth/io/calls.csv'):
+                self.assertIn('build/tests/storage-growth-benchmark/'+name, section)
+            self.assertNotIn('continue-on-error', section)
+            self.assertNotIn('needs:', section)
+        self.assertLess(full.index('run: make bench-storage\n'), full.index('run: make bench-storage-growth\n'))
+        growth_step = full.split('      - name: Measure sustained storage growth and SDK IO\n', 1)[1].split('      - name:', 1)[0]
+        guard = re.search(r'        if: (.+)', growth_step).group(1)
+        for cancelled in (False, True):
+            # The explicit status function overrides implicit success() after an earlier step failure.
+            context = dict(event_context(), matrix=dict(family=dict(group='bench-storage')),
+                           cancelled=cancelled)
+            self.assertEqual(expression(guard, context), not cancelled)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):

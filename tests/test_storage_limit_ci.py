@@ -5,7 +5,7 @@
 from pathlib import Path
 import sys
 import unittest
-from workflow_fixtures import family_section
+from workflow_fixtures import family_section, event_context
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 class LimitCITests(unittest.TestCase):
     """Memory ceilings remain in the existing opt-in Storage family with always-run reporting."""
@@ -19,7 +19,8 @@ class LimitCITests(unittest.TestCase):
         self.assertIn('run: make bench-storage\n',section)
         self.assertIn("if: ${{ always() && matrix.family.group == 'bench-storage' }}\n        run: make summary-storage-memory-ceilings SUMMARY_OUTPUT=\"$GITHUB_STEP_SUMMARY\"",section)
         self.assertNotIn('run: make bench-storage-memory-ceilings',
-                         family_section(workflow, 'perf', 'bench-storage-growth'))
+                         family_section(workflow, 'perf', 'bench-storage-growth', context=event_context(
+                             'workflow_dispatch', suite='bench-storage-growth')))
         for suffix in ('*.log','results.json','observations.csv','summary.md','status.md'):
             self.assertIn('build/tests/storage-memory-ceilings/'+suffix,section)
     def test_make_setup_boundaries(self):

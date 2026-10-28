@@ -152,12 +152,19 @@ ratios. These local results do not claim remote CI or complete protocol serializ
 [operator interpretation guide](../docs/storage-performance.md) explains reproduction, operation
 boundaries, unavailable cells, physical counters, noise markers and retained provenance.
 
-## Independent sustained-growth job
+## Shared Storage runner
 
-`make bench-storage` now selects only the complete short comparison. Sustained growth and
-its SDK IO controls run through `make bench-storage-growth` in the independent
-`Perf Storage Growth` job; see the [growth contract](storage-growth-benchmark.md#independent-growth-ci-ownership).
-Both retain their original samples and checked build profile. Resource panels remain with
-Perf Storage. Group/full/master triggers run both jobs; individual dispatches select only
-the named job. Short reports explicitly declare `panel: comparison` and cannot claim growth
-success. Historical combined reports retain their full validation contract.
+`make bench-storage` selects the complete short comparison. Sustained growth and its SDK IO
+controls retain `make bench-storage-growth` and their independent report contract; see the
+[growth contract](storage-growth-benchmark.md#shared-storage-ci-ownership).
+Group/full/master requests run both commands and the existing resource/memory panels sequentially
+in one `Perf / Storage` job. The shared workspace reuses tool provisioning and the locked Rust
+provider's release artifacts. Distinct native benchmark binaries, caches, checked profiles,
+measurement loops and samples remain unchanged. No parallel benchmark execution is introduced.
+
+Individual `bench-storage` and `bench-storage-growth` dispatches preserve their original workload
+scopes under the same Storage display name. Short reports declare `panel: comparison` and cannot
+claim growth success; growth reports keep their own directory and artifact. Growth executes after
+an earlier panel failure unless cancelled, while the failed step still fails the aggregate gate.
+Both summaries and all original diagnostics remain available on failure. Historical combined
+reports retain their full validation contract.

@@ -555,7 +555,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm-all"},{"name":"Storage","group":"bench-storage"},{"name":"Storage Growth","group":"bench-storage-growth"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm-all"},{"name":"Storage","group":"bench-storage"}]') }}
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -694,14 +694,15 @@ jobs:
             build/tests/storage-memory-ceilings/status.md
             build/tests/storage-resource-summary.md
             build/ci/*.log
+      # Keep growth independent of earlier panel failures while sharing this runner's warm setup.
       - name: Measure sustained storage growth and SDK IO
-        if: ${{ matrix.family.group == 'bench-storage-growth' }}
+        if: ${{ !cancelled() && (matrix.family.group == 'bench-storage-growth' || (matrix.family.group == 'bench-storage' && inputs.suite != 'bench-storage')) }}
         run: make bench-storage-growth
       - name: Show sustained storage growth
-        if: ${{ always() && matrix.family.group == 'bench-storage-growth' }}
+        if: ${{ always() && (matrix.family.group == 'bench-storage-growth' || (matrix.family.group == 'bench-storage' && inputs.suite != 'bench-storage')) }}
         run: make summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain sustained storage evidence
-        if: ${{ always() && matrix.family.group == 'bench-storage-growth' }}
+        if: ${{ always() && (matrix.family.group == 'bench-storage-growth' || (matrix.family.group == 'bench-storage' && inputs.suite != 'bench-storage')) }}
         uses: *upload-artifact
         with:
           name: bench-storage-growth-${{ github.run_attempt }}
