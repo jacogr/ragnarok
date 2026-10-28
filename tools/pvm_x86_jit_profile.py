@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""CI-only calibrated invocation profiles of sealed x86 application images; clocks are discarded.
+"""CI-only calibrated invocation profiles of sealed native Linux application images; clocks are discarded.
 
 The complete thirteen-call state-checked process is retained. Return dumps separate cold work
 from the final reused invocation, including private memory construction and immutable publication.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -33,9 +34,10 @@ def selected_symbol(output, prefix):
     return symbols[0]
 
 
-def profile_environment(case, limit, role):
+def profile_environment(case, limit, role, architecture="x86_64"):
     """Freeze exactly the maintained complete-state workload; only the current native policy varies."""
-    doom = case == 'tick'
+    doom = case in ('init', 'tick')
+    cohort = profile_plan(architecture)['cohort']
     prepared = ROOT/'build/tests/pvm-doom/prepared'
     env = dict(os.environ, RAGNAROK_PVM_GUEST=case, RAGNAROK_PVM_BACKEND=role,
         RAGNAROK_PVM_PRICING='prepared', RAGNAROK_PVM_SIEVE_SAMPLES='13',
@@ -47,7 +49,7 @@ def profile_environment(case, limit, role):
         RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
     if not doom:
         # The original reference-prepared bytes, not reconstructed inputs, bind both policy profiles.
-        inputs = COHORT/'inputs'/case/str(limit)
+        inputs = cohort/'inputs'/case/str(limit)
         env.update(RAGNAROK_PVM_SIEVE_INPUT=str(inputs/f'input-{limit}.bin'),
                    RAGNAROK_PVM_SIEVE_EXPECTED=str(inputs/f'expected-{limit}.bin'))
     return env
@@ -92,57 +94,72 @@ def matching_native_activity(measured, profiled):
         raise ValueError('Profile changed native execution or code working set')
 
 
-def run():
+def profile_plan(architecture):
+    """Select a bounded native cohort and roles; an ARM diagnostic compares the supplied parent with current JIT."""
+    if architecture == 'x86_64':
+        return dict(folder=BUILD, cohort=COHORT, roles=('interpreter','jit'),
+                    cases=(('sieve',100000),('pinky',1),('tick',0)))
+    if architecture == 'arm64':
+        return dict(folder=ROOT/'build/tests/pvm-arm64-profiles',
+                    cohort=ROOT/'build/tests/pvm-arm64-applications', roles=('baseline','jit'),
+                    cases=(('sieve',100000),('init',0),('tick',0)))
+    raise ValueError('Unsupported native profile architecture')
+
+
+def run(architecture="x86_64"):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
-    BUILD.mkdir(parents=True, exist_ok=True)
-    destination = BUILD/'results.json'
-    report = dict(status='incomplete', profiles=[], controls=[], builds=[],
+    plan = profile_plan(architecture)
+    folder, cohort_folder = plan["folder"], plan["cohort"]
+    folder.mkdir(parents=True, exist_ok=True)
+    destination = folder/'results.json'
+    report = dict(status='incomplete', architecture=architecture, profiles=[], controls=[], builds=[],
                   hardware_counters=False, clock_policy='discarded',
                   scope='public invocation including memory construction and immutable publication')
     destination.write_text(json.dumps(report, indent=2)+'\n')
     try:
         # A local machine is never a fallback for the native Linux measurement runner.
         if os.environ.get('GITHUB_ACTIONS') != 'true':
-            raise RuntimeError('x86 profiles are CI-only')
+            raise RuntimeError('Native profiles are CI-only')
         host = host_identity()
-        if host['system'] != 'Linux' or host['architecture'] != 'x86_64':
-            raise RuntimeError('Profiles require native Linux x86-64')
-        cohort_path = COHORT/'results.json'
+        if host['system'] != 'Linux' or host['architecture'] != architecture:
+            raise RuntimeError('Profile host does not match selected native Linux architecture')
+        cohort_path = cohort_folder/'results.json'
         cohort = json.loads(cohort_path.read_text())
-        if cohort['status'] != 'passed' or cohort['architecture'] != 'x86_64':
-            raise ValueError('Missing complete x86 application cohort')
+        if cohort['status'] != 'passed' or cohort['architecture'] != architecture:
+            raise ValueError('Missing complete matching native application cohort')
         head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
         if cohort['revision'] != head:
             raise ValueError('Profile and measured cohort heads differ')
         identities = {ROOT/name: value for name, value in cohort['identities'].items()}
         unchanged(identities)
-        report.update(revision=head, cpu=cohort['cpu'], compiler_identity=cohort['compiler_identity'],
+        report.update(revision=head, host=host, source_revisions=cohort['source_revisions'],
+                      cpu=cohort['cpu'], compiler_identity=cohort['compiler_identity'],
                       cohort_sha256=hashlib.sha256(cohort_path.read_bytes()).hexdigest(),
                       identities=cohort['identities'])
-        checks = NativeChecks(BUILD)
+        checks = NativeChecks(folder)
         version = checks.command(['valgrind', '--version'], 'version')
         if version['exit_code'] or re.fullmatch(r'valgrind-[0-9]+\.[0-9]+\.[0-9]+\s*', version['output']) is None:
             raise ValueError('Invalid Valgrind version')
         report['valgrind'] = version['output'].strip()
         calibrate_scope(checks, report)
-        for case, limit in (('sieve', 100000), ('pinky', 1), ('tick', 0)):
+        for case, limit in plan['cases']:
             # Short sieve exercises the same loop boundary at a bounded profiling cost; no profiled clock is a timing.
-            for role in ('interpreter', 'jit'):
+            for role in plan['roles']:
                 row = next(r for r in cohort['runs'] if
                     (r['case'], r['limit'], r['role'], r['order']) == (case, limit, role, 0))
                 binary = Path(row['run']['command'][0])
                 symbols = checks.command(['nm', '--defined-only', binary], case+'-'+role+'-symbols')
                 if symbols['exit_code']:
                     raise RuntimeError('Cannot inspect public invocation image')
-                scope = selected_symbol(symbols['output'], 'runPreparedDoom' if case == 'tick' else 'runPreparedKernel')
+                scope = selected_symbol(symbols['output'], 'runPreparedDoom' if case in ('init','tick') else 'runPreparedKernel')
                 name = case+'-'+role
                 unchanged(identities)
                 executed, final = collect(checks, binary, name, scope,
-                    profile_environment(case, limit, 'interpreted' if role == 'interpreter' else 'jit'),
+                    profile_environment(case, limit, 'interpreted' if role == 'interpreter' else 'jit', architecture),
                     1200, dump_symbols=(scope,), executions=13)
                 if executed['exit_code']:
                     raise RuntimeError('Profile process failed: '+name)
-                events = (ROOT/'build/tests/pvm-doom/prepared/tick.events').stat().st_size if case == 'tick' else 0
+                events = (ROOT/'build/tests/pvm-doom/prepared'/(case+'.events')).stat().st_size if case in ('init','tick') else 0
                 parsed = parse_run(executed['output'], role, case, limit, events, cohort['comparison_protocol'])
                 matching_native_activity(row['parsed']['native'], parsed['native'])
                 if len(parsed['execution']['samples']) != 13:
@@ -157,14 +174,16 @@ def run():
                 if annotation['exit_code'] or arcs['exit_code']:
                     raise RuntimeError('Profile annotation failed: '+name)
                 hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                          for p in sorted(BUILD.glob(name+'.callgrind*'))}
+                          for p in sorted(folder.glob(name+'.callgrind*'))}
                 report['profiles'].append(dict(case=case, role=role, scope=scope,
                     checked_calls=13, cold=cold_counts, reused=warm_counts, self_costs=own,
+                    cold_self_costs=exclusive_costs(cold.read_text()),
+                    source_revision=cohort['source_revisions'][role],
                     run={k:v for k,v in executed.items() if k != 'output'},
                     profile_hashes=hashes, native=parsed['native']))
                 # Preserve both independently parsed cold and reused raw dumps; intermediate complete warmups need only seals.
                 for index in range(2, 13):
-                    (BUILD/(name+'.callgrind.'+str(index))).unlink()
+                    (folder/(name+'.callgrind.'+str(index))).unlink()
                 unchanged(identities)
                 destination.write_text(json.dumps(report, indent=2)+'\n')
                 print(name, 'cold Ir', cold_counts['Ir'], 'reused Ir', warm_counts['Ir'], flush=True)
@@ -178,4 +197,6 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--architecture', choices=('x86_64','arm64'), default='x86_64')
+    run(parser.parse_args().architecture)

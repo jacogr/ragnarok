@@ -602,6 +602,10 @@ bench-pvm-arm64-applications: toolchain sources rust-tools
 	$(PYTHON) tools/pvm_arm64_jit_applications.py
 
 # Scoped stack diagnostics consume a complete application receipt and discard all sampled clocks.
+.PHONY: profile-pvm-arm64-linux
+profile-pvm-arm64-linux:
+	. ./build/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64
+
 .PHONY: profile-pvm-arm64-jit
 profile-pvm-arm64-jit: bench-pvm-arm64-applications
 	$(PYTHON) tools/pvm_arm64_jit_profile.py
