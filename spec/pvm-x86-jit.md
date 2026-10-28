@@ -263,3 +263,31 @@ bounds, source reservation, target validation and fresh register borrows. Immuta
 mapping extent/alignment can then be validated once at capability creation rather than looked
 up again through the arena on every transition. This revision requires fresh native/state and
 same-runner timing/profile qualification; no gain is claimed yet.
+
+
+### Sealed-call trial rejected; restrict short-span admission next
+
+[Run40682889735](https://github.com/jacogr/ragnarok/actions/runs/40682889735) at
+`32a291f02a863962ce6465d8a7aa08df79f0428b` passes native/state/ownership controls,
+70processes/910calls/115controls/16builds/eight equal-image pairs and all six scoped profiles.
+Independent source/raw-log/profile audits pass731identities. Application report SHA256:
+`0c3e52827fb9016a4a51379c9227b2bf4f4639ba3df3e574be6d502b8a37e7cb`.
+Its paired parent is `b49a2e04895976cd5626abc90673ba2e964cd5f6`; this runner is Intel Xeon
+Platinum8573C, so its numbers are not combined with the previous AMD cohort.
+
+The sealed record reduces sieve100k instructions from47,163,490to45,046,626 and gameplay
+from623,919,864to610,226,596. CPU timing rejects this exact trial: long sieve increases from
+223.371/223.753ms to246.253/245.661ms, and short sieve from2.442/2.475ms to2.671/2.687ms.
+Gameplay improves42.595/42.368ms to41.163/40.191ms, but that does not justify the repeated
+roughly10% sieve regression. Restore the prior arena/offset ABI and sixteen-byte source
+record; retain the measured rejection and original publication/lifetime/return controls.
+The counters do not establish the CPU cause of the divergence.
+
+The next isolated admission trial retains short arithmetic+conditional prefixes only when
+an exact ordinary header owns the complete pure source suffix. Interior prefixes shorter than
+four operations keep original fused workers. Existing longer arithmetic/native candidates,
+positive target preparation, gas/quota/partial/error handling and storage caps remain unchanged.
+Gameplay's first conditional trial made20,548,116branch calls but only1,809,870header calls
+across13invocations; short interior handoffs were plentiful. This policy tests that cost,
+without adding a program-size cutoff or changing native opcodes. It remains pending native,
+complete-state, same-runner parent timing and calibrated-profile qualification.

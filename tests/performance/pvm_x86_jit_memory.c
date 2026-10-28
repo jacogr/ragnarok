@@ -18,17 +18,6 @@ int main(void) {
         assert(pvm_x86_arena_publish(owner, bytes, 4097) == -1);
         int32_t first = pvm_x86_arena_publish(owner, bytes, sizeof(bytes));
         assert(first == 0);
-        /* Capabilities validate extent/alignment once and stay valid across later append-only publication. */
-        uint64_t first_entry = pvm_x86_arena_entry(owner, first);
-        assert(first_entry > 1);
-        assert(pvm_x86_arena_entry(owner, first + 1) == 0);
-        assert(pvm_x86_arena_entry(owner, 1024 * 1024) == 0);
-        assert(pvm_x86_arena_entry(NULL, first) == 0);
-        assert(pvm_x86_entry_call(0, registers) == 0);
-        assert(pvm_x86_entry_call(1, registers) == 0);
-        assert(pvm_x86_entry_call(first_entry, NULL) == 0);
-        assert(pvm_x86_entry_call(first_entry, registers) == 1);
-        assert(registers[0] == UINT64_C(0x1122334455667788));
         assert(pvm_x86_arena_call(owner, first + 1, registers) == 0);
         assert(pvm_x86_arena_call(owner, 1024 * 1024, registers) == 0);
         assert(pvm_x86_arena_call(owner, first, registers) == 1);
@@ -44,14 +33,6 @@ int main(void) {
         const unsigned char next_bytes[] = {0xb8, 42, 0, 0, 0, 0xc3};
         int32_t next = pvm_x86_arena_publish(owner, next_bytes, sizeof(next_bytes));
         assert(next == 32);
-        uint64_t next_entry = pvm_x86_arena_entry(owner, next);
-        assert(next_entry > 1);
-        assert(pvm_x86_entry_next(next_entry, registers) == 42);
-        assert(pvm_x86_entry_next(next_entry, NULL) == UINT32_MAX);
-        assert(pvm_x86_entry_next(0, registers) == UINT32_MAX);
-        assert(pvm_x86_entry_next(1, registers) == UINT32_MAX);
-        assert(pvm_x86_entry_call(first_entry, registers) == 1);
-        assert(registers[0] == UINT64_C(0x1122334455667788));
         assert(pvm_x86_arena_next(owner, next, registers) == 42);
         assert(pvm_x86_arena_next(owner, next + 1, registers) == UINT32_MAX);
         assert(pvm_x86_arena_next(NULL, next, registers) == UINT32_MAX);
@@ -61,8 +42,6 @@ int main(void) {
             memset(fill, 0x90, sizeof(fill));
             while (pvm_x86_arena_publish(owner, fill, sizeof(fill)) >= 0) {}
             assert(pvm_x86_arena_publish(owner, fill, sizeof(fill)) == -1);
-            assert(pvm_x86_entry_call(first_entry, registers) == 1);
-            assert(registers[0] == UINT64_C(0x1122334455667788));
             assert(pvm_x86_arena_call(owner, first, registers) == 1);
             assert(registers[0] == UINT64_C(0x1122334455667788));
         }

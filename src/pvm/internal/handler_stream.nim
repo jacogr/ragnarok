@@ -1618,8 +1618,15 @@ when defined(pvmX86Jit):
       let terminal = if int(ending) < f.sites.len:
           f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
       let conditional = terminal in {81'u8..90, 170..175}
-      if count == 0 or (count < 4 and not conditional) or
-          not publishX86Entry(jit, offset, ending, count, fragment, shortPrefix = conditional):
+      var whole = false
+      if conditional and offset > 0 and int(ending) < f.sites.len:
+        # Short native handoffs pay off only with a complete ordinary charge entry; interior prefixes retain fused checked workers.
+        let header = offset-1
+        let plain: FlatHandler = flatCharge
+        whole = f.handlers[int(header)] == plain and
+            f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y
+      if count == 0 or (count < 4 and not whole) or
+          not publishX86Entry(jit, offset, ending, count, fragment, shortPrefix = whole):
         refuseX86Entry(jit, offset)
         inc offset
         continue
