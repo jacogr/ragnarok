@@ -406,7 +406,7 @@ bench-storage-allocations: setup
 bench-storage-resources: setup
 	$(PYTHON) tools/storage_resources.py
 
-# Separate CI owners retain identical matrices while avoiding a serial speed/growth critical path.
+# Separate panel commands retain their own reports while the combined CI job reuses setup.
 bench-storage-growth: setup
 	$(PYTHON) tools/storage_benchmark.py --panel growth
 

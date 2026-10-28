@@ -174,6 +174,9 @@ table to `SUMMARY_OUTPUT` and saves downloadable `build/tests/storage-benchmark/
 
 In Actions, **Perf / Storage** sits beside **Perf / PVM**. Master pushes, `perf`/`full` dispatch and
 `ci:perf`/`ci:full` PR requests run the group. `bench-storage` dispatch selects comparison/resources;
-`bench-storage-growth` selects the independent Perf / Storage Growth matrix and SDK controls.
-Each job always renders a summary and retains JSON, CSV, Markdown and logs, including failures. Timing has
+`bench-storage-growth` selects growth and SDK controls. Both dispatches use the **Perf / Storage**
+name. Group requests run comparison, resource panels, memory ceilings and growth sequentially on
+one Storage runner, reusing installed tools and the Rust provider build. Growth still runs after an
+earlier panel failure unless cancelled; any failed step keeps Perf red. Each panel always renders
+its own summary and retains its separate JSON, CSV, Markdown and logs, including failures. Timing has
 no fixed CI speed threshold. See [the workload contract](../spec/storage-benchmark.md) for scope.
