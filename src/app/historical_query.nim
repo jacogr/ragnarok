@@ -3,12 +3,12 @@
 
 ## Explicit offline full-state queries use the ordinary exclusive database lease and return independently owned bytes.
 ## A query opens only an existing database, never listens, changes retention or falls back to genesis.
-import ./[options, services, chain, historical_disk, checkpoint_codec]
+import ./[options, services, chain, historical_disk, checkpoint_codec, historical_export]
 import ../chain/[genesis, provider]
 import ../storage/history_index
 import ../state/store
 import ../codec/[bounded, header]
-import ../lib/[json_writer, atomic_file]
+import ../lib/json_writer
 
 proc hexadecimal(bytes: openArray[byte]): string {.requires: bytes.len <= high(int) div 2.} =
   ## Every caller bounds its complete header/body before doubling the exact output extent.
@@ -37,7 +37,7 @@ proc runHistoricalQuery*(options: Options): HistoryResult[JsonValue] {.raises.} 
     selected = owner.historicalSnapshot(options.historicalOrdinal)
   if selected.error != HistoryError.None: return historyFailure[JsonValue](selected.error)
   let saved = selected.value
-  owner.close() # Completed state/body owners outlive the database lease, including later pruning or compaction.
+  # Keep the source lease through export path admission and publication; loaded bytes remain independently owned.
   let head = saved.chainView.bestBlock.value
   let info = head.header.headerInfo
   if info.error != HeaderError.None: return historyFailure[JsonValue](HistoryError.InvalidFormat)
@@ -65,9 +65,7 @@ proc runHistoricalQuery*(options: Options): HistoryResult[JsonValue] {.raises.} 
     let checkpoint = encodeApplicationCheckpoint(saved, DefaultHistoricalRecordBytes)
     if checkpoint.error != ApplicationCheckpointError.None:
       return historyFailure[JsonValue](HistoryError.LimitExceeded)
-    let written = replaceAtomicFile(path, checkpoint.value, DefaultHistoricalRecordBytes)
-    if written == AtomicFileError.PublishedUnsynced: return historyFailure[JsonValue](
-        HistoryError.PublishedUnsynced)
-    if written != AtomicFileError.None: return historyFailure[JsonValue](HistoryError.IoFailure)
+    let written = exportHistoricalCheckpoint(options.stateDatabase, path, checkpoint.value, DefaultHistoricalRecordBytes)
+    if written != HistoryError.None: return historyFailure[JsonValue](written)
     output.add("checkpoint", json(path))
   historySuccess(json(output))

@@ -46,6 +46,63 @@ proc offline(chain, path, backend, hash, output: string): Options =
     args.add("--history-checkpoint"); args.add(output)
   result = default(Options)
   assert parseOptions(args, result)
+proc exportRefusals(chain, path, backend: string, hash: BlockHash) {.raises.} =
+  ## Kernel no-clobber publication and canonical namespace guards preserve exact journal/manifest and historical bytes.
+  let primary = if backend == "journal": path else: path & "/CURRENT"
+  let before = readFile(primary)
+  let row = readFile(path & ".history/row-1")
+  let record = readFile(path & ".history/record-1")
+  var buffer = default(array[4096, char])
+  let cwd = posix.getcwd(cast[cstring](addr buffer[0]), buffer.len)
+  assert cwd != nil
+  let absolute = $cwd & "/" & primary
+  var dot = path & "-dot"
+  assert posix.mkdir(dot.toCString(), Mode(0o700)) == 0
+  defer: discard posix.rmdir(dot.toCString())
+  var parentLink = path & "-parent-link"
+  var current = "."
+  assert posix.symlink(current.toCString(), parentLink.toCString()) == 0
+  defer: discard posix.unlink(parentLink.toCString())
+  var targetLink = path & "-target-link"
+  var target = primary
+  assert posix.symlink(target.toCString(), targetLink.toCString()) == 0
+  defer: discard posix.unlink(targetLink.toCString())
+  let targets = @["./" & primary, absolute, dot & "/../" & primary,
+    parentLink & "/" & primary, targetLink, path & ".history",
+    path & ".history/identity", path & ".history/row-1", path & ".history/record-1",
+    path & ".history/new-checkpoint"]
+  for output in targets:
+    let refused = runHistoricalQuery(offline(chain, path, backend, historyHashName(hash), output))
+    assert refused.error in [HistoryError.InvalidPolicy, HistoryError.AlreadyExists]
+    assert readFile(primary) == before and readFile(path & ".history/row-1") == row
+    assert readFile(path & ".history/record-1") == record
+  if backend != "journal":
+    let refused = runHistoricalQuery(offline(chain, path, backend, historyHashName(hash), path &
+        "/new-checkpoint"))
+    assert refused.error == HistoryError.InvalidPolicy
+  else:
+    var hard = path & "-hard-link"
+    assert posix.link(target.toCString(), hard.toCString()) == 0
+    defer: discard posix.unlink(hard.toCString())
+    assert runHistoricalQuery(offline(chain, path, backend, historyHashName(hash), hard)).error ==
+        HistoryError.AlreadyExists
+    assert readFile(hard) == before
+  # Resolve the archive directory itself too, so an alternate physical path cannot bypass namespace protection.
+  var historical = path & ".history"
+  var moved = path & "-archive-real"
+  assert posix.rename(historical.toCString(), moved.toCString()) == 0
+  assert posix.symlink(moved.toCString(), historical.toCString()) == 0
+  let aliased = runHistoricalQuery(offline(chain, path, backend, historyHashName(hash), moved &
+      "/new-checkpoint"))
+  assert aliased.error == HistoryError.InvalidPolicy
+  assert posix.unlink(historical.toCString()) == 0
+  assert posix.rename(moved.toCString(), historical.toCString()) == 0
+  # Every rejected export leaves an independently reopenable selected database with the same exact accepted body.
+  var restored = default(Services)
+  defer: restored.close()
+  assert restored.start(configured(chain, path, backend, 0), "reopen after export refusals")
+  assert array[32, byte](restored.chainView.bestBlock.value.blockHash) == array[32, byte](hash)
+
 proc cycle(fixture: RecoveryExecutionFixture, chain, backend: string, selection: int): array[32,
     byte] {.raises.} =
   ## Genuine opaque production preparation is repeated after each policy is selected; no structural certificate is substituted.
@@ -103,8 +160,13 @@ proc cycle(fixture: RecoveryExecutionFixture, chain, backend: string, selection:
     assert historical.error == (if selection == 0: HistoryError.Unavailable elif selection ==
         2: HistoryError.Pruned else: HistoryError.None)
     owner.close()
+    if selection == 1: exportRefusals(chain, path, backend, hash)
     let output = runHistoricalQuery(offline(chain, path, backend, historyHashName(hash),
         checkpoint)).value
+    let exported = readFile(checkpoint)
+    assert runHistoricalQuery(offline(chain, path, backend, historyHashName(hash),
+        checkpoint)).error == HistoryError.AlreadyExists
+    assert readFile(checkpoint) == exported
     var expectedHex = ""
     for octet in wire: expectedHex.add(toHex(int(octet),
         2).toLowerAscii) # Independent stdlib formatting checks every emitted body octet.

@@ -88,8 +88,10 @@ ragnarok history --with-state --chain chain.json \
 The command prints JSON containing `blockHash`, `stateRoot`, `slot`, `stateEntries`, `headerHex`,
 `bodyAvailable` and `blockHex`. Block/header hex is exact, without transport framing. Old header-only
 seeds return `bodyAvailable: false` and `blockHex: null`; their complete state is still exportable.
-`--history-checkpoint FILE` optionally writes the selected complete application checkpoint atomically,
-using the existing checkpoint format. `headerHex` supplies its exact sealed header for independent
+`--history-checkpoint FILE` optionally creates a new complete application checkpoint atomically,
+using the existing checkpoint format. Existing files, directories, symlinks and hard-link aliases are
+never replaced. Destinations within the selected database or its history namespace are refused after
+resolving existing path components; choose a new output filename outside those namespaces. `headerHex` supplies its exact sealed header for independent
 inspection/trusted import. Preserve independent trust when importing a checkpoint.
 
 Ordinals count local accepted entries from the available seed, not global block height or slot.

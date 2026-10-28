@@ -230,3 +230,23 @@ frontend control; Services copy rejection requires the actual ARC lowering diagn
 pinned formatting and whitespace checks passed. The CLI lifecycle's 1,000-cycle ARC witness
 returned to its starting occupied-memory count. Exact-head Linux smoke remains independently
 reported for each published stack layer; these scoped local checks do not claim the full CI matrix.
+
+## Review correction: exclusive historical exports
+
+Historical checkpoint exports retain the source database lease through filesystem-aware path
+admission and publication. Canonical parent resolution protects the primary database and managed,
+paged and historical namespaces, including dot/absolute/parent-symlink aliases and physical archive
+symlinks. The final operation atomically links a fully synced temporary to a new name and refuses
+an occupied destination in the kernel, including symlinks and hard links. It never replaces another
+inode; repeat exports require a fresh filename. This replaces the insufficient original raw-string
+source/output comparison and replacement write. Regression checks preserve source/manifest and
+historical bytes and reopen every disk layout after all refused aliases.
+
+Correction verification passed `state_atomic_file` (1,000-cycle ARC baseline unchanged),
+`retention_services`, `state_atomic_file_sync`, `state_atomic_file_writer` and
+`application_checkpoint_file`, plus pinned formatting, inventory and the production `make build`.
+The rebuilt executable reproduced the reviewed `--state-db state.db --history-checkpoint ./state.db`
+case in a fresh disposable journal: baseline exit 0, export refusal exit 2 (`InvalidPolicy`), and
+reopen exit 0, with the entire journal byte-identical throughout. The service regression also covers
+absolute/dot/parent-symlink aliases, hard links, archive-directory symlinks, managed/paged namespaces,
+existing output preservation and successful independent reopen.
