@@ -103,6 +103,13 @@ its proof/trust contract must be designed before introducing light-state reads o
 
 ## Role of checkpoints
 
+Historical retention separates the small live validation/finality graph from a versioned index
+of complete historical records. The disk index retains fixed scalar selection and loads one
+record at a time; the memory backend uses an immutable hash index independently of the rolling
+protocol view. Complete historical state retains full-node semantics and is never derived from
+partial light data. See [the historical retention contract](../../spec/block-state-retention.md)
+for record ownership, selection, pruning and implementation scope.
+
 The current checkpoint stack provides complete-map serialization, checked restoration and durable
 head-selected publication. Keep it as a recovery baseline, export/import path and cross-check for
 future storage. Whole-map checkpoint writes need not become the normal per-block persistence path.

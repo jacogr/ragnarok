@@ -6,7 +6,8 @@
 ## execution, signatures, wall-clock validity, fork choice or finality. finalizeView records caller-certified
 ## finality only; old readers retain their view. An explicit positive window excludes the finalized anchor.
 
-import ./[genesis, reports]
+import ./[genesis, reports, memory_history]
+import ../storage/history_index
 import ../codec/bounded
 from ../state/store import sameStateSnapshot
 
@@ -14,6 +15,7 @@ const MaxRetainedBlocks* = 8 # Compatibility name for the default local window; 
 
 type
   ChainView* = object ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
+    historical: MemoryHistory # Optional immutable memory-backend index; protocol lookups still use only the rolling view.
     capacity: ElementLimit # Positive configured window; zero belongs only to an uninitialized view.
     snapshot: seq[BlockSnapshotResult]
     fuzzOrigin: bool       # Test-seed authority never authorizes an ordinary production view.
@@ -145,7 +147,8 @@ func sameRetainedBlock(left, right: BlockSnapshot): bool =
 
 func sameChainView*(left, right: ChainView): bool =
   ## Require initialized identical ordered history and explicit finality; equal best roots alone do not match.
-  if uint64(left.capacity) != uint64(right.capacity) or
+  if not sameMemoryHistory(left.historical, right.historical) or
+      uint64(left.capacity) != uint64(right.capacity) or
       left.fuzzOrigin != right.fuzzOrigin or left.snapshot.len == 0 or left.snapshot.len !=
       right.snapshot.len:
     return false # Defaults and different retained windows cannot authorize shared publication.
@@ -180,13 +183,21 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
     return ViewAdvanceResult(status: ViewAdvanceError.StateMismatch) # Header prior root names the parent's posterior map.
   if not next.sameParameters(head.value):
     return ViewAdvanceResult(status: ViewAdvanceError.ParametersMismatch) # Keep RPC startup parameters coherent across history.
+  var historical = view.historical
+  if historical.initialized:
+    let appended = historical.append(child)
+    if appended.error != HistoryError.None:
+      return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # A refused historical index update cannot publish either live handle.
+    historical = appended.value
   let first = if uint64(view.snapshot.len) == uint64(view.capacity): 1 else: 0 # Retain the newest bounded suffix.
   var saved = newSeq[BlockSnapshotResult](view.snapshot.len - first + 1)
   for index in first..<view.snapshot.len:
     saved[index - first] = view.snapshot[index] # Copy owner handles into a fresh private container.
   saved[saved.len - 1] = child
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: view.capacity,
-      snapshot: saved, finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
+      historical: historical,
+
+snapshot: saved, finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
 
 proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
   ## Search only the selected head's retained reports under the existing byte budget.
@@ -209,8 +220,8 @@ proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
     if selected.value.slot < view.finalized.value.slot:
       return ViewFinalizeResult(status: ViewFinalizeError.Regression) # The linear history already proves increasing slots.
   ViewFinalizeResult(status: ViewFinalizeError.None,
-    completed: ChainView(capacity: view.capacity, snapshot: view.snapshot, finalized: selected,
-        fuzzOrigin: view.fuzzOrigin))
+    completed: ChainView(capacity: view.capacity, historical: view.historical,
+        snapshot: view.snapshot, finalized: selected, fuzzOrigin: view.fuzzOrigin))
 
 type RetainedBlockIndex* = distinct int ## Oldest-to-newest ordinal belongs only to this immutable retained view.
 func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshotResult =
@@ -260,4 +271,29 @@ proc withRetentionLimit*(view: ChainView, limit: ElementLimit): ViewAdvanceResul
   for index in 0..<count:
     saved[index] = view.snapshot[first+index] # Old readers retain their original private owner container.
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: limit,
+    historical: view.historical,
     snapshot: saved, finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
+
+func hasHistoricalIndex*(view: ChainView): bool =
+  ## Disk histories use their disk cursor rather than enabling this memory-resident historical tree.
+  view.historical.initialized
+func historicalCursor*(view: ChainView): HistoryCursor {.requires: view.hasHistoricalIndex.} =
+  ## Fixed metadata describes the separate historical index without copying archive entries.
+  view.historical.historyCursor
+proc withHistoricalPolicy*(view: ChainView, policy: HistoryPolicy): HistoryResult[ChainView] =
+  ## Configure memory-backend history without changing protocol lookup context or complete current state.
+  if view.snapshot.len == 0: return historyFailure[ChainView](HistoryError.Uninitialized)
+  let selected = if view.historical.initialized: view.historical.withHistoryPolicy(policy)
+    else: newMemoryHistory(view.snapshot, policy)
+  if selected.error != HistoryError.None: return historyFailure[ChainView](selected.error)
+  var next = view
+  next.historical = selected.value
+  historySuccess(next)
+func historicalBlockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
+  ## User historical lookup applies the selected window plus explicit finality; protocol blockAt stays independent.
+  if not view.historical.initialized: return view.blockAt(hash)
+  let selected = view.historical.blockAt(hash)
+  if selected.error == GenesisError.None: return selected
+  if view.finalized.error == GenesisError.None:
+    if array[32, byte](hash) == array[32, byte](view.finalized.value.blockHash): return view.finalized
+  unavailableGenesis()

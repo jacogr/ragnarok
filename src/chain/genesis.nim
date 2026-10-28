@@ -104,6 +104,11 @@ func blockBodyLength*(value: BlockSnapshot): int {.requires: value.hasBlockBody.
   let body = value.body
   assert body != nil
   body.wire.len
+func blockBodyDigest*(value: BlockSnapshot): array[32, byte] {.requires: value.hasBlockBody.} =
+  ## Copy cached complete-byte identity for historical index admission without allocating body-sized storage.
+  let body = value.body
+  assert body != nil
+  body.digest
 proc blockBody*(value: BlockSnapshot): seq[byte] {.requires: value.hasBlockBody.} =
   ## Return an independent byte copy; callers cannot mutate the snapshot's immutable storage.
   let body = value.body

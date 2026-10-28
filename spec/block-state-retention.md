@@ -98,3 +98,60 @@ bytes survive current consecutive journal/managed reopen across roster rotation,
 without RPC; paged worker publication and interrupted ordinary publication remain covered.
 These tests use the same pinned Nimony/macOS ARM64 profile recorded above. Linux exact-head
 CI and completion of archive retention remain separate.
+
+## Historical index and complete records
+
+Historical retention uses a fixed 160-byte selected cursor and 240-byte ordinal rows, with E8
+acceptance ordinals independent of slot gaps and physical repository generations. Each row binds
+the complete header hash, exact parent, slot, complete state root, body availability and cached
+full-byte body digest. A local hash chain authenticates the retained row suffix against the
+selected cursor. Policy shrink raises the first available ordinal; expansion/archive never lowers
+it. The first retained row carries its predecessor digest without requiring the pruned payload.
+This is local storage authentication, not consensus/finality proof.
+
+The memory backend uses a private immutable compressed binary index over all 256 block-hash bits.
+Branch split positions strictly increase, bounding lookup/update depth independently of archive
+length. Cached ordinal ranges reclaim expired subtrees; old owners retain their prior complete
+states. The protocol rolling view remains separate: enabling history never widens `blockAt` or
+`parentOf` or changes report validation. User historical lookup applies its own retained window
+plus explicit finality. A memory archive necessarily grows with retained data, but neither a
+rolling-view copy nor a lookup copies/scans an archive-sized list.
+
+The disk index stores separate immutable records, ordinal rows and full-hash aliases under a
+full-node/chain-bound namespace. Staging synchronizes complete record bytes, then ordinal row,
+then hash alias before the successor cursor is eligible for canonical publication. Staging alone
+never selects history; orphan future ordinals and stale aliases are unavailable to the previous
+cursor. Strict selected-suffix admission scans fixed-size rows with constant working memory;
+individual hash/ordinal lookup reads only fixed metadata plus the requested complete record.
+Missing/corrupt retained metadata is an explicit failure, not genesis or another state.
+
+Complete records reuse the existing strict full-checkpoint encoding plus the exact single-head
+context, bound to the corresponding row. Decode recomputes the complete root and checks exact
+body identity before returning any state. There is no archive-wide paged-root table: the existing
+64-root ceiling remains a per-artifact bound for the small live validation/finality graph, while
+historical complete records have independent identities. Live shared trie nodes retain their
+existing root/pin/compaction rules. Initial historical records do not deduplicate state across
+blocks, so archive disk usage grows by a complete checkpoint plus block/index metadata per entry.
+
+A checked fixed workload measured before selecting this record layout encoded 65 successive
+structural fixture states into 140,140 checkpoint bytes (largest 2,156 bytes), using the same pinned
+release/ARC profile. This is sizing evidence for a small fixture, not a production storage-cost
+claim: a multi-megabyte complete state repeated per block will consume substantial disk. Reuse
+the proven complete-map encoding initially; future deduplication/layout work requires its own
+measurements and retained-reader/recovery evidence.
+
+Pruning runs only after confirmed canonical cursor publication. It removes obsolete aliases,
+records and rows and synchronizes the directory; an interrupted cleanup can repeat its exact
+ordinal inventory. Cleanup failure cannot roll back the selected cursor. A completed historical
+read owns immutable state/body data independently of source files and survives later pruning.
+Passive checked cursor metadata alone does not pin files for future reads; callers keep the
+namespace stable during each synchronous operation, under the database's exclusive writer lease.
+These synchronous file APIs belong on startup or the excluded storage worker, never network
+callbacks. Canonical publication, startup policy application and CLI wiring follow in the next layer.
+
+Local checked release/ARC verification passed `historical_index`, `historical_records`,
+`local_history_restoration`, `application_chain` and `disk_chain`. The historical index's
+1,000-cycle release witness returned to its starting occupied-memory count (88,960 bytes),
+as did the existing application lifecycle. Cursor/policy privacy fixtures reject with their
+exact private member diagnostics and successful frontend controls. Registration inventory,
+pinned formatting and whitespace checks remain part of this layer's publication evidence.
