@@ -59,14 +59,10 @@ def qualify(checks, compiler, rows=None):
             if 'X86_COMPACT_IMMEDIATE_CASES,'+str(expected)+'\n' not in run['output']:
                 raise ValueError('incomplete compact immediate witness')
         if name.startswith('x86-'):
-            # Resident regions must exercise every cached coordinate and the complete supported arithmetic matrix.
-            for marker,count in [('X86_RESIDENT_SLOT_CONTEXT_CASES',18720),
-                                 ('X86_RESIDENT_SLOT_ARITHMETIC_CASES',27560),
-                                 ('X86_RESIDENT_SLOT_REFUSALS',2),
-                                 ('X86_RESIDENT_SLOT_PRODUCTION_CASES',2)]:
-                expected = 0 if refused else count
-                if marker+','+str(expected)+'\n' not in run['output']:
-                    raise ValueError('incomplete resident guest-slot witness: '+marker)
+            # Independent whole-region arithmetic covers the restored emitter together with exact source/gas context.
+            expected = 0 if refused else 2120
+            if 'X86_REGION_ARITHMETIC_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete whole-region arithmetic witness')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.

@@ -436,7 +436,6 @@ stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
 let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
     @[149'u8, 2, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 var regionCases = 0
-var residentProductionCases = 0
 for paired in [false, true]:
   # Use independently admitted interpreted owners; a cached native region cannot turn its own result into the oracle.
   let program = if paired: pairedProgram else: branchProgram
@@ -454,8 +453,6 @@ for paired in [false, true]:
   when defined(pvmX86JitRefuse):
     assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64])
   else:
-    assert flatX86ResidentRegister(nativeFrame) == 0
-    inc residentProductionCases
     let connected = flatX86RegionStatistics(nativeFrame)
     assert connected[0] > 0 and connected[1] > connected[0]
   for initial in [0'u64, 5, 31]:
@@ -482,12 +479,12 @@ for paired in [false, true]:
           checkFlatSource(checkedFrame)
           inc regionCases
 stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
-stdout.writeLine("X86_RESIDENT_SLOT_PRODUCTION_CASES," & $residentProductionCases)
 
-proc checkRegionContext(addSlots, compareSlots: RegisterSlots, resident: int): int =
-  ## One independent scalar oracle covers every complete/partial block, including zero-block publication of each cached guest coordinate.
-  assert resident >= -1 and resident <= 12
-  result = 0
+# The original scalar context is an independent oracle for resident visits and endpoint publication.
+var contextCases = 0
+when not defined(pvmX86JitRefuse):
+  let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
+  let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
   for active in 1..2:
     # Publish a real ordinary leaf first so the independently owned arena has genuine executable storage.
     let jit = newX86Jit()
@@ -501,7 +498,6 @@ proc checkRegionContext(addSlots, compareSlots: RegisterSlots, resident: int): i
       let header = uint32(7+index)
       let following = if active == 1 or index == 1: 7'u32 else: 8'u32
       var body = default(X86Block)
-      if resident >= 0: body = newX86ResidentBlock(range[0..12](resident))
       emitX86Operation(body, 149, addSlots, 1)
       emitX86Branch(body, 172, compareSlots, 0, following, 10)
       blocks[index] = X86RegionBlock(header: header, span: 2, operations: 2,
@@ -538,19 +534,8 @@ proc checkRegionContext(addSlots, compareSlots: RegisterSlots, resident: int): i
             assert returned == destination
             assert registers == expectedRegisters
             assert state == expected
-            inc result
-
-var contextCases = 0
-var residentContextCases = 0
-when not defined(pvmX86JitRefuse):
-  let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
-  let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
-  contextCases = checkRegionContext(addSlots, compareSlots, -1)
-  for resident in 0..<13:
-    # All thirteen guest coordinates include the modified counter, read-only branch bound and untouched lanes.
-    residentContextCases += checkRegionContext(addSlots, compareSlots, resident)
+            inc contextCases
 stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)
-stdout.writeLine("X86_RESIDENT_SLOT_CONTEXT_CASES," & $residentContextCases)
 
 
 # Native-only full-bit literals cover every signed immediate encoding boundary and its mandatory fallback neighbors.
@@ -627,7 +612,8 @@ when not defined(pvmX86JitRefuse):
 stdout.writeLine("X86_COMPACT_IMMEDIATE_CASES," & $compactCases)
 
 
-var residentArithmeticCases = 0
+# The useful whole-region arithmetic/context matrix remains independent of the rejected resident-register policy.
+var regionArithmeticCases = 0
 when not defined(pvmX86JitRefuse):
   for opcode in 0..255:
     if not supportedX86Opcode(byte(opcode)): continue
@@ -638,59 +624,31 @@ when not defined(pvmX86JitRefuse):
       let decoded = instruction(source, CodeAddress(0))
       assert decoded.error == ProgramError.None
       let slots = instructionRegisters(decoded)
-      for resident in 0..<13:
-        # A genuine connected region provides/commits R11; an ordinary entry must refuse this builder shape.
-        let jit = newX86Jit()
-        discard x86Entry(jit, 0, 32)
-        var invalid = newX86ResidentBlock(range[0..12](resident))
-        emitX86Operation(invalid, 100, identitySlots, 0)
-        assert not publishX86Entry(jit, 0, 4, 4, invalid)
-        var warm = default(X86Block)
-        for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
-        assert publishX86Entry(jit, 0, 4, 4, warm)
-        var body = newX86ResidentBlock(range[0..12](resident))
-        for index in 0..<4: emitX86Operation(body, byte(opcode), slots, uint64(decoded.value.x))
-        emitX86Branch(body, 81, slots, 0, 10, 10)
-        var blocks = default(array[2, X86RegionBlock])
-        blocks[0] = X86RegionBlock(header: 7, span: 5, operations: 5,
-          price: 1, yes: 10, no: 10, body: move(body))
-        assert publishX86Region(jit, blocks, 1)
-        for seed in [0'u64, 31, 32, 63, 64, 127, 0x80000000'u64, 0xffffffff'u64,
-            0x8000000000000000'u64, high(uint64)]:
-          var registers = default(RegisterFile)
-          for index in 0..<13: registers[index] = RegisterValue(seed xor uint64(index))
-          var expected = registers
-          for index in 0..<4:
-            # The portable evaluator consumes owner-decoded operands; it cannot consult resident code or builder fields.
-            let evaluated = evaluateRegisters(source, CodeAddress(uint32(index*25)), expected)
-            assert evaluated.error == RegisterError.None
-            expected = evaluated.value
-          var context = [100'u64, 5'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
-          assert callX86Region(jit, registers, context) == 10
-          assert registers == expected
-          assert context == [99'u64, 0'u64, 1'u64, 0'u64, 7'u64]
-          inc residentArithmeticCases
-stdout.writeLine("X86_RESIDENT_SLOT_ARITHMETIC_CASES," & $residentArithmeticCases)
-
-
-var residentRefusals = 0
-when not defined(pvmX86JitRefuse):
-  for mismatch in 0..<2:
-    # A cold builder cannot mix resident coordinates or mix resident/ordinary bodies under one prologue.
-    let jit = newX86Jit()
-    discard x86Entry(jit, 0, 32)
-    var warm = default(X86Block)
-    for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
-    assert publishX86Entry(jit, 0, 4, 4, warm)
-    var blocks = default(array[2, X86RegionBlock])
-    for index in 0..<2:
-      var body = if index == 0: newX86ResidentBlock(0)
-        elif mismatch == 0: newX86ResidentBlock(1) else: default(X86Block)
-      emitX86Operation(body, 100, identitySlots, 0)
-      emitX86Branch(body, 81, identitySlots, 0, 7, 10)
-      blocks[index] = X86RegionBlock(header: uint32(7+index), span: 2, operations: 2,
-        price: 1, yes: 7, no: 10, body: move(body))
-    assert not publishX86Region(jit, blocks, 2)
-    assert x86RegionStatus(jit) == 1
-    inc residentRefusals
-stdout.writeLine("X86_RESIDENT_SLOT_REFUSALS," & $residentRefusals)
+      let jit = newX86Jit()
+      discard x86Entry(jit, 0, 32)
+      var warm = default(X86Block)
+      for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
+      assert publishX86Entry(jit, 0, 4, 4, warm)
+      var body = default(X86Block)
+      for index in 0..<4: emitX86Operation(body, byte(opcode), slots, uint64(decoded.value.x))
+      emitX86Branch(body, 81, slots, 0, 10, 10)
+      var blocks = default(array[2, X86RegionBlock])
+      blocks[0] = X86RegionBlock(header: 7, span: 5, operations: 5,
+        price: 1, yes: 10, no: 10, body: move(body))
+      assert publishX86Region(jit, blocks, 1)
+      for seed in [0'u64, 31, 32, 63, 64, 127, 0x80000000'u64, 0xffffffff'u64,
+          0x8000000000000000'u64, high(uint64)]:
+        var registers = default(RegisterFile)
+        for index in 0..<13: registers[index] = RegisterValue(seed xor uint64(index))
+        var expected = registers
+        for index in 0..<4:
+          # Owner-decoded portable execution cannot consult the emitted region or its scalar accounting context.
+          let evaluated = evaluateRegisters(source, CodeAddress(uint32(index*25)), expected)
+          assert evaluated.error == RegisterError.None
+          expected = evaluated.value
+        var context = [100'u64, 5'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
+        assert callX86Region(jit, registers, context) == 10
+        assert registers == expected
+        assert context == [99'u64, 0'u64, 1'u64, 0'u64, 7'u64]
+        inc regionArithmeticCases
+stdout.writeLine("X86_REGION_ARITHMETIC_CASES," & $regionArithmeticCases)
