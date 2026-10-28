@@ -109,7 +109,7 @@ except:
 assert data.len >= 152 and data[0..7] == "PVMDOM01"
 assert expected.len >= 120 and expected[0..7] == "PVMDOME1"
 let wireSize = int(word(data, 8, 4))
-let entry = word(data, 12, 4)
+let entryPc = word(data, 12, 4)
 let pages = int(word(data, 16, 4))
 assert wireSize > 0 and wireSize <= 4*1024*1024 and pages > 0 and pages <= 8192
 assert data.len == 152+wireSize+pages*4101 and expected.len == 120+pages*4096
@@ -124,25 +124,25 @@ for i in 0..<5:
   context.hosts[i] = word(data, 20+i*4, 4)
   assert context.hosts[i] < 5
   for j in 0..<i: assert context.hosts[i] != context.hosts[j]
-var info = MachineInfo(pc: CodeAddress(entry), gas: MachineGas(word(data, 40, 8)),
+var info = MachineInfo(pc: CodeAddress(entryPc), gas: MachineGas(word(data, 40, 8)),
   registers: default(RegisterFile), blockCharged: false)
 assert uint64(info.gas) == 1000000000000'u64
 for i in 0..<13: info.registers[i] = RegisterValue(word(data, 48+i*8, 8))
 assert uint64(info.registers[0]) == 0xffff0000'u64
 var wire = newSeq[byte](wireSize)
 for i in 0..<wireSize: wire[i] = byte(data[152+i])
-let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4*1024*1024),
+let decoded = decodeJamProgram(wire, CodeAddress(entryPc), ProgramByteLimit(4*1024*1024),
     JumpCountLimit(1048576))
 assert decoded.error == ProgramError.None
 let loaded = loadArtifact(selected.pvmCodePath)
 assert loaded.error == ArtifactError.None, "DOOM artifact loading " & $loaded.error
-let artifact = loaded.value
-let owner = programOf(artifact)
+let guestArtifact = loaded.value
+let owner = programOf(guestArtifact)
 assert programBytes(owner).value == wire, "DOOM artifact code differs from warmed snapshot"
-let exported = artifact.entry(selected.pvmEntry)
-assert exported.error == ArtifactError.None and uint64(exported.value) == entry,
+let exported = guestArtifact.entry(selected.pvmEntry)
+assert exported.error == ArtifactError.None and uint64(exported.value) == entryPc,
     "DOOM artifact export differs from warmed snapshot"
-let imports = importSymbols(artifact)
+let imports = importSymbols(guestArtifact)
 assert imports.len == 5
 let hostNames = ["ext_output_audio", "ext_output_video", "ext_rom_read", "ext_rom_size", "ext_stdout"]
 for kind in 0..<5:
