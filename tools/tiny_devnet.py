@@ -83,12 +83,14 @@ def head(directory, index):
 
 
 def exercise(binary, directory, *, slots=14, restart=False, before_start=None, after_stop=None,
-             progress=print):
+             progress=print, late_join=False):
     """Run a finite uncontested chain and require all six actual process exits and canonical heads."""
     if not 2 <= slots <= 64:
         raise ValueError('Tiny devnet needs2..64 slots')
     if restart and slots < 13:
         raise ValueError('Epoch/restart acceptance needs at least13 slots')
+    if late_join and (slots < 3 or restart):
+        raise ValueError('Late author acceptance needs at least3 slots and a separate fresh lifetime')
     binary, directory = Path(binary).resolve(), Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=False)
     certificates(binary, directory)
@@ -100,6 +102,7 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
     deadline = time.monotonic()+slots*6+35
     processes, logs, launches = {}, {}, []
     stopped, restarted = False, False
+    joined = not late_join
     last_report = -1
 
     def launch(index):
@@ -118,12 +121,20 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
 
     try:
         for index in range(6):
-            launch(index)
+            if not late_join or index != 3:
+                launch(index) # Node3 is cold when its first eligible slot begins in the late-author witness.
         while time.monotonic() < deadline:
             for index, process in processes.items():
                 if process.poll() is not None and not (restart and index == 5 and stopped and not restarted):
                     raise RuntimeError(f'Node{index} exited early with{process.returncode}; see {directory}')
             heads = [head(directory, index) for index in range(6)]
+            if not joined:
+                existing = [heads[index] for index in range(6) if index != 3]
+                ready = all(value and value['slot'] >= 2 for value in existing)
+                if ready and int(time.time()*1000) >= start+12000:
+                    launch(3)
+                    joined = True
+                    progress('Cold-started node3 in its eligible slot; it must import the existing slot2 head before authoring.')
             # Stop after node5's first authored slot and restart before its next first-epoch assignment.
             if restart and not stopped and all(value and value['slot'] >= 5 for value in heads):
                 processes[5].terminate()
@@ -163,11 +174,20 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
                 authors.append(index) # Short runs activate only the eligible signers, while all six nodes validate every child.
         if len(authors) < min(slots,6):
             raise RuntimeError('Missing eligible development author evidence')
+        late_evidence = False
+        if late_join:
+            output = (directory/'node-3'/'stdout.log').read_text().splitlines()
+            peer = next((index for index, line in enumerate(output) if 'source=peer slot=2 ' in line), None)
+            author = next((index for index, line in enumerate(output) if 'source=local ' in line), None)
+            if peer is None or author is None or peer >= author:
+                raise RuntimeError('Cold eligible validator authored before importing its actual peer target')
+            late_evidence = True # Actual native durable-admission observations, never a readiness label, establish ordering.
         checks = after_stop(directory, slots, expected) if after_stop else {}
         result = dict(passed=True, nodes=6, slots=slots, epoch_crossed=slots >= 12, authors=authors,
                       directory=str(directory), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                       policy_sha256=hashlib.sha256(POLICY.read_bytes()).hexdigest(),
-                      restart=restarted, head=heads[0], launches=launches, checks=checks)
+                      restart=restarted, late_join=late_join, late_peer_before_author=late_evidence,
+                      head=heads[0], launches=launches, checks=checks)
         (directory/'result.json').write_text(json.dumps(result, indent=2)+'\n')
         progress(f'Six nodes converged at slot{slots}: {heads[0]["hash"]}, state {heads[0]["root"]}')
         return result

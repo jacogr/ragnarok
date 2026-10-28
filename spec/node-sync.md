@@ -45,9 +45,9 @@ Verify slot gaps independently of adopted-block counts. Full and light readiness
 separate trust domains. Network parsers require truncation, noncanonical count, size/count/overflow,
 duplicate leaf, malformed header, fragmentation/coalescing and unexpected FIN controls.
 
-The repository retains its finite CE128 commands and separate bounded Tiny host. The continuous
-full-state host described below is a dependent increment; adapting the Tiny authoring call remains
-the next layer. Existing finite commands do not acquire synchronization authority from completion.
+The repository retains its finite CE128 commands alongside continuous full-state catch-up and a
+bounded Tiny authoring host. The Tiny signing call now consumes the same explicit target-evidence
+rules as continuous catch-up. Finite command completion alone still grants no synchronization authority.
 
 ## Peer-discovery increment
 
@@ -69,7 +69,7 @@ it captures bytes and scalar claims before future worker/callback turns.
 
 These APIs discover potential targets. They do not assert consensus validity, selected fork,
 remote finality, complete synchronization, or participation readiness. Continuous validated
-import and readiness remain the next dependent increment.
+import and readiness are composed by the host described below.
 
 Verification uses independent literal wire expectations and Python-hashlib header hash values,
 every strict message prefix, malformed/noncanonical counts, duplicate/oversized leaves, exact
@@ -122,8 +122,8 @@ without borrowing canonical maps. A stopped command reports its confirmed import
 The development current candidate pipeline still bounds supported execution features. Continuous
 transport is not a production finality engine, fork reconciliation algorithm or proof of global
 network completeness. Missing/pruned ancestry can remain explicitly blocked pending independent
-reconciliation; a maximum advertised slot is only a download hint. Tiny participation will also
-need a current-clock policy at its actual authoring call, supplied by the next layer.
+reconciliation; a maximum advertised slot is only a download hint. Tiny participation uses its explicit development-clock origin at the actual signing call; legal
+slot gaps are never converted into an inferred number of missing blocks.
 
 
 Local completion witnesses for this increment: `sync_current` constructs 72 genuinely signed and
@@ -150,3 +150,48 @@ TLS responder parses the actual outgoing UP0 Final bytes on both lifetimes and r
 configured checkpoint each time. The resumed head remains the imported child, while the advertised
 Final remains the independent original anchor. Default, closed and light Services expose no full
 startup anchor; the scalar getter retains no canonical map/header ownership during worker leases.
+
+## Tiny participation enforcement
+
+`quic/sync_targets.nim` owns the shared scalar evidence state. Both normal catch-up and Tiny
+sample each configured native source anew on every decision turn. Only a real authenticated
+stream message or incarnation changes freshness; only an actual canonical full `ChainView`
+satisfies a target. Readiness payloads are private and read-only. A regressed clock, an incomplete
+sampling turn, a pending input/worker, an unrelated canonical replacement, missing/expired sources
+or unresolved competing hashes cannot produce a ready observation. Default and fuzz-only views
+grant no full participation authority, and full evidence never grants light readiness.
+
+Tiny retains its existing ordinary GP admission and journal-before-install durability path.
+The loop settles pending CE128 input before sampling persistent UP0 targets. The actual
+`authorEmptyBlock` call requires `not pending` and the just-produced `fullReady` observation,
+then checks the current explicit six-second development slot against the actual selected head.
+It reserves `attemptedSlot` only after those gates, allowing catch-up to make the node eligible
+later in the same wall-clock slot. A sparse slot interval alone neither proves missing blocks
+nor prevents a fully caught-up node from participating after an empty slot.
+
+The development server now multiplexes persistent UP0 and one-child CE128 streams. Native
+callbacks consume bounded bytes and classify one kind byte; UP0 decoding/hashing stays in host
+poll turns. Both inbound and outbound announcement publication retain detached bytes/scalars
+after actual durable admission. The configured genesis anchor is captured before journal replay,
+so imported unfinalized heads never become advertised Final. Empty CE128 replies use one E4-zero
+message and FIN; bare FIN is refused as an unframed response. Explicit close retires native routes
+before releasing retained publication/catalog bytes.
+
+`sync_author_readiness` exercises real production-server UP0 and CE128, pending work, canonical
+full imports, exact roots, a sparse slot, repeated-poll expiration, a real-message refresh,
+conflicting claims, source closure and failed canonical recording. It also proves that a real
+empty CE128 reply cannot make a behind view ready. Privacy and composite-owner lowering guards
+cover the shared observation and expanded transport owner.
+
+`make check-devnet-authoring` cold-starts node3 when its first eligible slot has begun and five
+other native validators already have the slot2 head. It requires the actual native peer-admission
+observation before the local slot3 authoring observation, convergence of all six exact heads,
+and independently frozen complete maps/journals. The separate fourteen-slot epoch/restart check
+still crosses epoch12 and recovers a stopped validator. These are participation/catch-up checks
+within the bounded development host, not a production finality or fork-choice implementation.
+
+The live negative control removes only `and readiness.fullReady` from the actual Tiny signing
+condition. The same cold-start scenario then fails: node3 durably signs slot3 from its stale genesis
+parent before importing the existing slot2 head, and the six processes cannot converge. The control
+checks the actual journal parent bytes, restores the guarded source in `finally`, and rebuilds the
+fixed executable. This distinguishes enforcement at signing from merely displaying a ready label.

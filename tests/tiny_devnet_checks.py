@@ -18,14 +18,22 @@ def smoke(binary, folder, progress=print):
                     after_stop=verify,progress=progress)
 
 
+def authoring(binary, folder, progress=print):
+    """Cold eligible node3 must import the existing head before signing, with whole maps checked independently."""
+    return exercise(binary, folder, slots=3, restart=False, late_join=True, before_start=freeze,
+                    after_stop=verify, progress=progress)
+
+
 if __name__ == '__main__':
     # Standalone acceptance uses the built executable; Make owns every build/setup prerequisite.
     import argparse
     from pathlib import Path
     import time
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--smoke', action='store_true')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--smoke', action='store_true')
+    group.add_argument('--late-join', action='store_true')
     arguments = parser.parse_args()
-    selected = smoke if arguments.smoke else check
+    selected = authoring if arguments.late_join else smoke if arguments.smoke else check
     selected(Path('build/ragnarok').resolve(),
           Path('build/tiny-devnet')/time.strftime('check-%Y%m%d-%H%M%S'))

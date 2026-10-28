@@ -22,7 +22,7 @@ type
     live, sampled: bool
     leaves, reached: seq[AnnouncedBlock]
   SyncTargets* = object ## One explicit host owns monotonic source observations and its independent initial anchor.
-    configured: bool
+    configured, turnActive: bool
     peers: seq[DownloadPeerId]
     sources: array[16, TargetSource]
     ageMs, now: uint64
@@ -54,7 +54,8 @@ func stamp(head: BlockSnapshot): AnnouncedBlock =
 proc configure*(targets: var SyncTargets, view: ChainView, peers: seq[DownloadPeerId],
     ageMs, now: uint64): bool =
   ## Select an actual independent complete-state startup view before accepting any peer observations.
-  if targets.configured or peers.len == 0 or peers.len > 16 or ageMs == 0: return false
+  if targets.configured or view.fuzzOnly: return false
+  if peers.len == 0 or peers.len > 16 or ageMs == 0: return false
   let head = view.bestBlock
   if head.error != GenesisError.None: return false
   for index, peer in peers:
@@ -66,7 +67,8 @@ proc configure*(targets: var SyncTargets, view: ChainView, peers: seq[DownloadPe
   targets.initial = stamp(head.value)
   targets.local = targets.initial
   let finalized = view.finalizedBlock
-  targets.anchor = if finalized.error == GenesisError.None: stamp(finalized.value) else: targets.initial
+  targets.anchor = if finalized.error == GenesisError.None: stamp(
+      finalized.value) else: targets.initial
   targets.ageMs = ageMs
   targets.now = now
   targets.configured = true
@@ -76,7 +78,9 @@ proc beginTurn*(targets: var SyncTargets, now: uint64): bool =
   ## Every configured source must be sampled again; unchanged snapshots never extend their timestamp.
   if not targets.configured or now < targets.now:
     targets.progress = SyncTargetProgress(status: CurrentSyncStage.Failed)
+    targets.turnActive = false
     return false
+  targets.turnActive = true
   targets.now = now
   targets.progress = SyncTargetProgress(status: CurrentSyncStage.Unknown)
   for index in 0..<targets.peers.len: targets.sources[index].sampled = false
@@ -84,7 +88,7 @@ proc beginTurn*(targets: var SyncTargets, now: uint64): bool =
 proc observePeer*(targets: var SyncTargets, peer: DownloadPeerId,
     incarnation: uint64, snapshot: PeerAnnouncementSnapshot): bool =
   ## Only an available real stream snapshot can supply leaves, sequence and new-source provenance.
-  if not targets.configured: return false
+  if not targets.configured or not targets.turnActive: return false
   var found = -1
   for index, configured in targets.peers:
     if peer == configured: found = index
@@ -101,8 +105,10 @@ proc observePeer*(targets: var SyncTargets, peer: DownloadPeerId,
       for leaf in leaves:
         for installed in source.reached:
           if leaf == installed: reached.add(leaf) # Only still-advertised exact receipts survive a message update.
+    var captured: seq[AnnouncedBlock] = @[]
+    for leaf in leaves: captured.add(leaf) # Private source storage never aliases a caller's copied snapshot payload.
     source[] = TargetSource(live: true, incarnation: incarnation, sequence: claims.sequence,
-      seenAt: targets.now, leaves: leaves, reached: reached)
+      seenAt: targets.now, leaves: captured, reached: reached)
   source.sampled = true
   if targets.now - source.seenAt >= targets.ageMs: return true
   inc targets.progress.sources
@@ -120,13 +126,36 @@ proc fresh*(targets: SyncTargets, peer: DownloadPeerId): bool =
   false
 proc pending*(targets: var SyncTargets): SyncTargetProgress =
   ## Worker/input/publication ownership prevents readiness while preserving copied target diagnostics.
+  targets.turnActive = false
   targets.progress.status = if targets.progress.sources == 0: CurrentSyncStage.Unknown
     else: CurrentSyncStage.CatchingUp
   targets.progress
+func progress*(targets: SyncTargets): SyncTargetProgress =
+  ## Read only the last whole-turn observation; callers start a new turn before later participation.
+  targets.progress
+proc recordInstalled*(targets: var SyncTargets, view: ChainView): bool =
+  ## Advance only from an actual full canonical view; sparse slots still represent one validated child.
+  targets.turnActive = false
+  targets.progress.status = CurrentSyncStage.Unknown
+  if not targets.configured or view.fuzzOnly: return false
+  let selected = view.bestBlock
+  if selected.error != GenesisError.None: return false
+  let head = stamp(selected.value)
+  if head != targets.local:
+    let parent = AnnouncedHeaderHash(array[32, byte](selected.value.parentHash))
+    if parent != targets.local.hash or uint32(head.slot) <= uint32(targets.local.slot):
+      targets.progress.status = CurrentSyncStage.Blocked
+      return false # A producer cannot skip/reparent the independently anchored selected history.
+    targets.local = head
+  targets.progress.status = CurrentSyncStage.Unknown
+  true
 proc evaluate*(targets: var SyncTargets, view: ChainView): SyncTargetProgress =
   ## Call only outside native canonical leases; the actual full view proves each old/current target.
+  let active = targets.turnActive
+  targets.turnActive = false
   let selected = view.bestBlock
-  if not targets.configured or selected.error != GenesisError.None:
+  let usable = targets.configured and not view.fuzzOnly
+  if not active or not usable or selected.error != GenesisError.None:
     targets.progress.status = CurrentSyncStage.Failed
     return targets.progress
   let head = stamp(selected.value)

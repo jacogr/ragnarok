@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from tiny_devnet_checks import check, smoke, freeze
+from tiny_devnet_checks import check, smoke, authoring, freeze
 from tiny_devnet import exercise
 from tiny_devnet_oracle import verify
 
@@ -16,11 +16,12 @@ class TinyDevnetEvidence(unittest.TestCase):
 
     def test_short_ci_retains_independent_checks(self):
         """The CI-sized run uses two real slots and both independent verification callbacks."""
-        for selected,slots,restart in ((smoke,2,False),(check,14,True)):
+        for selected,slots,restart,late in ((smoke,2,False,False),(check,14,True,False),(authoring,3,False,True)):
             with self.subTest(slots=slots), patch('tiny_devnet_checks.exercise', return_value={'passed':True}) as run:
                 self.assertTrue(selected(Path('/binary'),Path('/unused'))['passed'])
                 self.assertEqual(run.call_args.kwargs['slots'], slots)
                 self.assertEqual(run.call_args.kwargs['restart'], restart)
+                self.assertEqual(run.call_args.kwargs.get('late_join',False), late)
                 self.assertIs(run.call_args.kwargs['before_start'],freeze)
                 self.assertIs(run.call_args.kwargs['after_stop'],verify)
 
@@ -28,6 +29,12 @@ class TinyDevnetEvidence(unittest.TestCase):
         """A short smoke cannot silently claim epoch or restart coverage."""
         with self.assertRaisesRegex(ValueError,'at least13'):
             exercise(Path('/binary'),Path('/unused'),slots=2,restart=True)
+
+    def test_late_author_requires_a_separate_three_slot_lifetime(self):
+        """Cold eligible authoring cannot silently reuse smoke or restart coverage."""
+        for slots,restart in ((2,False),(14,True)):
+            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError,'Late author acceptance'):
+                exercise(Path('/binary'),Path('/unused'),slots=slots,restart=restart,late_join=True)
 
     def observations(self, directory):
         """Create equal reported roots with explicit test-owned map and journal identities."""

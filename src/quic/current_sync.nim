@@ -43,7 +43,6 @@ type
     progress: CurrentSyncProgress
     previous: OwnedHeader
     older: seq[OwnedHeader]
-    known: seq[AnnouncedBlock]
     finalized: AnnouncedBlock
     lastTick, exhaustedAt: uint64
     retrying: bool
@@ -126,7 +125,6 @@ proc configure(sync: var CurrentSync, owner: var Services, peers: seq[DownloadPe
   sync.older = @[]
   for ancestor in older: sync.older.add(ancestor) # Retain only immutable owned headers under the validated count/byte limits.
   sync.previous = head.value.header
-  sync.known = @[local]
   sync.finalized = anchor
   sync.limits = limits
   sync.lastTick = uint64(now)
@@ -245,12 +243,6 @@ proc tick*(sync: var CurrentSync, now: CurrentDownloadLoopTick): CurrentSyncErro
     sync.progress.local = AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](
         child.blockHash)),
       slot: HeaderSlot(child.slot))
-    sync.known.add(sync.progress.local)
-    if sync.known.len > sync.older.len + 1:
-      var retained: seq[AnnouncedBlock] = @[]
-      for index in sync.known.len - sync.older.len - 1..<sync.known.len:
-        retained.add(sync.known[index]) # Keep only the same bounded observed canonical suffix.
-      sync.known = retained
     let published = sync.dispatcher.publishAnnouncement(child.header, sync.finalized)
     if published != AnnouncementError.None:
       sync.progress.status = CurrentSyncStage.Failed
@@ -305,7 +297,6 @@ proc close*(sync: var CurrentSync) =
   sync.owner = nil
   sync.previous = default(OwnedHeader)
   sync.older = @[]
-  sync.known = @[]
   sync.targets = default(SyncTargets)
   sync.progress.sources = 0
   sync.progress.targetKnown = false
