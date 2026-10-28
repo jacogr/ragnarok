@@ -164,6 +164,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 when defined(pvmX86Jit):
   proc flatX86Prepare(f: var FlatFrame, origin: uint32)
     ## Cold source emission alone can replace complete pure spans with native entries.
+  proc flatX86Cycle(f: var FlatFrame, first, second, third: uint32, destination: var uint32): bool
+    ## An actual closed source round alone can authorize one bounded connected region.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -688,6 +690,9 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Keep the original first closed round; connected code may run only after all three real branch capabilities exist.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
+  elif defined(pvmX86Jit):
+    # The same complete checked three-shape round certifies x86 admission without a per-operation discovery loop.
+    if flatX86Cycle(f, off, fixedMiddle, fixedLast, destination): return destination
   while true:
     # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
     flatChargedStep(f, off, First, Second, Branch, destination)
@@ -1470,9 +1475,6 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   takeValue(prepared)
 
 when defined(pvmX86Jit):
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool
-    ## Cold admission is defined after exact branch-capability checking.
-
   proc flatX86Execute(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial attempt prefixes always use the original checked node; native arithmetic has no intermediate exit.
     if f.barrier == flatStop:
@@ -1559,7 +1561,7 @@ when defined(pvmX86Jit):
       var connected = destination
       let first = if paired: previous else: offset
       let second = if paired: offset else: flatStop
-      if flatX86Cycle(f, first, second, connected): return connected
+      if flatX86Cycle(f, first, second, flatStop, connected): return connected
     if x86RegionStatus(jit) != 0 or x86FinishProbe(jit, offset):
       if f.handlers[int(offset)] == flatX86ProbeWhole: f.handlers[int(offset)] = flatX86Whole
     destination
@@ -1632,35 +1634,43 @@ when defined(pvmX86Jit):
     assert jit != nil
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     let active = x86RegionCount(jit)
-    var headers = default(array[2, uint32])
-    var spans = default(array[2, uint32])
-    var prices = default(array[2, uint64])
+    var headers = default(array[3, uint32])
+    var spans = default(array[3, uint32])
+    var prices = default(array[3, uint64])
     for index in 0..<active:
-      headers[index] = x86RegionHeader(jit, range[0..1](index))
+      headers[index] = x86RegionHeader(jit, range[0..2](index))
       assert int(headers[index]) < f.arguments.len
       spans[index] = f.arguments[int(headers[index])].y
       prices[index] = f.arguments[int(headers[index])].x
     if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
         offset != headers[0] or not x86RegionMatches(jit, headers, spans, prices):
-      return flatX86Whole(f, offset)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, uint64(flatStop)]
+      let original = f.x86Original[int(offset)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
     let destination = callX86Region(jit, f.info.registers, state)
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
-    if state[4] != uint64(flatStop):
+    if state[5] != uint64(flatStop):
       # The last completed block's endpoint stays exact even when the next header returns on a quota/gas guard.
-      assert state[4] < uint64(f.arguments.len)
-      let last = uint32(state[4])
+      assert state[5] < uint64(f.arguments.len)
+      let last = uint32(state[5])
       f.reservationEnd = f.sites[int(last)]+f.arguments[int(last)].y
     assert int(destination) < f.handlers.len
     if int(destination) >= f.handlers.len: return flatLocal(f, offset,
         oracle.StepError.InvalidPreparedProgram)
     for index in 0..<active:
-      if destination == headers[index]: return flatX86Enter(f, destination)
+      if destination == headers[index]:
+        # Each original header preserves its own partial-prefix/paid/gas behavior, including the exact three-shape workers.
+        let original = f.x86Original[int(destination)]
+        assert original != nil
+        if original != nil: return original(f, destination)
+        return flatLocal(f, destination, oracle.StepError.InvalidPreparedProgram)
     destination
 
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool =
+  proc flatX86Cycle(f: var FlatFrame, first, second, third: uint32, destination: var uint32): bool =
     ## Capture only complete positively resolved pure blocks; refusal retains every original source worker.
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
     let jit = f.x86Jit
@@ -1669,15 +1679,22 @@ when defined(pvmX86Jit):
       if x86RegionHeader(jit, 0) != first: return false
       destination = flatX86Region(f, first)
       return true
-    let active: range[1..2] = if second == flatStop: 1 else: 2
-    let headers = [first, second]
+    if third != flatStop and second == flatStop: return false
+    let active: range[1..3] = if third != flatStop: 3 elif second != flatStop: 2 else: 1
+    let headers = [first, second, third]
     let before = x86Clock()
-    var blocks = default(array[2, X86RegionBlock])
+    var blocks = default(array[3, X86RegionBlock])
     for index in 0..<active:
       let header = headers[index]
       if int(header) >= f.handlers.len: return false
-      if f.handlers[int(header)] != flatX86Whole and f.handlers[int(header)] !=
-          flatX86ProbeWhole: return false
+      let worker = f.handlers[int(header)]
+      if active == 3:
+        # Only the three existing positive source-shape workers can use the explicit closed-round hook.
+        if worker != flatChargedShape[131, -1, 88] and worker != flatChargedShape[151, 152, 173] and
+            worker != flatChargedShape[200, 139, 82]: return false
+      elif worker != flatX86Whole and worker != flatX86ProbeWhole: return false
+      if int(header)+1 >= f.sites.len or f.sites[int(header)] != f.sites[int(
+          header)+1]: return false
       let charge = f.arguments[int(header)]
       var native = default(X86Block)
       var current = header+1
@@ -1703,6 +1720,10 @@ when defined(pvmX86Jit):
     let admitted = publishX86Region(jit, blocks, active)
     jit.compilationNs += x86Clock()-before
     if not admitted: return false
+    if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
+    for index in 0..<active:
+      # A guard can return to any captured header; save all genuine workers before replacing only the root dispatch.
+      f.x86Original[int(headers[index])] = f.handlers[int(headers[index])]
     f.handlers[int(first)] = flatX86Region
     destination = flatX86Region(f, first)
     true

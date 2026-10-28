@@ -63,6 +63,14 @@ def qualify(checks, compiler, rows=None):
             expected = 0 if refused else 2120
             if 'X86_REGION_ARITHMETIC_CASES,'+str(expected)+'\n' not in run['output']:
                 raise ValueError('incomplete whole-region arithmetic witness')
+        if name.startswith('x86-'):
+            # Three-block source controls include refused builds; raw native contexts/publication require executable ownership.
+            for marker,count in [('X86_THREE_CONTEXT_CASES',720),('X86_RESERVED_REGION_CASES',1)]:
+                expected = 0 if refused else count
+                if marker+','+str(expected)+'\n' not in run['output']:
+                    raise ValueError('incomplete three-block native controls: '+marker)
+            if 'X86_THREE_SOURCE_CASES,3546\n' not in run['output']:
+                raise ValueError('incomplete independent three-block source/gas/pricing controls')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.
