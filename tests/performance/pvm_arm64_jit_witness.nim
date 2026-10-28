@@ -47,6 +47,14 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 
 
 when defined(pvmArm64Jit):
+  let probeOwner = newArmJit()
+  assert armEntry(probeOwner, 0, 1) == 0
+  armStartProbe(probeOwner, 0)
+  for visit in 0..<8:
+    # Discovery expires at the exact bounded visit and never creates executable code or native calls itself.
+    assert armFinishProbe(probeOwner, 0) == (visit == 7)
+    assert armEntry(probeOwner, 0, 1) == 0
+  assert probeOwner.fragments == 0 and probeOwner.calls == 0
   var constantCases = 0
   var regionConstantCases = 0
   for destination in 0..<13:
@@ -608,6 +616,56 @@ when defined(pvmArm64Jit):
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
     echo "ARM_REGION_CAPACITY,1024"
 
+    # Two-block regions retain the same five-word ABI with a genuinely inactive third counter lane.
+    var pairLiteralCases = 0
+    let pairSource = owner([@[131'u8, 0, 1], @[0'u8]])
+    let pairSlots = instructionRegisters(instruction(pairSource, CodeAddress(0)))
+    for policy in 0..<4:
+      let prices = case policy
+        of 0: [0'u64, 0'u64]
+        of 1: [1'u64, 2'u64]
+        of 2: [4095'u64, 4096'u64]
+        else: [high(uint64), 0'u64]
+      for rotated in [false, true]:
+        let pairJit = newArmJit()
+        discard armEntry(pairJit, 0, 23)
+        var pairBlocks = default(array[3, ArmRegionBlock])
+        for index in 0..<2:
+          # Literal increments keep branch comparisons away from their external exit for these bounded budgets.
+          let phase = if rotated: 1-index else: index
+          var body = default(ArmBlock)
+          emitArmOperation(body, 131, pairSlots, 1)
+          let next = if phase == 0: 22'u32 else: 11'u32
+          emitArmBranch(body, 81, pairSlots, 65535, 99, next)
+          pairBlocks[index] = ArmRegionBlock(header: (if phase == 0: 11'u32 else: 22'u32),
+              span: 2, operations: 2, price: prices[phase], yes: 99, no: next, body: move(body))
+        assert publishArmRegion(pairJit, pairBlocks, 2)
+        assert armRegionCount(pairJit) == 2
+        for gas in [0'u64, 1, 2, 3, 4095, 4096, high(uint64)]:
+          for budget in 0'u64..12'u64:
+            var registers = default(RegisterFile)
+            for slot in 1..<13: registers[slot] = RegisterValue(uint64(slot)+400)
+            let original = registers
+            var expectedGas = gas
+            var expectedBudget = budget
+            var phase = if rotated: 1 else: 0
+            var visits = default(array[2, uint64])
+            while expectedBudget >= 2 and expectedGas >= prices[phase]:
+              # This literal source-count/price model does not reuse any native lowering or register evaluator.
+              expectedBudget-=2
+              expectedGas-=prices[phase]
+              inc visits[phase]
+              phase = 1-phase
+            var state = [gas, budget, 0'u64, 0'u64, 0'u64]
+            assert callArmRegion(pairJit, registers, state) == (if phase == 0: 11'u32 else: 22'u32)
+            assert state[0] == expectedGas and state[1] == expectedBudget and state[4] == 0
+            assert state[2] == visits[if rotated: 1 else: 0]
+            assert state[3] == visits[if rotated: 0 else: 1]
+            assert uint64(registers[0]) == visits[0]+visits[1]
+            for slot in 1..<13: assert registers[slot] == original[slot]
+            inc pairLiteralCases
+    echo "ARM_TWO_BLOCK_LITERAL_CASES,", pairLiteralCases
+
     # Price width and source-budget width are independent: exercise both sides of the immediate boundary and full u64.
     var priceCases = 0
     for price in [0'u64, 1, 4095, 4096, 0x100000000'u64, high(uint64)]:
@@ -1061,6 +1119,63 @@ for arithmeticCount in [1, 2, 3, 4]:
       assert flatArmControlStatistics(frame) == default(array[2, uint64])
 
 echo "ARM_CONTROL_CASES,", controlCases
+
+var pairControlCases = 0
+for boundary in 0..<3:
+  # Both branch successors are genuine admitted headers; the first target equals fallthrough, the second closes the loop.
+  var parts = @[@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
+      @[149'u8, 0, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff]]
+  if boundary == 1:
+    # The external edge must preserve ordered host suspension at its original source PC.
+    parts.add(@[10'u8, 7])
+  elif boundary == 2:
+    # An unmapped load remains checked after the connected loop, with exact fault/paid/prefix observations.
+    parts.add(@[52'u8, 2, 1, 0, 1, 0])
+  parts.add(@[0'u8])
+  let pairProgram = owner(parts)
+  let pairPlan = newFlatPlan(pairProgram, GasCycleLimit(100000))
+  var pairRegisters = default(RegisterFile)
+  pairRegisters[1] = RegisterValue(20)
+  let pairWarm = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: pairRegisters)
+  var pairFrame = newFlatFrame(pairPlan, [], pairWarm)
+  verifyControl(pairFrame, pairProgram, pairWarm, 100)
+  when defined(pvmArm64Jit):
+    let connected = flatArmRegionStatistics(pairFrame)
+    when defined(pvmArm64JitRefuse): assert connected == default(array[2, uint64])
+    else: assert connected[0] > 0 and connected[1] > connected[0]
+  for entry in [0'u64, 9'u64]:
+    for paid in [false, true]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 39, 40, 41, 42, 1000, high(uint64)]:
+        for budget in 0'u64..44'u64:
+          # Every attempted prefix, paid state, gas edge, entry rotation and external exit matches checked single stepping.
+          let input = MachineInfo(pc: CodeAddress(entry), gas: MachineGas(gas),
+              registers: pairRegisters, blockCharged: paid)
+          verifyControl(pairFrame, pairProgram, input, budget)
+          inc pairControlCases
+  var pairCache = takeFlatStream(pairFrame)
+  var freshPair = newFlatFrame(pairPlan, [], pairWarm)
+  restoreFlatStream(freshPair, pairCache)
+  when defined(pvmArm64Jit):
+    let before = flatArmRegionStatistics(freshPair)
+  verifyControl(freshPair, pairProgram, pairWarm, 100)
+  when defined(pvmArm64Jit):
+    when defined(pvmArm64JitRefuse): assert flatArmRegionStatistics(freshPair) == before
+    else: assert flatArmRegionStatistics(freshPair)[0] > before[0]
+  for policy in [0, 1]:
+    # A retained connected image never bypasses an explicitly selected complete or lazy price owner.
+    let complete = newGasPlan(pairProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+        blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+    let lazy = newGasMemo(pairProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+        cycles: GasCycleLimit(100000)))
+    assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
+    if policy == 0: assert selectFlatPrices(freshPair, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(freshPair, default(GasPlan), lazy.value) == StepError.None
+    when defined(pvmArm64Jit):
+      let beforePolicy = flatArmRegionStatistics(freshPair)
+    verifyControl(freshPair, pairProgram, pairWarm, 100)
+    when defined(pvmArm64Jit): assert flatArmRegionStatistics(freshPair) == beforePolicy
+    inc pairControlCases
+echo "ARM_TWO_BLOCK_CONTROL_CASES,", pairControlCases
 
 var boundaryCases = 0
 for boundary in [0, 1]:

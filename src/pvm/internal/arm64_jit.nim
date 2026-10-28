@@ -22,13 +22,14 @@ proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer):
     importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
 
 type
-  ArmEntryRecord = object ## One scalar record binds a published code offset to its hot operation count and cold successor.
+  ArmEntryRecord = object ## Executable records bind code, operation count and successor; uncompiled headers may hold a bounded probe budget.
     code, operations, ending: uint32
   ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
     headers, spans, operations: array[3, uint32]
     prices: array[3, uint64]
     calls, blocks: uint64
+    blockCount: uint32 # Active two/three-block shape; unused counter lanes remain zero.
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
@@ -265,6 +266,21 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
 
+proc armStartProbe*(jit: ArmJit, header: uint32) =
+  ## Only non-executable header records borrow the operation lane for eight cold discovery visits.
+  assert int(header) < jit.entries.len
+  assert jit.entries[int(header)].code < 2
+  jit.entries[int(header)].operations = 8
+
+proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
+  ## Sealing after the eighth complete visit removes observation from the steady native dispatch.
+  assert int(header) < jit.entries.len
+  assert jit.entries[int(header)].code < 2
+  let remaining = jit.entries[int(header)].operations
+  assert remaining > 0 and remaining <= 8
+  jit.entries[int(header)].operations = remaining-1
+  remaining == 1
+
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =
   ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
@@ -343,9 +359,15 @@ func armRegionStatus*(jit: ArmJit): uint8 =
   ## Zero allows one compile attempt, one is refused, and two denotes an immutable published region.
   jit.region.status
 
+func armRegionCount*(jit: ArmJit): range[2..3] =
+  ## Only completely published bounded regions expose an active source-block count.
+  let count = jit.region.blockCount
+  assert jit.region.status == 2 and count >= 2 and count <= 3
+  range[2..3](count)
+
 func armRegionHeader*(jit: ArmJit, index: range[0..2]): uint32 =
-  ## Guarded exits may reenter only these three original charged workers.
-  assert jit.region.status == 2
+  ## Guarded exits may reenter only active captured original charged workers.
+  assert jit.region.status == 2 and uint32(index) < jit.region.blockCount
   jit.region.headers[index]
 
 func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
@@ -358,7 +380,8 @@ func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
         jit.region.prices[index] != prices[index]: return false
   true
 
-proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
+proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
+    count: range[2..3] = 3): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
   assert jit.region.status == 0
   jit.region.status = 1 # Any refusal remains interpreted and avoids repeated compilation attempts.
@@ -371,7 +394,7 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
   var exitLabels: seq[int] = @[]
   # All thirteen values are live on entry; linear dirty/live-in inference is insufficient across loop paths.
   for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
-  for index in 0..<3:
+  for index in 0..<count:
     # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
     let item = blocks[index]
     if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
@@ -402,7 +425,7 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     # Reuse the verified operand/compare prefix; omit its five scalar-return selection instructions.
     for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
     let condition = (item.body.terminal[item.body.terminal.len-1] shr 12) and 15
-    let following = if index < 2: blocks[index+1].header else: high(uint32)
+    let following = if index+1 < count: blocks[index+1].header else: high(uint32)
     if item.no == following:
       # The false edge reaches the next guarded block by layout, retaining the original conditional transfer.
       armRegionEdge(words, fixes, item.yes, condition, false)
@@ -417,8 +440,8 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     # Every guarded return needs a stub, including guards whose header is also an internal branch destination.
     var internal = false
     if not fix.guard:
-      for item in blocks:
-        if item.header == fix.target: internal = true
+      for index in 0..<count:
+        if blocks[index].header == fix.target: internal = true
     if internal: continue
     var known = false
     for target in exits:
@@ -449,7 +472,7 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
     var destination = -1
     if not fix.guard:
       # Native successors return to their guarded block label without another Nim/C transition.
-      for index in 0..<3:
+      for index in 0..<count:
         if blocks[index].header == fix.target: destination = labels[index]
     if destination < 0:
       for index in 0..<exits.len:
@@ -461,12 +484,19 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock]): bool =
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
   if not publishArmEntry(jit, blocks[0].header, 0, 0, words, true): return false
-  for index in 0..<3:
+  for index in 0..<count:
     # The source owner retains only scalar proof facts and executable offsets, never invocation addresses.
     jit.region.headers[index] = blocks[index].header
     jit.region.spans[index] = blocks[index].span
     jit.region.prices[index] = blocks[index].price
     jit.region.operations[index] = blocks[index].operations
+  if count == 2:
+    # No fake source block is emitted or charged; the third context counter stays untouched and unpublished.
+    jit.region.headers[2] = high(uint32)
+    jit.region.spans[2] = 0
+    jit.region.prices[2] = 0
+    jit.region.operations[2] = 0
+  jit.region.blockCount = uint32(count)
   jit.region.status = 2
   true
 
@@ -486,7 +516,7 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
   inc jit.branchCalls
   inc jit.headerCalls
   inc jit.region.calls
-  for index in 0..<3:
+  for index in 0..<armRegionCount(jit):
     # Each block consumes at least as many source attempts as lowered operations; each individual product is bounded.
     let count = uint64(jit.region.operations[index])
     let span = uint64(jit.region.spans[index])
@@ -496,6 +526,7 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
     accounted+=attempts
     jit.operations+=state[index+2]*count
     jit.region.blocks+=state[index+2]
+  if jit.region.blockCount == 2: assert state[4] == 0
   assert accounted == consumed
   destination
 

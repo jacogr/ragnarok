@@ -94,6 +94,10 @@ type
       armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
     pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
+    when defined(pvmArm64Jit):
+      armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
+      armPreviousValid: bool
+
 
 
 
@@ -1363,6 +1367,11 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
+  when defined(pvmArm64Jit):
+    result.armPreviousHeader = flatStop
+    result.armPreviousNext = flatStop
+    result.armPreviousValid = false
+
   var regions: seq[FlatRegion] = @[]
   var first = 0
   while first < images.len:
@@ -1480,11 +1489,43 @@ when defined(pvmArm64Jit):
     # Retain the exact endpoint even for complete native blocks; observable exit/refund behavior has no new dependency.
     f.reservationEnd = f.sites[int(offset)]+args.y
     block:
-      # End the source-owned cache borrow before the shared helper receives the whole mutable invocation frame.
+      # The cache borrow ends before the whole invocation frame is passed to native execution.
       let jit {.cursor.} = f.armJit
       assert jit != nil
       if jit != nil: inc jit.headerCalls
     flatArmRunNext[false](f, offset+1)
+
+  proc flatArmProbeWhole(f: var FlatFrame, offset: uint32): uint32 =
+    ## At most eight complete visits per header discover actual two-block cycles; ordinary dispatch then has no probe.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if f.pricingKind != 0 or armRegionStatus(jit) != 0:
+      # A saved region fallback may still refer to this worker; never overwrite the region's active root handler.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
+      return flatArmWhole(f, offset)
+    let args = f.arguments[int(offset)]
+    let complete = f.barrier == flatStop and not f.info.blockCharged and
+        f.remaining >= uint64(args.y) and uint64(f.info.gas) >= args.x
+    let destination = flatArmWhole(f, offset)
+    if not complete: return destination
+    # Only genuinely completed adjacent headers establish a closed round; partial reservations do not consume probes.
+    let previous = f.armPreviousHeader
+    let closed = f.armPreviousValid and f.armPreviousNext == offset and
+        destination == previous and previous != offset
+    f.armPreviousHeader = offset
+    f.armPreviousNext = destination
+    f.armPreviousValid = true
+    if closed:
+      var connected = destination
+      if flatArmCycle(f, previous, offset, flatStop, connected): return connected
+    if armRegionStatus(jit) != 0:
+      # Failed publication can mark the sole region refused; retain its original checked continuation without retrying.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
+    elif armFinishProbe(jit, offset):
+      # Exhaustion permanently restores the existing hot worker, with no status or history test on subsequent visits.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
+    destination
 
   proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
     ## Partial budgets retain original atomic handler behaviour, including a second-node barrier.
@@ -1561,7 +1602,13 @@ when defined(pvmArm64Jit):
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
         f.armOriginal[int(header)] = plain
         assert f.arguments[int(header)].y > 0
-        f.handlers[int(header)] = flatArmWhole
+        if f.pricingKind == 0 and armRegionStatus(jit) == 0:
+          # Header coordinates already exist in the bounded source map; no extra table or per-iteration policy is needed.
+          armStartProbe(jit, header)
+          f.handlers[int(header)] = flatArmProbeWhole
+        else:
+          # A priced or already-connected owner keeps the established worker immediately.
+          f.handlers[int(header)] = flatArmWhole
     true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
@@ -1569,9 +1616,11 @@ when defined(pvmArm64Jit):
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    var headers, spans = default(array[3, uint32])
+    let active = armRegionCount(jit)
+    var headers = [flatStop, flatStop, flatStop]
+    var spans = default(array[3, uint32])
     var prices = default(array[3, uint64])
-    for index in 0..<3:
+    for index in 0..<active:
       # The exact-source cache has stable header coordinates; reject any mismatched invocation metadata before native entry.
       headers[index] = armRegionHeader(jit, range[0..2](index))
       assert int(headers[index]) < f.arguments.len
@@ -1592,7 +1641,8 @@ when defined(pvmArm64Jit):
     assert int(destination) < f.handlers.len
     if int(destination) >= f.handlers.len: return flatLocal(f, offset,
         oracle.StepError.InvalidPreparedProgram)
-    for header in headers:
+    for index in 0..<active:
+      let header = headers[index]
       if destination == header:
         # This block has not begun: original reservation preserves gas-before-partial-prefix and exact source PC/paid flags.
         let original = f.armOriginal[int(header)]
@@ -1602,7 +1652,7 @@ when defined(pvmArm64Jit):
     destination
 
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool =
-    ## One source-owned region compiles only after an actual closed three-block round; all refusal paths keep the Nim loop.
+    ## One source-owned region follows an actual closed two/three-block round; all refusal paths keep checked dispatch.
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
     let jit = f.armJit
     if jit == nil: return false
@@ -1615,11 +1665,12 @@ when defined(pvmArm64Jit):
       return true
     if f.handlers.len > 262144: return false
     discard armEntry(jit, first, uint32(f.handlers.len))
+    let active: range[2..3] = if last == flatStop: 2 else: 3
     let headers = [first, middle, last]
     # Include successful regional body emission in the diagnostic bracket; full cold-call clocks already include it.
     let before = armClock()
     var blocks = default(array[3, ArmRegionBlock])
-    for index in 0..<3:
+    for index in 0..<active:
       let header = headers[index]
       let charge = f.arguments[int(header)]
       var native = newArmRegionBody()
@@ -1644,12 +1695,13 @@ when defined(pvmArm64Jit):
         emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
         inc current
       if not terminal: return false
-    let admitted = publishArmRegion(jit, blocks)
+    let admitted = publishArmRegion(jit, blocks, active)
     jit.compilationNs+=armClock()-before
     if not admitted: return false
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    for header in headers:
-      # All three originals are retained for a guard exit at any block, but only the observed root changes dispatch.
+    for index in 0..<active:
+      let header = headers[index]
+      # All active originals are retained for a guard exit at any block, but only the observed root changes dispatch.
       f.armOriginal[int(header)] = f.handlers[int(header)]
     f.handlers[int(first)] = flatArmRegion
     destination = flatArmRegion(f, first)
@@ -1729,6 +1781,9 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
+  when defined(pvmArm64Jit):
+    # No observed edge can bridge an invocation or host stop; cached code itself remains source-owned.
+    f.armPreviousValid = false
   if limit == 0:
     f.reason = oracle.StepError.StepLimitExceeded
     return
