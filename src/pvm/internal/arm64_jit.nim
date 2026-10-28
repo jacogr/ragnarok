@@ -580,8 +580,9 @@ func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
   let slot = armRegionSlot(jit, root)
   for index in 0..<3:
     # Matching all scalar charges prevents a cached region from crossing a changed pricing context.
-    if jit.regions[slot].headers[index] != headers[index] or jit.regions[slot].spans[index] !=
-        spans[index]orjit.regions[slot].prices[index] != prices[index]: return false
+    if jit.regions[slot].headers[index] != headers[index]: return false
+    if jit.regions[slot].spans[index] != spans[index]: return false
+    if jit.regions[slot].prices[index] != prices[index]: return false
   true
 
 proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
