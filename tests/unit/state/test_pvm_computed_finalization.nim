@@ -70,10 +70,10 @@ short = config
 short.outputs.log.maxBytes = ByteLimit(0)
 expect(finalizeComputedAccumulation(source, short), ComputedFinalizationError.FinalizationFailure)
 reset(1)
-let backend = finalizeComputedAccumulation(source, config)
-expect(backend, ComputedFinalizationError.FinalizationFailure)
-assert backend.finalizationFailure.error == AccumulationFinalizationError.StateFailure
-assert backend.finalizationFailure.stateError == StateStoreError.BackendFailure
+let refusal = finalizeComputedAccumulation(source, config)
+expect(refusal, ComputedFinalizationError.FinalizationFailure)
+assert refusal.finalizationFailure.error == AccumulationFinalizationError.StateFailure
+assert refusal.finalizationFailure.stateError == StateStoreError.BackendFailure
 reset(0)
 assert sameStateSnapshot(final.finalAccumulationParent.value, original)
 var copied = done.computedFinalizationPlan.value
