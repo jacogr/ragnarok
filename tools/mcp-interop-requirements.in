@@ -1,0 +1,6 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Official SDK v1.26.0 implements the server's MCP 2025-11-25 compatibility target.
+# Test-only dependency; generated lock includes transitive hashes for Python 3.12+.
+mcp==1.26.0

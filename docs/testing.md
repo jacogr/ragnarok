@@ -25,6 +25,8 @@ discovery. `make unit` is the quick native-only subset, `make runtime` aliases `
 and `make modules` aliases `check-modules`. The additional `check-telemetry-interop-ci` target
 builds the pinned JAM Tart collector and verifies interoperability, including failed handshakes
 and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
+`check-mcp-interop` runs a hash-locked official SDK against the real peer and retains wire
+transcripts; see [MCP verification](../spec/mcp.md#official-sdk-interoperability).
 
 The **Build / Linux & Docker** job packages the Linux x86-64 [binary archive](binaries.md) and
 then builds/smoke-tests the [container image](containers.md) on one `ubuntu-latest` runner.
@@ -55,7 +57,7 @@ In the PR sidebar, add one label to request heavier verification of the current 
 | Label | Requested checks |
 | --- | --- |
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
-| `ci:e2e` | End-to-end networking tests only |
+| `ci:e2e` | End-to-end networking tests, including official MCP SDK message exchange |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
 | `ci:docker` | Docker image build and selftests only, without native archive packaging |
 | `ci:perf` | All Perf jobs, including interpreted PVM and DOOM reference comparisons |

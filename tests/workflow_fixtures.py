@@ -78,8 +78,13 @@ def selected_families(text, job, context):
     guard = job_condition(text, job)
     if not expression(guard, context):
         return []
-    matrix = re.search(r'^        family: (.+)$', section, re.MULTILINE).group(1)
-    return expression(matrix, context)
+    matrix = re.search(r'^        family: (.+)$', section, re.MULTILINE)
+    if matrix is not None:
+        # Dynamic matrices select scoped workloads from event inputs.
+        return expression(matrix.group(1), context)
+    # Static E2E families retain their readable source-owned YAML declarations.
+    return [dict(group=group, name=name) for group, name in re.findall(
+        r'^          - \{group: ([a-z_]+), name: ([^}\n]+)\}$', section, re.MULTILINE)]
 
 
 # Retain only steps applicable to one family; native commands never execute during these checks.

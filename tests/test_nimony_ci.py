@@ -406,8 +406,9 @@ class NimonyCISafeguards(unittest.TestCase):
         from e2e_checks import PLAN
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = text.split('  e2e:\n', 1)[1].split('  e2e-status:\n', 1)[0]
-        groups = re.findall(r'group: ([a-z_]+), name:', section)
-        self.assertEqual(tuple(groups), PLAN.groups())
+        groups = tuple(row['group'] for row in selected_families(text, 'e2e', event_context()))
+        self.assertEqual(tuple(group for group in groups if group != 'mcp'), PLAN.groups())
+        self.assertIn('mcp', groups)
         self.assertIn('fail-fast: false', section)
         self.assertIn('E2E_GROUP: ${{ matrix.family.group }}', section)
         self.assertIn('name: E2E / ${{ matrix.family.name }}', section)
@@ -539,6 +540,7 @@ class NimonyCISafeguards(unittest.TestCase):
         for job, family, target in [('build', 'binary', 'check-modules'), ('build', 'python', 'check-python'),
                                     ('build', 'binary', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
+                                    ('e2e', 'mcp', 'check-mcp-interop'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
                                     ('perf', 'bench-storage', 'bench-storage-growth'), ('build', 'binary', 'check-docker')]:
             section = family_section(text, job, family)
@@ -547,6 +549,24 @@ class NimonyCISafeguards(unittest.TestCase):
         for job in ('unit', 'failures', 'e2e', 'pvm-fuzz', 'models'):
             self.assertIn('run: *inventory-run', job_section(text, job))
         self.assertNotIn('continue-on-error:', text)
+
+    def test_mcp_interop_keeps_real_sdk_and_wire_evidence(self):
+        """MCP joins the required E2E matrix with explicit message evidence and no test-key upload."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = family_section(text, 'e2e', 'mcp')
+        self.assertIn('run: make check-mcp-interop', section)
+        self.assertIn("always() && matrix.family.group == 'mcp'", section)
+        self.assertIn('build/tests/mcp-interop/results.json', section)
+        self.assertIn('build/tests/mcp-interop/*/*.jsonl', section)
+        self.assertNotIn('build/tests/mcp-interop/**\n', section)
+        self.assertNotIn('build/mcp-interop-python', section)
+        self.assertNotIn('continue-on-error:', section)
+        self.assertNotIn('run: make check-e2e', section)
+        self.assertNotIn('run: make summary-${{ github.job }}', section)
+        # Heavy SDK execution follows E2E requests, independently of Interop labels.
+        for label, expected in [('ci:e2e', True), ('ci:full', True), ('ci:interop', False)]:
+            rows = selected_families(text, 'e2e', event_context('pull_request', 'labeled', label))
+            self.assertEqual(any(row['group'] == 'mcp' for row in rows), expected)
 
     def test_pvm_reference_evidence_scope(self):
         """The separate full-scope job keeps failed-run evidence without silently allowing failure."""

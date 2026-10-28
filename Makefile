@@ -44,7 +44,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: build-storage-paged-resources bench-storage-paged-resources summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm fuzz-pvm-program summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: mcp-interop-python check-mcp-interop build-storage-paged-resources bench-storage-paged-resources summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm fuzz-pvm-program summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -325,6 +325,16 @@ telemetry-interop-collector: host-tools rust-tools
 check-telemetry-interop-ci: check-inventory telemetry-interop-collector
 	$(MAKE) check-telemetry-interop JAMTART="$(CURDIR)/build/jamtart-reference-target/debug/tart-backend" 2>&1 | tee build/ci/telemetry-interop.log
 
+# Install a complete hash-locked official MCP client in an isolated test-only environment.
+mcp-interop-python: tools/mcp-interop-requirements.txt
+	$(PYTHON) -m venv build/mcp-interop-python
+	build/mcp-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/mcp-interop-requirements.txt
+
+# The independent SDK owns the MCP serialization/session machinery; the real peer owns its sockets.
+check-mcp-interop: check-inventory mcp-interop-python build
+	mkdir -p build/ci
+	build/mcp-interop-python/bin/python tools/test_mcp_interop.py 2>&1 | tee build/ci/mcp-interop.log
+
 # An explicit external collector is an optional interoperability gate, outside the self-contained CI groups.
 telemetry-interop-python:
 	@test -n "$(JAMTART)" || { echo 'Set JAMTART to an explicitly built tart-backend binary'; exit 1; }
@@ -507,6 +517,7 @@ help:
 	  'make check-failures Run runtime contract/crash probes and positive controls' \
 	  'make check-guards  Run compiler rejection guards' \
 	  'make check-e2e     Run peer/service/resilience/soak/offload scenarios' \
+	  'make check-mcp-interop  Check real MCP messages with the pinned official SDK' \
 	  'make check-telemetry-interop-ci  Build the pinned collector and check interoperability' \
 	  'make check-telemetry-interop JAMTART=/path/to/tart-backend  Check an actual collector' \
 	  'make runtime       Alias for make check-unit' \

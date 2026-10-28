@@ -374,6 +374,7 @@ jobs:
         os: *ci-os
         family:
           - {group: current, name: Current Downloads}
+          - {group: mcp, name: MCP}
           - {group: telemetry, name: Telemetry}
           - {group: testnet, name: Testnet}
           - {group: transport, name: Transport}
@@ -386,9 +387,26 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: E2E Networking
+        if: ${{ matrix.family.group != 'mcp' }}
         run: make check-e2e
+      - name: Exchange real messages with the pinned official MCP SDK
+        if: ${{ matrix.family.group == 'mcp' }}
+        run: make check-mcp-interop
+      # Preserve protocol and failed-run evidence; exclude generated TLS keys and dependency environments.
+      - name: Retain MCP end-to-end evidence
+        if: ${{ always() && matrix.family.group == 'mcp' }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-mcp-interop-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/mcp-interop*.log
+            build/tests/mcp-interop/results.json
+            build/tests/mcp-interop/*/*.jsonl
+            build/tests/mcp-interop/*/peer.log
       - name: Show verification coverage
-        if: always()
+        if: ${{ always() && matrix.family.group != 'mcp' }}
         run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
