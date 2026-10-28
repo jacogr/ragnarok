@@ -558,6 +558,11 @@ check-devnet: build
 check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
 
+# Bounded native-host qualification shares the maintained positive, refusal and lifetime gates.
+.PHONY: check-pvm-native
+check-pvm-native: toolchain check-inventory
+	$(PYTHON) tools/pvm_native_ci.py
+
 # Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
 .PHONY: bench-pvm-interpreter
 bench-pvm-interpreter: toolchain sources rust-tools
@@ -565,13 +570,13 @@ bench-pvm-interpreter: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_compare.py
 
-# Explicit local-only ARM64 JIT trial; no default backend or CI selection changes.
+# Explicit retained-frame ARM64 JIT trial; the public application cohort owns CI timing.
 .PHONY: bench-pvm-arm64-jit
 bench-pvm-arm64-jit: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_arm64_jit.py
 
-# Local real-application qualification reuses pinned reference preparation; no CI selection changes.
+# Native ARM64 application comparison reuses pinned reference preparation locally and in CI.
 .PHONY: bench-pvm-arm64-applications
 bench-pvm-arm64-applications: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml

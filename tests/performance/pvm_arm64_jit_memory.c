@@ -70,6 +70,12 @@ int main(void) {
     assert(pvm_arm64_arena_call(NULL, 0, registers) == 0);
     assert(pvm_arm64_arena_next(NULL, 0, registers) == UINT32_MAX);
     pvm_arm64_arena_destroy(NULL);
+    if (!PVM_ARM64_JIT_HOST) {
+        /* Unsupported hosts must refuse executable storage without attempting ARM64 machine code. */
+        assert(pvm_arm64_arena_create() == NULL);
+        puts("ARM_MEMORY_UNAVAILABLE,checked-fallback");
+        return 0;
+    }
     for (unsigned cycle = 0; cycle < 1000; ++cycle) {
         /* Each mapping is retired before the next is created; successful calls borrow only registers. */
         void *arena = pvm_arm64_arena_create();
