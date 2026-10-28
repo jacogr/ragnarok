@@ -55,7 +55,8 @@ assert owned.valid and owned.entry("main").error == ArtifactError.None
 assert uint64(owned.entry("main").value) == 0
 assert owned.entry("missing").error == ArtifactError.MissingExport
 assert default(Artifact).entry("main").error == ArtifactError.Uninitialized
-assert default(ArtifactResult[Artifact]).error == ArtifactError.Uninitialized
+let absentResult = default(ArtifactResult[Artifact])
+assert absentResult.error == ArtifactError.Uninitialized
 let memory = memoryOf(owned)
 assert uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7
 assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10

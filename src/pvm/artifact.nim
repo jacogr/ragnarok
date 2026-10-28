@@ -252,6 +252,11 @@ proc initialMachine*(artifact: Artifact, name: string, gas: MachineGas): Artifac
 
 proc loadArtifact*(path: string, limits: ArtifactLimits = defaultArtifactLimits()): ArtifactResult[Artifact] =
   ## A bounded chunk reader checks the live stream, including growth after open; file cleanup is unconditional.
+  if path.len == 0 or path.len > 4096:
+    return ArtifactResult[Artifact](status: ArtifactError.IoError)
+  for character in path:
+    if character == char(0): return ArtifactResult[Artifact](
+        status: ArtifactError.IoError) # Native strings must preserve exact path identity.
   var file: File = nil
   if not open(file, path, fmRead):
     return ArtifactResult[Artifact](status: ArtifactError.IoError)
