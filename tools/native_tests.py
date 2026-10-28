@@ -91,9 +91,6 @@ def unit_command(compiler, name=None, libraries=None):
             if key in ('crypto', 'bandersnatch', 'bandersnatch_observer', 'polkavm') or profile == 'quic':
                 # Locate maintained shared-library identities on both supported hosts.
                 flags.append('--passL:-Wl,-rpath,'+str(library.parent))
-        for include in requirements['includes']:
-            # Headers retain their explicit order after the ordered native library arguments.
-            flags.append('--passC:-I'+str(ROOT/'native'/include))
         if any(function.startswith('io_') for function in requirements['observers']):
             # Real SDK declarations precede observer macros, preserving macOS assembler aliases.
             flags.append('--passC:-include'+str(ROOT/'native/storage_io/redirect.h'))
@@ -103,6 +100,10 @@ def unit_command(compiler, name=None, libraries=None):
                 flags.append('--passC:-DRAGNAROK_STORAGE_IO_'+function[3:].upper())
             else:
                 flags.append('--passC:-Dbs_'+function+'=bo_'+function)
+    if name is not None:
+        for include in NATIVE_REQUIREMENTS[name]['includes']:
+            # Header-only native JIT profiles carry no unrelated library, with the same cache identity checks.
+            flags.append('--passC:-I'+str(ROOT/'native'/include))
     for define in NATIVE_REQUIREMENTS[name]['defines'] if name is not None else ():
         # Integration remains an explicit per-suite opt-in, independent of library preparation.
         flags.append('-d:'+define)

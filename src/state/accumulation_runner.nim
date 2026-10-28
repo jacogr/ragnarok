@@ -26,6 +26,7 @@ type
     logging*: LogWriter
     steps*: ExecutionStepLimit               ## Attempted instructions per guest, independent of protocol gas.
     calls*: HostCallLimit                    ## Host dispatches per guest.
+    backend*: PvmBackend                     ## One immutable selection governs every invocation in this policy.
     cycles*: GasCycleLimit                   ## Gas analysis work per basic block.
     provisions*: AccumulationProvisionLimits ## Retained provide effects per guest.
     transfers*, accountWriteKeys*, createdAccounts*, deletedAccounts*: ElementLimit
@@ -149,7 +150,7 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts, logging = limits.logging)
+        limits.deletedAccounts, logging = limits.logging, backend = limits.backend)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.DispatchFailure,
           dispatchReason: executed) # Preserve StepError; prior successes die locally.

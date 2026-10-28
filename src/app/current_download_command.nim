@@ -343,6 +343,7 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
   var limits = policy.value
   limits.candidate.selectLogging(options.logWriter)
+  limits.candidate.selectPvmBackend(options.pvmBackend)
   let qualifyLogical = options.logicalDownloadEnabled
   let namespaceEnabled = options.namespaceDownloadPolicyPath.len > 0
   var namespacePolicy = default(CurrentNamespacePolicy)

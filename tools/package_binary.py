@@ -134,6 +134,14 @@ def package(root=ROOT):
         sources = (root/'build/crypto'/(LIBRARIES[0]+suffix),
                    root/'build/bandersnatch/target/release'/(LIBRARIES[1]+suffix),
                    root/'build/quic'/(LIBRARIES[2]+suffix))
+        # Include the optional ABI only when the actual executable depends on it.
+        checks = Package(system, log)
+        if any('libragnarok_polkavm' in value for value in checks.dependencies(binary)):
+            sources += (root/'build/polkavm/release'/('libragnarok_polkavm'+suffix),)
+            licenses = stage/'licenses/polkavm'
+            licenses.mkdir(parents=True)
+            for name in ('LICENSE-MIT', 'LICENSE-APACHE'):
+                shutil.copy2(root/'vendor/polkavm'/name, licenses/name)
         libraries = []
         for source in sources:
             # Copy only the maintained production ABIs; observers, fixtures, keys and toolchains stay out.

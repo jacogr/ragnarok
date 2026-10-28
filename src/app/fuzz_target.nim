@@ -8,6 +8,7 @@ from ./cli_defaults import DefaultFuzzWrites, DefaultFuzzWriteBytes
 
 import std/[assertions, atomics, envvars, monotimes, os, syncio]
 import std/posix/posix
+import ../pvm/backend
 import ./[fuzz_socket, fuzz_backend, fuzz_rejection, current_download_policy, candidate, fuzz_policy]
 import ../chain/[parameters, presets, genesis]
 import ../codec/[bounded, block_codec]
@@ -181,7 +182,7 @@ proc resolveFuzzEnvironment*(base: FuzzEnvironment, overrides: openArray[string]
   true
 
 proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
-    LogWriter)): int {.raises.} =
+    LogWriter), selected: PvmBackend = DefaultPvmBackend): int {.raises.} =
   ## The ordinary executable selects conformance mode from standard environment variables and owns the complete startup lifecycle.
   let automatic = arguments.len == 0
   let builtIn = automatic or (arguments.len >= 3 and arguments[0] == "fuzz")
@@ -257,6 +258,7 @@ proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
     return 2
   var candidate = policy.value.candidate
   candidate.selectLogging(logging)
+  candidate.selectPvmBackend(selected)
   let prepared = prepareFuzzTarget(environment, parameters.value, candidate,
       ElementLimit(writes), ByteLimit(writeBytes))
   if prepared.error != FuzzTargetError.None:

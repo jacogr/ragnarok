@@ -22,10 +22,10 @@ def validate_requirements(records):
     fields = {'directory', 'libraries', 'includes', 'observers', 'defines', 'prepared'}
     allowed = {
         'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io', 'polkavm'},
-        'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm'},
+        'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm', 'pvm_jit'},
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
         # This fixed test-only cap exercises early refusal without allowing arbitrary compiler switches.
-        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime'},
+        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse'},
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
@@ -67,7 +67,12 @@ def validate_requirements(records):
             raise ValueError('Native batch directory mismatch: '+name)
         io_observers = [value for value in record['observers'] if value.startswith('io_')]
         ring_observers = [value for value in record['observers'] if not value.startswith('io_')]
-        if (bool(record['includes']) != bool(primary)
+        header_only = 'pvm_jit' in record['includes']
+        if header_only != ('pvmArm64Jit' in record['defines']):
+            raise ValueError('Native JIT header requires explicit JIT profile: '+name)
+        if 'pvmArm64JitRefuse' in record['defines'] and not header_only:
+            raise ValueError('Native JIT refusal requires its explicit profile: '+name)
+        if (bool([value for value in record['includes'] if value != 'pvm_jit']) != bool(primary)
                 or (ring_observers and 'bandersnatch_observer' not in record['libraries'])
                 or (io_observers and ('storage_io' not in record['libraries'] or 'storage_io' not in record['includes']))):
             # Header and observer configuration must have corresponding prepared native libraries.

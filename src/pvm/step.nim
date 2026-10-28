@@ -255,7 +255,8 @@ type
     cycles*: GasCycleLimit
   PreparationError* {.pure.} = enum ## Preparation has no partially usable success owner.
     Uninitialized, None, InvalidProgram, LimitExceeded, BackendNotBuilt, BackendUnavailable,
-      BackendProgramUnsupported, BackendRevisionMismatch, BackendCapabilityUnsupported, BackendFailure
+      BackendProgramUnsupported, BackendRevisionMismatch, BackendCapabilityUnsupported,
+        BackendFailure, Busy
   PreparationResult*[T] = object ## Failed/default alternatives publish only their reason.
     case status: PreparationError
     of None: completed: T
@@ -277,6 +278,8 @@ type
     codeBytes*, decodedInstructions*, streamNodes*, preparationUnits*: uint64
     limits*: PreparedLimits
     backend*: PvmBackend
+    nativeFragments*, nativeCalls*, nativeOperations*: uint64
+    jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
@@ -299,19 +302,26 @@ func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == Prepa
   ## Only complete admitted results contain owners or copied diagnostics.
   r.completed
 
-proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
-    PreparedProgram] =
+proc prepareIndependent(source: Program, limits: PreparedLimits,
+    selected: PvmBackend): PreparationResult[PreparedProgram] =
   ## Decode immutable facts once; executable nodes and prices remain lazy, exclusive and source-bound.
   if codeLength(source).error != ProgramError.None:
     return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
-  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources)
+  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected ==
+      PvmBackend.Jit)
   if admitted.error != FlatError.None:
     return PreparationResult[PreparedProgram](status: (if admitted.error ==
         FlatError.InvalidProgram:
       PreparationError.InvalidProgram else: PreparationError.LimitExceeded))
   let plan = takeValue(admitted)
   PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
-    data: PreparedData(source: source, plan: plan, stream: default(FlatStream), limits: limits, busy: false)))
+    data: PreparedData(source: source, plan: plan, stream: default(FlatStream), limits: limits,
+        busy: false, selected: selected)))
+
+proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
+    PreparedProgram] =
+  ## The independent default uses native fragments where supported and retains the checked interpreter fallback.
+  prepareIndependent(source, limits, DefaultPvmBackend)
 
 func programOf*(prepared: PreparedProgram): PreparationResult[Program] =
   ## Exact original source identity survives cache growth and every invocation-local refusal.
@@ -323,10 +333,20 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   ## Return copied logical component occupancy; no invocation state is retained or exposed.
   let data = prepared.data
   if data == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
+  if data.busy: return PreparationResult[PreparedInfo](status: PreparationError.Busy)
+  var native = default(array[7, uint64])
+  var built, supported = false
+  when defined(pvmArm64Jit):
+    native = streamNativeStatistics(data.stream)
+    built = true
+    when defined(arm64) and (defined(linux) or defined(macosx)): supported = true
   PreparationResult[PreparedInfo](status: PreparationError.None, completed: PreparedInfo(
     codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(data.plan),
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
-        limits: data.limits, backend: data.selected))
+        limits: data.limits, backend: data.selected, nativeFragments: native[0],
+            nativeCalls: native[1],
+        nativeOperations: native[2], jitBuilt: built, jitPlatformSupported: supported,
+        checkedFallbackEnabled: data.selected == PvmBackend.Jit))
 
 when defined(pvmArm64JitOwnerReceipt):
   proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
@@ -352,9 +372,15 @@ proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
   memory = pages.value
   StepError.None
 
+proc nativeOperations(frame: FlatFrame): uint64 =
+  ## Copied counters are read only at publication/preparation boundaries, never in the guest hot loop.
+  when defined(pvmArm64Jit): flatArmStatistics(frame)[2]
+  else: 0
+
 proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
-    original: CodeAddress = CodeAddress(0)): StepResult =
+    original: CodeAddress = CodeAddress(0), nativeBaseline: uint64 = 0): StepResult =
   ## The one engine publishes exact recursive exits or the public Psi_1 PC convention at this adapter.
+  let engine = if nativeOperations(frame) != nativeBaseline: PvmBackend.Jit else: PvmBackend.Interpreted
   var cpu = frame.info
   var kind = frame.exit
   if single:
@@ -373,15 +399,16 @@ proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   case kind
   of StepExit.Fault:
-    StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Fault,
+    StepResult(status: StepError.None, completed: StepOutcome(engine: engine, kind: StepExit.Fault,
       machine: captured.value,
       failedPage: frame.faultPage))
   of StepExit.Host:
-    StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Host,
+    StepResult(status: StepError.None, completed: StepOutcome(engine: engine, kind: StepExit.Host,
       machine: captured.value,
       callNumber: frame.hostCall, callAddress: (if single: original else: cpu.pc)))
   else:
-    StepResult(status: StepError.None, completed: StepOutcome(kind: kind, machine: captured.value))
+    StepResult(status: StepError.None, completed: StepOutcome(engine: engine, kind: kind,
+        machine: captured.value))
 
 proc runForeignFrame(source: Machine, prepared: PreparedProgram,
     limit: ExecutionStepLimit): StepResult
@@ -391,7 +418,8 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
   ## Borrow only the prepared stream; CPU and private memory are created and retired inside this invocation.
   let selectedData = prepared.data
-  if selectedData != nil and selectedData.selected != PvmBackend.Interpreted:
+  if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
+      PvmBackend.PolkaCompiled]:
     if single or gasPlanInfo(plan).error == GasPlanError.None or gasMemoInfo(memo).error ==
         GasMemoError.None:
       return StepResult(status: StepError.BackendProgramUnsupported)
@@ -411,20 +439,21 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     cpu.pc = CodeAddress(0)
     let terminal = captureTerminalMachine(owner, memory, cpu)
     if terminal.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
-    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Panic,
-        machine: terminal.value))
+    return StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
+        kind: StepExit.Panic, machine: terminal.value))
   var created = prepareFlatMemoryFrame(data.plan, memory, cpu)
   if created.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
   var frame = takeValue(created)
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return StepResult(status: policy)
   restoreFlatStream(frame, data.stream)
+  let nativeBaseline = nativeOperations(frame)
   runFlat(frame, uint64(limit))
   let answer = if single and frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
-    StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.OutOfGas,
-        machine: source))
+    StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
+        kind: StepExit.OutOfGas, machine: source))
     elif frame.reason == StepError.None or (single and frame.reason == StepError.StepLimitExceeded):
-    publishFrame(frame, owner, single, cpu.pc)
+    publishFrame(frame, owner, single, cpu.pc, nativeBaseline)
     else: StepResult(status: frame.reason)
   data.stream = takeFlatStream(frame)
   answer
@@ -499,8 +528,8 @@ proc runSingleStep(source: Machine, cycles: GasCycleLimit, plan: GasPlan): StepR
   if policy != StepError.None: return StepResult(status: policy)
   runFlatSingle(frame)
   if frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
-    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.OutOfGas,
-        machine: source))
+    return StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
+        kind: StepExit.OutOfGas, machine: source))
   if frame.reason != StepError.None and frame.reason != StepError.StepLimitExceeded:
     return StepResult(status: frame.reason)
   publishFrame(frame, owner, true, cpu.pc)
@@ -586,13 +615,15 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
   ## Keep one private engine frame across genuine callbacks; every public observation is immutable.
   var remaining = uint64(steps)
   var available = uint64(calls)
+  let nativeBaseline = nativeOperations(frame)
   while true:
     # The engine counts attempted source instructions across every host continuation.
     runFlat(frame, remaining)
     remaining = frame.remaining
     if frame.reason != StepError.None:
       return executionResult[Reason](StepResult(status: frame.reason))
-    if frame.exit != StepExit.Host: return executionResult[Reason](publishFrame(frame, owner))
+    if frame.exit != StepExit.Host: return executionResult[Reason](publishFrame(frame, owner,
+        nativeBaseline = nativeBaseline))
     if available == 0: return executionResult[Reason](StepResult(
         status: StepError.HostCallLimitExceeded))
     dec available
@@ -600,7 +631,9 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     let captured = captureMachine(owner, memory, frame.info)
     if captured.error != MachineError.None:
       return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
-    let suspension = StepOutcome(kind: StepExit.Host, machine: captured.value,
+    let suspension = StepOutcome(engine: (if nativeOperations(frame) !=
+        nativeBaseline: PvmBackend.Jit else: PvmBackend.Interpreted), kind: StepExit.Host,
+        machine: captured.value,
       callNumber: frame.hostCall, callAddress: frame.info.pc)
     var response = default(HostResponse)
     when Fallible:
@@ -635,7 +668,8 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
         memo: GasMemo): HostExecutionResult[Reason] =
   ## Validate and create private memory before moving the exclusively leased executable cache.
   let selectedData = prepared.data
-  if selectedData != nil and selectedData.selected != PvmBackend.Interpreted:
+  if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
+      PvmBackend.PolkaCompiled]:
     when Fallible:
       let selected = callbacks.fallible
       assert selected != nil
@@ -827,3 +861,13 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if prepared.error != PreparationError.None: return StepResult(status: preparationFailure(
       prepared.error))
   executeWithHost(source, context, handler, steps, calls, prepared.value)
+
+proc backendAvailability*(selected: PvmBackend): StepError =
+  ## Refuse unavailable explicit foreign engines before any application resource, host or guest effect opens.
+  if selected in [PvmBackend.Interpreted, PvmBackend.Jit]: return StepError.None
+  let raw = @[0'u8, 0, 1, 0, 1]
+  let source = decodeJamProgram(raw, CodeAddress(0), ProgramByteLimit(8), JumpCountLimit(0))
+  if source.error != ProgramError.None: return StepError.BackendFailure
+  let prepared = newPreparedProgram(source.value, defaultPreparedLimits(), selected)
+  if prepared.error != PreparationError.None: return preparationFailure(prepared.error)
+  StepError.None

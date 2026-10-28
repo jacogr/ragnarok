@@ -15,25 +15,34 @@ from setup_nimony import ROOT, installed, cache_directory
 
 
 # Keep the shipped peer profile explicit; the same checks/LTO and public headers are used by verification.
-def build_command(compiler, output, crypto, bandersnatch, quic):
+def build_command(compiler, output, crypto, bandersnatch, quic, polkavm=None):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload']
+             '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload', '-d:pvmArm64Jit']
     if platform.system() == 'Linux':
         # Linux uses the same LTO linker as the canonical verification path.
         flags.append('--passL:-fuse-ld=lld')
-    for name in ('crypto', 'bandersnatch', 'quic'):
+    for name in ('crypto', 'bandersnatch', 'quic', 'pvm_jit'):
         # Only project-maintained public C headers are visible to generated call sites.
         flags.append('--passC:-I'+str(ROOT/'native'/name))
     for library in (crypto, bandersnatch, quic):
         # Real primitive/transport ABIs are linked without any failure/wipe/ownership observer.
         flags += ['--passL:'+str(library), '--passL:-Wl,-rpath,'+str(library.parent)]
+    if polkavm is not None:
+        # Foreign engines are linked only by the explicit optional production build.
+        flags += ['-d:polkavmRuntime', '--passC:-I'+str(ROOT/'native/polkavm'),
+                  '--passL:'+str(polkavm), '--passL:-Wl,-rpath,'+str(polkavm.parent)]
+    # Optional ABI defines own a separate compiler cache; switching builds cannot reuse foreign-enabled imports.
+    profile = 'ragnarok-polkavm-jit' if polkavm is not None else 'ragnarok-independent-jit'
     return [str(compiler), 'c', *flags,
-            '--nimcache:'+str(cache_directory(compiler, ROOT/'build', 'ragnarok')),
+            '--nimcache:'+str(cache_directory(compiler, ROOT/'build', profile)),
             '--out:'+str(output), str(ROOT/'src/ragnarok.nim')]
 
 
 # Reuse pristine native build helpers without invoking historical compilers, drivers or test observers.
 def main():
+    optional = os.environ.get('PVM_POLKAVM', '0')
+    if optional not in ('0', '1'):
+        raise ValueError('PVM_POLKAVM must be 0 or 1')
     compiler, _ = installed()
     pins = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())
     os.environ['RUSTUP_TOOLCHAIN'] = pins['rust']
@@ -45,7 +54,11 @@ def main():
     bandersnatch = build_bandersnatch(False)
     quic = build_quic(quic_sources(False))
     output = ROOT/'build/ragnarok'
-    arguments = build_command(compiler, output, crypto, bandersnatch, quic)
+    polkavm = None
+    if optional == '1':
+        from build_polkavm import build_native as build_polkavm
+        polkavm = build_polkavm()
+    arguments = build_command(compiler, output, crypto, bandersnatch, quic, polkavm)
     print('+ '+' '.join(arguments), flush=True)
     # Compiler failure remains authoritative; a stale output is never reported as a successful build.
     subprocess.run(arguments, cwd=ROOT, check=True)

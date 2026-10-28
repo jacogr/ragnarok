@@ -50,6 +50,7 @@ type
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
     limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
+    allowNative: bool  # Immutable cold policy; forced interpretation never creates native handlers.
     singleStep: bool   # A bounded adapter plan owns one instruction and never enters whole-program emission.
   FlatRegion = ref object ## Additional fragmented regions retain private bytes and immutable access metadata.
     first: uint64
@@ -1057,7 +1058,8 @@ proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact
     pc: uint32(pc), next: uint32(next), sourceCount: 0, priceIndex: priceIndex,
     opcode: item.opcode, ending: terminatesBlock(item.opcode), fallthrough: fallthrough)
 
-proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits): FlatResult[FlatPlan] =
+proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
+    allowNative: bool = true): FlatResult[FlatPlan] =
   ## Capture genuine complete instruction facts and containing-block pricing inputs before execution, preserving the explicit preparation boundary.
   if not validFlatLimits(limits): return FlatResult[FlatPlan](status: FlatError.InvalidPolicy)
   let extent = codeLength(source)
@@ -1070,7 +1072,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
   var owner = FlatPlan(source: source, limits: limits, facts: @[], factAt: newSeq[int](int(
       extent.value)), pricePcs: @[
-    ], cycles: cycles, jumps: @[], singleStep: false)
+    ], cycles: cycles, jumps: @[], allowNative: allowNative, singleStep: false)
   for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
@@ -1137,7 +1139,7 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   elif fact.opcode == 180: fact.handler = flatDynamic[180, true]
   FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
     facts: @[fact], factAt: @[], pricePcs: @[], cycles: cycles, jumps: @[], limits: limits,
-    singleStep: true))
+    allowNative: false, singleStep: true))
 
 proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
   ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
@@ -1695,6 +1697,7 @@ when defined(pvmArm64Jit):
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
     ## Only newly emitted suffix nodes are examined. Unsupported nodes keep the ordinary hot loop unchanged.
+    if not f.plan.allowNative: return # Decide before scanning, allocating storage or consulting a native cache.
     let before = armClock()
     var offset = origin
     while int(offset) < f.handlers.len:
@@ -2072,13 +2075,18 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   if stream.failure != FlatError.Uninitialized: f.preparationFailure = stream.failure
   f.preparationUsed = stream.preparation
 
-when defined(pvmArm64JitOwnerReceipt):
-  func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
+when defined(pvmArm64Jit):
+  func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
     ## Local experiment diagnostics copy counters only; no code pointer, mutable storage or invocation state escapes.
     let jit = stream.armJit
     if jit == nil: return default(array[7, uint64])
     [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs,
       jit.branchCalls, jit.headerCalls]
+
+when defined(pvmArm64JitOwnerReceipt):
+  func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
+    ## Preserve the existing diagnostic API over the same copied cold observation.
+    streamNativeStatistics(stream)
 
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.

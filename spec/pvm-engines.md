@@ -7,14 +7,14 @@ and synchronous `executeWithHost` boundaries. The protocol authority remains the
 Paper and the established `pvm-step`, `pvm-execution`, `pvm-host-execution` and
 `pvm-polkavm-memory-order` contracts. The optional bridge uses only public PolkaVM APIs at
 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; source/dependency/toolchain pins stay unchanged.
-This API layer does not select a new application default or add CLI options.
+Application and API defaults use the independent `jit` policy; the optional foreign engine never becomes an implicit fallback.
 
 ## Ownership and use
 
 `newPreparedProgram(source, limits, selected)` binds one exact immutable source and engine.
-The existing two-argument constructor preserves the current independent engine/build policy.
+The two-argument constructor and zero-initialized invocation policies use `jit`. Explicit `interpreted` binds a plan that cannot emit native handlers even in a JIT-enabled binary.
 `preparedInfo(owner).backend` reports the bound engine; completed `StepOutcome.backend`
-reports actual execution, including host terminal replies. Failed/default results expose no
+reports actual execution, including host terminal replies: `jit` means some native work occurred in that invocation, while checked-only independent execution reports `interpreted`. Failed/default results expose no
 snapshot or receipt. Identical independently decoded bytes do not authorize another owner.
 
 Prepared handles share one private cache identity with noncopyable composite storage. A busy
@@ -79,3 +79,34 @@ and complete JAM parity remain outside this API increment.
 
 The following layers add owner-bound JIT/forced-interpreter policy and CLI selection, then
 adapt the existing Linux comparison family without adding a parallel benchmark family.
+
+## Runtime policy and CLI
+
+`--pvm-backend` accepts exactly `jit`, `interpreted`, `polkavm-interpreted` and `polkavm-compiled`.
+The option catalog owns help/default presentation; ordinary and dedicated conformance/devnet
+commands share strict parsing. Initial/current/later accumulation, authorization, refinement,
+download/trace and nested raw machines carry copied selection policy, with no process-global
+backend state. The outer refinement selection replaces any conflicting nested policy.
+
+Normal `make` enables our checked ARM64 fragment emitter. `make PVM_POLKAVM=1` explicitly links
+the optional bridge and packaging includes its real dependency and upstream licenses. Explicit
+foreign requests are checked before application resources open; no alternate engine is selected.
+Our JIT currently supports macOS/Linux ARM64. Linux x86-64 uses the same-engine interpreter
+fallback and is never reported as native JIT execution. Unsupported operations, refused executable
+storage and native code-cache limits retain checked execution.
+
+The immutable private `FlatPlan.allowNative` is captured on every construction path. One cold
+emission hook returns before native scanning/allocation when false; the guest dispatch loop
+contains no backend-policy branch. Stream transfer requires exact original plan identity, so
+native-populated caches cannot enter a forced-interpreted owner. Prepared diagnostics report
+requested backend, binary/platform JIT support, fallback policy and cumulative native fragment,
+call and operation counters. Busy diagnostic reads return `PreparationError.Busy`; they never
+report an empty moved-out cache as zero actual activity. Completed receipts compare invocation
+start/end operation counters, including modular wrap, rather than claiming prior native activity.
+
+`pvm_runtime_policy` requires a positive native control on supported ARM64, zero native activity
+for forced interpretation through warm reuse and hosts, and both cross-policy cache-transfer
+refusals. `pvm_runtime_policy_refused` runs the same witnesses with executable storage refused.
+`app_pvm_backend` checks defaults, all names, help, strict malformed/duplicate rejection and
+dedicated parsing. `pvm_runtime_application` executes real application/nested dispatch using our
+interpreter and PolkaVM interpreted; compiled PolkaVM remains outside CI execution.

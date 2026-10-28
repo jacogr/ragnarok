@@ -17,6 +17,7 @@ type
     jumps*: JumpCountLimit
     pages*: PageLimit
     steps*: ExecutionStepLimit ## Independent per-segment instruction policy; outer host-count policy bounds segment count.
+    backend*: PvmBackend   ## Outer invocation propagates its selected guest engine to every nested segment.
     cycles*: GasCycleLimit ## Per-block gas-analysis policy for the raw inner execution engine.
   InnerMachineError* {.pure.} = enum ## Local/default refusals expose no response or partially modified map.
     Uninitialized, None, InvalidContext, InvalidMemory, LimitExceeded, Missing, UnsupportedSource, ExecutionFailure
@@ -27,6 +28,8 @@ type
     pc*: CodeAddress
     blockCharged*: bool
     moduleHandle*: InnerModuleHandle
+    executionComplete: bool
+    backendValue: PvmBackend
   ModuleData = object ## Immutable program capture retained by its published handle or live instances.
     handle: uint64
     program: Program
@@ -53,6 +56,13 @@ type
       reason: StepError
     else:
       discard                     # Local failures retain neither scratch bytes nor a manufactured protocol result.
+
+func executed*(info: InnerMachineInfo): bool =
+  ## Newly created machines have no executed engine receipt; only a completed segment selects one.
+  info.executionComplete
+func backend*(info: InnerMachineInfo): PvmBackend {.requires: info.executionComplete.} =
+  ## Inspect the engine that actually completed the last segment, after checking executed.
+  info.backendValue
 
 func error*[T](outcome: InnerMachineResult[T]): InnerMachineError =
   ## Inspect the reason without writable tag access.
@@ -534,7 +544,7 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
     MachineInfo(pc: source.pc, gas: MachineGas(requested), gasDeficit: GasDeficit(0),
       blockCharged: source.blockCharged, registers: innerRegisters))
   if initial.error != MachineError.None: fail(InnerMachineError.InvalidContext)
-  let evaluated = execute(initial.value, data.limits.steps, data.limits.cycles)
+  let evaluated = execute(initial.value, data.limits.steps, data.limits.cycles, data.limits.backend)
   if evaluated.error != StepError.None:
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
       reason: evaluated.error) # No tentative frame, nested state or refund escapes a local engine refusal.
@@ -543,6 +553,8 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   if uint64(cpu.gas) > requested:
     fail(InnerMachineError.InvalidContext) # Raw guest-only Psi cannot increase its allowance.
   var info = source
+  info.executionComplete = true
+  info.backendValue = stopped.backend
   info.pc = cpu.pc
   info.blockCharged = cpu.blockCharged
   info.memory = stopped.machine.memoryOf.value

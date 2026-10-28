@@ -72,3 +72,17 @@ one of these sources; logging otherwise uses the ordinary default. A general
 `--log-level` filter takes precedence over the conformance logging threshold.
 The explicit-policy `serve-fuzz` and `serve-fuzz-preset` commands accept these
 same environment overrides. Help identifies every mapping.
+
+## PVM execution
+
+`--pvm-backend jit|interpreted|polkavm-interpreted|polkavm-compiled` selects the guest engine for
+application and nested invocation. The default `jit` uses our ARM64 native fragments on supported
+macOS/Linux hosts, retaining our checked interpreter for unsupported platforms, instructions,
+executable-storage refusals and native cache limits. `interpreted` forces our interpreter even
+when the binary contains JIT support.
+
+Build optional PolkaVM support with `make PVM_POLKAVM=1`. Explicit PolkaVM requests never switch
+to our engine: missing builds/platform/sandbox capabilities produce a startup refusal. The pinned
+compiler currently requires qualified Linux x86-64; its interpreter also supports ARM64. CI
+comparisons use PolkaVM interpreted only for now. Startup logs state the requested mode and
+fallback policy; prepared-owner diagnostics expose actual native activity without hot-loop logging.

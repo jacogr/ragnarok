@@ -73,6 +73,7 @@ proc runTraceChecks*(options: Options): TraceCheckCommandOutcome =
     return refused(TraceCheckCommandError.InvalidPolicy, requested, 0, $policy.error)
   var candidate = policy.value.candidate
   candidate.selectLogging(options.logWriter)
+  candidate.selectPvmBackend(options.pvmBackend)
   let config = readBoundedFile(options.chainPath, ByteLimit(TraceCheckConfigBytes))
   if config.error != AtomicFileError.None:
     return refused(TraceCheckCommandError.FileFailure, requested, 0, $config.error)

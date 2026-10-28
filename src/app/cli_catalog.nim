@@ -16,7 +16,8 @@ type
       Devnet, Fuzz
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
     Required, None, Disabled, Embedded, RpcPort, UiPort, Timeout, PeerMode, Mode, Storage,
-    Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks, Logging
+    Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
+      Logging, PvmBackend
   OptionSpec* = object ## Immutable catalog row; an empty commands string denotes shared service controls.
     name*, value*, description*, commands*: string
     fallback*: OptionDefault
@@ -64,6 +65,9 @@ const
       description: "off|fatal|error|warn|info|debug|trace; optional target=level filters.",
       fallback: OptionDefault.Logging, commands: "",
       repeatable: false),
+    OptionSpec(name: "--pvm-backend", value: "MODE", group: OptionGroup.General,
+      description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses checked fallback.",
+      fallback: OptionDefault.PvmBackend, commands: "", repeatable: false),
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535); required.", fallback: OptionDefault.Required,
       commands: "server|client|download|download-current",
@@ -349,3 +353,4 @@ proc defaultValue*(spec: OptionSpec): string =
   of OptionDefault.CompactBytes: $DefaultCompactionBytes
   of OptionDefault.Blocks: $DefaultDownloadBlocks
   of OptionDefault.Logging: $DefaultLogLevel
+  of OptionDefault.PvmBackend: $DefaultPvmBackend

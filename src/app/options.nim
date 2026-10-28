@@ -24,6 +24,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
   mode: NodeMode
+  pvmSelection: PvmBackend
   backend: StateStorage
   layout: StateDiskLayout
   pagedResume: bool
@@ -36,6 +37,10 @@ type Options* = object ## Validated service controls; command handlers validate 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
   options.parsed
+
+func pvmBackend*(options: Options): PvmBackend =
+  ## Only the immutable parsed selection reaches invocation policy; failed parsing grants no startup authority.
+  options.pvmSelection
 
 func nodeMode*(options: Options): NodeMode =
   ## Mode observation grants no startup authority when parsing failed.
@@ -199,7 +204,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   options = default(Options)
   var candidate = Options(logging: initLogPolicy(), rpcNumber: DefaultRpcPort,
       uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode,
-          backend: DefaultStateStorage,
+          backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
@@ -255,6 +260,10 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
               127: return false # Native paths cannot truncate or carry controls.
         candidate.managementPath = value
       of "--ui-dev-dir": candidate.directory = value
+      of "--pvm-backend":
+        if not parsePvmBackend(value, candidate.pvmSelection):
+          diagnostic = "Invalid --pvm-backend: use jit|interpreted|polkavm-interpreted|polkavm-compiled"
+          return false
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
@@ -411,7 +420,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         3+MaxTraceSteps:
       return false # One explicit policy, Genesis and1..256 consecutive steps define a finite offline workload.
     for control in seen:
-      if control notin ["--log-level", "--with-state", "--chain", "--state-writes",
+      if control notin ["--log-level", "--pvm-backend", "--with-state", "--chain", "--state-writes",
           "--state-write-bytes", "--trace-observations"]:
         return false # Offline validation accepts only its explicit trust/state budgets; no listener, disk, recovery or download control is silently ignored.
   if downloadCommand:
