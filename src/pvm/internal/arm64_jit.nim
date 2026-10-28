@@ -253,17 +253,8 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
   for word in fragment.terminal: result.add(word)
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32, opcode: byte = 130): seq[uint32] =
-  ## A first indirect scalar load guards fresh borrowed regions before any guest register is published.
-  assert opcode >= 124 and opcode <= 130
-  let load = case opcode
-    of 124: 0x38626a20'u32 # LDRB zero-extends a byte into the full guest register.
-    of 125: 0x38a26a20'u32 # LDRSB sign-extends directly to sixty-four bits.
-    of 126: 0x78626a20'u32 # LDRH zero-extends an unaligned little-endian halfword.
-    of 127: 0x78a26a20'u32 # LDRSH sign-extends directly to sixty-four bits.
-    of 128: 0xb8626a20'u32 # LDR W clears the upper thirty-two bits.
-    of 129: 0xb8a26a20'u32 # LDRSW preserves a negative word as a signed guest value.
-    else: 0xf8626a20'u32   # LDR X retains the original full-width load.
+    displacement, ending: uint32): seq[uint32] =
+  ## A first unsigned indirect word load guards fresh borrowed regions before any guest register is published.
   assert fragment.terminal.len == 0
   let destination = armWrite(fragment, slots.aIndex)
   let arithmetic = armInstructions(fragment)
@@ -292,7 +283,7 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     result.add(0xeb11005f'u32) # CMP Xoffset,Xextent.
     result.add(0x54000082'u32) # HS skips this region without reading its pointer.
     result.add(0xf9400031'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer,[Xcontext,#region*24+16].
-    result.add(load or destination) # The decoded width/sign policy chooses one unaligned scalar load.
+    result.add(0xf8626a20'u32 or destination) # LDR Xdestination,[Xpointer,Xoffset], including unaligned words.
     accepted.add(result.len)
     result.add(0x14000000'u32)
   let missing = result.len

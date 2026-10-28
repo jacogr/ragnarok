@@ -49,51 +49,38 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 when defined(pvmArm64Jit):
   var guardedLoadCases = 0
   when not defined(pvmArm64JitRefuse):
-    for opcode in 124'u8..130'u8:
-      for highBit in [0, 128]:
-        # Independent byte assembly checks both signs, every width and every source/destination alias.
-        for destination in 0..<13:
-          for addressSlot in 0..<13:
-            # Every decoded alias pair must compute its address before overwriting the loaded register.
-            let source = owner([@[opcode, byte(addressSlot*16+destination), 0, 0, 0, 0], @[0'u8]])
-            let decoded = instruction(source, CodeAddress(0))
-            assert decoded.error == ProgramError.None
-            let slots = instructionRegisters(decoded)
-            assert int(slots.aIndex) == destination and int(slots.bIndex) == addressSlot
-            let memoryJit = newArmJit()
-            assert armEntry(memoryJit, 0, 1) == 0
-            var memoryBody = default(ArmBlock)
-            var memoryWords = armMemoryInstructions(memoryBody, slots, 0, 37, opcode)
-            assert publishArmEntry(memoryJit, 0, 37, 1, memoryWords)
-            var literalBytes = default(array[16, byte])
-            for at in 0..<16: literalBytes[at] = byte(at+highBit)
-            for selectedRegion in 0..<3:
-              var descriptors = default(array[3, array[3, uint64]])
-              descriptors[selectedRegion] = [65536'u64, 9'u64, cast[uint64](addr literalBytes[0])]
-              var input = default(RegisterFile)
-              for slot in 0..<13: input[slot] = RegisterValue(0x1122334455667788'u64+uint64(slot))
-              input[addressSlot] = RegisterValue(65539)
-              let original = input
-              assert callArmMemory(memoryJit, 0, input, descriptors) == 37
-              let width = case opcode
-                of 124, 125: 1
-                of 126, 127: 2
-                of 128, 129: 4
-                else: 8
-              var expected = 0'u64
-              for at in 0..<width: expected = expected or (uint64(literalBytes[3+at]) shl (at*8))
-              if opcode in [125'u8, 127, 129] and highBit != 0:
-                # The signed cases extend from their decoded width, independent of the native load encoding.
-                expected = expected or (high(uint64) shl (width*8))
-              for slot in 0..<13:
-                # A successful scalar load publishes exactly its own destination, preserving all other registers.
-                assert input[slot] == (if slot == destination: RegisterValue(
-                    expected) else: original[slot])
-              descriptors = default(array[3, array[3, uint64]])
-              input = original
-              assert callArmMemory(memoryJit, 0, input, descriptors) == high(uint32)
-              assert input == original
-              inc guardedLoadCases
+    for destination in 0..<13:
+      for addressSlot in 0..<13:
+        # Every decoded alias pair must compute its address before overwriting the loaded register.
+        let source = owner([@[130'u8, byte(addressSlot*16+destination), 0, 0, 0, 0], @[0'u8]])
+        let decoded = instruction(source, CodeAddress(0))
+        assert decoded.error == ProgramError.None
+        let slots = instructionRegisters(decoded)
+        assert int(slots.aIndex) == destination and int(slots.bIndex) == addressSlot
+        let memoryJit = newArmJit()
+        assert armEntry(memoryJit, 0, 1) == 0
+        var memoryBody = default(ArmBlock)
+        var memoryWords = armMemoryInstructions(memoryBody, slots, 0, 37)
+        assert publishArmEntry(memoryJit, 0, 37, 1, memoryWords)
+        var literalBytes = default(array[16, byte])
+        for at in 0..<16: literalBytes[at] = byte(at)
+        for selectedRegion in 0..<3:
+          var descriptors = default(array[3, array[3, uint64]])
+          descriptors[selectedRegion] = [65536'u64, 9'u64, cast[uint64](addr literalBytes[0])]
+          var input = default(RegisterFile)
+          for slot in 0..<13: input[slot] = RegisterValue(0x1122334455667788'u64+uint64(slot))
+          input[addressSlot] = RegisterValue(65539)
+          let original = input
+          assert callArmMemory(memoryJit, 0, input, descriptors) == 37
+          for slot in 0..<13:
+            # A successful unaligned little-endian load publishes exactly its own destination.
+            assert input[slot] == (if slot == destination: RegisterValue(
+                0x0a09080706050403'u64) else: original[slot])
+          descriptors = default(array[3, array[3, uint64]])
+          input = original
+          assert callArmMemory(memoryJit, 0, input, descriptors) == high(uint32)
+          assert input == original
+          inc guardedLoadCases
   echo "ARM_GUARDED_LOAD_LITERAL_CASES,", guardedLoadCases
   let probeOwner = newArmJit()
   assert armEntry(probeOwner, 0, 1) == 0
@@ -885,7 +872,7 @@ for opcode in 124'u8..130'u8:
             assert stats[2] == 0
           else:
             # Valid private maps execute the guarded load plus its three-operation suffix; absent maps preserve checked faults.
-            if layout == 0: assert stats[2] == 0
+            if layout == 0 or opcode != 130: assert stats[2] == 0
             else: assert stats[2] > 0
         # Same-plan replacement and a transferred stream must read the new invocation's word.
         var changed: seq[PageImage] = @[]
