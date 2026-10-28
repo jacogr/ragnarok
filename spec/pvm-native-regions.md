@@ -51,7 +51,7 @@ The normal comparison can now take the same explicit pinned parent on ARM as x86
 input retains the previous current-source A/A control. This avoids interpreting a current/current
 ARM control as a paired optimization result. All native verification and timings remain on CI.
 Status: measured and rejected; ARM runtime is restored and post-restoration native/application
-qualification passes. X86 remains held for the separate fresh-process validation.
+qualification passes. X86 retention is separately qualified by the fresh-process validation.
 
 
 ARM admission witness refinement: the `131 + 88` shape uses an existing specialized charge
