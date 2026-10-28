@@ -73,42 +73,6 @@ proc readSlot(fragment: var X86Block, slot: range[0..12], right: bool) =
   ## Eight-byte array offsets fit a positive disp8; RDI remains the sole borrowed array base.
   put(fragment, [0x48'u8, 0x8b, (if right: 0x4f'u8 else: 0x47'u8), byte(int(slot)*8)])
 
-func compactWidth(value: uint64): range[0..4] =
-  ## x86 sign-extends both immediate widths; use a compact form only when every original bit is reproduced.
-  if value <= 127 or value >= 0xffffffffffffff80'u64: 1
-  elif value <= 0x7fffffff'u64 or value >= 0xffffffff80000000'u64: 4
-  else: 0
-
-proc compactOperand(fragment: var X86Block, value: uint64, width: range[1..4]) =
-  ## Emit the checked low-byte prefix; the instruction's documented sign extension reconstructs the full value.
-  for part in 0..<int(width): fragment.bytes.add(byte((value shr (part*8)) and 255))
-
-proc compactArithmetic(fragment: var X86Block, opcode: byte, value: uint64): bool =
-  ## Only wrapping full-width ADD/AND/OR/XOR share this RAX destination form; other operations keep the original emitter.
-  let width = compactWidth(value)
-  if width == 0 or opcode notin {132'u8, 133, 134, 149}: return false
-  let group = case opcode
-    of 132: 4'u8 # AND.
-    of 133: 6'u8 # XOR.
-    of 134: 1'u8 # OR.
-    else: 0'u8   # ADD.
-  put(fragment, [0x48'u8, (if width == 1: 0x83'u8 else: 0x81'u8), 0xc0'u8 or (group shl 3)])
-  compactOperand(fragment, value, range[1..4](width))
-  true
-
-proc compareImmediate(fragment: var X86Block, slot: range[0..12], value: uint64) =
-  ## Read the same complete guest word directly from RDI; no write or narrowing is introduced by memory CMP.
-  let width = compactWidth(value)
-  if width == 0:
-    # Arbitrary bit patterns require the original full64 scratch pair and comparison.
-    readSlot(fragment, slot, false)
-    immediate(fragment, 0xb9, value)
-    put(fragment, [0x48'u8, 0x39, 0xc8])
-  else:
-    # The checked guest coordinate has the same positive disp8 as readSlot; comparison flags feed the original selector.
-    put(fragment, [0x48'u8, (if width == 1: 0x83'u8 else: 0x81'u8), 0x7f, byte(int(slot)*8)])
-    compactOperand(fragment, value, range[1..4](width))
-
 proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlots, value: uint64) =
   ## Scratch RAX/RCX/RDX/R8 obey SysV caller-save rules; all aliases consume their old inputs first.
   assert supportedX86Opcode(opcode)
@@ -122,11 +86,6 @@ proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlot
     of 109: put(fragment, [0x0f'u8, 0xb7, 0xc0]) # MOVZX EAX,AX also clears the high word.
     of 110: put(fragment, [0x48'u8, 0x0f, 0xc8]) # BSWAP RAX.
     else: discard # The loaded A value is already the complete move result.
-  elif opcode in {132'u8, 133, 134, 149} and compactWidth(value) != 0:
-    # Load the old source before the destination store, including every saturated alias.
-    readSlot(fragment, slots.bIndex, false)
-    let emitted = compactArithmetic(fragment, opcode, value)
-    assert emitted
   else:
     if opcode < 190:
       readSlot(fragment, slots.bIndex, false)
@@ -181,14 +140,10 @@ proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
   ## Positive checked stream destinations become immediate scalar results; MOV/CMOV preserve the full-width comparison.
   assert opcode in {81'u8..90, 170..175}
   assert yes < 2147483646'u32 and no < 2147483646'u32
-  if opcode <= 90:
-    # A sign-representable immediate can compare the original guest memory word without scratch loads.
-    compareImmediate(fragment, slots.aIndex, value)
-  else:
-    # Register comparisons retain their original two complete source loads.
-    readSlot(fragment, slots.aIndex, false)
-    readSlot(fragment, slots.bIndex, true)
-    put(fragment, [0x48'u8, 0x39, 0xc8])
+  readSlot(fragment, slots.aIndex, false)
+  if opcode <= 90: immediate(fragment, 0xb9, value)
+  else: readSlot(fragment, slots.bIndex, true)
+  put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX consumes both original register/immediate values.
   put(fragment, [0xb8'u8]) # MOV EAX,no leaves comparison flags intact and defines the complete return value.
   for part in 0..<4: fragment.bytes.add(byte((no shr (part*8)) and 255))
   put(fragment, [0xba'u8]) # MOV EDX,yes also preserves flags; RDX is caller-saved.
