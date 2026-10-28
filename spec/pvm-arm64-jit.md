@@ -2588,3 +2588,19 @@ Container clocks are diagnostic only; no native Linux performance claim is made.
 Evidence:`build/pvm-arm64-jit/post-merge/read-spans/`, including main/repeated independent
 proofs, scoped traces and Linux receipts. The existing historical scoped-profile folder was
 preserved and restored; the new traces belong to this candidate alone.
+
+
+## Stable-base read-window trial
+
+The next bounded trial shares a readable-window proof only across unsigned indirect word reads
+with one guest base slot that is not overwritten before any read. Relative offsets must share
+the same low three bits and span at most 4,088 bytes. The first modulo-2^32 effective address
+and final word are checked against the existing protected/top bounds; a single descriptor must
+cover the complete nonwrapping window. X17 then retains only the invocation's admitted host
+address, with no persistent pointer or ABI change. Reads whose bases change, derived addresses,
+unaligned relative offsets and larger ranges retain the accepted independent guards.
+
+Admission remains cold-only, within the same reserved source block and existing operation/code
+caps. No guest register stores precede complete success. A refused window replays the original
+checked source nodes, including split permissions, attempt prefixes and later faults. Measurement
+and verdict are pending; no performance claim is made for this trial.

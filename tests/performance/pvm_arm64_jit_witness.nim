@@ -128,6 +128,64 @@ when defined(pvmArm64Jit):
             assert jit.operations == operations+(if refusal == 0: 4'u64 else: 0'u64)
             inc readSpanLiteralCases
   echo "ARM_READ_SPAN_LITERAL_CASES,", readSpanLiteralCases
+  var readWindowLiteralCases = 0
+  when not defined(pvmArm64JitRefuse):
+    for baseSlot in 0..<13:
+      for distance in [0'u32, 8, 4088]:
+        for wrapped in [false, true]:
+          let first = if wrapped: 0xffffe000'u32 else: 1'u32
+          let destination = (baseSlot+1) mod 13
+          let fixture = owner([@[130'u8, byte(baseSlot*16+destination), 0, 0, 0, 0],
+            @[149'u8, byte(destination*16+destination), 9],
+            @[130'u8, byte(baseSlot*16+baseSlot), 0, 0, 0, 0], @[0'u8]])
+          var span = default(ArmReadSpan)
+          let slots = instructionRegisters(instruction(fixture, CodeAddress(0)))
+          beginArmReadWindow(span, slots.bIndex, first, first+distance)
+          emitArmWindowRead(span, slots.aIndex, 0)
+          emitArmReadArithmetic(span, 149, instructionRegisters(instruction(fixture, CodeAddress(
+              6))), 9)
+          emitArmWindowRead(span, slots.bIndex, distance)
+          let jit = newArmJit()
+          assert armEntry(jit, 0, 1) == 0
+          var words = armReadInstructions(span, 37)
+          assert publishArmEntry(jit, 0, 37, 3, words)
+          var bytes = default(array[8192, byte])
+          for at in 0..<8192: bytes[at] = byte((at*29+17) mod 256)
+          for region in 0..<3:
+            for refusal in 0..<7:
+              # The exact extent, protected prefix, top wrap and below-region offsets must all refuse without stores.
+              var regions = default(array[3, array[3, uint64]])
+              let extent = case refusal
+                of 2: uint64(distance)
+                of 3: uint64(distance)+3
+                else: 8185'u64
+              if refusal != 1:
+                regions[region] = [65536'u64, extent, cast[uint64](addr bytes[0])]
+              var registers = default(RegisterFile)
+              for slot in 0..<13: registers[slot] = RegisterValue(0x1122334455667788'u64+uint64(slot))
+              let address = case refusal
+                of 4: 65535'u32
+                of 5: 0xfffffff8'u32
+                of 6: 32768'u32
+                else: 65539'u32
+              registers[baseSlot] = RegisterValue(uint64(address-first)+0x100000000'u64)
+              let original = registers
+              var expected = registers
+              if refusal == 0:
+                # Expected little-endian bytes are independent of native instructions and survive X1 scratch reuse.
+                var early = 0'u64
+                var late = 0'u64
+                for at in 0..<8:
+                  early = early or (uint64(bytes[3+at]) shl (at*8))
+                  late = late or (uint64(bytes[3+int(distance)+at]) shl (at*8))
+                expected[destination] = RegisterValue(early+9)
+                expected[baseSlot] = RegisterValue(late)
+              assert callArmMemory(jit, 0, registers, regions) == (if refusal ==
+                  0: 37'u32 else: high(uint32))
+              assert registers == expected
+              if refusal != 0: assert registers == original
+              inc readWindowLiteralCases
+  echo "ARM_READ_WINDOW_LITERAL_CASES,", readWindowLiteralCases
   let probeOwner = newArmJit()
   assert armEntry(probeOwner, 0, 1) == 0
   armStartProbe(probeOwner, 0)
@@ -1078,6 +1136,39 @@ for depth in [2, 3, 16, 32, 63, 64, 65]:
           input.gas = MachineGas(gas)
           verifyControl(frame, program, input, uint64(budget), [page])
           inc readSpanCases
+
+# Shared windows must conservatively replay fragmented maps and bases changed by either a read or arithmetic.
+for shape in 0..<6:
+  let first = if shape == 1: 1 else: 0
+  let secondBase = if shape == 3: 2 else: 1
+  let delta = if shape == 4: 9'u32 elif shape == 5: 0xfffffff8'u32 else: 8'u32
+  var second = @[130'u8, byte(secondBase*16+3)]
+  for shift in 0..<4: second.add(byte((delta shr (shift*8)) and 255))
+  let program = owner([@[130'u8, byte(0x10+first), 0, 0, 0, 0],
+    @[149'u8, byte(if shape == 2: 0x11 else: 0x02), 1], second,
+    @[149'u8, 0x34, 1], @[0'u8]])
+  for split in [false, true]:
+    var pages: seq[PageImage] = @[]
+    for index in 0..<2:
+      # Adjacent read-only/writable pages cannot share a descriptor; the general checked handler still accepts both.
+      var page = PageImage(index: PageIndex(uint32(16+index)), access:
+        (if split and index == 1: PageAccess.ReadWrite else: PageAccess.ReadOnly),
+        bytes: default(array[4096, byte]))
+      for at in 0..<4096: page.bytes[at] = byte((at*17+index*3) mod 256)
+      pages.add(page)
+    for address in [65535'u64, 65536, 69620, 69624, 69628, 73720, 0xfffffff8'u64]:
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+      info.registers[1] = RegisterValue(address)
+      var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), pages, info)
+      for paid in [false, true]:
+        for gas in [0'u64, 4, 5, 1000]:
+          for budget in 0'u64..7'u64:
+            # Every refused proof must publish exactly the source prefix's registers, gas, PC, memory and permission state.
+            var input = info
+            input.blockCharged = paid
+            input.gas = MachineGas(gas)
+            verifyControl(frame, program, input, budget, pages)
+            inc readSpanCases
 
 echo "ARM_READ_SPAN_CONTROL_CASES,", readSpanCases
 

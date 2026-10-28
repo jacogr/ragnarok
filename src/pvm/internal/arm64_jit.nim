@@ -294,6 +294,49 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
     assert index >= 0 and index < after
     span.body.words[index] = span.body.words[index] or uint32(after-index)
 
+proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last: uint32) =
+  ## A stable guest base admits one nonwrapping readable window before any speculative register mutation.
+  assert span.body.words.len == 0 and last >= first and last-first <= 4088
+  let distance = last-first
+  let source = armRead(span.body, slot)
+  span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots the original low word.
+  span.body.words.add(0x52800002'u32 or ((first and 65535) shl 5))
+  span.body.words.add(0x72a00002'u32 or ((first shr 16) shl 5))
+  span.body.words.add(0x0b020063'u32) # The first effective address wraps exactly as a source load does.
+  span.body.words.add(0xf140407f'u32) # CMP X3,#65536 excludes the protected prefix.
+  armReadRefusal(span, 0x54000003'u32, true)
+  let limit = 0xfffffff7'u32-distance
+  span.body.words.add(0x52800002'u32 or ((limit and 65535) shl 5))
+  span.body.words.add(0x72a00002'u32 or ((limit shr 16) shl 5))
+  span.body.words.add(0xeb02007f'u32) # The final word must remain below the existing conservative top bound.
+  armReadRefusal(span, 0x54000008'u32, true)
+  var accepted = default(array[3, int])
+  for region in 0..<3:
+    # Descriptor length-minus-seven must exceed the whole displacement range before subtraction can be safe.
+    span.body.words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+    span.body.words.add(0xf100005f'u32 or (distance shl 10)) # CMP X2,#distance.
+    span.body.words.add(0x54000109'u32) # LS skips the following seven words, leaving X17 as the context.
+    span.body.words.add(0xd1000042'u32 or (distance shl 10)) # SUB X2,X2,#distance.
+    span.body.words.add(0xcb010061'u32) # SUB X1,X3,X1; a below-region address becomes a large unsigned offset.
+    span.body.words.add(0xeb02003f'u32)
+    span.body.words.add(0x54000082'u32) # HS skips pointer extraction, pointer addition and acceptance.
+    span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
+    span.body.words.add(0x8b010051'u32) # ADD X17,X2,X1 retains the admitted first host address across arithmetic.
+    accepted[region] = span.body.words.len
+    span.body.words.add(0x14000000'u32)
+  armReadRefusal(span, 0x14000000'u32, false)
+  let after = span.body.words.len
+  for index in accepted:
+    # A successful descriptor skips all later descriptors before X17 is consumed as a host-window pointer.
+    assert index >= 0 and index < after
+    span.body.words[index] = span.body.words[index] or uint32(after-index)
+
+proc emitArmWindowRead*(span: var ArmReadSpan, slot: range[0..12], displacement: uint32) =
+  ## One earlier whole-window proof covers this aligned relative offset, including an unaligned original base.
+  assert displacement <= 4088 and displacement mod 8 == 0
+  let destination = armWrite(span.body, slot)
+  span.body.words.add(0xf9400220'u32 or ((displacement div 8) shl 10) or destination)
+
 proc emitArmReadArithmetic*(span: var ArmReadSpan, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
   ## Existing pure operations share the same resident register bank and original wrapping/alias rules.
