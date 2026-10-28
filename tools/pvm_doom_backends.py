@@ -212,7 +212,8 @@ def run():
         if built['exit_code']: raise RuntimeError(built['output'][-2000:])
         identities[binary] = digest(binary)
         observed = {}
-        common = dict(os.environ, RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'),
+        common = dict(os.environ, RAGNAROK_DOOM_BACKEND_OUTPUT=str(BUILD),
+            RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'),
             RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'),
             RAGNAROK_DOOM_BACKEND_CALLS=str(count), RAGNAROK_DOOM_BACKEND_ASSERT='0')
         for selected in BACKENDS:
