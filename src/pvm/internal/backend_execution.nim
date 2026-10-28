@@ -228,6 +228,9 @@ when declared(ExecutionCursor):
           return HostExecutionResult[Reason](status: HostExecutionError.HostFailure,
               hostReason: reply.failure)
         of HostResultKind.Response:
+          if not validPreparedHostResponse(reply.value, cursor.pageLimit):
+            # Fallible response payloads share the same pre-publication admission as ordinary callbacks.
+            return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
           let applied = applyHostResponse(evaluated.value, reply.value)
           if applied.error != StepError.None or applied.value.exit != StepExit.Continued:
             return executionResult[Reason](applied)
@@ -252,6 +255,9 @@ when declared(ExecutionCursor):
         if calls == 0: return StepResult(status: StepError.HostCallLimitExceeded)
         dec calls # Callback credit remains independent of instruction attempts and protocol gas.
         let reply = handler(context, evaluated.value)
+        if not validPreparedHostResponse(reply, cursor.pageLimit):
+          # Terminal replies obey the same owner ceiling before any posterior snapshot is published.
+          return StepResult(status: StepError.InvalidHostResponse)
         let applied = applyHostResponse(evaluated.value, reply)
         if applied.error != StepError.None or applied.value.exit !=
             StepExit.Continued: return applied

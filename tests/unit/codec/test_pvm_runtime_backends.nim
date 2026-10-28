@@ -15,6 +15,23 @@ type Context = object ## Test-local state observes host count and controls expli
   prepared: PreparedProgram
   reentry: bool
 
+type PageReplyContext = object ## Posterior memory is a copied immutable snapshot; actions cover every accepted reply kind.
+  action: HostAction
+  memory: Memory
+  calls: int
+
+proc pageReply(context: var PageReplyContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Deliberately supply admitted or oversized host memory without altering the causing CPU/register state.
+  inc context.calls
+  let cpu = machineInfo(stopped.machine).value
+  HostResponse(action: context.action, gas: cpu.gas, registers: cpu.registers,
+      memory: context.memory)
+
+proc falliblePageReply(context: var PageReplyContext, stopped: StepOutcome): HostResult[
+    HostFailure] {.raises: [].} =
+  ## Fallible adapters must enforce the same prepared response limits as direct callbacks.
+  hostSuccess[HostFailure](pageReply(context, stopped))
+
 proc source(available: uint64 = high(uint64)): Machine =
   ## Two hosts followed by a genuine dynamic halt use an independent fixed instruction bitmap.
   let raw = @[0'u8, 0, 6, 10, 2, 10, 2, 50, 0, 0x15]
@@ -221,6 +238,50 @@ proc witness(selected: PvmBackend) =
   assert zero.error == StepError.None and zero.value.exit == StepExit.OutOfGas
   assert uint64(machineInfo(zero.value.machine).value.gas) == 0
 
+proc preparedPageReplyWitness(selected: PvmBackend) =
+  ## Every host action obeys the owner's page ceiling; rejection releases the lease and resets foreign state.
+  let original = source()
+  var limits = defaultPreparedLimits(GasCycleLimit(1000))
+  limits.resources.pages = PageLimit(1)
+  let prepared = newPreparedProgram(programOf(original).value, limits, selected)
+  assert prepared.error == PreparationError.None
+  let bounded = memoryOf(original).value
+  let oversized = captureMemory([
+    PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)], PageLimit(2)).value
+  for action in [HostAction.Continue, HostAction.Panic, HostAction.OutOfGas]:
+    # The exact admitted ceiling stays valid for both callback interfaces and all accepted actions.
+    let expected = if action == HostAction.Continue: StepExit.Halt
+      elif action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas
+    for fallible in [false, true]:
+      var allowed = PageReplyContext(action: action, memory: bounded)
+      var rejected = PageReplyContext(action: action, memory: oversized)
+      if fallible:
+        let accepted = executeWithHost(original, allowed, falliblePageReply, ExecutionStepLimit(3),
+            HostCallLimit(2), prepared.value)
+        assert accepted.error == HostExecutionError.None and accepted.value.exit == expected
+        let refused = executeWithHost(original, rejected, falliblePageReply, ExecutionStepLimit(3),
+            HostCallLimit(2), prepared.value)
+        assert refused.error == HostExecutionError.ExecutionFailure
+        assert refused.executionError == StepError.InvalidHostResponse, $selected & " oversized fallible reply"
+      else:
+        let accepted = executeWithHost(original, allowed, pageReply, ExecutionStepLimit(3),
+            HostCallLimit(2), prepared.value)
+        assert accepted.error == StepError.None and accepted.value.exit == expected
+        let refused = executeWithHost(original, rejected, pageReply, ExecutionStepLimit(3),
+            HostCallLimit(2), prepared.value)
+        assert refused.error == StepError.InvalidHostResponse, $selected & " oversized direct reply"
+      assert rejected.calls == 1
+      # A refused reply cannot poison the reusable instance, busy lease or immutable caller snapshot.
+      var recovered = default(Context)
+      let reused = executeWithHost(original, recovered, respond, ExecutionStepLimit(3),
+          HostCallLimit(2), prepared.value)
+      assert reused.error == HostExecutionError.None and reused.value.exit == StepExit.Halt
+      assert recovered.calls == 2
+      assert uint64(load(memoryOf(reused.value.machine).value, MemoryAddress(65536), AccessWidth(
+          8)).value) == 2
+      assert uint64(load(bounded, MemoryAddress(65536), AccessWidth(8)).value) == 0
+
 proc preparedWitness(selected: PvmBackend) =
   ## Reuse one engine-bound source cache while every call resets RAM, registers and continuation.
   let original = source()
@@ -241,6 +302,7 @@ proc preparedWitness(selected: PvmBackend) =
   let mismatch = execute(source(), ExecutionStepLimit(3), prepared.value)
   assert mismatch.error == StepError.InvalidPreparedProgram # Identical bytes do not confer source identity.
 
+preparedPageReplyWitness(PvmBackend.Interpreted)
 preparedWitness(PvmBackend.Interpreted)
 witness(PvmBackend.Interpreted)
 when defined(polkavmRuntime):
@@ -255,6 +317,7 @@ when defined(polkavmRuntime):
     assert refusedProfile.error == StepError.BackendProgramUnsupported
     let previousBackend = getEnv("POLKAVM_BACKEND")
     putEnv("POLKAVM_BACKEND", "compiler")
+    preparedPageReplyWitness(PvmBackend.PolkaInterpreted)
     preparedWitness(PvmBackend.PolkaInterpreted)
     witness(PvmBackend.PolkaInterpreted) # Even a conflicting environment cannot choose the engine.
     # Compiled execution remains an explicit API/CLI capability; CI uses PolkaVM interpreted only.

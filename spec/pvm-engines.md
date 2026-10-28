@@ -40,7 +40,9 @@ replenished for each attempt. That private safety budget never narrows or substi
 unsigned Nim balance. Source-attempt and host-call budgets remain independent and exact.
 
 The same canonical Nim host-response validator enforces causing PC, unsigned gas, register,
-memory and action rules. One resident foreign instance spans all callbacks. Ordered host
+memory and action rules. Every prepared reply, including terminal panic/out-of-gas replies,
+validates the owner page ceiling before publication and returns `InvalidHostResponse` on refusal.
+The same owner remains reusable after rejected replies. One resident foreign instance spans all callbacks. Ordered host
 memory changes invalidate its page mappings; protected low-page retained bytes remain solely
 in Nim snapshots. Scalar stores track at most two physical page identities; bounded dirty
 tracking and existing atomic immutable page replacement publish guest writes.

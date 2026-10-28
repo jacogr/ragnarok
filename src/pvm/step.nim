@@ -144,6 +144,12 @@ func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == Ste
   ## Host-call metadata is meaningful only after selecting the Host alternative.
   outcome.callNumber
 
+func validPreparedHostResponse(response: HostResponse, pages: PageLimit): bool =
+  ## Every accepted action obeys the prepared memory ceiling and unsigned posterior gas contract.
+  let count = memoryPageCount(response.memory)
+  uint64(response.gasDeficit) == 0 and count.error == MachineError.None and
+      uint32(count.value) <= uint32(pages)
+
 proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
     response: HostResponse, exit: var StepExit): StepError =
   ## A genuine causing host instruction is supplied privately; validate all posterior fields before changing the cursor.
@@ -611,9 +617,7 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
       let selected = callbacks.response
       assert selected != nil
       response = selected(context, suspension)
-    let count = memoryPageCount(response.memory)
-    if uint64(response.gasDeficit) != 0 or count.error != MachineError.None or uint32(count.value) >
-        uint32(pages):
+    if not validPreparedHostResponse(response, pages):
       return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
     if response.action == HostAction.Continue:
       # The checked resident-memory path validates source binding and applies a complete delta transactionally.
