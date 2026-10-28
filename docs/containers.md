@@ -64,10 +64,16 @@ select its required instrumented compiler/linker profile when added.
 
 ## CI
 
-The canonical workflow's **Docker image** job runs `make check-docker` independently on master
-pushes and requested `unit`/`full` runs (`ci:unit` or `ci:full` on PRs). It builds a local image and
-runs its self-contained selftests without networking under the runtime user. Only diagnostic logs are uploaded;
-images are not pushed to any registry. To request just this job on a branch:
+The canonical workflow's **Build / Linux & Docker** job packages the Linux archive and then
+runs `make check-docker` on the same `ubuntu-latest` runner. Master pushes, `ci:full` PR requests
+and manual `build`/`full` requests run this combined job beside **Build / macOS**. The Docker
+build keeps its pinned Ubuntu base, pristine dependencies and isolated compiler outputs; host
+build products never enter the context. Docker still runs after an earlier archive failure unless
+the job is cancelled, and either failure keeps the complete Build gate red.
+
+The `ci:docker` label and manual `docker` scope select just the image check, without native
+packaging or macOS. Image selftests run without networking as the non-root runtime user. Only
+diagnostics are uploaded; no image is pushed to a registry. To request this scope on a branch:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=docker

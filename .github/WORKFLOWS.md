@@ -8,9 +8,10 @@ the root README on the repository landing page.
 [`workflows/ci.yml`](workflows/ci.yml) defines GitHub Actions verification and evidence collection.
 It runs the maintained Make targets on native Linux runners, plus macOS for binary builds,
 with separate jobs for source compilation, Python references/tooling, native units/corpora, runtime failures, compiler guards,
-E2E networking, JAM Tart telemetry interoperability and the Docker image build/smoke check.
-The **Build / Docker** job runs on master pushes, full requests and manual `build`/`docker` requests,
-and never publishes an image. A separate PVM
+E2E networking and JAM Tart telemetry interoperability. **Build / Linux & Docker** combines
+Linux archive packaging with the isolated Docker image build/smoke check on `ubuntu-latest`.
+It runs on master pushes, full requests and manual `build` requests. The `ci:docker` label and
+manual `docker` scope select only the image check; no image is published. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
 and full/Interop requests, or standalone manual `ref-pvm` requests. It explicitly
 selects the interpreter. **Perf / PVM** measures validated workloads on master pushes and
@@ -21,7 +22,7 @@ and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI 
 Pushes to `master` request full verification, including **Compile / Smoke**.
 PR opening, reopening and source updates automatically run **Compile / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
 and the production peer main. Heavy
-checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:perf` or `ci:full`).
+checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:docker`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
 Label requests apply only while a PR is open. Closed/merged PR label events schedule no jobs
 and use isolated concurrency keys, so they cannot cancel active CI. Label removal is not a trigger.
@@ -51,11 +52,11 @@ Compile, Interop, Perf and Build each use one actual matrix job, with a
 Job conditions run before matrix expansion, so skipped groups produce one child entry each.
 The matrices select only the requested families: ordinary PR updates and manual `smoke` run
 Compile / Smoke alone, while standalone requests such as `ref-pvm`, `bench-storage` and `docker`
-select only that workload. Full requests keep all families on independent runners, including
-Build / Docker, Build / Linux and Build / macOS. Standalone manual workload scopes
+select only that workload. Full requests place the Linux archive and Docker checks sequentially on one
+Build / Linux & Docker runner, with Build / macOS on its own runner. Standalone manual workload scopes
 (such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
 
-**Build / Linux** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
+**Build / Linux & Docker** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
 for Linux x86-64 and macOS ARM64. The complete Build group runs on master/full requests and
 manual `build` requests. Each archive includes maintained native ABIs, licenses, a provenance
 manifest and a checksum; a separately unpacked copy must pass peer selftests before upload.
