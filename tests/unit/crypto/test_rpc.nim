@@ -2244,3 +2244,29 @@ proc publicationLifecycle() =
 
 publicationLifecycle()
 echo "rpc ok"
+
+# Moving the listener also transfers every accepted connection cleanup obligation.
+block moved_owner:
+  var destination = default(Server)
+  block:
+    var source = default(Server)
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0 and source.connections[0].fd >= 0
+    source.opened = true
+    source.connections[0].opened = true
+    source.connections[0].input = "owned request bytes"
+    destination = move(source)
+    assert not source.opened and not source.connections[0].opened
+    source.close()
+    # Reusing the source must neither retire the destination nor inherit its request storage.
+    assert source.connections[0].input.len == 0
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0
+    source.opened = true
+    source.close()
+  # Source destruction has run; both transferred descriptor identities still belong to destination.
+  assert fcntl(destination.fd, F_GETFL) >= 0
+  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
+  assert destination.connections[0].input == "owned request bytes"
+  destination.close()

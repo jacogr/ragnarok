@@ -56,6 +56,18 @@ proc `=copy`*(destination: var McpServer, source: McpServer) {.error: "MCP serve
   ## Descriptor ownership cannot be copied.
 proc `=dup`*(source: McpServer): McpServer {.error.}
   ## Implicit duplication cannot duplicate descriptor retirement.
+proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  server.opened = false
+  server.fd = -1
+  server.port = 0
+  # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.connections)
+  for slot in mitems(server.connections):
+    # Every accepted descriptor belongs to the destination, including streaming files.
+    slot.opened = false
+    slot.fd = -1
+
 proc `=destroy`*(server: McpServer) =
   ## Retire partial startup and accepted sockets before releasing serialized storage.
   for slot in server.connections:

@@ -47,6 +47,24 @@ block flat_directory:
   assert sampler.logical == 1048636 and sampler.files == 21
   sampler.close()
   sampler.close() # Repeated cleanup cannot close an unrelated descriptor.
+# A partial native scan must survive source close/reconfiguration and scope retirement.
+block moved_scan:
+  var destination = default(ResourceSampler)
+  block:
+    var source = default(ResourceSampler)
+    source.configure(directory, directory)
+    source.tick()
+    assert source.directoryOpen
+    destination = move(source)
+    assert not source.directoryOpen
+    source.close()
+    source.configure("", directory)
+    source.tick()
+    source.close()
+  destination.tick()
+  assert destination.databaseKnown and not destination.directoryOpen
+  assert destination.logical == 1048636 and destination.files == 21
+  destination.close()
 block admission_limit:
   var sampler = default(ResourceSampler)
   sampler.configure(directory, directory)

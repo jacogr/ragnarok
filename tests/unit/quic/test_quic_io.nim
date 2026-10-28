@@ -136,6 +136,34 @@ proc metadataLifetimes() =
   recordArcRelease("quic_io", 1000, before, after)
   echo "QUIC_IO_ARC_RELEASE cycles=1000 unchanged"
 
+# Source close/reuse and scope destruction cannot retire the transferred descriptor or registration.
+proc movedEndpoint(ipv6: bool) =
+  let dispatcher = newDispatcher()
+  defer: dispatcher.close()
+  var destination = default(UdpEndpoint)
+  var receiver = default(UdpEndpoint)
+  assert receiver.open(ipv6, 0)
+  defer: receiver.close()
+  block:
+    var source = default(UdpEndpoint)
+    assert source.open(ipv6, 0) and dispatcher.register(source)
+    destination = move(source)
+    assert not source.isOpen and source.port == 0
+    source.close()
+    assert source.open(ipv6, 0) and dispatcher.register(source)
+    source.close()
+  var payload = [42'u8]
+  assert destination.send(addr payload[0], 1, receiver.port) == 1
+  assert receiver.send(addr payload[0], 1, destination.port) == 1
+  var ready = default(array[2, Ready])
+  assert dispatcher.wait(10, ready) == 1
+  assert ready[0].descriptor == destination.descriptor and not ready[0].failed
+  destination.close()
+  assert dispatcher.wait(0, ready) == 0
+
+movedEndpoint(false)
+movedEndpoint(true)
+
 # Both loopback families must work without depending on the still-unported authenticated peer.
 retirementSelfTest(false)
 retirementSelfTest(true)

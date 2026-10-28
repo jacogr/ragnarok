@@ -82,6 +82,17 @@ else:
 
 # Native ownership may move but must never copy a live socket descriptor.
 proc `=copy`*(destination: var Client, source: Client) {.error: "Telemetry Client owns one descriptor".}
+proc `=dup`*(source: Client): Client {.error.}
+  ## Implicit duplication cannot duplicate native retirement authority.
+
+proc `=wasMoved`*(client: var Client) {.nodestroy, inline.} =
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  client.enabled = false
+  client.opened = false
+  client.connecting = false
+  client.fd = -1
+  `=wasMoved`(client.metadata)
+
 proc `=destroy`*(client: Client) =
   ## Destruction releases the sole native resource, including exception and early-return paths.
   # Default and explicitly closed clients do not own descriptor zero.

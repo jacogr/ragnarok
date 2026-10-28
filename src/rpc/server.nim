@@ -111,6 +111,21 @@ proc `=dup`*(source: Server): Server {.error.}
 proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
   ## Retiring shared canonical aliases during worker execution is a host lifecycle defect.
   discard
+proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  server.opened = false
+  server.fd = -1
+  `=wasMoved`(server.lease)
+  `=wasMoved`(server.role)
+  `=wasMoved`(server.light)
+  `=wasMoved`(server.chain)
+  # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.connections)
+  for slot in mitems(server.connections):
+    # Every accepted descriptor belongs to the destination, including streaming files.
+    slot.opened = false
+    slot.fd = -1
+
 proc `=destroy`*(server: Server) =
   ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
   requireChainReleased(server)

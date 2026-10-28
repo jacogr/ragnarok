@@ -48,6 +48,19 @@ proc `=copy`*(destination: var ResourceSampler, source: ResourceSampler) {.error
   ## Copying would duplicate native stream cleanup authority.
 proc `=dup`*(source: ResourceSampler): ResourceSampler {.error.}
   ## Implicit aggregate duplication is prohibited too.
+proc `=wasMoved`*(sampler: var ResourceSampler) {.nodestroy, inline.} =
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  # The native stream is opaque; its default value is the public closed sentinel on each OS.
+  sampler.directory = default(DirStream)
+  sampler.directoryOpen = false
+  sampler.databaseEnabled = false
+  sampler.memoryKnown = false
+  sampler.diskKnown = false
+  sampler.databaseKnown = false
+  `=wasMoved`(sampler.filesystemPath)
+  `=wasMoved`(sampler.databasePath)
+  `=wasMoved`(sampler.databaseStatus)
+
 proc `=destroy`*(sampler: ResourceSampler) =
   ## Directory scans may retire midway without retaining handles or strings.
   var directory = sampler.directory # A mutable copy lets this retiring owner call the public close API.

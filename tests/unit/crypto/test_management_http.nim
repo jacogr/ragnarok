@@ -125,9 +125,43 @@ block lifecycle:
   listener.close() # Explicit close is idempotent and permits a new lifetime.
   assert lstat(path.toCString(), mode) != 0
   assert listener.start(path, admin)
+  # Moving a bound Unix listener transfers pathname cleanup as well as its descriptor.
+  var relocated = move(listener)
+  assert not listener.opened and not listener.bound
+  listener.close()
+  assert lstat(path.toCString(), mode) == 0 and S_ISSOCK(mode.st_mode)
+  relocated.close()
+  assert lstat(path.toCString(), mode) != 0
+  assert listener.start(path, admin)
 # Destructor cleanup also removes the owned socket without explicit close.
 var gone = default(Stat)
 assert lstat(path.toCString(), gone) != 0
 assert rmdir(directory.toCString()) == 0
 
 echo "Management HTTP tests passed"
+
+# Moving the listener also transfers every accepted connection cleanup obligation.
+block moved_owner:
+  var destination = default(ManagementServer)
+  block:
+    var source = default(ManagementServer)
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0 and source.connections[0].fd >= 0
+    source.opened = true
+    source.connections[0].opened = true
+    source.connections[0].input = "owned request bytes"
+    destination = move(source)
+    assert not source.opened and not source.connections[0].opened
+    source.close()
+    # Reusing the source must neither retire the destination nor inherit its request storage.
+    assert source.connections[0].input.len == 0
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0
+    source.opened = true
+    source.close()
+  # Source destruction has run; both transferred descriptor identities still belong to destination.
+  assert fcntl(destination.fd, F_GETFL) >= 0
+  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
+  assert destination.connections[0].input == "owned request bytes"
+  destination.close()

@@ -45,6 +45,14 @@ proc main() {.raises.} =
   assert directory.close == FileError.Busy
   assert moved.close == FileError.None
   assert openManagedJournal(journal, directory, ManagedEpoch(1), ByteLimit(4)).value == @[1'u8, 2, 3, 4]
+  # Language-level move must also disarm the source without dropping its directory lease.
+  moved = move(journal)
+  assert not journal.opened and moved.opened
+  assert journal.close == FileError.Uninitialized
+  assert directory.close == FileError.Busy
+  assert managedJournalBytes(moved).value == 4
+  assert moved.close == FileError.None
+  assert openManagedJournal(journal, directory, ManagedEpoch(1), ByteLimit(4)).value == @[1'u8, 2, 3, 4]
   assert journal.close == FileError.None
   for iteration in 0..<25: cycle(directory) # Warm fixed filename and detached read allocation paths.
   let before = getOccupiedMem()

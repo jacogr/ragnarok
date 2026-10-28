@@ -78,6 +78,20 @@ proc `=copy`*(destination: var FuzzSocket, source: FuzzSocket) {.error.}
   ## Descriptor ownership cannot be copied between hosts.
 proc `=dup`*(source: FuzzSocket): FuzzSocket {.error.}
   ## Implicit duplication is also forbidden.
+proc `=wasMoved`*(server: var FuzzSocket) {.nodestroy, inline.} =
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  server.opened = false
+  server.bound = false
+  server.connected = false
+  server.waiting = false
+  server.fd = -1
+  server.connection = -1
+  `=wasMoved`(server.config)
+  `=wasMoved`(server.reader)
+  `=wasMoved`(server.session)
+  `=wasMoved`(server.ticket)
+  `=wasMoved`(server.output)
+
 proc `=destroy`*(server: FuzzSocket) =
   ## Default/moved owners never close descriptor zero; partial startup releases every acquired resource.
   if server.connected: discard posix.close(server.connection)
