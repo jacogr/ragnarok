@@ -11,7 +11,7 @@ implement, test and document the work.
 
 The protocol target is **Gray Paper 0.8.0**. The current implementation includes codecs and
 immutable snapshots, state storage foundations, cryptographic adapters, PVM foundations and
-authenticated nonblocking QUIC, with optional RPC and telemetry in the development proof peer.
+authenticated nonblocking QUIC, with optional RPC, read-only MCP agent queries and telemetry in the development proof peer.
 It is not yet a full JAM client or a production validator.
 
 See the [source guide](src/README.md) for modules and proof-peer usage,

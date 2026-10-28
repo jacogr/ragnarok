@@ -125,6 +125,10 @@ proc head*(runtime: LightRuntime): LightRuntimeResult[LightApplicationHead] =
       status: LightRuntimeError.Busy) # Running/Done worker aliases remain untouched.
   LightRuntimeResult[LightApplicationHead](status: LightRuntimeError.None,
       completed: runtime.current)
+proc queryMetadata*(runtime: LightRuntime): RpcLightHead {.requires: not runtime.busy.} =
+  ## Detached read-only transport metadata owns no partial proof graph or application trust authority.
+  runtime.rpcSource
+
 proc proofPhase*(runtime: var LightRuntime): ProofWorkerPhase =
   ## Synchronized scalar polling never reads a request or canonical graph.
   runtime.cpu.phase

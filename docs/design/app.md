@@ -25,7 +25,7 @@ writing their standalone stderr line, preventing interleaved machine-readable re
 Command responses remain on their existing output paths.
 See [shared logging](../../spec/logging.md) for loss, lifetime and shutdown contracts.
 
-`app/services.nim` owns one non-copyable aggregate of RPC, UI, telemetry and an optional canonical application chain. It captures one
+`app/services.nim` owns one non-copyable aggregate of RPC, MCP, UI, telemetry and an optional canonical application chain. It captures one
 bounded chain-file snapshot for RPC parameter/genesis setup and telemetry registration, starts
 the listeners, then configures telemetry from the actual bound transport/certificate. Both peer
 shapes call this same startup path. Individual native callbacks borrow fields of its stable stack

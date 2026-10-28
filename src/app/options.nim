@@ -14,7 +14,8 @@ import ./[cli_catalog, cli_commands, cli_defaults]
 export cli_defaults
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool
+  parsed, telemetry, rpc, mcp, ui, state, recover, localAncestors, management,
+    updateLogicalSource: bool
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
@@ -32,7 +33,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   pagedResume: bool
   compactBytes: ByteLimit
   database, migrateFrom: string
-  rpcNumber, uiNumber: uint16
+  rpcNumber, mcpNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
 
@@ -186,6 +187,10 @@ proc rpcPort*(options: Options): uint16 =
   ## UI implies RPC; configuration alone leaves the listener disabled.
   if options.parsed and (options.rpc or options.ui): options.rpcNumber else: 0'u16
 
+proc mcpPort*(options: Options): uint16 =
+  ## Port configuration alone cannot enable the agent listener.
+  if options.parsed and options.mcp: options.mcpNumber else: 0'u16
+
 proc managementSocket*(options: Options): string =
   ## Only explicit activation returns a pathname; configuring a path never starts management.
   if options.parsed and options.management: options.managementPath else: ""
@@ -218,9 +223,9 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   ## Internal configuration boundary: command values are already normalized; validate shared controls atomically.
   options = default(Options)
   var candidate = Options(codeEntry: "main", codeGas: 10000000, codeSteps: 10000000,
-      logging: initLogPolicy(), rpcNumber: DefaultRpcPort, uiNumber: DefaultUiPort,
-          downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode, backend: DefaultStateStorage,
-              pvmSelection: DefaultPvmBackend,
+      logging: initLogPolicy(), rpcNumber: DefaultRpcPort, mcpNumber: DefaultMcpPort,
+          uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks,
+              mode: DefaultNodeMode, backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
@@ -247,6 +252,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       case name
       of "--with-telemetry": candidate.telemetry = true
       of "--with-rpc": candidate.rpc = true
+      of "--with-mcp": candidate.mcp = true
       of "--with-management": candidate.management = true
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
@@ -364,10 +370,11 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
           if number > MaximumCompactionBytes: return false
           candidate.compactBytes = ByteLimit(number)
         else: candidate.recoveryBytes = ByteLimit(number)
-      of "--rpc-port", "--ui-port":
+      of "--rpc-port", "--ui-port", "--mcp-port":
         let port = portValue(value)
         if port == 0: return false # Never narrow a malformed or overflowing port.
         if name == "--rpc-port": candidate.rpcNumber = port
+        elif name == "--mcp-port": candidate.mcpNumber = port
         else: candidate.uiNumber = port
       else: return false # All value-taking controls have an explicit assignment above.
       i += 2
@@ -433,14 +440,19 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
     diagnostic = "--with-telemetry requires --telemetry-endpoint HOST:PORT and --chain FILE"
     return false
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
-      candidate.ui or candidate.state): return false
+      candidate.ui or candidate.state or candidate.mcp): return false
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber:
     diagnostic = "--ui-port and --rpc-port must differ when --with-ui is enabled"
     return false
+  if candidate.mcp:
+    if ((candidate.rpc or candidate.ui) and candidate.mcpNumber == candidate.rpcNumber) or
+        (candidate.ui and candidate.mcpNumber == candidate.uiNumber):
+      diagnostic = "--mcp-port must differ from enabled RPC/UI ports"
+      return false
   let downloadCommand = candidate.positional.len > 0 and
     candidate.positional[0] in ["download", "download-current"] # Both explicit pipelines share only command-shape validation.
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
-      candidate.management:
+      candidate.management or candidate.mcp:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
         "download", "download-current", "check-traces"]:
       return false # Explicit state/service activation belongs only to supported command shapes.

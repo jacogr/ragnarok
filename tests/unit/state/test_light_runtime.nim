@@ -13,6 +13,8 @@ import ../../../src/state/[store, proof_view, proof_plan, planned_proof, trie_pr
 import ../../../src/rpc/[protocol, server]
 import ../../../src/storage/[paged_store, paged_codec, paged_stream, file_errors, database_identity]
 import ../../../src/crypto/primitives
+import ../../support/mcp_socket
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded native scalar polls.
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
@@ -72,7 +74,8 @@ proc fixture(): Fixture {.raises.} =
   let view = captureProofView(checked, source.stateRoot, result.policy.query.view).value
   result.wire = encodeProofView(view, result.policy.query.view, result.policy.query.proof,
       result.policy.ingestion.wireBytes).value
-proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false): Options =
+proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false,
+    mcpPort = 0'u16): Options =
   ## Real CLI parsing selects memory or explicit paged disk independently of current checkpoint authority.
   var arguments = @["server", "--state-mode", "light", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
@@ -84,6 +87,8 @@ proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false
   if port != 0:
     arguments.add("--with-rpc"); arguments.add("--rpc-port"); arguments.add(
         $port) # The listener remains real and loopback-only.
+  if mcpPort != 0:
+    for value in ["--with-mcp", "--mcp-port", $mcpPort]: arguments.add(value)
   result = default(Options)
   assert parseCanonicalOptions(arguments, result)
 proc idle(owner: Services): bool =
@@ -186,9 +191,17 @@ proc scenario(fixed: Fixture, disk: bool) {.raises.} =
     resetIo()
   let reserved = reservation()
   discard posix.close(reserved.fd)
-  let options = configured(fixed, directory, reserved.port)
+  let mcp = reservation()
+  discard posix.close(mcp.fd)
+  let options = configured(fixed, directory, reserved.port, mcpPort = mcp.port)
   assert owner.start(options, "light runtime test")
   checkHead(owner, 0)
+  let mcpStatus = mcpTool(owner, mcp.port, "get_chain_status")
+  assert "\"nodeMode\":\"light\"" in mcpStatus and "\"knownFacts\":\"0\"" in mcpStatus
+  assert "\"finalizedBlock\":null" in mcpStatus and "genesisHash" in mcpStatus
+  let mcpServices = mcpTool(owner, mcp.port, "list_services",
+    "{\"block_hash\":" & quote(base64.encode(array[32, byte](fixed.hash))) & "}")
+  assert "\"isError\":true" in mcpServices and "\"nodeMode\":\"light\"" in mcpServices
   let peer = client(reserved.port)
   defer: discard posix.close(peer)
   var pending = ""
@@ -205,6 +218,8 @@ proc scenario(fixed: Fixture, disk: bool) {.raises.} =
   assert "ragnarok_stateProofImported" in imported and "\"knownFacts\":2" in imported and
       "\"error\"" notin imported
   checkHead(owner, 2)
+  let updatedMcp = mcpTool(owner, mcp.port, "get_chain_status")
+  assert "\"knownFacts\":\"2\"" in updatedMcp
   if disk:
     # The publication is adopted before separate cleanup; a held old reader yields Busy without withdrawing the new head.
     assert owner.lightDiskCompletion.kind == DiskCompletionKind.LightRetired

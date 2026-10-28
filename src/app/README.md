@@ -9,7 +9,7 @@ configuration rather than reading command-line globals themselves.
 | Modules | Responsibility |
 | --- | --- |
 | [`cli_defaults.nim`](cli_defaults.nim), [`cli_catalog.nim`](cli_catalog.nim), [`cli_commands.nim`](cli_commands.nim), [`cli_help.nim`](cli_help.nim) | Shared defaults, named command grammar and grouped [CLI help](../../docs/cli.md) |
-| [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, UI and optional canonical state through startup and shutdown |
+| [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, MCP, UI and optional canonical state through startup and shutdown |
 | [`chain.nim`](chain.nim), [`candidate.nim`](candidate.nim), [`handoff.nim`](handoff.nim) | Retain the selected complete-state head, prepare finalized candidates and acknowledge deferred adoption |
 | [`block_input.nim`](block_input.nim), [`block_download.nim`](block_download.nim) | Bound received block bytes and hand them to explicit preparation outside transport callbacks |
 | [`download_command.nim`](download_command.nim), `download_policy*`, [`download_schedule.nim`](download_schedule.nim) | Configure the one-child download command, explicit resource budgets and bounded peer rotation |
@@ -22,7 +22,7 @@ and [download startup contract](../../spec/application-download-startup.md) desc
 These bounded paths do not provide a complete production node, consensus or validator service.
 
 Optional [telemetry](../telemetry/README.md), [WebSocket RPC](../rpc/README.md) and
-[browser UI](../ui/README.md) have their usage and scope documented in their own folders.
+[browser UI](../ui/README.md) and [MCP tools](../mcp/README.md) have their usage and scope documented in their own folders.
 Canonical state requires explicit state configuration and mutation budgets. Worker leases keep
 plain ARC graphs exclusive; native callbacks retire before the enclosing service owners close.
 

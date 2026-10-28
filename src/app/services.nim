@@ -57,6 +57,8 @@ import ../rpc/[server, protocol, proof_requests]
 import ../chain/[parameters, genesis]
 import ../ui/server
 import ../management/[server, protocol]
+import ../mcp/server
+import ../mcp/protocol as mcp_protocol
 
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
@@ -102,6 +104,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   light: light_actor.LightRuntime
   rpc*: Server
   ui*: UiServer
+  mcp*: McpServer
+  mcpInfo: ClientInfo
   management*: ManagementServer
   telemetry*: Client
   chainText: string
@@ -182,6 +186,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.checkpointExport)
   `=wasMoved`(services.worker)
   `=wasMoved`(services.rpcLease)
+  `=wasMoved`(services.mcp)
+  `=wasMoved`(services.mcpInfo)
   `=wasMoved`(services.management)
   `=wasMoved`(services.ui)
   `=wasMoved`(services.rpc)
@@ -218,6 +224,8 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.checkpointExport) # Explicit close joins the detached I/O child before aggregate destruction.
   `=destroy`(services.worker) # Explicit close must join before any shared chain alias retires.
   `=destroy`(services.rpcLease)
+  `=destroy`(services.mcp)
+  `=destroy`(services.mcpInfo)
   `=destroy`(services.management)
   `=destroy`(services.ui)
   `=destroy`(services.rpc)
@@ -403,6 +411,8 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
+  services.mcp.close()
+  services.mcpInfo = default(ClientInfo)
   services.management.close()
   services.ui.close()
   services.rpc.close()
@@ -436,15 +446,19 @@ proc boundedFile(path: string, limit: int): string {.raises.} =
   text.setLen(count)
   result = move(text)
 
-proc setupRpc(rpc: var Server, options: Options, role: string, text: string): bool =
-  ## An explicit RPC chain must validate before opening the listener; missing configuration remains unavailable.
+proc setupRpc(rpc: var Server, options: Options, role: string, text: string,
+    mcpInfo: var ClientInfo): bool =
+  ## An explicit RPC/MCP chain must validate before opening the listener; missing configuration remains unavailable.
   var parameters = default(ParameterResult)
   var genesis = unavailableGenesis()
-  if options.rpcPort() != 0 and options.chainPath().len > 0:
+  if (options.rpcPort() != 0 or options.mcpPort() != 0) and options.chainPath().len > 0:
     parameters = configuredParameters(text)
     if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
     genesis = configuredGenesis(text, parameters.value)
     if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
+  if options.mcpPort != 0:
+    mcpInfo = ClientInfo(role: role, parameters: parameters, chain: genesisView(genesis),
+      identity: chainIdentity(genesis)) # No canonical worker exists in this legacy listener-only path.
   rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort(), chainIdentity(genesis))
 
 proc setupTelemetry(client: var Client, options: Options, certificate: string, port: uint16,
@@ -632,7 +646,7 @@ proc startServices(services: var Services, options: Options, role: string,
           head.chainParameters.encodeParameters:
         services.close() # A trusted anchor must still match the complete explicitly selected chain profile.
         return false
-      if options.rpcPort() != 0:
+      if options.rpcPort() != 0 or options.mcpPort() != 0:
         identity = chainIdentity(configuredGenesis(services.chainText,
             configured.value)) # Imported head is never genesis identity.
       services.canonical = recovered # Preserve the exact restored map, inherited policy and one-head/unfinalized view.
@@ -655,11 +669,13 @@ proc startServices(services: var Services, options: Options, role: string,
   if withState:
     let head = services.canonical.chainView.bestBlock
     let parameters = decodeParameters(head.value.chainParameters.encodeParameters)
+    if options.mcpPort != 0:
+      services.mcpInfo = ClientInfo(role: role, parameters: parameters, identity: identity)
     rpcReady = services.rpc.start(options.rpcPort(), role, parameters, services.canonical.chainView,
         options.uiPort(), identity)
   else:
     rpcReady = services.rpc.setupRpc(options, role,
-        services.chainText) # Preserve legacy optional/unavailable genesis behavior.
+        services.chainText, services.mcpInfo) # Preserve legacy optional/unavailable genesis behavior.
   if not rpcReady:
     stderr.writeLine("Invalid RPC listener or --chain parameters")
     services.close() # RPC failures retire both the UI listener and the canonical owner.
@@ -667,6 +683,10 @@ proc startServices(services: var Services, options: Options, role: string,
   if options.rpcPort() != 0:
     log(options.logWriter, LogTarget.Rpc, LogLevel.Info, "RPC listener started port=" &
         $options.rpcPort())
+  if not services.mcp.start(options.mcpPort):
+    stderr.writeLine("Invalid MCP listener; check --mcp-port")
+    services.close()
+    return false # Partial startup retires every already opened endpoint.
   services.chainRpc = withState and options.rpcPort() != 0
   if services.chainRpc and options.argument(1) in ["server", "client", "mesh"]:
     discard services.rpc.enableStateProofs() # These dispatcher shapes retain no external canonical aliases across turns.
@@ -732,6 +752,11 @@ proc startLightServices(services: var Services, options: Options, role: string):
   if not services.light.start(services.rpc, role, options.rpcPort, options.uiPort,
       options.diskStorage, path, startup.trust, startup.policy, startup.parameters,
       startup.identity): return false
+  if options.mcpPort != 0:
+    services.mcpInfo = ClientInfo(role: role, parameters: startup.parameters,
+      identity: startup.identity,
+      lightDisk: options.diskStorage) # Fixed metadata retains no complete configured genesis map.
+  if not services.mcp.start(options.mcpPort): return false
   let info = ManagementInfo(role: role, chainPath: options.chainPath, databasePath: path,
       stateEnabled: true)
   if not services.management.start(options.managementSocket,
@@ -1423,8 +1448,26 @@ proc finishRpcProof(services: var Services, completion: ProofWorkerCompletion) =
   services.rpcProof = default(RpcProofDispatch)
   services.rpcProofTicket = default(ProofWorkerTicket)
 
+proc tickMcp(services: var Services, peers: uint32) =
+  ## No graph copy or retirement occurs while an existing canonical lease is held.
+  if not services.mcp.enabled: return
+  if services.proofing or services.preparing or services.publishing or services.rpc.chainPaused or
+      services.light.busy:
+    var context = default(mcp_protocol.QueryContext)
+    context.busy = true
+    services.mcp.tick(context)
+    return # Busy replies retain only detached JSON and do not delay worker collection.
+  var info = services.mcpInfo
+  info.peers = peers
+  if services.light.active:
+    info.light = services.light.queryMetadata # Already detached headers never alias the partial proof graph.
+  elif services.canonical.chainView.retainedCount > 0:
+    info.chain = services.canonical.chainView # One synchronous selected view retires before any worker starts.
+  services.mcp.tick(mcp_protocol.QueryContext(info: info))
+
 proc tick*(services: var Services, peers: uint32) =
   ## Attempt one pending adoption between native callbacks; independent management remains available during leases.
+  services.tickMcp(peers) # Context aliases retire on return, before publication or worker admission below.
   if services.light.active:
     services.management.tick() # Static management observations retain no canonical proof graph.
     services.light.tick(peers)
