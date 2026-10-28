@@ -39,7 +39,7 @@ costs. Ordinary CI and the existing scoped-profile dispatch are unchanged. No ru
 mixed into this validation. Native code remains CI-only.
 
 
-## ARM one-block admission trial
+## Rejected ARM one-block admission trial
 
 Independent second layer: reuse the accepted resident ARM emitter for one observed self-loop,
 in addition to its existing two/three-block regions. Gas/source guards, register allocation,
@@ -50,7 +50,8 @@ region counters and cover1920 ordinary/specialized-header paid/gas/prefix/initia
 The normal comparison can now take the same explicit pinned parent on ARM as x86; an empty
 input retains the previous current-source A/A control. This avoids interpreting a current/current
 ARM control as a paired optimization result. All native verification and timings remain on CI.
-Status: pending; no claimed gain and no decision to keep either runtime trial yet.
+Status: measured and rejected; ARM runtime is restored and post-restoration native/application
+qualification passes. X86 remains held for the separate fresh-process validation.
 
 
 ARM admission witness refinement: the `131 + 88` shape uses an existing specialized charge

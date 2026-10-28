@@ -88,3 +88,25 @@ Current public native totals across all thirteen calls; source attempts are per 
 | sieve 10000000 | 750 / 750 | 271,619,743 / 271,619,743 | 1,250,782,976 / 1,250,782,976 | 345,768 / 345,768 | 199,590,176 / 199,590,176 | 195,021,015 / 195,021,015 | 1.821 / 1.732 | 123,322,753 / 123,322,753 |
 | init 0 | 1,023 / 1,023 | 14,818,911 / 14,818,911 | 57,336,599 / 57,336,599 | 131,160 / 131,160 | 7,126,338 / 7,126,338 | 4,087,479 / 4,087,479 | 5.346 / 5.468 | 203,298,231 / 203,298,231 |
 | tick 0 | 887 / 887 | 24,869,221 / 24,869,221 | 93,369,909 / 93,369,909 | 123,572 / 123,572 | 20,525,709 / 20,525,709 | 1,809,870 / 1,809,870 | 1.646 / 1.626 | 15,523,334 / 15,523,334 |
+
+
+## Post-restoration qualification
+
+[Run40716027277](https://github.com/jacogr/ragnarok/actions/runs/40716027277) passes completely
+at `1798335f1ed4015775c894ebd51c596cb8fccffa`. ARM runtime source matches the accepted immediate
+parent exactly. Native ARM passes all nine gates plus both policy suites; independent raw-log
+and503-source-identity audits pass, including all1920 negative one-block admission/state cases.
+The public application cohort again passes70 processes /910 calls,115 controls,16 fresh builds /
+eight equal-image pairs and745 source/compiler/input/image identities. Paired source remains
+`f45793f6bfe92d38488b52898652e5dfb49ddbdb`, same compiler pin and same native ARM runner policy.
+
+ARM application SHA256:
+`1e97ee16387c29809dbb239474eb42306445ff6fd98408f7c1560b6b5d346df8`.
+Native qualification SHA256:
+`8bce9de9adbf400f19d8f35a61cba547d15bf0f669c1ae0ad151a25084e01d5c`.
+
+Initialization returns to318.223/312.986ms versus328.769/310.053ms parent, with the accepted
+large-region native activity restored. Other current/parent results track within ordinary
+runner variation; no ARM speed gain is claimed from this retained measurement/test layer.
+The later native helper receipt tests and replay-only Python/CI work do not change restored
+runtime, test flags or input bytes. Reuse is scoped to those proven identical native inputs.
