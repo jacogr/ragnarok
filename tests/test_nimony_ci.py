@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, jit-arm-calibrate, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -96,6 +96,18 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('run: make profile-pvm-arm64-linux',section)
         self.assertIn('build/tests/pvm-arm64-profiles/*',section)
         self.assertNotIn('continue-on-error',section)
+
+    def test_arm_calibration_reuses_one_job_without_guest_work(self):
+        """Profiler repair controls select ARM alone and skip native guest qualification/comparison steps."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        context=event_context('workflow_dispatch',suite='jit-arm-calibrate')
+        self.assertTrue(expression(job_condition(text,'pvm-comparison'),context))
+        self.assertEqual(selected_families(text,'pvm-comparison',context),
+                         [dict(name='Linux ARM64',group='arm64',os='ubuntu-26.04-arm')])
+        section=job_section(text,'pvm-comparison')
+        self.assertIn('run: make calibrate-pvm-arm64-linux',section)
+        self.assertIn("matrix.family.group == 'arm64' && inputs.suite != 'jit-arm-calibrate'",section)
+        self.assertIn("inputs.suite != 'jit-x86-replay' && inputs.suite != 'jit-arm-calibrate'",section)
 
     def test_pr_updates_request_only_smoke_with_isolated_concurrency(self):
         """An ordinary PR update runs the small gate without requesting or cancelling heavy CI."""

@@ -13,7 +13,7 @@ from pvm_instruction_profile import (profile_counts, calibration_passed, last_ca
 
 def profile(total=42, function='pvm_profile_selected'):
     """Author the documented raw format independently of the profiler runner."""
-    return '# callgrind format\nversion: 1\nevents: Ir Bc Bcm Bi Bim\nfn='+function+'\n1 1 0 0 0 0\nsummary: '+str(total)+' 0 0 0 0\ntotals: '+str(total)+' 0 0 0 0\n'
+    return '# callgrind format\nversion: 1\nevents: Ir Bc Bcm Bi Bim\nfn='+function+'\npositions: line\n1 '+str(total)+' 0 0 0 0\nsummary: '+str(total)+' 0 0 0 0\ntotals: '+str(total)+' 0 0 0 0\n'
 
 
 class InstructionProfileTests(unittest.TestCase):
@@ -51,10 +51,22 @@ class InstructionProfileTests(unittest.TestCase):
         self.assertTrue(calibration_passed(good, profile(0), False))
         for result, text, selected in [(dict(exit_code=1, output=good['output']), profile(), True),
                 (dict(exit_code=0, output='generic success'), profile(), True),
-                (good, profile(function='other'), True), (good, profile()+'fn=pvm_profile_outside\n', True),
+                (good, profile(function='other'), True), (good, profile().replace('summary: 42','summary: 43').replace('totals: 42','fn=pvm_profile_outside\n1 1\ntotals: 43'), True),
                 (good, profile(0), True), (good, profile(), False)]:
             # Generic crashes, wrong scopes and whole-process collection are never a calibration fallback.
             self.assertFalse(calibration_passed(result, text, selected))
+
+    def test_zero_self_outside_ancestry_preserves_strict_scope(self):
+        """ARM ancestry arcs may name outside code; any actual outside or unknown self work still refuses."""
+        good=dict(exit_code=0,output='PVM profile calibration passed\n')
+        arc='fn=pvm_profile_outside\ncfn=pvm_profile_selected\ncalls=1 1\n1 42\n'
+        raw=profile().replace('totals:',arc+'totals:')
+        self.assertTrue(calibration_passed(good,raw,True))
+        for name in ('pvm_profile_outside','unknown'):
+            bad=raw.replace('summary: 42','summary: 43').replace('totals: 42',
+                'fn='+name+'\n1 1\ntotals: 43')
+            self.assertFalse(calibration_passed(good,bad,True))
+        self.assertFalse(calibration_passed(good,raw.replace('1 42 0 0 0 0','1 41 0 0 0 0'),True))
 
     def test_last_call_requires_exact_selected_work_and_complete_counts(self):
         """Reset calibration rejects missing work, retained warmup, partial data and wrong scope."""
@@ -65,7 +77,7 @@ class InstructionProfileTests(unittest.TestCase):
                 (profile(), profile(84).replace('totals:', 'partial:'), profile()),
                 (profile(), profile(84), profile(function='other')),
                 (profile(function='pvm_profile_selected_suffix'), profile(84), profile()),
-                (profile(), profile(84), profile()+'fn=pvm_profile_outside\n')]:
+                (profile(), profile(84), profile().replace('summary: 42','summary: 43').replace('totals: 42','fn=pvm_profile_outside\n1 1\ntotals: 43'))]:
             # Independent failures preserve all unrelated calibration fields.
             with self.subTest(single=single, repeated=repeated, final=final):
                 self.assertFalse(last_call_calibration_passed(single, repeated, final))
@@ -217,7 +229,7 @@ class InstructionProfileTests(unittest.TestCase):
 
     def test_machine_trace_requires_positions_scope_and_equal_work(self):
         """An instruction trace cannot substitute a different function, workload or source-only dump."""
-        raw = profile(function='execute_1_test').replace('version: 1', 'version: 1\npositions: instr line')
+        raw = profile(function='execute_1_test').replace('positions: line', 'positions: instr line')
         self.assertEqual(machine_profile_counts(raw, {'Ir': 42})['Ir'], 42)
         for text, reference in [(raw, {'Ir': 43}), (raw.replace('instr line', 'line'), {'Ir': 42}),
                 (raw.replace('instr line', 'instr instr line'), {'Ir': 42}),

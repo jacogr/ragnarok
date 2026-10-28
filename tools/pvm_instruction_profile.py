@@ -58,6 +58,46 @@ def profile_counts(text, allow_empty=False):
     return counts
 
 
+def exclusive_costs(text, allow_empty=False):
+    """Sum actual instruction rows, excluding every call-arc cost even when a synthetic ancestry arc has zero calls."""
+    totals = profile_counts(text, allow_empty=allow_empty)
+    if re.findall(r'^positions: (.+)$', text, re.M) != ['line']:
+        raise ValueError('Unsupported profile positions')
+    names = list(totals)
+    own = {}
+    symbol, arc = '', False
+    for line in text.splitlines():
+        # Function headers name self rows; an immediately following arc cost belongs to its callee instead.
+        if line.startswith('fn='):
+            if arc: raise ValueError('Incomplete call arc')
+            symbol = line[3:]
+        elif line.startswith('calls='):
+            if arc: raise ValueError('Incomplete call arc')
+            arc = True
+        elif re.match(r'^(?:[0-9]+|[+-][0-9]+|\*) ', line):
+            if not symbol: raise ValueError('Instruction cost lacks a function')
+            raw = line.split()[1:]
+            if not raw or len(raw) > len(names) or any(re.fullmatch(r'[0-9]+', value) is None for value in raw):
+                raise ValueError('Invalid instruction event row')
+            values = [*map(int, raw), *([0]*(len(names)-len(raw)))]
+            if not arc:
+                # Include each actual event exactly once; inherited zero-call ancestry is never self work.
+                costs = own.setdefault(symbol, dict.fromkeys(names, 0))
+                for name, value in zip(names, values): costs[name] += value
+            arc = False
+    if arc or any(sum(row[name] for row in own.values()) != totals[name] for name in names):
+        raise ValueError('Exclusive instruction costs do not match complete profile totals')
+    return dict(sorted(own.items(), key=lambda pair: pair[1]['Ir'], reverse=True))
+
+
+def selected_calibration_work(text):
+    """Only selected/inside self instructions may be collected; zero-self ancestry nodes are not outside work."""
+    own=exclusive_costs(text)
+    selected=own.get('pvm_profile_selected',{}).get('Ir',0)
+    return selected > 0 and all(name in ('pvm_profile_selected','pvm_profile_inside') or row['Ir']==0
+                               for name,row in own.items())
+
+
 def calibration_passed(result, text, selected):
     """A matching selected function collects instructions; a deliberately absent scope collects none."""
     if result['exit_code'] or result['output'].strip() != 'PVM profile calibration passed':
@@ -66,8 +106,11 @@ def calibration_passed(result, text, selected):
         counts = profile_counts(text, allow_empty=not selected)
     except ValueError:
         return False
-    return ((counts['Ir'] > 0 and 'fn=pvm_profile_selected' in text
-             and 'fn=pvm_profile_outside' not in text) if selected else counts['Ir'] == 0)
+    try:
+        return selected_calibration_work(text) if selected else (all(value==0 for value in counts.values()) and
+            all(value==0 for row in exclusive_costs(text,allow_empty=True).values() for value in row.values()))
+    except ValueError:
+        return False
 
 
 def last_call_calibration_passed(single, repeated, final):
@@ -75,10 +118,8 @@ def last_call_calibration_passed(single, repeated, final):
     counts = []
     for text in (single, repeated, final):
         # Require actual selected function records, not caller references or a partial/empty dump.
-        if (re.search(r'^fn=pvm_profile_selected$', text, re.M) is None
-                or re.search(r'^fn=pvm_profile_outside$', text, re.M) is not None):
-            return False
         try:
+            if not selected_calibration_work(text): return False
             counts.append(profile_counts(text)['Ir'])
         except ValueError:
             return False

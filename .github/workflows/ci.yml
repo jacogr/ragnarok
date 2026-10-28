@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, jit-arm-calibrate, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       pvm_prepared_baseline:
@@ -700,13 +700,13 @@ jobs:
 
   # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
   pvm-comparison:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate' || inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / PVM Comparison (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'jit-arm-profile' && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay') && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
+        family: ${{ fromJSON((inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate') && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay') && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
@@ -732,7 +732,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
       - name: Install scoped native profiler
-        if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-arm-profile' }}
+        if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate' }}
         run: sudo apt-get install --yes --no-install-recommends valgrind binutils
       - name: Qualify opt-in Linux x86-64 JIT
         if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' }}
@@ -744,16 +744,19 @@ jobs:
         if: ${{ inputs.suite == 'jit-x86' }}
         run: make profile-pvm-x86-jit
       - name: Qualify PVM on the native Linux architecture
-        if: ${{ inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' }}
+        if: ${{ inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' && inputs.suite != 'jit-arm-calibrate' }}
         run: make check-pvm-native
       - name: Compare public x86 JIT and checked interpreters
-        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' }}
+        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' && inputs.suite != 'jit-arm-calibrate' }}
         run: make bench-pvm-x86-applications
       - name: Compare public ARM64 JIT and checked interpreters
-        if: ${{ matrix.family.group == 'arm64' }}
+        if: ${{ matrix.family.group == 'arm64' && inputs.suite != 'jit-arm-calibrate' }}
         env:
           PVM_JIT_BASELINE: ${{ inputs.pvm_prepared_baseline }}
         run: make bench-pvm-arm64-applications
+      - name: Calibrate ARM collection without guest rebuilds
+        if: ${{ inputs.suite == 'jit-arm-calibrate' }}
+        run: make calibrate-pvm-arm64-linux
       - name: Profile paired ARM invocation boundaries
         if: ${{ inputs.suite == 'jit-arm-profile' }}
         run: make profile-pvm-arm64-linux

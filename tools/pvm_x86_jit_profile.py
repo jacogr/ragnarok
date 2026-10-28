@@ -17,7 +17,7 @@ import subprocess
 from native_checks import NativeChecks, ROOT
 from pvm_arm64_jit_applications import parse_run
 from pvm_guest_compare import unchanged
-from pvm_instruction_profile import calibrate_scope, collect, profile_counts
+from pvm_instruction_profile import calibrate_scope, collect, profile_counts, exclusive_costs
 from pvm_native_ci import host_identity
 
 BUILD = ROOT/'build/tests/pvm-x86-profiles'
@@ -55,38 +55,6 @@ def profile_environment(case, limit, role, architecture="x86_64"):
     return env
 
 
-def exclusive_costs(text):
-    """Sum actual instruction rows, excluding every call-arc cost even when a synthetic ancestry arc has zero calls."""
-    totals = profile_counts(text)
-    if re.findall(r'^positions: (.+)$', text, re.M) != ['line']:
-        raise ValueError('Unsupported profile positions')
-    names = list(totals)
-    own = {}
-    symbol, arc = '', False
-    for line in text.splitlines():
-        # Function headers name self rows; an immediately following arc cost belongs to its callee instead.
-        if line.startswith('fn='):
-            if arc: raise ValueError('Incomplete call arc')
-            symbol = line[3:]
-        elif line.startswith('calls='):
-            if arc: raise ValueError('Incomplete call arc')
-            arc = True
-        elif re.match(r'^(?:[0-9]+|[+-][0-9]+|\*) ', line):
-            if not symbol: raise ValueError('Instruction cost lacks a function')
-            raw = line.split()[1:]
-            if not raw or len(raw) > len(names) or any(re.fullmatch(r'[0-9]+', value) is None for value in raw):
-                raise ValueError('Invalid instruction event row')
-            values = [*map(int, raw), *([0]*(len(names)-len(raw)))]
-            if not arc:
-                # Include each actual event exactly once; inherited zero-call ancestry is never self work.
-                costs = own.setdefault(symbol, dict.fromkeys(names, 0))
-                for name, value in zip(names, values): costs[name] += value
-            arc = False
-    if arc or any(sum(row[name] for row in own.values()) != totals[name] for name in names):
-        raise ValueError('Exclusive instruction costs do not match complete profile totals')
-    return dict(sorted(own.items(), key=lambda pair: pair[1]['Ir'], reverse=True))
-
-
 def matching_native_activity(measured, profiled):
     """Instrumentation must retain actual native execution and its exact code working set; only clocks may differ."""
     fields = ('fragments', 'calls', 'operations', 'code_bytes', 'branches', 'headers')
@@ -106,7 +74,7 @@ def profile_plan(architecture):
     raise ValueError('Unsupported native profile architecture')
 
 
-def run(architecture="x86_64"):
+def run(architecture="x86_64", calibration_only=False):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
     plan = profile_plan(architecture)
     folder, cohort_folder = plan["folder"], plan["cohort"]
@@ -123,6 +91,15 @@ def run(architecture="x86_64"):
         host = host_identity()
         if host['system'] != 'Linux' or host['architecture'] != architecture:
             raise RuntimeError('Profile host does not match selected native Linux architecture')
+        if calibration_only:
+            # A failed profiler control is repaired without rebuilding or rerunning an already qualified guest cohort.
+            checks = NativeChecks(folder)
+            version = checks.command(['valgrind','--version'],'version')
+            if version['exit_code']: raise RuntimeError('Cannot identify calibration profiler')
+            report.update(host=host, calibration_only=True, valgrind=version['output'].strip())
+            calibrate_scope(checks, report)
+            report['status']='passed'
+            return
         cohort_path = cohort_folder/'results.json'
         cohort = json.loads(cohort_path.read_text())
         if cohort['status'] != 'passed' or cohort['architecture'] != architecture:
@@ -199,4 +176,6 @@ def run(architecture="x86_64"):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--architecture', choices=('x86_64','arm64'), default='x86_64')
-    run(parser.parse_args().architecture)
+    parser.add_argument('--calibrate-only',action='store_true')
+    options=parser.parse_args()
+    run(options.architecture,options.calibrate_only)
