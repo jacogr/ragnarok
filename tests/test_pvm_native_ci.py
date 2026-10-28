@@ -7,7 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import pvm_native_ci as ci
@@ -67,6 +67,21 @@ class NativeHostTests(unittest.TestCase):
                 ci.run()
             self.assertIn('"status": "incomplete"',destination.read_text())
             self.assertIn('wrong host',destination.read_text())
+
+
+class PolicyQualificationTests(unittest.TestCase):
+    def test_both_owner_suites_precede_success(self):
+        """The native CI gate requires regular and refused-storage owner policies on either architecture."""
+        checks = Mock()
+        checks.command.return_value = dict(exit_code=0, log='policy.log')
+        rows = ci.qualify_policy(checks)
+        self.assertEqual([row['suite'] for row in rows],
+                         ['pvm_runtime_policy', 'pvm_runtime_policy_refused'])
+        for call in checks.command.call_args_list:
+            self.assertIn('--suite', call.args[0])
+        checks.command.return_value = dict(exit_code=1, log='failure.log')
+        with self.assertRaisesRegex(RuntimeError, 'failure.log'):
+            ci.qualify_policy(checks)
 
 
 class QualificationTests(unittest.TestCase):

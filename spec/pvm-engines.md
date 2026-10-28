@@ -74,11 +74,8 @@ and complete JAM parity remain outside this API increment.
 - `make unit SUITE=pvm_runtime_polkavm`: the same real interpreted guest/host/gas/fault/repair,
   permission/low-page/cross-page and retained-owner witnesses through the linked public ABI.
 - The ABI build runs real interpreter traced-paging, reset, layout, invalid-buffer and unwind tests.
-- Current Linux CI retains native suite discovery; comparison changes belong to the later stack
-  layer and continue to use PolkaVM interpreted as their reference.
-
-The following layers add owner-bound JIT/forced-interpreter policy and CLI selection, then
-adapt the existing Linux comparison family without adding a parallel benchmark family.
+- Current Linux CI retains native suite discovery; the existing comparison family uses
+  PolkaVM interpreted as its reference.
 
 ## Runtime policy and CLI
 
@@ -110,3 +107,31 @@ refusals. `pvm_runtime_policy_refused` runs the same witnesses with executable s
 `app_pvm_backend` checks defaults, all names, help, strict malformed/duplicate rejection and
 dedicated parsing. `pvm_runtime_application` executes real application/nested dispatch using our
 interpreter and PolkaVM interpreted; compiled PolkaVM remains outside CI execution.
+
+## Existing CI comparison family
+
+`Perf / PVM Comparison` retains its native Linux ARM64 and Linux x86-64 runners. The native-host
+preflight now runs both maintained owner-policy suites before comparison timing: positive native
+ARM64, explicit interpreted zero activity, refused executable storage, and unavailable x86-64
+fallback. No compiled PolkaVM reference is executed.
+
+The ARM64 application cohort builds the current interpreted and JIT roles with identical source,
+compiler settings and native receipt defines, and rejects different executable bytes. A benchmark
+process resolves `RAGNAROK_PVM_BACKEND` before clocks, then captures that selection while constructing
+the prepared owner inside the existing constructor clock. Execution clocks and cold/reused/public/
+retained-core/DOOM host and reference lifecycle scopes remain unchanged. The versioned
+`matched-owner-policy-v2` report requires policy receipts for both current public roles and matching
+native owner counters. Every forced-interpreted native counter, including publication and compile
+time, must remain zero; current JIT requires positive native coverage across the complete cohort.
+
+Historical ARM64 baseline runtime sources remain pinned to their recorded commit. Current drivers
+use a source-only API guard and no policy environment override for that role, preserving its
+historical default constructor. Versioned v1 logs keep their original receipt parser. Current
+runtime/driver revisions, source/input/compiler/flag/image hashes, repeated fresh-image controls,
+both process orders, complete state/source checks and ordered host events remain in the report.
+
+On x86-64 the existing current prepared row explicitly selects `interpreted`, with a strict
+requested/actual/availability receipt. Native-host policy qualification separately proves a JIT
+request uses interpreted fallback; there is no x86-64 native emitter or native JIT timing claim.
+Historical master and optional prepared baselines retain their own unmodified drivers and policies.
+Both architecture reports continue to compare against the pristine pinned PolkaVM interpreter.

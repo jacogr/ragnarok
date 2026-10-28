@@ -23,6 +23,7 @@ from pvm_interpreter_compare import parse_public, parse_candidate
 from pvm_sieve_report import parse_process_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
 from pvm_benchmark import cpu_model
+from pvm_comparison_policy import policy_receipt
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
@@ -47,12 +48,22 @@ def owner_receipt(output, case):
     return '\n'.join(lines)+'\n', counters
 
 
-def parse_run(output, role, case, limit, event_bytes=0):
+def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-v1'):
     """Use identical native-owner framing for both compared public JIT roles and strict lifecycle parsers."""
+    if protocol not in ('matched-owner-v1', 'matched-owner-policy-v2'):
+        raise ValueError('Unknown application comparison protocol')
+    current_policy = protocol == 'matched-owner-policy-v2' and role in ('interpreter', 'jit')
     counters = None
+    policy = None
     doom = case in ('init','tick')
-    if role in ('baseline','jit') or (role=='core' and doom):
+    if role in ('baseline','jit') or current_policy or (role=='core' and doom):
         output,counters = owner_receipt(output,case)
+    if current_policy:
+        output,policy = policy_receipt(output, 'interpreted' if role == 'interpreter' else 'jit')
+        if any(counters[key] != policy[key] for key in ('fragments','calls','operations')):
+            raise ValueError('Policy and native owner counters disagree')
+        if role == 'interpreter' and any(counters.values()):
+            raise ValueError('Forced interpreter published native owner activity')
     if role=='reference':
         parsed = reference_lifecycle_samples(output,case,event_bytes) if doom else parse_process_output(output,'polkavm_interpreter',limit,guest=case)
     elif role=='core':
@@ -63,7 +74,7 @@ def parse_run(output, role, case, limit, event_bytes=0):
             parsed = native['execution']; counters = dict(**native['native'],**native['control'])
     else:
         parsed = parse_public(output,case,limit,prepared=True,doom=doom,event_bytes=event_bytes)
-    return dict(execution=parsed,native=counters)
+    return dict(execution=parsed,native=counters,policy=policy)
 
 
 def run():
@@ -73,11 +84,20 @@ def run():
     baseline = baseline_revision(BASELINE)
     BUILD.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
-                  builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-v1')
+                  builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-policy-v2',
+                  policies=dict(interpreter='interpreted', jit='jit', baseline='historical pinned default',
+                                core='retained core JIT', reference='polkavm-interpreted'))
     (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (BUILD/'summary.md').write_text('Application comparison incomplete.\n')
     checks = NativeChecks(BUILD)
     compiler,_ = installed()
+    report['compiler_identity'] = (compiler.parent.parent/'NIGHTLY.txt').read_text()
+    report['clang_version'] = subprocess.check_output(['clang','--version'], text=True)
+    report['revision'] = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
+    report['toolchain'] = json.loads((ROOT/'spec/toolchain.json').read_text())
+    report['source_revisions'] = dict(baseline=baseline, interpreter=report['revision'],
+                                    jit=report['revision'], core=report['revision'])
+    report['driver_revision'] = report['revision']
     fixtures = prepare_inputs(checks,BUILD/'inputs')
     # Reuse maintained pinned-source/asset/ROM/link/host controls before fresh application timings.
     prepare_doom(check_only=True)
@@ -127,9 +147,9 @@ def run():
         for family,name in zip(('kernel','doom'),drivers):
             driver=canonical/'benchmarks'/(family+'.nim')
             driver.write_text((ROOT/('tests/performance/'+name+'.nim')).read_text().replace('../../src/','../src/'))
-            defines=[] if role=='interpreter' else ['pvmArm64Jit']
-            # Both public JIT roles need identical code-generation settings, including out-of-clock coverage receipts.
-            if role in ('baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
+            defines=['pvmArm64Jit']
+            # All public policy roles need identical code-generation settings, including out-of-clock coverage receipts.
+            if role in ('interpreter','baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
             if role=='core' and family=='kernel': defines+=['pvmArm64JitControlReceipt']
             pair=[]
             for repeat in range(2):
@@ -140,10 +160,17 @@ def run():
                 if built['exit_code']: raise RuntimeError(built['output'][-3000:])
                 saved=BUILD/f'{role}-{family}-{repeat}'; shutil.copy2(binary,saved);pair.append(saved)
                 ids[saved]=digest(saved)
-                report['builds'].append(dict(role=role,family=family,repeat=repeat,run=built))
+                report['builds'].append(dict(role=role,family=family,repeat=repeat,defines=list(defines),run=built))
             if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
             images[role,family]=pair[0]
         report['sources'][role]={str(path.relative_to(canonical)):digest(path) for path in sorted(canonical.rglob('*')) if path.is_file()}
+    # Current public policies must differ only at runtime: exact sources, flags and executable bytes agree.
+    if report['sources']['interpreter'] != report['sources']['jit']:
+        raise ValueError('Current policy source cohorts differ')
+    for family in ('kernel','doom'):
+        if images['interpreter',family].read_bytes() != images['jit',family].read_bytes():
+            raise ValueError('Current interpreted/JIT policy images differ')
+    report['equal_policy_image_control'] = True
     # An unchanged source cohort is an A/A control: role naming must never change either public executable image.
     report['equal_source_control'] = report['sources']['baseline'] == report['sources']['jit']
     if report['equal_source_control']:
@@ -164,12 +191,14 @@ def run():
                      RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
             if not doom: env.update(RAGNAROK_PVM_SIEVE_INPUT=str(data),RAGNAROK_PVM_SIEVE_EXPECTED=str(expected))
             for role in (ROLES if order==0 else ROLES[::-1]):
+                # Historical and retained-core roles never inherit a caller's current public policy override.
+                env['RAGNAROK_PVM_BACKEND'] = {'interpreter':'interpreted','jit':'jit'}.get(role, '')
                 env['RAGNAROK_PVM_DOOM_LIFECYCLE']='1' if role=='reference' and doom else '0'
                 args=[images[role,family]] if role!='reference' else ([reference_doom,'run',DOOM/'doom.polkavm',env['RAGNAROK_PVM_DOOM_ROM'],DOOM/'prepared',case] if doom else [reference,'--sieve',artifact if case=='sieve' else ROOT/f'tests/fixtures/{"pvm-pinky" if case=="pinky" else "pvm-guests"}/{case}.polkavm',data.parent,limit,13])
                 if order==0:
                     positive=checks.command(args,f'{case}-{limit}-{role}-positive',environment=env,timeout=900)
                     if positive['exit_code']: raise RuntimeError(positive['output'][-2000:])
-                    parse_run(positive['output'],role,case,limit,events)
+                    parse_run(positive['output'],role,case,limit,events,report['comparison_protocol'])
                     report['controls'].append(dict(case=case,limit=limit,role=role,kind='positive',run=positive))
                     for kind in (('assertions','state','events') if doom else ('assertions','state')):
                         controlled = DOOM/'prepared'/(case+('.events' if kind=='events' else '.expected')) if doom else expected
@@ -188,7 +217,7 @@ def run():
                 unchanged(ids)
                 row=checks.command(args,f'{case}-{limit}-{order}-{role}',environment=env,timeout=900)
                 if row['exit_code']: raise RuntimeError(row['output'][-3000:])
-                parsed=parse_run(row['output'],role,case,limit,events)
+                parsed=parse_run(row['output'],role,case,limit,events,report['comparison_protocol'])
                 report['runs'].append(dict(case=case,limit=limit,order=order,role=role,run=row,parsed=parsed))
                 unchanged(ids)
                 (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import subprocess
+import sys
 from native_checks import NativeChecks, ROOT
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
@@ -63,6 +64,18 @@ def host_identity():
                 toolchain_platform=selected['platform'], archive=selected['download'])
 
 
+def qualify_policy(checks):
+    """Run maintained owner-policy suites, including forced storage refusal, before starting comparison clocks."""
+    rows = []
+    for suite in ('pvm_runtime_policy', 'pvm_runtime_policy_refused'):
+        checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
+                                 suite, timeout=900)
+        rows.append(dict(suite=suite, run=checked))
+        if checked['exit_code']:
+            raise RuntimeError('PVM owner policy qualification failed: '+checked['log'])
+    return rows
+
+
 def run():
     """Retain incomplete evidence on every failure and require all maintained correctness gates before success."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -79,13 +92,19 @@ def run():
                  ROOT/'tools/pvm_arm64_jit.py', ROOT/'tools/pvm_native_ci.py', ROOT/'spec/toolchain.json',
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/unit/codec/test_pvm_stream_all_opcodes.nim',
-                 ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim']
+                 ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim',
+                 *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
+                 *sorted((ROOT/'tools').glob('native_*.py')),
+                 *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
         native = report['host']['architecture'] == 'arm64'
         report['coverage'] = 'ARM64 native and forced refusal' if native else 'interpreter and unavailable ARM64 fallback'
         report['qualification'] = qualify(NativeChecks(BUILD), compiler, native=native)
+        report['policy_qualification'] = qualify_policy(NativeChecks(BUILD))
+        report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],
+            native_jit_available=native, jit_unavailable_actual='interpreted')
         report['status'] = 'passed'
     except BaseException as error:
         # Exceptions and interruptions must leave a current failed receipt, never a previous green report.

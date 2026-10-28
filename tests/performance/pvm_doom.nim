@@ -148,6 +148,16 @@ let source = captureMachine(owner, captured.value, info).value
 let pricing = getEnv("RAGNAROK_PVM_DOOM_PRICING")
 assert pricing in ["", "planned", "prepared"]
 let preparedMode = pricing == "prepared"
+# Resolve the optional comparison policy before any constructor or execution clock.
+let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
+assert requestedBackend in ["", "jit", "interpreted"]
+when declared(DefaultPvmBackend):
+  var selectedBackend = DefaultPvmBackend
+  if requestedBackend.len > 0:
+    assert parsePvmBackend(requestedBackend, selectedBackend)
+else:
+  # Archived runtimes retain their original constructor and cannot honor current policy overrides.
+  assert requestedBackend.len == 0
 let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
 assert requestedPreparation in ["", "0", "1"]
 let prepareStart = if requestedPreparation == "1": cpuNanoseconds() else: 0'i64
@@ -155,7 +165,12 @@ var plan = default(GasPlan)
 var prepared = default(PreparedProgram)
 if preparedMode:
   # The explicit reusable owner is admitted outside calls; sample zero retains its cold stream preparation.
-  let created = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)))
+  let created = when declared(DefaultPvmBackend):
+    # The owner captures selection and prepares capabilities inside the existing constructor clock.
+    newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
+  else:
+    # Historical source snapshots preserve their original public API and engine policy.
+    newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)))
   assert created.error == PreparationError.None
   prepared = created.value
 else:
@@ -213,6 +228,17 @@ for sample in 0..<samples:
     assert cpuElapsed > 0 and wallElapsed > 0
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
+
+when declared(DefaultPvmBackend):
+  if requestedBackend.len > 0:
+    # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
+    assert preparedMode
+    let policy = preparedInfo(prepared).value
+    assert policy.backend == selectedBackend
+    let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
+    echo "PVM_POLICY,1,", requestedBackend, ",", int(policy.jitBuilt), ",",
+      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
+      policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
 
 when defined(pvmArm64JitOwnerReceipt):
   # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.
