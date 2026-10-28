@@ -550,6 +550,9 @@ when defined(pvmArm64Jit):
     assert admitted
     var successes = 1
     while true:
+      # Distinct unreachable tail words prevent exact-image reuse from hiding physical byte exhaustion.
+      assert successes <= 256
+      pages[pages.len-1] = 0xd2800001'u32 or (uint32(successes) shl 5)
       var next = pages
       if not publishArmEntry(capacity, 0, 77, 1, next): break
       inc successes
@@ -569,7 +572,8 @@ when defined(pvmArm64Jit):
     let bounded = newArmJit()
     assert armEntry(bounded, 0, 3) == 0
     for slot in 0..<1023:
-      var words = @[0xd503201f'u32]
+      # Distinct scratch-only MOVZ bodies consume actual publication slots, without modifying guest registers.
+      var words = @[0xd2800001'u32 or (uint32(slot) shl 5)]
       assert publishArmEntry(bounded, 0, 0, 1, words)
     var refused = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, refused)
