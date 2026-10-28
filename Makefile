@@ -658,4 +658,4 @@ bench-pvm-x86-applications: toolchain sources rust-tools
 # Profiles consume the already complete same-job cohort; instrumented clocks never enter timing tables.
 .PHONY: profile-pvm-x86-jit
 profile-pvm-x86-jit:
-	$(PYTHON) tools/pvm_x86_jit_profile.py --paired-baseline
+	$(PYTHON) tools/pvm_x86_jit_profile.py --paired-baseline --include-init
