@@ -2,7 +2,9 @@
 
 Consult this reference when introducing unfamiliar compiler or stdlib APIs. The project pin is
 [spec/toolchain.json](../spec/toolchain.json); the longer [nightly trial](nimony-trial.md) records
-ownership, arithmetic and migration evidence.
+ownership, arithmetic and migration evidence. Track new failures and workaround lifecycles in the
+[compiler issue register](../spec/compiler-issues.md), following the
+[tracking process](compiler-issues.md).
 
 These observations came from the structured JSON refactor, CE 128 stream integration and PVM work
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
