@@ -62,7 +62,7 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), int(count == 1))
             lengths = [sum(target is not None for _, _, target in batches) for batches, _ in partitions]
             self.assertLessEqual(max(lengths)-min(lengths), 1)
-        self.assertEqual(native_tests.unit_partition(), (native_tests.unit_batches(), True))
+        self.assertEqual(native_tests.unit_partition(), (native_tests.unit_tasks(), True))
         self.assertEqual(native_tests.unit_partition((1, 1)), native_tests.unit_partition())
 
     # A shared seed changes assignment without losing suites, duplicating batches or touching global RNG.
@@ -85,9 +85,13 @@ class NativeUnitHarness(unittest.TestCase):
                 if count > 1:
                     # Every CI batch is one original source main; no aggregate codec deadline hides unfinished siblings.
                     for name, members, target in batches:
-                        self.assertEqual(members, (name,))
                         self.assertEqual(target, name)
-                        self.assertIn(name, native_tests.unit_dependency_weights())
+                        if name.startswith('asan:'):
+                            self.assertEqual(members, ())
+                            self.assertIn(name[5:], native_tests.unit_dependency_weights())
+                        else:
+                            self.assertEqual(members, (name,))
+                            self.assertIn(name, native_tests.unit_dependency_weights())
                 sizes = [len(selected)+int(corpora) for selected, corpora in partitions]
                 self.assertLessEqual(max(sizes)-min(sizes), 1)
         self.assertNotEqual(native_tests.unit_partition((1, 16), '40080775112'),

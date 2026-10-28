@@ -196,8 +196,8 @@ def unit_environment(compiler, name=None, base=None, fixtures=None, suites=None)
 
 
 # Preserve the historical numeric report fields, rejecting absent or malformed observations.
-def unit_evidence(compiler, name):
-    observed = json.loads((unit_evidence_directory(compiler)/(name+'.json')).read_text())
+def unit_evidence(compiler, name, directory=None):
+    observed = json.loads(((directory or unit_evidence_directory(compiler))/(name+'.json')).read_text())
     required = {'cycles', 'occupied_before', 'occupied_after'} | ({'schemas'} if name == 'ownership' else set())
     if not isinstance(observed, dict) or set(observed) != required or any(type(value) is not int or value < 0 for value in observed.values()):
         # Numeric evidence is not an arbitrary success flag or an unchecked JSON object.
@@ -238,6 +238,13 @@ def unit_dependency_weights():
     return weights
 
 
+def unit_tasks():
+    """Add distinct instrumented tasks without changing standalone Hastur suite identities."""
+    from pvm_sanitizers import SUITES, validate_profiles
+    validate_profiles()
+    return unit_batches()+[('asan:'+name, (), 'asan:'+name) for name in SUITES]
+
+
 # Partition discovered batches without registering suite names or compiling any test twice.
 def unit_partition(shard=None, seed=None, scope='all'):
     if scope not in ('all', 'suites', 'corpus'):
@@ -248,7 +255,7 @@ def unit_partition(shard=None, seed=None, scope='all'):
         if shard is not None:
             raise ValueError('Corpus scope cannot select a unit shard')
         return [], True
-    batches = unit_batches()
+    batches = unit_tasks()
     if shard is None:
         # Complete local verification retains both workloads; CI selects the ordinary suites explicitly.
         return batches, scope == 'all'
@@ -271,7 +278,11 @@ def unit_partition(shard=None, seed=None, scope='all'):
         batches = expanded
     # Stratify unit batches by current source dependencies; bundle internals keep their dependency order.
     if seed is not None:
-        weights = unit_dependency_weights()
+        weights = dict(unit_dependency_weights())
+        # ASan preserves ThinLTO and adds instrumented lowering plus calibration per receiving worker.
+        # Give these tasks extra weight so the existing stratification spreads them among native work.
+        weights.update({name: 2*weights[target.removeprefix('asan:')]
+                        for name, _, target in batches if target and target.startswith('asan:')})
         # Explicit suite-only CI work has no corpus placeholder; legacy combined selections retain it.
         items = [*batches, None] if scope == 'all' else batches
         partitions = stratified(items, count, seed, 'unit',

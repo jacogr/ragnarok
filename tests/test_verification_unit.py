@@ -22,6 +22,17 @@ import test_runtime
 from native_tests import UNIT_SUITES
 
 
+def instrumented_report(batches):
+    """Supply only the scheduled calibrated profile in synthetic completeness fixtures."""
+    from pvm_sanitizers import CFLAGS, LFLAGS, CONTROLS
+    names = [target[5:] for _, _, target in batches if target and target.startswith('asan:')]
+    if not names:
+        return {}
+    return dict(instrumented=dict(selected=names, status='checks-passed', cflags=list(CFLAGS),
+        link_flags=list(LFLAGS), controls=[dict(mode=mode, passed=True) for mode, _ in CONTROLS],
+        suites=[dict(name=name, passed=True) for name in names]))
+
+
 # Keep unit ownership and failure safeguards independent of other verification groups.
 class VerificationUnit(unittest.TestCase):
     def test_builder_keeps_checked_non_lto_and_default_full_lto_profiles_separate(self):
@@ -87,7 +98,7 @@ class VerificationUnit(unittest.TestCase):
                 batches, corpora = test_runtime.unit_partition((index, 12))
                 names = [name for _, members, _ in batches for name in members]
                 rows = [dict(name=name, passed=True) for name in names]
-                report = dict(unit_shard=[index, 12], suites=rows,
+                report = dict(unit_shard=[index, 12], suites=rows, **instrumented_report(batches),
                               **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES if corpora})
                 self.assertTrue(test_runtime.unit_passed(report))
                 self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[1:]}))
@@ -111,7 +122,7 @@ class VerificationUnit(unittest.TestCase):
             # Each complete shard report carries the seed used for preparation and native execution.
             batches, corpora = test_runtime.unit_partition((index, 16), seed)
             rows = [dict(name=name, passed=True) for _, members, _ in batches for name in members]
-            report = dict(unit_shard=[index, 16], shard_seed=seed, suites=rows,
+            report = dict(unit_shard=[index, 16], shard_seed=seed, suites=rows, **instrumented_report(batches),
                           **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES if corpora})
             self.assertTrue(test_runtime.unit_passed(report))
             self.assertFalse(test_runtime.unit_passed({**report, 'shard_seed': '40080775113'}))
@@ -146,7 +157,7 @@ class VerificationUnit(unittest.TestCase):
             names = [name for _, members, _ in batches for name in members]
             suites.extend(names)
             report = dict(unit_scope='suites', unit_shard=[index, 16], shard_seed='seed',
-                          suites=[dict(name=name, passed=True) for name in names])
+                          suites=[dict(name=name, passed=True) for name in names], **instrumented_report(batches))
             self.assertTrue(test_runtime.unit_passed(report))
             self.assertFalse(test_runtime.unit_passed({**report, 'suites': report['suites'][1:]}))
             self.assertFalse(test_runtime.unit_passed({**report, 'unit_scope': 'all'}))
@@ -239,10 +250,12 @@ class VerificationUnit(unittest.TestCase):
                 self.assertFalse((folder/'build/tests/runtime/results.json').exists())
                 output = folder/'summary.md'
                 arguments = ['summarize_tests.py', '--kind', 'runtime', '--report',
-                             str(base/'results.json'), '--output', str(output)]
+                             str(base/'results.json'), '--output', str(output),
+                             '--artifact', str(base/'summary.md')]
                 with patch.object(sys, 'argv', arguments):
                     summarize_tests.main()
                 self.assertIn('corpus only', output.read_text())
+                self.assertEqual((corpus_directory(base, shard)/'summary.md').read_text(), output.read_text())
                 if shard is not None:
                     # A stale sibling report at the selected path cannot masquerade as the requested shard.
                     self.assertIn(f'shard {shard[0]}/{shard[1]} (seed seed)', output.read_text())
@@ -271,6 +284,7 @@ class VerificationUnit(unittest.TestCase):
     # All suite identities and reference corpora must appear exactly once in the unit-owned evidence.
     def test_unit_complete_inventory(self):
         report = dict(suites=[dict(name=name, passed=True) for name in UNIT_SUITES],
+                      **instrumented_report(test_runtime.unit_partition()[0]),
                       **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES})
         self.assertTrue(test_runtime.unit_passed(report))
         self.assertFalse(test_runtime.unit_passed({**report, 'suites': report['suites'][1:]}))

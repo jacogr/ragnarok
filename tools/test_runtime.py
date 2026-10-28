@@ -42,6 +42,15 @@ def unit_passed(report):
     except ValueError:
         return False
     expected = {name for _, members, _ in batches for name in members}
+    selected = [target.removeprefix('asan:') for _, _, target in batches
+                if target and target.startswith('asan:')]
+    from pvm_sanitizers import passed as sanitizer_passed
+    if selected:
+        # A native pass cannot mask missing, duplicated, foreign or uncalibrated instrumented tasks.
+        if not sanitizer_passed(report.get('instrumented', {}), selected):
+            return False
+    elif 'instrumented' in report:
+        return False
     rows = report.get('suites', [])
     names = [row.get('name') for row in rows]
     return (len(names) == len(expected) and set(names) == expected
@@ -93,7 +102,16 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
 # Keep complete execution order; the corpus scope has private builds and no Hastur evidence to lock.
 def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed, scope, corpus_shard):
     batches, corpora = unit_partition(shard, seed, scope)
+    selected = [target.removeprefix('asan:') for _, _, target in batches
+                if target and target.startswith('asan:')]
+    if selected:
+        # Each receiving worker calibrates once before its instrumented tasks, with private caches/logs.
+        from pvm_sanitizers import run_selected
+        report['instrumented'] = run_selected(compiler, selected, ROOT/'build/tests/pvm-asan')
     for batch, members, target in batches:
+        if target and target.startswith('asan:'):
+            # These tasks already ran in the calibrated profile; ordinary Hastur never builds them.
+            continue
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         print('RUN '+batch+' (Hastur)', flush=True)
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
@@ -272,8 +290,14 @@ def main():
             fixtures, fixture_evidence = prepare_partition_fixtures(
                 BUILD, selected_suites, quic_fixtures, integration)
             report['partition_fixture_preparation'] = fixture_evidence
-        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard,
-                 args.shard_seed, args.unit_scope, args.corpus_shard)
+        try:
+            run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard,
+                     args.shard_seed, args.unit_scope, args.corpus_shard)
+        except Exception as error:
+            # A later native timeout must preserve any calibrated instrumented and partial unit evidence.
+            report.update(status='failed', error=str(error))
+            (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+            raise
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.

@@ -78,6 +78,24 @@ def summarize(report, kind):
         # Preserve each corpus verdict rather than presenting aggregate counts as a substitute for failures.
         for key, row in corpora.items():
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
+        if 'instrumented' in report:
+            # List planned tasks as pending after an early failure, alongside observed controls and logs.
+            instrumented = report['instrumented']
+            lines += ['', '### AddressSanitizer (checked ARC/Clang ThinLTO)', '',
+                      '**Status: '+instrumented['status']+'**', '',
+                      '| Control / suite | Result | Evidence |', '| --- | --- | --- |']
+            controls = {row['mode']: row for row in instrumented.get('controls', [])}
+            suites = {row['name']: row for row in instrumented.get('suites', [])}
+            tasks = [('control-'+mode, controls.get(mode)) for mode in ('positive', 'heap', 'stack')]
+            tasks += [(name, suites.get(name)) for name in instrumented['selected']]
+            for name, row in tasks:
+                verdict = 'Not completed' if row is None else ('Pass' if row['passed'] else 'Fail')
+                log = row.get('run', {}).get('log', '') if row else ''
+                lines.append('| `'+name+'` | '+verdict+' | `'+log+'` |')
+            if instrumented.get('error'):
+                lines += ['', 'Failure: `'+instrumented['error'].replace('|', '/').replace('`', "'")+'`']
+            lines += ['', 'Artifacts: `build/tests/pvm-asan/results.json`, `*.log`, `evidence/*.json`.',
+                      'Allocator unchanged; ASan does not track logical pool suballocations.']
     elif kind == 'failures':
         # Runtime contracts own a separate inventory; compiler rejections belong to the guards job.
         from failure_plans import failure_partition
@@ -204,6 +222,11 @@ def main():
         if args.kind != 'runtime':
             parser.error('--corpus-shard applies only to runtime corpus reports')
         args.report = corpus_directory(args.report.parent, args.corpus_shard)/args.report.name
+        if args.artifact is not None:
+            args.artifact = corpus_directory(args.artifact.parent, args.corpus_shard)/args.artifact.name
+    if args.artifact is not None:
+        # Setup failures still need a downloadable summary in the selected private directory.
+        args.artifact.parent.mkdir(parents=True, exist_ok=True)
     try:
         # Do not infer a pass when setup, compilation or the runner failed before writing evidence.
         report = json.loads(args.report.read_text())

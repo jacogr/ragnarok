@@ -91,7 +91,19 @@ advisory lock serializes standalone and cumulative unit invocations through evid
 the active batch and its elapsed time.
 
 CI partitions discovered unit work across sixteen bounded jobs, keeping each job's
-linked/resource work sequential. Each CI run derives batch weights from the number of unique
+linked/resource work sequential.
+Selected PVM AddressSanitizer replays are distinct `asan:<suite>` tasks in that same plan.
+Their dependency weights are doubled to account for instrumented lowering and calibration;
+ordinary suite identities and coverage remain separate. Each receiving worker calibrates its
+private checked ARC/Clang ThinLTO profile once, then runs only its assigned instrumented tasks.
+The unit verdict reconstructs the exact seeded selection and requires all positive/heap/stack
+controls plus every selected replay. Corpus-only workers execute no sanitizer tasks.
+`make check-pvm-asan` runs the complete instrumented selection locally through the same executor.
+Partial sanitizer reports, logs and fresh ARC observations survive failures under
+`build/tests/pvm-asan/`; the ordinary unit JSON embeds that profile's verdict and its Markdown
+summary lists each control, planned replay, failure and artifact location. CI retains the JSON,
+Markdown and diagnostics even when qualification fails.
+ Each CI run derives batch weights from the number of unique
 transitive project modules imported by its test sources, including test helpers. Static
 `import`/`from`/`include` discovery includes all conditional branches and excludes standard-library,
 generated and external sources; this is a cost estimate, never a coverage filter. The graph is

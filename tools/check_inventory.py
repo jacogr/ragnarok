@@ -39,6 +39,8 @@ def validate_inventory():
     if collisions:
         # Unit ARC observations must not masquerade as foreign runtime-contract results.
         raise ValueError('ARC report keys overlap runtime failure families: '+', '.join(sorted(collisions)))
+    from pvm_sanitizers import validate_profiles
+    validate_profiles()
     runtime_sources()
     declarations(ROOT/'tests/models')
     validate_e2e_groups((ROOT/'.github/workflows/ci.yml').read_text())

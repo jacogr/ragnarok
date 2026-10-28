@@ -199,10 +199,10 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 21
+      max-parallel: 20
       matrix:
         os: *ci-os
-        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"},{"name":"PVM Sanitizers","shard":"","group":"pvm-asan","corpus_shard":""}]') }}
+        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
       CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
@@ -215,13 +215,9 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: Native unit or corpus tests
-        if: ${{ matrix.family.group != 'pvm-asan' }}
         run: make check-unit
-      - name: Qualify checked PVM execution with calibrated AddressSanitizer
-        if: ${{ matrix.family.group == 'pvm-asan' }}
-        run: make check-pvm-asan
       - name: Show verification coverage
-        if: ${{ always() && matrix.family.group != 'pvm-asan' }}
+        if: always()
         run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
@@ -235,12 +231,15 @@ jobs:
             build/ci/*.log
             build/tests/runtime/*.log
             build/tests/runtime/results.json
+            build/tests/runtime/summary.md
             build/tests/native/**/codec-diagnostics/*.json
             build/tests/native/**/codec-diagnostics/*.log
             build/tests/corpus/*.log
             build/tests/corpus/results.json
+            build/tests/corpus/summary.md
             build/tests/corpus/*/*.log
             build/tests/corpus/*/results.json
+            build/tests/corpus/*/summary.md
             build/tests/pvm-asan/*.log
             build/tests/pvm-asan/results.json
             build/tests/pvm-asan/evidence/*.json

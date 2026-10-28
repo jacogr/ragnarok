@@ -306,7 +306,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'unit', event_context())
-        self.assertEqual(len(families), 21)
+        self.assertEqual(len(families), 20)
         corpus = [row for row in families if row['group'] == 'corpus']
         self.assertEqual(corpus, [dict(name=f'Corpus ({index}/4)', shard='', group='corpus',
                                      corpus_shard=f'{index}/4') for index in (1, 2, 3, 4)])
@@ -317,7 +317,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
-        self.assertIn('max-parallel: 21', unit)
+        self.assertIn('max-parallel: 20', unit)
         self.assertIn('CORPUS_SHARD: ${{ matrix.family.corpus_shard }}', unit)
         self.assertIn('build/tests/corpus/*/results.json', unit)
         self.assertIn('name: Unit / ${{ matrix.family.name }}', unit)
@@ -348,20 +348,16 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('  pvm-experimental:',text)
         self.assertNotIn('  pvm-sanitizers:',text)
         families = selected_families(text,'unit',event_context())
-        self.assertEqual([row for row in families if row['group']=='pvm-asan'],
-            [dict(name='PVM Sanitizers',shard='',group='pvm-asan',corpus_shard='')])
-        sanitized = family_section(text,'unit','pvm-asan')
-        self.assertIn('run: make check-pvm-asan',sanitized)
-        self.assertNotIn('run: make check-unit',sanitized)
-        self.assertNotIn('run: make summary-',sanitized)
-        for group in ('suites','corpus'):
-            # Each family owns exactly one verifier; moving the sanitizer cannot duplicate native runs.
-            native = family_section(text,'unit',group)
-            self.assertIn('run: make check-unit',native)
-            self.assertNotIn('run: make check-pvm-asan',native)
-        for evidence in ('build/tests/pvm-asan/*.log','build/tests/pvm-asan/results.json',
-                         'build/tests/pvm-asan/evidence/*.json'):
-            self.assertIn(evidence,sanitized)
+        self.assertFalse(any(row['group'] == 'pvm-asan' for row in families))
+        for group in ('suites', 'corpus'):
+            # Every unit worker uses the shared executor and Markdown renderer, including failed ASan.
+            native = family_section(text, 'unit', group)
+            self.assertIn('run: make check-unit', native)
+            self.assertIn('run: make summary-', native)
+            self.assertNotIn('run: make check-pvm-asan', native)
+            for evidence in ('build/tests/pvm-asan/*.log', 'build/tests/pvm-asan/results.json',
+                             'build/tests/pvm-asan/evidence/*.json', 'build/tests/runtime/summary.md'):
+                self.assertIn(evidence, native)
         self.assertIn('run: make check-unit',text)
         for path in (ROOT/'tests/unit/codec').glob('test_pvm_stream_*.nim'):
             # Inventory validates every ordinary witness's requirements and exact output contract.
