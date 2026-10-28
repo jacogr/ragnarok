@@ -110,6 +110,28 @@ jobs:
             build/ci/*.log
             build/tests/python/*.log
             build/tests/python/results.json
+      - name: Check lifecycle safety, mutants and reachability
+        if: ${{ !cancelled() && matrix.family.group == 'python' }}
+        run: make check-models
+      - name: Show verification coverage
+        if: ${{ always() && matrix.family.group == 'python' }}
+        run: make summary-models SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      # Retain only replayable models and diagnostics, never compiler/dependency trees.
+      - name: Retain model verification evidence
+        if: ${{ always() && matrix.family.group == 'python' }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.family.os }}-models-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/model-tools.log
+            build/ci/models.log
+            build/ci/setup.log
+            build/tests/models/*.log
+            build/tests/models/*.nif
+            build/tests/models/results.json
       - name: Build, package and smoke-test relocated peer
         if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
@@ -206,41 +228,8 @@ jobs:
           SHARDS_RESULT: ${{ needs.build.result }}
         run: test "$SHARDS_RESULT" = success
 
-  models:
-    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Model verification
-    timeout-minutes: *ci-job-timeout
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - name: Validate verification inventory
-        run: *inventory-run
-      - name: Check lifecycle safety, mutants and reachability
-        run: make check-models
-      - name: Show verification coverage
-        if: always()
-        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      # Retain only replayable models and diagnostics, never compiler/dependency trees.
-      - name: Retain model verification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-models-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/model-tools.log
-            build/ci/models.log
-            build/ci/setup.log
-            build/tests/models/*.log
-            build/tests/models/*.nif
-            build/tests/models/results.json
-
   unit:
-    if: *requested
+    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     name: Unit / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:

@@ -532,12 +532,37 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertTrue(expression(guard, dict(event_context(), cancelled=False,
             matrix=dict(family=dict(group='binary', platform='linux-amd64')))))
 
+    def test_tooling_preserves_independent_model_checks(self):
+        """Models share Tooling's runner while retaining scheduling, failure evidence and the Build gate."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        self.assertNotIn('\n  models:\n', text)
+        tooling = family_section(text, 'build', 'python')
+        self.assertIn('run: make check-models', tooling)
+        self.assertIn('run: make summary-models SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', tooling)
+        for path in ('build/ci/model-tools.log', 'build/ci/models.log', 'build/ci/setup.log',
+                     'build/tests/models/*.log', 'build/tests/models/*.nif',
+                     'build/tests/models/results.json'):
+            self.assertIn(path, tooling)
+        step = re.search(r'      - name: Check lifecycle.*?(?=      - name:)',
+                         tooling, re.DOTALL).group(0)
+        guard = re.search(r'^        if: (.+)$', step, re.MULTILINE).group(1)
+        # A prior Python failure must not suppress model checks; cancellation may stop expensive work.
+        for cancelled in (False, True):
+            context = dict(event_context(), matrix=dict(family=dict(group='python')), cancelled=cancelled)
+            self.assertEqual(expression(guard, context), not cancelled)
+        for group in ('smoke', 'binary', 'checks', 'docker'):
+            context = dict(event_context(), matrix=dict(family=dict(group=group)))
+            self.assertFalse(expression(guard, context))
+        self.assertNotIn('continue-on-error', tooling)
+        self.assertIn('needs: build', job_section(text, 'build-status'))
+
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):
         """Every native matrix family validates inventory before its own provisioning command."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         self.assertIn('run: &inventory-run make check-inventory', text)
         for job, family, target in [('build', 'binary', 'check-modules'), ('build', 'python', 'check-python'),
+                                    ('build', 'python', 'check-models'),
                                     ('build', 'binary', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
                                     ('e2e', 'mcp', 'check-mcp-interop'),
@@ -546,7 +571,7 @@ class NimonyCISafeguards(unittest.TestCase):
             section = family_section(text, job, family)
             self.assertEqual(section.count('name: Validate verification inventory'), 1)
             self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make '+target))
-        for job in ('unit', 'failures', 'e2e', 'pvm-fuzz', 'models'):
+        for job in ('unit', 'failures', 'e2e', 'pvm-fuzz'):
             self.assertIn('run: *inventory-run', job_section(text, job))
         self.assertNotIn('continue-on-error:', text)
 

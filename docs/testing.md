@@ -16,7 +16,8 @@ Python-only registration and provenance preflight used before every CI workload.
 | `check-guards` | Compiler contract, privacy, nominal, schema and ownership rejection probes | `build/tests/guards/` |
 | `check-e2e` | Peer-entry selftests and live networking/resource scenarios | `build/tests/e2e/` |
 
-**Model verification** is a separate visible CI job on master pushes and unit/full requests.
+**Model verification** runs as a separate step within **Build / Tooling** on master pushes
+and unit/full requests, including after Python checks fail.
 Its summary separates expected mutant/witness violations from base-model failures, and its
 artifacts retain replayable models and full diagnostics.
 

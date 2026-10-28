@@ -50,7 +50,8 @@ The **Build** aggregate requires every selected Build family. Automatic PR updat
 **Build / Linux & Docker** runs native packaging, the checked-release audit of every production
 module, compiler rejection guards, then isolated Docker validation. Checks retain independent
 failure status, summaries and artifacts, and still run after an earlier packaging/check failure.
-Smoke retains its fast unoptimized audit and formatting; Tooling retains Python references.
+Smoke retains its fast unoptimized audit and formatting; Tooling runs Python references and lifecycle model verification, with independent verdicts,
+summaries and artifacts; model checks still run after Python failures.
 `unit` / `ci:unit` requests select Smoke, Tooling and **Linux Checks**, running the same source/guard
 checks without adding archive packaging or Docker. Manual `build` selects Linux & Docker and
 macOS; manual `docker` / `ci:docker` selects Docker alone and omits the complete-group gate.
