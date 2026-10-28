@@ -384,6 +384,19 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
   jit.codeBytes = uint64(published)+uint64(code.bytes.len)
   true
 
+proc promoteX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock]): bool =
+  ## One strictly larger three-block proof may replace the earlier one/two-block cache; failed publication preserves it exactly.
+  assert jit.region.status == 2 and jit.region.count < 3 and jit.arena.handle != nil
+  let previous = jit.region # Scalar-only cold snapshot; no arena or invocation pointer is copied.
+  jit.region = default(X86RegionCache)
+  if not publishX86Region(jit, blocks, 3):
+    # Existing append-only code and every original tag/counter remain callable after any code/shape/capacity refusal.
+    jit.region = previous
+    return false
+  jit.region.calls += previous.calls
+  jit.region.blocks += previous.blocks
+  true
+
 proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
     {.cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
 

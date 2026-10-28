@@ -483,6 +483,7 @@ stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
 # The original scalar context is an independent oracle for resident visits and endpoint publication.
 var contextCases = 0
 var tripleContextCases = 0
+var promotionContexts = 0
 when not defined(pvmX86JitRefuse):
   let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
   let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
@@ -505,6 +506,32 @@ when not defined(pvmX86JitRefuse):
       blocks[index] = X86RegionBlock(header: header, span: 2, operations: 2,
         price: uint64(3+index*2), yes: following, no: 10, body: move(body))
     assert publishX86Region(jit, blocks, range[1..3](active))
+    if active == 3:
+      # A cold smaller proof can be replaced once; a malformed replacement must leave its tag, code and counters intact.
+      let promoted = newX86Jit()
+      discard x86Entry(promoted, 0, 32)
+      var prior = default(array[3, X86RegionBlock])
+      prior[0] = blocks[0]
+      assert publishX86Region(promoted, prior, 1)
+      var registers = default(RegisterFile)
+      registers[1] = RegisterValue(5)
+      var state = [100'u64, 20'u64, 0'u64, 0'u64, 0'u64, uint64(high(uint32))]
+      assert callX86Region(promoted, registers, state) == 8
+      assert uint64(registers[0]) == 1 and state == [97'u64, 18, 1, 0, 0, 7]
+      let previous = x86RegionStatistics(promoted)
+      var malformed = default(array[3, X86RegionBlock])
+      assert not promoteX86Region(promoted, malformed)
+      assert x86RegionCount(promoted) == 1 and x86RegionHeader(promoted, 0) == 7
+      assert x86RegionStatistics(promoted) == previous
+      inc promotionContexts
+      assert promoteX86Region(promoted, blocks)
+      assert x86RegionCount(promoted) == 3 and x86RegionStatistics(promoted) == previous
+      registers[0] = RegisterValue(0)
+      state = [100'u64, 20'u64, 0'u64, 0'u64, 0'u64, uint64(high(uint32))]
+      assert callX86Region(promoted, registers, state) == 10
+      assert uint64(registers[0]) == 5 and state == [77'u64, 10, 2, 2, 1, 8]
+      assert x86RegionStatistics(promoted) == [previous[0]+1, previous[1]+5]
+      inc promotionContexts
     for initial in [0'u64, 4, 99, high(uint64)]:
       for gas in [0'u64, 1, 2, 3, 4, 5, 8, 16, high(uint64)]:
         for quota in [0'u64, 1, 2, 3, 4, 5, 10, 63, 64, high(uint64)]:
@@ -540,6 +567,7 @@ when not defined(pvmX86JitRefuse):
             else: inc contextCases
 stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)
 stdout.writeLine("X86_THREE_CONTEXT_CASES," & $tripleContextCases)
+stdout.writeLine("X86_REGION_PROMOTION_CONTEXTS," & $promotionContexts)
 
 
 # Native-only full-bit literals cover every signed immediate encoding boundary and its mandatory fallback neighbors.
@@ -705,8 +733,11 @@ proc verifyThreeControl(frame: var FlatFrame, program: Program, info: MachineInf
 # The established three exact source shapes form one closed round, with real panic blocks on every untaken arm.
 let threeProgram = owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 8, 0, 0, 0], @[0'u8],
   @[151'u8, 0x22, 1], @[152'u8, 0x22, 1], @[173'u8, 0x43, 7, 0, 0, 0], @[0'u8],
-  @[200'u8, 0x65, 5], @[139'u8, 0x77, 1], @[82'u8, 0x18, 0, 0xe2, 0xff, 0xff, 0xff], @[0'u8]])
+  @[200'u8, 0x65, 5], @[139'u8, 0x77, 1], @[82'u8, 0x18, 0, 0xe2, 0xff, 0xff, 0xff], @[0'u8],
+  @[149'u8, 0x99, 1], @[149'u8, 0x99, 1], @[149'u8, 0x99, 1], @[149'u8, 0x99, 1],
+  @[84'u8, 0x19, 12, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 var threeControls = 0
+var promotionControls = 0
 for start in [0'u64, 11, 24]:
   let plan = newFlatPlan(threeProgram, GasCycleLimit(100000))
   var info = MachineInfo(pc: CodeAddress(start), gas: MachineGas(100000), registers: default(RegisterFile))
@@ -716,11 +747,21 @@ for start in [0'u64, 11, 24]:
   info.registers[7] = RegisterValue(high(uint64))
   info.registers[8] = RegisterValue(1)
   var frame = newFlatFrame(plan, [], info)
+  var cold = info
+  cold.pc = CodeAddress(38)
+  verifyThreeControl(frame, threeProgram, cold, 1000)
+  let previous = flatX86RegionStatistics(frame)
+  when defined(pvmX86JitRefuse): assert previous == default(array[2, uint64])
+  else: assert previous[0] > 0 and previous[1] > 0
+  inc promotionControls
   verifyThreeControl(frame, threeProgram, info, 1000)
   let connected = flatX86RegionStatistics(frame)
   echo "X86_THREE_WARM,", start, ",", connected[0], ",", connected[1]
   when defined(pvmX86JitRefuse): assert connected == default(array[2, uint64])
-  else: assert connected[0] > 0 and connected[1] > 3
+  else: assert connected[0] > previous[0] and connected[1] > previous[1]+3
+  # Returning to the old root after promotion must use its genuine checked/native workers, never the replacement's operands.
+  verifyThreeControl(frame, threeProgram, cold, 1000)
+  inc promotionControls
   for paid in [false, true]:
     for gas in [0'u64, 1, 2, 3, 4, 5, 8, 13, 21, 31, 127, 128, 129, 249, 250, 251, 252, 1000, high(uint64)]:
       for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 31, 32, 33, 63,
@@ -758,8 +799,10 @@ for start in [0'u64, 11, 24]:
     assert flatX86RegionStatistics(fresh) == before
     inc threeControls
 stdout.writeLine("X86_THREE_SOURCE_CASES," & $threeControls)
+stdout.writeLine("X86_REGION_PROMOTION_SOURCE_CASES," & $promotionControls)
 
-proc verifyReservedRegion(identitySlots, addSlots, compareSlots: RegisterSlots): int =
+proc verifyReservedRegion(identitySlots, addSlots, compareSlots: RegisterSlots,
+    refusePromotion: bool = false): int =
   ## Keep every temporary scoped to one owner; a full ordinary cache must leave its region slot callable.
   result = 0
   # Consume all ordinary publication slots while leaving ample space inside the unchanged1MiB physical arena.
@@ -781,14 +824,24 @@ proc verifyReservedRegion(identitySlots, addSlots, compareSlots: RegisterSlots):
     emitX86Branch(body, 172, compareSlots, 0, following, 10)
     blocks[index] = X86RegionBlock(header: uint32(7+index), span: 2, operations: 2, price: 1,
       yes: following, no: 10, body: move(body))
-  assert publishX86Region(jit, blocks, 3)
+  assert publishX86Region(jit, blocks, (if refusePromotion: 1 else: 3))
+  if refusePromotion:
+    # A full append-only arena publication budget must preserve the smaller active proof on replacement refusal.
+    let previous = x86RegionStatistics(jit)
+    assert not promoteX86Region(jit, blocks)
+    assert x86RegionCount(jit) == 1 and x86RegionHeader(jit, 0) == 7
+    assert x86RegionStatistics(jit) == previous
   assert jit.fragments == 1024
   var capacityRegisters = default(RegisterFile)
   capacityRegisters[1] = RegisterValue(5)
   var context = [100'u64, 20'u64, 0'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
-  assert callX86Region(jit, capacityRegisters, context) == 10
-  assert uint64(capacityRegisters[0]) == 5
-  assert context == [95'u64, 10'u64, 2'u64, 2'u64, 1'u64, 8'u64]
+  if refusePromotion:
+    assert callX86Region(jit, capacityRegisters, context) == 8
+    assert uint64(capacityRegisters[0]) == 1 and context == [99'u64, 18, 1, 0, 0, 7]
+  else:
+    assert callX86Region(jit, capacityRegisters, context) == 10
+    assert uint64(capacityRegisters[0]) == 5
+    assert context == [95'u64, 10'u64, 2'u64, 2'u64, 1'u64, 8'u64]
   assert callX86Entry(jit, 0, capacityRegisters) == 4
   assert not publishX86Entry(jit, 1023, 1027, 4, refused)
   assert jit.fragments == 1024
@@ -800,3 +853,10 @@ when not defined(pvmX86JitRefuse):
     instructionRegisters(instruction(branchProgram, CodeAddress(0))),
     instructionRegisters(instruction(branchProgram, CodeAddress(3))))
 stdout.writeLine("X86_RESERVED_REGION_CASES," & $reservedRegionCases)
+
+var fullPromotionRefusals = 0
+when not defined(pvmX86JitRefuse):
+  fullPromotionRefusals = verifyReservedRegion(identitySlots,
+    instructionRegisters(instruction(branchProgram, CodeAddress(0))),
+    instructionRegisters(instruction(branchProgram, CodeAddress(3))), true)
+stdout.writeLine("X86_FULL_PROMOTION_REFUSAL_CASES," & $fullPromotionRefusals)

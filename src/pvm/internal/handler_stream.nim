@@ -1675,10 +1675,14 @@ when defined(pvmX86Jit):
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
     let jit = f.x86Jit
     if jit == nil or x86RegionStatus(jit) == 1: return false
+    var previousRoot = flatStop
     if x86RegionStatus(jit) == 2:
-      if x86RegionHeader(jit, 0) != first: return false
-      destination = flatX86Region(f, first)
-      return true
+      previousRoot = x86RegionHeader(jit, 0)
+      if previousRoot == first:
+        destination = flatX86Region(f, first)
+        return true
+      # An earlier cold loop must not monopolize the only cache forever; promotion is bounded to one larger exact triple.
+      if third == flatStop or x86RegionCount(jit) >= 3: return false
     if third != flatStop and second == flatStop: return false
     let active: range[1..3] = if third != flatStop: 3 elif second != flatStop: 2 else: 1
     let headers = [first, second, third]
@@ -1717,10 +1721,17 @@ when defined(pvmX86Jit):
         emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
         inc current
       if not terminal: return false
-    let admitted = publishX86Region(jit, blocks, active)
+    let admitted = if previousRoot == flatStop: publishX86Region(jit, blocks, active)
+      else: promoteX86Region(jit, blocks)
     jit.compilationNs += x86Clock()-before
     if not admitted: return false
     if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
+    if previousRoot != flatStop:
+      # No native call is active during cold publication; restore the old genuine root only after the replacement fully succeeds.
+      assert int(previousRoot) < f.handlers.len
+      let original = f.x86Original[int(previousRoot)]
+      assert original != nil
+      f.handlers[int(previousRoot)] = original
     for index in 0..<active:
       # A guard can return to any captured header; save all genuine workers before replacing only the root dispatch.
       f.x86Original[int(headers[index])] = f.handlers[int(headers[index])]

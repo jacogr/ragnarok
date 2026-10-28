@@ -65,10 +65,12 @@ def qualify(checks, compiler, rows=None):
                 raise ValueError('incomplete whole-region arithmetic witness')
         if name.startswith('x86-'):
             # Three-block source controls include refused builds; raw native contexts/publication require executable ownership.
-            for marker,count in [('X86_THREE_CONTEXT_CASES',720),('X86_RESERVED_REGION_CASES',1)]:
+            for marker,count in [('X86_THREE_CONTEXT_CASES',720),('X86_RESERVED_REGION_CASES',1),('X86_REGION_PROMOTION_CONTEXTS',2),('X86_FULL_PROMOTION_REFUSAL_CASES',1)]:
                 expected = 0 if refused else count
                 if marker+','+str(expected)+'\n' not in run['output']:
                     raise ValueError('incomplete three-block native controls: '+marker)
+            if 'X86_REGION_PROMOTION_SOURCE_CASES,6\n' not in run['output']:
+                raise ValueError('Missing cold-to-hot region promotion source controls')
             if 'X86_THREE_SOURCE_CASES,3546\n' not in run['output']:
                 raise ValueError('incomplete independent three-block source/gas/pricing controls')
         rows.append(dict(name=name, build=build, run=run))
