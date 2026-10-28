@@ -77,12 +77,12 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memory)
 
-# The production parser owns flag spelling, defaults, duplicates and malformed-value rejection.
+# The production canonical option parser owns spelling/defaults; this test workload has no product command.
 var arguments: seq[string] = @[]
 for index in 1..paramCount(): arguments.add(paramStr(index))
 var selected = default(Options)
 var diagnostic = ""
-assert parseOptions(arguments, selected, diagnostic), diagnostic
+assert parseCanonicalOptions(arguments, selected, diagnostic), diagnostic
 assert selected.pvmBackend in [PvmBackend.Jit, PvmBackend.PolkaInterpreted], "unsupported DOOM comparison backend"
 let requestedCalls = getEnv("RAGNAROK_DOOM_BACKEND_CALLS")
 assert requestedCalls in ["1", "2"]
