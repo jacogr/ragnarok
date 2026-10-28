@@ -97,6 +97,7 @@ type
     when defined(pvmArm64Jit):
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
+      armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
 
 
 
@@ -1345,6 +1346,15 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
           break
       assert found
 
+when defined(pvmArm64Jit):
+  proc flatArmReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+    ## Private region storage never resizes in place; a replacement frame rebuilds every borrowed descriptor before use.
+    result = [first, 0'u64, 0'u64]
+    if bytes.len >= 8:
+      # Positive extent and owned storage jointly prove the native scalar's complete readable allocation.
+      result[1] = uint64(bytes.len-7)
+      result[2] = cast[uint64](addr bytes[0])
+
 proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo,
     memory: Memory): FlatFrame =
   ## Own checked private region copies without borrowing caller byte storage; arbitrary fragmented layouts retain a genuine slow preflight owner.
@@ -1421,6 +1431,11 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
       result.stackBase = region.first
       result.stack = move(region.bytes)
     else: result.extra.add(region)
+  when defined(pvmArm64Jit):
+    # Only this frame owns these byte allocations; ordinary stores/host deltas mutate bytes without reallocating them.
+    result.armMemory[0] = flatArmReadRegion(result.stackBase, result.stack)
+    result.armMemory[1] = flatArmReadRegion(result.rwBase, result.rw)
+    result.armMemory[2] = flatArmReadRegion(result.roBase, result.ro)
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -1713,6 +1728,48 @@ when defined(pvmArm64Jit):
     if jit == nil: default(array[2, uint64])
     else: armRegionStatistics(jit)
 
+  proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
+    ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.
+    if f.barrier == flatStop:
+      block:
+        # End all descriptor/register borrows before a guard failure invokes the full mutable checked worker.
+        let jit {.cursor.} = f.armJit
+        assert jit != nil
+        if jit != nil:
+          let destination = callArmMemory(jit, offset, f.info.registers, f.armMemory)
+          if destination != flatStop: return destination
+    let original = f.armOriginal[int(offset)]
+    assert original != nil
+    if original != nil: return original(f, offset)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
+    ## Admit only a first unsigned indirect word load with at least three pure suffix operations, preserving every source coordinate.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return offset
+    var native = default(ArmBlock)
+    var ending = offset+1
+    var count = 1'u32
+    while int(ending) < f.sites.len and count < 64:
+      # Duplicate header sites, branches and all further memory/host/error boundaries stop the arithmetic suffix.
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
+      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      inc ending
+      inc count
+    if count < 4:
+      refuseArmEntry(jit, offset)
+      return offset
+    let args = f.arguments[int(offset)]
+    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending)
+    if not publishArmEntry(jit, offset, ending, count, words): return offset
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(offset)] = f.handlers[int(offset)]
+    f.handlers[int(offset)] = flatArmMemory
+    ending
+
   proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
     ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
     if f.armJit == nil: f.armJit = newArmJit()
@@ -1720,6 +1777,8 @@ when defined(pvmArm64Jit):
     if jit == nil: return offset
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
     if entry != 0: return offset
+    if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
+    if f.plan.facts[int(f.sites[int(offset)])].opcode == 130: return flatArmCompileMemory(f, offset)
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32

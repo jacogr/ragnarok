@@ -252,6 +252,59 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for word in fragment.terminal: result.add(word)
 
+proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
+    displacement, ending: uint32): seq[uint32] =
+  ## A first unsigned indirect word load guards fresh borrowed regions before any guest register is published.
+  assert fragment.terminal.len == 0
+  let destination = armWrite(fragment, slots.aIndex)
+  let arithmetic = armInstructions(fragment)
+  var leading = 0
+  for slot in 0..<13:
+    # Preserve the arithmetic live-in loads; the guarded memory word replaces its destination before suffix arithmetic.
+    if (fragment.reads and (1'u32 shl slot)) != 0: inc leading
+  result = @[]
+  for index in 0..<leading: result.add(arithmetic[index])
+  result.add(0xb9400003'u32 or (uint32(slots.bIndex) shl 11)) # LDR Waddress,[Xregisters,#slot*8].
+  result.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+  result.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+  result.add(0x0b020063'u32) # ADD Waddress,Waddress,Wdisplacement implements genuine modulo-2^32 addressing.
+  result.add(0xf140407f'u32) # CMP Xaddress,#65536 rejects the protected prefix.
+  var refused: seq[int] = @[result.len]
+  result.add(0x54000003'u32) # LO returns untouched to canonical memory preflight.
+  result.add(0x12800102'u32) # MOV Wlimit,#0xfffffff7, matching the existing conservative fast-load bound.
+  result.add(0xeb02007f'u32) # CMP Xaddress,Xlimit.
+  refused.add(result.len)
+  result.add(0x54000008'u32) # HI returns untouched for top-address scalar handling.
+  var accepted: seq[int] = @[]
+  for region in 0..<3:
+    # Unsigned subtraction rejects addresses below a region; offset < length-7 proves the complete eight-byte extent.
+    result.add(0xa9404422'u32 or (uint32(region*3) shl 15)) # LDP Xbase,Xextent,[Xcontext,#region*24].
+    result.add(0xcb020062'u32) # SUB Xoffset,Xaddress,Xbase.
+    result.add(0xeb11005f'u32) # CMP Xoffset,Xextent.
+    result.add(0x54000082'u32) # HS skips this region without reading its pointer.
+    result.add(0xf9400031'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer,[Xcontext,#region*24+16].
+    result.add(0xf8626a20'u32 or destination) # LDR Xdestination,[Xpointer,Xoffset], including unaligned words.
+    accepted.add(result.len)
+    result.add(0x14000000'u32)
+  let missing = result.len
+  result.add(0x14000000'u32) # No fast region admitted: canonical handling owns faults and fragmented accesses.
+  let body = result.len
+  for index in leading..<arithmetic.len: result.add(arithmetic[index])
+  result.add(0x52800000'u32 or ((ending and 65535) shl 5))
+  result.add(0x72a00000'u32 or ((ending shr 16) shl 5))
+  result.add(0xd65f03c0'u32) # Successful publication returns the exact original source successor.
+  let failure = result.len
+  result.add(0x12800000'u32) # MOV W0,#0xffffffff; the arena appends RET, with guest registers untouched.
+  assert result.len < 1024
+  for index in refused:
+    # Every forward displacement is bounded by the same sub-1024-word publication contract.
+    assert index >= 0 and index < failure
+    result[index] = result[index] or (uint32(failure-index) shl 5)
+  result[missing] = 0x14000000'u32 or uint32(failure-missing)
+  for index in accepted:
+    assert index >= 0 and index < body
+    result[index] = 0x14000000'u32 or uint32(body-index)
+
 proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
   ## Zero is unexamined, one refused, and code offsets are stored plus two; maps have a hard local ceiling.
   if jit.unavailable or extent > 262144'u32: return 1
@@ -322,6 +375,17 @@ proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): ui
   inc jit.calls
   jit.operations+=uint64(entry.operations)
   entry.ending
+
+proc callArmMemory*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]]): uint32 =
+  ## The code borrows only this frame's descriptors; refusal publishes no guest mutation and charges no lowered operations.
+  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  let entry = jit.entries[int(offset)]
+  assert entry.code >= 2
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr regions)
+  assert result == high(uint32) or result == entry.ending
+  inc jit.calls
+  if result != high(uint32): jit.operations+=uint64(entry.operations)
 
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
