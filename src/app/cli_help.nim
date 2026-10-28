@@ -26,6 +26,7 @@ func visible(spec: OptionSpec, topic: string): bool =
   ## Hide unrelated service families from offline/conformance commands while retaining exact parser scope.
   if spec.commands.len > 0: return topic.len == 0 or spec.applies(topic)
   if topic.len == 0: return true
+  if spec.group == OptionGroup.PVM and spec.name != "--pvm-backend": return false
   if topic in ["fuzz", "serve-fuzz", "serve-fuzz-preset"]:
     return spec.name == "--log-level"
   if topic.startsWith("tiny-devnet") or topic == "diagnostics": return spec.name == "--log-level"
@@ -42,6 +43,8 @@ proc commandHelp*(topic = ""): string =
   if topic.len > 0 and topic notin ["tiny-devnet", "diagnostics"] and commandIndex(topic) < 0: return ""
   result = "Usage: ragnarok " & (if topic.len == 0: "COMMAND [OPTIONS]" else: topic &
       " [OPTIONS]") & "\n"
+  if topic.len == 0:
+    result.add("       ragnarok --pvm-code FILE [--pvm-entry NAME] [--pvm-backend MODE] [OPTIONS]\n")
   if topic.len == 0 or topic == "tiny-devnet":
     result.add("\nCommands:\n")
     for command in CommandSpecs:
