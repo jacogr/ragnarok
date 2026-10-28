@@ -201,3 +201,24 @@ The existing CI-only native qualifier additionally moves a genuinely published
 arena through a consuming call, observes its cleared source, executes the retained
 entry and retires the destination, repeating 1,000 times. Its duplicate twin must
 fail with the exact arena ownership-lowering diagnostic. Qualification is pending.
+
+## Conditional/block-entry trial (qualification pending)
+
+This dependent increment targets the measured checked-entry cost. It independently emits all
+sixteen immediate/register conditional forms as full-width CMP and scalar CMOV returns. An
+arithmetic leaf can promote only when its exact original conditional worker already certifies
+two valid cached source destinations. A failed promotion preserves the old arithmetic entry.
+Append-only storage, coordinate/byte/publication caps and exclusive code-only ownership remain
+unchanged. No native memory access, host callback, unchecked target or connected loop is added.
+
+An exact ordinary header may select a complete pure native block only when its sealed source
+extent ends at that cached conditional. Full gas and source quotas are checked before debit;
+resumed, partial, zero-budget and insufficient-gas cases use canonical reservation and original
+source handlers. Observable exits still materialize canonical PCs. Comparison leaves retain no
+invocation state and return only positive scalar stream offsets. Branch/header counters must
+prove the path executed. Production defaults remain unchanged during qualification.
+
+Tests add1,296direct conditional cases,540reused loop-prefix/gas/paid-state cases, typed return
+storage controls, and preserve all existing scalar/literal/opcode/memory/host/source/ownership
+checks. Qualification and same-runner paired timings against the accepted foundation are pending;
+these are test plans, not passing native evidence. All native work remains on CI.
