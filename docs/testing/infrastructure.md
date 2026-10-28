@@ -396,8 +396,8 @@ full CI and never edits source files.
 
 ## Native PVM comparison runners
 
-`Perf / PVM Comparison` runs independently on native Linux x86-64 (`ubuntu-24.04`) and
-Linux ARM64 (`ubuntu-24.04-arm`). It retains the existing master, explicit Perf/Full and
+`Perf / PVM Comparison` runs independently on native Linux x86-64 (`ubuntu-26.04`) and
+Linux ARM64 (`ubuntu-26.04-arm`). It retains the existing master, explicit Perf/Full and
 manual comparison triggers; ordinary PR updates still run the lightweight Smoke check.
 The Unit matrix is unchanged.
 

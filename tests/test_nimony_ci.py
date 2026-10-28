@@ -243,7 +243,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text=(ROOT/'.github/workflows/ci.yml').read_text()
         rows=selected_families(text,'pvm-comparison',event_context())
         self.assertEqual([(r['group'],r['os']) for r in rows],
-                         [('arm64','ubuntu-24.04-arm'),('x86_64','ubuntu-24.04')])
+                         [('arm64','ubuntu-26.04-arm'),('x86_64','ubuntu-26.04')])
         for row,target,other in ((rows[0],'bench-pvm-arm64-applications','bench-pvm-interpreter'),
                                  (rows[1],'bench-pvm-interpreter','bench-pvm-arm64-applications')):
             # Every architecture uses its own maintained timing driver, after bounded qualification.
