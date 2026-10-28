@@ -723,15 +723,22 @@ jobs:
   # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
   pvm-comparison:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / PVM Comparison
+    name: Perf / PVM Comparison (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        family: ${{ fromJSON('[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
+    runs-on: ${{ matrix.family.os }}
     env:
+      PVM_CI_SYSTEM: Linux
+      PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
     steps:
       - *checkout
       - *python
       - name: Resolve current master and optional prepared baseline
+        if: ${{ matrix.family.group == 'x86_64' }}
         run: |
           git fetch --no-tags origin master:refs/remotes/origin/master
           python3 - <<'PYBASE'
@@ -746,25 +753,38 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
-      - name: Compare complete states on one runner
+      - name: Qualify PVM on the native Linux architecture
+        run: make check-pvm-native
+      - name: Compare checked interpreters on Linux x86-64
+        if: ${{ matrix.family.group == 'x86_64' }}
         run: make bench-pvm-interpreter
+      - name: Compare public ARM64 JIT and checked interpreters
+        if: ${{ matrix.family.group == 'arm64' }}
+        run: make bench-pvm-arm64-applications
       - name: Show complete comparison
         if: always()
         run: |
-          if test -f build/tests/pvm-interpreter-linux/summary.md; then
-            cat build/tests/pvm-interpreter-linux/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+          for summary in build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
+            if test -f "$summary"; then
+              cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Retain exact-source timing and refusal evidence
         if: always()
         uses: *upload-artifact
         with:
-          name: pvm-interpreter-linux-${{ github.run_attempt }}
+          name: pvm-comparison-${{ matrix.family.group }}-${{ github.run_attempt }}
           retention-days: 30
           if-no-files-found: ignore
           path: |
             build/tests/pvm-interpreter-linux/*.json
             build/tests/pvm-interpreter-linux/*.log
             build/tests/pvm-interpreter-linux/summary.md
+            build/tests/pvm-native/*.json
+            build/tests/pvm-native/*.log
+            build/tests/pvm-arm64-applications/*.json
+            build/tests/pvm-arm64-applications/*.log
+            build/tests/pvm-arm64-applications/summary.md
             build/tests/pvm-doom/*.json
             build/tests/pvm-doom/*.log
             build/ci/*.log

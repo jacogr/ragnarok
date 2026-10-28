@@ -61,33 +61,44 @@ def parse(output, guest, native, control=False):
     return dict(execution=parse_candidate('\n'.join(lines)+'\n',guest), native=receipt, control=control_receipt)
 
 
-def qualify(checks, compiler):
-    """Share identical native, refusal, opcode, host and exclusive-lifetime gates across supported ARM64 hosts."""
+def qualify(checks, compiler, *, native=True):
+    """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
     rows = []
     memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
         ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',checks.folder/'memory-check'],'memory-build')
     if memory['exit_code']: raise RuntimeError(memory['output'])
     memory = checks.command([checks.folder/'memory-check'],'memory-run')
-    if memory['exit_code'] or memory['output'] != 'ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n':
+    expected = ('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if native
+                else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
+    if memory['exit_code'] or memory['output'] != expected:
         raise ValueError('Executable storage controls failed')
     rows.append(memory)
     for name,source,defines in (
-        ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit']),
+        ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit'] if native else []),
         ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
-        ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit']),
-        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'])):
+        ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
+        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        checked['build'] = {key:value for key,value in built.items() if key != 'output'}
+        if name == 'witness-refused' or (native and name == 'witness'):
+            # The existing independent witness must prove real publication/calls or an exact zero-count refusal.
+            receipts = [line for line in checked['output'].splitlines() if line.startswith('TRANSFER_STATS,')]
+            expected_counts = [1, 2] if name == 'witness' else [0, 0]
+            if receipts != ['TRANSFER_STATS,'+','.join(map(str, expected_counts))]:
+                raise ValueError('Missing native publication/execution witness: '+name)
+            checked['native_publications'], checked['native_calls'] = expected_counts
         rows.append(checked)
     for owner, extra in (('stream', []), ('frame', ['pvmArm64JitFrameOwner'])):
         for moving in (True, False):
             # Lowering must reject the intended duplicate, while an explicit move has an executable positive control.
             name = 'ownership-'+owner+('-move' if moving else '-copy')
             built, binary = checks.build(compiler, ROOT/'tests/performance/pvm_arm64_jit_ownership.nim', name,
-                defines=['pvmArm64Jit', *extra, *(['pvmArm64JitMoveOwner'] if moving else [])],
+                defines=['pvmArm64Jit', *extra, *(['pvmArm64JitRefuse'] if not native else []),
+                         *(['pvmArm64JitMoveOwner'] if moving else [])],
                 cflags=['-I'+str(ROOT/'native/pvm_jit')])
             if moving:
                 if built['exit_code']: raise RuntimeError(built['output'][-2000:])

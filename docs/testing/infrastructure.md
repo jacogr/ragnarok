@@ -392,3 +392,31 @@ Compiler/formatter setup is separate from native C/linker package provisioning; 
 provisions a C compiler only if the host lacks one. New PR updates supersede only older smoke
 runs, leaving labeled heavy CI alone. Formatting checks exactly the same whole source set as
 full CI and never edits source files.
+
+
+## Native PVM comparison runners
+
+`Perf / PVM Comparison` runs independently on native Linux x86-64 (`ubuntu-26.04`) and
+Linux ARM64 (`ubuntu-26.04-arm`). It retains the existing master, explicit Perf/Full and
+manual comparison triggers; ordinary PR updates still run the lightweight Smoke check.
+The Unit matrix is unchanged.
+
+Each comparison first runs `make check-pvm-native`: the maintained executable-storage,
+whole-state, opcode, host/region and exclusive-owner gates. ARM64 requires actual native
+publication and execution, plus forced-refusal controls. Linux x86-64 qualifies the checked
+interpreter and unavailable ARM64 fallback; it does not claim an x86 JIT. Process uname,
+declared Actions architecture and the existing pinned Nimony archive must agree before
+qualification. Failure leaves incomplete evidence and fails the job.
+
+Linux x86-64 uses `make bench-pvm-interpreter`; ARM64 uses the maintained
+`make bench-pvm-arm64-applications` cohort. Both retain pinned PolkaVM inputs, complete-state
+checks, both process orders and distinct constructor/cold/reused records. The ARM64 cohort
+includes public JIT-on/off calls, retained-core diagnostics, Pinky, sieve (100k/10m),
+minimal, fill and DOOM initialization/gameplay. Its DOOM reference evidence separates raw
+calls from restore/call/teardown lifecycle costs. Optional x86 prepared-baseline input
+continues to apply only to that driver; the ARM64 driver defaults to the current head as
+its same-source control. No cross-architecture or cross-CPU timing ratio is calculated.
+
+Architecture-specific artifacts retain source/compiler/input identities, native counters,
+logs and summaries on failure as well as success. Native timing results are evidence for
+that runner only; existing Docker ARM64 correctness receipts are not native timing results.

@@ -238,6 +238,25 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}',summary)
         self.assertIn('test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success',summary)
 
+    def test_pvm_native_linux_architectures(self):
+        """Both native hosts retain correctness, distinct timing cohorts and unique failure artifacts."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        rows=selected_families(text,'pvm-comparison',event_context())
+        self.assertEqual([(r['group'],r['os']) for r in rows],
+                         [('arm64','ubuntu-26.04-arm'),('x86_64','ubuntu-26.04')])
+        for row,target,other in ((rows[0],'bench-pvm-arm64-applications','bench-pvm-interpreter'),
+                                 (rows[1],'bench-pvm-interpreter','bench-pvm-arm64-applications')):
+            # Every architecture uses its own maintained timing driver, after bounded qualification.
+            perf=family_section(text,'pvm-comparison',row['group'])
+            self.assertIn('run: make check-pvm-native',perf)
+            self.assertIn('run: make '+target,perf)
+            self.assertNotIn('run: make '+other,perf)
+            self.assertIn('pvm-comparison-${{ matrix.family.group }}-',perf)
+            self.assertIn('build/tests/pvm-arm64-applications/summary.md',perf)
+            self.assertIn('build/tests/pvm-native/*.json',perf)
+        self.assertEqual(selected_families(text,'pvm-comparison',event_context('pull_request')),[])
+        self.assertIn('check-pvm-native: toolchain check-inventory',(ROOT/'Makefile').read_text())
+
     def test_workflow_aliases_have_prior_anchors(self):
         """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
