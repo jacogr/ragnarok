@@ -54,20 +54,12 @@ application suite's 1,000-cycle ARC check ends at its starting occupied-memory c
 `make format-check`, edited-document local links and `git diff --check` passed. Exact-head
 Linux CI remains separate; these results do not establish archive completion or whole-block parity.
 
-## Remaining implementation layers
+## Review stack
 
-1. Persist exact accepted block bodies and posterior state identity in canonical publication;
-   preserve explicit unavailability for old header-only seeds and databases.
-2. Add versioned disk historical indexes and scalable retained-root metadata, with bounded
-   lookup/cache memory independently of archive length. A larger rolling view is not an archive.
-3. Integrate retention selection, pruning, shared-node reclamation, pinned readers and recovery;
-   record policy transitions and oldest available history durably.
-4. Add CLI `--retain-blocks N`, `--archive` and `-1` alias, explicit conflict handling and
-   historical block/state queries. Archive preserves future accepted history after a pruned
-   database switches policy; restoring older history requires explicit backfill/replay.
-
-Each implementation layer includes its own failure tests and operator documentation. Archive
-completion requires the full acceptance criteria in the issue, not just a larger metadata count.
+The implementation is divided into rolling-policy/format support, exact accepted bytes, historical
+indexes/records, durable selection/reclamation, and startup/CLI/query integration. Each layer includes
+its supporting tests and documentation. The operator contract is [historical retention](../docs/block-retention.md).
+Earlier increment evidence below remains scoped to the tree and interfaces tested at that stage.
 
 ## Accepted block bytes
 
@@ -204,3 +196,37 @@ staging and selection. Cleanup interruption is exercised partway through the obs
 then retried through a durable no-work acknowledgement. The current worker exercises indexed
 journal/paged publication, replay and joined shutdown. These remain scoped macOS ARM64 results;
 full CI and final CLI integration are distinct acceptance evidence.
+
+## Startup controls and historical queries
+
+Full Services applies an explicit validated policy before RPC and worker startup, preserving the
+exact complete-state policy and current owner. Memory selects an immutable historical index and a
+small live full-state window. Disk atomically configures the fixed persisted cursor; absence of an
+override preserves an existing indexed policy. Legacy/default inline databases keep their eight-entry
+behavior until explicitly configured. Light mode rejects full-history selectors.
+
+The `history` command opens only an existing explicitly configured full disk database. It selects an
+exact header hash or local positive ordinal, returns exact body/header hex and complete state/root
+identity, and optionally exports the existing complete checkpoint format. Old missing bodies are
+explicitly null. It never starts listeners, imports trust, migrates, changes retention or creates a
+missing database. The Services library shares these exact reads; leased graph access returns Busy
+before touching canonical aliases. Disk IO remains startup/offline/excluded-owner work rather than
+synchronous network callback work. Archived disk lookup is intentionally separate from the current
+bounded public RPC surface.
+
+Final integration verification on the pinned checked release/ARC macOS ARM64 profile passed
+`retention_options` and `retention_services`, plus existing `app_options`, `app_cli`,
+`disk_storage_options`, `light_runtime_options`, `managed_services_startup`,
+`managed_services_migration`, `paged_services_startup` and `disk_services_boundaries`.
+The genuine signed execution fixture produces identical roots and exact complete block bytes
+under default/archive/one-block/300-block policies across all full backends. Offline output is
+checked byte-for-byte using independent hex formatting, and exported checkpoints are decoded
+against the exact selected header/root. Stored policies survive restart without flags; missing
+bodies, pruned ordinals, graph-lease refusal and missing-database refusal remain explicit.
+
+The production `make` build and executable history-help/conflicting-selector/missing-data checks
+passed. The Options privacy fixture requires the exact private-field diagnostic with a successful
+frontend control; Services copy rejection requires the actual ARC lowering diagnostic. Inventory,
+pinned formatting and whitespace checks passed. The CLI lifecycle's 1,000-cycle ARC witness
+returned to its starting occupied-memory count. Exact-head Linux smoke remains independently
+reported for each published stack layer; these scoped local checks do not claim the full CI matrix.

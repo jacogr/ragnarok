@@ -9,6 +9,7 @@ import ../lib/logging
 
 import std/[strutils, assertions]
 import ../codec/bounded
+import ../storage/history_index
 
 import ./[cli_catalog, cli_commands, cli_defaults]
 export cli_defaults
@@ -30,12 +31,32 @@ type Options* = object ## Validated service controls; command handlers validate 
   pvmSelection: PvmBackend
   backend: StateStorage
   layout: StateDiskLayout
+  historyExplicit: bool
+  history: HistoryPolicy
+  historyHash, historyOutput: string
+  historyNumber: HistoryOrdinal
   pagedResume: bool
   compactBytes: ByteLimit
   database, migrateFrom: string
   rpcNumber, mcpNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
+
+func retentionSpecified*(options: Options): bool =
+  ## Only an explicit full-state startup request can override a persisted history policy.
+  options.parsed and options.historyExplicit
+func retentionPolicy*(options: Options): HistoryPolicy =
+  ## Failed/default options grant no configured historical policy.
+  if options.parsed: options.history else: default(HistoryPolicy)
+func historicalHash*(options: Options): string =
+  ## An empty hash means the validated offline query selected a local ordinal.
+  if options.parsed: options.historyHash else: ""
+func historicalOrdinal*(options: Options): HistoryOrdinal =
+  ## Zero means no ordinal selector; successful offline queries always select exactly one addressing domain.
+  if options.parsed: options.historyNumber else: HistoryOrdinal(0)
+func historicalCheckpointPath*(options: Options): string =
+  ## Only an explicit offline output path authorizes checkpoint publication.
+  if options.parsed: options.historyOutput else: ""
 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
@@ -229,6 +250,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
+  candidate.history = boundedHistoryPolicy(DefaultRetainedBlocks).value
   var first = arguments.len
   for i in 0..<arguments.len: # Only reserved service controls begin the trailing option region.
     if optionIndex(arguments[i]) >= 0:
@@ -256,6 +278,12 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       of "--with-management": candidate.management = true
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
+      of "--archive":
+        if candidate.historyExplicit:
+          diagnostic = "Choose either --archive or --retain-blocks, once"
+          return false # Alternate spellings cannot silently override an earlier selection.
+        candidate.historyExplicit = true
+        candidate.history = archiveHistoryPolicy()
       of "--state-paged-resume": candidate.pagedResume = true
       of "--download-local-ancestors": candidate.localAncestors = true
       of "--download-update-logical-source": candidate.updateLogicalSource = true
@@ -287,6 +315,30 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         else:
           if amount > 1000000000'u64: return false
           candidate.codeSteps = amount
+      of "--retain-blocks":
+        if candidate.historyExplicit:
+          diagnostic = "Choose either --archive or --retain-blocks, once"
+          return false
+        candidate.historyExplicit = true
+        if value == "-1": candidate.history = archiveHistoryPolicy()
+        else:
+          var number = 0'u64
+          if not unsignedValue(value, number) or number == 0: return false
+          candidate.history = boundedHistoryPolicy(number).value
+      of "--history-block":
+        if value.len != 64: return false
+        for character in value:
+          if character notin {'0'..'9', 'a'..'f'}: return false # One exact hash spelling is admitted before any database IO.
+        candidate.historyHash = value
+      of "--history-ordinal":
+        var number = 0'u64
+        if not unsignedValue(value, number) or number == 0: return false
+        candidate.historyNumber = HistoryOrdinal(number)
+      of "--history-checkpoint":
+        if value.len > 4096: return false
+        for character in value:
+          if ord(character) < 32 or ord(character) == 127: return false
+        candidate.historyOutput = value
       of "--log-level":
         if not parseLogPolicy(value, candidate.logging): return false
       of "--telemetry-endpoint": candidate.endpoint = value
@@ -380,6 +432,9 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       i += 2
   diagnostic = "Invalid option combination; see ragnarok " & (if candidate.positional.len >
       0: candidate.positional[0] else: "") & " --help"
+  if candidate.historyExplicit and (not candidate.state or candidate.mode == NodeMode.Light):
+    diagnostic = "Historical retention requires --with-state in full mode"
+    return false # Partial state never acquires a complete historical-state contract.
   let hasWrites = "--state-writes" in seen
   let hasBytes = "--state-write-bytes" in seen
   if candidate.state:
@@ -454,8 +509,25 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
       candidate.management or candidate.mcp:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
-        "download", "download-current", "check-traces"]:
+        "download", "download-current", "check-traces", "history"]:
       return false # Explicit state/service activation belongs only to supported command shapes.
+  let historyCommand = candidate.positional.len == 1 and candidate.positional[0] == "history"
+  let historyControls = candidate.historyHash.len > 0 or uint64(candidate.historyNumber) > 0 or
+      candidate.historyOutput.len > 0
+  if historyCommand:
+    if not candidate.state or candidate.mode != NodeMode.Full or candidate.backend !=
+        StateStorage.Disk:
+      return false # The offline command queries an existing complete-state database under its exclusive lease.
+    if (candidate.historyHash.len > 0) == (uint64(candidate.historyNumber) > 0): return false
+    if candidate.historyOutput.len > 0 and candidate.historyOutput ==
+        candidate.database: return false
+    for control in seen:
+      if control notin ["--log-level", "--chain", "--with-state", "--state-storage", "--state-db",
+          "--state-layout", "--state-writes", "--state-write-bytes", "--history-block",
+          "--history-ordinal", "--history-checkpoint"]:
+        return false # Queries cannot start listeners, import/create authority, migrate or change retention.
+  elif historyControls:
+    return false # Query selectors/output never become ignored controls on another command.
   let traceCommand = candidate.positional.len > 0 and candidate.positional[0] == "check-traces"
   if "--trace-observations" in seen and not traceCommand:
     return false # External observations belong only to explicit offline comparison, never another command's ignored controls.
