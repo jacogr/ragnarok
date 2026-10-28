@@ -1843,11 +1843,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.armPreviousHeader = offset
     f.armPreviousNext = destination
     f.armPreviousValid = true
-    if closed or destination == offset:
+    if closed:
       var connected = destination
-      let first = if closed: previous else: offset
-      let second = if closed: offset else: flatStop
-      if flatArmCycle(f, first, second, flatStop, connected): return connected
+      if flatArmCycle(f, previous, offset, flatStop, connected): return connected
     if armRegionStatus(jit) != 0:
       # Failed publication can mark the sole region refused; retain its original checked continuation without retrying.
       if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
@@ -1981,7 +1979,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     destination
 
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool =
-    ## One source-owned region follows an actual closed one/two/three-block round; all refusal paths keep checked dispatch.
+    ## One source-owned region follows an actual closed two/three-block round; all refusal paths keep checked dispatch.
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
     let jit = f.armJit
     if jit == nil: return false
@@ -1994,7 +1992,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return true
     if f.handlers.len > 262144: return false
     discard armEntry(jit, first, uint32(f.handlers.len))
-    let active: range[1..3] = if middle == flatStop: 1 elif last == flatStop: 2 else: 3
+    let active: range[2..3] = if last == flatStop: 2 else: 3
     let headers = [first, middle, last]
     # Include successful regional body emission in the diagnostic bracket; full cold-call clocks already include it.
     let before = armClock()

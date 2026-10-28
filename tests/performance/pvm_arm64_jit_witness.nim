@@ -1538,7 +1538,7 @@ when defined(pvmArm64Jit):
 echo "ARM_MAPPING_REENTRY,1"
 
 
-# Ordinary headers admit resident self-loops; an existing specialized shape deliberately retains its accepted interpreter.
+# Rejected single-block admission must preserve both ordinary and specialized checked loop behavior.
 var selfRegionCases = 0
 for specialized in [false, true]:
   let source = if specialized:
@@ -1550,17 +1550,11 @@ for specialized in [false, true]:
   warm.registers[1] = RegisterValue(32)
   var frame = newFlatFrame(plan, [], warm)
   for visit in 0..<3:
-    # The source-step oracle checks cold discovery and actual reused execution without using the region's own results.
+    # The source-step oracle checks cold and reused fallback execution without using the region's own results.
     verifyControl(frame, source, warm, 1000)
   when defined(pvmArm64Jit):
-    let observed = flatArmRegionStatistics(frame)
-    when defined(pvmArm64JitRefuse): assert observed == default(array[2, uint64])
-    else:
-      if specialized:
-        # Exact ordinary-header identity is required: do not silently broaden admission to a different optimized worker.
-        assert observed == default(array[2, uint64])
-      else:
-        assert observed[0] > 0 and observed[1] > observed[0]
+    # The measured self-loop admission was rejected: neither one-block shape may steal the accepted multi-block region slot.
+    assert flatArmRegionStatistics(frame) == default(array[2, uint64])
   for paid in [false, true]:
     for initial in [0'u64, 30, 31, 32]:
       for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:

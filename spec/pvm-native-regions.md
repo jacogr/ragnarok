@@ -61,3 +61,13 @@ The maintainer approved expressing existing control-count minima in completed-bl
 CI at581c5b57 showed3 branch entries /2 header entries including one region completing17 blocks.
 Replacing one aggregate entry by those17 completed blocks preserves the original4/3 thresholds;
 all independent CPU/gas/PC/host/fault/source checks remain unchanged.
+
+
+## ARM measured rejection
+
+The isolated self-loop runtime is rejected after full qualified Linux measurements: DOOM
+initialization regresses64–65% and loses almost all of the useful large-region native coverage.
+[Exact-head tables and evidence](pvm-arm-regions-results.md) retain the trial and failure analysis.
+ARM runtime is restored byte-for-byte from the accepted immediate parent. The useful paired
+comparison support and full-state one-block refusal witnesses remain. No assertion or timeout
+was weakened to keep this runtime. Both PRs remain draft in independent stack1786.
