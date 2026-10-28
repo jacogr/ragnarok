@@ -95,11 +95,12 @@ proc acceptMessage(route: var AnnouncementRoute): bool =
     let decoded = announced.value
     let info = decoded.header.headerInfo
     if info.error != HeaderError.None: return false
+    let parent = AnnouncedHeaderHash(array[32, byte](info.value.unsigned.parent))
+    let announcedHash = decoded.head.hash
     var leaves: seq[AnnouncedBlock] = @[]
     for leaf in route.remote.leaves:
       # Replacing an announced parent with its child follows UP0's leaf semantics, not fork choice.
-      if leaf.hash != AnnouncedHeaderHash(array[32, byte](info.value.unsigned.parent)) and
-          leaf.hash !=decoded.head.hash:
+      if leaf.hash != parent and leaf.hash != announcedHash:
         leaves.add(leaf)
     if leaves.len >= int(uint64(route.limits.leaves)): return false
     leaves.add(decoded.head)

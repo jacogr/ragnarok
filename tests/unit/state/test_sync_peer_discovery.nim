@@ -3,9 +3,13 @@
 
 ## Real pinned TLS peers exchange independently framed UP0 bytes; retired sources cannot retain targets.
 import std/[assertions, envvars, monotimes, times, syncio]
+import std/posix/posix
 import ../../../src/quic/[announcements, announcement_stream, current_block_download_peers,
-  transport, protocol]
-import ../../../src/app/download_schedule
+  current_block_download_session, current_block_download_stream, transport, protocol]
+import ../../../src/app/[download_schedule, services, options, current_block_input, current_block_download]
+import ../../../src/codec/report_owned
+import ../../support/[current_application_context, accumulation_current_chain_context,
+  accumulation_current_candidate_context]
 import ../../../src/codec/[bounded, header]
 
 type RawAnnouncer = object ## Stable test listener deliberately avoids the production UP0 stream route.
@@ -14,6 +18,10 @@ type RawAnnouncer = object ## Stable test listener deliberately avoids the produ
   input, output, expected: seq[byte]
   offset: int
   handshake: bool
+  ce: NativeStream
+  ceInput: seq[byte]
+  ceWritten: int
+  ceExpected: array[42, byte]
 proc `=copy`(destination: var RawAnnouncer, source: RawAnnouncer) {.error.}
   ## Listener callbacks cannot survive a copied or relocated owner.
 proc `=dup`(source: RawAnnouncer): RawAnnouncer {.error.}
@@ -24,6 +32,46 @@ proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, r
 proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Independent responder sends single-octet fragments and never treats an idle queue as FIN.
   let server = cast[ptr RawAnnouncer](user)
+  if event == 0 and server.stream != NativeStream(nil):
+    assert server.ce == NativeStream(nil), "one independent CE stream alongside UP0"
+    server.ce = stream
+    server.ceInput = @[]
+    server.ceWritten = 0
+    wantRead(stream, 1)
+    return
+  if stream == server.ce and stream != NativeStream(nil):
+    # This independently framed CE128 request shares the connection with the persistent UP0 stream.
+    case event
+    of 1:
+      var buffer = default(array[43, byte])
+      let count = streamRead(stream, addr buffer[0], csize_t(buffer.len))
+      if count == -2: return
+      assert count >= 0 and count <= int64(buffer.len), "bounded CE read"
+      assert server.ceInput.len + int(count) <= 42, "exact CE128 request extent"
+      for index in 0..<int(count): server.ceInput.add(buffer[index])
+      if count == 0:
+        assert server.ceInput.len == 42, "request FIN follows all CE128 bytes"
+        for index in 0..<42: assert server.ceInput[index] == server.ceExpected[index], "independent CE128 request bytes"
+        readDone(stream)
+        wantRead(stream, 0)
+        wantWrite(stream, 1)
+    of 2:
+      var empty = default(array[4, byte]) # E4 size zero frames an empty block-sequence message.
+      if server.ceWritten < 4:
+        let count = streamWrite(stream, addr empty[0], csize_t(4 - server.ceWritten))
+        if count == -2: return
+        assert count > 0 and count <= int64(4 - server.ceWritten), "bounded empty CE reply"
+        server.ceWritten += int(count)
+      if server.ceWritten == 4:
+        wantWrite(stream, 0)
+        streamFin(stream) # A real empty CE reply cannot imply synchronization or erase UP0 claims.
+    of 3:
+      server.ce = NativeStream(nil)
+    of 4:
+      wantRead(stream, 0)
+      wantWrite(stream, 0)
+    else: discard # No other callback can complete this independent CE request.
+    return
   case event
   of 0:
     assert server.stream == NativeStream(nil), "raw responder duplicate stream"
@@ -128,7 +176,28 @@ proc main() {.raises.} =
       AnnouncementError.InvalidStream
   assert not absentRoute.snapshot.available
 
+  let report = readFile(getEnv("RAGNAROK_STATE_REPORT"))
+  var reportBytes = newSeq[byte](report.len)
+  for index in 0..<report.len: reportBytes[index] = byte(report[index])
+  let context = currentChainFixture(decodeOwnedReport(reportBytes, 2).value, available = true)
+  var path = "sync-discovery-current-chain"
+  writeFile(path, context.currentApplicationText)
+  defer: discard posix.unlink(path.toCString())
+  var owner = default(Services)
+  defer: owner.close()
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
+  assert owner.start(options, "UP0 and CE128 coexistence")
+  var session = default(CurrentDownloadSession)
+  assert session.configure([DownloadPeerId(1)], DownloadScheduleLimits(peers: ElementLimit(1),
+    attempts: 1, retryDelay: DownloadRetryDelay(10)), DownloadScheduleTick(100)) ==
+        DownloadScheduleError.None
+  let admitted = session.begin(owner, [], CurrentBlockInputLimits(blockBytes: ByteLimit(100000)),
+    currentCandidateLimits(), DownloadScheduleTick(100))
+  assert admitted.error == CurrentDownloadSessionError.None
+  let attempt = admitted.value
   var server = default(RawAnnouncer)
+  server.ceExpected = session.request(attempt).value
   var peers = default(CurrentDownloadPeers)
   defer:
     peers.close()
@@ -142,6 +211,19 @@ proc main() {.raises.} =
         CurrentDownloadPeerError.None, "opening pinned discovery peer"
   let first = server.awaitView(peers, 1)
   assert first.value.leaves == @[far] and first.value.finalized == final, "exact independently framed leaf claims"
+  assert peers.requestStream(session, attempt, CurrentDownloadStreamLimits(readBytes: ByteLimit(73),
+    writeBytes: ByteLimit(3), timeout: CurrentDownloadTimeout(1000)), CurrentDownloadTick(100)) ==
+        CurrentDownloadPeerError.None
+  let ceStarted = getMonoTime()
+  while peers.busy or session.streamActive or session.stage == CurrentBlockDownloadStage.Receiving:
+    assert (getMonoTime() - ceStarted).inMilliseconds < 2000, "CE128 completes alongside persistent UP0"
+    server.tick(peers)
+  assert session.stage == CurrentBlockDownloadStage.Empty, "empty reply remains ordinary lack of current work"
+  assert peers.announcements(DownloadPeerId(1)).available
+  assert peers.announcements(DownloadPeerId(1)).value.sequence == 1
+  assert session.discardInput(attempt).error == CurrentDownloadSessionError.None
+  assert session.finish(attempt, DownloadAttemptOutcome.Empty, DownloadScheduleTick(200)).error ==
+      CurrentDownloadSessionError.None
   let generation = peers.incarnation(DownloadPeerId(1))
   assert generation > 0, "live stream provenance generation"
   var copied = first.value
