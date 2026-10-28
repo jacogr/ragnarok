@@ -22,7 +22,7 @@ proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer):
     importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
 
 type
-  ArmEntryRecord = object ## One scalar record binds a published code offset to its hot operation count and cold successor.
+  ArmEntryRecord = object ## Executable records bind code, operation count and successor; uncompiled headers may hold a bounded probe budget.
     code, operations, ending: uint32
   ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
@@ -265,6 +265,21 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
   if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
+
+proc armStartProbe*(jit: ArmJit, header: uint32) =
+  ## Only non-executable header records borrow the operation lane for eight cold discovery visits.
+  assert int(header) < jit.entries.len
+  assert jit.entries[int(header)].code < 2
+  jit.entries[int(header)].operations = 8
+
+proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
+  ## Sealing after the eighth complete visit removes observation from the steady native dispatch.
+  assert int(header) < jit.entries.len
+  assert jit.entries[int(header)].code < 2
+  let remaining = jit.entries[int(header)].operations
+  assert remaining > 0 and remaining <= 8
+  jit.entries[int(header)].operations = remaining-1
+  remaining == 1
 
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false): bool =

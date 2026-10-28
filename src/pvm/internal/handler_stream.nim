@@ -1488,17 +1488,28 @@ when defined(pvmArm64Jit):
     f.remaining-=uint64(args.y)
     # Retain the exact endpoint even for complete native blocks; observable exit/refund behavior has no new dependency.
     f.reservationEnd = f.sites[int(offset)]+args.y
-    var observe = false
     block:
-      # End the source-owned cache borrow before the shared helper receives the whole mutable invocation frame.
+      # The cache borrow ends before the whole invocation frame is passed to native execution.
       let jit {.cursor.} = f.armJit
       assert jit != nil
-      if jit != nil:
-        inc jit.headerCalls
-        observe = f.pricingKind == 0 and armRegionStatus(jit) == 0
-    let destination = flatArmRunNext[false](f, offset+1)
-    if not observe: return destination
-    # An actual adjacent A -> B -> A round is sufficient source evidence; no opcode or source-PC shape is hardcoded.
+      if jit != nil: inc jit.headerCalls
+    flatArmRunNext[false](f, offset+1)
+
+  proc flatArmProbeWhole(f: var FlatFrame, offset: uint32): uint32 =
+    ## At most eight complete visits per header discover actual two-block cycles; ordinary dispatch then has no probe.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if f.pricingKind != 0 or armRegionStatus(jit) != 0:
+      # A saved region fallback may still refer to this worker; never overwrite the region's active root handler.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
+      return flatArmWhole(f, offset)
+    let args = f.arguments[int(offset)]
+    let complete = f.barrier == flatStop and not f.info.blockCharged and
+        f.remaining >= uint64(args.y) and uint64(f.info.gas) >= args.x
+    let destination = flatArmWhole(f, offset)
+    if not complete: return destination
+    # Only genuinely completed adjacent headers establish a closed round; partial reservations do not consume probes.
     let previous = f.armPreviousHeader
     let closed = f.armPreviousValid and f.armPreviousNext == offset and
         destination == previous and previous != offset
@@ -1508,6 +1519,12 @@ when defined(pvmArm64Jit):
     if closed:
       var connected = destination
       if flatArmCycle(f, previous, offset, flatStop, connected): return connected
+    if armRegionStatus(jit) != 0:
+      # Failed publication can mark the sole region refused; retain its original checked continuation without retrying.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
+    elif armFinishProbe(jit, offset):
+      # Exhaustion permanently restores the existing hot worker, with no status or history test on subsequent visits.
+      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
     destination
 
   proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
@@ -1585,7 +1602,13 @@ when defined(pvmArm64Jit):
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
         f.armOriginal[int(header)] = plain
         assert f.arguments[int(header)].y > 0
-        f.handlers[int(header)] = flatArmWhole
+        if f.pricingKind == 0 and armRegionStatus(jit) == 0:
+          # Header coordinates already exist in the bounded source map; no extra table or per-iteration policy is needed.
+          armStartProbe(jit, header)
+          f.handlers[int(header)] = flatArmProbeWhole
+        else:
+          # A priced or already-connected owner keeps the established worker immediately.
+          f.handlers[int(header)] = flatArmWhole
     true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =

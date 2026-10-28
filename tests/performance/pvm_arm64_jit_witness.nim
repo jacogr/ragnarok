@@ -47,6 +47,14 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
 
 
 when defined(pvmArm64Jit):
+  let probeOwner = newArmJit()
+  assert armEntry(probeOwner, 0, 1) == 0
+  armStartProbe(probeOwner, 0)
+  for visit in 0..<8:
+    # Discovery expires at the exact bounded visit and never creates executable code or native calls itself.
+    assert armFinishProbe(probeOwner, 0) == (visit == 7)
+    assert armEntry(probeOwner, 0, 1) == 0
+  assert probeOwner.fragments == 0 and probeOwner.calls == 0
   var constantCases = 0
   var regionConstantCases = 0
   for destination in 0..<13:
