@@ -23,6 +23,7 @@ Read only guidance relevant to the task:
 | Architecture | `docs/design.md` and the owning `docs/design/<module>.md` |
 | Protocol behavior, domains or pin upgrades | `spec/AGENTS.md` and the feature contract |
 | Runtime/compiler, state, codec or crypto changes | Applicable nested `src/**/AGENTS.md` |
+| Suspected compiler/stdlib defects or workaround review | `docs/compiler-issues.md` and `spec/compiler-issues.md` |
 | C/Rust boundaries | Applicable nested `native/**/AGENTS.md` |
 | Tests or harness/registries | `tests/AGENTS.md` / `tools/AGENTS.md` as applicable |
 | PRs, branches or stacks | `docs/agent-workflow.md`; installed `gh-stack` skill for stacks |
