@@ -127,7 +127,7 @@ proc initializePagedDiskChain*(disk: var DiskStateStore, path: string, chain: St
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
 proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: JournalLimits): DiskChainResult[RepositoryGeneration] =
-  ## Exclusive creation provisions at most nine complete roots, then one atomic canonical context.
+  ## Exclusive creation provisions the configured rolling roots/finality, then one atomic canonical context.
   ## Intermediate bootstrap frames are forensic evidence, never a resumable canonical fallback.
   if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
   let current = owner.stateSnapshot
@@ -247,7 +247,7 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   if selected.error != FileError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.FileFailure,
         fileReason: selected.error)
-  let previous = encodeDiskHistory(owner, chain, generation.value, maximum)
+  let previous = encodeMatchingDiskHistory(owner, chain, generation.value, maximum, selected.value)
   if previous.error != DiskHistoryError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
         contextReason: previous.error)
@@ -487,14 +487,15 @@ proc prepareDiskMaintenance*(disk: DiskStateStore, owner: ApplicationChain,
   if usage.error != FileError.None:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
         fileReason: usage.error)
-  let context = encodeDiskHistory(owner, chain, usage.value.generation, limit)
-  if context.error != DiskHistoryError.None:
-    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.ContextFailure,
-        contextReason: context.error)
   let previous = disk.snapshotContext
   if previous.error != FileError.None:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
         fileReason: previous.error)
+  let context = encodeMatchingDiskHistory(owner, chain, usage.value.generation, limit,
+      previous.value)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
   if previous.value != context.value:
     return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.CanonicalMismatch)
   let sources = diskSources(owner)
@@ -551,14 +552,15 @@ proc migrateDiskChain*(source: DiskStateStore, destination: var DiskStateStore, 
   if generation.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
         fileReason: generation.fileError)
-  let context = encodeDiskHistory(owner, chain, generation.value, limits.contextBytes)
-  if context.error != DiskHistoryError.None:
-    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
-        contextReason: context.error)
   let previous = source.snapshotContext
   if previous.error != FileError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
         fileReason: previous.error)
+  let context = encodeMatchingDiskHistory(owner, chain, generation.value, limits.contextBytes,
+      previous.value)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
   if previous.value != context.value:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
   let captured = diskSources(owner)

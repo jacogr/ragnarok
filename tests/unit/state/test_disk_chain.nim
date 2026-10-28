@@ -5,7 +5,7 @@
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[disk_history_context, durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
-import ../../../src/app/[chain, disk_chain]
+import ../../../src/app/[chain, disk_chain, disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
 import ../../../src/storage/[file_repository, node_repository, node_records, record_codec, database_identity]
@@ -69,8 +69,13 @@ proc publicationWitness() {.raises.} =
     defer:
       rpc.close
       if disk.opened: discard disk.close # Native owners retire before all retained fixture snapshots.
-    let before = initializeDiskChain(disk, path, chain, owner, limits).value
+    let initialized = initializeDiskChain(disk, path, chain, owner, limits).value
     defer: discard posix.unlink(path.toCString())
+    # Upgrade an exact legacy durable context through a real certified successor, never a startup rewrite.
+    let legacy = legacyHistoryBytes(encodeDiskHistory(owner, chain,
+      RepositoryGeneration(uint64(initialized)+1), limits.contextBytes).value)
+    discard disk.commit(disk.snapshot.value, owner.stateSnapshot.value, legacy).value
+    let before = disk.generation.value
     let journal = readFile(path)
     # Shared seed identity and generation cannot authorize another journal's different context.
     let staged = prepareDiskPublication(disk, owner, prepared, chain, limits.contextBytes).value
@@ -78,7 +83,9 @@ proc publicationWitness() {.raises.} =
     var otherPath = "disk-chain-foreign.db"
     discard initializeDiskStateStore(foreign, otherPath, chain, owner.stateSnapshot.value,
       limits, StorageSchema.FullStateV1, [1'u8]).value
-    discard foreign.commit(foreign.snapshot.value, owner.stateSnapshot.value, [2'u8]).value
+    for generation in 1'u64..<uint64(before):
+      discard foreign.commit(foreign.snapshot.value, owner.stateSnapshot.value, [
+          2'u8]).value # Match authority counters while keeping deliberately foreign context.
     assert uint64(foreign.generation.value) == uint64(before)
     let otherBytes = readFile(otherPath)
     assert commitDiskPublication(foreign, staged).error == DiskChainError.CanonicalMismatch
@@ -116,6 +123,8 @@ proc publicationWitness() {.raises.} =
     assert sameStateSnapshot(owner.stateSnapshot.value, disk.snapshot.value)
     assert sameChainView(owner.chainView, prepared.chainView)
     assert uint64(disk.generation.value) == uint64(before)+1
+    assert disk.snapshotContext.value == encodeDiskHistory(owner, chain,
+      disk.generation.value, limits.contextBytes).value
     let source = owner.stateSnapshot.value
     assert disk.close == FileError.None
     # Reopen with the same inherited source policy; all exact header/map facts are checked again.
