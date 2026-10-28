@@ -14,11 +14,11 @@ class ProcessReplayTests(unittest.TestCase):
     def test_balanced_plan_and_environment(self):
         """Every case gets six processes of each role and both relative role orders."""
         rows = replay_schedule()
-        self.assertEqual(len(rows), 36)
-        for case in ('init', 'minimal', 'pinky'):
+        self.assertEqual(len(rows), 60)
+        for case in ('init', 'minimal', 'pinky', 'tick', 'sieve'):
             for role in ('baseline', 'jit'):
                 self.assertEqual(sum(r[2]==case and r[4]==role for r in rows), 6)
-        for index in range(0, 36, 2):
+        for index in range(0, 60, 2):
             self.assertEqual(set(r[4] for r in rows[index:index+2]), {'baseline', 'jit'})
         for role in ('baseline', 'jit'):
             env = replay_environment('init', None, None, role, Path('/doom'))
@@ -46,23 +46,27 @@ class ProcessReplayTests(unittest.TestCase):
         parsed = dict(native=activity, execution=dict(preparation_ns=[1000000],
             samples=[dict(cpu_ns=2000000+i) for i in range(13)]))
         rows = [dict(case=c, limit=n, role=role, order=0, run=dict(command=['fake-image']), parsed=parsed)
-                for c, n in [('init', 0), ('minimal', 100000), ('pinky', 1)] for role in ('baseline', 'jit')]
+                for c, n in [('init', 0), ('minimal', 100000), ('pinky', 1), ('tick', 0), ('sieve', 10000000)] for role in ('baseline', 'jit')]
         return dict(status='incomplete', runs=rows, comparison_protocol='matched-owner-policy-v2'), parsed
 
     def test_complete_distribution_and_refusals(self):
-        """All36 processes retain13 parsed calls and matching work; incomplete receipts cannot produce a summary."""
+        """All60 processes retain13 parsed calls and matching work; incomplete receipts cannot produce a summary."""
         report, parsed = self.fixture()
         with tempfile.TemporaryDirectory() as temporary:
-            folder = Path(temporary); (folder/'prepared').mkdir(); (folder/'prepared/init.events').write_bytes(b'events')
+            folder = Path(temporary); (folder/'prepared').mkdir(); (folder/'prepared/init.events').write_bytes(b'events'); (folder/'prepared/tick.events').write_bytes(b'frame-events')
             class Checks:
                 def __init__(self): self.folder=folder
                 def command(self, *args, **kwargs): return dict(exit_code=0, output='synthetic')
             cases = [(c, n, Path('/input'), Path('/expected')) for c, n in
-                     [('init', 0), ('minimal', 100000), ('pinky', 1)]]
+                     [('init', 0), ('minimal', 100000), ('pinky', 1), ('tick', 0), ('sieve', 10000000)]]
             with patch.dict('os.environ', {'GITHUB_ACTIONS':'true'}):
-                run_replays(Checks(), report, {}, cases, folder, lambda *args: copy.deepcopy(parsed))
-                self.assertEqual(len(report['process_replays']), 36)
-                self.assertEqual(sum(len(r['parsed']['execution']['samples']) for r in report['process_replays']), 468)
+                def checked_parser(output, role, case, limit, events, protocol):
+                    # A gameplay replication must use gameplay's ordered host-event fixture, never initialization's framing.
+                    self.assertEqual(events,12 if case=='tick' else 6 if case=='init' else 0)
+                    return copy.deepcopy(parsed)
+                run_replays(Checks(), report, {}, cases, folder, checked_parser)
+                self.assertEqual(len(report['process_replays']), 60)
+                self.assertEqual(sum(len(r['parsed']['execution']['samples']) for r in report['process_replays']), 780)
                 self.assertIn('2.000', replay_summary(report))
                 short = copy.deepcopy(parsed); short['execution']['samples'].pop()
                 with self.assertRaisesRegex(ValueError, 'Incomplete'):

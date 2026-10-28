@@ -14,7 +14,7 @@ def replay_schedule():
     """Six processes per role/case alternate both relative orders without changing the thirteen-call protocol."""
     return [(repeat, order, case, limit, role)
             for repeat in range(3)
-            for case, limit in (('init', 0), ('minimal', 100000), ('pinky', 1))
+            for case, limit in (('init', 0), ('minimal', 100000), ('pinky', 1), ('tick', 0), ('sieve', 10000000))
             for order in range(2)
             for role in (('baseline', 'jit') if (repeat+order)%2 == 0 else ('jit', 'baseline'))]
 
@@ -29,7 +29,7 @@ def replay_environment(case, data, expected, role, doom):
         RAGNAROK_PVM_DOOM_INPUT=str(doom/'prepared'), RAGNAROK_PVM_DOOM_PHASE=case,
         RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'),
         RAGNAROK_PVM_DOOM_LIFECYCLE='0', RAGNAROK_PVM_BACKEND='jit' if role=='jit' else '')
-    if case != 'init':
+    if case not in ('init','tick'):
         env.update(RAGNAROK_PVM_SIEVE_INPUT=str(data), RAGNAROK_PVM_SIEVE_EXPECTED=str(expected))
     return env
 
@@ -51,7 +51,7 @@ def run_replays(checks, report, identities, cases, doom, parse_run):
         original = next(row for row in report['runs'] if
                         (row['case'], row['limit'], row['role'], row['order']) == (case, limit, role, 0))
         env = replay_environment(case, data, expected, role, doom)
-        events = (doom/'prepared/init.events').stat().st_size if case=='init' else 0
+        events = (doom/'prepared'/(case+'.events')).stat().st_size if case in ('init','tick') else 0
         unchanged(identities)
         name = f'replay-{repeat}-{order}-{case}-{role}'
         executed = checks.command(original['run']['command'], name, environment=env, timeout=900)
@@ -65,7 +65,7 @@ def run_replays(checks, report, identities, cases, doom, parse_run):
         report['process_replays'].append(dict(repeat=repeat, order=order, case=case, limit=limit,
             role=role, run=executed, parsed=parsed))
         (checks.folder/'results.json').write_text(json.dumps(report, indent=2)+'\n')
-    if len(report['process_replays']) != 36:
+    if len(report['process_replays']) != 60:
         raise ValueError('Incomplete fresh-process replications')
 
 
@@ -77,7 +77,7 @@ def replay_summary(report):
         'CPU milliseconds: median across process medians, with minimum / maximum; owner and cold are separate.', '',
         '| Case | Role | Owner median | Cold median | Reused median | Reused min / max |',
         '|---|---|---:|---:|---:|---:|']
-    for case in ('init', 'minimal', 'pinky'):
+    for case in ('init', 'minimal', 'pinky', 'tick', 'sieve'):
         for role in ('baseline', 'jit'):
             rows = [row['parsed']['execution'] for row in report['process_replays']
                     if row['case']==case and row['role']==role]

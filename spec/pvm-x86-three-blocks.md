@@ -151,3 +151,69 @@ state cold-to-hot/old-root controls. Require the full fresh paired cohort and ei
 profiles against the accepted pre-trial parent. If useful real coverage and CPU
 gain do not qualify without material regressions, restore this entire runtime
 extension while retaining meaningful evidence, profile support and semantic checks.
+
+## Promotion qualification: useful initialization gain, bounded replay pending
+
+[Run40780678777](https://github.com/jacogr/ragnarok/actions/runs/40780678777)
+measured `83c28ccb94ea7e42a984a5cbedabb8a88f30424a` against the same accepted
+`07895cad346b28dce99f6c268169aaa589c4c055`, now on AMD EPYC7763. Never combine
+its raw timings with the preceding9V45 runner. Independent audits again pass all
+70 processes/910 calls/115 controls/16 fresh builds/eight equal-image pairs,
+fifteen native gates, all original matrices and the added promotion/rollback/
+full-capacity/old-root controls, plus eight calibrated profiles/104 checked calls
+and four collection controls. Source/compiler/image/reference-state/host-event
+and snapshot checks all agree. No hardware counters were collected.
+
+CPU milliseconds forward/reverse; reused samples1..12. Reference is call-only.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 3.260/3.276 | 3.289/3.306 | 3.935/3.908 | 6.035/6.064 | 0.545/0.545 |
+| Minimal100k | 6.331/6.345 | 6.326/6.480 | 6.362/6.408 | 7.472/7.472 | 0.847/0.867 |
+| Memory fill100k | 4.460/4.470 | 4.439/4.438 | 4.736/4.559 | 4.184/4.205 | 1.061/1.055 |
+| Pinky | 132.650/131.499 | 127.512/128.206 | 161.466/161.257 | 190.569/186.448 | 0.669/0.688 |
+| Sieve10m | 322.881/325.534 | 325.255/330.417 | 383.146/372.365 | 444.010/443.087 | 0.733/0.746 |
+| DOOM initialization | 583.759/567.970 | 327.133/320.256 | 624.412/597.351 | 775.132/776.177 | 0.422/0.413 |
+| DOOM gameplay | 56.031/56.714 | 58.318/56.212 | 57.955/59.694 | 52.359/52.675 | 1.114/1.067 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 3.879/3.678 | 3.973/3.682 | 11.913/12.525 | 12.626/12.998 |
+| Minimal100k | 0.019/0.018 | 0.017/0.018 | 6.716/6.627 | 6.582/6.894 |
+| Memory fill100k | 0.064/0.064 | 0.064/0.064 | 11.697/11.574 | 11.725/11.868 |
+| Pinky | 0.857/0.823 | 0.822/0.876 | 143.703/138.794 | 136.370/135.542 |
+| Sieve10m | 3.762/3.707 | 4.149/3.790 | 331.583/335.269 | 329.583/339.741 |
+| DOOM initialization | 10.992/11.206 | 11.114/10.984 | 624.535/607.239 | 368.124/368.612 |
+| DOOM gameplay | 14.211/10.846 | 11.148/11.260 | 90.701/83.522 | 82.075/87.309 |
+
+
+Initialization improves44.0/43.6%, including cold calls624.535/607.239→368.124/368.612ms.
+The targeted region now reaches real work: native operations62,653,474→2,277,407,810,
+with only94,821→95,042 code bytes and1,024→1,023 publications under the unchanged
+physical ceiling. Reused initialization Ir6,784,519,887→3,957,044,643; its dominant
+checked-shape self row4,056,317,884→867,834. This is concrete reduction of checked
+shape work, not an inference from simulated misses. Constructors remain separate.
+
+Other source activity is unchanged. Long sieve is0.7/1.5%slower; minimal is nearly
+unchanged/2.1%slower; Pinky3.9/2.5%faster. Gameplay4.1%slower/0.9%faster is inconsistent.
+A bounded fresh-process replay will check these smaller tradeoffs before final
+retention. It retains the three original replay workloads and adds gameplay and
+long sieve: sixty fresh baseline/current processes, six per role/case,780 extra
+complete checked calls, both relative role orders. Normal70-process/910-call
+qualification and115 controls remain mandatory. Gameplay uses its own ordered
+host-event fixture, not initialization's. Timings from different CPU models stay
+separate; replay warm medians use samples3..12 and cannot silently replace the
+ordinary reused scope. No further runtime optimization is mixed into this replay.
+
+| Reused scope | Previous conditional/indirect simulated misses | Promotion conditional/indirect simulated misses |
+| --- | ---: | ---: |
+| Sieve | 62,771/466,285 | 12,746/466,286 |
+| Pinky | 1,827,793/21,176,047 | 1,240,415/21,204,165 |
+| DOOM initialization | 1,737,428/23,212,582 | 1,719,072/23,234,922 |
+| DOOM gameplay | 663,873/11,182,072 | 523,025/11,182,072 |
+
+These simulated misses are not hardware measurements. Applications SHA256
+`371c69ec9789df233ad5313aa2605e752f2ee02a45769851f1471aeae957035f`;
+native `847db5fd1d71f015b3f3b72e76c702f0c423e0d9c5a25c6b16bc6f5867bdd60c`;
+profiles `6d8c5cf4ff09e82f77935df2ab1cc998c42a9117aef0eff529223b06e7750baa`.
+Ignored evidence: `build/pvm-x86-three/promotion/tests`.
