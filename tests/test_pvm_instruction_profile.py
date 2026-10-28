@@ -93,6 +93,27 @@ class InstructionProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             execution_entry_count(raw.replace('calls=1 ', 'calls=-1 '))
 
+    def test_explicit_markers_keep_exact_return_dump_count(self):
+        """Client requests bypass unreliable symbol returns without permitting fewer than all selected invocations."""
+        class Checks:
+            def __init__(self,folder):self.folder=folder
+            def command(self,args,name,**kwargs):
+                self.arguments=args
+                output=self.folder/(name+'.callgrind')
+                output.write_text(profile(0))
+                for index in (1,2):Path(str(output)+'.'+str(index)).write_text(profile())
+                return dict(exit_code=0,output='complete')
+        with tempfile.TemporaryDirectory() as folder:
+            checks=Checks(Path(folder))
+            _,last=collect(checks,'/image','markers','scope',{},30,
+                requests=True,dump_symbols=('scope',),executions=2)
+            self.assertEqual(last.name,'markers.callgrind.2')
+            self.assertIn('--collect-atstart=no',checks.arguments)
+            self.assertFalse(any(x.startswith(('--toggle-collect=','--dump-after=')) for x in checks.arguments))
+            with self.assertRaisesRegex(ValueError,'return dumps'):
+                collect(checks,'/image','incomplete','scope',{},30,
+                    requests=True,dump_symbols=('scope',),executions=13)
+
     def test_collection_controls_return_dumps_and_argument_placement(self):
         """Existing calls stay unchanged; explicit return dumping isolates only its selected scope."""
         class Checks:

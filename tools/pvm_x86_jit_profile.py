@@ -7,14 +7,19 @@ The complete thirteen-call state-checked process is retained. Return dumps separ
 from the final reused invocation, including private memory construction and immutable publication.
 """
 import argparse
+import io
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import tarfile
 import subprocess
 
 from native_checks import NativeChecks, ROOT
+from setup_nimony import cache_directory, installed
 from pvm_arm64_jit_applications import parse_run
 from pvm_guest_compare import unchanged
 from pvm_instruction_profile import calibrate_scope, collect, profile_counts, exclusive_costs
@@ -74,6 +79,58 @@ def profile_plan(architecture):
     raise ValueError('Unsupported native profile architecture')
 
 
+def diagnostic_image(checks, cohort, role, case, report):
+    """Build two equal diagnostic images with identical runtime sources and markers only in the public test wrapper."""
+    family='doom' if case in ('init','tick') else 'kernel'
+    name=role+'-'+family
+    saved=checks.folder/(name+'-requests-0')
+    previous=[b for b in report['diagnostic_builds'] if b['role']==role and b['family']==family]
+    if previous:
+        # A pathname alone never certifies a cached diagnostic image or an incomplete previous attempt.
+        if len(previous)!=2: raise ValueError('Incomplete diagnostic image pair')
+        for item in previous:
+            image=checks.folder/(name+'-requests-'+str(item['repeat']))
+            if not image.is_file() or hashlib.sha256(image.read_bytes()).hexdigest()!=item['image_sha256']:
+                raise ValueError('Changed diagnostic image pair')
+        return saved
+    compiler,_=installed()
+    canonical=checks.folder/'snapshot'
+    if canonical.exists(): shutil.rmtree(canonical)
+    canonical.mkdir()
+    revision=cohort['source_revisions'][role]
+    raw=subprocess.check_output(['git','archive',revision,'src','native/pvm_jit'],cwd=ROOT)
+    with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+        for member in archive.getmembers():
+            # Only sealed source files may populate this private compiler snapshot.
+            if not member.isfile(): continue
+            target=canonical/member.name
+            if not target.resolve().is_relative_to(canonical.resolve()): raise ValueError('Foreign profile archive path')
+            target.parent.mkdir(parents=True,exist_ok=True)
+            target.write_bytes(archive.extractfile(member).read())
+    sources={str(p.relative_to(canonical)):hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in canonical.rglob('*') if p.is_file()}
+    expected={p:v for p,v in cohort['sources'][role].items() if p.startswith(('src/','native/pvm_jit/'))}
+    if sources!=expected: raise ValueError('Diagnostic runtime sources differ from sealed cohort')
+    driver=canonical/'benchmarks'/(family+'.nim');driver.parent.mkdir()
+    driver.write_text((ROOT/('tests/performance/pvm_doom.nim' if family=='doom' else 'tests/performance/pvm_sieve.nim')).read_text().replace('../../src/','../src/'))
+    original=next(b for b in cohort['builds'] if b['role']==role and b['family']==family)
+    defines=[*original['defines'],'pvmProfileRequests']
+    pair=[]
+    for repeat in range(2):
+        # Cold private caches and one canonical path must produce byte-identical images before any instrumentation.
+        cache=cache_directory(compiler,checks.folder,'engine')
+        if cache.exists(): shutil.rmtree(cache)
+        built,binary=checks.build(compiler,driver,'engine',defines=defines,
+            cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
+        if built['exit_code']: raise RuntimeError('Diagnostic image failed: '+built['output'][-2000:])
+        image=checks.folder/(name+'-requests-'+str(repeat));shutil.copy2(binary,image);pair.append(image)
+        report['diagnostic_builds'].append(dict(role=role,family=family,repeat=repeat,defines=defines,
+            source_revision=revision,source_hashes=sources,driver_sha256=hashlib.sha256(driver.read_bytes()).hexdigest(),
+            image_sha256=hashlib.sha256(image.read_bytes()).hexdigest(),run={k:v for k,v in built.items() if k!='output'}))
+    if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Diagnostic equal-image control failed')
+    return saved
+
+
 def run(architecture="x86_64", calibration_only=False):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
     plan = profile_plan(architecture)
@@ -81,6 +138,7 @@ def run(architecture="x86_64", calibration_only=False):
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder/'results.json'
     report = dict(status='incomplete', architecture=architecture, profiles=[], controls=[], builds=[],
+                  diagnostic_builds=[], boundary_protocol='client-requests-v1' if architecture=='arm64' else 'symbol-returns-v1',
                   hardware_counters=False, clock_policy='discarded',
                   scope='public invocation including memory construction and immutable publication')
     destination.write_text(json.dumps(report, indent=2)+'\n')
@@ -97,7 +155,7 @@ def run(architecture="x86_64", calibration_only=False):
             version = checks.command(['valgrind','--version'],'version')
             if version['exit_code']: raise RuntimeError('Cannot identify calibration profiler')
             report.update(host=host, calibration_only=True, valgrind=version['output'].strip())
-            calibrate_scope(checks, report)
+            calibrate_scope(checks, report, requests=architecture=="arm64")
             report['status']='passed'
             return
         cohort_path = cohort_folder/'results.json'
@@ -118,13 +176,15 @@ def run(architecture="x86_64", calibration_only=False):
         if version['exit_code'] or re.fullmatch(r'valgrind-[0-9]+\.[0-9]+\.[0-9]+\s*', version['output']) is None:
             raise ValueError('Invalid Valgrind version')
         report['valgrind'] = version['output'].strip()
-        calibrate_scope(checks, report)
+        calibrate_scope(checks, report, requests=architecture=="arm64")
         for case, limit in plan['cases']:
             # Short sieve exercises the same loop boundary at a bounded profiling cost; no profiled clock is a timing.
             for role in plan['roles']:
                 row = next(r for r in cohort['runs'] if
                     (r['case'], r['limit'], r['role'], r['order']) == (case, limit, role, 0))
-                binary = Path(row['run']['command'][0])
+                binary = (diagnostic_image(checks,cohort,role,case,report) if architecture=='arm64'
+                          else Path(row['run']['command'][0]))
+                image_hash=hashlib.sha256(binary.read_bytes()).hexdigest()
                 symbols = checks.command(['nm', '--defined-only', binary], case+'-'+role+'-symbols')
                 if symbols['exit_code']:
                     raise RuntimeError('Cannot inspect public invocation image')
@@ -133,7 +193,9 @@ def run(architecture="x86_64", calibration_only=False):
                 unchanged(identities)
                 executed, final = collect(checks, binary, name, scope,
                     profile_environment(case, limit, 'interpreted' if role == 'interpreter' else 'jit', architecture),
-                    1200, dump_symbols=(scope,), executions=13)
+                    1200, dump_symbols=(scope,), executions=13, requests=architecture=="arm64")
+                if hashlib.sha256(binary.read_bytes()).hexdigest()!=image_hash:
+                    raise ValueError('Diagnostic image changed during profiling')
                 if executed['exit_code']:
                     raise RuntimeError('Profile process failed: '+name)
                 events = (ROOT/'build/tests/pvm-doom/prepared'/(case+'.events')).stat().st_size if case in ('init','tick') else 0
@@ -154,6 +216,7 @@ def run(architecture="x86_64", calibration_only=False):
                           for p in sorted(folder.glob(name+'.callgrind*'))}
                 report['profiles'].append(dict(case=case, role=role, scope=scope,
                     checked_calls=13, cold=cold_counts, reused=warm_counts, self_costs=own,
+                    image_sha256=image_hash,
                     cold_self_costs=exclusive_costs(cold.read_text()),
                     source_revision=cohort['source_revisions'][role],
                     run={k:v for k,v in executed.items() if k != 'output'},
@@ -164,6 +227,8 @@ def run(architecture="x86_64", calibration_only=False):
                 unchanged(identities)
                 destination.write_text(json.dumps(report, indent=2)+'\n')
                 print(name, 'cold Ir', cold_counts['Ir'], 'reused Ir', warm_counts['Ir'], flush=True)
+        if architecture=='arm64' and len(report['diagnostic_builds'])!=8:
+            raise ValueError('Missing complete diagnostic build cohort')
         report['status'] = 'passed'
     except Exception as error:
         # Any absent scope, incomplete output or changed image leaves an explicit failed receipt and the original diagnostic.

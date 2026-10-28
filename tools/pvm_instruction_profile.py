@@ -255,7 +255,7 @@ def final_return_dump(output, executions):
 
 
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            dump_symbols=(), executions=1, arguments=(), deep=False):
+            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False):
     """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
@@ -263,11 +263,11 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
         # Retire every private old part before collection, never reuse counters from another invocation.
         part.unlink()
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
-        '--toggle-collect='+scope, '--cache-sim='+('yes' if deep else 'no'), '--branch-sim=yes',
+        *(['--toggle-collect='+scope] if not requests else []), '--cache-sim='+('yes' if deep else 'no'), '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
         *(['--read-inline-info=yes', '--compress-pos=no', '--demangle=no',
            '--I1=32768,8,64', '--D1=32768,8,64', '--LL=8388608,16,64'] if deep else []),
-        *('--dump-after='+symbol for symbol in dump_symbols),
+        *('--dump-after='+symbol for symbol in dump_symbols if not requests),
         '--callgrind-out-file='+str(output),
         '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary, *arguments], name,
         environment=environment, timeout=timeout)
@@ -279,10 +279,10 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
     return result, output
 
 
-def calibrate_scope(checks, report):
+def calibrate_scope(checks, report, requests=False):
     """Share classified selected/absent/repeated/return-dump controls without rebuilding a guest image."""
     control = ROOT/'tests/support/pvm_profile_control.c'
-    compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), control], 'control-build')
+    compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), *(['-DPVM_PROFILE_REQUESTS'] if requests else []), control], 'control-build')
     report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
     if compiled['exit_code']:
         raise RuntimeError('profile calibration build failed')
@@ -291,7 +291,8 @@ def calibrate_scope(checks, report):
         # The unmatched scope proves whole-process counts cannot silently substitute for selected execution.
         name = 'control-selected' if selected else 'control-absent'
         result, output = collect(checks, checks.folder/'control', name,
-            'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30)
+            'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30,
+            arguments=('off',) if requests and not selected else (), requests=requests)
         text = output.read_text()
         if selected:
             # Preserve the single-call reference for independently repeated/reset controls.
@@ -307,7 +308,7 @@ def calibrate_scope(checks, report):
         name = 'control-last-only' if dumped else 'control-repeated'
         result, output = collect(checks, checks.folder/'control', name, 'pvm_profile_?elected',
             dict(os.environ), 30, dump_symbols=('pvm_profile_selected',) if dumped else (), executions=2,
-            arguments=('twice',))
+            arguments=('twice-dump',) if requests and dumped else ('twice',), requests=requests)
         text = output.read_text()
         passed = calibration_passed(result, text, True)
         if dumped:

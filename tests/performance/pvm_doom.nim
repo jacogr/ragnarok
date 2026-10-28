@@ -79,10 +79,23 @@ proc runDoom(source: Machine, context: var HostContext, plan: GasPlan): StepResu
   ## Give calibrated collection one stable boundary around the real host loop and in-memory callbacks.
   executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), plan)
 
+when defined(pvmProfileRequests):
+  proc profileBegin() {.cdecl, importc: "pvm_profile_begin", header: "pvm_profile_scope.h".}
+    ## Begin explicit diagnostic collection without borrowing guest state.
+  proc profileEnd() {.cdecl, importc: "pvm_profile_end", header: "pvm_profile_scope.h".}
+    ## Stop and dump one complete invocation before independent caller validation.
+
 proc runPreparedDoom(source: Machine, context: var HostContext,
     prepared: PreparedProgram): StepResult {.noinline.} =
   ## Reuse only source facts and executable nodes; every public call still owns private invocation memory.
-  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), prepared)
+  when defined(pvmProfileRequests):
+    profileBegin()
+    result = executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
+        HostCallLimit(4096), prepared)
+    profileEnd()
+  else:
+    # Ordinary timing images preserve the existing wrapper without any collection markers.
+    executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), prepared)
 
 if getEnv("RAGNAROK_PVM_DOOM_ASSERT") == "1":
   # Refusal controls prove assertions remain present in this optimized driver.

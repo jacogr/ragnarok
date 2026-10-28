@@ -20,9 +20,21 @@ proc selectedGuest(value: string): GuestKind =
     assert false, "unknown checked guest family"
     GuestKind.Sieve
 
+when defined(pvmProfileRequests):
+  proc profileBegin() {.cdecl, importc: "pvm_profile_begin", header: "pvm_profile_scope.h".}
+    ## Begin explicit diagnostic collection without borrowing guest state.
+  proc profileEnd() {.cdecl, importc: "pvm_profile_end", header: "pvm_profile_scope.h".}
+    ## Stop and dump one complete invocation before independent caller validation.
+
 proc runPreparedKernel(source: Machine, prepared: reference.PreparedProgram): reference.StepResult {.noinline.} =
   ## One public call is a stable external profiler scope; setup and complete-state validation stay outside it.
-  reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
+  when defined(pvmProfileRequests):
+    profileBegin()
+    result = reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
+    profileEnd()
+  else:
+    # Ordinary timing images preserve the existing wrapper without any collection markers.
+    reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Record CPU time alongside the elapsed metric also emitted by the reference harness.
