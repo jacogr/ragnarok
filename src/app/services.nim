@@ -558,7 +558,7 @@ proc setupTelemetry(client: var Client, options: Options, certificate: string, p
   for i in 0..<32: identity[i] = fields.key[i]
   let parsed = chainMetadata(text, identity, address, port)
   if not parsed.ok: return false # Failed chain metadata cannot produce a registration.
-  configure(client, options.telemetryEndpoint(), parsed.value)
+  configure(client, options.telemetryEndpoint(), parsed.value, options.logWriter)
 
 proc diskJournalLimits(policy: StateStoreLimits): JournalLimits =
   ## Finite initial backend ceilings cap one batch, accumulated physical history and the complete journal independently.

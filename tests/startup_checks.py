@@ -14,6 +14,7 @@ import socket
 import stat
 import subprocess
 import time
+import tempfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -92,10 +93,49 @@ def run(binary, folder):
             pass # MCP lifecycle/query semantics remain covered by its owning E2E workload.
     finally:
         stop(process, output, log)
+    service_log = log.read_text()
+    for message in ['UI listening on http://127.0.0.1:8418/', 'RPC listening on ws://127.0.0.1:9418/',
+                    'MCP listening on http://127.0.0.1:14141/mcp', 'Stopping UI listener',
+                    'Stopping RPC listener', 'Stopping MCP listener']:
+        assert message in service_log, service_log
     # Recently closed HTTP/RPC clients must not prevent an immediate foreground restart.
     process, output, log = start(folder/'ui-defaults', ['--with-ui', '--with-mcp', '--net-port', port()])
     stop(process, output, log)
     results.append('UI, implicit RPC and MCP listen on ports 8418, 9418 and 14141')
+
+    # A missing collector is isolated from networking and reconnects on the bounded retry.
+    with tempfile.TemporaryDirectory(prefix='ragnarok-log-', dir='/tmp') as management, socket.socket() as collector:
+        collector.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        collector.bind(('127.0.0.1', 0))
+        management_socket = str(Path(management)/'control.sock')
+        endpoint = '127.0.0.1:'+str(collector.getsockname()[1])
+        process, output, log = start(folder/'telemetry', [
+            '--net-port', port(), '--chain', str(root/'tests/fixtures/telemetry-dev.json'),
+            '--with-telemetry', '--telemetry-endpoint', endpoint,
+            '--with-management', '--management-socket', management_socket])
+        try:
+            deadline = time.monotonic()+10
+            while 'Telemetry collector connection unavailable; retrying in 5s' not in log.read_text():
+                assert process.poll() is None and time.monotonic() < deadline, log.read_text()
+                time.sleep(0.02)
+            collector.listen(1)
+            collector.settimeout(10)
+            connection, _ = collector.accept()
+            with connection:
+                connection.settimeout(5)
+                assert connection.recv(2048), log.read_text()
+                deadline = time.monotonic()+5
+                while 'Connected to telemetry collector' not in log.read_text():
+                    assert process.poll() is None and time.monotonic() < deadline, log.read_text()
+                    time.sleep(0.02)
+        finally:
+            stop(process, output, log)
+        service_log = log.read_text()
+        assert 'Telemetry destination: '+endpoint in service_log, service_log
+        assert 'Stopping telemetry exporter' in service_log, service_log
+        assert 'Management listening on '+management_socket in service_log, service_log
+        assert 'Stopping management listener' in service_log, service_log
+    results.append('telemetry reports endpoint, refusal, bounded retry, connection and shutdown')
 
     # Successive real clients prove the default server outlives a bounded eight-request workload.
     directory = folder/'bare'

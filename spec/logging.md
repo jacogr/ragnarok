@@ -98,7 +98,8 @@ The queue, drop policy, producer filtering, PVM gas semantics and joined sink ow
 Startup reports executable revision, target OS/architecture, compiler, full/light role, block
 production capability, selected data/storage/chain paths and public certificate identity. Successful
 service startup names the actual RPC/UI/MCP/management endpoints and UI asset source; telemetry
-reports its configured destination. Shutdown follows real transport, worker, listener and storage
+reports its configured destination, connection attempts/success, and failures with the existing
+five-second retry delay. A collector refusal never stops peer networking. Shutdown follows real transport, worker, listener and storage
 retirement. Development validators identify their authority role separately from ordinary peers.
 No secret key contents, guest memory or unbounded remote strings are used as identity labels.
 
@@ -122,10 +123,12 @@ The logging native suite checks timestamp shape plus existing bounds, escaping, 
 concurrency. Host logging checks the timestamped record while retaining its gas/register/memory
 assertions. The existing startup E2E workload additionally checks default role/platform/identity,
 periodic unknown sync state, graceful shutdown and quiet warning/off levels against the built node.
+It also checks UI/RPC/MCP/management lifecycle messages and a refused telemetry connection followed
+by a successful bounded retry to a live TCP collector.
 
 Local completion evidence on macOS arm64 with pinned Nimony `63fed6cb4`: the production build,
-`logging`, `pvm_host_log`, `app_cli`, `application_services` and `light_runtime` native suites,
-eleven live startup/logging checks, the original 16-case authenticated transport matrix,
+`logging`, `pvm_host_log`, `app_cli`, `application_services`, `light_runtime` and `telemetry` native suites,
+twelve live startup/logging checks, the original 16-case authenticated transport matrix,
 12 repeated cold starts and CLI refusal controls passed. The CLI and Services ARC witnesses
 retained equal before/after usage over 1000 cycles. Five current-download Python harness tests,
 source inventory, changed-source pinned formatting and whitespace checks passed. Evidence is
