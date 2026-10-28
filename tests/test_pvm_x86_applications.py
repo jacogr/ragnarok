@@ -4,7 +4,7 @@
 import unittest
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
-from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity
+from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -72,3 +72,12 @@ class X86ProfileScopeTests(unittest.TestCase):
         matching_native_activity(measured, dict(measured,compilation_ns=999))
         for key in ('fragments','calls','operations','code_bytes','branches','headers'):
             with self.assertRaises(ValueError): matching_native_activity(measured, dict(measured,**{key:measured[key]+1}))
+
+
+    def test_zero_call_ancestry_is_not_self_work(self):
+        """Calibrated return dumps retain synthetic ancestor arcs; counting them as self work doubles the total."""
+        raw = '# callgrind format\npositions: line\nevents: Ir Bc\nsummary: 10 2\nfn=root\ncfn=scope\ncalls=0 0\n0 10 2\nfn=scope\n0 3\ncfn=child\ncalls=1 0\n0 7 2\nfn=child\n0 7 2\ntotals: 10 2\n'
+        self.assertEqual(exclusive_costs(raw), {'child':{'Ir':7,'Bc':2},'scope':{'Ir':3,'Bc':0}})
+        for changed in (raw.replace('fn=child\n0 7 2', 'fn=child\n0 6 2'),
+                        raw.replace('positions: line', 'positions: instr line')):
+            with self.assertRaises(ValueError): exclusive_costs(changed)

@@ -53,6 +53,38 @@ def profile_environment(case, limit, role):
     return env
 
 
+def exclusive_costs(text):
+    """Sum actual instruction rows, excluding every call-arc cost even when a synthetic ancestry arc has zero calls."""
+    totals = profile_counts(text)
+    if re.findall(r'^positions: (.+)$', text, re.M) != ['line']:
+        raise ValueError('Unsupported profile positions')
+    names = list(totals)
+    own = {}
+    symbol, arc = '', False
+    for line in text.splitlines():
+        # Function headers name self rows; an immediately following arc cost belongs to its callee instead.
+        if line.startswith('fn='):
+            if arc: raise ValueError('Incomplete call arc')
+            symbol = line[3:]
+        elif line.startswith('calls='):
+            if arc: raise ValueError('Incomplete call arc')
+            arc = True
+        elif re.match(r'^(?:[0-9]+|[+-][0-9]+|\*) ', line):
+            if not symbol: raise ValueError('Instruction cost lacks a function')
+            raw = line.split()[1:]
+            if not raw or len(raw) > len(names) or any(re.fullmatch(r'[0-9]+', value) is None for value in raw):
+                raise ValueError('Invalid instruction event row')
+            values = [*map(int, raw), *([0]*(len(names)-len(raw)))]
+            if not arc:
+                # Include each actual event exactly once; inherited zero-call ancestry is never self work.
+                costs = own.setdefault(symbol, dict.fromkeys(names, 0))
+                for name, value in zip(names, values): costs[name] += value
+            arc = False
+    if arc or any(sum(row[name] for row in own.values()) != totals[name] for name in names):
+        raise ValueError('Exclusive instruction costs do not match complete profile totals')
+    return dict(sorted(own.items(), key=lambda pair: pair[1]['Ir'], reverse=True))
+
+
 def matching_native_activity(measured, profiled):
     """Instrumentation must retain actual native execution and its exact code working set; only clocks may differ."""
     fields = ('fragments', 'calls', 'operations', 'code_bytes', 'branches', 'headers')
@@ -117,6 +149,7 @@ def run():
                     raise ValueError('Incomplete checked profile calls')
                 cold = final.parent/(name+'.callgrind.1')
                 cold_counts, warm_counts = profile_counts(cold.read_text()), profile_counts(final.read_text())
+                own = exclusive_costs(final.read_text())
                 annotation = checks.command(['callgrind_annotate', '--auto=no', '--inclusive=no',
                     '--threshold=99', '--show=Ir,Bc,Bcm,Bi,Bim', final], name+'-self')
                 arcs = checks.command(['callgrind_annotate', '--auto=no', '--inclusive=yes',
@@ -126,7 +159,7 @@ def run():
                 hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                           for p in sorted(BUILD.glob(name+'.callgrind*'))}
                 report['profiles'].append(dict(case=case, role=role, scope=scope,
-                    checked_calls=13, cold=cold_counts, reused=warm_counts,
+                    checked_calls=13, cold=cold_counts, reused=warm_counts, self_costs=own,
                     run={k:v for k,v in executed.items() if k != 'output'},
                     profile_hashes=hashes, native=parsed['native']))
                 # Preserve both independently parsed cold and reused raw dumps; intermediate complete warmups need only seals.

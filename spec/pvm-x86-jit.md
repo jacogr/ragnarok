@@ -149,3 +149,42 @@ This confirms useful Pinky improvement but a repeated long-sieve regression (abo
 mixed/slower gameplay versus the same-binary interpreter. It remains opt-in while the calibrated
 public-invocation profiles investigate that cost; beating the reference on some workloads is
 insufficient reason to regress our existing interpreter by default.
+
+
+## Scoped foundation profiles
+
+[Run40672822148](https://github.com/jacogr/ragnarok/actions/runs/40672822148), at
+`f61365cd72ac93754177555e2b3dfd2910cf8ed3`, passes the complete same-runner application
+cohort again (70processes/910calls/115controls/16fresh builds/eight equal pairs,
+731identities), plus all six scoped profiles. Application report SHA256:
+`b6617b42d7cd4239eaa6adf06b5d9d9abbaf9385ffada7958b7641277ba162c1`.
+This head adds only the profiler and a stable public benchmark wrapper; production runtime
+remains identical to the qualified foundation. Callgrind3.26.0 is calibrated for absent,
+selected, repeated and final-return scopes. Profile clocks are discarded.
+
+| Reused public call | Interpreter Ir | JIT Ir | Interpreter Bcm / Bim | JIT Bcm / Bim |
+|---|---:|---:|---:|---:|
+| sieve100k | 43,530,941 | 43,516,882 | 12,902 / 767,823 | 12,936 / 766,444 |
+| Pinky | 1,164,383,167 | 1,095,762,687 | 1,166,872 / 28,804,893 | 1,580,376 / 23,019,049 |
+| gameplay | 587,243,757 | 584,067,901 | 345,429 / 11,722,351 | 319,350 / 11,316,682 |
+
+Ir is executed machine instructions under instrumentation; Bcm/Bim are simulated conditional
+and indirect misses, not hardware measurements or explanations of CPU timing by themselves.
+Cold/reused raw dumps, all controls, native working-set agreement and every exclusive event sum
+independently verify. The formatter's flat self view incorrectly attributes zero-call ancestry
+arcs to libc startup. The maintained parser now excludes every call-arc cost, including zero-call
+ancestry, and requires exclusive event sums to match all raw footer totals. Original raw dumps
+and inclusive call arcs remain retained; the misleading flat view is not hotspot evidence.
+
+Corrected reused self costs place checked block-entry charging at14,154,240Ir for sieve100k,
+211,411,400Ir for Pinky and105,479,300Ir for gameplay (roughly18–32% of their total work).
+Native handoff itself costs78,104,992Ir on Pinky and16,702,504Ir in gameplay. Public memory
+construction/publication remain included in the scope; sieve's call arc places97.4% of its
+instructions within execution. The near-identical sieve instruction totals and low source
+coverage argue for testing compiled conditional/block entries before register allocation alone.
+The latest timing cohort remains mixed, including opposite-order movement on long sieve; no
+new default-enable claim follows from these counters.
+
+The next bounded runtime experiment extends only positive cached conditional capabilities and
+complete pure charged blocks. Checked gas/source-prefix/error ordering, original partial handlers,
+memory and genuine exits must remain unchanged. Default enablement is a later integration step.
