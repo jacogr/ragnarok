@@ -423,6 +423,8 @@ jobs:
             build/ci/*.log
             build/tests/e2e/*.log
             build/tests/e2e/results.json
+            build/tests/e2e/startup-defaults/**/*.log
+            build/tests/e2e/startup-defaults/**/results.json
             build/tests/e2e/current-download-work/**/*.log
             build/tests/e2e/current-download-work/**/*.stdout
             build/tests/e2e/current-download-work/**/*.stderr

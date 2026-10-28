@@ -16,7 +16,7 @@
     <section class="panel" aria-labelledby="connection-title">
       <div class="panel-heading"><h2 id="connection-title">RPC connection</h2><span class="status" id="status" role="status">Loading…</span></div>
       <label for="endpoint">WebSocket endpoint</label>
-      <div class="connection-controls"><input id="endpoint" type="url" spellcheck="false" maxlength="1024" aria-describedby="endpoint-help" value="ws://127.0.0.1:19800/"><button id="connect" type="button">Connect <span aria-hidden="true">↗</span></button><button id="disconnect" class="secondary" type="button">Disconnect</button></div>
+      <div class="connection-controls"><input id="endpoint" type="url" spellcheck="false" maxlength="1024" aria-describedby="endpoint-help" placeholder="WebSocket RPC endpoint"><button id="connect" type="button">Connect <span aria-hidden="true">↗</span></button><button id="disconnect" class="secondary" type="button">Disconnect</button></div>
       <p class="hint" id="endpoint-help">The RPC listener must be enabled on the client you want to inspect.</p>
     </section>
     <section class="metrics" aria-label="Client overview">

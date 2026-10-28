@@ -176,3 +176,65 @@ RPC E2E workload passed locally, including browser and development UI, configure
 shared telemetry, service queries and invalid startup. The tracked genesis fixture stayed
 unchanged. Evidence is in `build/cli-ci-rpc-parameter-unit.log` and
 `build/cli-ci-rpc-complete/`; a fresh full Linux run is requested separately.
+
+
+## Foreground startup defaults
+
+The CLI defaults increment makes `ragnarok server` a usable foreground development listener:
+UDP 34100, a generated persistent Ed25519 TLS identity under `--data-dir/network`, isolated
+development ALPN, and no deadline until interrupted. Other workload modes retain their finite
+10-second default. Optional UI/RPC/MCP use loopback ports 8418/9418/14141; the browser imports the
+shared RPC default. `docs/cli.md` lists every listener and remote endpoint port selection.
+Port, TLS paths, ALPN, deadline and workload remain independently overridable.
+The standard transport still owns protocol checks; this does not implement a production validator.
+
+Process-input normalization supplies mode/layout-specific disk paths, chooses paged layout for
+light disk state, resolves a default private management socket, and selects `./chain.json` for
+state/telemetry when omitted. Component parsing remains a strict already-normalized boundary.
+Neither paths nor configuration controls activate services. Full/light database namespaces and
+physical schemas remain separate. Remote identities, light authority and execution policies are
+not invented. Startup creates selected parent directories only after syntax validation.
+
+Identity creation uses the bundled TLS implementation and existing Nim JAM peer-name formula.
+One private namespace lock serializes first-use publication. Key bytes are written privately and
+secret scratch is erased; complete bundles are reused and partial bundles refuse without key
+rotation. Explicit TLS paths are not generated or changed. Foreground signal handling only sets
+an atomic scalar; ordinary deferred cleanup retires transport, services and diagnostic producers.
+
+Completion checks cover pure defaults/overrides and refusal, default identity creation/reuse and
+partial-bundle refusal, a real bare server with graceful signal shutdown, a pinned client exchange,
+help without filesystem effects, disk startup/restart and representative existing workload checks.
+
+
+Local completion evidence: the checked production build, six selected native suites
+(`app_cli`, `startup_identity`, `app_options`, `disk_storage_options`,
+`light_runtime_options`, `quic_protocol`), 52 focused transport/RPC/telemetry Python tests,
+and 19 E2E-plan/CI-scheduling tests passed. The registered startup E2E workload passed nine
+checks, including real successive pinned clients, signal/deadline cleanup and journal,
+managed and paged database creation/restart, plus all three loopback listener defaults and
+immediate UI/RPC restart after client use. UI/RPC listeners set SO_REUSEADDR, matching MCP. The original authenticated transport matrix,
+repeated cold starts and CLI refusal controls also passed. Inventory and pinned formatting
+passed; tracked fixture inputs are unchanged. Evidence is in `build/startup-defaults-*`,
+`build/startup-owned-e2e/` and `build/startup-transport/`.
+
+The permanent startup workload is part of the existing testnet E2E group. Its artifact rules
+retain logs and result summaries, excluding the generated keys and certificates. Default
+`data/` runtime material is excluded from Git and Docker build contexts. These are local
+macOS results; Linux CI remains separate evidence.
+
+After incorporating master’s MCP work through `b841e82b`, the production build, `app_cli`,
+`app_options`, `ui` and `rpc` native suites, inventory, changed-source formatting, six transport
+harness tests and five E2E-plan tests passed again. The nine startup checks and CLI refusal
+controls passed against that build. The real browser workload also passed, including its initial
+shared-default RPC endpoint and user-selected endpoint override.
+
+Review follow-up: persistent listeners settle malformed, cancelled and timed-out requests as
+stream-local rejections, independently of soak fixture selection. The shared stream lifecycle
+tick now applies the existing incomplete-request deadline to ordinary listeners and drives the
+standalone cancellation workload. Native callback/engine errors remain fatal; one-shot exchanges
+retain their existing failure verdicts. Selftests check single settlement, later healthy work,
+one-shot failure and preservation of an existing fatal flag. The live startup workload now has
+ten checks: five malformed request modes, missing-FIN timeout and authenticated cancellation each
+leave the listener available for subsequent healthy clients. Production build and selftests passed;
+The original 16-case authenticated transport matrix, 12 repeated cold starts and CLI refusal
+controls passed as well. Evidence is in `build/startup-isolation-*`.

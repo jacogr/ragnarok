@@ -12,8 +12,10 @@ import ../../support/arc_evidence
 
 proc peer(command = "server"): seq[string] =
   ## Name each transport input; service flags can be interleaved without changing their ownership.
-  @[command, "--net-port", "4000", "--net-cert", "node.pem", "--net-key", "node.key",
+  result = @[command, "--net-port", "4000", "--net-cert", "node.pem", "--net-key", "node.key",
       "--net-peer-key", "-", "--net-alpn", "network"]
+  if command == "server":
+    result.add("--net-mode"); result.add("valid")
 
 proc parsed(input: seq[string]): Options =
   ## Fail with the parser's original diagnostic instead of hiding the relevant field behind a helper assertion.
@@ -22,20 +24,34 @@ proc parsed(input: seq[string]): Options =
   assert parseOptions(input, result, diagnostic), diagnostic
   assert diagnostic.len == 0, "CLI invariant: diagnostic.len == 0"
 
+let bareServer = parsed(@["server"])
+assert bareServer.argument(2) == "34100" and bareServer.argument(3).endsWith("data/network/cert.pem")
+assert bareServer.argument(4).endsWith("data/network/key.pem") and bareServer.argument(5) == "-"
+assert bareServer.argument(6) == DefaultDevelopmentAlpn
+assert bareServer.argument(7) == "0" and bareServer.argument(8) == "listen"
+let diskDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-storage", "disk"])
+assert diskDefault.chainPath == DefaultChainFile and diskDefault.stateDatabase == "custom/full/state.db"
+let lightDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-mode",
+    "light", "--state-storage", "disk", "--state-trust", "trust", "--state-header", "header"])
+assert lightDefault.pagedStorage and lightDefault.stateDatabase == "custom/light/paged"
+let managedDefault = parsed(@["server", "--with-state", "--state-storage", "disk", "--state-layout", "managed"])
+assert managedDefault.stateDatabase == "./data/full/managed"
+assert "default: 34100" in commandHelp("server")
+assert "--data-dir DIR" in commandHelp("server")
 let named = parsed(peer())
 assert named.argumentCount == 8, "CLI invariant: named.argumentCount == 8"
 assert named.argument(2) == "4000" and named.argument(3) == "node.pem", "CLI invariant: named.argument(2) == \"4000\" and named.argument(3) == \"node.pem\""
 assert named.argument(7) == "10000" and named.argument(8) == "valid", "CLI invariant: named.argument(7) == \"10000\" and named.argument(8) == \"valid\""
 let ui = parsed(@["server", "--with-ui", "--net-port=4000", "--net-cert", "node.pem", "--ui-port", "9000",
   "--net-key", "node.key", "--net-peer-key=-", "--net-alpn", "network", "--ui-dev-dir", "public"])
-assert ui.uiPort == 9000 and ui.rpcPort == 19800 and ui.devUiDirectory == "public", "CLI invariant: ui.uiPort == 9000 and ui.rpcPort == 19800 and ui.devUiDirectory == \"public\""
+assert ui.uiPort == 9000 and ui.rpcPort == 9418 and ui.devUiDirectory == "public", "CLI invariant: ui.uiPort == 9000 and ui.rpcPort == 9418 and ui.devUiDirectory == \"public\""
 var stateInput = peer()
 for word in ["--with-state", "--chain", "chain.json"]: stateInput.add(word)
 let state = parsed(stateInput)
 assert uint64(state.stateWrites) == 1000 and uint64(state.stateWriteBytes) == 100000, "CLI invariant: uint64(state.stateWrites) == 1000 and uint64(state.stateWriteBytes) == 100000"
 assert state.nodeMode == NodeMode.Full, "CLI invariant: state.nodeMode == NodeMode.Full"
 let overview = commandHelp()
-for text in ["default: 19800", "default: 8888", "default: 1000", "default: 100000",
+for text in ["default: 9418", "default: 8418", "default: 1000", "default: 100000",
   "default: journal", "default: memory", "default: full", "default: info"]:
   assert text in overview, "CLI invariant: text in overview"
 for pair in [("--with-ui", "--ui-port"), ("--ui-port", "--ui-dev-dir"),
@@ -64,6 +80,9 @@ proc normalized(input, expected: seq[string]) =
   var diagnostic = ""
   assert normalizeCommand(input, output, diagnostic), diagnostic
   assert output == expected, "CLI invariant: output == expected"
+normalized(@["check-traces", "--trace-policy", "policy", "--trace-genesis", "genesis",
+  "--trace-file", "step", "--with-state"],
+  @["check-traces", "policy", "genesis", "step", "--with-state", "--chain", "./chain.json"])
 normalized(@["mesh", "--net-remote-port", "4001", "--net-local-port", "4000", "--net-cert", "cert",
   "--net-key", "key",
   "--net-peer-key", "remote", "--net-local-key", "local", "--net-alpn", "network", "--net-gate",
@@ -119,8 +138,9 @@ for alias in ["--telemetry", "--dev-ui-dir", "--node-mode"]:
       diagnostic), "Removed alias accepted in service controls: " & alias
   assert diagnostic == "Unknown option: " & alias, diagnostic
 for input in [@["server", "4000", "node.pem", "node.key", "-", "network", "10000"],
-    @["server", "--net-port"], @["server", "--net-port", "4000"],
+    @["server", "--net-port"], @["client", "--net-port", "4000"],
     @["server", "4000", "--net-port", "4001"], @["server", "--typo"],
+    @["client", "--net-mode", "listen", "--net-peer-key", "peer"],
     @["server", "--with-ui=1"], @["server", "--ui-port", "0"],
     @["server", "--ui-dev-dir", "a", "--ui-dev-dir", "b"],
     @["server", "--telemetry-endpoint", "a", "--telemetry-endpoint", "b"],

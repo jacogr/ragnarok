@@ -5,13 +5,16 @@ scope, verification and remaining work.
 
 `src/ragnarok.nim` is the sole native application entry point for production and E2E builds.
 It reads process arguments once, parses an owned `app/options.Options`, and dispatches bounded
-peer/mesh lifecycles, explicit bounded child downloads and no-socket selftests. Configuration is passed
+foreground listening and bounded peer/mesh lifecycles, explicit bounded child downloads and no-socket selftests. Configuration is passed
 explicitly; transport, telemetry, RPC and UI modules do not inspect command-line globals. The current commands remain
 bounded development entry points with supported child admission, execution and publication.
 The long-running node, complete validation, consensus and validator lifecycles remain open.
 
 `app/cli_defaults.nim` owns typed defaults and bounds. `cli_catalog.nim` owns option metadata; `cli_commands.nim` validates named
 process inputs and normalizes them for bounded handlers. `cli_help.nim` renders the same catalog.
+`app/startup.nim` provisions an owned persistent transport identity and selected parent directories
+only after complete CLI validation. Bundled TLS primitives generate keys/certificates; Nim owns
+JAM naming, file publication and identity reuse. Explicit credentials are never rewritten.
 `app/options.nim` validates normalized service switches/configuration atomically. Private fields
 have read-only accessors; a failed/default result cannot start a session. Endpoint configuration
 alone does not enable services, and UI implies RPC. Canonical state requires `--with-state` and

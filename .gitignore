@@ -5,6 +5,9 @@
 # Generated build output, dependency sources, test keys and logs.
 /build/
 
+# Default runtime state and private transport identity.
+/data/
+
 # Nim compiler caches may also be created beside source files.
 nimcache/
 
