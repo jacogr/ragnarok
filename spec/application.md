@@ -227,3 +227,14 @@ After incorporating master’s MCP work through `b841e82b`, the production build
 harness tests and five E2E-plan tests passed again. The nine startup checks and CLI refusal
 controls passed against that build. The real browser workload also passed, including its initial
 shared-default RPC endpoint and user-selected endpoint override.
+
+Review follow-up: persistent listeners settle malformed, cancelled and timed-out requests as
+stream-local rejections, independently of soak fixture selection. The shared stream lifecycle
+tick now applies the existing incomplete-request deadline to ordinary listeners and drives the
+standalone cancellation workload. Native callback/engine errors remain fatal; one-shot exchanges
+retain their existing failure verdicts. Selftests check single settlement, later healthy work,
+one-shot failure and preservation of an existing fatal flag. The live startup workload now has
+ten checks: five malformed request modes, missing-FIN timeout and authenticated cancellation each
+leave the listener available for subsequent healthy clients. Production build and selftests passed;
+The original 16-case authenticated transport matrix, 12 repeated cold starts and CLI refusal
+controls passed as well. Evidence is in `build/startup-isolation-*`.

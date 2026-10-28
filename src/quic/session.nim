@@ -52,7 +52,7 @@ type
     incomingPeers: IncomingPeers
     meshDial: MeshDial
     expected: seq[byte]
-    server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
+    server, failed, stopping, service, listening, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
     completed, opened, healthy, rejected, cancelled: int
     capacityRejected, peakStreams: int
@@ -97,7 +97,7 @@ proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   if exporter != nil: # Disabled runs install no observer or retained identity table entries.
     exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
 
-# Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
+# Settle each stream once; persistent listeners isolate rejected requests from endpoint failure.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
   # Reset and close notifications may report the same terminal state more than once.
   if state.counted: return
@@ -116,8 +116,8 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
           progress "ISOLATED_HEALTHY"
           break
     if peer.attack == "soak": progress (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
-  elif peer.offloading:
-    # Admission, cancellation and invalid proofs reject only their own stream.
+  elif peer.listening or peer.offloading:
+    # Persistent listeners and offload admission/cancellation reject only their own stream.
     inc peer.completed
     inc peer.rejected
   elif peer.mesh and peer.recovering:
@@ -421,7 +421,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
   else: peer.failed = true # Undefined bridge events are explicit integration failures.
 
 # Stream-local lifecycle deadlines run on the same dispatcher thread as native transport timers.
-proc soakTick(peer: ptr Peer) {.raises: [].} =
+proc streamTick(peer: ptr Peer) {.raises: [].} =
   # Only live, unsettled streams own deadline work; close callbacks may recycle slots synchronously.
   for index in 0..<peer.streams.len:
     # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
@@ -514,7 +514,8 @@ proc runPeer*(options: Options): bool {.raises.} =
   elif mode == "holder":
     attack = "no-fin" # Saturation holders keep their read direction deliberately incomplete.
   var peer = Peer(logging: options.logWriter, server: server, service: service,
-      integrated: integrated, mixed: mode == "mixed", attack: attack, mesh: load, overload: mode ==
+      listening: listening, integrated: integrated, mixed: mode == "mixed", attack: attack,
+      mesh: load, overload: mode ==
       "overload",
       offloading: mode == "offload", light: mode == "light", badProof: mode == "invalid-proof")
   # Explicitly integrated binaries load public fixtures before registering native callbacks.
@@ -658,8 +659,9 @@ proc runPeer*(options: Options): bool {.raises.} =
       while (getMonoTime() - grace).inMilliseconds < 100:
         discard pollTransport(peer.transport) # Deliver reset/close while UDP and callbacks still own their buffers.
       return false # The intentional cancellation has no validated reply.
+    if peer.listening or peer.attack in ["soak", "cancel"]:
+      streamTick(addr peer) # Ordinary listeners also bound incomplete requests without fixture injection.
     if peer.attack == "soak":
-      soakTick(addr peer)
       # Late healthy requests prove continued service after malformed input, cancellation and missing FIN.
       if not server and opened and peer.opened == 5 and (getMonoTime() - started).inMilliseconds > (
           if peer.mixed: 1200 else: 650):
@@ -712,6 +714,24 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
 
 proc peerSelfTest*() =
   ## Deterministic malformed-input coverage remains independently testable before native transport setup.
+  # Rejection and repeated close/reset settlement preserve listener health and count one terminal result.
+  var listener = Peer(server: true, service: true, listening: true)
+  var rejected = default(StreamState)
+  finishStream(addr listener, addr rejected, false)
+  finishStream(addr listener, addr rejected, false)
+  assert not listener.failed and listener.completed == 1 and listener.rejected == 1
+  var healthy = default(StreamState)
+  finishStream(addr listener, addr healthy, true)
+  assert not listener.failed and listener.healthy == 1
+  # The one-shot matrix still fails a rejected exchange, and existing engine failures remain latched.
+  var bounded = Peer(server: true)
+  var refused = default(StreamState)
+  finishStream(addr bounded, addr refused, false)
+  assert bounded.failed
+  listener.failed = true
+  var afterFailure = default(StreamState)
+  finishStream(addr listener, addr afterFailure, false)
+  assert listener.failed
   assert checkedLength([0'u8, 0, 0, 0], 0).value == 0
   assert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.

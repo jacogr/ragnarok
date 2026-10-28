@@ -122,6 +122,36 @@ def run(binary, folder):
         stop(process, output, log)
     results.append('bare UDP 34100 server, two pinned clients, graceful stop and stable restart')
 
+    # Untrusted stream failures must not terminate a persistent listener or poison later clients.
+    isolated = folder/'stream-isolation'
+    selected = port()
+    process, output, log = start(isolated, ['--net-port', selected])
+    base = [str(binary), 'client', '--net-port', selected, '--net-peer-key',
+            str(isolated/'data/network/public.key'), '--net-timeout-ms', '2000']
+    try:
+        for mode in ['bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin']:
+            before = log.read_text().count('REQUEST_TIMEOUT')
+            rejected = subprocess.run([*base, '--net-mode', mode], cwd=isolated,
+                                      env=environment, capture_output=True, text=True, timeout=10)
+            assert rejected.returncode == 2 and 'AUTH_OK' in rejected.stdout, rejected
+            assert process.poll() is None, log.read_text()
+            if mode == 'no-fin':
+                assert log.read_text().count('REQUEST_TIMEOUT') > before, log.read_text()
+            healthy = subprocess.run(base, cwd=isolated, env=environment,
+                                     capture_output=True, text=True, timeout=10)
+            assert healthy.returncode == 0 and 'EXCHANGE_OK 8' in healthy.stdout, healthy
+        # The standalone cancellation workload resets paused reads through the real transport.
+        cancelled = subprocess.run([*base, '--net-mode', 'cancel'], cwd=isolated,
+                                   env=environment, capture_output=True, text=True, timeout=10)
+        assert cancelled.returncode == 0 and 'CANCEL_OK' in cancelled.stdout, cancelled
+        assert process.poll() is None, log.read_text()
+        healthy = subprocess.run(base, cwd=isolated, env=environment,
+                                 capture_output=True, text=True, timeout=10)
+        assert healthy.returncode == 0 and 'EXCHANGE_OK 8' in healthy.stdout, healthy
+    finally:
+        stop(process, output, log)
+    results.append('malformed, timed-out and cancelled streams preserve later healthy exchanges')
+
     # Explicit locations replace defaults without creating the unused default root.
     custom = folder/'custom'
     process, output, log = start(custom, ['--data-dir', 'owned', '--net-port', port()])
