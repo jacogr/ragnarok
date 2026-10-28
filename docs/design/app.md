@@ -43,6 +43,11 @@ RPC. Shutdown joins before input/canonical retirement. External checkpoint impor
 trust boundary and create a fresh disk path exclusively. See [disk operation](../disk-storage.md)
 and [the feature contract](../../spec/disk-state-store.md).
 
+Services also captures detached full-state startup checkpoint identity before disk history can
+restore a newer best head. Consumers of fixed trust metadata use that independent anchor rather
+than deriving authority from later imported canonical progress. This scalar observation retains
+no canonical ARC alias and is unavailable in default, closed or light lifetimes.
+
 `app/chain.nim` owns the canonical complete state and selected history independently of
 optional listener lifetime. It inherits an explicitly supplied head's store policy and accepts
 opaque finalized successors through state-owned adoption. Enabled RPC joins only an identical

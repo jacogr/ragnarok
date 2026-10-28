@@ -104,11 +104,15 @@ proc configure(sync: var CurrentSync, owner: var Services, peers: seq[DownloadPe
     return CurrentSyncError.MissingState # A peer's claimed finality never supplies this local anchor.
   let local = AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.value.blockHash)),
     slot: HeaderSlot(head.value.slot))
-  let finalized = if selectedFinality.error == GenesisError.None: selectedFinality.value else: head.value
-  # With no finality engine, the independent startup checkpoint is the fixed advertised trust anchor;
-  # downloaded children never advance it or write a fabricated finalized entry into the canonical view.
-  let anchor = AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](finalized.blockHash)),
-    slot: HeaderSlot(finalized.slot))
+  let original = owner.startupBlockAnchor
+  if not original.available: return CurrentSyncError.MissingState
+  # A restored best head can contain unfinalized imports. Only separately selected local finality
+  # or the independently configured startup checkpoint can supply the advertised fixed anchor.
+  let anchor = if selectedFinality.error == GenesisError.None:
+      AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](selectedFinality.value.blockHash)),
+        slot: HeaderSlot(selectedFinality.value.slot))
+    else: AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](original.blockHash)),
+      slot: original.slot)
   let configured = if qualified:
       sync.dispatcher.configure(owner, peers, older, limits.download, now, logical)
     else: sync.dispatcher.configure(owner, peers, older, limits.download, now)

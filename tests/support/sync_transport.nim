@@ -24,6 +24,8 @@ type
     requests*: int
     expectedHeader*: seq[byte]
     targetObserved*: bool
+    handshakes*: int
+    receivedFinal*: AnnouncedBlock
 
 proc `=copy`(destination: var SyncResponder, source: SyncResponder) {.error.}
   ## The native callback points to this exact stable fixture address.
@@ -87,7 +89,15 @@ proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: []
               if response.input[cursor + 4 + index] != server.expectedHeader[index]: matches = false
           if matches: server.targetObserved = true # A whole exact header message witnesses canonical client publication.
         else:
-          response.handshake = true # The first framed message is the peer's handshake, never an installed child.
+          assert size >= 37, "independent UP0 handshake Final extent"
+          var digest = default(array[32, byte])
+          for index in 0..<32: digest[index] = response.input[cursor + 4 + index]
+          var slot = 0'u32
+          for index in 0..<4:
+            slot = slot or (uint32(response.input[cursor + 36 + index]) shl (8 * index))
+          server.receivedFinal = AnnouncedBlock(hash: AnnouncedHeaderHash(digest), slot: HeaderSlot(slot))
+          inc server.handshakes
+          response.handshake = true # Read the actual outgoing Final bytes independently, before any child announcement.
         cursor += 4 + int(size)
       var pending = newSeq[byte](response.input.len - cursor)
       for index in 0..<pending.len: pending[index] = response.input[cursor + index]

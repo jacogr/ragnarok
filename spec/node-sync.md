@@ -98,8 +98,9 @@ retry plans remain unsynchronized and renew only on a later delayed host turn; e
 invalid blocks never create local progress. Caught-up hosts keep polling discovery without issuing
 another CE128 request. A later target revokes readiness before a new acquisition turn.
 
-The fixed independently configured complete-state checkpoint is the local UP0 anchor when the
-view has no separately selected finalized owner. This is a local trust assumption, not a network
+Services captures the fixed independently configured complete-state checkpoint before disk-history
+restoration. Its detached `startupBlockAnchor` is the local UP0 anchor when the view has no separately
+selected finalized owner; restored best-head imports cannot replace that checkpoint. This is a local trust assumption, not a network
 finality proof: imports never advance that anchor or manufacture finalized view entries. Remote
 finalized fields remain peer claims and cannot replace the original full-state anchor.
 
@@ -143,3 +144,9 @@ hint. An empty CE128 response still establishes nothing: the independently ancho
 pipeline must actually install that exact hash before readiness. The empty-leaf witness starts two
 blocks behind, verifies zero-import non-readiness, imports both blocks, compares the exact state
 root, and confirms that the canonical view still has no manufactured finalized entry or light trust.
+
+The disk-restart regression runs `sync-current` twice over the same two-child journal. An independent
+TLS responder parses the actual outgoing UP0 Final bytes on both lifetimes and requires the original
+configured checkpoint each time. The resumed head remains the imported child, while the advertised
+Final remains the independent original anchor. Default, closed and light Services expose no full
+startup anchor; the scalar getter retains no canonical map/header ownership during worker leases.

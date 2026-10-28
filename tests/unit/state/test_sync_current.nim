@@ -60,19 +60,9 @@ proc advance(host: var CurrentSync, server: var SyncResponder, target: CurrentSy
     var remaining = default(Timespec)
     discard nanosleep(pause, remaining) # Yield to the actual bounded preparation pool without touching its borrowed graph.
 
-proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
-    expected: BlockSnapshot) {.raises.} =
-  ## Isolate the responder before starting workers; the real foreground command must stop and reopen its exact durable head.
-  var chainPath = "sync-command-chain.json"
-  var policyPath = "sync-command-policy.conf"
-  var stopPath = "sync-command-stop"
-  var database = "sync-command-state"
-  defer:
-    for name in [chainPath, policyPath, stopPath, database]:
-      var path = name
-      discard posix.unlink(path.toCString()) # Retire only exact test-owned files after joined command shutdown.
-  writeFile(chainPath, tinyChainText(initial))
-  writeFile(policyPath, encodeCurrentDownloadPolicy(limits().download))
+proc commandRound(initial: BlockSnapshot, wires: seq[SyncWireBlock], expected: BlockSnapshot,
+    chainPath, policyPath, stopPath, database: string, requested: int) {.raises.} =
+  ## Start a real foreground lifetime and inspect its outbound Final before either initial or resumed shutdown.
   var server = default(SyncResponder)
   defer: server.close()
   server.catalog = wires
@@ -85,9 +75,13 @@ proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
   if int(child) == 0:
     let started = getMonoTime()
     var sent = false
+    var validAnchor = false
     while not fileExists(stopPath) and (getMonoTime() - started).inSeconds < 20:
       server.poll()
-      if server.targetObserved and not sent:
+      let observed = server.targetObserved or (requested == 0 and server.handshakes > 0)
+      if observed and not sent:
+        validAnchor = server.receivedFinal == claim(
+            initial) # Disk restart must retain the original independent Final, never promote restored bestBlock.
         assert posix.kill(parent, interruptSignal) == 0
         sent = true # Only an exact canonical publication message triggers the normal foreground interruption.
       var pause = Timespec(tv_sec: posix.Time(0), tv_nsec: 100000)
@@ -96,7 +90,7 @@ proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
     if not sent:
       discard posix.kill(parent, SIGTERM) # A failed positive control cannot hang the foreground command forever.
     server.close()
-    posix.exitnow(cint(if sent: 0 else: 3)) # Never run destructors over inherited parent ARC/native owners after fork.
+    posix.exitnow(cint(if sent and validAnchor: 0 else: 3)) # Never run destructors over inherited parent ARC/native owners after fork.
   server.close() # Parent drops only its private listener copy before starting native workers and outgoing engines.
   var reaped = false
   defer:
@@ -116,12 +110,37 @@ proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
   reaped = true
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0, "foreground independent source joined"
   assert outcome.error == CurrentDownloadCommandResult.Stopped and outcome.requestedBlocks == 0
-  assert outcome.adoptedBlocks == 2, "signal stop preserves the actual imported prefix"
+  assert outcome.adoptedBlocks == requested, "signal stop preserves the actual imported prefix"
+
+proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
+    expected: BlockSnapshot) {.raises.} =
+  ## Initial import and a fresh sync restart must advertise the same independent checkpoint Final.
+  var chainPath = "sync-command-chain.json"
+  var policyPath = "sync-command-policy.conf"
+  var stopPath = "sync-command-stop"
+  var database = "sync-command-state"
+  defer:
+    for name in [chainPath, policyPath, stopPath, database]:
+      var path = name
+      discard posix.unlink(path.toCString()) # Retire only exact test-owned files after joined command shutdown.
+  for name in [chainPath, policyPath, stopPath, database]:
+    var path = name
+    discard posix.unlink(path.toCString()) # A deliberate regression failure must not poison the next isolated run.
+  writeFile(chainPath, tinyChainText(initial))
+  writeFile(policyPath, encodeCurrentDownloadPolicy(limits().download))
+  commandRound(initial, wires, expected, chainPath, policyPath, stopPath, database, 2)
+  discard posix.unlink(stopPath.toCString()) # The second isolated responder starts with fresh stop/evidence state.
+  commandRound(initial, wires, expected, chainPath, policyPath, stopPath, database, 0)
+  var options = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath,
     "--state-storage", "disk", "--state-db", database], options)
   var reopened = default(Services)
   defer: reopened.close()
   assert reopened.start(options, "continuous durable restart")
+  let anchor = reopened.startupBlockAnchor
+  assert anchor.available and array[32, byte](anchor.blockHash) == array[32, byte](
+      initial.blockHash)
+  assert uint32(anchor.slot) == initial.slot
   assert array[32, byte](reopened.chainView.bestBlock.value.blockHash) == array[32, byte](
       expected.blockHash)
   assert array[32, byte](reopened.stateSnapshot.value.commitment.root) == array[32, byte](
