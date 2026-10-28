@@ -639,4 +639,6 @@ check-pvm-x86-jit: toolchain check-inventory
 # Same complete matched-image application cohort, explicitly on a native Linux x86-64 CI runner.
 .PHONY: bench-pvm-x86-applications
 bench-pvm-x86-applications: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_x86_jit_applications.py

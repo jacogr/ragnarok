@@ -2,11 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Host and build-policy tests for the shared exact-state native application cohort; never execute a compiler."""
 import unittest
+from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
     """A guest ISA or role cannot disguise an unsupported host or create unequal current policy images."""
+    def test_make_provisions_both_offline_reference_builds(self):
+        """A clean CI runner must fetch both locked references before the offline shared harness starts."""
+        make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
+        target=make.split('bench-pvm-x86-applications: toolchain sources rust-tools\n',1)[1]
+        for crate in ('polkavm','polkavm_doom'):
+            fetch='cargo fetch --locked --manifest-path tests/performance/'+crate+'/Cargo.toml'
+            self.assertIn(fetch,target)
+            self.assertLess(target.index(fetch),target.index('tools/pvm_x86_jit_applications.py'))
+
     def test_exact_supported_host_matrix(self):
         """Only the maintained native CPU/OS pairs may emit an architecture's code."""
         for system in ('Linux','Darwin','Windows'):

@@ -19,11 +19,13 @@ extern int memfd_create(const char *name, unsigned int flags);
 #endif
 /* Each exclusive owner retains one MiB, with separate writable and executable aliases. */
 typedef struct { void *executable; void *writable; uint32_t used; } pvm_x86_arena;
+/* Return process CPU time for cold publication accounting; a missing OS clock is an internal failure. */
 static uint64_t pvm_x86_cpu_ns(void) {
     struct timespec now;
     if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now) != 0) abort();
     return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
 }
+/* Allocate an exclusive bounded pair of aliases; unsupported hosts or OS refusal return no capability. */
 static void *pvm_x86_arena_create(void) {
 #if PVM_X86_JIT_HOST
     const uint32_t capacity = 1024 * 1024;
@@ -44,6 +46,7 @@ static void *pvm_x86_arena_create(void) {
     return NULL;
 #endif
 }
+/* Retire only this owner's mappings; default and moved-from handles release nothing. */
 static void pvm_x86_arena_destroy(void *handle) {
     if (!handle) return;
 #if PVM_X86_JIT_HOST
@@ -53,6 +56,7 @@ static void pvm_x86_arena_destroy(void *handle) {
 #endif
     free(handle);
 }
+/* Append a complete bounded leaf, preserving prior code; return its aligned offset or a local refusal. */
 static int32_t pvm_x86_arena_publish(void *handle, const unsigned char *bytes, uint32_t length) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
@@ -70,6 +74,7 @@ static int32_t pvm_x86_arena_publish(void *handle, const unsigned char *bytes, u
     return -1;
 #endif
 }
+/* Invoke only a cache-validated native entry with fresh borrowed registers; malformed scalar extents refuse. */
 static int pvm_x86_arena_call(void *handle, uint32_t offset, void *registers) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
