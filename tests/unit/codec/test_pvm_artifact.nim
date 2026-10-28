@@ -45,45 +45,45 @@ proc fixture(code: seq[byte] = @[0'u8, 0, 2, 50, 0, 1], entry = 0'u8,
 
 proc refused(bytes: seq[byte], reason: ArtifactError) =
   ## Failures expose only their reason, never a partial memory/program or a fabricated entry.
-  assert decodeArtifact(bytes).error == reason
+  assert decodeArtifact(bytes).error == reason, "artifact witness 48: decodeArtifact(bytes).error == reason"
 
 let raw = fixture()
 let loaded = decodeArtifact(raw)
-assert loaded.error == ArtifactError.None
+assert loaded.error == ArtifactError.None, "artifact witness 52: loaded.error == ArtifactError.None"
 let owned = loaded.value
-assert owned.valid and owned.entry("main").error == ArtifactError.None
-assert uint64(owned.entry("main").value) == 0
-assert owned.entry("missing").error == ArtifactError.MissingExport
-assert default(Artifact).entry("main").error == ArtifactError.Uninitialized
+assert owned.valid and owned.entry("main").error == ArtifactError.None, "artifact witness 54: owned.valid and owned.entry(\"main\").error == ArtifactError.None"
+assert uint64(owned.entry("main").value) == 0, "artifact witness 55: uint64(owned.entry(\"main\").value) == 0"
+assert owned.entry("missing").error == ArtifactError.MissingExport, "artifact witness 56: owned.entry(\"missing\").error == ArtifactError.MissingExport"
+assert default(Artifact).entry("main").error == ArtifactError.Uninitialized, "artifact witness 57: default(Artifact).entry(\"main\").error == ArtifactError.Uninitialized"
 let absentResult = default(ArtifactResult[Artifact])
-assert absentResult.error == ArtifactError.Uninitialized
+assert absentResult.error == ArtifactError.Uninitialized, "artifact witness 59: absentResult.error == ArtifactError.Uninitialized"
 let memory = memoryOf(owned)
-assert uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7
-assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10
-assert load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault
+assert uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7, "artifact witness 61: uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7"
+assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10, "artifact witness 62: uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10"
+assert load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault, "artifact witness 63: load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault"
 assert store(memory, MemoryAddress(65536), AccessWidth(1), RegisterValue(1)).error ==
-    MachineError.Fault
+    MachineError.Fault, "artifact witness 64: store(memory, MemoryAddress(65536), AccessWidth(1), RegisterValue(1)).error =="
 let initial = initialMachine(owned, "main", MachineGas(100))
-assert initial.error == ArtifactError.None
+assert initial.error == ArtifactError.None, "artifact witness 67: initial.error == ArtifactError.None"
 let info = machineInfo(initial.value).value
-assert uint64(info.registers[0]) == 0xffff0000'u64
-assert uint64(info.registers[1]) == 0xfffe0000'u64
+assert uint64(info.registers[0]) == 0xffff0000'u64, "artifact witness 69: uint64(info.registers[0]) == 0xffff0000'u64"
+assert uint64(info.registers[1]) == 0xfffe0000'u64, "artifact witness 70: uint64(info.registers[1]) == 0xfffe0000'u64"
 let execution = execute(initial.value, ExecutionStepLimit(10), GasCycleLimit(100),
     PvmBackend.Interpreted)
-assert execution.error == StepError.None and execution.value.exit == StepExit.Halt
+assert execution.error == StepError.None and execution.value.exit == StepExit.Halt, "artifact witness 73: execution.error == StepError.None and execution.value.exit == StepExit.Halt"
 var changed = raw
 changed[0] = 0
-assert owned.entry("main").error == ArtifactError.None
+assert owned.entry("main").error == ArtifactError.None, "artifact witness 76: owned.entry(\"main\").error == ArtifactError.None"
 var symbols = importSymbols(owned)
 symbols[0] = "changed"
-assert importSymbols(owned) == @["h"]
+assert importSymbols(owned) == @["h"], "artifact witness 79: importSymbols(owned) == @[\"h\"]"
 for length in 0..<raw.len:
   # Every proper prefix is invalid both with the original length and after an attacker reseals it.
   var truncated = raw[0..<length]
-  assert decodeArtifact(truncated).error != ArtifactError.None
+  assert decodeArtifact(truncated).error != ArtifactError.None, "artifact witness 83: decodeArtifact(truncated).error != ArtifactError.None"
   if length >= 13:
     seal(truncated)
-    assert decodeArtifact(truncated).error != ArtifactError.None
+    assert decodeArtifact(truncated).error != ArtifactError.None, "artifact witness 86: decodeArtifact(truncated).error != ArtifactError.None"
 refused(fixture(version = 0), ArtifactError.UnsupportedVersion)
 refused(fixture(version = 2), ArtifactError.UnsupportedVersion)
 refused(fixture(entry = 1), ArtifactError.InvalidProgram)
@@ -108,27 +108,28 @@ seal(noncanonical)
 refused(noncanonical, ArtifactError.InvalidFormat)
 var limits = defaultArtifactLimits()
 limits.bytes = uint64(raw.len-1)
-assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded
+assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded, "artifact witness 111: decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded"
 limits = defaultArtifactLimits()
 limits.pages = 2
-assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded
+assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded, "artifact witness 114: decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded"
 limits = defaultArtifactLimits()
 limits.symbols = 0
-assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded
+assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded, "artifact witness 117: decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded"
 limits = defaultArtifactLimits()
 limits.codeBytes = 1
-assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded
+assert decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded, "artifact witness 120: decodeArtifact(raw, limits).error == ArtifactError.LimitExceeded"
 
-assert "--pvm-code FILE" in commandHelp()
-assert "--pvm-code" notin commandHelp("server")
+assert "--pvm-code FILE" in commandHelp(), "artifact witness 122: \"--pvm-code FILE\" in commandHelp()"
+assert "--pvm-code" notin commandHelp("server"), "artifact witness 123: \"--pvm-code\" notin commandHelp(\"server\")"
 var parsed = default(Options)
 var diagnostic = ""
-assert parseOptions(@["--pvm-code", "hello.polkavm", "--pvm-backend", "interpreted"], parsed, diagnostic)
-assert parsed.pvmCodePath == "hello.polkavm" and parsed.pvmEntry == "main"
-assert parsed.pvmGas == 10000000 and parsed.pvmSteps == 10000000
+assert parseOptions(@["--pvm-code", "hello.polkavm", "--pvm-backend", "interpreted"], parsed,
+    diagnostic), "artifact witness 126: parseOptions(@[\"--pvm-code\", \"hello.polkavm\", \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
+assert parsed.pvmCodePath == "hello.polkavm" and parsed.pvmEntry == "main", "artifact witness 127: parsed.pvmCodePath == \"hello.polkavm\" and parsed.pvmEntry == \"main\""
+assert parsed.pvmGas == 10000000 and parsed.pvmSteps == 10000000, "artifact witness 128: parsed.pvmGas == 10000000 and parsed.pvmSteps == 10000000"
 assert parseOptions(@["--pvm-backend=jit", "--pvm-code=hello.polkavm", "--pvm-entry=run",
-    "--pvm-gas=7", "--pvm-steps=9"], parsed, diagnostic)
-assert parsed.pvmEntry == "run" and parsed.pvmGas == 7 and parsed.pvmSteps == 9
+    "--pvm-gas=7", "--pvm-steps=9"], parsed, diagnostic), "artifact witness 129: parseOptions(@[\"--pvm-backend=jit\", \"--pvm-code=hello.polkavm\", \"--pvm-entry=run\","
+assert parsed.pvmEntry == "run" and parsed.pvmGas == 7 and parsed.pvmSteps == 9, "artifact witness 131: parsed.pvmEntry == \"run\" and parsed.pvmGas == 7 and parsed.pvmSteps == 9"
 for rejected in [@["--pvm-entry", "main"], @["--pvm-code"],
     @["--pvm-code", "x", "--pvm-gas", "0"],
     @["--pvm-code", "x", "--pvm-steps", "1000000001"],
@@ -137,10 +138,10 @@ for rejected in [@["--pvm-entry", "main"], @["--pvm-code"],
     @["--pvm-code", "x", "--with-rpc"],
     @["--selftest", "--pvm-code", "x"]]:
   # A previous successful parse must not survive a later malformed or ignored configuration.
-  assert not parseOptions(rejected, parsed, diagnostic)
-  assert not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0
-assert parseOptions(@["--pvm-code", "/missing/pvm-artifact-test.polkavm"], parsed, diagnostic)
-assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic
+  assert not parseOptions(rejected, parsed, diagnostic), "artifact witness 140: not parseOptions(rejected, parsed, diagnostic)"
+  assert not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0, "artifact witness 141: not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0"
+assert parseOptions(@["--pvm-code", "/missing/pvm-artifact-test.polkavm"], parsed, diagnostic), "artifact witness 142: parseOptions(@[\"--pvm-code\", \"/missing/pvm-artifact-test.polkavm\"], parsed, diagnostic)"
+assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic, "artifact witness 143: not runPvmCode(parsed, diagnostic) and \"IoError\" in diagnostic"
 try:
   # Filesystem failures terminate this witness rather than bypassing its assertions.
   let temporary = createTempFile("ragnarok-artifact-cli-", ".polkavm")
@@ -151,31 +152,31 @@ try:
     var contents = newString(raw.len)
     for i, octet in raw: contents[i] = char(octet)
     writeFile(path, contents)
-    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic), "artifact witness 154: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
     assert runPvmCode(parsed, diagnostic), diagnostic
-    assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic
-    assert loadArtifact(path).error == ArtifactError.None
-    assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic)
-    assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic
+    assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic, "artifact witness 156: \"PVM_CODE_OK\" in diagnostic and \"actual=interpreted\" in diagnostic"
+    assert loadArtifact(path).error == ArtifactError.None, "artifact witness 157: loadArtifact(path).error == ArtifactError.None"
+    assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic), "artifact witness 158: parseOptions(@[\"--pvm-code\", path, \"--pvm-entry\", \"missing\"], parsed, diagnostic)"
+    assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic, "artifact witness 159: not runPvmCode(parsed, diagnostic) and \"MissingExport\" in diagnostic"
     let host = fixture(code = @[0'u8, 0, 2, 10, 0, 1])
     contents = newString(host.len)
     for i, octet in host: contents[i] = char(octet)
     writeFile(path, contents)
-    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
-    assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic), "artifact witness 164: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
+    assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic, "artifact witness 165: not runPvmCode(parsed, diagnostic) and \"unbound-host=0\" in diagnostic"
     let loop = fixture(code = @[0'u8, 0, 2, 40, 0, 1])
     contents = newString(loop.len)
     for i, octet in loop: contents[i] = char(octet)
     writeFile(path, contents)
     assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted", "--pvm-steps", "1"],
-        parsed, diagnostic)
-    assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic
+        parsed, diagnostic), "artifact witness 170: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\", \"--pvm-steps\", \"1\"],"
+    assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic, "artifact witness 172: not runPvmCode(parsed, diagnostic) and \"StepLimitExceeded\" in diagnostic"
     let panic = fixture(code = @[0'u8, 0, 1, 0, 1])
     contents = newString(panic.len)
     for i, octet in panic: contents[i] = char(octet)
     writeFile(path, contents)
-    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
-    assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic), "artifact witness 177: parseOptions(@[\"--pvm-code\", path, \"--pvm-backend\", \"interpreted\"], parsed, diagnostic)"
+    assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic, "artifact witness 178: not runPvmCode(parsed, diagnostic) and \"Panic\" in diagnostic"
   finally:
     removeFile(temporary.path) # The fixture never persists outside this test's explicit lifetime.
 except:
