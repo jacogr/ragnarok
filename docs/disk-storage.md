@@ -35,8 +35,10 @@ backup if rollback to such a binary is required.
 
 The internal snapshot API permits a different positive window, subject to storage budgets.
 The application default remains eight; archive and retention CLI controls are pending the
-disk historical index and accepted block-body implementation. These snapshots retain headers
-and complete states, rather than an archive of raw block bodies. See the
+disk historical index. Newly accepted blocks retain exact complete block bytes with their
+headers and complete states. Legacy entries and checkpoint seeds explicitly lack block bodies;
+an upgrade does not reconstruct missing bytes. Body-bearing records use single-head V2 metadata,
+which older V1-only binaries cannot reopen. The rolling window remains bounded. See the
 [retention contract](../spec/block-state-retention.md) for scope and remaining work.
 
 Invalid existing data never falls back to genesis or memory. Interrupted initialization keeps its

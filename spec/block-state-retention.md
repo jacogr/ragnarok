@@ -68,3 +68,33 @@ Linux CI remains separate; these results do not establish archive completion or 
 
 Each implementation layer includes its own failure tests and operator documentation. Archive
 completion requires the full acceptance criteria in the issue, not just a larger metadata count.
+
+## Accepted block bytes
+
+Both supported complete-state chain coordinators retain the original admitted complete block
+only after private execution/composition succeeds. Exact sealed-header bytes bind the body to
+the selected header/hash and posterior state owner. Body storage is private immutable data;
+byte reads copy, and exact view authority compares body availability and cached complete-byte
+identity as well as state/profile/history. These helpers perform structural validation; execution
+authority continues to come from the original opaque producer, never a detached body/map pair.
+
+Body-bearing single-head records use `RAGNAROK-DISK-HEAD-V2`, adding an E8 body extent before
+the exact sealed header and complete block bytes. Header-only V1 records remain byte compatible,
+including inside existing V1/V2 history contexts. This allows old seeds/entries to coexist with
+new accepted blocks without claiming unavailable old bodies. Enclosing history preflights both
+header and body sizes against its existing context ceiling before allocation/publication.
+Restore checks all extents, exact block consumption, framing and header equality before exposing
+the body together with its complete historical state. Rejected traffic, duplicate attempts,
+transport framing and trailing bytes never become accepted-history records.
+
+This body-bearing rolling context is an intermediate durable path. Disk archive indexing must
+move old complete records out of the bounded resident view and cannot rely on repeatedly
+serializing an ever-growing history context. Current context/repository budgets still apply.
+
+Local checked release/ARC verification on 2026-10-28 passed `disk_application_head`,
+`disk_history`, `disk_chain`, `pvm_current_consecutive_disk`, `pvm_current_disk_worker` and
+`disk_publication_crash`, plus pinned formatting and whitespace checks. Exact original block
+bytes survive current consecutive journal/managed reopen across roster rotation, with and
+without RPC; paged worker publication and interrupted ordinary publication remain covered.
+These tests use the same pinned Nimony/macOS ARM64 profile recorded above. Linux exact-head
+CI and completion of archive retention remain separate.

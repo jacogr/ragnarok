@@ -81,10 +81,14 @@ proc encodeHistory(owner: ApplicationChain, chain: StorageChainId,
     let info = selected.value.header.headerInfo
     if info.error != HeaderError.None:
       return DiskHistoryResult[seq[byte]](status: DiskHistoryError.HeadFailure)
-    let fixed = uint64(EntryPrefixBytes+DiskHeadPrefixBytes)
-    if fixed > maximum-extent or uint64(info.value.consumed) > maximum-extent-fixed:
+    let headPrefix = if selected.value.hasBlockBody: DiskBodyHeadPrefixBytes else: DiskHeadPrefixBytes
+    let bodyLength = if selected.value.hasBlockBody: uint64(
+        selected.value.blockBodyLength) else: 0'u64
+    let fixed = uint64(EntryPrefixBytes+headPrefix)
+    if fixed > maximum-extent or uint64(info.value.consumed) > maximum-extent-fixed or
+        bodyLength > maximum-extent-fixed-uint64(info.value.consumed):
       return DiskHistoryResult[seq[byte]](status: DiskHistoryError.LimitExceeded)
-    extent += fixed+uint64(info.value.consumed) # Subtraction checks prove both arithmetic and host allocation bounds.
+    extent += fixed+uint64(info.value.consumed)+bodyLength # Subtraction checks prove allocation bounds, including complete bodies.
   var bytes = newSeq[byte](int(extent))
   if legacy:
     # V1 re-encoding authorizes only an exact existing V1 context, never a nondefault policy.

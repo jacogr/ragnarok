@@ -122,7 +122,10 @@ proc applyCurrentAccumulationChain*(state: var StateStore, view: var ChainView,
   if encoded.error != HeaderError.None:
     return CurrentAccumulationChainResult(status: CurrentAccumulationChainError.HeaderFailure,
       headerReason: encoded.error) # No encoded prefix or partly applied state escapes.
-  let child = captureBlockSnapshot(wire, applied.value, head.value.chainParameters)
+  let captured = captureBlockSnapshot(wire, applied.value, head.value.chainParameters)
+  let child = if captured.error == GenesisError.None:
+    withBlockBody(captured.value, admission.value.admitted.admittedBlock)
+    else: captured # Body retention failure stays private alongside the already prepared state.
   if child.error != GenesisError.None:
     return CurrentAccumulationChainResult(status: CurrentAccumulationChainError.CaptureFailure,
       captureReason: child.error) # Late native hash or structural refusal leaves both live handles intact.
