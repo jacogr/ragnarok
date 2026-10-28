@@ -47,10 +47,9 @@ complete Nim/Rust formatting and unoptimized semantic compilation of every produ
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. The **Build** aggregate requires every selected family. Automatic PR updates and manual
 `smoke` requests run Smoke alone. Master/full requests add Tooling, Linux & Docker and macOS.
-Linux & Docker reuses native packaging setup for the checked-release every-source audit and compiler
-rejection guards, retaining separate summaries/artifacts and independent failures. Smoke remains
-unchanged; Tooling runs Python references. Source audits apply no formatting and link no native
-libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
+Linux & Docker reuses native packaging setup for the checked-release every-source audit. Tooling
+runs Python references, lifecycle model verification and compiler rejection guards, retaining separate
+summaries/artifacts and independent failures. Smoke remains unchanged. Source audits apply no formatting and link no native libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
 coverage without adding binary packaging or Docker. Manual `build` selects Linux & Docker and macOS.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:

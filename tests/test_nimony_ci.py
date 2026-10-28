@@ -103,14 +103,14 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual([row['group'] for row in families], ['smoke'])
         self.assertNotIn('minutes', families[0])
 
-    def test_source_and_guards_share_linux_packaging_without_expanding_smoke(self):
-        """Linux reuses packaging setup while preserving independent source/guard failures and evidence."""
+    def test_source_shares_linux_packaging_without_expanding_smoke(self):
+        """Linux reuses packaging setup while Tooling owns independent compiler rejection checks."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         family = family_section(text, 'build', 'binary', 'Linux & Docker')
-        commands = ['package-binary', 'check-modules', 'check-guards', 'check-docker']
+        commands = ['package-binary', 'check-modules', 'check-docker']
         positions = [family.index('run: make '+command+'\n') for command in commands]
         self.assertEqual(positions, sorted(positions))
-        for target in ('check-modules', 'check-guards'):
+        for target in ('check-modules',):
             # Explicit status conditions allow every independent check after an earlier failed step.
             step = next(s for s in re.findall(r'^      - .*?(?=^      - |\Z)', family, re.M | re.S)
                         if 'run: make '+target+'\n' in s)
@@ -119,18 +119,19 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('!cancelled()', guard)
             self.assertTrue(expression(guard, context))
             self.assertFalse(expression(guard, dict(context, cancelled=True)))
-        for group in ('modules', 'guards'):
+        for group in ('modules',):
             self.assertIn('build/tests/'+group+'/results.json', family)
             self.assertIn('run: make summary-'+group+' SUMMARY_OUTPUT=', family)
         # Unit requests preserve checks without adding binary archives or a Docker build.
         context = event_context('workflow_dispatch', suite='unit')
         checks = family_section(text, 'build', 'checks', context=context)
         self.assertIn('run: make check-modules', checks)
-        self.assertIn('run: make check-guards', checks)
+        self.assertNotIn('run: make check-guards', checks)
+        self.assertNotIn('run: make check-guards', family)
         self.assertNotIn('run: make package-binary', checks)
         self.assertNotIn('run: make check-docker', checks)
-        for group, name in [('smoke', None), ('python', None), ('binary', 'macOS')]:
-            # The fast gate, long Python references and macOS packaging gain no compiler-guard work.
+        for group, name in [('smoke', None), ('binary', 'macOS')]:
+            # The fast gate and macOS packaging gain no compiler-guard work.
             selected = family_section(text, 'build', group, name)
             self.assertNotIn('run: make check-modules', selected)
             self.assertNotIn('run: make check-guards', selected)
@@ -553,6 +554,14 @@ class NimonyCISafeguards(unittest.TestCase):
         for group in ('smoke', 'binary', 'checks', 'docker'):
             context = dict(event_context(), matrix=dict(family=dict(group=group)))
             self.assertFalse(expression(guard, context))
+        # Rejection checks share this runner and retain strict evidence after other Tooling failures.
+        self.assertIn('run: make check-guards', tooling)
+        self.assertIn('run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', tooling)
+        self.assertIn('build/tests/guards/results.json', tooling)
+        rejection = next(s for s in re.findall(r'^      - .*?(?=^      - |\Z)', tooling, re.M | re.S)
+                         if 'run: make check-guards\n' in s)
+        rejection_guard = re.search(r'^        if: (.+)$', rejection, re.MULTILINE).group(1)
+        self.assertEqual(rejection_guard, guard)
         self.assertNotIn('continue-on-error', tooling)
         self.assertIn('needs: build', job_section(text, 'build-status'))
 
@@ -563,7 +572,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('run: &inventory-run make check-inventory', text)
         for job, family, target in [('build', 'binary', 'check-modules'), ('build', 'python', 'check-python'),
                                     ('build', 'python', 'check-models'),
-                                    ('build', 'binary', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
+                                    ('build', 'python', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
                                     ('e2e', 'mcp', 'check-mcp-interop'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),

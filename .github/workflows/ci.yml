@@ -132,6 +132,27 @@ jobs:
             build/tests/models/*.log
             build/tests/models/*.nif
             build/tests/models/results.json
+      - name: Check compiler rejection guards
+        # Earlier tooling/model failures must not suppress the independent rejection checks.
+        if: ${{ !cancelled() && matrix.family.group == 'python' }}
+        run: make check-guards
+      - name: Show verification coverage
+        if: ${{ always() && matrix.family.group == 'python' }}
+        run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: ${{ always() && matrix.family.group == 'python' }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.family.os }}-guards-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/guards/*.log
+            build/tests/guards/results.json
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
       - name: Build, package and smoke-test relocated peer
         if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
@@ -176,27 +197,6 @@ jobs:
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
-      - name: Check compiler rejection guards
-        # A failed source check must not suppress the independent rejection checks.
-        if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        run: make check-guards
-      - name: Show verification coverage
-        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.family.os }}-guards-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/guards/*.log
-            build/tests/guards/results.json
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
       # The image keeps its isolated build and still runs after a native archive failure.
       - name: Build and smoke-test Docker image
         if: ${{ !cancelled() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
