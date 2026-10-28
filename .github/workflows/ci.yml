@@ -823,9 +823,9 @@ jobs:
       - name: Qualify PVM on the native Linux architecture
         if: ${{ inputs.suite != 'jit-x86' }}
         run: make check-pvm-native
-      - name: Compare checked interpreters on Linux x86-64
+      - name: Compare public x86 JIT and checked interpreters
         if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' }}
-        run: make bench-pvm-interpreter
+        run: make bench-pvm-x86-applications
       - name: Compare public ARM64 JIT and checked interpreters
         if: ${{ matrix.family.group == 'arm64' }}
         run: make bench-pvm-arm64-applications

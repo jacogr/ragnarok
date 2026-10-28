@@ -23,6 +23,7 @@ from pvm_interpreter_compare import parse_public, parse_candidate
 from pvm_sieve_report import parse_process_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
 from pvm_benchmark import cpu_model
+from pvm_application_report import lifecycle_sections
 from pvm_comparison_policy import policy_receipt
 from setup_nimony import installed, cache_directory
 
@@ -104,7 +105,7 @@ def run(architecture="arm64", build=None, baseline=None):
     folder.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',architecture=architecture,baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-policy-v2',
-                  policies=dict(interpreter='interpreted', jit='jit', baseline='historical pinned default',
+                  policies=dict(interpreter='interpreted', jit='jit', baseline='matching available native build; checked fallback without x86 support',
                                 core='retained core JIT', reference='polkavm-interpreted'))
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (folder/'summary.md').write_text('Application comparison incomplete.\n')
@@ -256,6 +257,7 @@ def run(architecture="arm64", build=None, baseline=None):
             values=[*[f'{medians[role]/1e6:.3f}' for role in ROLES],f'{medians["jit"]/medians["interpreter"]:.3f}',f'{medians["jit"]/medians["reference"]:.3f}']
             for col,value in zip(columns,values): col.append(value)
         lines.append('| '+case+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
+    lines += lifecycle_sections(report).splitlines()
     (folder/'summary.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 

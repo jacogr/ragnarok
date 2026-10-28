@@ -254,7 +254,7 @@ class NimonyCISafeguards(unittest.TestCase):
             with self.subTest(context=context): self.assertTrue(expression(guard,context))
         for context in disabled:
             with self.subTest(context=context): self.assertFalse(expression(guard,context))
-        self.assertIn('run: make bench-pvm-interpreter',section)
+        self.assertIn('run: make bench-pvm-x86-applications',section)
         self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
         self.assertIn('if: always()',section)
         self.assertIn('build/tests/pvm-interpreter-linux/*.json',section)
@@ -270,8 +270,8 @@ class NimonyCISafeguards(unittest.TestCase):
         rows=selected_families(text,'pvm-comparison',event_context())
         self.assertEqual([(r['group'],r['os']) for r in rows],
                          [('arm64','ubuntu-26.04-arm'),('x86_64','ubuntu-26.04')])
-        for row,target,other in ((rows[0],'bench-pvm-arm64-applications','bench-pvm-interpreter'),
-                                 (rows[1],'bench-pvm-interpreter','bench-pvm-arm64-applications')):
+        for row,target,other in ((rows[0],'bench-pvm-arm64-applications','bench-pvm-x86-applications'),
+                                 (rows[1],'bench-pvm-x86-applications','bench-pvm-arm64-applications')):
             # Every architecture uses its own maintained timing driver, after bounded qualification.
             perf=family_section(text,'pvm-comparison',row['group'])
             self.assertIn('run: make check-pvm-native',perf)
