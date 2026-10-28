@@ -203,12 +203,12 @@ let late = composeAssuredState(source, short)
 expect(late, AssuredCompositionError.CompositionFailure)
 assert late.compositionFailure.error == AccumulationCompletionError.ConsensusFailure
 failHash(1)
-let backend = composeAssuredState(source, config)
-expect(backend, AssuredCompositionError.DriverFailure)
-assert backend.driverFailure.error == AccumulationDriverError.InputFailure
-assert backend.driverFailure.inputFailure.error == AccumulationContinuationInputError.BatchFailure
-assert backend.driverFailure.inputFailure.batchFailure.error == AccumulationBatchError.StoreFailure
-assert backend.driverFailure.inputFailure.batchFailure.storeError == StateStoreError.BackendFailure
+let refusal = composeAssuredState(source, config)
+expect(refusal, AssuredCompositionError.DriverFailure)
+assert refusal.driverFailure.error == AccumulationDriverError.InputFailure
+assert refusal.driverFailure.inputFailure.error == AccumulationContinuationInputError.BatchFailure
+assert refusal.driverFailure.inputFailure.batchFailure.error == AccumulationBatchError.StoreFailure
+assert refusal.driverFailure.inputFailure.batchFailure.storeError == StateStoreError.BackendFailure
 failHash(0)
 assert sameStateSnapshot(final.finalAccumulationParent.value, original)
 storage(original)

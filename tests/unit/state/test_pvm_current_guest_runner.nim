@@ -213,9 +213,9 @@ var wrongProfile = policy()
 wrongProfile.contexts.queues.cores = CoreCount(3)
 assert run(source, wrongProfile).error == AccumulationGuestError.InvalidParameters, "current guest check: run(source, wrongProfile).error == AccumulationGuestError.InvalidParameters"
 failHash(1)
-let backend = run(source)
-assert backend.error == AccumulationGuestError.ServiceFailure and backend.serviceFailure ==
-    AccumulationServiceError.BackendFailure, "current guest check: backend.error == AccumulationGuestError.ServiceFailure and backend.serviceFailure =="
+let refusal = run(source)
+assert refusal.error == AccumulationGuestError.ServiceFailure and refusal.serviceFailure ==
+    AccumulationServiceError.BackendFailure, "current guest check: refusal.error == AccumulationGuestError.ServiceFailure and refusal.serviceFailure =="
 failHash(0)
 var malformed = source
 assert malformed.state.apply([StateWrite(key: chapterServiceKey(StateChapter(255), ServiceIndex(

@@ -54,16 +54,25 @@ class NativePreparationHarness(unittest.TestCase):
             # Keep real and observed Rust library identities distinct.
             order.append(('bandersnatch', folder))
             return 'bs', 'bs-observer', {'bs': 'evidence'}
+        def polkavm(folder):
+            # The optional runtime has its own library and evidence, without executing Cargo here.
+            order.append(('polkavm', folder))
+            return 'polkavm', {'polkavm': 'evidence'}
         def quic():
             # QUIC preparation owns its certificate workspace and takes no caller folder.
             order.append(('quic', None))
             return 'quic', 'certificates', {'quic': 'evidence'}
-        with patch('nimony_crypto.prepare', side_effect=crypto), patch('bandersnatch_native.prepare', side_effect=bandersnatch), patch('nimony_quic.prepare', side_effect=quic), patch('storage_io_observer.prepare', return_value=('storage-io', {'io': 'evidence'})):
+        with patch('nimony_crypto.prepare', side_effect=crypto), patch(
+                'bandersnatch_native.prepare', side_effect=bandersnatch), patch(
+                'build_polkavm.prepare', side_effect=polkavm), patch(
+                'nimony_quic.prepare', side_effect=quic), patch(
+                'storage_io_observer.prepare', return_value=('storage-io', {'io': 'evidence'})), patch(
+                'subprocess.run', side_effect=AssertionError('Native build escaped provider mocks')):
             libraries, certificates, evidence = native_preparation.prepare_libraries(Path('/fixture'))
-        self.assertEqual(order, [('crypto', Path('/fixture')), ('bandersnatch', Path('/fixture')), ('quic', None)])
-        self.assertEqual(libraries, dict(crypto='crypto', observer='observer', bandersnatch='bs', bandersnatch_observer='bs-observer', quic='quic', storage_io='storage-io'))
+        self.assertEqual(order, [('crypto', Path('/fixture')), ('bandersnatch', Path('/fixture')), ('polkavm', Path('/fixture')), ('quic', None)])
+        self.assertEqual(libraries, dict(crypto='crypto', observer='observer', bandersnatch='bs', bandersnatch_observer='bs-observer', quic='quic', storage_io='storage-io', polkavm='polkavm'))
         self.assertEqual(certificates, 'certificates')
-        self.assertEqual(evidence, dict(crypto_native={'crypto': 'evidence'}, bandersnatch_native={'bs': 'evidence'}, quic_native={'quic': 'evidence'}, storage_io_native={'io': 'evidence'}))
+        self.assertEqual(evidence, dict(crypto_native={'crypto': 'evidence'}, bandersnatch_native={'bs': 'evidence'}, quic_native={'quic': 'evidence'}, storage_io_native={'io': 'evidence'}, polkavm_native={'polkavm': 'evidence'}))
 
     # Failed preparation must stop immediately, without allowing later providers to supply partial success.
     def test_library_failure_stops_preparation(self):
@@ -81,6 +90,19 @@ class NativePreparationHarness(unittest.TestCase):
             with patch('bandersnatch_native.prepare', side_effect=RuntimeError('later failure')):
                 with self.assertRaisesRegex(RuntimeError, 'later failure'):
                     native_preparation.prepare_libraries(Path('/fixture'), lambda name, value: recorded.append((name, value)))
+        self.assertEqual(recorded, [('crypto_native', {'ready': True})])
+
+    def test_polkavm_failure_preserves_prior_evidence(self):
+        """A failed runtime provider stops later transport setup without losing completed crypto evidence."""
+        recorded = []
+        with patch('nimony_crypto.prepare', return_value=('crypto', 'observer', {'ready': True})), patch(
+                'build_polkavm.prepare', side_effect=RuntimeError('runtime failed')) as polkavm, patch(
+                'nimony_quic.prepare') as quic:
+            with self.assertRaisesRegex(RuntimeError, 'runtime failed'):
+                native_preparation.prepare_libraries(Path('/fixture'),
+                    lambda name, value: recorded.append((name, value)), required=['crypto', 'polkavm', 'quic'])
+        polkavm.assert_called_once_with(Path('/fixture'))
+        quic.assert_not_called()
         self.assertEqual(recorded, [('crypto_native', {'ready': True})])
 
     # Preserve feature order, independent evidence names and all consumers when combining shared fixtures.
@@ -112,6 +134,8 @@ class NativePreparationHarness(unittest.TestCase):
         cases = [([], (), {}), (['observer'], ('crypto',), {'observer': 'observed'}),
                  (['bandersnatch'], ('bs',), {'bandersnatch': 'bs'}),
                  (['quic'], ('quic',), {'quic': 'quic'}),
+                 (['polkavm'], ('polkavm',), {'polkavm': 'polkavm'}),
+                 (['crypto', 'polkavm'], ('crypto', 'polkavm'), {'crypto': 'crypto', 'polkavm': 'polkavm'}),
                  (['bandersnatch_observer', 'crypto'], ('crypto', 'bs'),
                   {'bandersnatch_observer': 'bs-observed', 'crypto': 'crypto'})]
         for required, expected, wanted in cases:
@@ -119,12 +143,13 @@ class NativePreparationHarness(unittest.TestCase):
             with self.subTest(required=required), patch('nimony_crypto.prepare',
                     return_value=('crypto', 'observed', {'id': 'crypto'})) as crypto, patch(
                     'bandersnatch_native.prepare', return_value=('bs', 'bs-observed', {'id': 'bs'})) as bs, patch(
+                    'build_polkavm.prepare', return_value=('polkavm', {'id': 'polkavm'})) as polkavm, patch(
                     'nimony_quic.prepare', return_value=('quic', 'certs', {'id': 'quic'})) as quic:
                 recorded = []
                 libraries, certificates, evidence = native_preparation.prepare_libraries(
                     Path('/fixture'), lambda name, value: recorded.append((name, value)), required=required)
                 self.assertEqual(libraries, wanted)
-                self.assertEqual(tuple(name for name, mock in [('crypto', crypto), ('bs', bs), ('quic', quic)] if mock.called), expected)
+                self.assertEqual(tuple(name for name, mock in [('crypto', crypto), ('bs', bs), ('polkavm', polkavm), ('quic', quic)] if mock.called), expected)
                 self.assertEqual(certificates, 'certs' if 'quic' in expected else None)
                 self.assertEqual(dict(recorded), evidence)
                 self.assertEqual(len(evidence), len(expected))

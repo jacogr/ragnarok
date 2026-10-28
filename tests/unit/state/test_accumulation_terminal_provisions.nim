@@ -102,9 +102,9 @@ let lateInvalid = prepareTerminalAccumulationProvisions([hashReturn, invalidExec
 assert lateInvalid.error == AccumulationTerminalProvisionError.NormalizationFailure
 assert lateInvalid.normalizationError == AccumulationOutcomeError.InvalidExecution
 assert hashCalls() == 0
-let backend = prepareTerminalAccumulationProvisions([halted], slot, policy)
-assert backend.error == AccumulationTerminalProvisionError.ProvisionFailure
-assert backend.provisionError == AccumulationProvisionError.BackendFailure
+let refusal = prepareTerminalAccumulationProvisions([halted], slot, policy)
+assert refusal.error == AccumulationTerminalProvisionError.ProvisionFailure
+assert refusal.provisionError == AccumulationProvisionError.BackendFailure
 failHash(0)
 let expectedBoth = newStateStore(expectedEntries(true), integrationStoreLimits()).value
 let expectedCheckpoint = newStateStore(expectedEntries(false), integrationStoreLimits()).value
