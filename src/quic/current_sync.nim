@@ -5,15 +5,14 @@
 ## admission. Targets are hints; only installed canonical children advance the local observation.
 
 import ./[current_block_download_loop, current_block_download_peers, announcement_stream,
-    announcements, current_block_download_session]
+    announcements, current_block_download_session, sync_targets]
 import ../app/[services, download_schedule, current_handoff, current_logical_download, chain]
 import ../codec/[bounded, header]
 import ../chain/[provider, genesis]
 import ../state/[store, report_anchors]
+export sync_targets
 
 type
-  CurrentSyncStage* {.pure.} = enum ## Unknown and blocked observations never authorize participation.
-    Uninitialized, Unknown, CatchingUp, CaughtUp, Blocked, Failed, Closed
   CurrentSyncError* {.pure.} = enum ## Refusals never grant canonical installation or readiness.
     None, Uninitialized, Busy, InvalidPolicy, MissingState, ClockRegression, DispatchFailure,
       InvalidAdoption, NeedsAncestors
@@ -34,16 +33,12 @@ type
     port: uint16
     certificate, privateKey, alpn: string
     dialedAt: uint64
-  SyncSource = object ## Only an actual stream message refreshes the monotonic evidence timestamp.
-    incarnation, sequence, seenAt: uint64
-    live: bool
-    leaves, reached: seq[AnnouncedBlock]
   CurrentSync* = object ## Stable exclusive owner; close must precede Services or callback retirement.
     dispatcher: CurrentDownloadLoop
     owner: nil ptr Services
     peers: seq[DownloadPeerId]
     endpoints: array[16, SyncEndpoint]
-    sources: array[16, SyncSource]
+    targets: SyncTargets
     limits: CurrentSyncLimits
     progress: CurrentSyncProgress
     previous: OwnedHeader
@@ -117,6 +112,9 @@ proc configure(sync: var CurrentSync, owner: var Services, peers: seq[DownloadPe
       sync.dispatcher.configure(owner, peers, older, limits.download, now, logical)
     else: sync.dispatcher.configure(owner, peers, older, limits.download, now)
   if configured != CurrentDownloadLoopError.None: return CurrentSyncError.InvalidPolicy
+  if not sync.targets.configure(owner.chainView, peers, limits.sourceAgeMs, uint64(now)):
+    sync.dispatcher.close()
+    return CurrentSyncError.InvalidPolicy # Target evidence shares the same independent original full view.
   sync.owner = addr owner
   if sync.dispatcher.enableAnnouncements(AnnouncementHandshake(finalized: anchor, leaves: @[local]),
       limits.announcements) != CurrentDownloadPeerError.None:
@@ -160,62 +158,27 @@ proc openPeer*(sync: var CurrentSync, id: DownloadPeerId, expected: CurrentDownl
   CurrentDownloadPeerError.None
 
 proc observe(sync: var CurrentSync, now: uint64) =
-  ## Recompute readiness from all live leaves; lower competing forks cannot be silently ignored.
-  sync.progress.targetKnown = false
-  sync.progress.sources = 0
-  var conflict = false
-  var ahead = false
-  for index, peer in sync.peers:
-    let view = sync.dispatcher.announcements(peer)
-    let incarnation = sync.dispatcher.incarnation(peer)
-    if not view.available:
-      sync.sources[index] = default(SyncSource)
-      continue # TLS/reset/FIN revoke evidence immediately, without waiting for TTL.
-    let claims = view.value
-    let targets = if claims.leaves.len == 0: @[claims.finalized] else: claims.leaves
-    # A peer with no unfinalized leaves still names a download target. Its Final record is a hint,
-    # never a substitute for independently anchored ordinary full-state admission.
-    let source = addr sync.sources[index]
-    if not source.live or source.incarnation != incarnation or source.sequence != claims.sequence:
-      var reached: seq[AnnouncedBlock] = @[]
-      if source.live and source.incarnation == incarnation:
-        for leaf in targets:
-          for installed in source.reached:
-            if leaf == installed: reached.add(leaf) # Retain only still-advertised exact receipts, bounded by the leaf cap.
-      source[] = SyncSource(live: true, incarnation: incarnation, sequence: claims.sequence,
-        seenAt: now, leaves: targets, reached: reached) # Repeated polling never extends freshness.
-    if now - source.seenAt >= sync.limits.sourceAgeMs: continue
-    inc sync.progress.sources
-    for leaf in source.leaves:
-      if not sync.progress.targetKnown or uint32(leaf.slot) > uint32(sync.progress.target.slot):
-        sync.progress.target = leaf
-        sync.progress.targetKnown = true # Max slot is a download hint, never a fork-choice rule.
-      if uint32(leaf.slot) > uint32(sync.progress.local.slot):
-        ahead = true
-      else:
-        var matched = leaf == sync.finalized
-        for installed in source.reached:
-          if installed == leaf: matched = true # A previously reached exact claim survives rolling header eviction.
-        if not matched:
-          for canonical in sync.known:
-            if canonical == leaf: matched = true # Only locally observed installed ancestry satisfies an old target.
-          let borrowed = sync.owner
-          if not matched and borrowed != nil:
-            let owner: ptr Services = borrowed
-            if not owner[].preparationActive and not owner[].stateProofActive and not owner[].diskPublicationActive:
-              let retained = owner[].chainView.blockAt(BlockHash(array[32, byte](leaf.hash)))
-              if retained.error == GenesisError.None and retained.value.slot == uint32(leaf.slot):
-                matched = true # Existing canonical retention can prove an old target after a new source handshake.
-          if matched: source.reached.add(leaf) # At most one proof per distinct current source leaf is retained.
-        if not matched: conflict = true # Unknown old forks require explicit reconciliation; no rollback is invented.
-  if sync.progress.sources == 0:
-    sync.progress.status = CurrentSyncStage.Unknown
-  elif conflict:
-    sync.progress.status = CurrentSyncStage.Blocked
-  elif ahead:
-    sync.progress.status = CurrentSyncStage.CatchingUp
-  else:
-    sync.progress.status = CurrentSyncStage.CaughtUp # Every fresh nonempty leaf is actual locally installed ancestry.
+  ## Normal catch-up and Tiny authoring consume the same real-source freshness and canonical-target rules.
+  if not sync.targets.beginTurn(now):
+    sync.progress.status = CurrentSyncStage.Failed
+    return
+  for peer in sync.peers:
+    discard sync.targets.observePeer(peer, sync.dispatcher.incarnation(peer),
+      sync.dispatcher.announcements(peer))
+  let borrowed = sync.owner
+  if borrowed == nil:
+    sync.progress.status = CurrentSyncStage.Failed
+    return
+  let owner: ptr Services = borrowed
+  let preparing = owner[].preparationActive
+  let proving = owner[].stateProofActive
+  let publishing = owner[].diskPublicationActive
+  let observed = if preparing or proving or publishing: sync.targets.pending()
+    else: sync.targets.evaluate(owner[].chainView)
+  sync.progress.status = observed.stage
+  sync.progress.sources = observed.liveSources
+  sync.progress.targetKnown = observed.hasTarget
+  if observed.hasTarget: sync.progress.target = observed.target
 
 proc retainParent(sync: var CurrentSync, child: OwnedHeader): bool =
   ## Retain a contiguous newest-first bounded window; total imports never reserve growing storage.
@@ -314,8 +277,7 @@ proc tick*(sync: var CurrentSync, now: CurrentDownloadLoopTick): CurrentSyncErro
   if sync.dispatcher.stage == CurrentDownloadLoopStage.Waiting:
     for index, peer in sync.peers:
       let endpoint = addr sync.endpoints[index]
-      let source = sync.sources[index]
-      let stale = not source.live or uint64(now) - source.seenAt >= sync.limits.sourceAgeMs
+      let stale = not sync.targets.fresh(peer)
       if endpoint.present and stale and uint64(now) - endpoint.dialedAt >= sync.limits.reconnectMs:
         endpoint.dialedAt = uint64(now)
         let reopened = sync.dispatcher.reconnectPeer(peer, endpoint.key, endpoint.port,
@@ -344,7 +306,7 @@ proc close*(sync: var CurrentSync) =
   sync.previous = default(OwnedHeader)
   sync.older = @[]
   sync.known = @[]
-  sync.sources = default(array[16, SyncSource])
+  sync.targets = default(SyncTargets)
   sync.progress.sources = 0
   sync.progress.targetKnown = false
   sync.progress.status = CurrentSyncStage.Closed
