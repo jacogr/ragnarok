@@ -11,18 +11,19 @@ proc destroyNative(handle: nil pointer) {.cdecl, importc: "pvm_x86_arena_destroy
     header: "x86_memory.h".}
 proc publishNative(handle: nil pointer, bytes: pointer, length: uint32): int32 {.cdecl,
     importc: "pvm_x86_arena_publish", header: "x86_memory.h".}
-proc callNative(handle: nil pointer, offset: uint32, registers: pointer): cint {.cdecl,
-    importc: "pvm_x86_arena_call", header: "x86_memory.h".}
-
-proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32 {.cdecl,
-    importc: "pvm_x86_arena_next", header: "x86_memory.h".}
+proc sealNative(handle: nil pointer, offset: uint32): uint64 {.cdecl,
+    importc: "pvm_x86_arena_entry", header: "x86_memory.h".}
+proc callNative(entry: uint64, registers: pointer): cint {.cdecl,
+    importc: "pvm_x86_entry_call", header: "x86_memory.h".}
+proc nextNative(entry: uint64, registers: pointer): uint32 {.cdecl,
+    importc: "pvm_x86_entry_next", header: "x86_memory.h".}
 
 type
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
-  X86Entry = object ## Only exact source coordinates own callable code offsets; zero is uncompiled and one is refused.
-    code, ending, operations: uint32
-    conditional: bool
+  X86Entry = object ## A sealed private capability never escapes its exclusive mapping owner; zero/uncompiled and one/refused carry no callable target.
+    code: uint64
+    ending, operations: uint32 # The high operation bit marks conditional ABI; the remaining bounded count is immutable.
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
@@ -31,6 +32,17 @@ type
     unavailable: bool
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
     branchCalls*, headerCalls*: uint64
+
+const conditionalBit = 0x80000000'u32
+  ## Operation counts never exceed65; one private discriminator keeps the source record at sixteen bytes.
+
+func isConditional(entry: X86Entry): bool =
+  ## Only cold publication sets this ABI discriminator; guests cannot construct cache records.
+  (entry.operations and conditionalBit) != 0
+
+func operationCount(entry: X86Entry): uint32 =
+  ## Mask the private ABI tag before any source-operation accounting or promotion comparison.
+  entry.operations and (not conditionalBit)
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
 proc `=dup`(source: X86Arena): X86Arena {.error.}
@@ -44,6 +56,7 @@ proc `=destroy`(owner: X86Arena) =
 
 proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
+  assert sizeof(X86Entry) == 16
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 func supportedX86Opcode*(opcode: byte): bool =
@@ -162,7 +175,8 @@ proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
   ## The coordinate map and physical publications have independent finite ceilings.
   if jit.unavailable or nodes > 262144 or offset >= nodes: return 1
   if jit.entries.len < int(nodes): jit.entries.setLen(int(nodes))
-  jit.entries[int(offset)].code
+  let code = jit.entries[int(offset)].code
+  if code < 2: uint32(code) else: 2'u32
 
 proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
   ## A cold refusal is exact to one stream coordinate and never changes another admitted entry.
@@ -177,8 +191,8 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   let previous = jit.entries[int(offset)]
   if previous.code != 0 and not conditional:
     return false
-  if conditional and (previous.code < 2 or previous.conditional or previous.ending != ending or
-      count != previous.operations+1): return false
+  if conditional and (previous.code < 2 or isConditional(previous) or previous.ending != ending or
+      count != operationCount(previous)+1): return false
   let minimum = if shortPrefix: 1'u32 else: 4'u32
   if (not conditional and count < minimum) or count > (if conditional: 65'u32 else: 64'u32) or
       ending <= offset or ending > uint32(jit.entries.len) or
@@ -197,8 +211,13 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   if code < 0:
     refuseX86Entry(jit, offset)
     return false
-  jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count,
-      conditional: conditional)
+  let callable = sealNative(jit.arena.handle, uint32(code))
+  if callable < 2:
+    # Failed capability admission preserves any old entry; no unchecked address can enter the dispatch cache.
+    refuseX86Entry(jit, offset)
+    return false
+  jit.entries[int(offset)] = X86Entry(code: callable, ending: ending,
+      operations: count or (if conditional: conditionalBit else: 0'u32))
   inc jit.fragments
   jit.codeBytes = uint64(code)+uint64(bytes.len)
   true
@@ -207,10 +226,10 @@ proc callX86Entry*(jit: X86Jit, offset: uint32, registers: var RegisterFile): ui
   ## The frame's original complete reservation authorizes these pure operations; no CPU or memory is retained.
   if int(offset) >= jit.entries.len: return high(uint32)
   let entry = jit.entries[int(offset)]
-  if entry.code < 2 or entry.conditional or jit.arena.handle == nil: return high(uint32)
-  if callNative(jit.arena.handle, entry.code-2, addr registers[0]) == 0: return high(uint32)
+  if entry.code < 2 or isConditional(entry) or jit.arena.handle == nil: return high(uint32)
+  if callNative(entry.code, addr registers[0]) == 0: return high(uint32)
   inc jit.calls
-  jit.operations += uint64(entry.operations)
+  jit.operations += uint64(operationCount(entry))
   entry.ending
 
 
@@ -218,9 +237,9 @@ proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): u
   ## The exclusive source record selects only its two checked scalar destinations; invocation registers are borrowed afresh.
   assert int(offset) < jit.entries.len
   let entry = jit.entries[int(offset)]
-  assert entry.code >= 2 and entry.conditional and jit.arena.handle != nil
-  result = nextNative(jit.arena.handle, entry.code-2, addr registers[0])
+  assert entry.code >= 2 and isConditional(entry) and jit.arena.handle != nil
+  result = nextNative(entry.code, addr registers[0])
   if result == high(uint32): return
   inc jit.calls
   inc jit.branchCalls
-  jit.operations += uint64(entry.operations)
+  jit.operations += uint64(operationCount(entry))

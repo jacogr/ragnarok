@@ -222,3 +222,44 @@ Tests add1,296direct conditional cases,540reused loop-prefix/gas/paid-state case
 storage controls, and preserve all existing scalar/literal/opcode/memory/host/source/ownership
 checks. Qualification and same-runner paired timings against the accepted foundation are pending;
 these are test plans, not passing native evidence. All native work remains on CI.
+
+
+### First conditional-entry measurement: revise before default enablement
+
+[Run40677330666](https://github.com/jacogr/ragnarok/actions/runs/40677330666) at
+`b49a2e04895976cd5626abc90673ba2e964cd5f6` passes all thirteen native gates, the complete
+70process/910call/115control/16build/eight-pair application cohort and all six calibrated
+profiles. Independent source/raw-log/profile/native-working-set audits pass731identities.
+Report SHA256: `1c20c01381e8a316b200970679c860442397258cd036d5d7adb8db305cab9b32`.
+The explicit paired parent is `7d21d39a4c1c482452e5e0d009898388e26ee669`.
+Runner: AMD EPYC7763, a different model from the earlier foundation cohorts; only this cohort's
+own pairings are ratios. Reused public CPU milliseconds, forward/reverse:
+
+| Case | Public interpreter | Parent foundation JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.987 / 3.956 | 4.541 / 4.488 | 3.893 / 3.817 | 3.766 / 3.767 | 6.042 / 6.181 | 0.976 / 0.965 | 0.644 / 0.617 |
+| minimal 100000 | 6.678 / 6.716 | 7.104 / 6.981 | 6.604 / 6.599 | 6.405 / 6.547 | 7.525 / 7.522 | 0.989 / 0.982 | 0.878 / 0.877 |
+| memset 100000 | 4.641 / 4.595 | 5.380 / 5.407 | 4.898 / 4.735 | 3.849 / 4.057 | 4.187 / 4.180 | 1.055 / 1.031 | 1.170 / 1.133 |
+| pinky 1 | 160.856 / 163.821 | 140.381 / 146.368 | 127.584 / 128.013 | 131.936 / 121.493 | 186.008 / 178.611 | 0.793 / 0.781 | 0.686 / 0.717 |
+| sieve 10000000 | 378.005 / 386.179 | 436.356 / 441.785 | 375.838 / 387.193 | 395.259 / 397.063 | 444.489 / 443.516 | 0.994 / 1.003 | 0.846 / 0.873 |
+| init 0 | 757.908 / 751.752 | 562.297 / 561.514 | 762.361 / 561.070 | 562.311 / 562.350 | 775.442 / 775.050 | 1.006 / 0.746 | 0.983 / 0.724 |
+| tick 0 | 58.636 / 58.118 | 55.407 / 56.307 | 60.217 / 59.437 | 47.838 / 48.623 | 53.494 / 52.613 | 1.027 / 1.023 | 1.126 / 1.130 |
+
+Conditional entries improve sieve12–15% and Pinky9–13% versus the paired arithmetic foundation,
+but gameplay regresses6–9%. Initialization has an unresolved forward-order outlier; the two
+orders have identical native calls/operations/code occupancy. This is not qualified for a
+production default switch. Initialization reaches1,024publications; gameplay reaches736, so
+its regression cannot be attributed to a full publication cache.
+
+Corrected reused profiles show43,530,924interpreter versus47,163,490JIT instructions on
+sieve100k, and587,243,798versus623,919,864on gameplay. The whole native-entry worker costs
+81self instructions per call; the branch worker costs60. These counters identify substantial
+handoff work, without proving a hardware latency cause. Compared paths retain the same checked
+source/gas/memory/host behavior.
+
+The next isolated revision seals an executable callable capability during publication. Cache
+records keep the exclusive mapping alive and expose no address to callers; dispatch retains
+bounds, source reservation, target validation and fresh register borrows. Immutable append-only
+mapping extent/alignment can then be validated once at capability creation rather than looked
+up again through the arena on every transition. This revision requires fresh native/state and
+same-runner timing/profile qualification; no gain is claimed yet.

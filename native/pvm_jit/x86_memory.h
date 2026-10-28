@@ -100,4 +100,39 @@ static uint32_t pvm_x86_arena_next(void *handle, uint32_t offset, void *register
     return UINT32_MAX;
 #endif
 }
+/* Seal a callable entry only after publication. Append-only bytes and exclusive owner lifetime preserve this capability. */
+static uint64_t pvm_x86_arena_entry(void *handle, uint32_t offset) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || offset >= owner->used || (offset & 15)) return 0;
+    uint64_t entry = (uint64_t)(uintptr_t)((unsigned char *)owner->executable + offset);
+    return entry > 1 ? entry : 0;
+#else
+    (void)handle; (void)offset;
+    return 0;
+#endif
+}
+/* Only the private cache can retain this admitted capability; the leased owner keeps its mapping alive through the call. */
+static int pvm_x86_entry_call(uint64_t entry, void *registers) {
+#if PVM_X86_JIT_HOST
+    if (entry <= 1 || !registers) return 0;
+    void (*call)(void *) = (void (*)(void *))(uintptr_t)entry;
+    call(registers);
+    return 1;
+#else
+    (void)entry; (void)registers;
+    return 0;
+#endif
+}
+/* A conditional capability returns only its captured scalar successor; no arena lookup or mutable target exists here. */
+static uint32_t pvm_x86_entry_next(uint64_t entry, void *registers) {
+#if PVM_X86_JIT_HOST
+    if (entry <= 1 || !registers) return UINT32_MAX;
+    uint32_t (*call)(void *) = (uint32_t (*)(void *))(uintptr_t)entry;
+    return call(registers);
+#else
+    (void)entry; (void)registers;
+    return UINT32_MAX;
+#endif
+}
 #endif
