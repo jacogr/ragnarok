@@ -141,39 +141,43 @@ for rejected in [@["--pvm-entry", "main"], @["--pvm-code"],
   assert not parsed.valid and parsed.pvmCodePath.len == 0 and parsed.pvmGas == 0
 assert parseOptions(@["--pvm-code", "/missing/pvm-artifact-test.polkavm"], parsed, diagnostic)
 assert not runPvmCode(parsed, diagnostic) and "IoError" in diagnostic
-let temporary = createTempFile("ragnarok-artifact-cli-", ".polkavm")
-close(temporary.cfile)
-let path = $temporary.path
 try:
-  # Real bounded file IO and the command handler use the same production parser and interpreter owner.
-  var contents = newString(raw.len)
-  for i, octet in raw: contents[i] = char(octet)
-  writeFile(path, contents)
-  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
-  assert runPvmCode(parsed, diagnostic), diagnostic
-  assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic
-  assert loadArtifact(path).error == ArtifactError.None
-  assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic)
-  assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic
-  let host = fixture(code = @[0'u8, 0, 2, 10, 0, 1])
-  contents = newString(host.len)
-  for i, octet in host: contents[i] = char(octet)
-  writeFile(path, contents)
-  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
-  assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic
-  let loop = fixture(code = @[0'u8, 0, 2, 40, 0, 1])
-  contents = newString(loop.len)
-  for i, octet in loop: contents[i] = char(octet)
-  writeFile(path, contents)
-  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted", "--pvm-steps", "1"],
-      parsed, diagnostic)
-  assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic
-  let panic = fixture(code = @[0'u8, 0, 1, 0, 1])
-  contents = newString(panic.len)
-  for i, octet in panic: contents[i] = char(octet)
-  writeFile(path, contents)
-  assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
-  assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic
-finally:
-  removeFile(temporary.path) # The fixture never persists outside this test's explicit lifetime.
+  # Filesystem failures terminate this witness rather than bypassing its assertions.
+  let temporary = createTempFile("ragnarok-artifact-cli-", ".polkavm")
+  close(temporary.cfile)
+  let path = $temporary.path
+  try:
+    # Real bounded file IO and the command handler use the same production parser and interpreter owner.
+    var contents = newString(raw.len)
+    for i, octet in raw: contents[i] = char(octet)
+    writeFile(path, contents)
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
+    assert runPvmCode(parsed, diagnostic), diagnostic
+    assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic
+    assert loadArtifact(path).error == ArtifactError.None
+    assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic)
+    assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic
+    let host = fixture(code = @[0'u8, 0, 2, 10, 0, 1])
+    contents = newString(host.len)
+    for i, octet in host: contents[i] = char(octet)
+    writeFile(path, contents)
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
+    assert not runPvmCode(parsed, diagnostic) and "unbound-host=0" in diagnostic
+    let loop = fixture(code = @[0'u8, 0, 2, 40, 0, 1])
+    contents = newString(loop.len)
+    for i, octet in loop: contents[i] = char(octet)
+    writeFile(path, contents)
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted", "--pvm-steps", "1"],
+        parsed, diagnostic)
+    assert not runPvmCode(parsed, diagnostic) and "StepLimitExceeded" in diagnostic
+    let panic = fixture(code = @[0'u8, 0, 1, 0, 1])
+    contents = newString(panic.len)
+    for i, octet in panic: contents[i] = char(octet)
+    writeFile(path, contents)
+    assert parseOptions(@["--pvm-code", path, "--pvm-backend", "interpreted"], parsed, diagnostic)
+    assert not runPvmCode(parsed, diagnostic) and "Panic" in diagnostic
+  finally:
+    removeFile(temporary.path) # The fixture never persists outside this test's explicit lifetime.
+except:
+  assert false, "artifact fixture filesystem operation failed"
 stdout.writeLine("pvm artifact tests passed")
