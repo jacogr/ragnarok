@@ -608,3 +608,13 @@ check-pvm-arm64-jit-docker: stage-pvm-arm64-jit-linux
 .PHONY: build-pvm-runtime
 build-pvm-runtime: setup
 	$(PYTHON) tools/build_polkavm.py
+
+# Correctness-only native CI parity uses the actual optional adapter and continuing gameplay state.
+.PHONY: check-pvm-doom-backends
+check-pvm-doom-backends: check-inventory toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/polkavm/Cargo.toml
+	$(PYTHON) tools/native_tests.py --suite pvm_artifact
+	$(PYTHON) tools/native_tests.py --suite app_cli
+	$(PYTHON) tools/native_tests.py --suite app_options
+	$(PYTHON) tools/pvm_doom_backends.py
