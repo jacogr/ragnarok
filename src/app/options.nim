@@ -20,6 +20,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
+  syncSourceAge, syncReconnect: uint64
   logging: LogPolicy
   output: LogWriter
   endpoint, chain, directory, managementPath, dataPath: string
@@ -243,10 +244,11 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
     diagnostic: var string): bool =
   ## Internal configuration boundary: command values are already normalized; validate shared controls atomically.
   options = default(Options)
-  var candidate = Options(dataPath: DefaultDataDirectory, codeEntry: "main", codeGas: 10000000,
-      codeSteps: 10000000, logging: initLogPolicy(), rpcNumber: DefaultRpcPort,
-          mcpNumber: DefaultMcpPort, uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks,
-              mode: DefaultNodeMode, backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
+  var candidate = Options(syncSourceAge: 30000, syncReconnect: 5000, dataPath: DefaultDataDirectory,
+      codeEntry: "main", codeGas: 10000000, codeSteps: 10000000, logging: initLogPolicy(),
+          rpcNumber: DefaultRpcPort, mcpNumber: DefaultMcpPort, uiNumber: DefaultUiPort,
+              downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode,
+                  backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
@@ -389,6 +391,12 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         if name == "--download-logical-source": candidate.logicalSource = value
         elif name == "--download-logical-policy": candidate.logicalPolicy = value
         else: candidate.namespacePolicy = value
+      of "--sync-source-age-ms", "--sync-reconnect-ms":
+        var number = 0'u64
+        if not unsignedValue(value, number) or number == 0 or number > 3600000:
+          return false # Bound independent host freshness/reconnect policy before any IO.
+        if name == "--sync-source-age-ms": candidate.syncSourceAge = number
+        else: candidate.syncReconnect = number
       of "--download-blocks":
         var number = 0'u64
         if value[0] == '0' or not unsignedValue(value, number) or number == 0 or
@@ -480,7 +488,8 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       return false # No complete map, unsupported implicit replay or ignored mutation policy enters light startup.
     if candidate.backend == StateStorage.Disk and candidate.layout != StateDiskLayout.Paged:
       return false # Journal/managed schemas do not represent the light proof database.
-    if candidate.positional.len > 0 and candidate.positional[0] in ["download", "download-current"]:
+    if candidate.positional.len > 0 and candidate.positional[0] in ["download", "download-current",
+        "sync-current"]:
       return false # Complete execution/download commands cannot masquerade as partial light operation.
     for path in [candidate.recoveryIdentity, candidate.recoveryHeader]:
       for character in path:
@@ -508,11 +517,12 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       diagnostic = "--mcp-port must differ from enabled RPC/UI ports"
       return false
   let downloadCommand = candidate.positional.len > 0 and
-    candidate.positional[0] in ["download", "download-current"] # Both explicit pipelines share only command-shape validation.
+    candidate.positional[0] in ["download", "download-current",
+        "sync-current"] # Both explicit pipelines share only command-shape validation.
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
       candidate.management or candidate.mcp:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
-        "download", "download-current", "check-traces", "history"]:
+        "download", "download-current", "sync-current", "check-traces", "history"]:
       return false # Explicit state/service activation belongs only to supported command shapes.
   let historyCommand = candidate.positional.len == 1 and candidate.positional[0] == "history"
   let historyControls = candidate.historyHash.len > 0 or uint64(candidate.historyNumber) > 0 or
@@ -548,13 +558,19 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       candidate.remoteAncestors > 0 or candidate.discoverAncestors > 0:
     if not downloadCommand or not candidate.state:
       return false # Other commands must not silently ignore supplied download controls.
+  let syncing = candidate.positional.len > 0 and candidate.positional[0] == "sync-current"
+  if syncing and ("--download-blocks" in seen or candidate.updateLogicalSource):
+    return false # A continuous host has no finite total; logical file export remains a joined finite command operation.
+  if not syncing and ("--sync-source-age-ms" in seen or "--sync-reconnect-ms" in seen):
+    return false # Unrelated lifecycles cannot silently ignore sync resource controls.
   if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
     return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
   if candidate.logicalSource.len > 0 or candidate.logicalPolicy.len > 0 or
       candidate.namespacePolicy.len > 0 or candidate.updateLogicalSource:
+    let currentCommand = candidate.positional.len > 0 and
+      candidate.positional[0] in ["download-current", "sync-current"]
     if candidate.logicalSource.len == 0 or candidate.logicalPolicy.len == 0 or
-        candidate.positional.len == 0 or candidate.positional[0] != "download-current" or
-            not candidate.state:
+        not currentCommand or not candidate.state:
       return false # Neither unpaired controls nor other commands can silently ignore a logical startup request.
   if candidate.codePath.len > 0:
     if candidate.positional.len != 0:
@@ -625,3 +641,10 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options): bool 
 proc dataDirectory*(options: Options): string =
   ## Persistent defaults are resolved once from the caller's selected root.
   if options.parsed: options.dataPath else: ""
+
+func syncSourceAgeMs*(options: Options): uint64 =
+  ## A validated continuous host alone consumes the independently configured freshness ceiling.
+  if options.parsed: options.syncSourceAge else: 0
+func syncReconnectMs*(options: Options): uint64 =
+  ## Connection replacement has its own finite delay, independent of import or freshness deadlines.
+  if options.parsed: options.syncReconnect else: 0

@@ -45,9 +45,9 @@ Verify slot gaps independently of adopted-block counts. Full and light readiness
 separate trust domains. Network parsers require truncation, noncanonical count, size/count/overflow,
 duplicate leaf, malformed header, fragmentation/coalescing and unexpected FIN controls.
 
-The current repository has finite CE128 downloads and a separate bounded Tiny host. Continuous
-synchronization remains in progress; existing commands continue to report unknown rather than
-imply synchronization while those paths are incomplete.
+The repository retains its finite CE128 commands and separate bounded Tiny host. The continuous
+full-state host described below is a dependent increment; adapting the Tiny authoring call remains
+the next layer. Existing finite commands do not acquire synchronization authority from completion.
 
 ## Peer-discovery increment
 
@@ -78,3 +78,68 @@ EOF, malformed-frame and wrong-key controls. Existing finite native current-down
 suites remain required consumers; exact private-payload and composite-copy compiler rejections
 preserve the API/ownership boundaries. All local results are macOS ARM64 on pinned October 28
 Nimony; native Linux CI remains a separate verdict.
+
+## Continuous full-state host
+
+`quic/current_sync.nim` keeps `Services` and the existing dispatcher at fixed addresses until
+explicit joined close. `sync-current` uses the same explicit endpoint/current-download-policy and
+full-state startup controls as `download-current`, runs until SIGINT/SIGTERM, and refuses a finite
+`--download-blocks` total. No whole-run block count or duration is reserved. `--net-timeout-ms`
+continues to bound up-front ancestor acquisition; current policy attempt/stream deadlines remain
+independent. On-demand ancestry retains its original child deadline and stops on interruption.
+A continuous acquisition round is capped by `--download-discover-ancestors` and the retained input
+count/byte ceilings; the lifetime number of imported children is independent of that cap.
+
+`--sync-source-age-ms` (default 30000) bounds the age of an actual UP0 message, and
+`--sync-reconnect-ms` (default 5000) delays idle replacement of missing/expired endpoints.
+Both accept 1..3600000 milliseconds. Polling an unchanged snapshot never refreshes its age.
+Reconnects preserve the exact identity pin and require an actual new handshake. Exhausted finite
+retry plans remain unsynchronized and renew only on a later delayed host turn; empty replies and
+invalid blocks never create local progress. Caught-up hosts keep polling discovery without issuing
+another CE128 request. A later target revokes readiness before a new acquisition turn.
+
+The fixed independently configured complete-state checkpoint is the local UP0 anchor when the
+view has no separately selected finalized owner. This is a local trust assumption, not a network
+finality proof: imports never advance that anchor or manufacture finalized view entries. Remote
+finalized fields remain peer claims and cannot replace the original full-state anchor.
+
+After a consumed installation receipt, the host compares the actual canonical hash, parent and
+slot before acknowledging one imported block. It retains a contiguous newest-first ancestry window
+under the existing independent header-count and byte limits, evicting only the oldest suffix.
+Total imports therefore do not grow retained context. Still-advertised exact target receipts may
+survive that header eviction, bounded by each source's leaf cap. Unknown older forks and different
+hashes at the same local slot block readiness; the host never rolls back or invents fork choice.
+An old peer target is satisfied only by actual observed installation or retained canonical ancestry.
+
+`CurrentSyncProgress` exposes copied `stage`, `localHead`, guarded `target`, `liveSources` and
+`adoptedBlocks`; `fullReady` requires fresh explicit target evidence whose hashes have been reached and
+no outstanding import. `lightReady` remains false: this host has no independent light authority.
+The observation is current as of its host tick, so callers must not reuse an old copied readiness
+value to authorize a later action. Status/RPC logging integration can consume these scalar fields
+without borrowing canonical maps. A stopped command reports its confirmed imports, never “synced”.
+
+The development current candidate pipeline still bounds supported execution features. Continuous
+transport is not a production finality engine, fork reconciliation algorithm or proof of global
+network completeness. Missing/pruned ancestry can remain explicitly blocked pending independent
+reconciliation; a maximum advertised slot is only a download hint. Tiny participation will also
+need a current-clock policy at its actual authoring call, supplied by the next layer.
+
+
+Local completion witnesses for this increment: `sync_current` constructs 72 genuinely signed and
+ordinarily admitted Tiny children at sparse slots through multiple epochs, then synchronizes a
+separate complete-state owner over independent TLS UP0/CE128 bytes. It checks partial progress,
+a target move during catch-up, repeated empty replies, invalid seals, delayed retry/reconnection,
+exact canonical hashes and state roots, a two-header rolling window, source expiry, conflicting
+claims, stream loss, fresh reconnect, clock regression and closed-source revocation. Its real
+`runCurrentSync` foreground case receives SIGINT only after the peer observes the exact installed
+header announcement; joined exit reports two confirmed imports and a journal restart matches the
+expected complete state root. The native finite dispatcher/current command and CLI/options suites
+remain affected consumer checks. Private progress and composite owner compiler rejections preserve
+the readiness and callback-ownership boundaries.
+
+The pinned UP0 handshake permits no unfinalized leaves while still carrying `Final` (JAMNP-S
+lines 204–220). In that case the host uses the exact claimed finalized hash/slot as a download
+hint. An empty CE128 response still establishes nothing: the independently anchored complete-state
+pipeline must actually install that exact hash before readiness. The empty-leaf witness starts two
+blocks behind, verifies zero-import non-readiness, imports both blocks, compares the exact state
+root, and confirms that the canonical view still has no manufactured finalized entry or light trust.

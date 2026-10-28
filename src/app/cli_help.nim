@@ -38,8 +38,12 @@ func visible(spec: OptionSpec, topic: string): bool =
     return spec.name in ["--log-level", "--chain", "--with-state", "--state-writes",
         "--state-write-bytes", "--trace-observations"]
   if spec.group == OptionGroup.Trace: return false
-  if spec.group == OptionGroup.Download: return topic in ["download", "download-current"]
-  if topic in ["download", "download-current"] and spec.group == OptionGroup.Telemetry: return false
+  if spec.name in ["--sync-source-age-ms", "--sync-reconnect-ms"]: return topic == "sync-current"
+  if topic == "sync-current":
+    if spec.name in ["--download-blocks", "--download-update-logical-source"]: return false
+  if spec.group == OptionGroup.Download: return topic in ["download", "download-current", "sync-current"]
+  if topic in ["download", "download-current", "sync-current"] and spec.group ==
+      OptionGroup.Telemetry: return false
   true
 
 proc commandHelp*(topic = ""): string =
@@ -83,10 +87,11 @@ proc commandHelp*(topic = ""): string =
     result.add("\nConformance environment:\n  JAM_FUZZ=1 JAM_FUZZ_SPEC=tiny|full|fuzz JAM_FUZZ_DATA_PATH=DIR\n  JAM_FUZZ_SOCK_PATH=PATH; optional JAM_FUZZ_LOG_LEVEL.\n  Or use ragnarok fuzz with --fuzz-* overrides (flags take precedence).\n")
   elif topic == "server" or topic == "client":
     result.add("\nWorkload modes:\n  listen (server default; persistent until interrupted), valid (bounded exchange), clean, mixed, integrated, holder, idle, probe,\n  proof, light, invalid-proof, proof-cancel; server also accepts service,\n  integration, overload, offload and soak (harness-controlled).\n")
-  elif topic in ["download", "download-current"]:
+  elif topic in ["download", "download-current", "sync-current"]:
     result.add("\nRequires --with-state --chain FILE; telemetry is unavailable.\n")
     result.add("Repeat --net-peer PORT:KEY_FILE for additional peers.\n")
-    if topic == "download-current": result.add("Use a ragnarok-current-download-policy-v1 policy; discovery must match its permissions.\n")
+    if topic == "sync-current": result.add("Runs until SIGINT/SIGTERM; --net-timeout-ms bounds each startup ancestor request, not the whole host.\nNo --download-blocks cap applies; slot gaps are not block counts.\n")
+    if topic in ["download-current", "sync-current"]: result.add("Use a ragnarok-current-download-policy-v1 policy; discovery must match its permissions.\n")
   elif topic == "check-traces":
     result.add("\nRequires --with-state --chain FILE. Repeat --trace-file FILE in execution order.\nNo listeners, disk storage or checkpoint import are enabled by this offline command.\n")
   if topic in ["fuzz", "serve-fuzz", "serve-fuzz-preset"]:

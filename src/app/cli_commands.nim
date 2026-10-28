@@ -116,7 +116,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   of "mesh":
     recipe = @["--net-local-port", "--net-remote-port", "--net-cert", "--net-key",
         "--net-local-key", "--net-peer-key", "--net-alpn", "--net-gate"]
-  of "download", "download-current":
+  of "download", "download-current", "sync-current":
     recipe = @["--net-port", "--net-cert", "--net-key", "--net-peer-key", "--net-alpn",
         "--net-timeout-ms", "--download-policy"]
   of "history": discard # Query selectors belong to validated service controls, with no positional recipe.
@@ -173,7 +173,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       if not boundedNumber(value, 0, high(uint64)): refuse(flag & " must be an unsigned decimal")
     else: discard # Paths, policy contents, network names and workload behavior belong to their owning handlers.
     output.add(value)
-  if topic in ["download", "download-current"]:
+  if topic in ["download", "download-current", "sync-current"]:
     let peers = fields[optionIndex("--net-peer")]
     if peers.len >= MaxDownloadPeers: refuse("Too many --net-peer entries")
     for peer in peers:
@@ -198,7 +198,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   let telemetry = fields[optionIndex("--with-telemetry")].len > 0
   if (state or telemetry) and fields[optionIndex("--chain")].len == 0:
     service.add("--chain"); service.add(DefaultChainFile)
-  if topic in ["server", "client", "mesh", "download", "download-current"]:
+  if topic in ["server", "client", "mesh", "download", "download-current", "sync-current"]:
     # Only selected features receive paths; omitted flags never enable state, disk or remote services.
     let lightValues = fields[optionIndex("--state-mode")]
     let light = lightValues.len > 0 and lightValues[0] == "light"

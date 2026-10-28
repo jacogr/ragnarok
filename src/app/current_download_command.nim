@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
-## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
+## Finite and continuous current download hosts own canonical Services and stable callbacks through joined teardown.
+## Startup accepts explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
 import ../lib/logging
 
@@ -14,13 +14,13 @@ import ./[options, services, chain, current_handoff, current_download_policy,
 import ./download_schedule
 import ../codec/[bounded, header]
 import ../state/[report_anchors, current_logical, accumulation_current_update, store, supplied_services]
-import ../lib/atomic_file
+import ../lib/[atomic_file, stop_signal]
 import ../chain/[genesis, provider]
 import ../quic/[current_block_download_loop, current_block_download_session,
-    current_block_download_peers, ancestor_peer, ancestor_stream]
+    current_block_download_peers, ancestor_peer, ancestor_stream, current_sync, announcements]
 
 type CurrentDownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
-  Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
+  Uninitialized, Adopted, Stopped, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
   InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted,
     Timeout, StorageMaintenanceFailure, InvalidLogicalSource, LogicalSourceUnavailable,
     LogicalSourceExportFailure, LogicalSourcePublicationFailure, LogicalSourcePublishedUnsynced
@@ -94,7 +94,8 @@ type RemoteAncestorResult = object ## A refused acquisition retains no decoded p
 proc remoteAncestors(owner: var Services, options: Options, peers: seq[DownloadPeerId],
     ports: array[16, uint16], keys: array[16, CurrentDownloadPeerKey], older: seq[OwnedHeader],
     limits: CurrentDownloadLoopLimits, started: MonoTime,
-        timeout: uint64, maximum: ElementLimit): RemoteAncestorResult {.raises.} =
+        timeout: uint64, maximum: ElementLimit,
+    signals: nil ptr StopSignals = nil): RemoteAncestorResult {.raises.} =
   ## Acquire only missing context, before any execution worker lease; native peer cleanup precedes returning copied headers.
   let selected = owner.chainView.bestBlock
   if selected.error != GenesisError.None or not ancestorsFit(selected.value.header, older, limits):
@@ -123,6 +124,9 @@ proc remoteAncestors(owner: var Services, options: Options, peers: seq[DownloadP
   defer: peer.close() # No endpoint/callback borrows a header, receiver or complete canonical view after return.
   var active = default(DownloadAttempt)
   while true:
+    if signals != nil and signals[].stopping:
+      return RemoteAncestorResult(successful: false,
+        refusal: CurrentDownloadCommandResult.Stopped) # Foreground interruption also retires host-side ancestry sockets.
     let elapsed = (getMonoTime() - started).inMilliseconds
     if elapsed < 0: return RemoteAncestorResult(successful: false,
         refusal: CurrentDownloadCommandResult.DispatchFailure)
@@ -309,6 +313,66 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
     var remaining = default(Timespec)
     discard nanosleep(requestedPause, remaining) # One bounded pause avoids spinning; endpoint polling remains nonblocking.
 
+proc receiveContinuously(owner: var Services, options: Options, peers: seq[DownloadPeerId],
+    ports: array[16, uint16], keys: array[16, CurrentDownloadPeerKey], older: seq[OwnedHeader],
+    limits: CurrentDownloadLoopLimits, started: MonoTime, adopted: var int,
+    observed: var ObservedDownloadHead, qualified: bool,
+    logical: CurrentLogicalDownloadPolicy, signals: var StopSignals): CurrentDownloadCommandResult {.raises.} =
+  ## Foreground full-node lifecycle has no whole-run block/time cap; signal exit still joins every borrower.
+  var host = default(CurrentSync)
+  defer: host.close()
+  let header = limits.candidate.reporting.reports.ancestors.header
+  let resources = CurrentSyncLimits(download: limits,
+    announcements: AnnouncementLimits(leaves: ElementLimit(64), bytes: ByteLimit(1048576),
+      header: header), sourceAgeMs: options.syncSourceAgeMs, reconnectMs: options.syncReconnectMs)
+  let configured = if qualified: host.configure(owner, peers, older, resources,
+      CurrentDownloadLoopTick(0), logical)
+    else: host.configure(owner, peers, older, resources, CurrentDownloadLoopTick(0))
+  if configured != CurrentSyncError.None: return CurrentDownloadCommandResult.InvalidPolicy
+  for index, peer in peers:
+    if host.openPeer(peer, keys[index], ports[index], options.argument(3), options.argument(4),
+        options.argument(6)) != CurrentDownloadPeerError.None:
+      return CurrentDownloadCommandResult.TransportFailure # Deferred host close also retires every earlier endpoint.
+  while not signals.stopping:
+    let elapsed = (getMonoTime() - started).inMilliseconds
+    if elapsed < 0: return CurrentDownloadCommandResult.DispatchFailure
+    let ticked = host.tick(CurrentDownloadLoopTick(uint64(elapsed)))
+    let progress = host.progress
+    if progress.adoptedBlocks > uint64(high(int)): return CurrentDownloadCommandResult.DispatchFailure
+    adopted = int(progress.adoptedBlocks)
+    observed = ObservedDownloadHead(initialized: true,
+      hash: array[32, byte](progress.localHead.hash), slot: uint32(progress.localHead.slot))
+    let preparing = owner.preparationActive
+    let proving = owner.stateProofActive
+    let publishing = owner.diskPublicationActive
+    if not (preparing or proving or publishing):
+      if owner.diskMaintenanceFailed:
+        return CurrentDownloadCommandResult.StorageMaintenanceFailure # Inspect graph-bearing maintenance receipts only after native exclusion ends.
+    if ticked == CurrentSyncError.NeedsAncestors:
+      let demand = host.ancestorDemand
+      if demand.error != CurrentDownloadSessionError.None: return CurrentDownloadCommandResult.DispatchFailure
+      let maximum = demand.value.lookupDemandMaximum(ElementLimit(
+          options.discoverDownloadAncestors))
+      if maximum.error != ReportAnchorError.None or uint64(maximum.value) == 0:
+        return CurrentDownloadCommandResult.InvalidAncestors
+      let duration = host.ancestorRemaining(CurrentDownloadLoopTick(uint64(elapsed)))
+      if duration == 0 or duration > high(uint64) - uint64(elapsed):
+        return CurrentDownloadCommandResult.Timeout # Acquisition preserves the original child attempt deadline.
+      let acquired = remoteAncestors(owner, options, peers, ports, keys, host.ancestors,
+        limits, started, uint64(elapsed) + duration, maximum.value, addr signals)
+      if not acquired.successful: return acquired.refusal
+      let resumedAt = (getMonoTime() - started).inMilliseconds
+      if resumedAt < 0: return CurrentDownloadCommandResult.DispatchFailure
+      if host.resumeAncestors(acquired.captured, CurrentDownloadLoopTick(uint64(resumedAt))) !=
+          CurrentSyncError.None:
+        return CurrentDownloadCommandResult.DispatchFailure
+    elif ticked != CurrentSyncError.None:
+      return CurrentDownloadCommandResult.DispatchFailure
+    var requestedPause = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requestedPause, remaining) # Bounded nonblocking dispatch keeps services responsive through idle catch-up.
+  CurrentDownloadCommandResult.Stopped # Shutdown is not a claim that the advertised chain was caught up.
+
 type LogicalSourceRefreshError {.pure.} = enum ## Private file-stage status cannot grant adoption or a logical certificate.
   None, ExportFailure, IoFailure, PublishedUnsynced
 proc refreshLogicalSource(path: string, source: CurrentLogicalState,
@@ -331,13 +395,15 @@ proc refreshLogicalSource(path: string, source: CurrentLogicalState,
   of AtomicFileError.PublishedUnsynced: LogicalSourceRefreshError.PublishedUnsynced # Visible bytes never masquerade as durable export.
   else: LogicalSourceRefreshError.IoFailure # Existing atomic replacement preserves the previous file on ordinary pre-publication failure.
 
-proc performDownloads(options: Options, adopted: var int): CurrentDownloadCommandResult {.raises.} =
+proc performDownloads(options: Options, adopted: var int,
+    continuous = false): CurrentDownloadCommandResult {.raises.} =
   ## One Services owner retains every confirmed prefix; per-child barriers precede ancestry mutation and final shutdown joins.
   adopted = 0
   let commandWords = options.argumentCount
   if not options.valid or commandWords < 8 or commandWords > MaxDownloadArguments:
     return CurrentDownloadCommandResult.InvalidOptions # Prove every normalized endpoint position before access.
-  if (commandWords-8) mod 2 != 0 or options.argument(1) != "download-current":
+  let topic = if continuous: "sync-current" else: "download-current"
+  if (commandWords-8) mod 2 != 0 or options.argument(1) != topic:
     return CurrentDownloadCommandResult.InvalidOptions # Additional peers are complete port/key pairs.
   if not options.stateEnabled or options.telemetryEnabled:
     return CurrentDownloadCommandResult.InvalidOptions # Downloads require state and cannot discard requested outgoing telemetry.
@@ -388,7 +454,7 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
     peers.add(DownloadPeerId(uint64(index + 1))) # The shape cap proves IDs 1..16 and all argument arithmetic.
   let paths = options.ancestorPaths
   let ancestry = limits.candidate.reporting.reports.ancestors
-  let requested = options.downloadBlocks
+  let requested = if continuous: 1 else: options.downloadBlocks
   let remote = uint64(options.remoteDownloadAncestors) + uint64(options.discoverDownloadAncestors)
   if remote > 0 and uint64(limits.input.blockBytes) > uint64(high(uint32)):
     return CurrentDownloadCommandResult.InvalidPolicy # Remote E4 response claims have a fixed u32 extent before any file or Services IO.
@@ -401,9 +467,12 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if loaded.error != AncestorInputError.None:
     return CurrentDownloadCommandResult.InvalidAncestors # No Services/listener/database/outgoing TLS work follows partial capture.
   var ancestors = loaded.headers
+  var signals = default(StopSignals)
+  if continuous: signals.start() # Install before native Services and startup ancestry can borrow resources.
+  defer: signals.close()
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
-  if not owner.start(options, "download-current"): return CurrentDownloadCommandResult.StartupFailure
+  if not owner.start(options, topic): return CurrentDownloadCommandResult.StartupFailure
   var logical = default(CurrentLogicalDownloadPolicy)
   if qualifyLogical:
     let captured = captureCurrentLogicalStartup(owner.chainView, declarations, logicalLimits)
@@ -425,18 +494,22 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if options.remoteDownloadAncestors > 0:
     let acquired = remoteAncestors(owner, options, peers, ports, keys, ancestors, limits, started,
       timeout,
-      ElementLimit(options.remoteDownloadAncestors))
+      ElementLimit(options.remoteDownloadAncestors), addr signals)
     if not acquired.successful: return acquired.refusal # No child request follows a failed/partial ancestry capture.
     ancestors = acquired.captured
   var observed = default(ObservedDownloadHead)
   var lastLogical = default(CurrentLogicalState)
-  let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
-    started, timeout, requested, adopted, observed, qualifyLogical, logical, lastLogical)
+  let terminal = if continuous:
+      receiveContinuously(owner, options, peers, ports, keys, ancestors, limits, started,
+        adopted, observed, qualifyLogical, logical, signals)
+    else: receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
+      started, timeout, requested, adopted, observed, qualifyLogical, logical, lastLogical)
   if observed.initialized:
     let settled = owner.chainView.bestBlock # Joined shutdown may confirm an IO receipt after the command reached its deadline.
     if settled.error != GenesisError.None: return CurrentDownloadCommandResult.DispatchFailure
     if array[32, byte](settled.value.blockHash) != observed.hash:
-      if adopted >= requested or array[32, byte](settled.value.parentHash) != observed.hash or
+      if (not continuous and adopted >= requested) or adopted == high(int) or
+          array[32, byte](settled.value.parentHash) != observed.hash or
           uint32(settled.value.slot) <= observed.slot:
         return CurrentDownloadCommandResult.DispatchFailure # Only this run's one outstanding child can add shutdown-confirmed progress.
       inc adopted
@@ -473,3 +546,9 @@ proc runCurrentDownloads*(options: Options): CurrentDownloadCommandOutcome {.rai
 proc runCurrentDownload*(options: Options): CurrentDownloadCommandResult {.raises.} =
   ## Preserve the original status-only API; callers needing partial progress use runCurrentDownloads.
   runCurrentDownloads(options).error
+
+proc runCurrentSync*(options: Options): CurrentDownloadCommandOutcome {.raises.} =
+  ## A stopped continuous command reports confirmed imports without inventing a requested total or synced result.
+  var adopted = 0
+  let terminal = performDownloads(options, adopted, continuous = true)
+  CurrentDownloadCommandOutcome(status: terminal, adopted: adopted)

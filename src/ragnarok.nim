@@ -135,6 +135,14 @@ proc main(): int =
         return 0 # Command owners have already retired callbacks and canonical Services.
       writeFailure(logger, "DOWNLOAD_FAILED " & $outcome.error)
       return 2 # Invalid/unavailable/exhausted downloads never imply an adopted child.
+    if options.argumentCount() >= 1 and options.argument(1) == "sync-current":
+      let outcome = runCurrentSync(options)
+      if outcome.error == CurrentDownloadCommandResult.Stopped:
+        stdout.writeLine("CURRENT_SYNC_STOPPED adopted=" & $outcome.adoptedBlocks)
+        return 0 # Joined signal shutdown grants no readiness claim.
+      stdout.writeLine("CURRENT_SYNC_PROGRESS adopted=" & $outcome.adoptedBlocks)
+      writeFailure(logger, "CURRENT_SYNC_FAILED " & $outcome.error)
+      return 2
     if options.argumentCount() >= 1 and options.argument(1) == "download-current":
       let outcome = runCurrentDownloads(options)
       if outcome.requestedBlocks > 1:
