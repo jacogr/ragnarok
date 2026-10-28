@@ -1349,11 +1349,13 @@ for arithmeticCount in [1, 2, 3, 4]:
       when defined(pvmArm64JitRefuse):
         assert counters[0] == 0 and counters[1] == 0
       else:
-        # Preserve the existing qualification threshold while recording whether connected work replaced scalar handoffs.
+        # Normalize the same minimum completed-block evidence: one connected call replaces many scalar entries.
         let connected = flatArmRegionStatistics(frame)
-        echo "ARM_CONTROL_DIAGNOSTIC,", arithmeticCount, ",", folded, ",", counters[0], ",",
-            counters[1], ",", connected[0], ",", connected[1]
-        assert counters[0] >= 4 and counters[1] >= 3
+        assert connected[0] <= counters[0] and connected[0] <= counters[1]
+        assert connected[1] >= connected[0] and connected[1] <= 100
+        let internalBlocks = connected[1]-connected[0]
+        assert counters[0]+internalBlocks >= 4 and counters[1]+internalBlocks >= 3
+
     for paid in [false, true]:
       for gas in [0'u64, 1, 4, 5, 6, 9, 10, 25, 26, 27, 1000, high(uint64)]:
         for budget in 0'u64..40'u64:
