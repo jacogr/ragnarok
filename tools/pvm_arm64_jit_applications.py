@@ -77,19 +77,38 @@ def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-
     return dict(execution=parsed,native=counters,policy=policy)
 
 
-def run():
+def application_host(architecture, system, machine):
+    """Guest widths never select host code; each explicit backend requires its actual native CPU/OS."""
+    if architecture == 'arm64':
+        return system in ('Darwin','Linux') and machine in ('arm64','aarch64')
+    if architecture == 'x86_64':
+        return system == 'Linux' and machine in ('x86_64','amd64')
+    raise ValueError('Unsupported native application architecture')
+
+
+def application_defines(architecture, role, has_x86):
+    """Historical pre-x86 sources keep their checked fallback; current interpreter/JIT use identical build flags."""
+    if architecture not in ('arm64','x86_64'):
+        raise ValueError('Unsupported native application architecture')
+    if architecture == 'x86_64' and (role != 'baseline' or has_x86):
+        return ['pvmX86Jit']
+    return ['pvmArm64Jit']
+
+
+def run(architecture="arm64", build=None, baseline=None):
     """Qualify one explicit source cohort before accepting any timing or native/public claim."""
-    if platform.system() not in ('Darwin','Linux') or platform.machine() not in ('arm64','aarch64'):
-        raise SystemExit('Application experiment requires macOS or Linux ARM64')
-    baseline = baseline_revision(BASELINE)
-    BUILD.mkdir(parents=True,exist_ok=True)
-    report = dict(status='incomplete',baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
+    if not application_host(architecture, platform.system(), platform.machine()):
+        raise SystemExit('Application experiment requires its actual supported native host')
+    folder = BUILD if build is None else Path(build)
+    baseline = baseline_revision(BASELINE if baseline is None else baseline)
+    folder.mkdir(parents=True,exist_ok=True)
+    report = dict(status='incomplete',architecture=architecture,baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-policy-v2',
                   policies=dict(interpreter='interpreted', jit='jit', baseline='historical pinned default',
                                 core='retained core JIT', reference='polkavm-interpreted'))
-    (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
-    (BUILD/'summary.md').write_text('Application comparison incomplete.\n')
-    checks = NativeChecks(BUILD)
+    (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+    (folder/'summary.md').write_text('Application comparison incomplete.\n')
+    checks = NativeChecks(folder)
     compiler,_ = installed()
     report['compiler_identity'] = (compiler.parent.parent/'NIGHTLY.txt').read_text()
     report['clang_version'] = subprocess.check_output(['clang','--version'], text=True)
@@ -98,7 +117,7 @@ def run():
     report['source_revisions'] = dict(baseline=baseline, interpreter=report['revision'],
                                     jit=report['revision'], core=report['revision'])
     report['driver_revision'] = report['revision']
-    fixtures = prepare_inputs(checks,BUILD/'inputs')
+    fixtures = prepare_inputs(checks,folder/'inputs')
     # Reuse maintained pinned-source/asset/ROM/link/host controls before fresh application timings.
     prepare_doom(check_only=True)
     doom_report = json.loads((DOOM/'results.json').read_text())
@@ -109,7 +128,7 @@ def run():
     reference_doom = ROOT/'build/pvm-doom-rust-target/release/ragnarok-pvm-doom'
     ids.update({reference_doom:digest(reference_doom),compiler:digest(compiler)})
     # The long-sieve fixture is freshly produced by the same pinned interpreted reference, with a known prime count.
-    destination = BUILD/'inputs/sieve/10000000'; destination.mkdir(parents=True,exist_ok=True)
+    destination = folder/'inputs/sieve/10000000'; destination.mkdir(parents=True,exist_ok=True)
     artifact = ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm'
     prepared = checks.command([reference,'--sieve-prepare',artifact,destination,10000000,1],
         'prepare-long-sieve',environment=dict(os.environ,RAGNAROK_PVM_GUEST='sieve'),timeout=300)
@@ -127,7 +146,7 @@ def run():
         ids[path]=digest(path)
     images = {}
     for role in ROLES[:-1]:
-        canonical = BUILD/'snapshot'
+        canonical = folder/'snapshot'
         if canonical.exists(): shutil.rmtree(canonical)
         canonical.mkdir()
         if role=='baseline':
@@ -147,18 +166,18 @@ def run():
         for family,name in zip(('kernel','doom'),drivers):
             driver=canonical/'benchmarks'/(family+'.nim')
             driver.write_text((ROOT/('tests/performance/'+name+'.nim')).read_text().replace('../../src/','../src/'))
-            defines=['pvmArm64Jit']
+            defines=application_defines(architecture, role, (canonical/'src/pvm/internal/x86_jit.nim').is_file())
             # All public policy roles need identical code-generation settings, including out-of-clock coverage receipts.
             if role in ('interpreter','baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
             if role=='core' and family=='kernel': defines+=['pvmArm64JitControlReceipt']
             pair=[]
             for repeat in range(2):
-                cache=cache_directory(compiler,BUILD,'engine')
+                cache=cache_directory(compiler,folder,'engine')
                 if cache.exists(): shutil.rmtree(cache)
                 built,binary=checks.build(compiler,driver,'engine',defines=defines,
                     cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
                 if built['exit_code']: raise RuntimeError(built['output'][-3000:])
-                saved=BUILD/f'{role}-{family}-{repeat}'; shutil.copy2(binary,saved);pair.append(saved)
+                saved=folder/f'{role}-{family}-{repeat}'; shutil.copy2(binary,saved);pair.append(saved)
                 ids[saved]=digest(saved)
                 report['builds'].append(dict(role=role,family=family,repeat=repeat,defines=list(defines),run=built))
             if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
@@ -178,7 +197,7 @@ def run():
             if images['baseline',family].read_bytes()!=images['jit',family].read_bytes():
                 raise ValueError('Equal public JIT sources produced different role images')
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
-    (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+    (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     for order in range(2):
         for case,limit,data,expected in cases:
             doom=case in ('init','tick'); family='doom' if doom else 'kernel'
@@ -220,13 +239,13 @@ def run():
                 parsed=parse_run(row['output'],role,case,limit,events,report['comparison_protocol'])
                 report['runs'].append(dict(case=case,limit=limit,order=order,role=role,run=row,parsed=parsed))
                 unchanged(ids)
-                (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+                (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     if len(report['runs'])!=70 or len(report['controls'])!=115: raise ValueError('Incomplete application cohort')
     if not any(r['parsed']['native']['operations']>0 for r in report['runs'] if r['role']=='jit'):
         raise ValueError('No native public execution')
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
     report['status']='passed'
-    (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+    (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     lines=['CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.','',
            '| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |',
            '|---|---:|---:|---:|---:|---:|---:|---:|']
@@ -237,7 +256,7 @@ def run():
             values=[*[f'{medians[role]/1e6:.3f}' for role in ROLES],f'{medians["jit"]/medians["interpreter"]:.3f}',f'{medians["jit"]/medians["reference"]:.3f}']
             for col,value in zip(columns,values): col.append(value)
         lines.append('| '+case+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
-    (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
+    (folder/'summary.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 
 

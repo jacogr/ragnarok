@@ -6,8 +6,10 @@ import std/assertions
 import ../[program, machine, gas, gas_plan, gas_memo]
 import ./execution_types as oracle
 import ./register_ops
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   import ./arm64_jit
+when defined(pvmX86Jit):
+  import ./x86_jit
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -90,11 +92,14 @@ type
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
     pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
     pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
-    when defined(pvmArm64Jit):
+    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
+    when defined(pvmX86Jit):
+      x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
+      x86Jit: nil X86Jit    # Exclusive code-only owner; never contains an invocation address.
     pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
-    when defined(pvmArm64Jit):
+    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
@@ -107,7 +112,7 @@ type FlatPublication = object
   memory: Memory
   changed: seq[PageImage]
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
 
@@ -148,11 +153,15 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   if (x and 0x80000000'u32) != 0: uint64(x) or 0xffffffff00000000'u64
   else: uint64(x)
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmPrepare(f: var FlatFrame, origin: uint32)
     ## Cold suffix preparation may replace eligible entries with native fragments.
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
+
+when defined(pvmX86Jit):
+  proc flatX86Prepare(f: var FlatFrame, origin: uint32)
+    ## Cold source emission alone can replace complete pure spans with native entries.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -674,7 +683,7 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Keep the original first closed round; connected code may run only after all three real branch capabilities exist.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
   while true:
@@ -1307,8 +1316,10 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
     if fact.ending: break
     inc index
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     flatArmPrepare(f, origin)
+  when defined(pvmX86Jit):
+    flatX86Prepare(f, origin)
   origin
 
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
@@ -1346,7 +1357,7 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
           break
       assert found
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
     ## Private region storage never resizes in place; a replacement frame rebuilds every borrowed descriptor before use.
     result = [first, 0'u64, 0'u64]
@@ -1377,7 +1388,7 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
     result.armPreviousValid = false
@@ -1431,7 +1442,7 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
       result.stackBase = region.first
       result.stack = move(region.bytes)
     else: result.extra.add(region)
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Only this frame owns these byte allocations; ordinary stores/host deltas mutate bytes without reallocating them.
     result.armMemory[0] = flatArmReadRegion(result.stackBase, result.stack)
     result.armMemory[1] = flatArmReadRegion(result.rwBase, result.rw)
@@ -1452,7 +1463,58 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   assert prepared.error == FlatError.None
   takeValue(prepared)
 
-when defined(pvmArm64Jit):
+when defined(pvmX86Jit):
+  proc flatX86Execute(f: var FlatFrame, offset: uint32): uint32 =
+    ## Partial attempt prefixes always use the original checked node; native arithmetic has no intermediate exit.
+    if f.barrier == flatStop:
+      block:
+        # Release the disjoint register borrow before any original fallback can mutate the frame.
+        let jit {.cursor.} = f.x86Jit
+        assert jit != nil
+        if jit != nil:
+          let ending = callX86Entry(jit, offset, f.info.registers)
+          if ending != flatStop: return ending
+    let original = f.x86Original[int(offset)]
+    assert original != nil
+    if original != nil: return original(f, offset)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatX86Prepare(f: var FlatFrame, origin: uint32) =
+    ## Compile bounded same-block pure spans only, leaving pricing, branches, memory, hosts and faults checked.
+    if not f.plan.allowNative: return
+    let before = x86Clock()
+    if f.x86Jit == nil: f.x86Jit = newX86Jit()
+    let jit = f.x86Jit
+    assert jit != nil
+    if jit == nil: return
+    var offset = origin
+    while int(offset) < f.handlers.len:
+      # Duplicate source sites are synthetic charge headers and never authorize native source operations.
+      if x86Entry(jit, offset, uint32(f.handlers.len)) != 0 or
+          (int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset+1)]):
+        inc offset
+        continue
+      var ending = offset
+      var count = 0'u32
+      var fragment = default(X86Block)
+      while int(ending) < f.handlers.len and count < 64:
+        if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending+1)]: break
+        let fact = f.plan.facts[int(f.sites[int(ending)])]
+        if fact.ending or not fact.fallthrough or not supportedX86Opcode(fact.opcode): break
+        emitX86Operation(fragment, fact.opcode, fact.args.slots, fact.args.x)
+        inc ending
+        inc count
+      if count < 4 or not publishX86Entry(jit, offset, ending, count, fragment):
+        refuseX86Entry(jit, offset)
+        inc offset
+        continue
+      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
+      f.x86Original[int(offset)] = f.handlers[int(offset)]
+      f.handlers[int(offset)] = flatX86Execute
+      offset = ending
+    jit.compilationNs += x86Clock()-before
+
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool
     ## A positive original branch cache is required before any native continuation is published.
 
@@ -1886,7 +1948,7 @@ when defined(pvmArm64Jit):
     else: [f.armJit.fragments, f.armJit.calls, f.armJit.operations, f.armJit.codeBytes,
         f.armJit.compilationNs]
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmControlStatistics*(f: FlatFrame): array[2, uint64] =
     ## Native branch and checked-header entries prove the new control path executed.
     if f.armJit == nil: default(array[2, uint64])
@@ -1903,7 +1965,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # No observed edge can bridge an invocation or host stop; cached code itself remains source-owned.
     f.armPreviousValid = false
   if limit == 0:
@@ -2072,10 +2134,13 @@ proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
   replacement.arguments = move(f.arguments)
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
     replacement.armOriginal = move(f.armOriginal)
     replacement.armJit = move(f.armJit)
+  when defined(pvmX86Jit):
+    replacement.x86Original = move(f.x86Original)
+    replacement.x86Jit = move(f.x86Jit)
   f = move(replacement)
 
   FlatError.None
@@ -2215,12 +2280,16 @@ type FlatStream* = object
   sites, compiledForPc: seq[uint32]
   failure: FlatError
   preparation: uint64
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     armPlan: nil FlatPlan # Exact immutable source/emission owner; offsets alone never authorize code reuse.
     armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
+  when defined(pvmX86Jit):
+    x86Plan: nil FlatPlan # Code offsets are capabilities only for this exact immutable source owner.
+    x86Original: seq[nil FlatHandler]
+    x86Jit: nil X86Jit
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
   proc `=dup`*(source: FlatStream): FlatStream {.error.}
 
@@ -2229,15 +2298,19 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
     compiledForPc: move(f.compiledForPc), failure: f.preparationFailure,
     preparation: f.preparationUsed)
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
     result.armPlan = f.plan
     result.armOriginal = move(f.armOriginal)
     result.armJit = move(f.armJit)
+  when defined(pvmX86Jit):
+    result.x86Plan = f.plan
+    result.x86Original = move(f.x86Original)
+    result.x86Jit = move(f.x86Jit)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Lease only exact-source code; CPU, memory, budgets and callbacks remain freshly captured by the frame.
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if stream.armPlan != nil and stream.armPlan != f.plan:
       # Refuse before consuming another owner's executable capability or changing its scalar coordinates.
       f.preparationFailure = FlatError.InvalidProgram
@@ -2245,6 +2318,13 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     f.armOriginal = move(stream.armOriginal)
     f.armJit = move(stream.armJit)
     stream.armPlan = nil
+  when defined(pvmX86Jit):
+    if stream.x86Plan != nil and stream.x86Plan != f.plan:
+      f.preparationFailure = FlatError.InvalidProgram
+      return # Refuse before consuming either source owner's exclusive cache.
+    f.x86Original = move(stream.x86Original)
+    f.x86Jit = move(stream.x86Jit)
+    stream.x86Plan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
   f.sites = move(stream.sites)
@@ -2252,13 +2332,26 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   if stream.failure != FlatError.Uninitialized: f.preparationFailure = stream.failure
   f.preparationUsed = stream.preparation
 
-when defined(pvmArm64Jit):
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
     ## Local experiment diagnostics copy counters only; no code pointer, mutable storage or invocation state escapes.
     let jit = stream.armJit
     if jit == nil: return default(array[7, uint64])
     [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs,
       jit.branchCalls, jit.headerCalls]
+
+when defined(pvmX86Jit):
+  func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
+    ## Copy diagnostics only; the code mapping and all mutable owner state remain private.
+    let jit = stream.x86Jit
+    if jit == nil: return default(array[7, uint64])
+    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs, 0'u64, 0'u64]
+
+  func flatX86Statistics*(frame: FlatFrame): array[5, uint64] =
+    ## Focused internal witnesses distinguish native execution from complete checked fallback.
+    let jit = frame.x86Jit
+    if jit == nil: return default(array[5, uint64])
+    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs]
 
 when defined(pvmArm64JitOwnerReceipt):
   func streamArmStatistics*(stream: FlatStream): array[7, uint64] =

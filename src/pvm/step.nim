@@ -340,10 +340,12 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   if data.busy: return PreparationResult[PreparedInfo](status: PreparationError.Busy)
   var native = default(array[7, uint64])
   var built, supported = false
-  when defined(pvmArm64Jit):
+  when defined(pvmArm64Jit) or defined(pvmX86Jit):
     native = streamNativeStatistics(data.stream)
     built = true
-    when defined(arm64) and (defined(linux) or defined(macosx)): supported = true
+    when defined(pvmX86Jit):
+      when defined(amd64) and defined(linux): supported = true
+    elif defined(arm64) and (defined(linux) or defined(macosx)): supported = true
   PreparationResult[PreparedInfo](status: PreparationError.None, completed: PreparedInfo(
     codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(data.plan),
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
@@ -378,7 +380,8 @@ proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
 
 proc nativeOperations(frame: FlatFrame): uint64 =
   ## Copied counters are read only at publication/preparation boundaries, never in the guest hot loop.
-  when defined(pvmArm64Jit): flatArmStatistics(frame)[2]
+  when defined(pvmX86Jit): flatX86Statistics(frame)[2]
+  elif defined(pvmArm64Jit): flatArmStatistics(frame)[2]
   else: 0
 
 proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,

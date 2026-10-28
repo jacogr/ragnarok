@@ -20,6 +20,10 @@ proc selectedGuest(value: string): GuestKind =
     assert false, "unknown checked guest family"
     GuestKind.Sieve
 
+proc runPreparedKernel(source: Machine, prepared: reference.PreparedProgram): reference.StepResult {.noinline.} =
+  ## One public call is a stable external profiler scope; setup and complete-state validation stay outside it.
+  reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
+
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Record CPU time alongside the elapsed metric also emitted by the reference harness.
 
@@ -197,7 +201,7 @@ for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
   let wallStart = if clocked: getMonoTime().ticks else: 0'i64
   let cpuStart = if clocked: cpuNanoseconds() else: 0'i64
-  let done = if preparedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
+  let done = if preparedMode: runPreparedKernel(source, prepared)
     elif memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
     elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
     else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))

@@ -630,3 +630,20 @@ check-pvm-doom-backends: check-inventory toolchain sources rust-tools
 	$(PYTHON) tools/native_tests.py --suite app_cli
 	$(PYTHON) tools/native_tests.py --suite app_options
 	$(PYTHON) tools/pvm_doom_backends.py
+
+# Initial x86 native qualification is deliberately CI-only and opt-in until measured.
+.PHONY: check-pvm-x86-jit
+check-pvm-x86-jit: toolchain check-inventory
+	$(PYTHON) tools/pvm_x86_jit.py
+
+# Same complete matched-image application cohort, explicitly on a native Linux x86-64 CI runner.
+.PHONY: bench-pvm-x86-applications
+bench-pvm-x86-applications: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_x86_jit_applications.py
+
+# Profiles consume the already complete same-job cohort; instrumented clocks never enter timing tables.
+.PHONY: profile-pvm-x86-jit
+profile-pvm-x86-jit:
+	$(PYTHON) tools/pvm_x86_jit_profile.py
