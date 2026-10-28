@@ -2592,7 +2592,7 @@ preserved and restored; the new traces belong to this candidate alone.
 
 ## Stable-base read-window trial
 
-The next bounded trial shares a readable-window proof only across unsigned indirect word reads
+This retained increment shares a readable-window proof only across unsigned indirect word reads
 with one guest base slot that is not overwritten before any read. Relative offsets must share
 the same low three bits and span at most 4,088 bytes. The first modulo-2^32 effective address
 and final word are checked against the existing protected/top bounds; a single descriptor must
@@ -2602,5 +2602,138 @@ unaligned relative offsets and larger ranges retain the accepted independent gua
 
 Admission remains cold-only, within the same reserved source block and existing operation/code
 caps. No guest register stores precede complete success. A refused window replays the original
-checked source nodes, including split permissions, attempt prefixes and later faults. Measurement
-and verdict are pending; no performance claim is made for this trial.
+checked source nodes, including split permissions, attempt prefixes and later faults.
+
+
+### Qualified stable-base window verdict
+
+**Keep the modest gameplay improvement and smaller executable image.** Five balanced ABBA
+blocks give gameplay33.595→33.145ms; a separate five-block focused repeat gives
+33.526→33.061ms. All ten block medians favor the candidate. This is about1.3–1.4%,
+not a broad breakthrough. Long sieve costs about0.4–0.5%; fill is mixed, about0.3–1.1%
+slower with overlapping process ranges. Pinky, short sieve and initialization do not establish
+a useful CPU gain. Preserve these tradeoffs rather than claiming every case improves.
+
+The initial forward gameplay parent run is anomalously high41.621ms, versus33.639ms in
+reverse. It remains in the complete receipt/table and is not the verdict's basis. The balanced
+repeats resolve it; no large gameplay percentage is claimed from that initial order.
+
+Measured candidate:`7151b34de5d5b24ecf7a6524cc1fcd4212988866`; accepted parent:
+`1beb23763497d63c9028c18315dc2a95df51b558`. Apple M1 Max, pinned October26 Nimony
+`358b9bce4dd855453f57a80a0c499b0b2e27d7ee`, checked release/ARC/Clang ThinLTO.
+The preserving publication changes documentation only after qualification. No compiler,
+dependency, memory policy, backend default or cache-cap change accompanies this trial.
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| sieve 100000 | 2.271 (2.236–2.338) | 2.276 (2.248–2.314) | 1.002 | 0.993, 0.995, 0.992, 1.009, 1.012 |
+| minimal 100000 | 4.593 (4.569–4.694) | 4.551 (4.524–4.708) | 0.991 | 0.986, 0.992, 0.990, 0.990, 1.009 |
+| memset 100000 | 3.439 (3.389–3.514) | 3.476 (3.397–3.530) | 1.011 | 0.995, 0.992, 1.018, 1.012, 1.014 |
+| pinky 1 | 70.182 (69.802–70.462) | 70.156 (69.698–70.538) | 1.000 | 0.993, 1.001, 1.003, 1.000, 1.003 |
+| sieve 10000000 | 213.185 (212.927–214.988) | 214.238 (214.016–214.578) | 1.005 | 1.004, 1.006, 1.005, 1.004, 0.999 |
+| init 0 | 196.834 (195.751–198.001) | 196.867 (195.220–197.939) | 1.000 | 0.998, 1.000, 1.002, 1.001, 0.997 |
+| tick 0 | 33.595 (33.367–37.226) | 33.145 (32.775–33.301) | 0.987 | 0.991, 0.981, 0.935, 0.992, 0.983 |
+
+Focused repeat:
+
+Repeated public CPU ms: ten independent processes per role, five balanced ABBA blocks.
+
+| Case | Baseline median (range) | Trial median (range) | Trial / baseline | Block ratios |
+|---|---:|---:|---:|---|
+| memset 100000 | 3.428 (3.362–3.541) | 3.438 (3.387–3.567) | 1.003 | 1.006, 1.013, 0.983, 1.015, 1.002 |
+| sieve 10000000 | 213.361 (212.891–215.716) | 214.303 (213.998–215.060) | 1.004 | 1.007, 1.006, 1.000, 1.006, 0.994 |
+| tick 0 | 33.526 (33.209–33.901) | 33.061 (32.954–33.260) | 0.986 | 0.982, 0.985, 0.995, 0.991, 0.983 |
+
+
+Main-cohort CPU medians of samples3–12, milliseconds, forward/reverse. Public calls include
+fresh invocation memory and immutable publication. Retained core uses its separately recorded
+reset/publication lifecycle; its figures do not establish public API costs. Constructors and
+reference restoration/teardown are outside raw-call ratios. The public interpreter column
+forces the same current source's interpreter; it is not an independently timed master revision.
+
+CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.
+
+| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sieve 100000 | 3.403 / 3.400 | 2.277 / 2.276 | 2.366 / 2.249 | 2.039 / 2.041 | 6.032 / 5.982 | 0.695 / 0.662 | 0.392 / 0.376 |
+| minimal 100000 | 4.862 / 4.846 | 4.582 / 4.603 | 4.535 / 4.597 | 4.529 / 4.552 | 6.028 / 5.994 | 0.933 / 0.949 | 0.752 / 0.767 |
+| memset 100000 | 4.375 / 4.374 | 3.433 / 3.389 | 3.547 / 3.494 | 2.715 / 2.682 | 3.973 / 3.936 | 0.811 / 0.799 | 0.893 / 0.888 |
+| pinky 1 | 85.025 / 84.893 | 70.311 / 70.538 | 69.903 / 70.084 | 69.398 / 69.719 | 94.383 / 94.240 | 0.822 / 0.826 | 0.741 / 0.744 |
+| sieve 10000000 | 333.118 / 333.454 | 213.929 / 213.207 | 215.643 / 214.720 | 210.982 / 210.537 | 368.053 / 370.435 | 0.647 / 0.644 | 0.586 / 0.580 |
+| init 0 | 340.161 / 341.248 | 196.435 / 195.901 | 197.036 / 195.312 | 195.538 / 194.849 | 673.848 / 672.696 | 0.579 / 0.572 | 0.292 / 0.290 |
+| tick 0 | 40.103 / 40.080 | 41.621 / 33.639 | 33.337 / 33.392 | 30.174 / 30.392 | 44.084 / 44.108 | 0.831 / 0.833 | 0.756 / 0.757 |
+
+
+Constructor and cold CPU ms, forward/reverse. Cold calls include lazy compilation/publication;
+prepared-owner construction remains separate. The reference process does not emit a module
+constructor clock here, so none is inferred or compared with our owner construction.
+
+| Workload | Parent owner | Candidate owner | Parent cold | Candidate cold | Reference cold |
+|---|---:|---:|---:|---:|---:|
+| sieve 100000 | 1.666 / 1.659 | 1.550 / 1.597 | 8.025 / 8.529 | 8.414 / 8.105 | 6.189 / 6.062 |
+| minimal 100000 | 0.015 / 0.010 | 0.013 / 0.010 | 4.727 / 4.618 | 4.637 / 4.582 | 5.969 / 6.060 |
+| memset 100000 | 0.055 / 0.054 | 0.063 / 0.050 | 4.718 / 4.693 | 4.741 / 4.668 | 4.094 / 4.030 |
+| pinky 1 | 0.472 / 0.487 | 0.459 / 0.474 | 74.404 / 73.282 | 73.036 / 73.285 | 94.386 / 94.285 |
+| sieve 10000000 | 1.542 / 1.526 | 1.607 / 1.679 | 218.372 / 219.511 | 221.223 / 221.153 | 367.417 / 368.440 |
+| init 0 | 7.499 / 7.689 | 7.609 / 7.514 | 214.539 / 220.055 | 219.974 / 216.059 | 675.146 / 673.080 |
+| tick 0 | 7.648 / 7.563 | 7.875 / 7.807 | 43.982 / 43.659 | 44.587 / 43.664 | 44.143 / 44.426 |
+
+Balanced cold medians (parent→candidate): short sieve8.087→8.060ms, long sieve219.526→220.481ms, minimal4.657→4.605ms, Pinky74.028→73.533ms, fill4.833→4.794ms, init216.905→216.328ms, gameplay43.639→43.047ms. These are startup observations, not broad constructor gains.
+
+Reference DOOM lifecycle medians for samples3–12, ms; restoration/teardown stay outside raw-call ratios.
+
+| Phase/order | Restore | Raw call | Teardown | Total lifecycle |
+|---|---:|---:|---:|---:|
+| init 0 | 1.970 | 673.848 | 0.005 | 675.806 |
+| init 1 | 1.955 | 672.696 | 0.005 | 674.697 |
+| tick 0 | 2.022 | 44.084 | 0.005 | 46.084 |
+| tick 1 | 2.000 | 44.108 | 0.007 | 46.127 |
+
+
+Every main-cohort pair has identical native publication, call, lowered-operation, branch/header
+counts. Code shrinks without changing admitted source coverage or handoff count. These are
+software counters, not executed hardware instructions or a CPU-cause attribution.
+
+| Workload | Publications | Native bytes, parent → candidate | Native calls | Lowered operations |
+|---|---:|---:|---:|---:|
+| sieve 100000 | 723 | 362,120 → 340,444 | 2,699,169 | 12,479,481 |
+| minimal 100000 | 5 | 1,076 → 880 | 1,300,039 | 5,200,129 |
+| memset 100000 | 54 | 6,620 → 5,488 | 3,900,351 | 9,101,412 |
+| pinky 1 | 606 | 85,604 → 70,120 | 36,282,987 | 184,616,372 |
+| sieve 10000000 | 750 | 367,444 → 345,768 | 271,619,743 | 1,250,782,976 |
+| init 0 | 1,024 | 174,636 → 131,400 | 14,936,467 | 2,272,368,979 |
+| tick 0 | 887 | 145,448 → 123,572 | 24,869,221 | 93,369,909 |
+
+Gameplay native bytes fall15.0%; initialization24.8%. Initialization still reaches the same
+1,024-publication cap; smaller images do not establish cache-churn savings. No hardware counters
+were collected. Checked memory, charging and dispatch remain the substantial next boundaries;
+this small guard win is not evidence for further arbitrary emitter tweaks.
+
+All nine maintained native gates and both owner-policy suites pass. New window witnesses cover
+1,638direct native/zero-refused cases and56,800complete-source boundary cases in each native/
+refused profile, including the accepted transactional witnesses. Coverage includes equal/maximal
+relative offsets, wrapped displacements, unaligned original addresses, all base slots and
+three descriptor positions, first/later refusal, bases changed by reads/arithmetic, differing
+bases, mismatched low offset bits, large ranges, split permissions, every attempt/gas prefix,
+fresh memory and existing host remapping. Independent Clang assembly confirms new encodings.
+
+The main cohort has70processes/910checked calls,115positive/refusal controls,16fresh builds/
+eight equal-image pairs and721sealed identities. Balanced repeats have140processes/1,820calls;
+the focused repeat has60processes/780calls. Every raw row is independently re-parsed and bound
+to exact committed sources and image hashes. Complete CPU/gas/register/page/permission/source
+snapshots and ordered host-event checks pass. No source-budget or memory checks are weakened.
+
+Isolated native LinuxARM64 passes all nine gates, four fresh builds,14public processes/
+182checked calls and32refusal controls. All2,882staged files, source commit, official compiler
+archive/binary, architecture/network isolation and raw outputs are independently verified. The
+same new1,638/zero literal and56,800source-state witnesses pass there. Docker clocks are
+diagnostic only; this establishes no native Linux performance claim.
+
+Linux image:`sha256:c6a7af8c801d4c5f5eca338c3c5024d5aae6811713d8064a9ab40b66a8f4a330`.
+
+Evidence:`build/pvm-arm64-jit/post-merge/read-windows/`.
+Main report SHA256:`0765d8be74dbac9d32d946924f2ef3f8c30a216219216d21e7d86005c33c73b3`.
+Balanced report SHA256:`a7b252d4751b23127530d80d22255c77a6baba8ab404b659e0347e639eba2591`.
+Focused report SHA256:`667092ceb1e196257fb9db7429a2033af178635e68ea8c04c037c773b97b9c30`.
