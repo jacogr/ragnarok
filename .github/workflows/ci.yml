@@ -512,6 +512,7 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
           path: |
+            build/tests/native/selected/*.log
             build/tests/pvm-doom-backends/*.json
             build/tests/pvm-doom-backends/*.md
             build/tests/pvm-doom-backends/*.log
