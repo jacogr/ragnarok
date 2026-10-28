@@ -188,3 +188,58 @@ This tests whether restoring the original frame footprint helps; the previous
 regression's CPU cause remains unproven. Require fresh complete-state/native and
 paired timing/profile qualification against the accepted non-store parent. If this
 also fails, remove the runtime store delta and retain useful checks and evidence.
+
+## Compact context verdict: reject pending minimal attribution
+
+[Run40777246242](https://github.com/jacogr/ragnarok/actions/runs/40777246242)
+measured `b26a79a97b2c707cbf583cf049549467bdd88189` against the same accepted
+`203cce5615a51aa2f8656d925b4e2be9c3ecb233`. Independent audits passed70 processes,
+910 calls,115 controls,16 fresh builds/eight equal-image pairs, nine native gates/
+two policies and six profiles/78 calls/eight diagnostic builds/four equal-image
+pairs/four collection controls. All prior direct/source/host/dirty/later-store
+checks remain enforced. Generated C proves the read descriptor is passed by
+pointer, with one24-byte call-local context and no72-byte descriptor copy.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.956/3.006 | 2.959/2.943 | 3.495/3.527 | 6.122/6.077 | 0.483/0.484 |
+| Minimal100k | 6.262/6.003 | 6.518/6.533 | 6.273/6.169 | 5.531/5.547 | 1.178/1.178 |
+| Memory fill100k | 4.427/4.440 | 4.444/4.447 | 4.391/4.430 | 3.755/3.747 | 1.184/1.187 |
+| Pinky | 86.851/87.034 | 87.258/87.067 | 95.873/95.223 | 87.433/87.666 | 0.998/0.993 |
+| Sieve10m | 283.279/282.967 | 285.998/289.460 | 346.322/338.730 | 333.800/333.400 | 0.857/0.868 |
+| DOOM initialization | 325.169/326.843 | 324.227/321.994 | 529.840/542.435 | 627.800/628.291 | 0.516/0.512 |
+| DOOM gameplay | 46.356/45.971 | 45.867/45.730 | 48.958/49.019 | 40.070/40.058 | 1.145/1.142 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.874/3.018 | 2.891/2.841 | 10.527/10.597 | 10.579/10.455 |
+| Minimal100k | 0.014/0.015 | 0.014/0.017 | 6.294/6.231 | 6.645/6.587 |
+| Memory fill100k | 0.054/0.055 | 0.053/0.064 | 8.505/8.345 | 8.609/8.439 |
+| Pinky | 0.705/0.702 | 0.730/0.734 | 90.888/91.211 | 91.610/91.209 |
+| Sieve10m | 3.142/2.965 | 3.038/2.980 | 292.151/291.576 | 294.107/297.417 |
+| DOOM initialization | 8.542/8.502 | 8.496/8.615 | 352.158/355.252 | 349.825/346.430 |
+| DOOM gameplay | 8.563/8.494 | 8.485/8.591 | 65.277/64.276 | 64.091/63.859 |
+
+
+Minimal still regresses4.1/8.8%; long sieve1.0/2.3%slower, gameplay only1.1/0.5%
+better. Restoring the original frame footprint did not resolve minimal. Its native
+activity/code footprint remains identical; this does not establish a CPU cause.
+Reused gameplay Ir increases616,325,358→622,471,028 despite fewer indirect branches
+14,032,396→13,007,940. The call-local wrapper itself accounts62,480,897 self Ir;
+context setup/guards are real work, not free from a smaller frame. Initialization
+Ir3,238,314,250→3,238,295,932 changes minimally. This variant fails the retention
+gate; do not claim a retained speedup. Simulated conditional/indirect misses:
+sieve215,948/395,198→157,967/395,198; init2,162,754/23,899,878→1,443,598/23,820,352;
+gameplay1,565,075/8,523,586→885,094/8,010,654. No hardware counters were collected.
+
+Applications SHA256 `888a15e3cd1d274a323381a6f0d5af2a45e0f041e00f01f55d5cbbe455af9729`;
+native `f6a295dac4e0facdd29d6c592b76f1f3c16d877be7b95fc8eb3b3f7b5d08a210`;
+profiles `64944f5171a313cf254399674e7e614e8384a3cce53a6848ae2af7c48d57d37f`.
+Ignored evidence: `build/pvm-arm-byte-store/compact/tests`.
+
+The next diagnostic leaves runtime exactly unchanged and explicitly adds minimal
+to the ARM profile plan, retaining sieve and both DOOM phases. Default direct plans
+remain unchanged; the manual ARM profile target opts in. Eight scoped profiles/
+104 checked calls use the same eight diagnostic images/four equal-image pairs and
+all four collection controls. This measures the regressed workload before any
+further store/branch experiment; profiled clocks remain unusable as CPU timings.
