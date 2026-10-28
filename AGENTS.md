@@ -65,7 +65,7 @@ implementation work. For unfamiliar pinned APIs, consult the short
   Nim `##`, Python docstrings, Rust `//!`.
 - Use `make format` / `make format-check` for pinned Nim/Rust formatters; retain explanatory comments.
   Follow `.editorconfig`: Nim two spaces, Rust/C four, 100-column target.
-- Make owns setup and command sequencing: `make setup`, `make` to build, `make check` for complete
+- Make owns setup and command sequencing: `make setup`, `make build` to build, `make check` for complete
   verification; `make clean` removes `build/`. No undocumented bootstrap pre-steps.
 - Select local checks from the actual diff and affected consumers. Use `make unit SUITE=<name>`;
   registry-only edits need inventory/provenance checks, docs/comments relevant lint only.
