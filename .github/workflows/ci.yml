@@ -793,7 +793,7 @@ jobs:
       - *checkout
       - *python
       - name: Resolve current master and optional prepared baseline
-        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' }}
+        if: ${{ matrix.family.group == 'x86_64' }}
         run: |
           git fetch --no-tags origin master:refs/remotes/origin/master
           python3 - <<'PYBASE'
@@ -804,14 +804,16 @@ jobs:
                   raise ValueError('Prepared baseline must be a full lowercase commit SHA')
               subprocess.run(['git','fetch','--no-tags','origin',baseline],check=True)
           PYBASE
-      - name: Qualify opt-in Linux x86-64 JIT
-        if: ${{ inputs.suite == 'jit-x86' }}
-        run: make check-pvm-x86-jit
       - name: Install DOOM asset decompressor
-        if: ${{ inputs.suite != 'jit-x86' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
+      - name: Qualify opt-in Linux x86-64 JIT
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make check-pvm-x86-jit
+      - name: Compare opt-in x86 JIT and checked interpreters
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make bench-pvm-x86-applications
       - name: Qualify PVM on the native Linux architecture
         if: ${{ inputs.suite != 'jit-x86' }}
         run: make check-pvm-native
@@ -824,7 +826,7 @@ jobs:
       - name: Show complete comparison
         if: always()
         run: |
-          for summary in build/tests/pvm-x86-jit/summary.md build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
+          for summary in build/tests/pvm-x86-jit/summary.md build/tests/pvm-x86-applications/summary.md build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
             if test -f "$summary"; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
             fi
@@ -837,6 +839,9 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
           path: |
+            build/tests/pvm-x86-applications/*.json
+            build/tests/pvm-x86-applications/*.log
+            build/tests/pvm-x86-applications/summary.md
             build/tests/pvm-x86-jit/*.json
             build/tests/pvm-x86-jit/*.log
             build/tests/pvm-x86-jit/summary.md
