@@ -37,9 +37,14 @@ type
   ArmReadGuard = object ## A code-relative refusal edge publishes no speculative register prefix.
     at: int
     conditional: bool
-  ArmReadSpan* = object ## Cold guarded-memory builder; speculative arithmetic commits registers only after every memory guard.
+  ArmSpanMode = enum ## Cold builder modes keep read descriptors distinct from the private store context.
+    Reads, ByteStore
+  ArmStoreContext = object ## Call-local borrowed addresses never escape into a frame or executable cache.
+    regions, dirtyWordCount, dirtyWords: uint64
+  ArmMemorySpan* = object ## Cold guarded-memory builder; speculative arithmetic commits registers only after every memory guard.
     body: ArmBlock
     guards: seq[ArmReadGuard]
+    mode: ArmSpanMode
     stored: bool # No later guard/memory operation may follow the sole committed byte store.
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
@@ -263,14 +268,14 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for word in fragment.terminal: result.add(word)
 
-proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
+proc armReadRefusal(span: var ArmMemorySpan, word: uint32, conditional: bool) =
   ## Every failed address/extent check branches to one final return without register stores.
   span.guards.add(ArmReadGuard(at: span.body.words.len, conditional: conditional))
   span.body.words.add(word)
 
-proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+proc emitArmRead*(span: var ArmMemorySpan, slots: RegisterSlots, displacement: uint32) =
   ## Address aliases consume the current resident value before the load writes its destination.
-  assert not span.stored
+  assert span.mode == ArmSpanMode.Reads and not span.stored
   let source = armRead(span.body, slots.bIndex)
   let destination = armWrite(span.body, slots.aIndex)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots modulo-2^32 base.
@@ -300,9 +305,9 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
     assert index >= 0 and index < after
     span.body.words[index] = span.body.words[index] or uint32(after-index)
 
-proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last: uint32) =
+proc beginArmReadWindow*(span: var ArmMemorySpan, slot: range[0..12], first, last: uint32) =
   ## A stable guest base admits one nonwrapping readable window before any speculative register mutation.
-  assert not span.stored
+  assert span.mode == ArmSpanMode.Reads and not span.stored
   assert span.body.words.len == 0 and last >= first and last-first <= 4088
   let distance = last-first
   let source = armRead(span.body, slot)
@@ -338,21 +343,22 @@ proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last:
     assert index >= 0 and index < after
     span.body.words[index] = span.body.words[index] or uint32(after-index)
 
-proc emitArmWindowRead*(span: var ArmReadSpan, slot: range[0..12], displacement: uint32) =
+proc emitArmWindowRead*(span: var ArmMemorySpan, slot: range[0..12], displacement: uint32) =
   ## One earlier whole-window proof covers this aligned relative offset, including an unaligned original base.
-  assert not span.stored
+  assert span.mode == ArmSpanMode.Reads and not span.stored
   assert displacement <= 4088 and displacement mod 8 == 0
   let destination = armWrite(span.body, slot)
   span.body.words.add(0xf9400220'u32 or ((displacement div 8) shl 10) or destination)
 
-proc emitArmReadArithmetic*(span: var ArmReadSpan, opcode: byte, slots: RegisterSlots,
+proc emitArmReadArithmetic*(span: var ArmMemorySpan, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
   ## Existing pure operations share the same resident register bank and original wrapping/alias rules.
   emitArmOperation(span.body, opcode, slots, immediate)
 
-proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
+proc finishArmMemorySpan*(span: ArmMemorySpan, ending: uint32): seq[uint32] =
   ## No guest register store precedes a successful complete read sequence; refused speculation has no visible prefix.
   assert span.body.terminal.len == 0
+  assert span.mode != ArmSpanMode.ByteStore or span.stored
   result = @[0xaa0103f1'u32] # MOV X17,X1 retains only this invocation's borrowed descriptors.
   var leading = 0
   for slot in 0..<13:
@@ -373,13 +379,13 @@ proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
     result[at] = result[at] or (if guard.conditional: distance shl 5 else: distance)
 
 
-proc takeArmMemoryPrefix*(fragment: var ArmBlock): ArmReadSpan =
+proc takeArmStorePrefix*(fragment: var ArmBlock): ArmMemorySpan =
   ## Move a pure speculative prefix into the guarded-memory builder without copying its words or publishing registers.
-  ArmReadSpan(body: move(fragment), guards: @[], stored: false)
+  ArmMemorySpan(body: move(fragment), guards: @[], mode: ArmSpanMode.ByteStore, stored: false)
 
-proc emitArmByteStore*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+proc emitArmByteStore*(span: var ArmMemorySpan, slots: RegisterSlots, displacement: uint32) =
   ## Every guard precedes the sole byte mutation; only pure non-exiting arithmetic may follow it.
-  assert not span.stored
+  assert span.mode == ArmSpanMode.ByteStore and not span.stored
   let source = armRead(span.body, slots.bIndex)
   let value = armRead(span.body, slots.aIndex)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # Snapshot the resident modulo32 address base in W3.
@@ -391,10 +397,14 @@ proc emitArmByteStore*(span: var ArmReadSpan, slots: RegisterSlots, displacement
   span.body.words.add(0x12800022'u32) # MOV W2,#0xfffffffe is the checked byte worker's conservative upper bound.
   span.body.words.add(0xeb02007f'u32)
   armReadRefusal(span, 0x54000008'u32, true)
+  span.body.words.add(0x9e670221'u32) # FMOV D1,X17 preserves the private call context across descriptor selection.
+  span.body.words.add(0xf9400231'u32) # LDR X17,[X17] borrows the existing read descriptor array.
   var accepted = default(array[2, int])
   for region in 0..<2:
     # Only the invocation's genuine stack/RW descriptors can authorize mutation; RO/extra maps replay checked execution.
     span.body.words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+    span.body.words.add(0xb4000122'u32) # CBZ X2 skips an absent region before reconstructing its byte extent.
+    span.body.words.add(0x91001c42'u32) # ADD X2,X2,#7 reverses the owned read descriptor's length-minus-seven.
     span.body.words.add(0xcb010061'u32) # SUB X1,X3,base; a below-base address wraps above the bounded extent.
     span.body.words.add(0xeb02003f'u32)
     span.body.words.add(0x540000a2'u32) # HS skips pointer extraction/addition, bit transfer and acceptance.
@@ -409,11 +419,12 @@ proc emitArmByteStore*(span: var ArmReadSpan, slots: RegisterSlots, displacement
     # A writable descriptor rejoins before bitmap validation; nothing has been published or written yet.
     assert index >= 0 and index < after
     span.body.words[index] = span.body.words[index] or uint32(after-index)
-  span.body.words.add(0xf9401e22'u32) # LDR X2,[X17,#56] loads the owned dirty bitmap word count.
+  span.body.words.add(0x9e660031'u32) # FMOV X17,D1 restores this call's private context after descriptor admission.
+  span.body.words.add(0xf9400622'u32) # LDR X2,[X17,#8] loads the owned dirty bitmap word count.
   span.body.words.add(0xd352fc61'u32) # LSR X1,X3,#18 selects the address's 64-page bitmap word.
   span.body.words.add(0xeb02003f'u32)
   armReadRefusal(span, 0x54000002'u32, true) # HS refuses before any byte, register or dirty bit changes.
-  span.body.words.add(0xf9402222'u32) # LDR X2,[X17,#64] borrows this invocation's bitmap allocation.
+  span.body.words.add(0xf9400a22'u32) # LDR X2,[X17,#16] borrows this invocation's bitmap allocation.
   span.body.words.add(0x8b010c42'u32) # ADD X2,X2,X1,LSL#3 proves the complete selected uint64 word.
   span.body.words.add(0xd34cfc61'u32) # LSR X1,X3,#12; variable LSL consumes exactly the low six page-index bits.
   span.body.words.add(0xd2800031'u32) # MOV X17,#1; descriptor base is dead after the final guard.
@@ -424,13 +435,6 @@ proc emitArmByteStore*(span: var ArmReadSpan, slots: RegisterSlots, displacement
   span.body.words.add(0x9e660001'u32) # FMOV X1,D0 restores the fully admitted byte pointer.
   span.body.words.add(0x39000020'u32 or value) # STRB Wvalue,[X1] cannot cross a page boundary.
   span.stored = true
-
-proc armStoreInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32): seq[uint32] =
-  ## The original prefix-only direct witness retains the same guard and complete publication finish.
-  var span = takeArmMemoryPrefix(fragment)
-  emitArmByteStore(span, slots, displacement)
-  armReadInstructions(span, ending)
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32): seq[uint32] =
@@ -563,6 +567,22 @@ proc callArmMemory*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
   let entry = jit.entries[int(offset)]
   assert entry.code >= 2
   result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr regions)
+  assert result == high(uint32) or result == entry.ending
+  inc jit.calls
+  if result != high(uint32): jit.operations+=uint64(entry.operations)
+
+proc callArmStore*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
+    regions: array[3, array[3, uint64]], dirtyWords: var openArray[uint64]): uint32 =
+  ## Borrow stable read descriptors and a fixed mutable bitmap only for this call; no extra frame storage or owned copy.
+  assert sizeof(RegisterFile) == 104 and sizeof(ArmStoreContext) == 24
+  var context = ArmStoreContext(regions: cast[uint64](unsafeAddr regions),
+      dirtyWordCount: uint64(dirtyWords.len), dirtyWords: 0)
+  if dirtyWords.len > 0:
+    # A positive fixed view proves the first word exists; native guards prove the selected complete word before mutation.
+    context.dirtyWords = cast[uint64](addr dirtyWords[0])
+  let entry = jit.entries[int(offset)]
+  assert entry.code >= 2
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr context)
   assert result == high(uint32) or result == entry.ending
   inc jit.calls
   if result != high(uint32): jit.operations+=uint64(entry.operations)

@@ -120,7 +120,7 @@ when defined(pvmArm64Jit):
           @[149'u8, byte(destination*16+bridge), 9],
           @[130'u8, byte(bridge*16+last), 0, 0, 0, 0],
           @[149'u8, byte(last*16+last), 1], @[0'u8]])
-        var span = default(ArmReadSpan)
+        var span = default(ArmMemorySpan)
         emitArmRead(span, instructionRegisters(instruction(fixture, CodeAddress(0))), 0)
         emitArmReadArithmetic(span, 149, instructionRegisters(instruction(fixture, CodeAddress(6))), 9)
         emitArmRead(span, instructionRegisters(instruction(fixture, CodeAddress(9))), 0)
@@ -128,7 +128,7 @@ when defined(pvmArm64Jit):
             15))), 1)
         let jit = newArmJit()
         assert armEntry(jit, 0, 1) == 0
-        var words = armReadInstructions(span, 37)
+        var words = finishArmMemorySpan(span, 37)
         assert publishArmEntry(jit, 0, 37, 4, words)
         var bytes = default(array[64, byte])
         for selectedRegion in 0..<3:
@@ -165,7 +165,7 @@ when defined(pvmArm64Jit):
           let fixture = owner([@[130'u8, byte(baseSlot*16+destination), 0, 0, 0, 0],
             @[149'u8, byte(destination*16+destination), 9],
             @[130'u8, byte(baseSlot*16+baseSlot), 0, 0, 0, 0], @[0'u8]])
-          var span = default(ArmReadSpan)
+          var span = default(ArmMemorySpan)
           let slots = instructionRegisters(instruction(fixture, CodeAddress(0)))
           beginArmReadWindow(span, slots.bIndex, first, first+distance)
           emitArmWindowRead(span, slots.aIndex, 0)
@@ -174,7 +174,7 @@ when defined(pvmArm64Jit):
           emitArmWindowRead(span, slots.bIndex, distance)
           let jit = newArmJit()
           assert armEntry(jit, 0, 1) == 0
-          var words = armReadInstructions(span, 37)
+          var words = finishArmMemorySpan(span, 37)
           assert publishArmEntry(jit, 0, 37, 3, words)
           var bytes = default(array[8192, byte])
           for at in 0..<8192: bytes[at] = byte((at*29+17) mod 256)
@@ -1646,10 +1646,10 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
           assert armEntry(jit, 0, 1) == 0
           var body = default(ArmBlock)
           for index in 0..<placement: emitArmOperation(body, 149, arithmetic, 1)
-          var span = takeArmMemoryPrefix(body)
+          var span = takeArmStorePrefix(body)
           emitArmByteStore(span, slots, displacement)
           for index in placement..<3: emitArmReadArithmetic(span, 149, arithmetic, 1)
-          var words = armReadInstructions(span, 37)
+          var words = finishArmMemorySpan(span, 37)
           assert publishArmEntry(jit, 0, 37, 4, words)
           for selected in 0..<2:
             # Stack and RW share exact access proofs; no read-only descriptor is ever admitted for stores.
@@ -1659,8 +1659,8 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
             var dirty = [0x8000000000000000'u64, 0x10'u64]
             let originalDirty = dirty
             var regions = default(array[3, array[3, uint64]])
-            if mode != 5: regions[selected] = [first, 64'u64, cast[uint64](addr bytes[0])]
-            regions[2] = [0'u64, (if mode == 6: 0'u64 else: 2'u64), cast[uint64](addr dirty[0])]
+            if mode != 5: regions[selected] = [first, 57'u64, cast[uint64](addr bytes[0])]
+            var absentDirty: seq[uint64] = @[] # An empty fixed view must refuse before any publication.
             var registers = default(RegisterFile)
             for index in 0..<13: registers[index] = RegisterValue(0x123456789abc0010'u64+uint64(index))
             registers[addressSlot] = RegisterValue(rawBase-(if valueSlot ==
@@ -1678,7 +1678,13 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
               let word = int(address shr 18)
               assert word >= 0 and word < expectedDirty.len
               expectedDirty[word] = expectedDirty[word] or (1'u64 shl int((address shr 12) and 63))
-            assert callArmMemory(jit, 0, registers, regions) == (if success: 37'u32 else: high(uint32))
+            var destination = high(uint32)
+            if mode == 6:
+              # The empty bitmap remains distinct from the nonempty literal array whose unchanged words are checked below.
+              destination = callArmStore(jit, 0, registers, regions, absentDirty)
+            else:
+              destination = callArmStore(jit, 0, registers, regions, dirty)
+            assert destination == (if success: 37'u32 else: high(uint32))
             assert registers == expectedRegisters and bytes == expectedBytes and dirty == expectedDirty
             if not success:
               assert registers == originalRegisters and bytes == originalBytes and dirty == originalDirty

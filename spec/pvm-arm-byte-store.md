@@ -103,7 +103,7 @@ native `82283cb7a9eebb6359011140450b57ba9bf42ac3f52fe305188e1c0302d564a7`;
 profiles `142fbaff537de1811158443bdbc1b63c1953e312fa9b519a748dbcc6c0c05150`.
 Ignored evidence: `build/pvm-arm-byte-store/first/tests`.
 
-## Superseding bounded mixed-span trial (pending)
+## Mixed-span trial: reject the frame-resident store descriptors
 
 The next trial admits exactly one byte store with pure arithmetic before and/or
 after it, total4..64 operations in the same already-reserved source block. No later
@@ -121,3 +121,70 @@ positions, and source/gas/host/remap checks to43,904 per witness build. A separa
 earlier native store's bytes and prefix/suffix registers. The cold builder rejects
 late memory guards or a second store; pure arithmetic is the only allowed suffix.
 Native compilation, execution and timing remain CI-only.
+
+
+[Run40766629519](https://github.com/jacogr/ragnarok/actions/runs/40766629519)
+measured `c7a516dfde66f5d53da20076136989bfbaa7b860` against
+`203cce5615a51aa2f8656d925b4e2be9c3ecb233`, Linux ARM64 with the same pinned
+October28 compiler. Independent audits passed all nine native gates/two policies,
+13,520 direct literals,43,904 source/gas/host/remap controls and320 later-store exits;
+70 processes/910 checked calls/115 controls/16 fresh builds/eight equal-image pairs;
+six calibrated cold/reused profiles/78 calls/eight diagnostic builds/four equal-image
+pairs/four collection controls. Complete source, compiler, image and reference states
+and ordered host events agree. No hardware counters were collected.
+
+CPU milliseconds forward/reverse, reused medians samples1..12. The reference column
+is call-only; constructors and cold calls remain separate.
+
+| Workload | Accepted reused | Mixed reused | PolkaVM interpreted call |
+| --- | ---: | ---: | ---: |
+| Sieve100k | 2.948/2.999 | 2.924/2.958 | 6.084/6.073 |
+| Minimal100k | 5.938/5.990 | 6.303/6.309 | 5.511/5.552 |
+| Memory fill100k | 4.450/4.550 | 4.523/4.590 | 3.732/3.742 |
+| Pinky | 86.999/86.887 | 88.018/88.435 | 87.684/87.535 |
+| Sieve10m | 282.944/284.261 | 283.281/283.300 | 332.053/338.461 |
+| DOOM initialization | 325.844/320.153 | 330.856/333.678 | 624.034/627.887 |
+| DOOM gameplay | 46.509/46.379 | 46.021/45.786 | 40.046/40.080 |
+
+| Workload | Accepted constructor | Mixed constructor | Accepted cold | Mixed cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.889/2.862 | 3.009/2.876 | 10.421/10.461 | 10.588/10.525 |
+| Minimal100k | 0.016/0.015 | 0.014/0.018 | 6.145/6.233 | 6.572/6.543 |
+| Memory fill100k | 0.054/0.056 | 0.055/0.056 | 8.519/8.723 | 8.493/8.229 |
+| Pinky | 0.724/0.728 | 0.747/0.706 | 91.378/90.890 | 92.231/92.741 |
+| Sieve10m | 2.984/3.011 | 3.002/3.033 | 292.285/291.486 | 290.944/291.119 |
+| DOOM initialization | 8.576/8.552 | 8.575/8.679 | 352.654/341.598 | 353.158/359.563 |
+| DOOM gameplay | 8.533/8.507 | 8.639/8.583 | 63.525/64.730 | 63.803/63.485 |
+
+Gameplay improves about1.1/1.3%, but minimal regresses6.2/5.3% and initialization
+1.5/4.2%. This fails the retention gate. Minimal native activity and code footprint
+are exactly unchanged; a cause cannot be inferred from instruction counts alone.
+Gameplay native operations increase93,369,909→106,688,713 while branch calls fall
+20,525,709→7,212,349: mixed spans leave more terminal branches checked. This is a
+bounded next boundary to examine, not evidence that branch fusion will improve CPU.
+Reused gameplay Ir falls616,325,358→608,131,339; initialization falls only
+3,238,314,250→3,238,256,397. Simulated conditional/indirect misses are
+1,565,075/8,523,586→859,904/8,266,334 for gameplay and
+2,162,754/23,899,878→1,192,595/23,823,095 for initialization. These are simulated
+counts, not measured hardware behavior. The same fixed cache ceilings remain.
+
+Report SHA256: applications
+`7150ae8fbe77c29d07b5e216682942ecdef7da356948c9859c784d83d8e394c1`;
+native `a2813592f1836de5a15669ad2a74b9967b87ef8271f30b5c6a0f6812a4805910`;
+profiles `1abe7a53a82a9accfad1ab8541b7b132c6430152409b80f2a929d9cf547d9789`.
+Ignored evidence: `build/pvm-arm-byte-store/mixed/tests`.
+
+## Call-local context alternative (pending)
+
+Keep exactly the mixed admission and every semantic guard, but remove the additional
+72-byte store descriptor array from FlatFrame. A private24-byte context borrows the
+existing read descriptors and a fixed dirty-bitmap view only for callArmStore;
+code and frames never own it. A positive read extent reconstructs its full byte
+length by adding seven; an empty extent refuses before pointer extraction. Caller-
+saved D1 preserves the call context while D0 holds the admitted byte pointer.
+Distinct cold builder modes prevent read-window and byte-store context confusion.
+The direct literal matrix includes both writable roles and an empty bitmap view.
+This tests whether restoring the original frame footprint helps; the previous
+regression's CPU cause remains unproven. Require fresh complete-state/native and
+paired timing/profile qualification against the accepted non-store parent. If this
+also fails, remove the runtime store delta and retain useful checks and evidence.

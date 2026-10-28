@@ -105,7 +105,6 @@ type
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
-      armStoreMemory: array[3, array[3, uint64]] # Stack/RW byte extents and dirty-bitmap word extent belong only to this invocation.
 
 
 
@@ -1369,13 +1368,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
-  proc flatArmWriteRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
-    ## Byte stores need a full byte extent, unlike word reads; empty regions never authorize a pointer access.
-    result = [first, 0'u64, 0'u64]
-    if bytes.len > 0:
-      result[1] = uint64(bytes.len)
-      result[2] = cast[uint64](addr bytes[0])
-
 proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo,
     memory: Memory): FlatFrame =
   ## Own checked private region copies without borrowing caller byte storage; arbitrary fragmented layouts retain a genuine slow preflight owner.
@@ -1461,12 +1453,6 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     result.armMemory[0] = flatArmReadRegion(result.stackBase, result.stack)
     result.armMemory[1] = flatArmReadRegion(result.rwBase, result.rw)
     result.armMemory[2] = flatArmReadRegion(result.roBase, result.ro)
-    result.armStoreMemory[0] = flatArmWriteRegion(result.stackBase, result.stack)
-    result.armStoreMemory[1] = flatArmWriteRegion(result.rwBase, result.rw)
-    result.armStoreMemory[2] = [0'u64, uint64(result.dirtyPages.len), 0'u64]
-    if result.dirtyPages.len > 0:
-      # All byte storage and the fixed bitmap remain stable until an entire frame replacement rebuilds these descriptors.
-      result.armStoreMemory[2][2] = cast[uint64](addr result.dirtyPages[0])
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -2080,7 +2066,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         let jit {.cursor.} = f.armJit
         assert jit != nil
         if jit != nil:
-          let destination = callArmMemory(jit, offset, f.info.registers, f.armStoreMemory)
+          let destination = callArmStore(jit, offset, f.info.registers, f.armMemory, f.dirtyPages)
           if destination != flatStop: return destination
     let original = f.armOriginal[int(offset)]
     assert original != nil
@@ -2121,7 +2107,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     if reads < 2 or count < 4: return offset
     if last-first > 4088: window = false
-    var native = default(ArmReadSpan)
+    var native = default(ArmMemorySpan)
     if window:
       # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
       for current in offset..<ending:
@@ -2138,7 +2124,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         else: emitArmRead(native, fact.args.slots, displacement)
       else:
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
-    var words = armReadInstructions(native, ending)
+    var words = finishArmMemorySpan(native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
@@ -2216,12 +2202,12 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           inc following
           inc operations
         if operations >= 4:
-          var span = takeArmMemoryPrefix(native)
+          var span = takeArmStorePrefix(native)
           emitArmByteStore(span, storeFact.args.slots, uint32(storeFact.args.x and 0xffffffff'u64))
           for current in storeOffset+1..<following:
             let suffix = f.plan.facts[int(f.sites[int(current)])]
             emitArmReadArithmetic(span, suffix.opcode, suffix.args.slots, suffix.args.x)
-          var words = armReadInstructions(span, following)
+          var words = finishArmMemorySpan(span, following)
           if not publishArmEntry(jit, offset, following, operations, words): return offset
           if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
           f.armOriginal[int(offset)] = f.handlers[int(offset)]
