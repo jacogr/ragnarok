@@ -62,8 +62,8 @@ def service(language, folder, rounds, warmup, *, binaries=None, directory=None):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
-    command = [str(binaries[language]), 'server', str(port), str(folder / 'a.cert.pem'),
-               str(folder / 'a.key.pem'), '-', 'jamnp-s/1/00000000', '120000', 'service']
+    command = [str(binaries[language]), 'server', '--net-port', str(port), '--net-cert', str(folder / 'a.cert.pem'),
+               '--net-key', str(folder / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '120000', '--net-mode', 'service']
     handle = log.open('w')
     server = subprocess.Popen(command, env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)},
                               stdout=handle, stderr=subprocess.STDOUT)
@@ -74,9 +74,9 @@ def service(language, folder, rounds, warmup, *, binaries=None, directory=None):
         path = directory / f'{iteration}-{name}.log'
         output = path.open('w')
         handles.append(output)
-        arguments = [str(binaries[implementation]), 'client', str(port),
-                     str(folder / f'{identity}.cert.pem'), str(folder / f'{identity}.key.pem'),
-                     str(folder / 'a.pub'), alpn, '5000', mode]
+        arguments = [str(binaries[implementation]), 'client', '--net-port', str(port),
+                     '--net-cert', str(folder / f'{identity}.cert.pem'), '--net-key', str(folder / f'{identity}.key.pem'),
+                     '--net-peer-key', str(folder / 'a.pub'), '--net-alpn', alpn, '--net-timeout-ms', '5000', '--net-mode', mode]
         process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT)
         children.append(process)
         return process, path

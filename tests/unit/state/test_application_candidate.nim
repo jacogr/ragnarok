@@ -115,12 +115,12 @@ proc configured(port = 0'u16, withState = false): Options =
     for value in ["--with-state", "--state-writes", "1000", "--state-write-bytes", "1000000"]:
       arguments.add(value) # Canonical ownership is explicit even with all listeners disabled.
   if port == 0 and not withState:
-    for value in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
+    for value in ["--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"]:
       arguments.add(value) # The pinned sequence API appends individual owned values.
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 
 proc reservation(): tuple[fd: cint, port: uint16] =
   ## Keep an OS-assigned loopback port occupied until the caller deliberately releases it.

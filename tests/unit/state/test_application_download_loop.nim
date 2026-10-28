@@ -35,7 +35,8 @@ proc limits(attempts: uint64 = 2): DownloadLoopLimits =
 proc start(owner: var Services) {.raises.} =
   ## Each scenario owns an independent complete-map seed and the real Services handoff.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "application-download-loop-chain.json",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
+    "application-download-loop-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options), "start witness 1"
   assert owner.start(options, "test"), "start witness 2"
 proc expected(owner: Services): array[42, byte] =

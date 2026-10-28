@@ -174,7 +174,7 @@ proc deferred(context: SeedFixture, wire: seq[byte]) {.raises.} =
   writeFile(path, context.text)
   defer: discard posix.unlink("application-block-input-chain.json")
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path, "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path, "--state-writes", "1000",
     "--state-write-bytes", "1000000"], options)
   var owner = default(Services)
   assert owner.start(options, "test")

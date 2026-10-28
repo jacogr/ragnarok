@@ -18,7 +18,7 @@ const HeaderPath = "application-recovery-startup-header"
 proc selectedOptions(limit = "100000"): Options =
   ## File and mutation policies remain separate explicit controls; no listeners are implied.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-writes", "0", "--state-write-bytes", "0", "--state-checkpoint", CheckpointPath,
     "--state-trust", TrustPath, "--state-header", HeaderPath, "--state-checkpoint-bytes", limit], result)

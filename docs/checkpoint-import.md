@@ -48,8 +48,9 @@ For example, supply your existing certificate/key paths and set
 `configured_alpn` to your configured peer ALPN before running this bounded peer:
 
 ```sh
-./build/ragnarok server 4000 node.cert.pem node.key.pem - \
-  "$configured_alpn" 30000 service \
+./build/ragnarok server --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key - \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --net-mode service \
   --with-state --chain chain.json \
   --state-writes 1000 --state-write-bytes 1048576 \
   --state-checkpoint checkpoint.bin \

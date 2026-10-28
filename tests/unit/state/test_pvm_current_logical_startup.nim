@@ -113,17 +113,18 @@ proc optionChecks() =
   let base = @["download-current", "--with-state", "--chain", "chain.json"]
   let pair = @["--download-logical-source", "source.txt", "--download-logical-policy", "logical.txt"]
   var options = default(Options)
-  assert parseOptions(joined(base, pair), options) and options.logicalDownloadEnabled
+  assert parseCanonicalOptions(joined(base, pair), options) and options.logicalDownloadEnabled
   assert options.logicalDownloadSourcePath == "source.txt" and options.logicalDownloadPolicyPath == "logical.txt"
   for extra in [@["--download-logical-source", "source.txt"], @["--download-logical-policy",
       "logical.txt"], joined(pair, @["--download-logical-source", "again"]), @[
           "--download-logical-source", "a\0b", "--download-logical-policy", "logical.txt"]]:
-    assert not parseOptions(joined(base, extra), options)
+    assert not parseCanonicalOptions(joined(base, extra), options)
     assert not options.valid and not options.logicalDownloadEnabled
     assert options.logicalDownloadSourcePath.len == 0 and options.logicalDownloadPolicyPath.len == 0
   for command in ["download", "server", "client", "mesh"]:
-    assert not parseOptions(joined(@[command, "--with-state", "--chain", "chain.json"], pair), options)
-  assert parseOptions(base, options) and not options.logicalDownloadEnabled
+    assert not parseCanonicalOptions(joined(@[command, "--with-state", "--chain", "chain.json"],
+        pair), options)
+  assert parseCanonicalOptions(base, options) and not options.logicalDownloadEnabled
 proc sourceChecks(fixture: NamespaceExecutionFixture) =
   ## Every declared payload comes from the actual complete source; omissions, duplicates, missing values and policy refusal retain exact failed stages.
   let services = fixture.executableNamespaceServices(fixture.parent.bestBlock.value.stateSnapshot)

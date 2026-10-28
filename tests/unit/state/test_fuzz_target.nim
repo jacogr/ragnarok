@@ -26,6 +26,20 @@ proc main() {.raises.} =
   let supplied = fuzzBackendTestConfig()
   let environment = FuzzEnvironment(enabled: true, spec: "tiny", dataPath: "/tmp/private-fuzz",
       socketPath: "/tmp/private-fuzz/target.sock")
+  # Explicit flags replace only selected fields; the caller's captured environment remains immutable.
+  var resolved = default(FuzzEnvironment)
+  assert resolveFuzzEnvironment(environment, @[], resolved)
+  assert resolved.spec == environment.spec and resolved.dataPath == environment.dataPath
+  assert resolved.socketPath == environment.socketPath and resolved.enabled
+  assert resolveFuzzEnvironment(environment, @["--fuzz-spec", "full", "--fuzz-log-level", "debug"], resolved)
+  assert resolved.spec == "full" and resolved.logLevel == "debug"
+  assert resolved.dataPath == environment.dataPath and environment.spec == "tiny"
+  assert resolveFuzzEnvironment(environment, @["--fuzz-data-path", "/tmp/other",
+    "--fuzz-sock-path", "/tmp/other.sock"], resolved)
+  assert resolved.dataPath == "/tmp/other" and resolved.socketPath == "/tmp/other.sock"
+  for malformed in [@["--fuzz-spec"], @["--unknown", "value"], @["--fuzz-spec", ""]]:
+    assert not resolveFuzzEnvironment(environment, malformed, resolved)
+    assert not resolved.enabled and resolved.spec.len == 0
   let absent = default(FuzzTargetResult)
   assert absent.error == FuzzTargetError.Uninitialized
   let prepared = prepareFuzzTarget(environment, supplied.parameters, supplied.candidate,

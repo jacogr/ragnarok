@@ -124,7 +124,7 @@ proc configured(rpc, ui: uint16): Options =
     for arg in ["--with-rpc", "--rpc-port", $rpc]: args.add(arg) # Only this test enables a real RPC listener.
   if ui != 0:
     for arg in ["--with-ui", "--ui-port", $ui]: args.add(arg) # UI owns an independent static-asset graph.
-  assert parseOptions(args, result), "explicit preparation options"
+  assert parseCanonicalOptions(args, result), "explicit preparation options"
 
 proc receive(owner: Services, input: var BlockInput, wire: openArray[byte]): BlockInputId =
   ## Capture the exact canonical parent before the managed exclusion gate closes.

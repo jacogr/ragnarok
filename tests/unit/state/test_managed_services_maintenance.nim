@@ -23,7 +23,7 @@ proc main() {.raises.} =
   ## A real RPC listener remains paused until collection, with no canonical installation or publication receipt change.
   let path = "managed-services-maintenance"
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-db", path, "--state-layout", "managed",
         "--state-compact-bytes", "0",

@@ -24,13 +24,13 @@ proc main() =
   let base = @["check-traces", "policy", "genesis", "step", "--with-state", "--chain", "chain.json", "--trace-observations"]
   var valid = base
   valid.add("observations with spaces")
-  assert parseOptions(valid, options)
+  assert parseCanonicalOptions(valid, options)
   assert options.traceObservationsPath == "observations with spaces"
   for path in ["", "bad\npath"]:
     var arguments = base
     arguments.add(path) # Invalid bounded paths reset the complete options owner.
-    assert not parseOptions(arguments, options)
+    assert not parseCanonicalOptions(arguments, options)
     assert options.traceObservationsPath == ""
-  assert not parseOptions(@["run", "--trace-observations", "observations"], options)
+  assert not parseCanonicalOptions(@["run", "--trace-observations", "observations"], options)
   echo "PASS trace observations: private owners and scoped bounded paths"
 main()

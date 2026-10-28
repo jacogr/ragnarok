@@ -99,10 +99,10 @@ def reconnect(binary, certificates, chain, folder, ipv6=False):
         host = '[::1]' if ipv6 else '127.0.0.1'
         endpoint = f'{host}:{server.getsockname()[1]}'
         with (folder/'node.log').open('wb') as log:
-            process = subprocess.Popen([str(binary), 'server', str(port),
-                str(certificates/'a.cert.pem'), str(certificates/'a.key.pem'),
-                str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '15000',
-                '--with-telemetry', '--telemetry', endpoint, '--chain', str(chain)],
+            process = subprocess.Popen([str(binary), 'server', '--net-port', str(port),
+                '--net-cert', str(certificates/'a.cert.pem'), '--net-key', str(certificates/'a.key.pem'),
+                '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000',
+                '--with-telemetry', '--telemetry-endpoint', endpoint, '--chain', str(chain)],
                 stdout=log, stderr=subprocess.STDOUT)
             try:
                 first, _ = server.accept()
@@ -127,9 +127,9 @@ def reconnect(binary, certificates, chain, folder, ipv6=False):
                     _, status = capture.event()
                     assert status[8] == 10 and int.from_bytes(status[9:13], 'little') == 0
                     # The consolidated entry point drives both ends; no exporter-only fixture process exists.
-                    client = subprocess.run([str(binary), 'client', str(port),
-                        str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
-                        str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '4000', 'clean'],
+                    client = subprocess.run([str(binary), 'client', '--net-port', str(port),
+                        '--net-cert', str(certificates/'b.cert.pem'), '--net-key', str(certificates/'b.key.pem'),
+                        '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '4000', '--net-mode', 'clean'],
                         capture_output=True, timeout=7)
                     (folder/'client.log').write_bytes(client.stdout + client.stderr)
                     assert client.returncode == 0 and b'EXCHANGE_OK 8' in client.stdout
@@ -164,17 +164,17 @@ def pending_reconnect(binary, certificates, chain, folder):
         collector = owners.enter_context(listener())
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         logs = [owners.enter_context((folder/f'{role}.log').open('wb')) for role in ('server', 'client')]
-        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '30000'],
+        server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000'],
             stdout=logs[0], stderr=subprocess.STDOUT)
         owners.callback(stop, server)
         # Establish listener readiness before consuming any of the client handshake deadline.
         watch({'server': server}, {'server': folder/'server.log'},
               {'server': lambda text: 'READY' in text.splitlines()}, {'server': {}},
               seconds=5, thread_limits={'server': THREAD_BASELINES['nim']})
-        client = subprocess.Popen([str(binary), 'client', str(gate.getsockname()[1]),
-            str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
-            'jamnp-s/1/245becfe', '30000', 'clean', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint],
+        client = subprocess.Popen([str(binary), 'client', '--net-port', str(gate.getsockname()[1]),
+            '--net-cert', str(certificates/'b.cert.pem'), '--net-key', str(certificates/'b.key.pem'), '--net-peer-key', str(certificates/'a.pub'),
+            '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'clean', '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint],
             stdout=logs[1], stderr=subprocess.STDOUT)
         owners.callback(stop, client)
         first, _ = collector.accept()
@@ -261,9 +261,9 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_d
     with listener(ipv6) as server:
         host = '[::1]' if ipv6 else '127.0.0.1'
         endpoint = f'{host}:{server.getsockname()[1]}'
-        args = [str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-                str(certificates/'a.key.pem'), str(certificates/'b.pub'), alpn, '7000',
-                '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint]
+        args = [str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+                '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', alpn, '--net-timeout-ms', '7000',
+                '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint]
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = server.accept()
@@ -282,9 +282,9 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_d
                 if startup_delay:
                     # Force a status between registration and connection; lifecycle IDs must still correlate.
                     time.sleep(startup_delay)
-                client = subprocess.run([str(binary), 'client', str(port),
-                    str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'),
-                    str(certificates/'a.pub'), alpn, '3000', 'clean', '--with-telemetry', '--telemetry', endpoint,
+                client = subprocess.run([str(binary), 'client', '--net-port', str(port),
+                    '--net-cert', str(certificates/'b.cert.pem'), '--net-key', str(certificates/'b.key.pem'),
+                    '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', alpn, '--net-timeout-ms', '3000', '--net-mode', 'clean', '--with-telemetry', '--telemetry-endpoint', endpoint,
                     '--chain', str(chain)], capture_output=True, timeout=6)
                 assert client.returncode == 0, (client.stdout, client.stderr)
                 outgoing, _ = server.accept()
@@ -328,9 +328,9 @@ def dial_failure(binary, certificates, chain, folder):
         silent.bind(('127.0.0.1', 0))
         with listener() as collector:
             endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
-            process = subprocess.Popen([str(binary), 'client', str(silent.getsockname()[1]),
-                str(certificates/'b.cert.pem'), str(certificates/'b.key.pem'), str(certificates/'a.pub'),
-                'jamnp-s/1/245becfe', '500', '--with-telemetry', '--telemetry', endpoint, '--chain', str(chain)],
+            process = subprocess.Popen([str(binary), 'client', '--net-port', str(silent.getsockname()[1]),
+                '--net-cert', str(certificates/'b.cert.pem'), '--net-key', str(certificates/'b.key.pem'), '--net-peer-key', str(certificates/'a.pub'),
+                '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '500', '--with-telemetry', '--telemetry-endpoint', endpoint, '--chain', str(chain)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 connection, _ = collector.accept()
@@ -357,17 +357,17 @@ def peer_loss(binary, certificates, chain, folder):
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as reservation:
         reservation.bind(('::1', 0))
         port = reservation.getsockname()[1]
-    server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-        str(certificates/'a.key.pem'), str(certificates/'b.pub'), 'jamnp-s/1/245becfe', '30000', 'idle'],
+    server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+        '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'idle'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     try:
         assert select.select([server.stdout], [], [], 5)[0], 'peer listener did not become ready'
         assert server.stdout.readline().strip() == b'READY'
         with listener() as collector:
             endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
-            client = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
-                str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-                '6000', 'idle', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint],
+            client = subprocess.Popen([str(binary), 'client', '--net-port', str(port), '--net-cert', str(certificates/'b.cert.pem'),
+                '--net-key', str(certificates/'b.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe',
+                '--net-timeout-ms', '6000', '--net-mode', 'idle', '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 connection, _ = collector.accept()
@@ -410,17 +410,17 @@ def incoming_failure(binary, certificates, chain, folder):
         port = reservation.getsockname()[1]
     with listener() as collector:
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
-        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '1500',
-            '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '1500',
+            '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = collector.accept()
             with connection:
                 connection.settimeout(5)
                 assert frame(connection)[0] == 1
-                client = subprocess.run([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
-                    str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-                    '1800', 'clean'], capture_output=True, timeout=5)
+                client = subprocess.run([str(binary), 'client', '--net-port', str(port), '--net-cert', str(certificates/'b.cert.pem'),
+                    '--net-key', str(certificates/'b.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe',
+                    '--net-timeout-ms', '1800', '--net-mode', 'clean'], capture_output=True, timeout=5)
                 assert client.returncode != 0
                 capture = EventCapture(connection)
                 attempt_id, _ = capture.lifecycle(21)
@@ -453,16 +453,16 @@ def incoming_lifetimes(binary, certificates, chain, folder, remote_loss, startup
         path = folder/f'{scenario}-{identity}.log'
         output = path.open('w'); handles.append(output)
         client_logs.append(path)
-        child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/f'{identity}.cert.pem'),
-            str(certificates/f'{identity}.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-            '30000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+        child = subprocess.Popen([str(binary), 'client', '--net-port', str(port), '--net-cert', str(certificates/f'{identity}.cert.pem'),
+            '--net-key', str(certificates/f'{identity}.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe',
+            '--net-timeout-ms', '30000', '--net-mode', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         children.append(child)
     with listener() as collector:
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         output = server_log.open('w'); handles.append(output)
-        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000',
-            'overload', '--chain', str(chain), '--with-telemetry', '--telemetry', endpoint], stdout=output, stderr=subprocess.STDOUT,
+        server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000',
+            '--net-mode', 'overload', '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint], stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop_gate)})
         try:
             connection, _ = collector.accept()
@@ -636,12 +636,12 @@ def mesh_shutdown(binary, certificates, chain, folder, silent=False):
                 remote_port = sink.getsockname()[1] if silent else local_ports[1-index]
                 logs[role] = folder/f'{role}.log'
                 handles[role] = logs[role].open('w')
-                command = [str(binary), 'mesh', str(local_ports[index]), str(remote_port),
-                           str(certificates/f'{role}.cert.pem'), str(certificates/f'{role}.key.pem'),
-                           str(certificates/f'{role}.pub'), str(certificates/f'{other}.pub'),
-                           'jamnp-s/1/245becfe', str(gate)]
+                command = [str(binary), 'mesh', '--net-local-port', str(local_ports[index]), '--net-remote-port', str(remote_port),
+                           '--net-cert', str(certificates/f'{role}.cert.pem'), '--net-key', str(certificates/f'{role}.key.pem'),
+                           '--net-local-key', str(certificates/f'{role}.pub'), '--net-peer-key', str(certificates/f'{other}.pub'),
+                           '--net-alpn', 'jamnp-s/1/245becfe', '--net-gate', str(gate)]
                 if role == 'a':
-                    command += ['--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}']
+                    command += ['--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{collector.getsockname()[1]}']
                 processes[role] = subprocess.Popen(command, stdout=handles[role], stderr=subprocess.STDOUT,
                     env={**os.environ, 'RAGNAROK_MESH_ROUNDS': '1', 'RAGNAROK_MESH_FALLBACK': '0',
                          'RAGNAROK_MESH_DISRUPT': '0'})
@@ -695,9 +695,9 @@ def capacity_refusal(binary, certificates, chain, folder):
     with listener() as collector:
         try:
             output = server_log.open('w'); handles.append(output)
-            server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-                str(certificates/'a.key.pem'), '-', 'jamnp-s/1/245becfe', '30000', 'overload',
-                '--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+            server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+                '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'overload',
+                '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{collector.getsockname()[1]}'],
                 env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(gate)}, stdout=output, stderr=subprocess.STDOUT)
             children.append(server)
             # Observe native admission counters before creating the excess connection.
@@ -707,9 +707,9 @@ def capacity_refusal(binary, certificates, chain, folder):
             state(lambda text: 'READY' in text.splitlines())
             for index in range(17):
                 output = (folder/f'client-{index}.log').open('w'); handles.append(output)
-                child = subprocess.Popen([str(binary), 'client', str(port), str(certificates/'b.cert.pem'),
-                    str(certificates/'b.key.pem'), str(certificates/'a.pub'), 'jamnp-s/1/245becfe',
-                    '30000', 'idle'], stdout=output, stderr=subprocess.STDOUT)
+                child = subprocess.Popen([str(binary), 'client', '--net-port', str(port), '--net-cert', str(certificates/'b.cert.pem'),
+                    '--net-key', str(certificates/'b.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe',
+                    '--net-timeout-ms', '30000', '--net-mode', 'idle'], stdout=output, stderr=subprocess.STDOUT)
                 children.append(child)
                 if index < 16:
                     state(lambda text: bool(states(text)) and states(text)[-1][0] == index + 1)

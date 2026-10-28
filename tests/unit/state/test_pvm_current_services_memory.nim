@@ -25,7 +25,7 @@ proc config(path: string, port = 0'u16): Options =
     args.add("--rpc-port")
     args.add($port) # A test-only ephemeral reservation selects the actual loopback listener.
   result = default(Options)
-  assert parseOptions(args, result)
+  assert parseCanonicalOptions(args, result)
 proc receive(owner: Services, input: var CurrentBlockInput, wire: openArray[byte],
     discover = false): CurrentBlockInputId =
   ## Bind the actual Services head before any exclusive native lease begins.

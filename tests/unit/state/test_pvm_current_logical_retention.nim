@@ -28,7 +28,7 @@ proc collectRetainedHistory(base: OwnedReport, restore: bool): RetainedHistoryPl
   writeFile(path, fixture.parent.bestBlock.value.currentApplicationText)
   defer: discard posix.unlink(path.toCString())
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   var input = default(CurrentBlockInput)
   var owner = default(Services)
   defer: owner.close() # Original worker/canonical owners retire only after collection; the returned frozen plan owns its required immutable provenance.

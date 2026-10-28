@@ -10,8 +10,9 @@ For example, with your existing certificate/key, peer pin, configured ALPN and
 complete versioned download policy:
 
 ```sh
-./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
-  "$configured_alpn" 30000 download-policy.conf \
+./build/ragnarok download --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key peer-public.bin \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --download-policy download-policy.conf \
   --with-state --chain chain.json \
   --download-ancestor parent-of-head.bin \
   --download-ancestor grandparent-of-head.bin
@@ -31,8 +32,9 @@ download-only switch; the default remains explicit files only. For a normal disk
 restart, keep the same chain/database controls and add the switch:
 
 ```sh
-./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
-  "$configured_alpn" 30000 download-policy.conf \
+./build/ragnarok download --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key peer-public.bin \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --download-policy download-policy.conf \
   --with-state --chain chain.json --state-storage disk --state-db local.db \
   --download-local-ancestors --download-blocks 2
 ```
@@ -61,8 +63,9 @@ is disabled. COUNT is a unique positive decimal control; zero, leading zeros,
 duplicates and use outside state-enabled `download` refuse atomically.
 
 ```sh
-./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
-  "$configured_alpn" 30000 download-policy.conf \
+./build/ragnarok download --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key peer-public.bin \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --download-policy download-policy.conf \
   --with-state --chain chain.json --state-storage disk --state-db local.db \
   --download-local-ancestors --download-remote-ancestors 4 --download-blocks 2
 ```
@@ -102,8 +105,9 @@ COUNT is one positive allowance of 1..64 fetched headers for the **whole command
 including successive children, rather than a fresh allowance per child or retry.
 
 ```sh
-./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
-  "$configured_alpn" 30000 download-policy.conf \
+./build/ragnarok download --net-port 4000 \
+  --net-cert node.cert.pem --net-key node.key.pem --net-peer-key peer-public.bin \
+  --net-alpn "$configured_alpn" --net-timeout-ms 30000 --download-policy download-policy.conf \
   --with-state --chain chain.json --state-storage disk --state-db local.db \
   --download-local-ancestors --download-discover-ancestors 4 --download-blocks 2
 ```

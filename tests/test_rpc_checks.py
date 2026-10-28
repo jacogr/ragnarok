@@ -6,9 +6,11 @@
 Provides discovery cases for valid medium frames, rejected 64-bit lengths and peer lifetime budgets.
 """
 import io
+import json
 import struct
 import unittest
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 from harness_fixtures import temporary_folder
 import rpc_checks
@@ -60,7 +62,7 @@ class RpcSessionBudget(unittest.TestCase):
                     rpc_checks.run(Path('/fixture/ragnarok'), folder/'certificates', folder/'peer',
                                    browser=browser)
                 arguments = spawn.call_args.args[0]
-                peer_seconds = int(arguments[7])/1000
+                peer_seconds = int(arguments[arguments.index('--net-timeout-ms')+1])/1000
                 if browser:
                     # Check both actual command deadlines, rather than only testing constant definitions.
                     self.assertEqual(launch.call_args.args[0][0], 'node')
@@ -70,3 +72,53 @@ class RpcSessionBudget(unittest.TestCase):
                     launch.assert_not_called()
                 spawn.return_value.kill.assert_called_once()
                 spawn.return_value.wait.assert_called_once()
+
+
+# Live retention checks must own the file they deliberately corrupt after startup.
+class RpcChainOwnership(unittest.TestCase):
+    def test_retention_mutation_preserves_supplied_chain(self):
+        """Run the actual launcher boundary and mutate its selected chain without touching caller bytes."""
+        with temporary_folder() as folder:
+            supplied = folder/'supplied.json'
+            original = b'{"id":"caller-owned"}\n'
+            supplied.write_bytes(original)
+            with patch.object(rpc_checks.subprocess, 'Popen') as spawn:
+                spawn.return_value.poll.return_value = None
+                def mutate_selected_chain(process, log):
+                    # Simulate the retention witness on exactly the file passed to the executable.
+                    arguments = spawn.call_args.args[0]
+                    selected = Path(arguments[arguments.index('--chain')+1])
+                    self.assertNotEqual(selected, supplied)
+                    self.assertEqual(selected.read_bytes(), original)
+                    selected.write_text('{}')
+                    raise RuntimeError('retention mutation reached')
+                with patch.object(rpc_checks, 'ready', side_effect=mutate_selected_chain):
+                    with self.assertRaisesRegex(RuntimeError, 'retention mutation reached'):
+                        rpc_checks.run(Path('/fixture/ragnarok'), folder/'certificates',
+                                       folder/'peer', chain=supplied)
+                self.assertEqual(supplied.read_bytes(), original)
+                spawn.return_value.kill.assert_called_once()
+                spawn.return_value.wait.assert_called_once()
+
+
+# Startup refusal fixtures must be explicit, independent of another workload's retention mutations.
+class RpcInvalidStartup(unittest.TestCase):
+    def test_invalid_startup_constructs_its_own_incomplete_chain(self):
+        """A nonmutating live-check stub still leaves complete negative-startup coverage."""
+        with temporary_folder() as folder:
+            attempted = []
+            def startup(arguments, **kwargs):
+                # Inspect the actual chain passed to every rejected startup, including the missing-file case.
+                chain = Path(arguments[arguments.index('--chain')+1])
+                attempted.append(json.loads(chain.read_text()) if chain.exists() else None)
+                if len(attempted) == 1:
+                    self.assertEqual(attempted[0], {}, 'Incomplete startup input must be written explicitly')
+                return CompletedProcess(arguments, 2, b'', b'Invalid RPC listener or --chain parameters')
+            with patch.object(rpc_checks, 'run', return_value={'passed': True}) as live:
+                with patch.object(rpc_checks.subprocess, 'run', side_effect=startup):
+                    result = rpc_checks.parameter_checks(Path('/fixture/ragnarok'),
+                                                         folder/'certificates', folder/'peer')
+            self.assertTrue(result['passed'])
+            self.assertEqual(live.call_count, 3)
+            self.assertEqual(len(attempted), 5)
+            self.assertIsNone(attempted[-1])

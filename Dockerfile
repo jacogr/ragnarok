@@ -65,7 +65,8 @@ USER 10001:10001
 # Check shared-library resolution in the final image under the actual runtime user.
 RUN ["/usr/local/bin/ragnarok", "--version"]
 ENTRYPOINT ["/usr/local/bin/ragnarok"]
-CMD ["--help"]
+# No arguments show help normally and honor environment-only conformance startup.
+CMD []
 
 # Explicit conformance image: standard environment variables select the bundled experimental preset.
 FROM runtime AS fuzz-target

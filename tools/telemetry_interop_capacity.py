@@ -75,9 +75,9 @@ def run_capacity(binary, collector, report, folder):
         backend = session.backend('collector')
         messages = report['messages'] = []
         stream = session.subscribe(messages)
-        server = session.launch('server', [binary, 'server', udp_port, certificates/'a.cert.pem',
-            certificates/'a.key.pem', '-', 'jamnp-s/1/245becfe', '60000', 'overload',
-            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry', f'127.0.0.1:{telemetry_port}'],
+        server = session.launch('server', [binary, 'server', '--net-port', udp_port, '--net-cert', certificates/'a.cert.pem',
+            '--net-key', certificates/'a.key.pem', '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'overload',
+            '--chain', ROOT/'tests/fixtures/telemetry-dev.json', '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{telemetry_port}'],
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         session.ready(server, 'server')
         deadline = time.monotonic() + 45
@@ -101,8 +101,8 @@ def run_capacity(binary, collector, report, folder):
 
         # All clients are nonblocking native peers; telemetry is emitted only by the server under test.
         def client(name, key, mode):
-            return session.launch(name, [binary, 'client', udp_port, certificates/f'{key}.cert.pem',
-                certificates/f'{key}.key.pem', certificates/'a.pub', 'jamnp-s/1/245becfe', '60000', mode])
+            return session.launch(name, [binary, 'client', '--net-port', udp_port, '--net-cert', certificates/f'{key}.cert.pem',
+                '--net-key', certificates/f'{key}.key.pem', '--net-peer-key', certificates/'a.pub', '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', mode])
 
         held = []
         for index in range(16):

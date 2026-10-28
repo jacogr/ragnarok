@@ -88,14 +88,14 @@ proc configured(port = 0'u16, withState = false, disk = false): Options =
     for value in ["--with-state", "--state-writes", "1000", "--state-write-bytes", "1000000"]:
       arguments.add(value) # Canonical ownership is explicit even with all listeners disabled.
   if port == 0 and not withState:
-    for value in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
+    for value in ["--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"]:
       arguments.add(value) # The pinned sequence API appends individual owned values.
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
   if disk:
     for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
-  assert parseOptions(arguments, result)
+  assert parseCanonicalOptions(arguments, result)
 
 proc listener(owner: var Services, viaCli = false, withDisk = false): uint16 {.raises.} =
   ## Retry only the bounded release/bind race; each successful listener uses explicit state policy.
@@ -223,15 +223,15 @@ proc refusals(context: SeedFixture) {.raises.} =
   let uiPort = reservation()
   discard posix.close(uiPort.fd)
   var partial = default(Options)
-  assert parseOptions(@["server", "--with-ui", "--chain", SeedPath,
+  assert parseCanonicalOptions(@["server", "--with-ui", "--chain", SeedPath,
     "--rpc-port", $reserved.port, "--ui-port", $uiPort.port], partial)
   assert not owner.start(partial, "test", policy())
   assertPortReleased(uiPort.port)
   discard posix.close(reserved.fd)
   assert owner.stateSnapshot.error == StateStoreError.Uninitialized
   var ui = default(Options)
-  assert parseOptions(@["server", "--with-ui", "--chain", SeedPath,
-    "--dev-ui-dir", "missing-application-services-ui"], ui)
+  assert parseCanonicalOptions(@["server", "--with-ui", "--chain", SeedPath,
+    "--ui-dev-dir", "missing-application-services-ui"], ui)
   assert not owner.start(ui, "test", policy())
   assert owner.stateSnapshot.error == StateStoreError.Uninitialized
   assert owner.start(options, "test", policy())
@@ -239,7 +239,7 @@ proc refusals(context: SeedFixture) {.raises.} =
   var missing = default(Options)
   let missingPort = reservation()
   discard posix.close(missingPort.fd)
-  assert parseOptions(@["server", "--with-rpc", "--rpc-port", $missingPort.port], missing)
+  assert parseCanonicalOptions(@["server", "--with-rpc", "--rpc-port", $missingPort.port], missing)
   assert not owner.start(missing, "test", policy())
   failHash(1)
   assert owner.start(missing, "test"), "legacy unavailable genesis still starts without state/hash work"
@@ -259,7 +259,7 @@ proc cli(context: SeedFixture) {.raises.} =
   assert not sameStateSnapshot(old, owner.stateSnapshot.value)
   owner.close()
   var readonly = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", SeedPath,
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", SeedPath,
     "--state-writes", "0", "--state-write-bytes", "0"], readonly)
   assert owner.start(readonly, "test")
   var branch = forkStateStore(owner.stateSnapshot.value).value
@@ -272,7 +272,7 @@ proc cli(context: SeedFixture) {.raises.} =
       arguments.add(field)
       arguments.add(if field == selected: "1" else: "1000") # Check exact propagation of each independent budget.
     var limited = default(Options)
-    assert parseOptions(arguments, limited)
+    assert parseCanonicalOptions(arguments, limited)
     assert owner.start(limited, "test")
     var branch = forkStateStore(owner.stateSnapshot.value).value
     let writes = [StateWrite(key: chapterKey(StateChapter(248)), kind: StateWriteKind.Put, value: @[1'u8]),

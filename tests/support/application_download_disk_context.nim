@@ -14,7 +14,7 @@ import ./[application_download_chain, application_candidate_context]
 proc diskOptions*(chainPath, path: string): Options =
   ## Normal restart chooses the same explicit configured chain and mutation policy without any external import controls.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", chainPath, "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath, "--state-writes", "1000",
     "--state-write-bytes", "1000000", "--state-storage", "disk", "--state-db", path], result)
 
 proc assertDiskPrefix*(context: DownloadChainFixture, completed: int, chainPath, path: string,

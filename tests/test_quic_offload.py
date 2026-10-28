@@ -97,9 +97,9 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, *, binari
     environment = {**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop), 'RAGNAROK_OFFLOAD_GATE': str(gate),
                    'RAGNAROK_OFFLOAD_FIXTURE': str(fixture), 'RAGNAROK_OFFLOAD_REPEATS': str(repeats), 'RAGNAROK_OFFLOAD_CANCEL': str(cancel)}
     output = log.open('w'); handles.append(output)
-    server = subprocess.Popen([str(binaries[language]), 'server', str(port),
-        str(certificates / 'a.cert.pem'), str(certificates / 'a.key.pem'), '-', 'jamnp-s/1/00000000',
-        '300000', 'offload'], env=environment, stdout=output, stderr=subprocess.STDOUT)
+    server = subprocess.Popen([str(binaries[language]), 'server', '--net-port', str(port),
+        '--net-cert', str(certificates / 'a.cert.pem'), '--net-key', str(certificates / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000',
+        '--net-timeout-ms', '300000', '--net-mode', 'offload'], env=environment, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
 
     # Check fixed worker/resource ceilings throughout every lifecycle wait, not just at idle.
@@ -131,9 +131,9 @@ def exercise(language, certificates, fixture, rounds, warmup, repeats, *, binari
         # Cycle native clients without changing queue generations, capacity or cancellation counts.
         path = directory / f'{accepted}-{implementation}-{mode}.log'
         handle = path.open('w'); handles.append(handle)
-        process = subprocess.Popen([str(binaries[implementation]), 'client', str(port),
-            str(certificates / 'b.cert.pem'), str(certificates / 'b.key.pem'), str(certificates / 'a.pub'),
-            'jamnp-s/1/00000000', '20000', mode], env=environment, stdout=handle, stderr=subprocess.STDOUT)
+        process = subprocess.Popen([str(binaries[implementation]), 'client', '--net-port', str(port),
+            '--net-cert', str(certificates / 'b.cert.pem'), '--net-key', str(certificates / 'b.key.pem'), '--net-peer-key', str(certificates / 'a.pub'),
+            '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '20000', '--net-mode', mode], env=environment, stdout=handle, stderr=subprocess.STDOUT)
         children.append(process)
         return process, path
 

@@ -23,7 +23,7 @@ proc extra(path: string, migration = ""): seq[string] =
 proc configured(path: string): Options =
   ## Synchronous inspection disables automatic maintenance and does not mutate test-owned forensic staging files.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes", "1000",
     "--state-write-bytes", "1000000", "--state-storage", "disk", "--state-db", path,
     "--state-layout", "managed", "--state-compact-bytes", "0"], result)
 proc checkPrefix(context: DownloadChainFixture, completed: int, path: string,

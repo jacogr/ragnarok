@@ -654,7 +654,7 @@ Frozen source, exact native verdicts, model controls and platform records:
 
 ## Explicit light application runtime
 
-`--node-mode light` now selects a distinct partial-state Services actor. It requires
+`--state-mode light` now selects a distinct partial-state Services actor. It requires
 `--with-state --chain <configured-chain> --state-trust <identity> --state-header <sealed-header>`.
 Memory remains the default backend; disk additionally requires explicit
 `--state-storage disk --state-layout paged --state-db <distinct-light-directory>`.

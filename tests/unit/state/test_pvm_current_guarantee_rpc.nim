@@ -182,7 +182,7 @@ proc check(fixture: CurrentGuaranteeSequenceFixture, disk, managed: bool) {.rais
     extra.add("--state-compact-bytes")
     extra.add("0")
   var selected = default(Options)
-  assert parseOptions(currentCommandArguments(port, 3, ChainPath, PolicyPath,
+  assert parseCanonicalOptions(currentCommandArguments(port, 3, ChainPath, PolicyPath,
       extra), selected)
   let outcome = runCurrentDownloads(selected)
   assert outcome.error == CurrentDownloadCommandResult.Exhausted and

@@ -29,10 +29,10 @@ def _observe(peer, responder, directory, environment, cases, extra=(), context_r
                     env=dict(environment, RAGNAROK_CURRENT_SEQUENCE_CASE=name),
                     stdout=output, stderr=subprocess.STDOUT)
                 port = ready_port(process, folder)
-                arguments = [str(peer), 'download-current', str(port),
-                    environment['RAGNAROK_TEST_CERT'], environment['RAGNAROK_TEST_KEY'],
-                    environment['RAGNAROK_TEST_PEER_B'], 'jamnp-s/1/00000000',
-                    '4000' if name in ('timeout', 'guarantees-timeout') else '10000', 'current-policy.conf',
+                arguments = [str(peer), 'download-current', '--net-port', str(port),
+                    '--net-cert', environment['RAGNAROK_TEST_CERT'], '--net-key', environment['RAGNAROK_TEST_KEY'],
+                    '--net-peer-key', environment['RAGNAROK_TEST_PEER_B'], '--net-alpn', 'jamnp-s/1/00000000',
+                    '--net-timeout-ms', '4000' if name in ('timeout', 'guarantees-timeout') else '10000', '--download-policy', 'current-policy.conf',
                     '--with-state', '--chain', 'current-chain.json', '--state-writes', '1000',
                     '--state-write-bytes', '1000000', '--state-storage', 'disk',
                     '--state-db', 'current-state.db', '--download-blocks', str(total)]
@@ -65,7 +65,7 @@ def _observe(peer, responder, directory, environment, cases, extra=(), context_r
                         # The independent fixture listener admits one connection; rebind before the fresh command.
                         (folder/'current-ready').unlink()
                         (folder/'current-next').write_text('next')
-                        arguments[2] = str(ready_port(process, folder))
+                        arguments[arguments.index('--net-port')+1] = str(ready_port(process, folder))
                 (folder/'current-stop').write_text('stop')
                 code = process.wait(timeout=10)
             # Each complete CLI transcript and the independent full-history witness must agree.

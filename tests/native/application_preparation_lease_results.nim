@@ -29,7 +29,7 @@ proc main() {.raises.} =
   const path = "build/preparation-lease-guard-chain.json"
   writeFile(path, context.text)
   var options = default(Options)
-  assert parseOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
     "--state-write-bytes", "1000000"], options)
   assert owner.start(options, "guard")
   let captured = owner.checkpointIdentity

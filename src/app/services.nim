@@ -648,7 +648,7 @@ proc startServices(services: var Services, options: Options, role: string,
       services.close()
       return false # Backend failure never falls back to ephemeral memory or another chain.
   if not services.ui.start(options.uiPort(), options.devUiDirectory()):
-    stderr.writeLine("Invalid UI listener or --dev-ui-dir")
+    stderr.writeLine("Invalid UI listener or --ui-dev-dir")
     services.close() # Failed startup cannot retain a directory, seed or partially opened listener.
     return false
   var rpcReady = false

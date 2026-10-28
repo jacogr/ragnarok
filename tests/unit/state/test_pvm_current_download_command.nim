@@ -16,16 +16,16 @@ const PolicyPath = "pvm-current-download-command-policy"
 proc optionsTests() {.raises.} =
   ## Both command pipelines accept the shared shape; current mode still requires state, rejects telemetry and owns discovery intent.
   var options = default(Options)
-  assert not parseOptions(@["download-current"], options)
-  assert not parseOptions(@["server", "--download-blocks", "2", "--with-state", "--chain",
+  assert not parseCanonicalOptions(@["download-current"], options)
+  assert not parseCanonicalOptions(@["server", "--download-blocks", "2", "--with-state", "--chain",
       "selected"], options)
-  assert parseOptions(@["download-current", "--with-state", "--chain", "selected",
+  assert parseCanonicalOptions(@["download-current", "--with-state", "--chain", "selected",
       "--download-blocks", "2"], options)
   assert options.downloadBlocks == 2
-  assert parseOptions(@["download-current", "--with-state", "--chain", "selected",
+  assert parseCanonicalOptions(@["download-current", "--with-state", "--chain", "selected",
       "--download-discover-ancestors", "2"], options)
   assert options.discoverDownloadAncestors == 2
-  assert not parseOptions(@["download-current", "--with-state", "--chain", "selected",
+  assert not parseCanonicalOptions(@["download-current", "--with-state", "--chain", "selected",
     "--download-remote-ancestors", "1",
     "--download-discover-ancestors", "1"], options)
   assert runCurrentDownloads(default(Options)).error == CurrentDownloadCommandResult.InvalidOptions
@@ -65,7 +65,7 @@ proc preflight(context: CurrentChainFixture) {.raises.} =
   ## Version/mode/endpoint refusals occur before any Services listener/database or native outgoing endpoint can open.
   var options = default(Options)
   let arguments = currentCommandArguments(1, 1, ChainPath, PolicyPath)
-  assert parseOptions(arguments, options)
+  assert parseCanonicalOptions(arguments, options)
   writeFile(PolicyPath, "ragnarok-download-policy-v1\n")
   assert runCurrentDownloads(options).error == CurrentDownloadCommandResult.InvalidPolicy
   writeFile(PolicyPath, encodeCurrentDownloadPolicy(currentCommandLimits(true)))

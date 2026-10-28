@@ -103,7 +103,7 @@ proc check(context: CurrentChainFixture, discovery, managed: bool,
   var selected = default(Options)
   let arguments = currentCommandArguments(port, 1, ChainPath, PolicyPath, extra,
     (if witness == RemoteWitness.Timeout: "1000" else: "10000"))
-  assert parseOptions(arguments, selected)
+  assert parseCanonicalOptions(arguments, selected)
   let outcome = runCurrentDownloads(selected)
   writeFile(StopPath, "stop")
   var state = 0.cint

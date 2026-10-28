@@ -97,7 +97,7 @@ class StartupTests(unittest.TestCase):
                 # Reservation handoff must remain serialized until wait_server_ready returns.
                 self.assertTrue(test_quic.STARTUP_LOCK.locked())
                 udp = original_socket(socket.AF_INET, socket.SOCK_DGRAM)
-                udp.bind(('127.0.0.1', int(command[2])))
+                udp.bind(('127.0.0.1', int(command[command.index('--net-port')+1])))
                 bound.append(udp)
                 log = kwargs['stdout']
                 log.write('READY\n');log.flush()
@@ -111,7 +111,7 @@ class StartupTests(unittest.TestCase):
                 return server
             # Only a ready listener allows client startup; both roles receive the same UDP port.
             self.assertFalse(test_quic.STARTUP_LOCK.locked())
-            self.assertEqual(command[2], calls[0][2])
+            self.assertEqual(command[command.index('--net-port')+1], calls[0][calls[0].index('--net-port')+1])
             return client
         # Real port selection is retained; native TLS/exchange execution is replaced only in this unit test.
         with tempfile.TemporaryDirectory() as directory:

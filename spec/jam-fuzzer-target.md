@@ -12,24 +12,25 @@ Polkajam conformance campaign.
 With JAM_FUZZ defined, startup is isolated before normal option/service selection:
 
 ```
-ragnarok serve-fuzz CURRENT_POLICY PARAMETERS_JSON MAX_WRITES MAX_WRITE_BYTES
+ragnarok serve-fuzz --fuzz-policy CURRENT_POLICY --fuzz-parameters PARAMETERS_JSON \
+  --fuzz-state-writes MAX_WRITES --fuzz-state-write-bytes MAX_WRITE_BYTES
 ```
 
 CURRENT_POLICY is the existing complete current-download policy format; only its
 candidate execution policy is used, without opening download peers. PARAMETERS_JSON
 contains the existing protocol_parameters field. Neither a seed nor an incoming
 peer can supply or override this trusted configuration. Both file reads are bounded.
-The two unsigned write budgets are explicit (at most 1000000 writes and 64 MiB of
-write values); zero deliberately disables that resource. Other ignored production
+The two unsigned write budgets default to 1000 writes and 4 MiB of values
+(at most 1000000 writes and 64 MiB of write values); zero deliberately disables that resource. Other ignored production
 service arguments are refused rather than activating RPC, QUIC, UI or persistent state.
 The public third-party launch contract is the ordinary binary with no arguments
 and the upstream target environment variables: JAM_FUZZ, JAM_FUZZ_SPEC,
 JAM_FUZZ_DATA_PATH, JAM_FUZZ_SOCK_PATH and optional JAM_FUZZ_LOG_LEVEL.
 Built-in native defaults require no external policy files or working directory.
 The binary prepares selected runtime paths and owns all startup and teardown.
-The ordinary image's default help argument also permits environment-selected
-startup. Explicit --version remains available for launcher introspection.
-The positional command above remains available for internal regression callers.
+Explicit --help and --version remain available for launcher introspection.
+Named command flags replace public positional forms; internal handlers receive
+already-normalized values.
 
 Configuration checks exact core/epoch/header-population domains:
 tiny uses 2/12/6; full uses 341/600/1023 decoder ceilings. The experimental `fuzz`
@@ -89,3 +90,11 @@ child evidence closes that session without sending a protocol Error and records
 child-committed root receives a consensus Error; GetState still returns the exact
 parent map and the genuine report block succeeds in that same session. Expected
 signed blocks and complete maps come from the independent reporting STF reference.
+
+CLI configuration also accepts `ragnarok fuzz --fuzz-spec tiny|full|fuzz
+--fuzz-data-path DIR --fuzz-sock-path PATH [--fuzz-log-level LEVEL]`. Each flag
+replaces its corresponding `JAM_FUZZ_*` variable; omitted flags retain the
+captured environment. The command activates conformance without `JAM_FUZZ` and
+uses the built-in policy. The official environment-only interface is unchanged.
+The explicit-policy commands accept the same overrides. Configuration resolution
+never mutates the process environment.

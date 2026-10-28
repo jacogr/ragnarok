@@ -167,7 +167,7 @@ proc check(context: CurrentChainFixture, managed: bool) {.raises.} =
     extra.add("--state-compact-bytes")
     extra.add("0")
   var selected = default(Options)
-  assert parseOptions(currentCommandArguments(port, 2, ChainPath, PolicyPath,
+  assert parseCanonicalOptions(currentCommandArguments(port, 2, ChainPath, PolicyPath,
       extra), selected)
   let outcome = runCurrentDownloads(selected)
   assert outcome.error == CurrentDownloadCommandResult.Exhausted and

@@ -57,7 +57,7 @@ proc transfer(fixture: CurrentConsecutiveFixture, join, disk, managed: bool) {.r
   if disk:
     options = currentDiskOptions(path, database, managed, port)
   else:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
   assert owner.start(options, "current dispatcher")
   let original = owner.stateSnapshot.value
   var requests: seq[array[42, byte]] = @[]

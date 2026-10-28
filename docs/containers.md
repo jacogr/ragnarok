@@ -42,7 +42,9 @@ build-directory dependencies with library names and a binary-relative runpath in
 library directory. The ThinLTO compiled code and checks remain unchanged. The final-stage
 version check catches missing loader dependencies during the build.
 
-The entry point is `ragnarok`; the default command prints help. It runs as UID/GID **10001:10001**
+The entry point is `ragnarok`; the default passes no arguments and prints help unless
+`JAM_FUZZ` activates environment-only conformance. Explicit `--help` always prints help.
+It runs as UID/GID **10001:10001**
 with working directory `/data`. Bind-mount writable state/configuration directories as needed,
 with permissions for that UID; provide TLS certificates/keys at runtime through the existing CLI.
 Ports remain explicit CLI choices and Docker port mappings. The image generates no keys or

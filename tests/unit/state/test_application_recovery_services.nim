@@ -31,10 +31,10 @@ proc cycle(options: Options, restored: ApplicationRecoveryResult) {.raises.} =
 proc main() {.raises.} =
   ## Recovery never falls back to genesis when supplied trust, context or startup options refuse.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"), "--state-writes", "0", "--state-write-bytes", "0"], options)
   var importOptions = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-writes", "0", "--state-write-bytes", "0", "--state-checkpoint", "missing-state",
         "--state-trust", "missing-trust",

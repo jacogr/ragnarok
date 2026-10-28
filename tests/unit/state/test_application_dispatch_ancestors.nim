@@ -31,7 +31,7 @@ proc scenario(context: SeedFixture, frame: seq[byte], older: seq[OwnedHeader], k
     expire: bool) {.raises.} =
   ## Native sockets, worker leases and canonical Services all retain stable addresses through explicit shutdown.
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "dispatch-ancestor-seed",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "dispatch-ancestor-seed",
     "--state-write-bytes", "1000000"], options)
   var owner = default(Services)
   assert owner.start(options, "dispatch ancestors")

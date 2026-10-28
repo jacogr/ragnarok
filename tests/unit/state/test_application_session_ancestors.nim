@@ -42,7 +42,7 @@ proc main() {.raises.} =
   for index, octet in wire: frame[index + 4] = octet
   let older = report_context.authored(base).older
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", "session-ancestor-seed",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "session-ancestor-seed",
     "--state-write-bytes", "1000000"], options)
   var owner = default(Services)
   assert owner.start(options, "ancestor resumption")

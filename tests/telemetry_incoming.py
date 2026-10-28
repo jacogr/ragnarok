@@ -88,9 +88,9 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
         collector = owners.enter_context(listener())
         output = owners.enter_context((folder/'server.log').open('wb'))
         pin = str(certificates/'b.pub') if rejected else '-'
-        server = subprocess.Popen([str(binary), 'server', str(port), str(certificates/'a.cert.pem'),
-            str(certificates/'a.key.pem'), pin, 'jamnp-s/1/245becfe', '60000', 'service',
-            '--chain', str(chain), '--with-telemetry', '--telemetry', f'127.0.0.1:{collector.getsockname()[1]}'],
+        server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'service',
+            '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{collector.getsockname()[1]}'],
             stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
         owners.callback(stop, server)
@@ -109,9 +109,9 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
             with reply_gate(port) as (relay_port, released):
                 log = folder/f'client-{generation}.log'
                 output = owners.enter_context(log.open('wb'))
-                client = subprocess.Popen([str(binary), 'client', str(relay_port),
-                    str(certificates/f'{identity}.cert.pem'), str(certificates/f'{identity}.key.pem'),
-                    str(certificates/'a.pub'), 'jamnp-s/1/245becfe', '30000', 'mixed'],
+                client = subprocess.Popen([str(binary), 'client', '--net-port', str(relay_port),
+                    '--net-cert', str(certificates/f'{identity}.cert.pem'), '--net-key', str(certificates/f'{identity}.key.pem'),
+                    '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'mixed'],
                     stdout=output, stderr=subprocess.STDOUT)
                 owners.callback(stop, client)
                 attempt_id, attempt = capture.lifecycle(21)

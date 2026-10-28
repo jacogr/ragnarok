@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared application configuration, parsed once before any service opens a socket.
-## Options owns copied positional arguments and explicit enable/configuration values. Failed parsing
+## Options owns normalized command arguments and explicit enable/configuration values. Failed parsing
 ## clears the output; private fields and read accessors prevent partial configuration from escaping.
 
 import ../lib/logging
@@ -10,33 +10,8 @@ import ../lib/logging
 import std/[strutils, assertions]
 import ../codec/bounded
 
-const
-  MaxDownloadBlocks* = 64             ## A command requests a finite number of actual successive adoptions.
-  MaxDownloadAncestors* = 64          ## Hard path-count cap before any ancestor file IO or native setup.
-  DefaultCompactionBytes = 64'u64*1024*1024 # Managed maintenance is bounded independently of write policy.
-  MaximumCompactionBytes = 128'u64*1024*1024 # Leave journal capacity for a bounded final publication frame.
-  DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
-  DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
-  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
-      "--download-local-ancestors", "--download-update-logical-source", "--state-paged-resume"]
-  Values = ["--log-level", "--trace-observations", "--telemetry", "--chain", "--management-socket",
-      "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes",
-      "--state-checkpoint",
-      "--state-trust", "--state-header",
-      "--state-checkpoint-bytes", "--node-mode", "--state-storage", "--state-db", "--state-layout",
-      "--state-migrate-from",
-      "--state-compact-bytes", "--download-ancestor", "--download-blocks",
-      "--download-remote-ancestors", "--download-discover-ancestors",
-      "--download-logical-source", "--download-logical-policy", "--download-namespace-policy"]
-
-type NodeMode* {.pure.} = enum ## Trusted partial light state remains distinct from complete full-state execution.
-  Full, Light
-
-type StateStorage* {.pure.} = enum ## Backend choice is independent of full/light node mode.
-  Memory, Disk
-
-type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memory/disk and full/light selection.
-  Journal, Managed, Paged
+import ./[cli_catalog, cli_commands, cli_defaults]
+export cli_defaults
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool
@@ -213,45 +188,41 @@ proc devUiDirectory*(options: Options): string =
 
 # Prove decimal width and range before narrowing a configured listener port.
 proc portValue(text: string): uint16 =
-  if text.len == 0 or text.len > 5: return 0
-  var port = 0
-  for digit in text: # Five decimal digits bound every intermediate arithmetic operation.
-    if digit notin {'0'..'9'}: return 0
-    port = port * 10 + ord(digit) - ord('0')
-  if port notin 1..65535: return 0
-  uint16(port)
+  ## Validate the full unsigned decimal before narrowing a configured listener port.
+  var value = 0'u64
+  if text.len > 5 or not unsignedValue(text, value) or value < 1 or value > 65535: return 0
+  uint16(value)
 
-proc decimalLimit(text: string, value: var uint64): bool =
-  ## Parse bounded unsigned decimal without wrapping; zero is valid and never doubles as a failure sentinel.
-  value = 0
-  if text.len == 0 or text.len > 20: return false
-  for character in text:
-    if character notin {'0'..'9'}: return false # Reject signs, whitespace and non-ASCII numerals.
-    let digit = uint64(ord(character) - ord('0'))
-    if value > (high(uint64) - digit) div 10: return false # Prove the next multiply/add before either can wrap.
-    value = value * 10 + digit
-  true
-
-proc parseOptions*(arguments: seq[string], options: var Options): bool =
-  ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
+proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
+    diagnostic: var string): bool =
+  ## Internal configuration boundary: command values are already normalized; validate shared controls atomically.
   options = default(Options)
-  var candidate = Options(logging: initLogPolicy(), rpcNumber: 19800, uiNumber: 8888,
-      downloadCount: 1,
+  var candidate = Options(logging: initLogPolicy(), rpcNumber: DefaultRpcPort,
+      uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks, mode: DefaultNodeMode,
+          backend: DefaultStateStorage,
+      layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
     compactBytes: ByteLimit(DefaultCompactionBytes))
   var first = arguments.len
   for i in 0..<arguments.len: # Only reserved service controls begin the trailing option region.
-    if arguments[i] in Switches or arguments[i] in Values:
+    if optionIndex(arguments[i]) >= 0:
       first = i
       break
   for i in 0..<first: candidate.positional.add(arguments[i]) # Copy caller arguments into this owner.
   var seen: seq[string] = @[]
   var i = first
   while i < arguments.len: # Reject unknown, duplicate, missing and option-valued pairs before use.
-    let name = arguments[i]
-    if name in seen and name != "--download-ancestor": return false
+    let found = optionIndex(arguments[i])
+    if found < 0:
+      diagnostic = "Unknown option: " & arguments[i]
+      return false
+    let spec = OptionSpecs[found]
+    let name = spec.name
+    if name in seen and not spec.repeatable:
+      diagnostic = "Option may be supplied only once: " & name
+      return false
     if name notin seen: seen.add(name) # Only ancestor paths form a bounded repeatable control.
-    if name in Switches:
+    if spec.value.len == 0:
       case name
       of "--with-telemetry": candidate.telemetry = true
       of "--with-rpc": candidate.rpc = true
@@ -263,14 +234,19 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--download-update-logical-source": candidate.updateLogicalSource = true
       else: return false # Switch classification above makes this branch unreachable.
       inc i
-    elif name in Values:
-      if arguments.len - i < 2: return false
+    else:
+      if arguments.len - i < 2:
+        diagnostic = "Missing " & spec.value & " after " & name
+        return false
       let value = arguments[i + 1]
-      if value.len == 0 or value.startsWith("--"): return false
+      if value.len == 0 or value.startsWith("--"):
+        diagnostic = "Missing " & spec.value & " after " & name
+        return false
+      diagnostic = "Invalid value for " & name & ": " & spec.description
       case name
       of "--log-level":
         if not parseLogPolicy(value, candidate.logging): return false
-      of "--telemetry": candidate.endpoint = value
+      of "--telemetry-endpoint": candidate.endpoint = value
       of "--chain": candidate.chain = value
       of "--management-socket":
         if value.len > 103 or value[0] != '/' or value.endsWith('/'): return false
@@ -278,7 +254,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
           if ord(character) < 32 or ord(character) ==
               127: return false # Native paths cannot truncate or carry controls.
         candidate.managementPath = value
-      of "--dev-ui-dir": candidate.directory = value
+      of "--ui-dev-dir": candidate.directory = value
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
@@ -292,7 +268,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
           if ord(character) < 32 or ord(character) ==
               127: return false # Keep the later fixed filename addition bounded and native path identity exact.
         candidate.observations = value
-      of "--node-mode":
+      of "--state-mode":
         case value
         of "full": candidate.mode = NodeMode.Full
         of "light": candidate.mode = NodeMode.Light
@@ -313,18 +289,18 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         else: candidate.namespacePolicy = value
       of "--download-blocks":
         var number = 0'u64
-        if value[0] == '0' or not decimalLimit(value, number) or number == 0 or
+        if value[0] == '0' or not unsignedValue(value, number) or number == 0 or
             number > uint64(MaxDownloadBlocks): return false # Prove the positive native count before conversion.
         candidate.downloadCount = int(number)
       of "--download-remote-ancestors":
         var number = 0'u64
-        if value[0] == '0' or not decimalLimit(value, number) or number == 0 or
+        if value[0] == '0' or not unsignedValue(value, number) or number == 0 or
             number > uint64(MaxDownloadAncestors):
           return false # One canonical positive decimal bounds remote request work before any IO.
         candidate.remoteAncestors = int(number)
       of "--download-discover-ancestors":
         var number = 0'u64
-        if value[0] == '0' or not decimalLimit(value, number) or number == 0 or number > uint64(MaxDownloadAncestors):
+        if value[0] == '0' or not unsignedValue(value, number) or number == 0 or number > uint64(MaxDownloadAncestors):
           return false # Whole-run header allowance is canonical, positive and finite before any command IO.
         candidate.discoverAncestors = int(number)
       of "--download-ancestor":
@@ -340,7 +316,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         else: return false # Backend spelling has one exact representation; light is not a backend.
       of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes", "--state-compact-bytes":
         var number = 0'u64
-        if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
+        if not unsignedValue(value, number): return false # No partial or wrapped budget escapes the candidate.
         if name == "--state-writes": candidate.writeCount = ElementLimit(number)
         elif name == "--state-write-bytes": candidate.writeBytes = ByteLimit(number)
         elif name == "--state-compact-bytes":
@@ -354,11 +330,14 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         else: candidate.uiNumber = port
       else: return false # All value-taking controls have an explicit assignment above.
       i += 2
-    else: return false # Trailing controls never become protocol fixture modes.
+  diagnostic = "Invalid option combination; see ragnarok " & (if candidate.positional.len >
+      0: candidate.positional[0] else: "") & " --help"
   let hasWrites = "--state-writes" in seen
   let hasBytes = "--state-write-bytes" in seen
   if candidate.state:
-    if candidate.chain.len == 0: return false # Activation still requires an explicit selected chain; omitted budgets use defaults.
+    if candidate.chain.len == 0:
+      diagnostic = "--with-state requires --chain FILE"
+      return false # Activation still requires an explicit selected chain; omitted budgets use defaults.
   elif hasWrites or hasBytes:
     return false # Unselected policy controls must not be silently ignored.
   let hasBackend = "--state-storage" in seen
@@ -366,7 +345,9 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if (hasBackend or hasDatabase) and not candidate.state:
     return false # Explicit backend controls must never be silently ignored.
   if candidate.backend == StateStorage.Disk:
-    if not hasDatabase: return false # Every disk run selects its exact path before opening storage.
+    if not hasDatabase:
+      diagnostic = "--state-storage disk requires --state-db PATH"
+      return false # Every disk run selects its exact path before opening storage.
   elif hasDatabase:
     return false # A memory run cannot silently ignore a requested physical database.
   if "--state-layout" in seen and candidate.backend != StateStorage.Disk: return false
@@ -404,11 +385,17 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
     if not candidate.state or recoveryCount != recoveryControls.len:
       return false # Partial/disabled external imports cannot activate or reuse an earlier successful parse.
     candidate.recover = true
-  if candidate.management and candidate.managementPath.len == 0: return false # No default endpoint is invented.
-  if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0): return false
+  if candidate.management and candidate.managementPath.len == 0:
+    diagnostic = "--with-management requires --management-socket PATH"
+    return false # No default endpoint is invented.
+  if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0):
+    diagnostic = "--with-telemetry requires --telemetry-endpoint HOST:PORT and --chain FILE"
+    return false
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
       candidate.ui or candidate.state): return false
-  if candidate.ui and candidate.uiNumber == candidate.rpcNumber: return false
+  if candidate.ui and candidate.uiNumber == candidate.rpcNumber:
+    diagnostic = "--ui-port and --rpc-port must differ when --with-ui is enabled"
+    return false
   let downloadCommand = candidate.positional.len > 0 and
     candidate.positional[0] in ["download", "download-current"] # Both explicit pipelines share only command-shape validation.
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
@@ -420,7 +407,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if "--trace-observations" in seen and not traceCommand:
     return false # External observations belong only to explicit offline comparison, never another command's ignored controls.
   if traceCommand:
-    if not candidate.state or candidate.positional.len < 4 or candidate.positional.len > 259:
+    if not candidate.state or candidate.positional.len < 4 or candidate.positional.len >
+        3+MaxTraceSteps:
       return false # One explicit policy, Genesis and1..256 consecutive steps define a finite offline workload.
     for control in seen:
       if control notin ["--log-level", "--with-state", "--chain", "--state-writes",
@@ -470,3 +458,22 @@ proc extractLoggingOptions*(arguments: seq[string], remaining: var seq[string],
       remaining.add(arguments[index])
       inc index
   true
+
+proc parseOptions*(arguments: seq[string], options: var Options, diagnostic: var string): bool =
+  ## Normalize named commands, then commit only fully validated service configuration.
+  options = default(Options)
+  var normalized: seq[string] = @[]
+  if not normalizeCommand(arguments, normalized, diagnostic): return false
+  if not parseCanonicalOptions(normalized, options, diagnostic): return false
+  diagnostic = ""
+  true
+
+proc parseOptions*(arguments: seq[string], options: var Options): bool =
+  ## Preserve existing pure callers while the application presents the diagnostic overload's actionable refusal.
+  var diagnostic = ""
+  parseOptions(arguments, options, diagnostic)
+
+proc parseCanonicalOptions*(arguments: seq[string], options: var Options): bool =
+  ## Component fixtures and internal adapters may supply normalized command values without pretending to parse process input.
+  var diagnostic = ""
+  parseCanonicalOptions(arguments, options, diagnostic)

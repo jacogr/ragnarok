@@ -23,7 +23,7 @@ proc main() {.raises.} =
   writeFile(path, context.text)
   var owner = default(Services)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path, "--state-writes", "1000",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path, "--state-writes", "1000",
     "--state-write-bytes", "1000000"], options)
   assert owner.start(options, "guard")
   var download = default(BlockDownload) # This owner must guard destruction before its Services owner can retire.

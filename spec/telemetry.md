@@ -10,19 +10,20 @@ This is a JIP-3 version-1 subset, not a claim of full telemetry or validator fun
 Production and collector E2E runs use the shared `src/ragnarok.nim` entry point.
 Application configuration/startup lives under `src/app/`; see the [application contract](application.md).
 
-Append `--with-telemetry --telemetry HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
+Append `--with-telemetry --telemetry-endpoint HOST:PORT` to an existing `server`, `client` or `mesh` invocation. Collector endpoints
 accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed IPv6 literals such as
-`--telemetry '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
+`--telemetry-endpoint '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
 unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
 matching the existing peer mode and actual bound UDP port.
 
 Pass `--chain PATH` with an explicit JIP-4 JSON chain file. Both options are required together
-and may appear in either order after the positional arguments. For example, after producing
+and may appear in either order among the command flags. For example, after producing
 the usual proof-peer certificate/key/public-key fixtures:
 
 ```sh
-./build/ragnarok server 40000 a.cert.pem a.key.pem b.pub \
-  jamnp-s/1/245becfe 10000 --chain /absolute/path/dev.json --with-telemetry --telemetry 127.0.0.1:9000
+./build/ragnarok server --net-port 40000 \
+  --net-cert a.cert.pem --net-key a.key.pem --net-peer-key b.pub \
+  --net-alpn jamnp-s/1/245becfe --net-timeout-ms 10000 --chain /absolute/path/dev.json --with-telemetry --telemetry-endpoint 127.0.0.1:9000
 ```
 
 Keep the existing positional mode argument, if any, before the trailing switches and option pairs.
@@ -346,7 +347,7 @@ claim pre-TLS refusal detection, and it adds no new production event or admissio
 ### IPv6 collector transport
 
 The same CI target requires a separate outgoing restart scenario with
-`--telemetry '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
+`--telemetry-endpoint '[::1]:PORT'`. Both the registration relay and real JAM Tart ingestion socket
 bind IPv6 loopback. The report records the actual accepted and upstream socket addresses
 for both connections and requires `::1`, so an IPv4 fallback cannot satisfy this case.
 The collector's HTTP/WebSocket observation API and the QUIC peer exchange remain IPv4;

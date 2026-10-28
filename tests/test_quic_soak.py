@@ -104,9 +104,9 @@ def pairing(server_language, client_language, folder, rounds, warmup, *, binarie
         # These processes remain alive across every round; restarting them would conceal retained allocations.
         for role, language, identity in (('server', server_language, 'a'), ('client', client_language, 'b')):
             handles[role] = logs[role].open('w')
-            command = [str(binaries[language]), role, str(port),
-                       str(folder / f'{identity}.cert.pem'), str(folder / f'{identity}.key.pem'),
-                       '-' if role == 'server' else str(folder / 'a.pub'), 'jamnp-s/1/00000000', '5000', 'soak']
+            command = [str(binaries[language]), role, '--net-port', str(port),
+                       '--net-cert', str(folder / f'{identity}.cert.pem'), '--net-key', str(folder / f'{identity}.key.pem'),
+                       '--net-peer-key', '-' if role == 'server' else str(folder / 'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '5000', '--net-mode', 'soak']
             environment = {**os.environ, 'RAGNAROK_SOAK_ROUNDS': str(rounds), 'RAGNAROK_SOAK_GATE': str(gate)}
             processes[role] = subprocess.Popen(command, env=environment, stdout=handles[role], stderr=subprocess.STDOUT)
         for iteration in range(rounds):

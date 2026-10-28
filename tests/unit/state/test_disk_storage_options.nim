@@ -10,13 +10,14 @@ proc main() =
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-writes", "1",
       "--state-write-bytes", "4"]
   var selected = default(Options)
-  assert parseOptions(base, selected) and not selected.diskStorage
+  assert parseCanonicalOptions(base, selected) and not selected.diskStorage
   var disk = base
   disk.add("--state-storage"); disk.add("disk"); disk.add("--state-db"); disk.add("state.db")
-  assert parseOptions(disk, selected) and selected.diskStorage and selected.stateDatabase == "state.db"
+  assert parseCanonicalOptions(disk, selected) and selected.diskStorage and
+      selected.stateDatabase == "state.db"
   let defaults = @["server", "--with-state", "--chain", "chain.json", "--state-storage", "disk",
       "--state-db", "state.db"]
-  assert parseOptions(defaults, selected) and selected.diskStorage
+  assert parseCanonicalOptions(defaults, selected) and selected.diskStorage
   assert uint64(selected.stateWrites) == 1000 and uint64(selected.stateWriteBytes) == 100000
   let cases = @[
     @["--state-storage", "disk"], @["--state-db", "state.db"],
@@ -28,16 +29,17 @@ proc main() =
   for suffix in cases:
     var arguments = base
     for value in suffix: arguments.add(value)
-    assert not parseOptions(arguments, selected)
+    assert not parseCanonicalOptions(arguments, selected)
     assert not selected.valid and not selected.diskStorage
-  assert not parseOptions(@["server", "--state-storage", "disk", "--state-db", "state.db"], selected)
+  assert not parseCanonicalOptions(@["server", "--state-storage", "disk", "--state-db", "state.db"], selected)
   var memory = base
   memory.add("--state-storage"); memory.add("memory")
-  assert parseOptions(memory, selected) and not selected.diskStorage
+  assert parseCanonicalOptions(memory, selected) and not selected.diskStorage
   var imported = disk
   for value in ["--state-checkpoint", "checkpoint", "--state-trust", "trust", "--state-header",
       "header", "--state-checkpoint-bytes", "1024"]:
     imported.add(value) # Parsing preserves the independent complete external-trust request.
-  assert parseOptions(imported, selected) and selected.diskStorage and selected.recoveryEnabled
+  assert parseCanonicalOptions(imported, selected) and selected.diskStorage and
+      selected.recoveryEnabled
 main()
 echo "PASS disk storage options: explicit backend/path, atomic refusal and independent import controls"

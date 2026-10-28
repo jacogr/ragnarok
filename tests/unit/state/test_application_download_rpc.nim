@@ -127,7 +127,7 @@ proc main() {.raises.} =
     observeRpc(context, reserved.port)
     posix.exitnow(0)
   var selected = default(Options)
-  assert parseOptions(downloadArguments(port, 4, ChainPath, PolicyPath,
+  assert parseCanonicalOptions(downloadArguments(port, 4, ChainPath, PolicyPath,
     @["--with-rpc", "--rpc-port", $reserved.port]), selected)
   let outcome = runDownloads(selected)
   assert outcome.error == DownloadCommandResult.Exhausted and outcome.adoptedBlocks == 3

@@ -262,7 +262,7 @@ proc asynchronous(frame: seq[byte], rounds: int = 2) {.raises.} =
   ## Reuse one stable worker for signed completions/cancellations, then join before releasing its graph.
   var owner = default(Services)
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
     "application-block-download-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
   assert owner.start(options, "async raw")
@@ -328,7 +328,7 @@ proc main() {.raises.} =
   writeFile("application-block-download-chain.json", context.text)
   defer: discard posix.unlink("application-block-download-chain.json")
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain",
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
     "application-block-download-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
   var owner = default(Services)

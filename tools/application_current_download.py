@@ -45,10 +45,10 @@ def observe(peer, responder, directory, environment):
                     env=dict(environment, RAGNAROK_CURRENT_DOWNLOAD_CASE=name),
                     stdout=output, stderr=subprocess.STDOUT)
                 port = ready_port(process, folder)
-                arguments = [str(peer), 'download-current', str(port),
-                    environment['RAGNAROK_TEST_CERT'], environment['RAGNAROK_TEST_KEY'],
-                    environment['RAGNAROK_TEST_PEER_B'], 'jamnp-s/1/00000000',
-                    '4000' if name == 'timeout' else '10000', 'current-policy.conf',
+                arguments = [str(peer), 'download-current', '--net-port', str(port),
+                    '--net-cert', environment['RAGNAROK_TEST_CERT'], '--net-key', environment['RAGNAROK_TEST_KEY'],
+                    '--net-peer-key', environment['RAGNAROK_TEST_PEER_B'], '--net-alpn', 'jamnp-s/1/00000000',
+                    '--net-timeout-ms', '4000' if name == 'timeout' else '10000', '--download-policy', 'current-policy.conf',
                     '--with-state', '--chain', 'current-chain.json', '--state-writes', '1000',
                     '--state-write-bytes', '1000000', '--state-storage', 'disk',
                     '--state-db', 'current-state.db', '--download-blocks', str(requested)]
