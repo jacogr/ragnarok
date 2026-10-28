@@ -611,7 +611,10 @@ build-pvm-runtime: setup
 
 # Correctness-only native CI parity uses the actual optional adapter and continuing gameplay state.
 .PHONY: check-pvm-doom-backends
-check-pvm-doom-backends: toolchain sources rust-tools
+check-pvm-doom-backends: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/polkavm/Cargo.toml
+	$(PYTHON) tools/native_tests.py --suite pvm_artifact
+	$(PYTHON) tools/native_tests.py --suite app_cli
+	$(PYTHON) tools/native_tests.py --suite app_options
 	$(PYTHON) tools/pvm_doom_backends.py

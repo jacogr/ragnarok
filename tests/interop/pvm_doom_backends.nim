@@ -4,7 +4,7 @@
 ## Run a bounded continuing DOOM sequence through the real CLI-selected prepared backend and host API.
 import std/[assertions, syncio, envvars, cmdline]
 import ../../src/app/options
-import ../../src/pvm/[program, machine, gas, gas_plan, step]
+import ../../src/pvm/[program, machine, gas, gas_plan, step, artifact]
 
 
 type
@@ -77,12 +77,12 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memory)
 
-# The production canonical option parser owns spelling/defaults; this test workload has no product command.
+# The production CLI parser owns artifact selection and backend spelling/defaults; hosts remain test-owned.
 var arguments: seq[string] = @[]
 for index in 1..paramCount(): arguments.add(paramStr(index))
 var selected = default(Options)
 var diagnostic = ""
-assert parseCanonicalOptions(arguments, selected, diagnostic), diagnostic
+assert parseOptions(arguments, selected, diagnostic), diagnostic
 assert selected.pvmBackend in [PvmBackend.Jit, PvmBackend.PolkaInterpreted], "unsupported DOOM comparison backend"
 let requestedCalls = getEnv("RAGNAROK_DOOM_BACKEND_CALLS")
 assert requestedCalls in ["1", "2"]
@@ -134,7 +134,19 @@ for i in 0..<wireSize: wire[i] = byte(data[152+i])
 let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4*1024*1024),
     JumpCountLimit(1048576))
 assert decoded.error == ProgramError.None
-let owner = decoded.value
+let loaded = loadArtifact(selected.pvmCodePath)
+assert loaded.error == ArtifactError.None, "DOOM artifact loading " & $loaded.error
+let artifact = loaded.value
+let owner = programOf(artifact)
+assert programBytes(owner).value == wire, "DOOM artifact code differs from warmed snapshot"
+let exported = artifact.entry(selected.pvmEntry)
+assert exported.error == ArtifactError.None and uint64(exported.value) == entry,
+    "DOOM artifact export differs from warmed snapshot"
+let imports = importSymbols(artifact)
+assert imports.len == 5
+let hostNames = ["ext_output_audio", "ext_output_video", "ext_rom_read", "ext_rom_size", "ext_stdout"]
+for kind in 0..<5:
+  assert imports[int(context.hosts[kind])] == hostNames[kind], "DOOM artifact import mapping differs"
 var images: seq[PageImage] = @[]
 for page in 0..<pages:
   # Every complete source page retains its canonical index and permissions.

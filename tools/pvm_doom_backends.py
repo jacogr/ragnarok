@@ -216,13 +216,14 @@ def run():
             RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'),
             RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'),
             RAGNAROK_DOOM_BACKEND_CALLS=str(count), RAGNAROK_DOOM_BACKEND_ASSERT='0')
+        artifact_args = ['--pvm-code', str(DOOM/'doom.polkavm'), '--pvm-entry', 'ext_tick']
         for selected in BACKENDS:
             # One process per real CLI selection owns its initial restore and all continuing guest state.
             folder = BUILD/selected
             folder.mkdir(exist_ok=True)
             env = dict(common, RAGNAROK_DOOM_BACKEND_OUTPUT=str(folder))
             unchanged(identities)
-            row = command([binary, '--pvm-backend', selected], selected, env)
+            row = command([binary, *artifact_args, '--pvm-backend', selected], selected, env)
             item = observation(row['output'], folder, selected, count, pages, report['host']['architecture'])
             observed[selected] = item
             report['runs'].append(dict(backend=selected, run=row, observed=item))
@@ -241,8 +242,8 @@ def run():
         changed = changed_frames+candidate['frames'][len(changed_frames):]
         report['controls'] += negative_frames(reference, candidate, count, changed)
         for name, args, env, needle in (
-            ('assertions', [binary,'--pvm-backend','jit'], dict(common, RAGNAROK_DOOM_BACKEND_ASSERT='1'), 'DOOM backend assertion control'),
-            ('wrong-backend', [binary,'--pvm-backend','interpreted'], common, 'unsupported DOOM comparison backend')):
+            ('assertions', [binary,*artifact_args,'--pvm-backend','jit'], dict(common, RAGNAROK_DOOM_BACKEND_ASSERT='1'), 'DOOM backend assertion control'),
+            ('wrong-backend', [binary,*artifact_args,'--pvm-backend','interpreted'], common, 'unsupported DOOM comparison backend')):
             row = command(args, name, env, required=False)
             if row['exit_code'] == 0 or needle not in row['output']:
                 raise ValueError('missing intended process refusal: '+name)
@@ -252,7 +253,7 @@ def run():
         report['builds'].append(built)
         if built['exit_code']: raise RuntimeError(built['output'][-2000:])
         identities[absent] = digest(absent)
-        row = command([absent,'--pvm-backend','polkavm-interpreted'], 'unavailable-bridge', common, required=False)
+        row = command([absent,*artifact_args,'--pvm-backend','polkavm-interpreted'], 'unavailable-bridge', common, required=False)
         if row['exit_code'] == 0 or 'DOOM_BACKEND_UNAVAILABLE,polkavm-interpreted,BackendNotBuilt' not in row['output']:
             raise ValueError('unavailable bridge did not refuse explicitly')
         report['controls'].append(dict(control='unavailable-bridge', refused=True, run=row))

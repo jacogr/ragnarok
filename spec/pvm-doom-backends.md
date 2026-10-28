@@ -52,3 +52,10 @@ supports no engine throughput claim.
 input/image identities, architecture, requested/actual backends, every frame hash and the first
 mismatch. Raw memory/video files stay transient on the runner and are excluded from artifacts.
 Completion requires both native architecture jobs, every comparison and all refusal controls.
+
+The integration driver consumes the full pinned `doom.polkavm` through the reusable
+artifact API and production `--pvm-code FILE --pvm-entry ext_tick` parser. Its
+code, export PC and named import mapping must match the independent warmed
+snapshot before execution. The snapshot supplies continuing memory, never an
+alternative program owner. The focused remote Make target runs the artifact,
+CLI and shared option native suites before the gameplay comparison.
