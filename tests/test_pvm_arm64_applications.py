@@ -36,7 +36,8 @@ class NativeOwnerReceiptTests(unittest.TestCase):
         """Current interpreted/JIT roles seal policy and owner counters, while archived v1 framing stays usable."""
         for role, requested, counts, actual in (
                 ('interpreter', 'interpreted', '0,0,0,0,0,0,0', 'interpreted'),
-                ('jit', 'jit', '2,20,80,128,1000,10,8', 'jit')):
+                ('jit', 'jit', '2,20,80,128,1000,10,8', 'jit'),
+                ('jit', 'jit', '1,3,0,128,1000,0,0', 'interpreted')):
             fallback = int(requested == 'jit')
             native = counts.split(',')[:3]
             receipt = (f'PVM_POLICY,1,{requested},1,1,{fallback},{actual},'+','.join(native)+'\n'+

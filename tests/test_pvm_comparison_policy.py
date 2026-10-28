@@ -15,6 +15,7 @@ class ComparisonPolicyTests(unittest.TestCase):
         for requested, flags, actual, counts in (
                 ('interpreted', '1,1,0', 'interpreted', '0,0,0'),
                 ('jit', '1,1,1', 'jit', '2,3,12'),
+                ('jit', '1,1,1', 'interpreted', '1,3,0'),
                 ('jit', '1,0,1', 'interpreted', '0,0,0'),
                 ('jit', '0,0,1', 'interpreted', '0,0,0')):
             body, policy = policy_receipt(
@@ -31,6 +32,8 @@ class ComparisonPolicyTests(unittest.TestCase):
                 'PVM_POLICY,1,jit,0,1,1,interpreted,0,0,0',
                 'PVM_POLICY,1,jit,1,1,0,interpreted,0,0,0',
                 'PVM_POLICY,1,jit,1,1,1,jit,0,3,12',
+                'PVM_POLICY,1,jit,1,1,1,interpreted,0,3,0',
+                'PVM_POLICY,1,interpreted,1,1,0,interpreted,1,3,0',
                 'PVM_POLICY,1,jit,1,1,1,jit,2,0,12',
                 'PVM_POLICY,1,jit,1,1,1,interpreted,0,0,-1',
                 f'PVM_POLICY,1,jit,1,1,1,jit,2,3,{2**64}'):

@@ -2334,3 +2334,16 @@ measured e4784c88, official compiler archive and exact isolated ARM64 image. All
 are diagnostic only.
 Records: `build/pvm-arm64-jit/post-merge/checked-loads/` and the sealed public application cohort.
 No default, backend, dependency or merge change is included.
+
+
+### Backend-policy reconciliation (October 28)
+
+The optimization stack is rebased onto master `ef44cba8cc3f87e00dfba7384db2f6b84cdf57ae`,
+including the merged prepared-owner backend policy. Immutable `allowNative` still refuses native
+preparation before scanning or allocating; frame-owned read descriptors never enter the code cache.
+The comparison policy accepts a guarded native call with zero completed native operations: a
+refused load guard leaves registers unchanged and resumes its canonical checked worker. Its actual
+execution receipt remains interpreted. Completed operations still require a published fragment and
+a call; forced interpretation and unavailable native policies still require every native counter
+to be zero. Parser tests cover both the honest refusal and forged activity claims. Earlier timing
+tables remain evidence for their recorded source heads, not measurements of this reconciled tree.
