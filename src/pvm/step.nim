@@ -289,6 +289,15 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
         limits: data.limits))
 
+when defined(pvmArm64JitOwnerReceipt):
+  proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
+    ## Local experiment-only copied code-cache diagnostics; exact owner availability precedes payload access.
+    let data = prepared.data
+    if data == nil: return PreparationResult[array[7, uint64]](
+        status: PreparationError.InvalidProgram)
+    PreparationResult[array[7, uint64]](status: PreparationError.None,
+      completed: streamArmStatistics(data.stream))
+
 proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
     memory: var Memory): StepError =
   ## Validate immutable owners and reserved-zero debt before even a zero-attempt request.

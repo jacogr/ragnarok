@@ -436,7 +436,17 @@ class NimonyCISafeguards(unittest.TestCase):
         rows = selected_families(text, 'build', event_context())
         binary = [row for row in rows if row['group'] == 'binary']
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
-        self.assertEqual({row['platform'] for row in binary}, {name.replace('_', '-') for name in pins['platforms']})
+        # Available compiler archives also serve local experiments; CI release hosts are qualified explicitly.
+        archive_hosts = {'Linux': ('linux-amd64', 'Linux', 'x86_64'),
+                         'macOS': ('macos-arm64', 'Darwin', 'arm64')}
+        self.assertEqual({row['name']: row['platform'] for row in binary},
+                         {name: values[0] for name, values in archive_hosts.items()})
+        for row in binary:
+            # Every exact release target still needs its matching immutable compiler and host architecture.
+            selected = pins['platforms'][row['platform'].replace('-', '_')]
+            _, system, machine = archive_hosts[row['name']]
+            self.assertEqual(selected['system'], system)
+            self.assertIn(machine, selected['machines'])
         self.assertEqual([(row['name'], row['os']) for row in rows],
                          [('Docker', 'ubuntu-latest'), ('Linux', 'ubuntu-24.04'), ('macOS', 'macos-15')])
         self.assertIn('fail-fast: false', section)
@@ -596,7 +606,8 @@ class NimonyCISafeguards(unittest.TestCase):
     # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
     def test_local_and_ci_host_selection(self):
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
-        for system, machine, name in (('Linux', 'x86_64', 'linux_amd64'), ('Darwin', 'arm64', 'macos_arm64')):
+        for system, machine, name in (('Linux', 'x86_64', 'linux_amd64'), ('Linux', 'aarch64', 'linux_arm64'),
+                                      ('Linux', 'arm64', 'linux_arm64'), ('Darwin', 'arm64', 'macos_arm64')):
             # Host selection changes archive identity, never the selected compiler revision.
             with self.subTest(system=system):
                 selected = host_pins(pins, system, machine)

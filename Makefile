@@ -564,3 +564,30 @@ bench-pvm-interpreter: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_compare.py
+
+# Explicit local-only ARM64 JIT trial; no default backend or CI selection changes.
+.PHONY: bench-pvm-arm64-jit
+bench-pvm-arm64-jit: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_arm64_jit.py
+
+# Local real-application qualification reuses pinned reference preparation; no CI selection changes.
+.PHONY: bench-pvm-arm64-applications
+bench-pvm-arm64-applications: toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_arm64_jit_applications.py
+
+# Local Linux ARM64 native qualification consumes sealed fixtures from the application comparison.
+.PHONY: stage-pvm-arm64-jit-linux check-pvm-arm64-jit-linux
+stage-pvm-arm64-jit-linux:
+	$(PYTHON) tools/pvm_arm64_jit_linux.py --stage
+
+check-pvm-arm64-jit-linux: compiler-tools
+	$(PYTHON) tools/pvm_arm64_jit_linux.py
+
+# Provision privately, then retain the network-isolated container's exact native evidence on the host.
+.PHONY: check-pvm-arm64-jit-docker
+check-pvm-arm64-jit-docker: stage-pvm-arm64-jit-linux
+	$(DOCKER) build --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
+	$(PYTHON) tools/pvm_arm64_jit_linux.py --docker

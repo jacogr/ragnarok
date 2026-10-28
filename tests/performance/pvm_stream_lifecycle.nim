@@ -81,3 +81,14 @@ for sample in 0..<samples:
       afterPublication-afterExecution, ",", afterPublication-beforeReset
   echo "PHASE_CACHE,", guest, ",", sample, ",", flatNodes(frame), ",", flatPreparationUnits(frame),
       ",", 1000000000'u64-frame.remaining
+
+when defined(pvmArm64Jit):
+  # Local compiler trials report actual native coverage and cumulative compilation/publication CPU.
+  let native = flatArmStatistics(frame)
+  echo "ARM_JIT,", guest, ",", native[0], ",", native[1], ",", native[2], ",", native[3], ",",
+      native[4]
+
+when defined(pvmArm64JitControlReceipt):
+  # Only the current experimental role emits this versioned optional control receipt; older exact baselines retain their ABI.
+  let control = flatArmControlStatistics(frame)
+  echo "ARM_CONTROL,", guest, ",", control[0], ",", control[1]

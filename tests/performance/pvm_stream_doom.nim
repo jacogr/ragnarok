@@ -221,3 +221,10 @@ for sample in 0..<samples:
     echo "DOOM_PHASE,", phase, ",", sample, ",", cpuStart-beforeReset, ",", executionNs, ",",
         hostNs, ",", resumeNs, ",", publicationNs, ",", hostCalls, ",", attempts, ",", flatNodes(frame)
 echo "DOOM_OK,prepared,", phase, ",", context.outputBytes
+
+when defined(pvmArm64JitOwnerReceipt):
+  # Retained-frame native counters use the same seven-field evidence schema as public prepared ownership.
+  let native = flatArmStatistics(frame)
+  let control = flatArmControlStatistics(frame)
+  echo "ARM_OWNER,", phase, ",", native[0], ",", native[1], ",", native[2], ",",
+    native[3], ",", native[4], ",", control[0], ",", control[1]

@@ -208,3 +208,10 @@ for sample in 0..<samples:
 if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
   echo "GAS_MEMO_END,", gasMemoInfo(memo).value.pricedBlocks
+
+when defined(pvmArm64JitOwnerReceipt):
+  # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
+  assert preparedMode
+  let native = reference.preparedArmStatistics(prepared).value
+  echo "ARM_OWNER,", getEnv("RAGNAROK_PVM_GUEST"), ",", native[0], ",", native[1], ",",
+    native[2], ",", native[3], ",", native[4], ",", native[5], ",", native[6]

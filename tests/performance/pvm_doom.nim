@@ -213,3 +213,9 @@ for sample in 0..<samples:
     assert cpuElapsed > 0 and wallElapsed > 0
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
+
+when defined(pvmArm64JitOwnerReceipt):
+  # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.
+  let native = preparedArmStatistics(prepared).value
+  echo "ARM_OWNER,", phase, ",", native[0], ",", native[1], ",", native[2], ",",
+    native[3], ",", native[4], ",", native[5], ",", native[6]
