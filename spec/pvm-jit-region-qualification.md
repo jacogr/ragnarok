@@ -161,3 +161,20 @@ Related contracts: [x86 bounded regions](pvm-x86-three-blocks.md),
 [ARM scalar matching](pvm-arm-scalar-charge.md),
 [ARM shift pairs](pvm-native-shift-pairs.md), and
 [ARM guarded loads](pvm-arm-load-widths.md).
+
+## Merge-queue reconciliation on October 29
+
+The reviewed stack was natively rebased from master
+`5e873ba53fa36320ed27701e5a64a9ffdbb85d7d` onto
+`5898b66467227d9af3216e127230ba0867218514` after the maintainer authorized automatic
+reconciliation when merge #1 requests it. Master adds native-owner move fixes and node logging.
+All twelve layer patches are identical before/after rebase; the complete rebased-tree difference
+is exactly the incoming master patch. There were no conflicts. `src/pvm`, `native/pvm_jit`,
+`tests/performance`, `tools`, `Makefile`, `.github` and `spec/toolchain.json` are byte-identical
+to the reviewed stack at `394dc3df52e8c41afe8dbded92372b41908be11e`.
+
+The timing tables above remain receipts for measured `e987b447` against master `5e873ba5`;
+they are not relabeled as timings at the rebased commits. The PVM-specific source/test/build
+identity proof supports retaining their scoped evidence. Fresh automatically selected Smoke
+checks must pass on the new published heads before the stack is handed back as ready. Review
+#1 receives the patch-identity and base-change evidence; merge #1 retains all merge ownership.
