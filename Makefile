@@ -608,7 +608,7 @@ calibrate-pvm-arm64-linux:
 
 .PHONY: profile-pvm-arm64-linux
 profile-pvm-arm64-linux:
-	. ./build/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64
+	. ./build/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64 --include-minimal
 
 .PHONY: profile-pvm-arm64-jit
 profile-pvm-arm64-jit: bench-pvm-arm64-applications

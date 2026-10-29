@@ -69,6 +69,18 @@ class X86ProfileScopeTests(unittest.TestCase):
             self.assertEqual(left['RAGNAROK_PVM_LOCAL_ONECALL'], '0')
 
 
+    def test_minimal_diagnostic_keeps_all_existing_arm_scopes(self):
+        """An explicit extra scope measures the regressed workload without replacing either DOOM phase or changing x86 defaults."""
+        original=profile_plan('arm64')
+        expanded=profile_plan('arm64',include_minimal=True)
+        self.assertEqual(expanded['cases'],(('sieve',100000),('minimal',100000),('init',0),('tick',0)))
+        self.assertEqual(expanded['roles'],original['roles'])
+        self.assertEqual(profile_plan('x86_64',include_minimal=True)['cases'],profile_plan('x86_64')['cases'])
+        environment=profile_environment('minimal',100000,'jit','arm64')
+        self.assertEqual(environment['RAGNAROK_PVM_GUEST'],'minimal')
+        self.assertIn('pvm-arm64-applications/inputs/minimal/100000',environment['RAGNAROK_PVM_SIEVE_INPUT'])
+        self.assertEqual(environment['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+
     def test_arm_profiles_compare_exact_parent_and_current(self):
         """The ARM diagnostic binds its own sealed cohort and both genuine DOOM phases, never x86 inputs."""
         plan=profile_plan('arm64')

@@ -68,7 +68,7 @@ def matching_native_activity(measured, profiled):
         raise ValueError('Profile changed native execution or code working set')
 
 
-def profile_plan(architecture, paired_baseline=False):
+def profile_plan(architecture, paired_baseline=False, include_minimal=False):
     """Select a bounded native cohort and roles; an ARM diagnostic compares the supplied parent with current JIT."""
     if architecture == 'x86_64':
         return dict(folder=BUILD, cohort=COHORT, roles=('baseline','jit') if paired_baseline else ('interpreter','jit'),
@@ -76,7 +76,7 @@ def profile_plan(architecture, paired_baseline=False):
     if architecture == 'arm64':
         return dict(folder=ROOT/'build/tests/pvm-arm64-profiles',
                     cohort=ROOT/'build/tests/pvm-arm64-applications', roles=('baseline','jit'),
-                    cases=(('sieve',100000),('init',0),('tick',0)))
+                    cases=(('sieve',100000),*((('minimal',100000),) if include_minimal else ()),('init',0),('tick',0)))
     raise ValueError('Unsupported native profile architecture')
 
 
@@ -132,13 +132,14 @@ def diagnostic_image(checks, cohort, role, case, report):
     return saved
 
 
-def run(architecture="x86_64", calibration_only=False, paired_baseline=False):
+def run(architecture="x86_64", calibration_only=False, paired_baseline=False, include_minimal=False):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
-    plan = profile_plan(architecture, paired_baseline)
+    plan = profile_plan(architecture, paired_baseline, include_minimal)
     folder, cohort_folder = plan["folder"], plan["cohort"]
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder/'results.json'
-    report = dict(status='incomplete', architecture=architecture, profile_roles=list(plan['roles']), profiles=[], controls=[], builds=[],
+    report = dict(status='incomplete', architecture=architecture, profile_roles=list(plan['roles']),
+                  profile_cases=[dict(case=case,limit=limit) for case,limit in plan['cases']], profiles=[], controls=[], builds=[],
                   diagnostic_builds=[], boundary_protocol='client-requests-v1' if architecture=='arm64' else 'symbol-returns-v1',
                   hardware_counters=False, clock_policy='discarded',
                   scope='public invocation including memory construction and immutable publication')
@@ -244,5 +245,6 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', choices=('x86_64','arm64'), default='x86_64')
     parser.add_argument('--calibrate-only',action='store_true')
     parser.add_argument('--paired-baseline',action='store_true')
+    parser.add_argument('--include-minimal',action='store_true',help='Include the ARM minimal workload in the paired diagnostic')
     options=parser.parse_args()
-    run(options.architecture,options.calibrate_only,options.paired_baseline)
+    run(options.architecture,options.calibrate_only,options.paired_baseline,include_minimal=options.include_minimal)

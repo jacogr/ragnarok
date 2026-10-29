@@ -957,12 +957,19 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot]
   checkFlatSource(frame)
   if images.len != 0:
-    # Load-only work must preserve all private bytes and permission metadata, including inaccessible pages.
+    # The independent single-step machine owns expected store effects; every original input snapshot stays immutable.
     let published = flatMemorySnapshot(frame)
+    let expectedMemory = memoryOf(expected)
+    assert expectedMemory.error == MachineError.None
     for image in images:
       let actual = pageImage(published, image.index)
-      assert actual.error == MachineError.None
-      assert actual.value.access == image.access and actual.value.bytes == image.bytes
+      let wantedPage = pageImage(expectedMemory.value, image.index)
+      let original = pageImage(memory, image.index)
+      assert actual.error == MachineError.None and wantedPage.error == MachineError.None
+      assert original.error == MachineError.None
+      assert actual.value.access == wantedPage.value.access and actual.value.bytes ==
+          wantedPage.value.bytes
+      assert original.value.access == image.access and original.value.bytes == image.bytes
 
 var loadCases = 0
 for opcode in 124'u8..130'u8:
@@ -1607,3 +1614,86 @@ for specialized in [false, true]:
           verifyControl(frame, source, bounded, budget)
           inc selfRegionCases
 echo "ARM_SELF_REGION_CASES,", selfRegionCases
+
+
+var storeControls = 0
+for layout in 0..<8:
+  let base = if layout == 5: 0xfffff000'u64 elif layout == 6: 0x40000'u64
+    elif layout == 7: 0x3f000'u64 else: 65536'u64
+  var images: seq[PageImage] = @[]
+  if layout != 0:
+    # Fragmented, protected and read-only layouts must preserve canonical faults or take the exact checked fallback.
+    var image = PageImage(index: PageIndex(uint32(base shr 12)),
+      access: (if layout == 2: PageAccess.ReadOnly elif layout == 4: PageAccess.Inaccessible
+      else: PageAccess.ReadWrite), bytes: default(array[4096, byte]))
+    if image.access != PageAccess.Inaccessible:
+      for index in 0..<4096: image.bytes[index] = byte((index*17+layout) mod 256)
+    images.add(image)
+    if layout == 3:
+      var extra = image
+      extra.index = PageIndex(20)
+      images.add(extra)
+  for placement in 0..<4:
+    for hosted in [false, true]:
+      var parts: seq[seq[byte]] = @[]
+      for index in 0..<placement: parts.add(@[149'u8, 0, 1])
+      parts.add(@[120'u8, 0x10, 0])
+      for index in placement..<3: parts.add(@[149'u8, 0, 1])
+      if hosted: parts.add(@[10'u8, 7])
+      parts.add(@[0'u8])
+      let program = owner(parts)
+      for address in [0'u64, 65535, base, base+4095, base+4096, 0xffffffff'u64,
+          base+17+0x100000000'u64]:
+        let plan = newFlatPlan(program, GasCycleLimit(100000))
+        var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+        info.registers[0] = RegisterValue(0x123456789abcdef0'u64)
+        info.registers[1] = RegisterValue(address)
+        var frame = newFlatFrame(plan, images, info)
+        verifyControl(frame, program, info, 100, images)
+        for paid in [false, true]:
+          for gas in [0'u64, 1, 3, 4, 5, 1000]:
+            for budget in 0'u64..7'u64:
+              # Every source attempt, initial paid state and gas prefix matches the independent one-step engine.
+              var input = info
+              input.gas = MachineGas(gas)
+              input.blockCharged = paid
+              verifyControl(frame, program, input, budget, images)
+              inc storeControls
+        var cache = takeFlatStream(frame)
+        var fresh = newFlatFrame(plan, images, info)
+        restoreFlatStream(fresh, cache)
+        verifyControl(fresh, program, info, 100, images)
+        assert replaceFlatMemoryChecked(fresh, [], info) == FlatError.None
+        verifyControl(fresh, program, info, 100)
+        storeControls+=2
+echo "ARM_STORE_FALLBACK_CONTROL_CASES,", storeControls
+
+
+var secondStoreControls = 0
+let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],
+    @[149'u8, 0, 1], @[149'u8, 0, 1], @[120'u8, 0x20, 0], @[0'u8]])
+var storePage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+for index in 0..<4096: storePage.bytes[index] = byte(index mod 256)
+for secondAddress in [65535'u64, 0xffffffff'u64, 69632'u64, 69631'u64]:
+  # A later checked store can fault after the first native store; its earlier byte and register effects must remain visible.
+  let plan = newFlatPlan(twoStores, GasCycleLimit(100000))
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+  info.registers[0] = RegisterValue(0xb0)
+  info.registers[1] = RegisterValue(65553)
+  info.registers[2] = RegisterValue(secondAddress)
+  var frame = newFlatFrame(plan, [storePage], info)
+  verifyControl(frame, twoStores, info, 100, [storePage])
+  when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+    # The retained witness checks real native arithmetic between two checked stores, including a later fault.
+    let native = flatArmStatistics(frame)
+    assert native[1] > 0 and native[2] >= 4
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 4, 5, 1000]:
+      for budget in 0'u64..8'u64:
+        var input = info
+        input.gas = MachineGas(gas)
+        input.blockCharged = paid
+        verifyControl(frame, twoStores, input, budget, [storePage])
+        inc secondStoreControls
+echo "ARM_CHECKED_STORE_SECOND_EXIT_CASES,", secondStoreControls
