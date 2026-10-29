@@ -75,6 +75,32 @@ x86-64, each with plain, matching-native-enabled and forced-native-refusal build
 witness returned `InvalidPreparedProgram` on its third call while occupancy stayed four nodes
 and eleven preparation units. These folded-noop/trap programs do not claim native opcode activity.
 
+### Paid interior continuation
+
+An actual execution entry with an already-paid block can reserve its remaining source suffix
+directly through an existing interior body coordinate. It neither emits a second suffix/header
+nor prices the paid block again. A partial reservation installs the same temporary budget barrier,
+starting its search at the reused body; folded noops still stop at the exact original source PC.
+Complete-header hits retain their normal dispatch. Unpaid, missing and invalid entries retain
+their original admission/pricing/refusal order, and sticky preparation failures still win first.
+
+This stateful reservation is confined to `runFlat`'s actual entry after its zero-attempt,
+single-step, initialized-plan and sticky-refusal guards, with source-PC bounds checked before map access.
+It is not part of `flatResolve`: static, conditional and indirect target preparation may run
+while the old block is still paid, including prelinking an untaken branch arm. Those callers,
+their paid-flag resets, ordinary `flatReserve`, memory workers and native generators are unchanged.
+No owner, field, node representation, executable ABI or resource default is added or changed.
+
+For `N` one-byte hosts followed by a trap, one initial admission occupies `N+2` nodes and
+`2*(N+1)` preparation units; paid continuations reuse that occupancy. The former repeated-suffix
+growth `(N+2)*(N+3)/2-1` refused a 4096-host block at PC 3955 under the unchanged default ceiling,
+as independently reproduced in run 40903185657. The focused `pvm_stream_host_resume` suite checks
+exact occupancy for dynamic/complete/lazy prices, prepaid zero-cycle inputs, zero/partial/exact
+folded budgets, unchanged unpaid/sticky refusals, actual native prefix execution and partial
+fallback where built, source-PC rejection, branch/dynamic prelink budgets and public prepared
+callback/attempt limits with fresh immutable inputs. These are logical occupancy and correctness
+witnesses, not timing or decoded-visit claims; complete independent state traces remain separate.
+
 These are logical component bounds, not exact RSS, allocator-overhead or global concurrency quotas.
 The four-MiB implementation profile is not a consensus module-size rule: larger inputs fail local
 admission and require a separately qualified profile. Environmental allocator failure remains fatal

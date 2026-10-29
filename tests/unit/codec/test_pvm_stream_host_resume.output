@@ -1,0 +1,5 @@
+PASS paid host resource reuse / dynamic-plan-memo / exact occupancy / unchanged defaults
+PASS folded source budgets / zero-partial-exact / paid gas / unchanged sticky refusal
+PASS cached native prefix / partial fallback / actual counters / paid source-PC guards
+PASS branch and dynamic target prelink / exact attempt budgets / unchanged resolver
+PASS public prepared host owner / callback-attempt limits / fresh immutable inputs

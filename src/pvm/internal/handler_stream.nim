@@ -2233,8 +2233,33 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if f.armJit == nil: default(array[2, uint64])
     else: [f.armJit.branchCalls, f.armJit.headerCalls]
 
+proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
+  ## Only an actual paid execution entry reserves its cached body; target prelinking never calls this helper.
+  assert f.info.blockCharged and f.remaining > 0 and f.barrier == flatStop
+  assert start >= 0 and start < f.plan.facts.len
+  assert int(body) < f.handlers.len and int(body) < f.sites.len
+  let count = f.plan.facts[start].sourceCount
+  assert count > 0 and uint64(start)+uint64(count) <= uint64(f.plan.facts.len)
+  assert uint64(f.sites[int(body)]) >= uint64(start) and
+    uint64(f.sites[int(body)]) < uint64(start)+uint64(count)
+  let reserved = min(f.remaining, uint64(count))
+  f.remaining-=reserved
+  f.reservationEnd = uint32(start)+uint32(reserved)
+  if reserved < uint64(count):
+    # Folded noops may precede this body: stop at their exact source fact, not the next physical node's PC.
+    f.barrierFact = f.reservationEnd
+    var boundary = body
+    while int(boundary) < f.sites.len and f.sites[int(boundary)] < f.barrierFact:
+      inc boundary
+    assert int(boundary) < f.handlers.len
+    assert uint64(f.sites[int(boundary)]) < uint64(start)+uint64(count)
+    f.barrier = boundary
+    f.savedHandler = f.handlers[int(boundary)]
+    f.handlers[int(boundary)] = flatBudget
+  body
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
-  ## The hot loop is the offset-returning dispatch; budgets are reserved only at synthetic block entries.
+  ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.hostChanges = @[]
@@ -2263,7 +2288,23 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     f.reason = oracle.StepError.InvalidPreparedProgram
     return
   f.dynamicOffsets = default(array[256, uint64]) # Invocation reset remains inside execution timing.
-  var offset = flatResolve(f, uint32(uint64(f.info.pc) and 0xffffffff'u64))
+  let pc = uint32(uint64(f.info.pc) and 0xffffffff'u64)
+  var offset = flatStop
+  if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
+    # Only real entry/resumption may reserve a paid interior body; branch prelinking keeps the original resolver.
+    let packed = f.compiledForPc[int(pc)]
+    if packed != 0:
+      let target = packed-1
+      if (target and 0x80000000'u32) != 0:
+        # A complete entry still executes its ordinary header, including any existing native/header accounting.
+        offset = target and 0x7fffffff'u32
+      else:
+        # The original admitted body has every source operation already; neither emission nor pricing is needed.
+        let start = f.plan.factAt[int(pc)]
+        offset = flatResumePaid(f, target, start)
+  if offset == flatStop:
+    # Unpaid, missing and invalid entries retain their existing admission, pricing and refusal order.
+    offset = flatResolve(f, pc)
   if offset == flatStop:
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
