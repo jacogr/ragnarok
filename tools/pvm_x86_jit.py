@@ -45,7 +45,8 @@ def qualify(checks, compiler, rows=None):
                 'X86_PREFIX_CASES,2984\n' not in run['output'] or
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or
                 'X86_BRANCH_LITERAL_CASES,1296\n' not in run['output'] or
-                'X86_BRANCH_PREFIX_CASES,540\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
+                'X86_BRANCH_PREFIX_CASES,540\n' not in run['output'] or
+                'X86_REGION_PREFIX_CASES,1440\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):

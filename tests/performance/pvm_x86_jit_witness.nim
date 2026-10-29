@@ -430,3 +430,52 @@ for initial in [0'u64, 5, 31]:
         checkFlatSource(interpretedFrame)
         inc branchPrefixCases
 stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
+
+
+# Both charged blocks have positively cached scalar arms; the second returns to the first or exits to a real panic.
+let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
+    @[149'u8, 2, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+var regionCases = 0
+for paired in [false, true]:
+  # Use independently admitted interpreted owners; a cached native region cannot turn its own result into the oracle.
+  let program = if paired: pairedProgram else: branchProgram
+  let nativePlan = newFlatPlan(program, GasCycleLimit(100000))
+  var checkedCapture = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+  assert checkedCapture.error == FlatError.None
+  let checkedPlan = takeValue(checkedCapture)
+  var nativeFrame = newFlatFrame(nativePlan, [], warmInfo)
+  var checkedFrame = newFlatFrame(checkedPlan, [], warmInfo)
+  for visit in 0..<3:
+    # Reused source caches must discover and execute a real closed loop before boundary cases can count as native evidence.
+    resetFlatFrame(nativeFrame, warmInfo)
+    runFlat(nativeFrame, 1000)
+    assert nativeFrame.reason == StepError.None and nativeFrame.exit == StepExit.Panic
+  when defined(pvmX86JitRefuse):
+    assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64])
+  else:
+    let connected = flatX86RegionStatistics(nativeFrame)
+    assert connected[0] > 0 and connected[1] > connected[0]
+  for initial in [0'u64, 5, 31]:
+    for paid in [false, true]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:
+        for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 127, 128, 129]:
+          # Guard exits at either block retain precise original gas, source prefix, paid state and immutable source snapshots.
+          var info = warmInfo
+          info.registers[0] = RegisterValue(initial)
+          info.blockCharged = paid
+          info.gas = MachineGas(gas)
+          resetFlatFrame(nativeFrame, info)
+          resetFlatFrame(checkedFrame, info)
+          runFlat(nativeFrame, budget)
+          runFlat(checkedFrame, budget)
+          assert nativeFrame.reason == checkedFrame.reason and nativeFrame.exit == checkedFrame.exit
+          assert nativeFrame.remaining == checkedFrame.remaining
+          assert nativeFrame.info.pc == checkedFrame.info.pc
+          assert nativeFrame.info.gas == checkedFrame.info.gas
+          assert nativeFrame.info.gasDeficit == checkedFrame.info.gasDeficit
+          assert nativeFrame.info.blockCharged == checkedFrame.info.blockCharged
+          assert nativeFrame.info.registers == checkedFrame.info.registers
+          checkFlatSource(nativeFrame)
+          checkFlatSource(checkedFrame)
+          inc regionCases
+stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)

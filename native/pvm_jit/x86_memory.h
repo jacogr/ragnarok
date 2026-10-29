@@ -100,4 +100,16 @@ static uint32_t pvm_x86_arena_next(void *handle, uint32_t offset, void *register
     return UINT32_MAX;
 #endif
 }
+/* Invoke a sealed connected entry with two invocation-local borrows; no context survives return. */
+static uint32_t pvm_x86_arena_region(void *handle, uint32_t offset, void *registers, void *state) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || !registers || !state || offset >= owner->used || (offset & 15)) return UINT32_MAX;
+    uint32_t (*entry)(void *, void *) = (uint32_t (*)(void *, void *))((unsigned char *)owner->executable + offset);
+    return entry(registers, state);
+#else
+    (void)handle; (void)offset; (void)registers; (void)state;
+    return UINT32_MAX;
+#endif
+}
 #endif
