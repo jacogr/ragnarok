@@ -357,7 +357,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       of "--ui-dev-dir": candidate.directory = value
       of "--pvm-backend":
         if not parsePvmBackend(value, candidate.pvmSelection):
-          diagnostic = "Invalid --pvm-backend: use jit|interpreted|polkavm-interpreted|polkavm-compiled"
+          diagnostic = "Invalid --pvm-backend: use jit|compiled|interpreted|polkavm-interpreted|polkavm-compiled"
           return false
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value

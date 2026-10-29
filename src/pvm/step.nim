@@ -306,18 +306,44 @@ func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == Prepa
   ## Only complete admitted results contain owners or copied diagnostics.
   r.completed
 
+func compiledPreparationFailure(reason: FlatError, callerPolicy: bool): PreparationError =
+  ## Translate the shared contract without turning unexpected/default/success states into usable owners.
+  case reason
+  of FlatError.InvalidProgram:
+    # Malformed caller source is distinct from a hook rejecting an already admitted immutable plan.
+    if callerPolicy: PreparationError.InvalidProgram else: PreparationError.BackendFailure
+  of FlatError.CodeLimitExceeded, FlatError.FactLimitExceeded, FlatError.JumpLimitExceeded,
+      FlatError.PageLimitExceeded, FlatError.StreamLimitExceeded,
+          FlatError.PreparationLimitExceeded:
+    PreparationError.LimitExceeded
+  of FlatError.InvalidPolicy:
+    # Invalid caller limits are a policy refusal; an already admitted invalid source plan is an internal failure.
+    if callerPolicy: PreparationError.LimitExceeded else: PreparationError.BackendFailure
+  of FlatError.NativeNotBuilt: PreparationError.BackendNotBuilt
+  of FlatError.NativePlatformUnsupported, FlatError.NativeStorageUnavailable:
+    PreparationError.BackendUnavailable
+  of FlatError.Uninitialized, FlatError.None, FlatError.InvalidMemory: PreparationError.BackendFailure
+
 proc prepareIndependent(source: Program, limits: PreparedLimits,
     selected: PvmBackend): PreparationResult[PreparedProgram] =
   ## Decode immutable facts once; executable nodes and prices remain lazy, exclusive and source-bound.
   if codeLength(source).error != ProgramError.None:
     return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
-  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected ==
-      PvmBackend.Jit)
+  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected in
+      [PvmBackend.Jit, PvmBackend.Compiled])
   if admitted.error != FlatError.None:
+    # Existing lazy policies retain their mapping; the new contract distinguishes shared capability refusals.
+    if selected == PvmBackend.Compiled:
+      return PreparationResult[PreparedProgram](status: compiledPreparationFailure(admitted.error, true))
     return PreparationResult[PreparedProgram](status: (if admitted.error ==
         FlatError.InvalidProgram:
       PreparationError.InvalidProgram else: PreparationError.LimitExceeded))
   let plan = takeValue(admitted)
+  if selected == PvmBackend.Compiled:
+    # This interface increment publishes no compiled owner, even if a future hook unexpectedly returns success.
+    # A separately qualified implementation must explicitly adopt and lease the returned stream before enabling it.
+    let constructed = prepareFlatStream(plan)
+    return PreparationResult[PreparedProgram](status: compiledPreparationFailure(constructed.error, false))
   PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
     data: PreparedData(source: source, plan: plan, stream: default(FlatStream), limits: limits,
         busy: false, selected: selected)))
@@ -870,7 +896,7 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   executeWithHost(source, context, handler, steps, calls, prepared.value)
 
 proc backendAvailability*(selected: PvmBackend): StepError =
-  ## Refuse unavailable explicit foreign engines before any application resource, host or guest effect opens.
+  ## Refuse unavailable explicit optional policies before any application resource, host or guest effect opens.
   if selected in [PvmBackend.Interpreted, PvmBackend.Jit]: return StepError.None
   let raw = @[0'u8, 0, 1, 0, 1]
   let source = decodeJamProgram(raw, CodeAddress(0), ProgramByteLimit(8), JumpCountLimit(0))

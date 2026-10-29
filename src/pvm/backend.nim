@@ -5,7 +5,7 @@
 type PvmBackend* {.pure.} = enum
   ## The independent engine and explicit upstream engines never silently substitute for one another.
   Jit = "jit", Interpreted = "interpreted", PolkaInterpreted = "polkavm-interpreted",
-      PolkaCompiled = "polkavm-compiled"
+      PolkaCompiled = "polkavm-compiled", Compiled = "compiled"
 
 const PolkaVmRevision* = "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa"
   ## Loaded optional bridges must match the pristine pinned public runtime.
@@ -15,8 +15,8 @@ const DefaultPvmBackend* = PvmBackend.Jit
 
 proc parsePvmBackend*(name: string, selected: var PvmBackend): bool =
   ## Accept only the canonical explicit engine/policy spellings.
-  for candidate in [PvmBackend.Jit, PvmBackend.Interpreted, PvmBackend.PolkaInterpreted,
-      PvmBackend.PolkaCompiled]:
+  for candidate in [PvmBackend.Jit, PvmBackend.Compiled, PvmBackend.Interpreted,
+      PvmBackend.PolkaInterpreted, PvmBackend.PolkaCompiled]:
     if $candidate == name:
       selected = candidate
       return true
@@ -51,6 +51,9 @@ proc backendSummary*(selected: PvmBackend): string =
       result &= " native-platform=arm64 checked-fallback=enabled"
     else:
       result &= " native-platform=unavailable actual=interpreted checked-fallback=enabled"
+  elif selected == PvmBackend.Compiled:
+    # The source-only public contract has no working implementation or successful execution receipt yet.
+    result &= " preparation=source-only availability=not-built"
   elif selected == PvmBackend.Interpreted:
     result &= " actual=interpreted native=disabled"
   else:
