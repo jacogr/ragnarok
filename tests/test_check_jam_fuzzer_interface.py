@@ -285,7 +285,8 @@ class JamInterfaceCI(unittest.TestCase):
             self.assertIn(value, job)
         self.assertIn("if: matrix.family.group == 'pvm'", job)
         self.assertIn('fail-fast: false', job)
-        self.assertIn('needs: [pvm-fuzz]', job_section(text, 'fuzz-status'))
+        self.assertIn('name: Fuzz / ${{ matrix.family.name }}', job)
+        self.assertNotIn('needs:', job)
         self.assertNotIn('continue-on-error', job)
         from workflow_fixtures import selected_families, event_context
         families = selected_families(text, 'pvm-fuzz', event_context())
