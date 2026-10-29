@@ -16,7 +16,8 @@ Python-only registration and provenance preflight used before every CI workload.
 | `check-guards` | Compiler contract, privacy, nominal, schema and ownership rejection probes | `build/tests/guards/` |
 | `check-e2e` | Peer-entry selftests and live networking/resource scenarios | `build/tests/e2e/` |
 
-**Model verification** is a separate visible CI job on master pushes and unit/full requests.
+**Model verification** runs as a separate step within **Build / Tooling** on master pushes
+and unit/full requests, including after Python checks fail.
 Its summary separates expected mutant/witness violations from base-model failures, and its
 artifacts retain replayable models and full diagnostics.
 
@@ -41,15 +42,15 @@ is a failure, not evidence of coverage.
 
 ## Requesting CI
 
-Master pushes and PR opening, reopening and source updates automatically run **Build / Smoke**:
+Master pushes and PR opening, reopening, source updates and adding `lgtm` automatically run **Build / Smoke**:
 complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
-locally. The **Build** aggregate requires every selected family. Automatic PR updates and manual
+locally. Each named workload reports its own result, without separate aggregate jobs.
+Automatic PR updates and manual
 `smoke` requests run Smoke alone. Master/full requests add Tooling, Linux & Docker and macOS.
-Linux & Docker reuses native packaging setup for the checked-release every-source audit and compiler
-rejection guards, retaining separate summaries/artifacts and independent failures. Smoke remains
-unchanged; Tooling runs Python references. Source audits apply no formatting and link no native
-libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
+Linux & Docker reuses native packaging setup for the checked-release every-source audit. Tooling
+runs Python references, lifecycle model verification and compiler rejection guards, retaining separate
+summaries/artifacts and independent failures. Smoke remains unchanged. Source audits apply no formatting and link no native libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
 coverage without adding binary packaging or Docker. Manual `build` selects Linux & Docker and macOS.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:

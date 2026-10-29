@@ -61,7 +61,7 @@ class DoomBackendTests(unittest.TestCase):
             with self.subTest(prefix=data[:8]), self.assertRaises(ValueError):
                 rgba_frames(data, 0, 0)
 
-    def test_interop_native_architectures_and_aggregate_own_the_check(self):
+    def test_interop_native_architectures_own_the_check(self):
         """Master/full/Interop execute native shared backends; focused dispatch avoids unrelated families."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = job_section(text, 'pvm-doom-backends')
@@ -69,23 +69,18 @@ class DoomBackendTests(unittest.TestCase):
         self.assertIn('&ubuntu-arm-version ubuntu-26.04-arm', section)
         self.assertIn('os: *ubuntu-x86-version', section)
         self.assertIn('make check-pvm-doom-backends', section)
-        self.assertIn('needs: [interop, pvm-doom-backends]', job_section(text, 'interop-status'))
         for context in (event_context('push'), event_context('workflow_dispatch', suite='pvm-backends'),
                         event_context('workflow_dispatch', suite='interop'),
                         event_context('workflow_dispatch', suite='full')):
             with self.subTest(context=context):
                 self.assertTrue(expression(job_condition(text, 'pvm-doom-backends'), context))
 
-    def test_focused_aggregate_only_excuses_intentionally_skipped_other_families(self):
-        """Focused dispatch cannot hide a failed backend or an unexpectedly failed ordinary Interop job."""
+    def test_focused_backends_request_skips_other_interop_workloads(self):
+        """Focused dispatch selects both backend architectures without ordinary Interop work."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        gate = job_section(text, 'interop-status')
-        command = re.search(r'        run: ([^\n]+)', gate).group(1)
-        for ordinary in ('success', 'skipped', 'failure', 'cancelled'):
-            for backends in ('success', 'skipped', 'failure', 'cancelled'):
-                env = dict(SHARDS_RESULT=ordinary, BACKENDS_RESULT=backends, FOCUSED='true')
-                status = subprocess.run(['bash', '-c', command], env=env).returncode
-                self.assertEqual(status == 0, backends == 'success' and ordinary in ('success', 'skipped'))
+        context = event_context('workflow_dispatch', suite='pvm-backends')
+        self.assertTrue(expression(job_condition(text, 'pvm-doom-backends'), context))
+        self.assertFalse(expression(job_condition(text, 'interop'), context))
 
 
 
