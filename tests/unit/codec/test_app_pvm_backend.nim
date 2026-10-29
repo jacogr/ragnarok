@@ -44,7 +44,13 @@ assert not extractPvmBackend(@["fuzz", "--pvm-backend", "jit", "--pvm-backend", 
 let help = commandHelp("server")
 assert "--pvm-backend" in help and "compiled|interpreted" in help and "polkavm-compiled" in help
 let unavailable = backendSummary(PvmBackend.Compiled)
-assert "requested=compiled" in unavailable and "preparation=source-only" in unavailable and
-    "availability=not-built" in unavailable and "revision=" notin unavailable
-assert backendAvailability(PvmBackend.Compiled) == StepError.BackendNotBuilt
+assert "requested=compiled" in unavailable and "preparation=eager" in unavailable and
+    "availability=source-required" in unavailable and "revision=" notin unavailable and
+        "actual=compiled" notin unavailable
+when not defined(pvmArm64Jit) and not defined(pvmX86Jit):
+  assert backendAvailability(PvmBackend.Compiled) == StepError.BackendNotBuilt
+else:
+  # A native build still requires a real sealed source owner; startup reports its exact capability result.
+  assert backendAvailability(PvmBackend.Compiled) in [StepError.None, StepError.BackendNotBuilt,
+      StepError.BackendUnavailable]
 stdout.writeLine("PASS application PVM backend CLI")

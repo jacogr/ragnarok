@@ -80,10 +80,11 @@ and complete JAM parity remain outside this API increment.
 ## Runtime policy and CLI
 
 `--pvm-backend` accepts exactly `jit`, `compiled`, `interpreted`, `polkavm-interpreted` and `polkavm-compiled`.
-The independent `compiled` policy is currently an unavailable interface: valid source-only
-preparation and startup return `BackendNotBuilt` without a usable owner, guest work or callbacks.
-Its [separate policy contract](pvm-compiled-policy.md) preserves the default and existing ordinals;
-working compilation belongs to a subsequent implementation increment.
+The independent `compiled` policy admits a source-only sealed stream through its
+[prepared-owner implementation](pvm-eager-compilation.md). The landed shared stub still returns
+`BackendNotBuilt` without an owner or guest/host work. A real shared implementation must seal its
+complete source domain before the public constructor can adopt it. The
+[policy contract](pvm-compiled-policy.md) preserves the default, existing ordinals and typed errors.
 The option catalog owns help/default presentation; ordinary and dedicated conformance/devnet
 commands share strict parsing. Initial/current/later accumulation, authorization, refinement,
 download/trace and nested raw machines carry copied selection policy, with no process-global

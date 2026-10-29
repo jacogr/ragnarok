@@ -52,8 +52,8 @@ proc backendSummary*(selected: PvmBackend): string =
     else:
       result &= " native-platform=unavailable actual=interpreted checked-fallback=enabled"
   elif selected == PvmBackend.Compiled:
-    # The source-only public contract has no working implementation or successful execution receipt yet.
-    result &= " preparation=source-only availability=not-built"
+    # Build/platform flags alone cannot certify the source-only preparation facility or an actual owner.
+    result &= " preparation=eager availability=source-required checked-fallback=enabled"
   elif selected == PvmBackend.Interpreted:
     result &= " actual=interpreted native=disabled"
   else:

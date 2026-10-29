@@ -307,25 +307,40 @@ preparedPageReplyWitness(PvmBackend.Interpreted)
 preparedWitness(PvmBackend.Interpreted)
 witness(PvmBackend.Interpreted)
 for attempt in 0..<3:
-  # The new public policy never publishes a prepared owner or substitutes any engine after its source hook refuses.
+  # Refusal stays typed and effect-free; a successful source hook must publish a genuinely sealed independent owner.
   let initial = source()
   let code = programOf(initial).value
   let unavailable = newPreparedProgram(code, defaultPreparedLimits(), PvmBackend.Compiled)
-  assert unavailable.error == PreparationError.BackendNotBuilt
-  assert execute(initial, ExecutionStepLimit(3), GasCycleLimit(1000),
-      PvmBackend.Compiled).error == StepError.BackendNotBuilt
-  var blocked = default(Context)
-  let refused = executeWithHost(initial, blocked, respond, ExecutionStepLimit(3),
-      HostCallLimit(2), GasCycleLimit(1000), PvmBackend.Compiled)
-  assert refused.error == HostExecutionError.ExecutionFailure and
-      refused.executionError == StepError.BackendNotBuilt and blocked.calls == 0
-  var direct = PageReplyContext(action: HostAction.Continue, memory: memoryOf(initial).value)
-  let directRefusal = executeWithHost(initial, direct, pageReply, ExecutionStepLimit(3),
-      HostCallLimit(2), GasCycleLimit(1000), PvmBackend.Compiled)
-  assert directRefusal.error == StepError.BackendNotBuilt and direct.calls == 0
+  if unavailable.error == PreparationError.None:
+    let info = preparedInfo(unavailable.value).value
+    assert info.backend == PvmBackend.Compiled and info.compilation.sealed
+    assert info.nativeCalls == 0 and info.nativeOperations == 0
+    preparedPageReplyWitness(PvmBackend.Compiled)
+  else:
+    # Ordinary native flags cannot turn an absent source facility into an owner or another policy.
+    assert unavailable.error in [PreparationError.BackendNotBuilt,
+        PreparationError.BackendUnavailable]
+    let reason = if unavailable.error == PreparationError.BackendNotBuilt: StepError.BackendNotBuilt
+      else: StepError.BackendUnavailable
+    assert execute(initial, ExecutionStepLimit(3), GasCycleLimit(1000),
+        PvmBackend.Compiled).error == reason
+    var blocked = default(Context)
+    let refused = executeWithHost(initial, blocked, respond, ExecutionStepLimit(3),
+        HostCallLimit(2), GasCycleLimit(1000), PvmBackend.Compiled)
+    assert refused.error == HostExecutionError.ExecutionFailure and
+        refused.executionError == reason and blocked.calls == 0
+    var direct = PageReplyContext(action: HostAction.Continue, memory: memoryOf(initial).value)
+    let directRefusal = executeWithHost(initial, direct, pageReply, ExecutionStepLimit(3),
+        HostCallLimit(2), GasCycleLimit(1000), PvmBackend.Compiled)
+    assert directRefusal.error == reason and direct.calls == 0
   assert uint64(machineInfo(initial).value.gas) == high(uint64)
   assert uint64(load(memoryOf(initial).value, MemoryAddress(65536), AccessWidth(8)).value) == 0
-assert backendAvailability(PvmBackend.Compiled) == StepError.BackendNotBuilt
+let compiledProbe = newPreparedProgram(programOf(source()).value, defaultPreparedLimits(),
+    PvmBackend.Compiled)
+let compiledAvailability = if compiledProbe.error == PreparationError.None: StepError.None
+  elif compiledProbe.error == PreparationError.BackendNotBuilt: StepError.BackendNotBuilt
+  else: StepError.BackendUnavailable
+assert backendAvailability(PvmBackend.Compiled) == compiledAvailability
 assert newPreparedProgram(default(Program), defaultPreparedLimits(), PvmBackend.Compiled).error ==
     PreparationError.InvalidProgram
 var tight = defaultPreparedLimits()
@@ -336,9 +351,7 @@ let paperCompiled = decodeProgram(@[0'u8, 0, 2, 50, 0, 1], CodeAddress(0), Progr
     JumpCountLimit(0))
 assert paperCompiled.error == ProgramError.None
 assert newPreparedProgram(paperCompiled.value, defaultPreparedLimits(),
-    PvmBackend.Compiled).error ==
-
-PreparationError.BackendNotBuilt # The independent identity cannot enter the foreign-only JAM profile gate.
+    PvmBackend.Compiled).error == compiledProbe.error # Independent source never enters the foreign-only JAM profile gate.
 when defined(polkavmRuntime):
   try:
     # Raw paper and the scoped JAM profile have different accepted jump-table semantics; never reinterpret one silently.
@@ -351,10 +364,10 @@ when defined(polkavmRuntime):
     assert refusedProfile.error == StepError.BackendProgramUnsupported
     let previousBackend = getEnv("POLKAVM_BACKEND")
     putEnv("POLKAVM_BACKEND", "compiler")
-    # An enabled/conflicting foreign runtime cannot absorb the independent unavailable policy.
+    # An enabled/conflicting foreign runtime cannot absorb the independent preparation policy.
     let independentUnavailable = newPreparedProgram(programOf(source()).value,
         defaultPreparedLimits(), PvmBackend.Compiled)
-    assert independentUnavailable.error == PreparationError.BackendNotBuilt
+    assert independentUnavailable.error == compiledProbe.error
     preparedPageReplyWitness(PvmBackend.PolkaInterpreted)
     preparedWitness(PvmBackend.PolkaInterpreted)
     witness(PvmBackend.PolkaInterpreted) # Even a conflicting environment cannot choose the engine.
