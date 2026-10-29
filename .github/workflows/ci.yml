@@ -717,7 +717,6 @@ jobs:
       - *checkout
       - *python
       - name: Resolve current master and optional prepared baseline
-        if: ${{ matrix.family.group == 'x86_64' }}
         run: |
           git fetch --no-tags origin master:refs/remotes/origin/master
           python3 - <<'PYBASE'
@@ -752,6 +751,8 @@ jobs:
         run: make bench-pvm-x86-applications
       - name: Compare public ARM64 JIT and checked interpreters
         if: ${{ matrix.family.group == 'arm64' }}
+        env:
+          PVM_JIT_BASELINE: ${{ inputs.pvm_prepared_baseline }}
         run: make bench-pvm-arm64-applications
       - name: Show complete comparison
         if: always()

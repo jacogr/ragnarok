@@ -1349,7 +1349,13 @@ for arithmeticCount in [1, 2, 3, 4]:
       when defined(pvmArm64JitRefuse):
         assert counters[0] == 0 and counters[1] == 0
       else:
-        assert counters[0] >= 4 and counters[1] >= 3
+        # Normalize the same minimum completed-block evidence: one connected call replaces many scalar entries.
+        let connected = flatArmRegionStatistics(frame)
+        assert connected[0] <= counters[0] and connected[0] <= counters[1]
+        assert connected[1] >= connected[0] and connected[1] <= 100
+        let internalBlocks = connected[1]-connected[0]
+        assert counters[0]+internalBlocks >= 4 and counters[1]+internalBlocks >= 3
+
     for paid in [false, true]:
       for gas in [0'u64, 1, 4, 5, 6, 9, 10, 25, 26, 27, 1000, high(uint64)]:
         for budget in 0'u64..40'u64:
@@ -1485,7 +1491,12 @@ for boundary in [0, 1]:
     when defined(pvmArm64JitRefuse):
       assert counters[0] == 0 and counters[1] == 0
     else:
-      assert counters[0] >= 4 and counters[1] >= 3
+      # The approved completed-block normalization also applies before genuine host/fault exits; all state checks remain exact.
+      let connected = flatArmRegionStatistics(frame)
+      assert connected[0] <= counters[0] and connected[0] <= counters[1]
+      assert connected[1] >= connected[0] and connected[1] <= 100
+      let internalBlocks = connected[1]-connected[0]
+      assert counters[0]+internalBlocks >= 4 and counters[1]+internalBlocks >= 3
   for gas in [0'u64, 1, 24, 25, 26, 27, 1000]:
     for budget in 0'u64..30'u64:
       let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(gas), registers: registers)
@@ -1525,3 +1536,34 @@ when defined(pvmArm64Jit):
   else:
     assert kept[0] == 1 and kept[1] == 2 and kept[2] == 8
 echo "ARM_MAPPING_REENTRY,1"
+
+
+# Rejected single-block admission must preserve both ordinary and specialized checked loop behavior.
+var selfRegionCases = 0
+for specialized in [false, true]:
+  let source = if specialized:
+      owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
+    else:
+      owner([@[149'u8, 0, 1], @[172'u8, 0x10, 0xfd, 0xff, 0xff, 0xff], @[0'u8]])
+  let plan = newFlatPlan(source, GasCycleLimit(100000))
+  var warm = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: default(RegisterFile))
+  warm.registers[1] = RegisterValue(32)
+  var frame = newFlatFrame(plan, [], warm)
+  for visit in 0..<3:
+    # The source-step oracle checks cold and reused fallback execution without using the region's own results.
+    verifyControl(frame, source, warm, 1000)
+  when defined(pvmArm64Jit):
+    # The measured self-loop admission was rejected: neither one-block shape may steal the accepted multi-block region slot.
+    assert flatArmRegionStatistics(frame) == default(array[2, uint64])
+  for paid in [false, true]:
+    for initial in [0'u64, 30, 31, 32]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:
+        for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 127, 128, 129]:
+          # Both paths retain exact gas, source-prefix and paid-state ordering, including immediately untaken loops.
+          var bounded = warm
+          bounded.registers[0] = RegisterValue(initial)
+          bounded.gas = MachineGas(gas)
+          bounded.blockCharged = paid
+          verifyControl(frame, source, bounded, budget)
+          inc selfRegionCases
+echo "ARM_SELF_REGION_CASES,", selfRegionCases

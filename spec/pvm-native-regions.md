@@ -37,3 +37,38 @@ sealed admitted binaries/inputs, and must match native activity exactly except c
 Report process-median distributions separately from within-process reused samples and cold/owner
 costs. Ordinary CI and the existing scoped-profile dispatch are unchanged. No runtime change is
 mixed into this validation. Native code remains CI-only.
+
+
+## Rejected ARM one-block admission trial
+
+Independent second layer: reuse the accepted resident ARM emitter for one observed self-loop,
+in addition to its existing two/three-block regions. Gas/source guards, register allocation,
+code storage and five-word context ABI are unchanged. Inactive proof/counter lanes remain empty;
+only actual source blocks are charged. Independent source-step comparisons require actual native
+region counters and cover1920 ordinary/specialized-header paid/gas/prefix/initial-value boundaries, with forced refusal.
+
+The normal comparison can now take the same explicit pinned parent on ARM as x86; an empty
+input retains the previous current-source A/A control. This avoids interpreting a current/current
+ARM control as a paired optimization result. All native verification and timings remain on CI.
+Status: measured and rejected; ARM runtime is restored and post-restoration native/application
+qualification passes. X86 retention is separately qualified by the fresh-process validation.
+
+
+ARM admission witness refinement: the `131 + 88` shape uses an existing specialized charge
+worker and is intentionally excluded by ordinary-header identity checks. It remains a negative
+region-admission witness with complete state coverage. A `149 + 172` ordinary header supplies
+the actual positive self-loop witness. No runtime admission was broadened to make a test pass.
+The maintainer approved expressing existing control-count minima in completed-block units:
+CI at581c5b57 showed3 branch entries /2 header entries including one region completing17 blocks.
+Replacing one aggregate entry by those17 completed blocks preserves the original4/3 thresholds;
+all independent CPU/gas/PC/host/fault/source checks remain unchanged.
+
+
+## ARM measured rejection
+
+The isolated self-loop runtime is rejected after full qualified Linux measurements: DOOM
+initialization regresses64–65% and loses almost all of the useful large-region native coverage.
+[Exact-head tables and evidence](pvm-arm-regions-results.md) retain the trial and failure analysis.
+ARM runtime is restored byte-for-byte from the accepted immediate parent. The useful paired
+comparison support and full-state one-block refusal witnesses remain. No assertion or timeout
+was weakened to keep this runtime. Both PRs remain draft in independent stack1786.

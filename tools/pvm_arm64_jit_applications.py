@@ -29,7 +29,7 @@ from pvm_comparison_policy import policy_receipt
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
-BASELINE = os.environ.get('PVM_JIT_BASELINE')
+BASELINE = os.environ.get('PVM_JIT_BASELINE') or None
 ROLES = ('interpreter', 'baseline', 'jit', 'core', 'reference')
 COUNTERS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns', 'branches', 'headers')
 
