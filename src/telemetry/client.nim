@@ -10,6 +10,7 @@
 import std/[strutils, oserrors, nativesocket]
 import std/posix/posix
 import ./wire
+import ../lib/logging
 
 type
   # Opaque native address bytes are filled only by inet_pton; no Nim array layout crosses the ABI.
@@ -34,6 +35,7 @@ type
     address6: Sockaddr_in6
     ipv6: bool
     metadata: Metadata
+    logWriter: LogWriter
     buffer: array[2048, byte]
     length, offset: int
     retryAt, deadline, statusAt: int64
@@ -111,8 +113,10 @@ proc enabled*(client: Client): bool =
   ## Observation adapters query this owner, not process-global command-line configuration.
   client.enabled
 
-proc configure*(client: var Client, endpoint: string, metadata: Metadata): bool =
+proc configure*(client: var Client, endpoint: string, metadata: Metadata,
+    writer: LogWriter = default(LogWriter)): bool =
   ## Configure once before ticking. Unsupported endpoints and metadata fail without opening any socket.
+  ## An optional writer is borrowed; its logger must outlive this client.
   # Reconfiguration could replace native ownership or a partially sent frame.
   if client.enabled or client.opened or metadata.coreCount == 0: return false
   # IPv6 mixed notation needs at most 45 host bytes, brackets, colon and five port digits.
@@ -169,6 +173,7 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata): bool 
   client.lost = 0
   client.nextEvent = 0
   client.connecting = false
+  client.logWriter = writer
   client.enabled = true
   true
 
@@ -182,6 +187,8 @@ proc failed(client: var Client, now: int64) =
   client.offset = 0
   client.lost = 0
   client.retryAt = now + 5000
+  log(client.logWriter, LogTarget.Telemetry, LogLevel.Warn,
+    "Telemetry collector connection unavailable; retrying in 5s")
 
 # Retain one complete bounded frame; caller must have finished the preceding frame.
 proc queue(client: var Client, bytes: openArray[byte], now: int64) =
@@ -242,6 +249,7 @@ proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
 
 # Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
+  log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connecting to telemetry collector")
   let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
   client.fd = socket(cint(ord(family)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   # Resource exhaustion must not fail the peer or cause a busy retry loop.
@@ -274,6 +282,8 @@ proc begin(client: var Client, now: int64, timestamp: Timestamp) =
     client.failed(now)
     return
   client.connecting = connected != 0
+  if not client.connecting:
+    log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
   client.statusAt = now + 2000
   var frames = registration(client.metadata)
   if client.nextEvent > 0:
@@ -318,6 +328,7 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
       client.failed(now)
       return
     client.connecting = false
+    log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
   if client.length == 0: return # Connected idle clients have nothing to send.
   var flags = 0.cint
   when not defined(macosx):

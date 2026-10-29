@@ -5,6 +5,7 @@
 ## CE128 serving/polling and durable replay of validated blocks. No finality or fork choice is claimed.
 
 import ../lib/logging
+import ./node_logging
 
 import std/[os, strutils, times, monotimes, syncio]
 import ../pvm/backend
@@ -53,14 +54,16 @@ proc diagnostic(outcome: CurrentCandidateResult): string =
     result.add("/" & $outcome.completionFailure.error) # Completion refusal is distinct from a malformed seal.
 
 proc admit(chain: var ApplicationChain, raw: seq[byte], limits: CurrentCandidateLimits,
-    journal: var seq[byte], path: string, durable: bool): bool =
+    journal: var seq[byte], path: string, durable: bool, logging: LogWriter): bool =
   ## Prepare through the ordinary complete-state path; only durable journal publication authorizes installation.
   let parsed = decodeBlock(raw, limits.reporting.admission.frame)
   if parsed.error != block_codec.FrameError.None or parsed.value.consumed != raw.len:
+    log(logging, LogTarget.Application, LogLevel.Warn, "Block rejected: invalid encoding")
     stderr.writeLine("DEVNET_REFUSED decode")
     return false
   let prepared = prepareCurrentCandidate(chain, parsed.value.owner, [], limits)
   if prepared.error != CurrentCandidateError.None:
+    log(logging, LogTarget.Application, LogLevel.Warn, "Block rejected: " & diagnostic(prepared))
     stderr.writeLine("DEVNET_REFUSED " & diagnostic(prepared))
     return false # Failed validation leaves the parent, journal and network catalog unchanged.
   if not chain.canInstallPrepared(prepared.value): return false
@@ -74,6 +77,7 @@ proc admit(chain: var ApplicationChain, raw: seq[byte], limits: CurrentCandidate
       return false # Visible-but-unsynced publication stops authoring rather than pretending durability.
     journal = next
   chain.installPrepared(prepared.value)
+  log(logging, LogTarget.Application, LogLevel.Info, "Imported block, " & chain.describeHead)
   true
 proc observation(chain: ApplicationChain, folder: string, index: int, source: string): bool =
   ## Complete checkpoints are observations, while the validated block journal remains restart authority.
@@ -153,7 +157,8 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       var raw = newSeq[byte](int(count))
       for octet in 0..<raw.len: raw[octet] = journal[cursor+octet]
       let parent = array[32, byte](chain.chainView.bestBlock.value.blockHash)
-      if not admit(chain, raw, limits, journal, journalPath, false) or not network.publish(parent, raw):
+      if not admit(chain, raw, limits, journal, journalPath, false, logging) or not network.publish(
+          parent, raw):
         return 2 # Replaying a journal always reruns GP checks; no trusted successor map is loaded.
       cursor += raw.len
       inc records
@@ -162,6 +167,10 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   if not network.open(uint16(base+index), certificate, keyFile, alpn, peers):
     stderr.writeLine("DEVNET_START_FAILED transport")
     return 2
+  logRuntimeIdentity(logging)
+  log(logging, LogTarget.Startup, LogLevel.Info, "Role: development AUTHORITY; validator=" & $index)
+  log(logging, LogTarget.Storage, LogLevel.Info, "Block journal: " & journalPath)
+  log(logging, LogTarget.Network, LogLevel.Info, "Development QUIC listener: [::1]:" & $(base+index))
   stdout.writeLine("DEVNET_READY node=" & $index)
   flushFile(stdout)
   let deadline = start+stop*6000+15000
@@ -180,11 +189,12 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       let authored = authorEmptyBlock(head, HeaderSlot(uint32(slot)), secret.value,
         limits.reporting.admission.frame, limits.reporting.safrole)
       if authored.error == BlockAuthorError.None:
+        log(logging, LogTarget.Application, LogLevel.Info, "Authored development block at slot " & $slot)
         var raw = newSeq[byte](65536)
         let encoded = encodeOwnedBlock(authored.value, raw)
         if encoded.error != block_codec.FrameError.None: return 2
         raw.setLen(encoded.value)
-        if not admit(chain, raw, limits, journal, journalPath, true) or
+        if not admit(chain, raw, limits, journal, journalPath, true, logging) or
             not network.publish(array[32, byte](head.blockHash), raw) or
             not observation(chain, folder, int(index), "local"): return 2
       elif authored.error != BlockAuthorError.NotEligible:
@@ -201,11 +211,12 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
         if raw.len >= 32:
           for octet in 0..<32: parent[octet] = raw[octet]
         if parent == array[32, byte](current.blockHash):
-          if admit(chain, raw, limits, journal, journalPath, true):
+          if admit(chain, raw, limits, journal, journalPath, true, logging):
             if not network.publish(parent, raw) or not observation(chain, folder, int(index),
                 "peer"): return 2
             attemptedSlot = 0 # A changed parent can make this process eligible later in the same wall-clock slot.
         else:
+          log(logging, LogTarget.Application, LogLevel.Warn, "Block rejected: stale parent; fork choice is unavailable")
           stderr.writeLine("DEVNET_REFUSED stale-parent") # A response to an older local head cannot roll the node back.
       peer = (peer+1) mod 6
       if peer == int(index): peer = (peer+1) mod 6
@@ -220,6 +231,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   if chain.chainView.bestBlock.value.slot != uint32(stop):
     stderr.writeLine("DEVNET_INCOMPLETE node=" & $index)
     return 2
+  log(logging, LogTarget.Startup, LogLevel.Info, "Stopping development validator " & $index)
   stdout.writeLine("DEVNET_COMPLETE node=" & $index)
   flushFile(stdout)
   0

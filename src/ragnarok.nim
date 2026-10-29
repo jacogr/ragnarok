@@ -11,7 +11,7 @@ import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command, startup]
+    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command, startup, node_logging]
 import ./pvm/step
 import ./version
 import ./lib/[logging, json_writer]
@@ -19,12 +19,14 @@ import ./storage/history_index
 
 proc writeFailure(logger: var Logger, message: string) =
   ## Command producers have retired; drain and join stderr logging before its final CLI line.
+  if logger.active: log(logger.writer, LogTarget.Startup, LogLevel.Error, message)
   close(logger)
   stderr.writeLine(message)
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
   var logger = default(Logger)
+  var shutdownWriter = default(LogWriter)
   try:
     var arguments: seq[string] = @[]
     for i in 1..paramCount(): arguments.add(paramStr(i)) # Copy process input once at the application boundary.
@@ -89,6 +91,8 @@ proc main(): int =
       return 2
     if not logger.start(options.loggingPolicy): return 2
     options.attachLogWriter(logger.writer)
+    shutdownWriter = options.logWriter
+    logNodeStartup(options)
     let available = backendAvailability(options.pvmBackend)
     if available != StepError.None:
       writeFailure(logger, "PVM_BACKEND_UNAVAILABLE requested=" & $options.pvmBackend & " reason=" & $available)
@@ -102,7 +106,7 @@ proc main(): int =
       stdout.writeLine(report)
       return 0 # Standalone execution retires all prepared/native owners before process teardown.
 
-    log(options.logWriter, LogTarget.Startup, LogLevel.Info, "Ragnarok " & AppVersion & " " & AppRevision)
+
     if options.argumentCount() == 1 and options.argument(1) == "history":
       let outcome = runHistoricalQuery(options)
       if outcome.error == HistoryError.None:
@@ -208,6 +212,7 @@ proc main(): int =
     2
 
   finally:
+    log(shutdownWriter, LogTarget.Startup, LogLevel.Info, "Shutdown complete")
     close(logger) # Every command retires its service/producer borrows before the application writer joins.
 
 when isMainModule: quit(main()) # Never exit while a dispatcher or native callback still borrows a retiring Peer.

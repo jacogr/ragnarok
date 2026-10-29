@@ -29,7 +29,7 @@ is available in dedicated command grammars and offline trace checking. No enviro
 mutable policy is introduced. This increment does not add dynamic runtime reconfiguration.
 
 The `log` template checks filters before evaluating message expressions. Fully disabled policy
-starts no output thread. Records have a `[level][target] ` prefix, escaped non-ASCII/control bytes
+starts no output thread. Records have a UTC `YYYY-MM-DD HH:MM:SSZ [level][target] ` prefix, escaped non-ASCII/control bytes
 and exactly one physical newline. Each complete record is capped at 2048 bytes, including a visible
 truncation suffix. Callers remain responsible for bounding enabled message construction; the
 record cap bounds encoding/copying, not an arbitrary caller's formatting work.
@@ -87,3 +87,50 @@ The affected authorization, refinement, accumulation and host-gas suites passed 
 occupied-memory baselines across 1000 cycles. Inventory, repository formatting and diff checks
 passed. Logs are retained under `build/ci/logging-*` and `build/tests/logging-*` in the isolated
 logging checkout. Full Linux CI and whole-client parity are not claimed by this local evidence.
+
+## Default node observations
+
+The normal node output uses the existing bounded async logger. UTC timestamps are captured at
+submission, so sink delay cannot change the event time. Date formatting uses bounded local
+storage and thread-safe libc conversion; the record cap still includes the entire timestamp.
+The queue, drop policy, producer filtering, PVM gas semantics and joined sink ownership are unchanged.
+
+Startup reports executable revision, target OS/architecture, compiler, full/light role, block
+production capability, selected data/storage/chain paths and public certificate identity. Successful
+service startup names the actual RPC/UI/MCP/management endpoints and UI asset source; telemetry
+reports its configured destination, connection attempts/success, and failures with the existing
+five-second retry delay. A collector refusal never stops peer networking. Shutdown follows real transport, worker, listener and storage
+retirement. Development validators identify their authority role separately from ordinary peers.
+No secret key contents, guest memory or unbounded remote strings are used as identity labels.
+
+Peer admission/authentication failures and invalid/incomplete request frames are warnings;
+connections, disconnections, imported blocks and development authoring are informational.
+Imports log only after confirmed installation; stale-parent development replies are rejected and
+explicitly identify the absent fork-choice policy. Download progress counts confirmed imports
+against the explicitly requested finite target, not an inferred network height.
+
+Every five monotonic seconds, foreground listeners report peers, observed local best/finality
+where available, UDP receive/send rates and accepted/rejected request counts. Worker leases
+exclude head reads: status reports busy instead of touching borrowed state. Datagram counters
+saturate and never influence admission. No peers or missing tip information remains waiting/unknown;
+it never implies caught-up, zero lag or permission to produce blocks. Continuous sync target discovery
+and participation gating are owned by the parallel state work. Follow-up logging will consume
+those readiness interfaces after both tranches land. JAM slots are
+labelled as slots, never global block numbers. Existing stdout command/readiness contracts remain;
+fixture-only peer/idle/auth/timeout markers are suppressed for the foreground listener.
+
+The logging native suite checks timestamp shape plus existing bounds, escaping, drop counts and
+concurrency. Host logging checks the timestamped record while retaining its gas/register/memory
+assertions. The existing startup E2E workload additionally checks default role/platform/identity,
+periodic unknown sync state, graceful shutdown and quiet warning/off levels against the built node.
+It also checks UI/RPC/MCP/management lifecycle messages and a refused telemetry connection followed
+by a successful bounded retry to a live TCP collector.
+
+Local completion evidence on macOS arm64 with pinned Nimony `63fed6cb4`: the production build,
+`logging`, `pvm_host_log`, `app_cli`, `application_services`, `light_runtime` and `telemetry` native suites,
+twelve live startup/logging checks, the original 16-case authenticated transport matrix,
+12 repeated cold starts and CLI refusal controls passed. The CLI and Services ARC witnesses
+retained equal before/after usage over 1000 cycles. Five current-download Python harness tests,
+source inventory, changed-source pinned formatting and whitespace checks passed. Evidence is
+retained under `build/node-logging-*`. Linux CI is separate evidence. Existing fixtures remain
+unchanged; sync target discovery/readiness is deliberately not inferred by this logging tranche.

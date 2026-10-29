@@ -59,6 +59,7 @@ type
     peer: nil PeerCallback
     buffer: array[2048, byte]
     stopping, failed: bool
+    receivedBytes, sentBytes: uint64 # Copied diagnostic totals never grant transport/protocol authority.
 
 # Nominal handle equality permits slot lookup without exposing transport internals.
 proc `==`*(left, right: NativeStream): bool {.borrow.}
@@ -160,7 +161,9 @@ proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, port: uint
   # Validate narrowing before passing the C-owned buffer to the synchronous OS adapter.
   if length > csize_t(owner.buffer.len): owner.failed = true; return 0
   let sent = owner.socket.send(cast[pointer](bytes), int(length), port)
-  if sent == int(length): return 1 # Only a complete datagram counts as delivered.
+  if sent == int(length):
+    owner.sentBytes = owner.sentBytes + min(uint64(length), high(uint64)-owner.sentBytes)
+    return 1 # Only complete datagrams contribute to diagnostic traffic.
   if sent == -1: owner.failed = true # Would-block/interrupt remains retryable.
   0
 
@@ -247,6 +250,10 @@ proc peerMetric*(owner: Transport, metric: int): uint64 {.raises: [].} =
   ## Copy bounded endpoint counters; no native handle or TLS storage escapes this observation.
   nativeMetric(owner.engine, cint(metric))
 
+func trafficBytes*(owner: Transport): tuple[received, sent: uint64] =
+  ## Saturating process-local datagram totals include framing and handshake bytes.
+  (owner.receivedBytes, owner.sentBytes)
+
 proc closedConnections*(owner: Transport): uint64 {.raises: [].} =
   ## Lifetime close callbacks, including unsuccessful attempts; pair with authentication evidence for telemetry.
   peerMetric(owner, 2) # rq_peer_metric selector 2: retired connection handles.
@@ -268,6 +275,8 @@ proc drain(owner: var Transport): bool =
       return false
     # Empty or out-of-scope datagrams cannot fabricate native peer activity.
     if received > 0:
+      owner.receivedBytes = owner.receivedBytes + min(uint64(received), high(
+          uint64)-owner.receivedBytes)
       discard packetIn(owner.engine, addr owner.buffer[0], csize_t(received), port)
       process(owner.engine)
   not owner.failed
