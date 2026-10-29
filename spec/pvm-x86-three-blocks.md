@@ -383,3 +383,111 @@ imports after its old header was restored. Add those imports; keep all3,546 sour
 and six root controls, runtime checks and deadlines. Originating compiler logs are
 retained in `build/pvm-jit-retained/first/pvm-comparison-x86_64-1`. This build failure
 is not an x86 correctness/timing receipt.
+
+## Retained evidence for the deferred separated-path model
+
+### Same-runner repetition 40797980113
+
+[Run 40797980113](https://github.com/jacogr/ragnarok/actions/runs/40797980113),
+head `4495d0e2f30e6ae75d498660c89fe7a501c044b9`, accepted parent
+`07895cad346b28dce99f6c268169aaa589c4c055`, CPU `AMD EPYC 7763 64-Core Processor`.
+Both independent audits pass70 processes/910 checked calls/115 controls/16 fresh
+builds/eight equal-image pairs, fifteen native gates and eight cold/reused
+profiles/104 calls/four collection controls. The second run retains four normal
+ELFs with exact cohort/profile image hashes. No hardware counters were collected.
+CPU milliseconds forward/reverse, reused samples1..12; constructors/cold separate.
+Reference is call-only. These models are deferred and absent from production.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 3.280/3.289 | 3.264/3.223 | 3.718/3.852 | 6.049/6.104 | 0.540/0.528 |
+| Minimal100k | 6.335/6.349 | 6.236/6.244 | 6.299/6.265 | 7.525/7.477 | 0.829/0.835 |
+| Memory fill100k | 4.981/4.672 | 4.665/4.643 | 4.748/4.901 | 4.197/4.207 | 1.111/1.104 |
+| Pinky | 131.154/129.906 | 151.628/123.786 | 153.750/169.709 | 189.310/185.986 | 0.801/0.666 |
+| Sieve10m | 323.419/341.063 | 338.616/326.033 | 377.218/365.736 | 445.457/445.051 | 0.760/0.733 |
+| DOOM initialization | 585.315/567.929 | 331.369/334.507 | 676.360/607.047 | 775.096/768.039 | 0.428/0.436 |
+| DOOM gameplay | 55.328/57.501 | 58.440/66.758 | 64.164/59.922 | 52.947/52.251 | 1.104/1.278 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 3.697/3.857 | 4.206/3.669 | 12.575/12.040 | 12.734/12.459 |
+| Minimal100k | 0.022/0.023 | 0.022/0.018 | 6.796/6.909 | 6.640/6.714 |
+| Memory fill100k | 0.068/0.066 | 0.069/0.068 | 10.456/12.290 | 10.461/10.120 |
+| Pinky | 0.889/0.865 | 0.839/0.834 | 144.676/139.687 | 158.736/130.208 |
+| Sieve10m | 3.689/3.870 | 3.747/3.749 | 334.076/353.231 | 349.063/334.852 |
+| DOOM initialization | 14.056/10.929 | 10.886/11.102 | 628.914/607.804 | 368.934/367.397 |
+| DOOM gameplay | 14.083/10.999 | 10.951/10.840 | 89.585/85.096 | 88.986/93.332 |
+
+Report SHA256 (applications/native/profiles):
+
+- `094b48b144bdc7b724b9990117d0abcb80509fdd2977ffedf6ef146599f57bdf`
+- `89571f01a07b6d041d387e047e7e641646e9ba3502063df7ea0e2c005615ac3b`
+- `bd86c17deeab56af616d83f1109ee9bf22eae250b9063ef8eae505702ddc00d9`
+
+### Same-runner repetition 40799315073
+
+[Run 40799315073](https://github.com/jacogr/ragnarok/actions/runs/40799315073),
+head `5a9c4be4df579f21d6a5dc7394cc0d83727b0cd4`, accepted parent
+`07895cad346b28dce99f6c268169aaa589c4c055`, CPU `AMD EPYC 9V45 96-Core Processor`.
+Both independent audits pass70 processes/910 checked calls/115 controls/16 fresh
+builds/eight equal-image pairs, fifteen native gates and eight cold/reused
+profiles/104 calls/four collection controls. The second run retains four normal
+ELFs with exact cohort/profile image hashes. No hardware counters were collected.
+CPU milliseconds forward/reverse, reused samples1..12; constructors/cold separate.
+Reference is call-only. These models are deferred and absent from production.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 1.624/1.596 | 1.659/1.573 | 1.923/2.023 | 3.741/3.733 | 0.443/0.421 |
+| Minimal100k | 3.432/3.482 | 3.404/3.481 | 3.622/3.431 | 3.864/4.296 | 0.881/0.810 |
+| Memory fill100k | 2.312/2.296 | 2.333/2.292 | 2.586/2.519 | 2.573/2.637 | 0.907/0.869 |
+| Pinky | 64.681/63.977 | 62.406/62.875 | 83.227/82.804 | 90.129/89.774 | 0.692/0.700 |
+| Sieve10m | 159.118/166.730 | 161.135/163.543 | 187.585/187.876 | 260.502/255.380 | 0.619/0.640 |
+| DOOM initialization | 266.321/277.977 | 165.139/169.464 | 287.582/286.913 | 435.338/432.901 | 0.379/0.391 |
+| DOOM gameplay | 29.345/30.781 | 31.581/33.123 | 32.391/31.285 | 33.614/32.189 | 0.940/1.029 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.564/2.281 | 2.467/2.306 | 7.393/7.735 | 7.909/7.356 |
+| Minimal100k | 0.016/0.017 | 0.015/0.017 | 3.533/3.568 | 3.504/3.601 |
+| Memory fill100k | 0.050/0.049 | 0.048/0.061 | 7.787/6.652 | 6.516/8.027 |
+| Pinky | 0.536/0.577 | 0.589/0.580 | 68.261/67.691 | 65.643/66.494 |
+| Sieve10m | 2.719/2.499 | 2.460/2.590 | 162.436/172.017 | 170.590/168.220 |
+| DOOM initialization | 6.804/9.019 | 8.770/6.571 | 308.748/312.223 | 195.919/198.219 |
+| DOOM gameplay | 8.008/6.625 | 6.646/8.876 | 64.381/51.735 | 50.565/56.234 |
+
+Report SHA256 (applications/native/profiles):
+
+- `5c97f04aecd98761b62dd0714cc8f926137bcadf9dcea6a91d64bb5be598ccf6`
+- `35117e39b8854e3455fc693515381648f34c74a85156171e67dde405f336a935`
+- `d7c3f5dc2a5129d95395383a00e048ae772aef70adc7ff3370706743fb2d7b17`
+
+### What the code inspection establishes
+
+On the second cohort, the small source adapter is173 instructions on both sides,
+whole-entry worker123 and outer dispatch118. Their relocation-normalized instruction
+sequences and self Ir match. The small native-call accounting adds six defensive
+mode-check instructions (122→128,5,050,000→5,250,000 sieve self Ir); its mode must
+be checked before entering a five-word foreign context. The new six-word function
+is separate and unused by gameplay. Of36 selected gameplay entries,34 normalize
+identically; the other two are that small guard and the new unused function.
+Gameplay total Ir is584,513,126 on both sides. Function addresses differ modulo64;
+this is an observation, not a hardware-cause measurement. Simulated branch misses
+cannot explain the observed CPU cost by themselves.
+
+The fold child's later minimal diagnostic (run40801220615, head1fca6f34 versus
+4495d0e2) executes zero native fragments and identical92,997,007 Ir on both sides.
+All38 selected minimal and36 gameplay instruction sequences normalize identically.
+The same-source/image controls40803954273 and40804664100 use1fca6f34 for both
+roles and enforce equal source/ELF bytes. Six repeated minimal process pairs have
+median about+0.4%, without the large9% slowdown; the same-image calibrated minimal
+counters also match exactly. This rules out that large default-versus-explicit
+policy-role bias in these controls; it does not identify a specific CPU mechanism.
+Exact raw profiles, per-function assembly and summaries remain in ignored
+`build/pvm-x86-three/small-path-images/tests/code-shape-*` and
+`build/pvm-shift-pairs/x86-minimal-profile/pvm-comparison-x86_64-1/tests/code-shape-*`.
+
+Keep the accepted small x86 runtime while this placement-sensitive effect is
+investigated separately. A larger constructive gap is guarded native read coverage:
+x86 minimal currently emits no native fragments, while the ARM read-family trial
+has useful measured gains. No new experiment is started after this bounded run.
