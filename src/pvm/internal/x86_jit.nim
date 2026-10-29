@@ -55,6 +55,23 @@ proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
+proc prepareX86Storage*(jit: X86Jit): bool =
+  ## Explicit eager construction owns executable storage before a usable all-fallback stream can escape.
+  if jit.unavailable: return false
+  if jit.arena.handle == nil:
+    when defined(pvmX86JitRefuse): discard
+    else: jit.arena.handle = createNative()
+    if jit.arena.handle == nil: jit.unavailable = true
+  not jit.unavailable
+
+func x86SourceEntryKind*(jit: X86Jit, offset: uint32): uint8 =
+  ## Zero checked policy, one native entry, two publication capacity, three absent coordinate capacity.
+  if int(offset) >= jit.entries.len: return 3'u8
+  let entry = jit.entries[int(offset)]
+  if entry.code >= 2: 1'u8
+  elif entry.ending == high(uint32): 2'u8
+  else: 0'u8
+
 func supportedX86Opcode*(opcode: byte): bool =
   ## Baseline x86-64 instructions implement these non-exiting scalar operations without optional CPU extensions.
   opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
@@ -193,6 +210,9 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
       ending <= offset or ending > uint32(jit.entries.len) or
       jit.fragments >= 1024 or fragment.bytes.len == 0 or fragment.bytes.len >= 4096:
     refuseX86Entry(jit, offset)
+    if jit.fragments >= 1024 and jit.entries[int(offset)].code < 2:
+      # A non-executable refusal may carry a diagnostic sentinel without changing the entry ABI.
+      jit.entries[int(offset)].ending = high(uint32)
     return false
   var bytes = fragment.bytes
   bytes.add(0xc3) # RET is the sole exit; no generated arithmetic operation can suspend or fault.
@@ -205,6 +225,7 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   let code = publishNative(jit.arena.handle, addr bytes[0], uint32(bytes.len))
   if code < 0:
     refuseX86Entry(jit, offset)
+    if jit.entries[int(offset)].code < 2: jit.entries[int(offset)].ending = high(uint32)
     return false
   jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count,
       conditional: conditional)

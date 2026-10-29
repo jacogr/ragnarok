@@ -77,12 +77,17 @@ def qualify(checks, compiler, *, native=True):
         ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit'] if native else []),
         ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
-        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
+        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else []),
+        ('source-sealing','tests/unit/codec/test_pvm_source_sealing.nim',['pvmArm64Jit'] if native else []),
+        ('source-sealing-refused','tests/unit/codec/test_pvm_source_sealing.nim',['pvmArm64Jit','pvmArm64JitRefuse'])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
+        if name.startswith('source-sealing'): defines = [*defines, 'pvmSourceSealingReceipt']
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        if name.startswith('source-sealing') and checked['output'] != 'PVM_SOURCE_SEALING_OK\n':
+            raise ValueError('Missing complete source-only sealing witness')
         if name.startswith('witness'):
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
                 expected = count if native and name == 'witness' else 0
@@ -161,7 +166,7 @@ def main():
     for parent in ('src','native/pvm_jit'):
         for path in sorted((ROOT/parent).rglob('*')):
             if path.is_file(): identities[path] = digest(path)
-    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c',ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
+    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c',ROOT/'tests/performance/pvm_arm64_jit_ownership.nim',ROOT/'tests/unit/codec/test_pvm_source_sealing.nim']:
         identities[path] = digest(path)
     images = {}
     for mode in ('interpreter','baseline','jit'):

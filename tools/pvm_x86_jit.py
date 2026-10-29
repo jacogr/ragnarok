@@ -33,14 +33,19 @@ def qualify(checks, compiler, rows=None):
         ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
         ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
         ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
+        ('source-sealing', 'tests/unit/codec/test_pvm_source_sealing.nim', False),
+        ('source-sealing-refused', 'tests/unit/codec/test_pvm_source_sealing.nim', True),
         ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
         flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else [])]
+        if name.startswith('source-sealing'): flags += ['pvmSourceSealingReceipt']
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
         run = checks.command([binary], name+'-run', timeout=900)
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
+        if name.startswith('source-sealing') and run['output'] != 'PVM_SOURCE_SEALING_OK\n':
+            raise ValueError('Missing complete source-only sealing witness')
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
                 'X86_PREFIX_CASES,2984\n' not in run['output'] or
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or
@@ -120,6 +125,7 @@ def run():
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
                  ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]
+        paths.append(ROOT/'tests/unit/codec/test_pvm_source_sealing.nim')
         identities = {p:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
         report.update(host=host, revision=subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
             compiler_sha256=identities[compiler], toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),

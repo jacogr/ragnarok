@@ -73,6 +73,22 @@ proc newArmJit*(): ArmJit =
   ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[],
       unavailable: false)
 
+proc prepareArmStorage*(jit: ArmJit): bool =
+  ## Explicit source-only preparation requires a real executable owner even for all-fallback source.
+  if jit.unavailable: return false
+  if jit.arena.handle == nil:
+    jit.arena.handle = createArena()
+    if jit.arena.handle == nil: jit.unavailable = true
+  not jit.unavailable
+
+func armSourceEntryKind*(jit: ArmJit, offset: uint32): uint8 =
+  ## Zero checked policy, one native entry, two publication capacity, three absent coordinate capacity.
+  if int(offset) >= jit.entries.len: return 3'u8
+  let entry = jit.entries[int(offset)]
+  if entry.code >= 2: 1'u8
+  elif entry.ending == high(uint32): 2'u8
+  else: 0'u8
+
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
   opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
@@ -487,6 +503,10 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
   let ceiling = if region: 1024'u64 else: 1023'u64
   if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
     refuseArmEntry(jit, offset)
+    if jit.fragments >= ceiling and int(offset) < jit.entries.len and
+        jit.entries[int(offset)].code < 2:
+      # The refusal marker retains its old non-executable code lane; only cold diagnostics read this sentinel.
+      jit.entries[int(offset)].ending = high(uint32)
     return false
   if jit.arena.handle == nil:
     # A new owner may retry OS availability; this refused owner avoids repeated allocation and map growth.
@@ -500,6 +520,8 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
   let address = publishArena(jit.arena.handle, addr instructions[0], uint32(instructions.len))
   if address < 0:
     refuseArmEntry(jit, offset)
+    if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
+      jit.entries[int(offset)].ending = high(uint32)
     return false
   jit.entries[int(offset)] = ArmEntryRecord(code: uint32(address)+2, operations: count,
       ending: ending)

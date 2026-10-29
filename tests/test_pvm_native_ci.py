@@ -133,6 +133,8 @@ class QualificationTests(unittest.TestCase):
                     output=refused
                 elif '-move-run' in name:
                     output='0\n0\n'
+                elif name.startswith('source-sealing'):
+                    output='PVM_SOURCE_SEALING_OK\n'
                 return dict(exit_code=0,output=output)
         checks=Checks()
         return qualify(checks,Path('/compiler'),native=native),checks.builds
@@ -141,11 +143,13 @@ class QualificationTests(unittest.TestCase):
         """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
-            self.assertEqual(len(rows),9)
+            self.assertEqual(len(rows),11)
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
+            sealed=next(flags for name,flags in builds if name=='source-sealing')
+            self.assertIn('pvmSourceSealingReceipt',sealed)
 
     def test_no_native_execution_and_compiler_failure(self):
         """Zero, missing or duplicate native counters and failed compilation never qualify the runner."""
