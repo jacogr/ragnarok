@@ -148,7 +148,80 @@ exit/fault/host values, immutable source and mapped bytes/permissions are checke
 independent interpretation.
 
 Local verification is source/semantic/Python/format only. Native construction, linked execution
-and performance run on CI. Exact-head two-architecture JIT regression qualification and results
-remain pending; source checks alone do not establish runtime correctness or performance. Public
+and performance run on CI. The functional receipt and unresolved cost gate below supersede the
+initial pending status; source checks alone do not establish runtime correctness or performance. Public
 Compiled integration, real continuing CLI eager cohorts and PolkaVM compiled comparisons remain
 dependent work owned separately. This prerequisite does not close issue #1733.
+
+## October 29 functional qualification and cost hold
+
+The measured candidate is `740d2571d92e07ea0fa9a579133c5a1bd99dd442`, based on repaired master
+`8d398689db55031809445fc1db30de5ac9f6c328`. Its separate changes include the real ARM admission
+policy fix in `2208c092083e1202df34b19e270a6a17bfcc06c3` and preservation of the original frame
+field coordinates in `85b16fdce5753acb8fcd0c535b85551b6a80596d`. The latter keeps eager state
+after all original fields, but still enlarges the frame; no CPU cause is inferred from that layout.
+
+[ARM run40840803110](https://github.com/jacogr/ragnarok/actions/runs/40840803110) and
+[x86 run40840806645](https://github.com/jacogr/ragnarok/actions/runs/40840806645) pass the complete
+native qualification and matched comparison protocols. Each architecture independently retains
+70 measured processes /910 complete-state calls,115 controls,16 fresh builds/eight equal-image
+pairs, plus60 fresh-process replications. The compiler is the unchanged October28 pin. The x86
+receipt identifies AMD EPYC9V45; the ARM receipt reports native aarch64. Figures are paired only
+within each runner. Receipt SHA256 values are:
+
+- ARM: `979c85b72d267e66ed6f84983483a9e1fa1fe3fafd0051d394474358e222a4d1`.
+- x86: `ed1475e34e74d2ae10a17d8fcedba171f90464d482e38a3264a759f816c5ce9e`.
+
+Internal sealing witnesses pass three fresh processes of the same image, including successful
+native construction before any native calls, advancing calls/operations with frozen construction
+observations, refused storage, complete interior-PC/prefix/paid/gas coverage and exact source
+identity. ARM's reviewed counterexample is now explicit: the first entry of33 or64 consecutive
+opcode124 reads is checked both at ordinary coordinates and after132000 trap blocks exceed the
+native map. The32-read neighbor is a real native entry at ordinary coordinates and capacity-deferred
+beyond that map. This uses the same no-publication builder and preserves all original size limits.
+
+The later `9f652e2cd86b794904b7e8e25ae8a260556c7db2` changes only indentation of one comment.
+Its runtime tokens are unchanged (`git diff --ignore-all-space` is empty). Fresh ARM, Linux-x86,
+unbuilt and refused source profiles pass on that formatted tree, and
+[smoke40841498015](https://github.com/jacogr/ragnarok/actions/runs/40841498015) passes. Native
+and CPU evidence remains attributed to740d; it is not relabeled as a new measurement of9f.
+
+Current public reused CPU milliseconds, forward / reverse. Constructor, cold, retained core,
+reset/publication and reference restore/teardown remain separate in the retained reports.
+
+| Workload | ARM baseline | ARM candidate | x86 baseline | x86 candidate |
+| --- | ---: | ---: | ---: | ---: |
+| sieve100k | 2.951 /2.962 | 2.928 /2.956 | 1.697 /1.614 | 1.697 /1.638 |
+| minimal | 5.443 /5.483 | 5.549 /5.716 | 3.590 /3.541 | 3.657 /3.431 |
+| fill | 4.387 /4.388 | 4.363 /4.407 | 2.709 /3.986 | 2.719 /2.494 |
+| Pinky | 85.276 /84.998 | 84.767 /84.728 | 65.152 /63.262 | 64.974 /62.671 |
+| sieve10m | 282.652 /281.963 | 289.595 /289.783 | 165.476 /162.906 | 163.118 /164.976 |
+| DOOM initialization | 314.624 /326.668 | 328.867 /324.297 | 287.283 /287.195 | 291.307 /291.329 |
+| DOOM gameplay | 41.240 /41.272 | 41.294 /41.524 | 31.597 /29.212 | 31.361 /32.647 |
+
+Verdict: functional interface qualified, performance keep/merge blocked. ARM long-sieve is about
+2.46/2.77% slower in the main pairs. Six fresh-process medians independently give282.015ms baseline
+versus289.445ms candidate (+2.63%); ranges280.902–282.640 and284.233–290.286 do not overlap.
+ARM gameplay replication40.952→41.014ms is close; its minimal5.524→5.601ms is about1.4% slower.
+x86's main pairs have visible order variation; replication medians are minimal3.428→3.338ms,
+long-sieve165.172→167.141ms, initialization278.302→283.896ms and gameplay30.585→30.903ms with
+overlapping ranges. No blanket improvement or hardware-cause claim follows. No paired baseline
+retained-core number is manufactured, and these replay runs did not collect instruction/call-arc
+profiles. The repeated ARM regression remains a real default-JIT cost gate.
+
+Historical failures remain preserved. Initial `20cd1530828b14cf6681d48fbccbb989323f6396`
+[ARM40835730400](https://github.com/jacogr/ragnarok/actions/runs/40835730400) failed a new linked
+sealing assertion with no expression printed; legacy native/refusal/all-opcode/host suites had
+passed and no benchmark ran. Later diagnostic heads add named conditions, deterministic inputs,
+safe copied observations and explicit default-result initialization. The assertion has not
+reproduced; no root cause is assigned from subsequent passing runs. The separate earlier
+`d45edec3b381637f282311242398f1b6d2e5aa51` ARM40836891168/x8640836895047 cohorts pass their
+protocols but retain material long-sieve and x86-minimal regressions. They are historical non-keeps.
+
+Review has cleared the functional shared interface for private public-policy integration while
+the performance gate remains open. The next bounded decision is matched profiling of the actual
+candidate against its baseline, or moving eager state into the existing exclusive native owner
+to restore original frame size as well as coordinates. That extraction requires a coordinated
+scope decision; no cache/region-cap increase, opcode work or unchecked path is justified by these
+numbers. Public eager selection, continuing eager CLI parity and compiled-reference comparisons
+remain separate dependent qualification.
