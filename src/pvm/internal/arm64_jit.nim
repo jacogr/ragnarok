@@ -279,7 +279,19 @@ proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
   span.guards.add(ArmReadGuard(at: span.body.words.len, conditional: conditional))
   span.body.words.add(word)
 
-proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+func armReadEncoding(opcode: range[124..130]): uint32 =
+  ## Unsigned widths clear their unused upper bits; signed widths extend directly into the full64-bit guest register.
+  case opcode
+  of 124: 0x38606800'u32 # LDRB Wt,[Xn,Xm].
+  of 125: 0x38a06800'u32 # LDRSB Xt,[Xn,Xm].
+  of 126: 0x78606800'u32 # LDRH Wt,[Xn,Xm].
+  of 127: 0x78a06800'u32 # LDRSH Xt,[Xn,Xm].
+  of 128: 0xb8606800'u32 # LDR Wt,[Xn,Xm].
+  of 129: 0xb8a06800'u32 # LDRSW Xt,[Xn,Xm].
+  else: 0xf8606800'u32 # LDR Xt,[Xn,Xm].
+
+proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+    opcode: range[124..130] = 130) =
   ## Address aliases consume the current resident value before the load writes its destination.
   let source = armRead(span.body, slots.bIndex)
   let destination = armWrite(span.body, slots.aIndex)
@@ -300,7 +312,8 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
     span.body.words.add(0xeb02003f'u32) # CMP X1,X2 proves offset < extent-minus-seven.
     span.body.words.add(0x54000082'u32) # HS skips exactly the pointer, load and accepted branch.
     span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR X2,[X17,#region*24+16].
-    span.body.words.add(0xf8616840'u32 or destination) # LDR Xdestination,[X2,X1], permitting unaligned words.
+    span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
+        destination) # The unchanged eight-byte extent proof also covers narrower unaligned reads.
     accepted[region] = span.body.words.len
     span.body.words.add(0x14000000'u32)
   armReadRefusal(span, 0x14000000'u32, false) # Missing/fragmented memory replays the complete original prefix.
@@ -382,8 +395,8 @@ proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
 
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32): seq[uint32] =
-  ## A first unsigned indirect word load guards fresh borrowed regions before any guest register is published.
+    displacement, ending: uint32, opcode: range[124..130] = 130): seq[uint32] =
+  ## A first indirect read of the selected signed/unsigned width guards fresh borrowed regions before any guest register is published.
   assert fragment.terminal.len == 0
   let destination = armWrite(fragment, slots.aIndex)
   let arithmetic = armInstructions(fragment)
@@ -412,7 +425,8 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     result.add(0xeb11005f'u32) # CMP Xoffset,Xextent.
     result.add(0x54000082'u32) # HS skips this region without reading its pointer.
     result.add(0xf9400031'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer,[Xcontext,#region*24+16].
-    result.add(0xf8626a20'u32 or destination) # LDR Xdestination,[Xpointer,Xoffset], including unaligned words.
+    result.add(armReadEncoding(opcode) or (2'u32 shl 16) or (17'u32 shl 5) or
+        destination) # The conservative eight-byte guard admits every selected width safely.
     accepted.add(result.len)
     result.add(0x14000000'u32)
   let missing = result.len
