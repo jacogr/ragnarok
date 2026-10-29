@@ -225,3 +225,53 @@ to restore original frame size as well as coordinates. That extraction requires 
 scope decision; no cache/region-cap increase, opcode work or unchecked path is justified by these
 numbers. Public eager selection, continuing eager CLI parity and compiled-reference comparisons
 remain separate dependent qualification.
+
+## Scoped ARM profile checkpoint
+
+[Run40848797781](https://github.com/jacogr/ragnarok/actions/runs/40848797781), head
+`f4d19c1fddfada4123b437c0b76b6e24c1f8a52a`, retains the same candidate runtime as9f
+against baseline8d. Its four-file diagnostic extension selects the actual ten-million sieve
+input and both process orders without changing default inputs, runtime sources, native drivers,
+checked ARC/Clang ThinLTO settings or collection boundaries. The same wrapper is used for each
+source role; ABI metadata comes from a separate fresh process that exits before guest execution.
+
+Native qualification and the complete normal comparison pass. The aggregate60-minute job
+deadline cancels profiling after47m56s, not a1200-second process timeout. Ten complete13-call
+profiles survive: sieve10m and minimal100k, both roles in both orders, plus initialization in
+the forward order. Reverse initialization and all gameplay profiles remain unqualified. The
+interrupted initialization raw output is retained but is not a completed scope.
+
+| Complete scope | Baseline cold Ir | Candidate cold Ir | Baseline reused Ir | Candidate reused Ir |
+| --- | ---: | ---: | ---: | ---: |
+| sieve10m, identical forward/reverse | 4,896,654,115 | 4,896,879,860 | 4,829,072,869 | 4,829,072,932 |
+| minimal100k, identical forward/reverse | 89,665,829 | 89,667,138 | 89,443,893 | 89,443,956 |
+| initialization, forward only | 3,278,436,899 | 3,279,113,775 | 3,171,417,697 | 3,171,265,977 |
+
+All eight diagnostic image hashes/four equal-image pairs, source snapshots, identical per-family
+wrappers, generated-C archives/manifests, disassemblies, normal-cohort seal and twenty retained
+complete cold/reused profile hashes verify. Independent raw parsing reproduces every recorded
+global and self total. Actual ARM `FlatFrame` size is2648→2704 bytes; info/registers/gas/remaining
+offsets remain8/40/16/336. Generated C preserves the entire original field prefix and appends
+only sealing observations and the price sequence. Normalized native whole/memory/region-call
+instruction sequences and hot self-instruction counts match; native activity/code bytes match.
+The reused63-instruction increase is fixed stream transfer/construction/publication/destruction
+work, including restore+22 and take+10. Recursive inclusive call-tree totals are not additive
+and cannot be used as exclusive attribution.
+
+The model reports sieve reused conditional misses10,681,691→10,921,102, identical in both
+orders. These are simulated branch events, not hardware counters or proof of a hardware cause.
+Diagnostic clocks are discarded. Separate uninstrumented forward/reverse long-sieve CPU
+milliseconds280.953/281.361→289.149/289.334 retain the performance hold. Neither nearly equal
+instruction totals nor frame growth establishes or dismisses the measured regression's cause.
+
+Original artifact12888978677 has SHA256
+`7bf5971e215e6c7ce5dd2f24567eb5523d205d8900e560142235275e1c620e80`;
+profile receipt SHA256 is`8d1c208a16ac958361eb88e9ce346b9f6a6057b291fbaa4dc381e12a4a7ac864`.
+Completed target profiles need not be rerun. Any missing-only collection must bind this immutable
+parent receipt, exact diagnostic images and source/input identities, retain calibration and
+deadlines, and keep cross-runner timing ratios out of its verdict. The old artifact retains input
+hashes but not prepared bytes: any reconstruction must use pinned exports and match those hashes.
+The coordinator accepts the complete long/minimal profiles as a checkpoint for one isolated
+native-owner extraction hypothesis; that runtime experiment is separate from these receipts.
+Missing-only profile completion is deferred, not silently qualified. No cause or performance
+acceptance follows from this incomplete overall run.
