@@ -43,10 +43,10 @@ are pending; no runtime or backend fix belongs to this test PR.
 
 
 A genuine unpaid PC10 admission now precedes the main host scenarios, after the first fixed PC20
-oracle. The existing independent GP simulator, retaining original raw prefix bytes and global
-branch target positions, derives tail price22/cycles25 for all32 programs. Starting r10 at
-iterations−1 and funding44 for tail+halt yields literal Halt/gas0 with r10=iterations and every
-other register/page unchanged. This creates a legitimate complete header for the short x86
-add/branch prefix; it does not rely on redundant paid-tail compilation. Positive native-delta
-assertions are retained for this control and subsequent complete loops. Reordered PC traces and
-the shared-price mutation's first terminal assertion remain unchanged.
+oracle. PC10 is an interior instruction of the original block: the independent model confirms
+that its preceding load/host/store/host prefix has no terminator, so execution pays the frozen
+containing-block price103, then22 for halt. Starting r10 at iterations−1 and funding125 yields
+literal Halt/gas0 with r10=iterations and every other register/page unchanged. This creates a
+legitimate complete header for the short x86 add/branch prefix without redundant paid compilation.
+Positive native-delta assertions remain for this control and subsequent complete loops. All
+existing reordered traces and the shared-price mutant's first terminal assertion remain intact.

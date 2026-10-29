@@ -178,12 +178,13 @@ proc checkNativeProgress(owner: PreparedProgram, before: PreparedInfo, progresse
     assert after.nativeCalls == 0 and after.nativeOperations == 0
 
 proc admitEligibleTail(program: Program, memory: Memory, registers: RegisterFile, initial,
-    address, iterations: uint64, owner: PreparedProgram) =
-  ## The independent GP simulator prices the original PC10 add/branch tail at22 cycles-adjusted units.
+    address, iterations, price, haltPrice: uint64, owner: PreparedProgram) =
+  ## Interior PC10 pays the containing block's independently frozen103 units, then22 for halt.
   ## A real unpaid entry grants its short prefix a complete header; paid resumes need no duplicate header.
   var input = registers
   input[10] = RegisterValue(iterations-1)
-  let cpu = MachineInfo(pc: CodeAddress(10), gas: MachineGas(44), gasDeficit: GasDeficit(0),
+  let cpu = MachineInfo(pc: CodeAddress(10), gas: MachineGas(price+haltPrice),
+      gasDeficit: GasDeficit(0),
     blockCharged: false, registers: input)
   let captured = captureMachine(program, memory, cpu)
   assert captured.error == MachineError.None
@@ -252,7 +253,7 @@ proc entryTraces(program: Program, memory: Memory, registers: RegisterFile, init
           check(original, address) # Every unpublished partial write and successful successor leave the real source unchanged.
     if not admittedTail and entry == 20:
       # Preserve the first fixed terminal oracle before any independent positive-admission control.
-      admitEligibleTail(program, memory, registers, initial, address, iterations, owner)
+      admitEligibleTail(program, memory, registers, initial, address, iterations, price, haltPrice, owner)
       admittedTail = true
     if entry == 5:
       # Reuse that owner for the frozen paid store after host permission withdrawal, then repair exact selected faults.
@@ -465,7 +466,7 @@ assert cursor == data.len and cases == 1536 and callbacks == 23616 and faults ==
 
 echo "PVM host memory reentry passed: 1536 cases, 23616 callbacks, 17712 repaired faults"
 echo "Prepared owner entry traces passed: 32 owners, 192 reordered entries"
-echo "Prepared eligible tail admissions passed: 32 entries, fixed price 22"
+echo "Prepared eligible tail admissions passed: 32 entries, containing price 103"
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   # Private native/refused qualification consumes actual cumulative execution receipts, never cache occupancy alone.
   echo "PREPARED_TRACE_NATIVE,", nativeCalls, ",", nativeOperations
