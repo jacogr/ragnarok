@@ -100,6 +100,9 @@ folded budgets, unchanged unpaid/sticky refusals, actual native prefix execution
 fallback where built, source-PC rejection, branch/dynamic prelink budgets and public prepared
 callback/attempt limits with fresh immutable inputs. These are logical occupancy and correctness
 witnesses, not timing or decoded-visit claims; complete independent state traces remain separate.
+The existing resource-boundary host retry/mapping-replacement witness likewise keeps its initial
+four preparation units and three nodes, rather than expecting seven units from re-emitting a paid
+suffix. Its CPU, immutable page, permission/refusal and slow-replacement checks remain intact.
 
 These are logical component bounds, not exact RSS, allocator-overhead or global concurrency quotas.
 The four-MiB implementation profile is not a consensus module-size rule: larger inputs fail local
