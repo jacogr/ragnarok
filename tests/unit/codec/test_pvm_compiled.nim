@@ -162,6 +162,10 @@ let made = newPreparedProgram(code, limits, PvmBackend.Compiled)
 when defined(pvmCompiledPositiveWitness):
   # A positive CI profile cannot pass by running the unavailable-facility branch.
   assert made.error == PreparationError.None, "compiled positive source facility required " & $made.error
+when defined(pvmCompiledUnavailableWitness):
+  # Storage/host refusal profiles must not pass by accidentally omitting the source facility.
+  assert made.error == PreparationError.BackendUnavailable,
+      "compiled specific unavailable facility required " & $made.error
 if made.error == PreparationError.BackendNotBuilt:
   # Ordinary JIT defines do not build the separate source-preparation facility on the landed stub.
   assert backendAvailability(PvmBackend.Compiled) == StepError.BackendNotBuilt,
