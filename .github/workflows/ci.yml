@@ -799,11 +799,15 @@ jobs:
             build/tests/pvm-x86-jit/*.json
             build/tests/pvm-x86-jit/*.log
             build/tests/pvm-x86-jit/summary.md
+            build/tests/pvm-x86-jit/compiler-*/source-sealing*-cache/**/*.c
+            build/tests/pvm-x86-jit/compiler-*/source-sealing*-cache/*.s.nif
             build/tests/pvm-interpreter-linux/*.json
             build/tests/pvm-interpreter-linux/*.log
             build/tests/pvm-interpreter-linux/summary.md
             build/tests/pvm-native/*.json
             build/tests/pvm-native/*.log
+            build/tests/pvm-native/compiler-*/source-sealing*-cache/**/*.c
+            build/tests/pvm-native/compiler-*/source-sealing*-cache/*.s.nif
             build/tests/pvm-arm64-applications/*.json
             build/tests/pvm-arm64-applications/*.log
             build/tests/pvm-arm64-applications/summary.md
