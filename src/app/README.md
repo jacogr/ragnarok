@@ -9,7 +9,7 @@ configuration rather than reading command-line globals themselves.
 | Modules | Responsibility |
 | --- | --- |
 | [`cli_defaults.nim`](cli_defaults.nim), [`cli_catalog.nim`](cli_catalog.nim), [`cli_commands.nim`](cli_commands.nim), [`cli_help.nim`](cli_help.nim) | Shared defaults, named command grammar and grouped [CLI help](../../docs/cli.md) |
-| [`node_logging.nim`](node_logging.nim) | Runtime identity and successful service endpoint summaries through the shared async logger |
+| [`node_logging.nim`](node_logging.nim), [`sync_logging.nim`](sync_logging.nim) | Runtime identity, service endpoints and copied sync/readiness observations through the shared async logger |
 | [`startup.nim`](startup.nim) | Provision persistent default TLS identity and selected storage parents after CLI validation |
 | [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, MCP, UI and optional canonical state through startup and shutdown |
 | [`chain.nim`](chain.nim), [`candidate.nim`](candidate.nim), [`handoff.nim`](handoff.nim) | Retain the selected complete-state head, prepare finalized candidates and acknowledge deferred adoption |

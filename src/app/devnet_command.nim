@@ -8,6 +8,7 @@ import ../lib/logging
 import ./node_logging
 
 import std/[os, strutils, times, monotimes, syncio]
+import ./sync_logging
 import ../pvm/backend
 import ./[chain, candidate, block_author, tiny_genesis, current_download_policy, download_schedule]
 import ../chain/[genesis, provider, parameters]
@@ -207,9 +208,12 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   if not network.open(uint16(base+index), certificate, keyFile, alpn, peers):
     stderr.writeLine("DEVNET_START_FAILED transport")
     return 2
+  defer:
+    log(logging, LogTarget.Startup, LogLevel.Info, "Stopping development validator " & $index)
   logRuntimeIdentity(logging)
   log(logging, LogTarget.Startup, LogLevel.Info, "Role: development AUTHORITY; validator=" & $index)
   log(logging, LogTarget.Storage, LogLevel.Info, "Block journal: " & journalPath)
+  log(logging, LogTarget.Storage, LogLevel.Info, "Local head: " & chain.describeHead)
   log(logging, LogTarget.Network, LogLevel.Info, "Development QUIC listener: [::1]:" & $(base+index))
   for identity in identities:
     let ordinal = int(uint64(identity) - 1) # Configured IDs1..6 preserve the fixed authenticated validator mapping.
@@ -220,6 +224,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   stdout.writeLine("DEVNET_READY node=" & $index)
   flushFile(stdout)
   let deadline = start+stop*6000+15000
+  var status = default(SyncLogState)
   var pending = false
   var peer = int((index+1) mod 6)
   var attemptedSlot = 0'u32
@@ -255,6 +260,10 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
     if elapsed < 0: return 2
     let monotonic = uint64(elapsed)
     let readiness = targets.sampleTargets(discovery, identities, chain.chainView, monotonic, pending)
+    let local = chain.chainView.bestBlock.value
+    status.logSyncProgress(logging, readiness, AnnouncedBlock(
+      hash: AnnouncedHeaderHash(array[32, byte](local.blockHash)),
+      slot: HeaderSlot(local.slot)), monotonic)
     if readiness.stage in [CurrentSyncStage.Uninitialized, CurrentSyncStage.Failed]: return 2
     for identity in identities:
       let ordinal = int(uint64(identity) - 1)
@@ -295,7 +304,6 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   if chain.chainView.bestBlock.value.slot != uint32(stop):
     stderr.writeLine("DEVNET_INCOMPLETE node=" & $index)
     return 2
-  log(logging, LogTarget.Startup, LogLevel.Info, "Stopping development validator " & $index)
   stdout.writeLine("DEVNET_COMPLETE node=" & $index)
   flushFile(stdout)
   0
