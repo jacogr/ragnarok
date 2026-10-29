@@ -24,8 +24,9 @@ def validate_requirements(records):
         'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io', 'polkavm'},
         'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm', 'pvm_jit'},
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
-        # This fixed test-only cap exercises early refusal without allowing arbitrary compiler switches.
-        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse'},
+        # Fixed heap-cap and backend profiles exercise refusal without allowing arbitrary compiler switches.
+        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
+                    'pvmX86Jit', 'pvmX86JitRefuse'},
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
@@ -68,10 +69,15 @@ def validate_requirements(records):
         io_observers = [value for value in record['observers'] if value.startswith('io_')]
         ring_observers = [value for value in record['observers'] if not value.startswith('io_')]
         header_only = 'pvm_jit' in record['includes']
-        if header_only != ('pvmArm64Jit' in record['defines']):
+        jit_profiles = [profile for profile in ('pvmArm64Jit', 'pvmX86Jit')
+                        if profile in record['defines']]
+        if header_only != bool(jit_profiles) or len(jit_profiles) > 1:
+            # One explicit backend owns the header ABI; ambiguous and missing profiles remain preflight errors.
             raise ValueError('Native JIT header requires explicit JIT profile: '+name)
-        if 'pvmArm64JitRefuse' in record['defines'] and not header_only:
-            raise ValueError('Native JIT refusal requires its explicit profile: '+name)
+        for profile in ('pvmArm64Jit', 'pvmX86Jit'):
+            # Refusal instrumentation cannot accidentally activate another backend or run without its selector.
+            if profile+'Refuse' in record['defines'] and profile not in jit_profiles:
+                raise ValueError('Native JIT refusal requires its explicit profile: '+name)
         if (bool([value for value in record['includes'] if value != 'pvm_jit']) != bool(primary)
                 or (ring_observers and 'bandersnatch_observer' not in record['libraries'])
                 or (io_observers and ('storage_io' not in record['libraries'] or 'storage_io' not in record['includes']))):

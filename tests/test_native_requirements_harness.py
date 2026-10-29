@@ -59,6 +59,25 @@ class NativeRequirementsHarness(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_requirements(records)
 
+    def test_explicit_jit_profiles_keep_headers_and_refusal_paired(self):
+        """Both fixed JIT profiles require their own selector/header; arbitrary and mixed flags still fail."""
+        for profile in ('pvmArm64Jit', 'pvmX86Jit'):
+            for refused in (False, True):
+                # A declared positive/refused profile may share mechanics, never a different native backend.
+                records = deepcopy(NATIVE_REQUIREMENTS)
+                records['pvm_runtime_policy'].update(
+                    defines=[profile, *([profile+'Refuse'] if refused else [])], includes=['pvm_jit'])
+                validate_requirements(records)
+            for defines, includes in [([profile], []), ([profile+'Refuse'], ['pvm_jit']),
+                                      ([profile+'Refuse'], []), ([], ['pvm_jit']),
+                                      (['pvmArm64Jit', 'pvmX86Jit'], ['pvm_jit']),
+                                      ([profile, 'pvmUnknownJit'], ['pvm_jit'])]:
+                # Refusal without its selected backend, missing headers and arbitrary flags remain invalid.
+                records = deepcopy(NATIVE_REQUIREMENTS)
+                records['pvm_runtime_policy'].update(defines=defines, includes=includes)
+                with self.subTest(defines=defines, includes=includes), self.assertRaises(ValueError):
+                    validate_requirements(records)
+
     # OS redirection needs both its own object and header and cannot reuse a crypto/Rust observer profile.
     def test_storage_io_observer_requires_provider(self):
         for libraries, includes in [(['crypto'], ['crypto']), (['crypto', 'storage_io'], ['crypto'])]:

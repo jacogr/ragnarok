@@ -246,7 +246,7 @@ type
     guard: bool
 
 func x86RegionStatus*(jit: X86Jit): uint8 =
-  ## A refused region never retries; ordinary arithmetic entries are retained.
+  ## Global capacity/storage refusal never retries; local candidate negatives retain bounded header probes.
   jit.region.status
 
 proc x86StartProbe*(jit: X86Jit, header: uint32) =
@@ -292,7 +292,6 @@ proc regionEdge(fragment: var X86Block, fixes: var seq[X86RegionFixup], target: 
 proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
   ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.
   assert jit.region.status == 0
-  jit.region.status = 1
   var code = default(X86Block)
   # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch only RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
@@ -345,7 +344,11 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     regionWord(code, 0)
   let epilogue = code.bytes.len
   put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
-  if code.bytes.len >= 4096 or jit.fragments >= 1024: return false
+  if code.bytes.len >= 4096: return false
+  if jit.fragments >= 1024:
+    # Exhausted owner-wide publication capacity is permanent, unlike this candidate's shape or size.
+    jit.region.status = 1
+    return false
   for at in returns:
     let relative = uint32(epilogue-at-4)
     for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
@@ -361,6 +364,8 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     let origin = fix.at+4
     let relative = if target >= origin: uint32(target-origin) else: 0'u32-uint32(origin-target)
     for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
+  # Only proven owner-wide capacity/storage failure is sticky; local negatives exhaust existing per-header probes.
+  jit.region.status = 1
   if jit.arena.handle == nil: return false
   let published = publishNative(jit.arena.handle, addr code.bytes[0], uint32(code.bytes.len))
   if published < 0: return false
