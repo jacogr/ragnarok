@@ -488,14 +488,14 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
     if address >= f.stackBase:
       let at = int(address-f.stackBase)
       if f.stack.len >= W and at <= f.stack.len-W:
-        flatMarkStore[W](f, address)
         flatWrite[W](f.stack, at, value)
+        flatMarkStore[W](f, address)
         return true
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
-        flatMarkStore[W](f, address)
         flatWrite[W](f.rw, at, value)
+        flatMarkStore[W](f, address)
         return true
   flatStoreSlow[W](f, off, address, value)
 
