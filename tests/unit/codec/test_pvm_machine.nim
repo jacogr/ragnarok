@@ -51,6 +51,9 @@ assert load(default(Memory), MemoryAddress(0x10000), AccessWidth(1)).error ==
     MachineError.InvalidOwner
 assert store(default(Memory), MemoryAddress(0x10000), AccessWidth(1), RegisterValue(0)).error ==
     MachineError.InvalidOwner
+# Read-only preflight preserves invalid-owner priority even when the width is also invalid.
+assert writableScalar(default(Memory), MemoryAddress(0x10000), AccessWidth(0)).error ==
+    MachineError.InvalidOwner
 assert pageImage(default(Memory), PageIndex(0)).error == MachineError.InvalidOwner
 assert withPage(default(Memory), page(16, PageAccess.ReadWrite)).error == MachineError.InvalidOwner
 assert machineInfo(default(Machine)).error == MachineError.InvalidOwner
@@ -87,13 +90,16 @@ for b in absent.bytes: assert b == 0
 for width in 0..255:
   let r = load(empty, MemoryAddress(0x10000), AccessWidth(byte(width)))
   let w = store(empty, MemoryAddress(0x10000), AccessWidth(byte(width)), RegisterValue(0))
+  let preflight = writableScalar(empty, MemoryAddress(0x10000), AccessWidth(byte(width)))
   # Legal widths reach permission validation and report the same aligned missing page.
   if width in [1, 2, 4, 8]:
     assert r.error == MachineError.Fault and uint32(r.faultPage) == 0x10000
     assert w.error == MachineError.Fault and uint32(w.faultPage) == 0x10000
+    assert preflight.error == MachineError.Fault and uint32(preflight.faultPage) == 0x10000
   else:
     # Invalid widths are rejected even though the addressed memory would also fault.
     assert r.error == MachineError.InvalidWidth and w.error == MachineError.InvalidWidth
+    assert preflight.error == MachineError.InvalidWidth
 
 # Reference permission matrix uses two dense literal page inputs, independent from sparse lookup.
 for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.ReadWrite]:
@@ -143,7 +149,15 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
           let read = load(memory, MemoryAddress(uint64(start)), AccessWidth(byte(width)))
           let written = store(memory, MemoryAddress(uint64(start)), AccessWidth(byte(width)),
               RegisterValue(0x8877665544332211'u64))
+          let preflight = writableScalar(memory, MemoryAddress(uint64(start)), AccessWidth(byte(width)))
           assert read.error == readError and written.error == writeError
+          assert preflight.error == writeError
+          if writeError == MachineError.None:
+            # The query reports eligibility only and never publishes replacement storage.
+            assert preflight.value
+          elif writeError == MachineError.Fault:
+            # The dense reference fixes missing-before-read-only ordering independently of store.
+            assert uint32(preflight.faultPage) == writeFault
           # Success must reproduce every input byte in little-endian order.
           if readError == MachineError.None: assert uint64(read.value) == expected
           if readError == MachineError.Fault:
@@ -216,6 +230,8 @@ assert store(highMapped, MemoryAddress(high(uint64)), AccessWidth(8), RegisterVa
     MachineError.Panic
 assert load(empty, MemoryAddress(0x100000000'u64), AccessWidth(1)).error == MachineError.Panic
 let normal = checked(captureMemory([page(16, PageAccess.ReadWrite)], PageLimit(1)))
+assert checked(writableScalar(normal, MemoryAddress(0x100010000'u64), AccessWidth(8)))
+assert writableScalar(lowMapped, MemoryAddress(65535), AccessWidth(2)).error == MachineError.Panic
 assert uint64(checked(load(normal, MemoryAddress(0x100010000'u64), AccessWidth(8)))) == 0x1716151413121110'u64
 # PolkaVM checks exclusive-end overflow before ordinary permissions: absent final page faults, present final page traps.
 # Probe the exact fitting/overflowing boundary at every scalar width and both 32/64-bit address extremes.
@@ -232,7 +248,15 @@ for width in [1, 2, 4, 8]:
         elif access != PageAccess.ReadWrite: MachineError.Fault else: MachineError.None
       let loaded = load(memory, MemoryAddress(start), AccessWidth(byte(width)))
       let written = store(memory, MemoryAddress(start), AccessWidth(byte(width)), RegisterValue(0))
+      let preflight = writableScalar(memory, MemoryAddress(start), AccessWidth(byte(width)))
       assert loaded.error == expectedRead and written.error == expectedWrite
+      assert preflight.error == expectedWrite
+      if expectedWrite == MachineError.None:
+        # Exact-fitting scalar extents succeed without copying or changing the retained page.
+        assert preflight.value
+      elif expectedWrite == MachineError.Fault:
+        # Final-page absence remains distinguishable from present-page overflow panic.
+        assert uint32(preflight.faultPage) == 0xfffff000'u32
       if loaded.error == MachineError.Fault:
         assert uint32(loaded.faultPage) == 0xfffff000'u32 # Fault metadata retains the final physical page.
       if written.error == MachineError.Fault:
