@@ -152,3 +152,26 @@ not sufficient to declare a universal gain. An opt-in `jit-arm-replay` selector
 now uses the existing sealed-image 60-process / 780-call replay protocol on ARM,
 without profiling or extra ordinary CI jobs. Final retention awaits repeatability
 and the independently qualified compact x86 parent. No checks are weakened.
+
+## Final bounded-run verdict
+
+Retain the small ARM pair reduction and its independently repeated initialization
+gain; record the roughly1.4% long-sieve tradeoff explicitly. Defer the x86 pair
+reduction: corrected-parent run40798590242 at3fb35982 passed all state/native
+checks and130 processes/1,690 calls, but repeated minimal slows about9% while
+initialization improves4% and gameplay improves about11%. Minimal has zero native
+fragments. The later ten-scope diagnostic at1fca6f34 shows identical minimal
+Ir92,997,007 and38/38 selected hot instruction sequences after relocation
+normalization; gameplay36/36 are also identical. No hardware cause is established.
+
+The same-source/image replay control40803954273 uses1fca6f34 for both roles,
+passes exact image identity and does not reproduce that slowdown (minimal paired
+median about+0.4%). Do not attribute the9% effect to policy selection or the pair's
+executed arithmetic. These observations merit a separate code/data-placement study,
+not an unconditional speedup claim.
+
+Restore all x86 runtime, builder and qualification changes from this layer to its
+parent. The exact native literal matrices, raw profiles and measured heads remain
+in the immutable CI branches and repository history. ARM runtime and source/gas/
+paid/host/ownership checks remain. The x86 three-block parent is also deferred by
+its owning layer, so the shipping chain keeps the previously accepted x86 engine.
