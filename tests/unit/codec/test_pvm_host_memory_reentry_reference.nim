@@ -198,7 +198,7 @@ proc entryTraces(program: Program, memory: Memory, registers: RegisterFile, init
         let original = Retained(machine: source, cpu: cpu, scalar: initial,
           marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite])
         let exact = if entry == 20: 1'u64 else: 2'u64
-        for attempts in 0..exact:
+        for attempts in 0'u64..exact:
           # Zero, one-short and exact source attempts retain private partial progress on local refusal.
           let executed = execute(source, ExecutionStepLimit(attempts), owner)
           if attempts == 0 or ((paid or credit == charge) and attempts < exact):
