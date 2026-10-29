@@ -17,6 +17,14 @@ configuration and privately owns peer/stream state, callbacks and retained mesh 
 Both peer shapes use `app/services.nim` for optional service ownership/startup; transport
 callbacks retire before those shared services. Only lifecycle entry points are exported.
 
+## Peer announcements
+
+Optional UP0 discovery shares the authenticated outgoing catalog with CE128 through a distinct
+persistent stream route. Callbacks retain bounded detached bytes; host polling decodes complete
+messages and hashes announced headers. Available snapshots contain copied peer claims and source
+incarnation/sequence, never validated full/light state or trusted finality. Stream or TLS retirement
+revokes availability. See [continuous sync](../../spec/node-sync.md) for the trust and readiness contract.
+
 ## Canonical development block serving
 
 `quic/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and

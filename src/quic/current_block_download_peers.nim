@@ -4,9 +4,9 @@
 ## Fixed-address outgoing transport catalog pins authenticated peers before routing scheduled downloads.
 ## Callers keep borrowed sessions stable and explicitly close this owner before destruction.
 
-import ./[transport, protocol, current_block_download_session, current_block_download_stream]
+import ./[announcements, announcement_stream, transport, protocol, current_block_download_session, current_block_download_stream]
 import ../app/[download_schedule, current_block_download]
-import ../codec/bounded
+import ../codec/[bounded, header]
 
 type
   CurrentDownloadPeerKey* = distinct array[32, byte] ## Exact expected Ed25519 identity; never a block/state hash.
@@ -32,10 +32,19 @@ type
     started: CurrentDownloadTick
     lastError: CurrentDownloadPeerError
     binding: CurrentDownloadSessionFailure
+    announcements: AnnouncementRoute
+    announcementOpening, announcementFailed: bool
+    incarnation, sentVersion: uint64
+    localHandshake: AnnouncementHandshake
+    announcementLimits: AnnouncementLimits
   CurrentDownloadPeers* = object ## Each known identity reserves one fixed slot for this catalog's entire lifetime.
     slots: array[16, PeerSlot]
     limit, count: int
-    configured, draining: bool
+    configured, draining, discovery: bool
+    announcementLimits: AnnouncementLimits
+    localHandshake: AnnouncementHandshake
+    localAnnouncement: seq[byte]
+    localVersion: uint64
 
 proc `=copy`*(destination: var CurrentDownloadPeers, source: CurrentDownloadPeers) {.
     error: "CurrentDownloadPeers owns native transports and callback addresses".}
@@ -52,11 +61,15 @@ proc `=wasMoved`*(catalog: var CurrentDownloadPeers) {.nodestroy, inline.} =
   `=wasMoved`(catalog.count)
   `=wasMoved`(catalog.configured)
   `=wasMoved`(catalog.draining)
+  `=wasMoved`(catalog.localHandshake)
+  `=wasMoved`(catalog.localAnnouncement)
 
 proc `=destroy`*(catalog: CurrentDownloadPeers) =
   ## Close is explicit so native callbacks retire while every borrowed session is still alive.
   requireRetired(catalog)
   `=destroy`(catalog.slots)
+  `=destroy`(catalog.localHandshake)
+  `=destroy`(catalog.localAnnouncement)
 
 proc `==`*(left, right: CurrentDownloadPeerKey): bool =
   ## Compare the fixed identity bytes explicitly under the pinned compiler's array contracts.
@@ -83,7 +96,8 @@ proc find(catalog: CurrentDownloadPeers, id: DownloadPeerId): int =
   -1
 proc ready(slot: PeerSlot): bool =
   ## A lifetime success counter alone cannot authorize a closed or unauthenticated connection.
-  slot.registered and not slot.stopping and not slot.failed and slot.verified and
+  slot.registered and not slot.stopping and not slot.failed and not slot.announcementOpening and
+      slot.verified and
     slot.transport.transportStatus == 1 and slot.transport.peerMetric(0) == 1 and
     slot.transport.authenticatedConnections > 0
 proc ready*(catalog: CurrentDownloadPeers, id: DownloadPeerId): bool =
@@ -122,6 +136,14 @@ proc streamEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   let borrowed = slot.session
   let token = slot.attempt
   if event == 0:
+    if slot.announcementOpening and slot.transport.locallyOpened(stream):
+      # Exactly one host-initiated open is outstanding before ordinary CE work can be scheduled.
+      slot.announcementOpening = false
+      if slot.stopping or slot.announcements.bindStream(stream, true,
+          slot.localHandshake, slot.announcementLimits) != AnnouncementError.None:
+        slot.announcementFailed = true
+        streamAbort(stream)
+      return
     if slot.stopping or not slot.pending or slot.handle != NativeStream(nil) or
         borrowed == nil or token == nil or not slot.transport.locallyOpened(stream):
       streamAbort(stream)
@@ -136,6 +158,9 @@ proc streamEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       streamAbort(stream) # Retain this rejected handle/token until its close callback.
     else:
       slot.bound = true # Only the session's successful binding enables native read/write dispatch.
+  elif stream == slot.announcements.handle and stream != NativeStream(nil):
+    discard slot.announcements.event(stream, event)
+    return
   elif stream == slot.handle and stream != NativeStream(nil):
     if borrowed != nil and token != nil and slot.bound:
       let session: ptr CurrentDownloadSession = borrowed
@@ -155,6 +180,44 @@ proc configure*(catalog: var CurrentDownloadPeers, peers: ElementLimit): Current
   catalog.limit = int(uint64(peers)) # The hard cap proves host-sized conversion and callback work.
   catalog.configured = true
   CurrentDownloadPeerError.None
+
+proc enableAnnouncements*(catalog: var CurrentDownloadPeers, local: AnnouncementHandshake,
+    limits: AnnouncementLimits): CurrentDownloadPeerError =
+  ## Opt in before opening endpoints; ordinary finite CE-only consumers retain their behavior.
+  if not catalog.configured: return CurrentDownloadPeerError.Uninitialized
+  if catalog.count != 0 or catalog.discovery: return CurrentDownloadPeerError.Busy
+  if encodeHandshake(local, limits).error != AnnouncementError.None:
+    return CurrentDownloadPeerError.InvalidPolicy
+  catalog.discovery = true
+  catalog.localHandshake = AnnouncementHandshake(finalized: local.finalized, leaves: @[])
+  for leaf in local.leaves:
+    catalog.localHandshake.leaves.add(leaf) # Own copied scalar claims before asynchronous native opens.
+  catalog.announcementLimits = limits
+  CurrentDownloadPeerError.None
+
+proc announcements*(catalog: CurrentDownloadPeers, id: DownloadPeerId): PeerAnnouncementSnapshot =
+  ## A retained handshake is unavailable after TLS/stream closure or endpoint retirement.
+  let index = catalog.find(id)
+  if index < 0 or not catalog.slots[index].ready: return default(PeerAnnouncementSnapshot)
+  catalog.slots[index].announcements.snapshot
+proc incarnation*(catalog: CurrentDownloadPeers, id: DownloadPeerId): uint64 =
+  ## New transports and reopened persistent streams change provenance even for identical leaf claims.
+  let index = catalog.find(id)
+  if index >= 0: catalog.slots[index].incarnation else: 0
+proc publishAnnouncement*(catalog: var CurrentDownloadPeers, owner: OwnedHeader,
+    finalized: AnnouncedBlock): AnnouncementError =
+  ## Only host-side canonical publication updates the outbound view; callbacks merely send bytes.
+  if not catalog.discovery: return AnnouncementError.Uninitialized
+  if catalog.localVersion == high(uint64): return AnnouncementError.LimitExceeded
+  let encoded = encodeAnnouncement(owner, finalized, catalog.announcementLimits)
+  if encoded.error != AnnouncementError.None: return encoded.error
+  let decoded = decodeAnnouncement(encoded.value, catalog.announcementLimits)
+  if decoded.error != AnnouncementError.None: return decoded.error
+  catalog.localHandshake = AnnouncementHandshake(finalized: finalized, leaves: @[
+      decoded.value.head])
+  catalog.localAnnouncement = encoded.value
+  inc catalog.localVersion
+  AnnouncementError.None
 
 proc openPeer*(catalog: var CurrentDownloadPeers; id: DownloadPeerId;
     expected: CurrentDownloadPeerKey; port: uint16;
@@ -180,6 +243,14 @@ proc openPeer*(catalog: var CurrentDownloadPeers; id: DownloadPeerId;
   let slot = addr catalog.slots[selected]
   slot.expected = expected
   slot.id = id
+  if slot.incarnation == high(uint64): return CurrentDownloadPeerError.InvalidPolicy
+  inc slot.incarnation
+  slot.announcements = default(AnnouncementRoute)
+  slot.announcementOpening = false
+  slot.announcementFailed = false
+  slot.sentVersion = catalog.localVersion
+  slot.localHandshake = catalog.localHandshake
+  slot.announcementLimits = catalog.announcementLimits
   slot.checked = false
   slot.verified = false
   slot.stopping = false
@@ -205,6 +276,23 @@ proc poll*(catalog: var CurrentDownloadPeers): int =
     let slot = addr catalog.slots[index]
     if slot.registered:
       if not slot.transport.pollTransport(0): slot.failed = true # A failed endpoint becomes ineligible without stopping healthy peers.
+      if catalog.discovery: slot.announcements.process() # All native callbacks returned before decoding/hash work.
+      if catalog.discovery and slot[].ready and not slot.announcementFailed and
+          not slot.announcements.failed:
+        if slot.announcements.handle == NativeStream(nil):
+          # No CE request can open until this pending UP0 callback has acquired its separate route.
+          if not slot.pending and slot.handle == NativeStream(nil):
+            if slot.incarnation == high(uint64):
+              slot.announcementFailed = true
+              return result
+            inc slot.incarnation
+            slot.localHandshake = catalog.localHandshake
+            slot.sentVersion = catalog.localVersion
+            slot.announcementOpening = true
+            slot.transport.openStream()
+        elif slot.sentVersion != catalog.localVersion and slot.announcements.active:
+          if slot.announcements.announce(catalog.localAnnouncement) == AnnouncementError.None:
+            slot.sentVersion = catalog.localVersion
       inc result
 
 proc requestStream*(catalog: var CurrentDownloadPeers, session: var CurrentDownloadSession,
@@ -266,6 +354,8 @@ proc retire*(catalog: var CurrentDownloadPeers, id: DownloadPeerId): bool =
   slot.handle = NativeStream(nil)
   slot.pending = false
   slot.bound = false
+  slot.announcementOpening = false
+  slot.announcements = default(AnnouncementRoute) # Every native callback retired before managed bytes reset.
   dec catalog.count # A registered slot proves a corresponding retained endpoint exists.
   true
 
