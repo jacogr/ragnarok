@@ -38,3 +38,15 @@ controls and calibrated cold/reused profiles. Constructors/cold/reused scopes
 remain separate. Keep only a useful measured gain without material regressions;
 otherwise restore this isolated runtime and retain meaningful evidence. No timing
 claim before qualification.
+
+## Originating compiler evidence
+
+Run40796287963 at `aab374cbf6cba085a200ba52d9c4cd5a6c49cb38` stopped
+at the two source-opcode conversions: the compiler could not prove their closed
+124..130 domain from the distant source predicates. The fix captures each readonly
+opcode in a local scalar and asserts the already required predicate immediately
+before checked narrowing. No accepted opcode, runtime memory check or deadline is
+changed. The original failure receipt remains under `build/pvm-arm-load-widths/first`.
+This failure supplies no native or timing result. All fourteen width/address forms
+also independently disassemble with LLVM to the intended LDRB/LDRSB/LDRH/LDRSH/
+LDR-W/LDRSW/LDR-X instructions.

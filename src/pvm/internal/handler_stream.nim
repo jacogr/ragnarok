@@ -2119,7 +2119,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if fact.opcode in 124'u8..130'u8:
         let displacement = uint32(fact.args.x and 0xffffffff'u64)
         if window: emitArmWindowRead(native, fact.args.slots.aIndex, displacement-first)
-        else: emitArmRead(native, fact.args.slots, displacement, range[124..130](fact.opcode))
+        else:
+          # Restate the sealed source predicate on a local scalar before the closed opcode conversion.
+          let readOpcode = int(fact.opcode)
+          assert readOpcode >= 124 and readOpcode <= 130
+          emitArmRead(native, fact.args.slots, displacement, range[124..130](readOpcode))
       else:
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
     var words = armReadInstructions(native, ending)
@@ -2155,8 +2159,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       refuseArmEntry(jit, offset)
       return offset
     let args = f.arguments[int(offset)]
+    let readOpcode = int(f.plan.facts[int(f.sites[int(offset)])].opcode)
+    assert readOpcode >= 124 and readOpcode <= 130 # The caller admitted a sealed load; keep its conversion proof local.
     var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending,
-      range[124..130](f.plan.facts[int(f.sites[int(offset)])].opcode))
+      range[124..130](readOpcode))
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]

@@ -112,6 +112,8 @@ when defined(pvmArm64Jit):
   var widthLiteralCases = 0
   when not defined(pvmArm64JitRefuse):
     for opcode in 124'u8..130'u8:
+      let readOpcode = int(opcode)
+      assert readOpcode >= 124 and readOpcode <= 130 # The literal loop supplies the same closed width domain.
       let width = case opcode
         of 124, 125: 1
         of 126, 127: 2
@@ -124,7 +126,7 @@ when defined(pvmArm64Jit):
           let jit = newArmJit()
           assert armEntry(jit, 0, 1) == 0
           var suffix = default(ArmBlock)
-          var words = armMemoryInstructions(suffix, slots, 0, 37, range[124..130](opcode))
+          var words = armMemoryInstructions(suffix, slots, 0, 37, range[124..130](readOpcode))
           assert publishArmEntry(jit, 0, 37, 1, words)
           var bytes = default(array[16, byte])
           for value in [0'u64, 0x80, 0x8000, 0x80000000, 0x8000000000000000'u64,
