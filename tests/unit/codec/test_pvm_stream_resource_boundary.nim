@@ -226,7 +226,8 @@ runFlat(hostFrame, 64)
 assert hostFrame.reason == StepError.None and hostFrame.exit == StepExit.Host
 let suspended = hostFrame.info
 let hostWork = flatPreparationUnits(hostFrame)
-assert hostWork == 4
+let hostNodes = flatNodes(hostFrame)
+assert hostWork == 4 and hostNodes == 3
 let observation = observeFlatHostMemory(hostFrame)
 let oversized = captureMemory(images, PageLimit(2)).value
 assert resumeFlatHostMemory(hostFrame, oversized, suspended.gas, suspended.registers) ==
@@ -237,7 +238,10 @@ assert flatPreparationUnits(hostFrame) == hostWork
 assert resumeFlatHostMemory(hostFrame, observation, suspended.gas, suspended.registers) == StepError.None
 runFlat(hostFrame, 64)
 assert hostFrame.reason == StepError.None and hostFrame.exit == StepExit.Halt
-assert flatPreparationUnits(hostFrame) == 7
+if flatPreparationUnits(hostFrame) != hostWork or flatNodes(hostFrame) != hostNodes:
+  # A paid continuation now reuses this admitted body; retain precise evidence if suffix growth returns.
+  echo "HOST_RESOURCE_FAST_GROWTH,", flatPreparationUnits(hostFrame), ",", flatNodes(hostFrame)
+assert flatPreparationUnits(hostFrame) == hostWork and flatNodes(hostFrame) == hostNodes
 # A mapping replacement takes the real fallback path and must retain the same preparation reservations and code links.
 resetFlatFrame(hostFrame, info)
 runFlat(hostFrame, 64)
@@ -251,7 +255,11 @@ assert resumeFlatHostMemory(hostFrame, replacedMapping, replacementCpu.gas,
 assert flatPreparationUnits(hostFrame) == beforeReplacement
 runFlat(hostFrame, 64)
 assert hostFrame.reason == StepError.None and hostFrame.exit == StepExit.Halt
-assert flatPreparationUnits(hostFrame) == 7 and flatHostStats(hostFrame)[1] == 1
+if flatPreparationUnits(hostFrame) != hostWork or flatNodes(hostFrame) != hostNodes:
+  # Slow mapping replacement must preserve the same code-only occupancy as the fast host resume.
+  echo "HOST_RESOURCE_MAPPING_GROWTH,", flatPreparationUnits(hostFrame), ",", flatNodes(hostFrame)
+assert flatPreparationUnits(hostFrame) == hostWork and flatNodes(hostFrame) == hostNodes
+assert flatHostStats(hostFrame)[1] == 1
 assert pageImage(replacementObservation, PageIndex(16)).value.bytes[0] == 77
 assert pageImage(flatMemorySnapshot(hostFrame), PageIndex(17)).value.bytes == images[1].bytes
 checkFlatSource(hostFrame)
