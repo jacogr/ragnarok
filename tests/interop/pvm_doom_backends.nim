@@ -84,10 +84,14 @@ var selected = default(Options)
 var diagnostic = ""
 assert parseOptions(arguments, selected, diagnostic), diagnostic
 let requestedCohort = getEnv("PVM_DOOM_BACKENDS")
-assert requestedCohort in ["", "polkavm-interpreted,interpreted"], "unsupported DOOM comparison cohort"
+assert requestedCohort in ["", "polkavm-interpreted,interpreted",
+    "polkavm-interpreted,jit,compiled"],
+    "unsupported DOOM comparison cohort"
 let interpretedCohort = requestedCohort == "polkavm-interpreted,interpreted"
+let eagerCohort = requestedCohort == "polkavm-interpreted,jit,compiled"
 assert selected.pvmBackend in [PvmBackend.Jit, PvmBackend.PolkaInterpreted] or
-    (interpretedCohort and selected.pvmBackend == PvmBackend.Interpreted),
+    (interpretedCohort and selected.pvmBackend == PvmBackend.Interpreted) or
+        (eagerCohort and selected.pvmBackend == PvmBackend.Compiled),
         "unsupported DOOM comparison backend"
 let requestedCalls = getEnv("RAGNAROK_DOOM_BACKEND_CALLS")
 assert requestedCalls in ["1", "2"]
@@ -172,6 +176,16 @@ proc appendWord(data: var string, value: uint64, width: int) =
   assert width in 1..8
   for octet in 0..<width: data.add(char((value shr (8*octet)) and 255))
 
+proc eagerSnapshot(policy: PreparedInfo): string =
+  ## Copied construction excludes live calls/operations and includes CI-only attempted compiler admission.
+  let compilation = policy.compilation
+  var passes = 0'u64
+  when defined(pvmSourceSealingReceipt): passes = compilation.compilationPasses
+  $int(compilation.sealed) & "," & $policy.streamNodes & "," & $policy.preparationUnits & "," &
+    $policy.nativeFragments & "," & $policy.nativeCodeBytes & "," & $policy.nativeCompilationNs & "," &
+    $compilation.sourceEntries & "," & $compilation.nativeEntries & "," &
+    $compilation.checkedEntries & "," & $compilation.capacityDeferred & "," & $passes
+
 let made = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)),
     selected.pvmBackend)
 if made.error != PreparationError.None:
@@ -179,6 +193,20 @@ if made.error != PreparationError.None:
   echo "DOOM_BACKEND_UNAVAILABLE,", selected.pvmBackend, ",", made.error
   quit 2
 let prepared = made.value
+var construction = ""
+var compilation = default(PreparedCompilationInfo)
+if selected.pvmBackend == PvmBackend.Compiled:
+  # A nominal unavailable/all-fallback constructor cannot substitute for actual eager-native qualification.
+  let before = preparedInfo(prepared).value
+  assert eagerCohort and before.backend == PvmBackend.Compiled and before.compilation.sealed
+  assert before.compilation.nativeEntries > 0 and before.nativeFragments > 0 and
+      before.nativeCodeBytes > 0
+  assert before.nativeCalls == 0 and before.nativeOperations == 0
+  when defined(pvmSourceSealingReceipt):
+    assert before.compilation.compilationPasses > 0, "DOOM eager compiler-attempt witness active"
+  construction = eagerSnapshot(before)
+  compilation = before.compilation
+  echo "DOOM_EAGER_PREPARED,", construction
 var current = source
 for call in 0..<callCount:
   # Restore the initial snapshot once; every later call starts with the previous guest memory, not a fixture reset.
@@ -231,6 +259,12 @@ for call in 0..<callCount:
   echo "DOOM_CALL,", call, ",", selected.pvmBackend, ",", done.value.backend, ",", uint64(cpu.gas),
     ",", policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations,
     ",", int(policy.jitBuilt), ",", int(policy.jitPlatformSupported)
+  if selected.pvmBackend == PvmBackend.Compiled:
+    # Every suspension/repair returns the same sealed owner; only genuine live native execution may advance.
+    let reused = eagerSnapshot(policy)
+    assert reused == construction and policy.compilation == compilation,
+        "DOOM eager construction/publication changed after execution"
+    echo "DOOM_EAGER_REUSED,", call, ",", reused
   try:
     # Any incomplete write fails the process; raw state/pixels are not uploaded as CI artifacts.
     writeFile(output & "/call-" & $call & ".state", snapshot)

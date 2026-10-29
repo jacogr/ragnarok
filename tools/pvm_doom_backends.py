@@ -22,14 +22,17 @@ BUILD = ROOT/'build/tests/pvm-doom-backends'
 DRIVER = ROOT/'tests/interop/pvm_doom_backends.nim'
 BACKENDS = ('polkavm-interpreted', 'jit')
 INTERPRETED_BACKENDS = ('polkavm-interpreted', 'interpreted')
+EAGER_BACKENDS = ('polkavm-interpreted', 'jit', 'compiled')
 
 
 def backend_cohort(requested):
-    """Keep the maintained default; only the exact explicit two-interpreter cohort selects forced interpretation."""
+    """Only exact explicit cohorts add forced interpretation or eager construction to the maintained default."""
     if requested == '':
         return BACKENDS
     if requested == ','.join(INTERPRETED_BACKENDS):
         return INTERPRETED_BACKENDS
+    if requested == ','.join(EAGER_BACKENDS):
+        return EAGER_BACKENDS
     raise ValueError('invalid DOOM backend cohort')
 
 
@@ -75,12 +78,36 @@ def compare(left, right, calls):
 
 def observation(output, folder, selected, count, pages, architecture):
     """Only complete native processes with honest requested/actual engine receipts supply comparison inputs."""
-    if selected not in (*BACKENDS, 'interpreted'):
+    if selected not in (*BACKENDS, 'interpreted', 'compiled'):
         raise ValueError('unsupported DOOM comparison backend')
     lines = output.splitlines()
+    eager = None
+    if selected == 'compiled':
+        # Bind construction before guest work to the exact same retained owner after every continuing call.
+        if len(lines) != count*2+2 or not lines[0].startswith('DOOM_EAGER_PREPARED,'):
+            raise ValueError('incomplete DOOM eager construction receipt')
+        fields = lines[0].split(',')[1:]
+        if len(fields) != 11 or any(not n.isascii() or not n.isdecimal() or len(n)>20 or int(n)>=2**64
+                                   for n in fields):
+            raise ValueError('invalid DOOM eager construction counters')
+        sealed, nodes, preparation, publications, code_bytes, compilation_ns, candidates, native, checked, deferred, passes = map(int, fields)
+        if sealed != 1 or not all((nodes, preparation, publications, code_bytes, candidates, native, passes)):
+            raise ValueError('missing positive DOOM eager construction')
+        if native+checked+deferred != candidates:
+            raise ValueError('invalid DOOM eager source-entry partition')
+        for call in range(count):
+            if lines[2+call*2] != f'DOOM_EAGER_REUSED,{call},'+','.join(fields):
+                raise ValueError(f'call {call}: DOOM eager construction/publication changed')
+        eager = dict(nodes=nodes, preparation_units=preparation, publications=publications,
+            code_bytes=code_bytes, compilation_ns=compilation_ns, source_entries=candidates,
+            native_entries=native, checked_entries=checked, capacity_deferred=deferred,
+            compilation_passes=passes)
+        lines = [*lines[1:-1:2], lines[-1]]
     if len(lines) != count+1 or lines[-1] != f'DOOM_SEQUENCE_OK,{selected},{count}':
         raise ValueError('incomplete DOOM backend process')
     result = dict(requested=selected, calls=[], frames=[])
+    if eager is not None:
+        result['construction'] = eager
     for call, line in enumerate(lines[:-1]):
         fields = line.split(',')
         if len(fields) != 10 or fields[:3] != ['DOOM_CALL', str(call), selected]:
@@ -100,11 +127,21 @@ def observation(output, folder, selected, count, pages, architecture):
                 raise ValueError('forced interpreter substituted or published native activity')
             if architecture not in ('arm64', 'x86_64') or not (built and supported):
                 raise ValueError('missing native-enabled forced-interpreter control')
+        elif selected == 'compiled':
+            if architecture not in ('arm64', 'x86_64') or actual != 'compiled' or not all(
+                    (built, supported, fragments, native_calls, operations)):
+                raise ValueError('missing positive eager native execution')
         elif architecture in ('arm64', 'x86_64'):
             if actual != 'jit' or not (built and supported and fragments and native_calls and operations):
                 raise ValueError('missing positive '+architecture+' JIT execution')
         elif actual != 'interpreted' or supported or any((fragments, native_calls, operations)):
             raise ValueError('unsupported JIT was mislabeled as native')
+        if eager is not None:
+            if fragments != eager['publications']:
+                raise ValueError(f'call {call}: DOOM eager publication receipt mismatch')
+            if call and (native_calls <= result['calls'][-1]['native_calls'] or
+                         operations <= result['calls'][-1]['native_operations']):
+                raise ValueError(f'call {call}: DOOM eager execution counters did not advance')
         state, events, hosts = (folder/f'call-{call}.{suffix}' for suffix in ('state','events','hosts'))
         if state.stat().st_size != 129+pages*4101 or hosts.stat().st_size > 512*1024:
             raise ValueError('incomplete state or unbounded host trace')
@@ -168,7 +205,7 @@ def run():
             'Same pinned frame-1320 snapshot restored once; no host clock, RNG, audio or key input varies.',
             ('Forced interpretation requires native-enabled builds and zero native publications/calls/operations.'
              if backends == INTERPRETED_BACKENDS else
-             'x86 requested jit uses interpreted fallback; positive native JIT is required only on ARM64.'), '']
+             'Both Linux CPUs require actual native JIT/eager execution for those requested policies.'), '']
         for row in report['runs']:
             observed = row.get('observed')
             if observed:
@@ -204,6 +241,8 @@ def run():
         backends = backend_cohort(os.environ.get('PVM_DOOM_BACKENDS', ''))
         if backends == INTERPRETED_BACKENDS:
             report.update(protocol='doom-shared-interpreted-v1', backends=list(backends))
+        elif backends == EAGER_BACKENDS:
+            report.update(protocol='doom-shared-eager-v1', backends=list(backends))
         report['host'] = host_identity()
         report['revision'] = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
         report['toolchain'] = json.loads((ROOT/'spec/toolchain.json').read_text())
@@ -230,6 +269,9 @@ def run():
         if not 0 < pages <= 8192:
             raise ValueError('unbounded DOOM initial snapshot')
         flags = [*native_defines(), 'polkavmRuntime']
+        if backends == EAGER_BACKENDS:
+            # Explicit eager qualification also freezes attempted compilation, including refused scans.
+            flags.append('pvmSourceSealingReceipt')
         cflags = ['-I'+str(ROOT/'native/pvm_jit'), '-I'+str(ROOT/'native/polkavm')]
         built, binary = checks.build(compiler, DRIVER, 'doom-backends', defines=flags, cflags=cflags,
                                     link_flags=[str(library), '-Wl,-rpath,'+str(library.parent)])
@@ -253,12 +295,15 @@ def run():
             observed[selected] = item
             report['runs'].append(dict(backend=selected, run=row, observed=item))
             save()
-        reference, candidate = (observed[name] for name in backends)
-        compare(reference, candidate, count)
+        reference = observed[backends[0]]
+        for selected in backends[1:]:
+            # Every selected engine independently matches the same complete continuing oracle.
+            compare(reference, observed[selected], count)
+        candidate = observed[backends[-1]]
         if reference['frames'][0]['rgba_sha256'] != admission['golden_rgba_sha256']:
             raise Mismatch('frame 0: pinned upstream RGBA golden mismatch')
         # Rehash changed bytes from the actual candidate framebuffer; never mutate an expected/golden hash.
-        data = bytearray((BUILD/backends[1]/'call-0.events').read_bytes())
+        data = bytearray((BUILD/backends[-1]/'call-0.events').read_bytes())
         at = 0
         while data[at] != 1:
             at += 5+int.from_bytes(data[at+1:at+5], 'little')
