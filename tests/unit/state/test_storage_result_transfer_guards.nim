@@ -9,7 +9,7 @@ import ../../../src/storage/[record_codec, snapshot_codec, journal_codec]
 
 proc armTimeout(seconds: cuint): cuint {.importc: "alarm", cdecl, header: "<unistd.h>".}
   ## Bound only the deliberately failing child; timeout signals never qualify as contract evidence.
-const ApiFiles = ["managed_io.nim", "record_codec.nim", "snapshot_codec.nim", "journal_codec.nim"]
+const ApiFiles = ["managed/io.nim", "record_codec.nim", "snapshot_codec.nim", "journal_codec.nim"]
   ## Each diagnostic must identify its actual guarded API, not merely another failing operation.
 
 proc consumeIo(outcome: var ManagedIoResult[seq[byte]]) =
