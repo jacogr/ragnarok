@@ -53,6 +53,11 @@ def qualify(checks, compiler, rows=None):
             expected = 0 if refused else 1440
             if 'X86_RESIDENT_CONTEXT_CASES,'+str(expected)+'\n' not in run['output']:
                 raise ValueError('incomplete resident x86 context witness')
+        if name.startswith('x86-'):
+            # Native literals prove both compact width boundaries and arbitrary64 fallback; refusal must execute no native cases.
+            expected = 0 if refused else 3168
+            if 'X86_COMPACT_IMMEDIATE_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete compact immediate witness')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.
