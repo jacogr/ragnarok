@@ -99,10 +99,6 @@ type
     dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
-    sealedInfo: FlatSealedInfo # Cold construction policy; eager handlers never discover code during execution.
-    sealedPrices: seq[FlatSealedPrice] # One containing-block price per source block; external pricing stays invocation-selected.
-    when defined(pvmSourceSealingReceipt):
-      sealedEntryKinds: seq[uint8] # CI-only immutable per-source classifications, never a production owner/API expansion.
     pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
     pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
@@ -118,6 +114,11 @@ type
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
+    # Keep the existing JIT pricing/probe/descriptor coordinates ahead of cold eager-only state.
+    sealedInfo: FlatSealedInfo # Cold construction policy; eager handlers never discover code during execution.
+    sealedPrices: seq[FlatSealedPrice] # One containing-block price per source block; external pricing stays invocation-selected.
+    when defined(pvmSourceSealingReceipt):
+      sealedEntryKinds: seq[uint8] # CI-only immutable per-source classifications, never a production owner/API expansion.
 
 
 
