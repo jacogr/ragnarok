@@ -282,8 +282,8 @@ when declared(ExecutionCursor):
   proc newPreparedProgram*(source: Program, limits: PreparedLimits,
       selected: PvmBackend): PreparationResult[PreparedProgram] =
     ## Engine choice is immutable and bound to this source/cache identity before any invocation.
-    if selected in [PvmBackend.Interpreted, PvmBackend.Jit]: return prepareIndependent(source,
-        limits, selected)
+    if selected in [PvmBackend.Interpreted, PvmBackend.Jit,
+        PvmBackend.Compiled]: return prepareIndependent(source, limits, selected)
     when defined(polkavmRuntime):
       if not isJamProgram(source): return PreparationResult[PreparedProgram](
           status: PreparationError.BackendProgramUnsupported)

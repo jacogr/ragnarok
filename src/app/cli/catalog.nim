@@ -81,7 +81,7 @@ const
 
     # PVM options. Keep additions in this group.
     OptionSpec(name: "--pvm-backend", value: "MODE", group: OptionGroup.PVM,
-      description: "jit|interpreted|polkavm-interpreted|polkavm-compiled; jit uses interpreted fallback.",
+      description: "jit|compiled|interpreted|polkavm-interpreted|polkavm-compiled; jit uses interpreted fallback.",
       fallback: OptionDefault.PvmBackend, commands: "", repeatable: false),
 
     OptionSpec(name: "--pvm-code", value: "FILE", group: OptionGroup.PVM,

@@ -58,7 +58,7 @@ proc main(): int =
       var withoutBackend: seq[string] = @[]
       var backend = DefaultPvmBackend
       if not extractPvmBackend(normalized, withoutBackend, backend):
-        stderr.writeLine("Invalid --pvm-backend: use jit|interpreted|polkavm-interpreted|polkavm-compiled")
+        stderr.writeLine("Invalid --pvm-backend: use jit|compiled|interpreted|polkavm-interpreted|polkavm-compiled")
         return 2
       var logging = initLogPolicy()
       if not extractLoggingOptions(withoutBackend, commandArguments, logging):
