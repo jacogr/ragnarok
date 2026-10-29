@@ -162,7 +162,9 @@ when defined(pvmArm64Jit) or defined(pvmX86Jit):
 func flatSealed(f: FlatFrame): bool {.inline.} =
   ## A normal nil code owner stays nil; observing sealing never allocates or changes a lazy stream.
   when defined(pvmArm64Jit) or defined(pvmX86Jit):
-    let jit = flatCodeOwner(f)
+    # The pure observer cannot replace/move its live frame owner or cross a callback.
+    # The borrow ends before the copied bool leaves this call.
+    let jit {.cursor.} = flatCodeOwner(f)
     jit != nil and jit.sourceSeal.info.sealed
   else: false
 
