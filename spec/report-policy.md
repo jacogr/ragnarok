@@ -32,7 +32,7 @@ admission certificates. Core vacancy is the other half of `reportcoresareunused`
 
 ## Evidence
 
-Twenty unchanged tiny/full `stf/reports` cases at davxy/jam-test-vectors
+Twenty unchanged tiny/full `stf/reports` cases at jam-conformance/jam-test-vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` are pinned individually in `spec/pins.json`.
 They cover current/previous rotations, multiple reports, two unauthorized cases, missing service,
 wrong code, insufficient gas and high/excess report gas. All original credentials must pass the

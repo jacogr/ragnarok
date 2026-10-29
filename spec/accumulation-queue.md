@@ -82,7 +82,7 @@ growth over 1,000 success/refusal cycles.
 `tests/accumulation_queue_fixtures.py` transports six unchanged pinned accumulation STF inputs:
 `accumulate_ready_queued_reports-1`, `enqueue_and_unlock_chain-1` and
 `enqueue_and_unlock_chain_wraps-1`, each for tiny and full profiles, from
-[`d3c089c`](https://github.com/davxy/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a/stf/accumulate).
+[`d3c089c`](https://github.com/jam-conformance/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a/stf/accumulate).
 Existing `spec/pins.json` source SHA-256 checks remain mandatory. An independent test-only
 set/recursive-sequence reference derives exact complete-report order and edited dependency sets;
 the selected package set also agrees with the upstream posterior accumulated-history additions for

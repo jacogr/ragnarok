@@ -2,7 +2,7 @@
 
 Authority: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` governs the
 independently qualified transitions. Published TraceStep/RawState framing follows
-pinned `davxy/jam-test-vectors` gp-next `23061ae1f9b51171c01387e7dde0f15794c98e24`.
+pinned `jam-conformance/jam-test-vectors` gp-next `23061ae1f9b51171c01387e7dde0f15794c98e24`.
 RawState values retain current-schema bytes; no historical account format is
 silently translated or accepted as an alternate representation.
 

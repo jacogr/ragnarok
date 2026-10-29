@@ -65,7 +65,7 @@ published `progress_invalidates_avail_assignments-1.json` cases are nominally po
 contain documented dummy assignment guarantees with **zero credentials and zero erasure shards**.
 Those are not valid complete C(10) children under our existing codecs. Both unchanged inputs are
 explicit `InvalidState` regressions, recorded separately in fixture evidence; these are not counted
-as passing positive STF parity. Upstream's [disputes README](https://github.com/davxy/jam-test-vectors/blob/d3c089c9a1d5352ad353626d7a2db8589f137b2a/stf/disputes/README.md)
+as passing positive STF parity. Upstream's [disputes README](https://github.com/jam-conformance/jam-test-vectors/blob/d3c089c9a1d5352ad353626d7a2db8589f137b2a/stf/disputes/README.md)
 describes these dummy assignments. No production relaxation or fixture repair is introduced.
 
 Separate authored cases use valid complete reports/guarantee framing and actual Ed25519 signatures

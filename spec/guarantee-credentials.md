@@ -56,7 +56,7 @@ with the required parent/staged state context; loose extracted records are ordin
 
 ## Evidence and reproduction
 
-Thirty unchanged tiny/full report STF JSONs from davxy/jam-test-vectors commit
+Thirty unchanged tiny/full report STF JSONs from jam-conformance/jam-test-vectors commit
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` exercise the composed codec/credential boundary:
 
 - Eight successful projections cover current/previous rotations, multiple reports and repeated

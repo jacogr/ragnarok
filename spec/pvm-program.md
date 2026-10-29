@@ -72,7 +72,7 @@ skip limits, malformed framing, huge claimed counts, table widths 0 through 255,
 input ownership, default handles and deterministic malformed-input fuzzing.
 Compiler rejection fixtures protect private storage/results and nominal domains.
 
-The pinned `davxy/jam-test-vectors` revision
+The pinned `jam-conformance/jam-test-vectors` revision
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` has codec, STF and trace data but no
 standalone PVM instruction corpus at its top level. This increment makes no
 published PVM execution-vector parity claim. Tests use independently specified

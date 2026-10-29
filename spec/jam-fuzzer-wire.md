@@ -1,6 +1,6 @@
 # Native JAM fuzzer-v1 wire boundary
 
-Authority is the unchanged pinned davxy/jam-conformance commit
+Authority is the unchanged pinned jam-conformance/jam-fuzzing commit
 acd4b2da310ff25226c4d41b918712578483fd2c, specifically
 fuzz-proto/fuzz-v1.asn and fuzz-proto/README.md. The Gray Paper remains the JAM
 protocol authority; the tooling pin does not establish exact GP compatibility.

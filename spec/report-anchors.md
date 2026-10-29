@@ -39,7 +39,7 @@ Full-node complete-map state and light-node proof contracts remain distinct.
 
 ## Evidence and reproduction
 
-Fourteen unchanged tiny/full report STF projections from davxy/jam-test-vectors
+Fourteen unchanged tiny/full report STF projections from jam-conformance/jam-test-vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` cover current/previous rotations, multiple reports,
 missing recent anchors and incorrect slot/state/super-peak. Original signatures and preceding
 policy must pass before context assertions. Six recent projections accept and eight refuse.

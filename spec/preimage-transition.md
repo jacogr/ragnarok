@@ -24,7 +24,7 @@ are local results, not a claim of exact-head Linux CI or full JAM parity.
 Implement GP 0.8.0 `accumulation.tex`, `preimagesareordered`, `fnprovidable` and `fnprovide`,
 revision `07f041dabd073f9018b418e9ee72e79dd2185401` (SHA-256
 `bc919b34266cee75577f5fb3282b55768d0d75b6b8fe15d2835a228be18e6a6f`).
-Use pinned `davxy/jam-test-vectors` revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`,
+Use pinned `jam-conformance/jam-test-vectors` revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`,
 the complete tiny/full `stf/preimages` family. Add hashes for previously unused blobs without
 changing the upstream revision or executing upstream generators.
 

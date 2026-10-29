@@ -61,7 +61,7 @@ its bytes with a permissive 341-core bound and separately requires rejection und
 2-core tiny bound. The earlier report's six-core profile label was incorrect; native caller-bound
 range checking is unchanged. The tagged selection release preserves the earlier profile-label investigation.
 
-Published v0.8.0 JSON/binary pairs come from `davxy/jam-test-vectors`, tag v0.8.0 at
+Published v0.8.0 JSON/binary pairs come from `jam-conformance/jam-test-vectors`, tag v0.8.0 at
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Their exact hashes are recorded in `pins.json`.
 Tests independently construct the full wire from named JSON fields and observe every native
 header field. Authored new-field boundary and legacy-layout negative cases supplement these

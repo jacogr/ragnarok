@@ -1,7 +1,7 @@
 # Initial fuzzer ancestry and lookup-root evidence
 
 Authority is the unchanged GP 1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d
-reporting_assurance.tex lookup-anchor predicate and the pinned davxy/jam-conformance
+reporting_assurance.tex lookup-anchor predicate and the pinned jam-conformance/jam-fuzzing
 acd4b2da310ff25226c4d41b918712578483fd2c fuzz-v1 Initialize ancestry schema.
 Initial records contain only E4 slots and 32-byte header hashes, at most24 records.
 The maintainer explicitly directed preserving GP checks and reporting missing

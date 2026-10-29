@@ -1,7 +1,7 @@
 # JAM network fuzz preset
 
 Authority: GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, with the explicit
-experimental preset proposed in https://github.com/davxy/jam-conformance/issues/215.
+experimental preset proposed in https://github.com/jam-conformance/jam-fuzzing/issues/215.
 The conformance protocol remains pinned at `acd4b2da310ff25226c4d41b918712578483fd2c`.
 No dependency, historical fixture or protocol encoding pin changes are authorized here.
 

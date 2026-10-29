@@ -4,7 +4,7 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C
 complete extrinsic/block equations. Child policies come from the pinned serialization, header,
 Safrole, reporting, availability and judgments chapters and their existing contracts in `spec/`.
 Exact sources and tiny/full `extrinsic`/`block` JSON/binary hashes are in [pins.json](pins.json).
-The vector source is `davxy/jam-test-vectors` v0.8.0
+The vector source is `jam-conformance/jam-test-vectors` v0.8.0
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. No vendor bytes or gitlinks are changed.
 
 ## Composition and configuration

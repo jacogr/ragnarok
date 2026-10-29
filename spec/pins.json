@@ -32,7 +32,7 @@
     "base_release": "v0.8.0"
   },
   "vectors": {
-    "repository": "https://github.com/davxy/jam-test-vectors",
+    "repository": "https://github.com/jam-conformance/jam-test-vectors",
     "commit": "23061ae1f9b51171c01387e7dde0f15794c98e24",
     "protocol_version": "0.8.0",
     "files": {

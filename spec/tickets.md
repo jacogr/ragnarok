@@ -2,7 +2,7 @@
 
 Normative source: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.1
 natural/fixed integer definitions and C.2 `encodetickets`. Published tiny/full JSON and binaries
-come from the recorded `davxy/jam-test-vectors` v0.8.0 pin in [pins.json](pins.json).
+come from the recorded `jam-conformance/jam-test-vectors` v0.8.0 pin in [pins.json](pins.json).
 
 The wire is a canonical general-natural count followed by fixed 785-byte records: one **E1**
 attempt octet and 784 opaque RingVRF proof bytes. The attempt is never compact encoded; values

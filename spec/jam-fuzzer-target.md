@@ -1,6 +1,6 @@
 # Executable JAM fuzzer interface
 
-Authority is the pinned davxy/jam-conformance fuzzer-v1 protocol, standard target
+Authority is the pinned jam-conformance/jam-fuzzing fuzzer-v1 protocol, standard target
 entry variables and current GP implementation recorded by the preceding wire,
 session, socket and backend contracts. This increment connects them to the actual
 application entry point, with explicit host execution policy and Parameters.
