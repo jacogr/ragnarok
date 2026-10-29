@@ -50,3 +50,9 @@ changed. The original failure receipt remains under `build/pvm-arm-load-widths/f
 This failure supplies no native or timing result. All fourteen width/address forms
 also independently disassemble with LLVM to the intended LDRB/LDRSB/LDRH/LDRSH/
 LDR-W/LDRSW/LDR-X instructions.
+
+Run40796763526 at `a409f5f756acfd9f2f5c6ffd655b8c493a8c6fbc` confirmed
+those production conversions compile, then rejected mixed signed/unsigned literal
+types in the new full64-bit test vector. Every small vector literal is now explicitly
+uint64; values and equations are unchanged. Retain this originating build log under
+`build/pvm-arm-load-widths/second`; it is not a native or timing success.

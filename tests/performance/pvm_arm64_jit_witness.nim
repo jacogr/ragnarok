@@ -129,7 +129,7 @@ when defined(pvmArm64Jit):
           var words = armMemoryInstructions(suffix, slots, 0, 37, range[124..130](readOpcode))
           assert publishArmEntry(jit, 0, 37, 1, words)
           var bytes = default(array[16, byte])
-          for value in [0'u64, 0x80, 0x8000, 0x80000000, 0x8000000000000000'u64,
+          for value in [0'u64, 0x80'u64, 0x8000'u64, 0x80000000'u64, 0x8000000000000000'u64,
               high(uint64), 0x0123456789abcdef'u64]:
             for at in 0..<8: bytes[3+at] = byte((value shr (at*8)) and 255)
             var literal = 0'u64
