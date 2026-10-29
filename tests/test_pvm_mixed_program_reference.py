@@ -6,6 +6,7 @@ import hashlib
 import json
 import unittest
 from pvm_mixed_program_reference import ROOT, HEADER, MASK, fixtures
+from pvm_gas_reference import simulate, tables
 
 
 class MixedProgramReferenceTests(unittest.TestCase):
@@ -28,6 +29,22 @@ class MixedProgramReferenceTests(unittest.TestCase):
         self.assertEqual(cursor,len(data))
         self.assertEqual(seen,{(n,value,address) for n in (1,2,7,31)
             for value in (0,MASK,(1<<63)-1,1<<63) for address in (0x10000,0x10fff)})
+
+    def test_independent_real_tail_entry_price(self):
+        """Original raw prefix preserves PC13's backward target when pricing the actual unpaid PC10 entry."""
+        data,_=fixtures();cursor=12;definitions=tables();seen=set()
+        while cursor<len(data):
+            # Existing frozen framing owns all instruction boundaries; neither execution engine supplies prices.
+            row=HEADER.unpack_from(data,cursor)
+            wire=data[cursor+HEADER.size:cursor+HEADER.size+row[0]]
+            self.assertEqual(wire[:3],bytes((0,0,22)))
+            code=wire[3:25]
+            prefix=[code[:3],code[3:5],code[5:8],code[8:10]]
+            tail=[code[10:13],code[13:20],code[20:22]]
+            self.assertEqual([part[0] for part in tail],[131,83,50])
+            seen.add(simulate(tail,definitions,prefix=prefix))
+            cursor+=HEADER.size+row[0]
+        self.assertEqual(seen,{(22,25)})
 
     def test_literal_carry_and_accumulation(self):
         """Known carries and triangular sums catch mistakes in the complete-program oracle."""

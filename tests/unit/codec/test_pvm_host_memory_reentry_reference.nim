@@ -177,9 +177,35 @@ proc checkNativeProgress(owner: PreparedProgram, before: PreparedInfo, progresse
     # The ordinary registered suite intentionally qualifies the checked fallback without a native claim.
     assert after.nativeCalls == 0 and after.nativeOperations == 0
 
+proc admitEligibleTail(program: Program, memory: Memory, registers: RegisterFile, initial,
+    address, iterations: uint64, owner: PreparedProgram) =
+  ## The independent GP simulator prices the original PC10 add/branch tail at22 cycles-adjusted units.
+  ## A real unpaid entry grants its short prefix a complete header; paid resumes need no duplicate header.
+  var input = registers
+  input[10] = RegisterValue(iterations-1)
+  let cpu = MachineInfo(pc: CodeAddress(10), gas: MachineGas(44), gasDeficit: GasDeficit(0),
+    blockCharged: false, registers: input)
+  let captured = captureMachine(program, memory, cpu)
+  assert captured.error == MachineError.None
+  let source = captured.value
+  let before = preparedInfo(owner).value
+  let executed = execute(source, ExecutionStepLimit(3), owner)
+  assert executed.error == StepError.None and executed.value.exit == StepExit.Halt,
+    "independent prepared eligible tail trace"
+  var expected = registers
+  expected[10] = RegisterValue(iterations)
+  let expectedCpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(0), gasDeficit: GasDeficit(0),
+    blockCharged: true, registers: expected)
+  check(Retained(machine: executed.value.machine, cpu: expectedCpu, scalar: initial,
+    marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite]), address)
+  check(Retained(machine: source, cpu: cpu, scalar: initial,
+    marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite]), address)
+  checkNativeProgress(owner, before, true)
+
 proc entryTraces(program: Program, memory: Memory, registers: RegisterFile, initial,
-    address, price, haltPrice: uint64, owner: PreparedProgram) =
+    address, price, haltPrice, iterations: uint64, owner: PreparedProgram) =
   ## Reorder existing frozen load/host, store/host and terminal PCs through one genuine source owner.
+  var admittedTail = false
   for entry in [20'u64, 5, 0, 5, 20, 0]:
     # Descending then permuted entries share executable facts while every CPU/memory input is fresh.
     var input = registers
@@ -224,6 +250,10 @@ proc entryTraces(program: Program, memory: Memory, registers: RegisterFile, init
             check(Retained(machine: outcome.machine, cpu: expectedCpu, scalar: scalar,
               marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite]), address)
           check(original, address) # Every unpublished partial write and successful successor leave the real source unchanged.
+    if not admittedTail and entry == 20:
+      # Preserve the first fixed terminal oracle before any independent positive-admission control.
+      admitEligibleTail(program, memory, registers, initial, address, iterations, owner)
+      admittedTail = true
     if entry == 5:
       # Reuse that owner for the frozen paid store after host permission withdrawal, then repair exact selected faults.
       var access = [PageAccess.ReadOnly, PageAccess.Inaccessible]
@@ -402,7 +432,7 @@ for row in 0..<32:
   let execution = newPreparedProgram(program, defaultPreparedLimits(GasCycleLimit(cycles)))
   assert execution.error == PreparationError.None
   let owner = execution.value # This exact owner remains alive through both warm orders and every host repair.
-  entryTraces(program, memory, registers, initial, address, price, haltPrice, owner)
+  entryTraces(program, memory, registers, initial, address, price, haltPrice, iterations, owner)
   assert uint64(blockGas(memo, CodeAddress(0)).value) == price
   assert uint64(blockGas(memo, CodeAddress(20)).value) == haltPrice
   for mode in [PricingMode.Dynamic, PricingMode.Planned, PricingMode.Memo, PricingMode.Prepared]:
@@ -435,6 +465,7 @@ assert cursor == data.len and cases == 1536 and callbacks == 23616 and faults ==
 
 echo "PVM host memory reentry passed: 1536 cases, 23616 callbacks, 17712 repaired faults"
 echo "Prepared owner entry traces passed: 32 owners, 192 reordered entries"
+echo "Prepared eligible tail admissions passed: 32 entries, fixed price 22"
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   # Private native/refused qualification consumes actual cumulative execution receipts, never cache occupancy alone.
   echo "PREPARED_TRACE_NATIVE,", nativeCalls, ",", nativeOperations

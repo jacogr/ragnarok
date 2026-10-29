@@ -1,3 +1,4 @@
 PVM host memory reentry passed: 1536 cases, 23616 callbacks, 17712 repaired faults
 Prepared owner entry traces passed: 32 owners, 192 reordered entries
+Prepared eligible tail admissions passed: 32 entries, fixed price 22
 ARC_RELEASE cycles=1000 unchanged
