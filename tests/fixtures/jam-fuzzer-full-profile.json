@@ -79,6 +79,6 @@
     ]
   ],
   "base_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
-  "ring_input_sha256": "a6ae0911fa1189f05e2eddfb2a3c0a1b90c870054fcf836f7f7e24ce2b99540a",
+  "ring_input_sha256": "a252e92765799c8e43ace4e793f893c239c2826ec44452df329ef13e0fd0230f",
   "expected_sha256": "dcb7f9884c9eee7f4cbccff475e2924e66d76fe5fa1757c8b171bc6f818e1a93"
 }
