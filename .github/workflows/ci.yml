@@ -26,6 +26,19 @@ name: CI
         default: ""
         required: false
 
+      pvm_profile_sieve_limit:
+        description: Bounded sieve workload for scoped native profiles
+        type: choice
+        options: ["100000", "10000000"]
+        default: "100000"
+        required: false
+
+      pvm_profile_both_orders:
+        description: Profile baseline/current and current/baseline process orders
+        type: boolean
+        default: false
+        required: false
+
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
         required: false
@@ -713,6 +726,8 @@ jobs:
       PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
       PVM_JIT_PROCESS_REPLAYS: ${{ (inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-replay') && '1' || '0' }}
+      PVM_PROFILE_SIEVE_LIMIT: ${{ inputs.pvm_profile_sieve_limit || '100000' }}
+      PVM_PROFILE_BOTH_ORDERS: ${{ inputs.pvm_profile_both_orders && '1' || '0' }}
     steps:
       - *checkout
       - *python
@@ -779,19 +794,35 @@ jobs:
             build/tests/pvm-x86-applications/*.json
             build/tests/pvm-x86-applications/*.log
             build/tests/pvm-x86-applications/summary.md
+            build/tests/pvm-x86-applications/baseline-kernel-0
+            build/tests/pvm-x86-applications/jit-kernel-0
+            build/tests/pvm-x86-applications/baseline-doom-0
+            build/tests/pvm-x86-applications/jit-doom-0
             build/tests/pvm-x86-profiles/*
             build/tests/pvm-arm64-profiles/*
             build/tests/pvm-x86-jit/*.json
             build/tests/pvm-x86-jit/*.log
             build/tests/pvm-x86-jit/summary.md
+            build/tests/pvm-x86-jit/source-sealing
+            build/tests/pvm-x86-jit/source-sealing-refused
+            build/tests/pvm-x86-jit/compiler-*/source-sealing*-cache/**/*.c
+            build/tests/pvm-x86-jit/compiler-*/source-sealing*-cache/*.s.nif
             build/tests/pvm-interpreter-linux/*.json
             build/tests/pvm-interpreter-linux/*.log
             build/tests/pvm-interpreter-linux/summary.md
             build/tests/pvm-native/*.json
             build/tests/pvm-native/*.log
+            build/tests/pvm-native/source-sealing
+            build/tests/pvm-native/source-sealing-refused
+            build/tests/pvm-native/compiler-*/source-sealing*-cache/**/*.c
+            build/tests/pvm-native/compiler-*/source-sealing*-cache/*.s.nif
             build/tests/pvm-arm64-applications/*.json
             build/tests/pvm-arm64-applications/*.log
             build/tests/pvm-arm64-applications/summary.md
+            build/tests/pvm-arm64-applications/baseline-kernel-0
+            build/tests/pvm-arm64-applications/jit-kernel-0
+            build/tests/pvm-arm64-applications/baseline-doom-0
+            build/tests/pvm-arm64-applications/jit-doom-0
             build/tests/pvm-doom/*.json
             build/tests/pvm-doom/*.log
             build/ci/*.log

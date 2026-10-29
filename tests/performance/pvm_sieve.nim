@@ -21,10 +21,21 @@ proc selectedGuest(value: string): GuestKind =
     GuestKind.Sieve
 
 when defined(pvmProfileRequests):
+  import ../../src/pvm/internal/handler_stream
   proc profileBegin() {.cdecl, importc: "pvm_profile_begin", header: "pvm_profile_scope.h".}
     ## Begin explicit diagnostic collection without borrowing guest state.
   proc profileEnd() {.cdecl, importc: "pvm_profile_end", header: "pvm_profile_scope.h".}
     ## Stop and dump one complete invocation before independent caller validation.
+
+  proc profileFrameAbi(source: Program, info: MachineInfo) =
+    ## Observe the actual target ABI through a valid unused frame outside every collection boundary; publish offsets, never pointers.
+    var frame = newFlatFrame(newFlatPlan(source, GasCycleLimit(1)), [], info)
+    let base = cast[uint64](addr frame)
+    stdout.writeLine("PROFILE_FRAME_ABI," & $sizeof(FlatFrame) & "," &
+      $(cast[uint64](addr frame.info)-base) & "," &
+      $(cast[uint64](addr frame.info.registers)-base) & "," &
+      $(cast[uint64](addr frame.info.gas)-base) & "," &
+      $(cast[uint64](addr frame.remaining)-base))
 
 proc runPreparedKernel(source: Machine, prepared: reference.PreparedProgram): reference.StepResult {.noinline.} =
   ## One public call is a stable external profiler scope; setup and complete-state validation stay outside it.
@@ -114,6 +125,11 @@ let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 * 10
   JumpCountLimit(1024 * 1024))
 assert decoded.error == ProgramError.None, "sieve program decoding"
 let owner = decoded.value
+when defined(pvmProfileRequests):
+  if getEnv("RAGNAROK_PVM_FRAME_ABI_ONLY") == "1":
+    # This separate metadata process never enters a guest or warms the actual profiled process.
+    profileFrameAbi(owner, info)
+    quit(0)
 var images: seq[PageImage] = @[]
 var indices: seq[PageIndex] = @[]
 var access: seq[PageAccess] = @[]
