@@ -59,6 +59,22 @@ with that cache and returns local `InvalidPreparedProgram`, never a guest panic/
 successful partial snapshot. Reconstruct an owner to choose a different policy. Zero attempts
 retain ordinary `StepLimitExceeded`. Admission is atomic per suffix, not per conditional graph.
 
+Overlapping suffix emission preserves every existing complete entry-header mapping. Emitting an
+earlier source entry may add operation nodes and update interior-only coordinates, but cannot
+demote an already admitted entry to an interior coordinate. In particular, fresh calls through
+one prepared owner at PCs `1, 0, 1` in `unlikely; unlikely; trap` reuse four nodes and eleven
+preparation units without another admission. The `pvm_stream_entry_reuse` suite covers this exact
+capacity and all six permutations of three entries at six nodes/fifteen preparation units, then
+repeats every admitted entry with fresh immutable inputs. Literal trap/register/terminal-PC
+expectations do not use another execution adapter as their oracle. This mapping fix does not
+change suffix admission, sticky refusals, host continuation growth, gas or attempt accounting.
+
+The defect was reproduced against unchanged master `51d6774f93365d0b76ab6bec738e532f7b5538b3`
+in [CI run 40903185657](https://github.com/jacogr/ragnarok/actions/runs/40903185657): ARM64 and
+x86-64, each with plain, matching-native-enabled and forced-native-refusal builds. The four-node
+witness returned `InvalidPreparedProgram` on its third call while occupancy stayed four nodes
+and eleven preparation units. These folded-noop/trap programs do not claim native opcode activity.
+
 These are logical component bounds, not exact RSS, allocator-overhead or global concurrency quotas.
 The four-MiB implementation profile is not a consensus module-size rule: larger inputs fail local
 admission and require a separately qualified profile. Environmental allocator failure remains fatal

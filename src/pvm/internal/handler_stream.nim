@@ -1266,7 +1266,10 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   while index < f.plan.facts.len:
     let fact = f.plan.facts[index]
     let coordinate = uint32(f.handlers.len)
-    f.compiledForPc[int(fact.pc)] = (coordinate or (if first: 0x80000000'u32 else: 0'u32))+1
+    let packed = f.compiledForPc[int(fact.pc)]
+    if packed == 0 or ((packed-1) and 0x80000000'u32) == 0:
+      # An overlapping suffix may replace an interior coordinate, never an already published complete entry header.
+      f.compiledForPc[int(fact.pc)] = (coordinate or (if first: 0x80000000'u32 else: 0'u32))+1
     if first:
       # Only a newly emitted header prices its genuine containing block. Its existing sealed charge/error node is the memo; interior suffixes may price once each.
       var charge: FlatHandler = flatCharge
