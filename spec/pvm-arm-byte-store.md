@@ -1,6 +1,10 @@
 # Transactional ARM pure-prefix byte store
 
-## Scope
+## Current verdict and historical scope
+
+All three native-store variants are rejected and the runtime extension is removed.
+The retained change contains boundary witnesses, minimal profiling and exact trial
+evidence. Descriptions below preserve the historical variant scopes and receipts.
 
 Isolated draft experiment above the accepted scalar source matcher. The existing
 DOOM profile identifies indirect byte store opcode120 as a substantial remaining
@@ -174,7 +178,7 @@ native `a2813592f1836de5a15669ad2a74b9967b87ef8271f30b5c6a0f6812a4805910`;
 profiles `1abe7a53a82a9accfad1ab8541b7b132c6430152409b80f2a929d9cf547d9789`.
 Ignored evidence: `build/pvm-arm-byte-store/mixed/tests`.
 
-## Call-local context alternative (pending)
+## Call-local context alternative (rejected)
 
 Keep exactly the mixed admission and every semantic guard, but remove the additional
 72-byte store descriptor array from FlatFrame. A private24-byte context borrows the
@@ -189,7 +193,7 @@ regression's CPU cause remains unproven. Require fresh complete-state/native and
 paired timing/profile qualification against the accepted non-store parent. If this
 also fails, remove the runtime store delta and retain useful checks and evidence.
 
-## Compact context verdict: reject pending minimal attribution
+## Compact context verdict: reject; minimal attribution follows
 
 [Run40777246242](https://github.com/jacogr/ragnarok/actions/runs/40777246242)
 measured `b26a79a97b2c707cbf583cf049549467bdd88189` against the same accepted
@@ -298,3 +302,10 @@ Applications SHA256 `546cd5992b2edf286c8dbfa0b88e5e88399dca5d3eabbbe02790692d235
 native `3a8a225576bf6815c88bd638acd6c3c991965c3601bda4fdd9bae821a1a9a475`;
 profiles `90db66fda27c92de9d06500ed7b9ed7f627f3ec5914b26b3a3d91a9c426ecf63`.
 Ignored evidence: `build/pvm-arm-byte-store/minimal-profile/tests`.
+
+
+Post-removal qualification40790232878 found two witness calls mechanically renamed
+to the nonexistent finishArmReadSpan. Restore their accepted armReadInstructions
+name; no runtime assertion or test case is removed. The originating compile logs
+remain under ignored build/pvm-arm-profile/shift-arm-first.log. Fresh exact-head
+native qualification is required before declaring the retained witnesses complete.
