@@ -59,11 +59,19 @@ proc same(left, right: FlatFrame, context: string = "") =
 proc frozen(stream: FlatStream, before: FlatSealedInfo, nodes, work: uint64,
     native: array[7, uint64]) =
   ## Construction observations freeze independently of live native calls/operations and host events.
-  assert streamSealedInfo(stream) == before, "source sealing line 56: streamSealedInfo(stream) == before"
-  assert streamNodes(stream) == nodes and streamPreparation(stream) == work, "source sealing line 57: streamNodes(stream) == nodes and streamPreparation(stream) == work"
+  let copied = streamSealedInfo(stream)
+  assert copied == before, "frozen source partition: candidates/native/checked/deferred=" &
+    $copied.candidates & "/" & $copied.nativeEntries & "/" & $copied.checkedEntries & "/" &
+    $copied.capacityDeferred & " expected=" & $before.candidates & "/" & $before.nativeEntries &
+    "/" & $before.checkedEntries & "/" & $before.capacityDeferred
+  assert streamNodes(stream) == nodes and streamPreparation(stream) == work,
+    "frozen node/work occupancy actual=" & $streamNodes(stream) & "/" & $streamPreparation(stream) &
+    " expected=" & $nodes & "/" & $work
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
     let after = streamNativeStatistics(stream)
-    for index in [0, 3, 4]: assert after[index] == native[index], "source sealing line 60: after[index] == native[index]"
+    for index in [0, 3, 4]:
+      assert after[index] == native[index], "frozen native counter index=" & $index &
+        " actual=" & $after[index] & " expected=" & $native[index]
 
 proc entries(parts: openArray[seq[byte]], images: openArray[PageImage] = [],
     registers: RegisterFile = default(RegisterFile), jumps: openArray[uint32] = []) =
