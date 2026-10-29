@@ -187,6 +187,13 @@ def run(architecture="x86_64", calibration_only=False, paired_baseline=False, in
                 binary = (diagnostic_image(checks,cohort,role,case,report) if architecture=='arm64'
                           else Path(row['run']['command'][0]))
                 image_hash=hashlib.sha256(binary.read_bytes()).hexdigest()
+                if architecture == 'x86_64':
+                    # Preserve the already measured normal ELF for static code inspection; profile the unchanged original pathname.
+                    family = 'doom' if case in ('init', 'tick') else 'kernel'
+                    sealed = folder/(role+'-'+family+'-sealed')
+                    if not sealed.exists(): shutil.copyfile(binary, sealed)
+                    if hashlib.sha256(sealed.read_bytes()).hexdigest() != image_hash:
+                        raise ValueError('Retained normal profile image differs from its measured seal')
                 symbols = checks.command(['nm', '--defined-only', binary], case+'-'+role+'-symbols')
                 if symbols['exit_code']:
                     raise RuntimeError('Cannot inspect public invocation image')

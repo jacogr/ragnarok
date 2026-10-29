@@ -333,3 +333,10 @@ not only record size. No timing claim before qualification. The rejected larger
 and64-byte models remain exact measured history. If this separation cannot preserve
 useful gains without material regressions, restore the runtime to the accepted
 parent and keep meaningful tests/evidence.
+
+The x86 profile helper also retains the four normal measured kernel/DOOM ELFs
+(two roles) under deterministic `*-sealed` names, requiring exact image-hash
+identity before collection. Execution still uses the original already timed binary;
+there is no diagnostic guest build or runtime instrumentation. These copies permit
+independent static disassembly of the accepted small path and field access offsets
+after CI completes, rather than guessing a CPU cause from aggregate counts.
