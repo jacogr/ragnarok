@@ -88,6 +88,12 @@ def qualify(checks, compiler, *, native=True):
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
                 raise ValueError('Missing complete one-block region boundary witness')
+        if native and name == 'witness':
+            # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
+            matches = [line for line in checked['output'].splitlines()
+                       if line.startswith('ARM_REGION_SCALAR_MATCH_CASES,')]
+            if matches != ['ARM_REGION_SCALAR_MATCH_CASES,111']:
+                raise ValueError('Missing complete scalar region-charge witness')
         checked['build'] = {key:value for key,value in built.items() if key != 'output'}
         if name == 'witness-refused' or (native and name == 'witness'):
             # The existing independent witness must prove real publication/calls or an exact zero-count refusal.

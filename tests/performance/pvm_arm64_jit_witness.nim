@@ -7,6 +7,33 @@ import ../../src/pvm/[program, machine, gas, step, registers, gas_plan, gas_memo
 when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
 import ../../src/pvm/internal/handler_stream
+
+when defined(pvmArm64Jit):
+  proc checkRegionCharges(jit: ArmJit, headers, spans: array[3, uint32],
+      prices: array[3, uint64]): int =
+    ## Compare scalar checks to the retained complete matcher for each genuine and individually corrupted record.
+    result = 0
+    assert armRegionMatches(jit, headers, spans, prices)
+    for index in 0..<3:
+      # All fields of active and sentinel records must match before independent mutation controls run.
+      let coordinate = range[0..2](index)
+      assert armRegionChargeMatches(jit, coordinate, headers[index], spans[index], prices[index])
+      inc result
+      for field in 0..<3:
+        var alteredHeaders = headers
+        var alteredSpans = spans
+        var alteredPrices = prices
+        case field
+        of 0: alteredHeaders[index] = alteredHeaders[index] xor 1'u32 # Only the captured source header changes.
+        of 1: alteredSpans[index] = alteredSpans[index] xor 1'u32 # Only the complete source span changes.
+        else: alteredPrices[index] = alteredPrices[index] xor 1'u64 # Preserve all other full-width pricing bits.
+        let complete = armRegionMatches(jit, alteredHeaders, alteredSpans, alteredPrices)
+        assert not complete
+        let scalar = armRegionChargeMatches(jit, coordinate, alteredHeaders[index],
+          alteredSpans[index], alteredPrices[index])
+        assert scalar == complete
+        inc result
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -715,6 +742,12 @@ when defined(pvmArm64Jit):
     echo "ARM_REPLACEMENT_REFUSAL,", successes
 
   when not defined(pvmArm64JitRefuse):
+    var scalarMatchCases = 0
+    let unpublished = newArmJit()
+    for index in 0..<3:
+      # Unpublished metadata must refuse even a default-looking record.
+      assert not armRegionChargeMatches(unpublished, range[0..2](index), 0, 0, 0)
+      inc scalarMatchCases
     # One connected publication fits after ordinary leaves exhaust their reserved 1,023-slot budget; total stays 1,024.
     let bounded = newArmJit()
     assert armEntry(bounded, 0, 3) == 0
@@ -735,6 +768,7 @@ when defined(pvmArm64Jit):
       blocks[index] = ArmRegionBlock(header: uint32(index), span: 2, operations: 2,
           price: 1, yes: 77, no: uint32((index+1) mod 3), body: move(body))
     assert publishArmRegion(bounded, blocks)
+    scalarMatchCases += checkRegionCharges(bounded, [0'u32, 1, 2], [2'u32, 2, 2], [1'u64, 1, 1])
     assert bounded.fragments == 1024
     for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
       for gas in [0'u64, 1, 2, 3, 100]:
@@ -780,6 +814,11 @@ when defined(pvmArm64Jit):
               span: 2, operations: 2, price: prices[phase], yes: 99, no: next, body: move(body))
         assert publishArmRegion(pairJit, pairBlocks, 2)
         assert armRegionCount(pairJit) == 2
+        let firstPhase = if rotated: 1 else: 0
+        let secondPhase = 1-firstPhase
+        scalarMatchCases += checkRegionCharges(pairJit,
+          [pairBlocks[0].header, pairBlocks[1].header, high(uint32)], [2'u32, 2, 0],
+          [prices[firstPhase], prices[secondPhase], 0'u64])
         for gas in [0'u64, 1, 2, 3, 4095, 4096, high(uint64)]:
           for budget in 0'u64..12'u64:
             var registers = default(RegisterFile)
@@ -804,6 +843,7 @@ when defined(pvmArm64Jit):
             for slot in 1..<13: assert registers[slot] == original[slot]
             inc pairLiteralCases
     echo "ARM_TWO_BLOCK_LITERAL_CASES,", pairLiteralCases
+    echo "ARM_REGION_SCALAR_MATCH_CASES,", scalarMatchCases
 
     # Price width and source-budget width are independent: exercise both sides of the immediate boundary and full u64.
     var priceCases = 0

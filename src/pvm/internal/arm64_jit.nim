@@ -561,6 +561,12 @@ func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
         jit.region.prices[index] != prices[index]: return false
   true
 
+func armRegionChargeMatches*(jit: ArmJit, index: range[0..2], header, span: uint32,
+    price: uint64): bool {.inline.} =
+  ## Match one complete cached source-charge record without materializing temporary price/span arrays.
+  jit.region.status == 2 and jit.region.headers[index] == header and
+    jit.region.spans[index] == span and jit.region.prices[index] == price
+
 proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     count: range[2..3] = 3): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.

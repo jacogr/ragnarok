@@ -1945,16 +1945,19 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     let active = armRegionCount(jit)
     var headers = [flatStop, flatStop, flatStop]
-    var spans = default(array[3, uint32])
-    var prices = default(array[3, uint64])
+    var matched = true
     for index in 0..<active:
-      # The exact-source cache has stable header coordinates; reject any mismatched invocation metadata before native entry.
+      # Read all original header coordinates before fallback; every source price/span still matches the complete cached record.
       headers[index] = armRegionHeader(jit, range[0..2](index))
       assert int(headers[index]) < f.arguments.len
-      spans[index] = f.arguments[int(headers[index])].y
-      prices[index] = f.arguments[int(headers[index])].x
+      let charge = f.arguments[int(headers[index])]
+      if not armRegionChargeMatches(jit, range[0..2](index), headers[index], charge.y, charge.x):
+        matched = false
+    for index in int(active)..<3:
+      # Inactive records retain the original full sentinel/zero checks, including the unused third lane of a two-block region.
+      if not armRegionChargeMatches(jit, range[0..2](index), flatStop, 0, 0): matched = false
     if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        offset != headers[0] or not armRegionMatches(jit, headers, spans, prices):
+        offset != headers[0] or not matched:
       # Already-paid, partial or differently priced execution retains its original complete ordering.
       let original = f.armOriginal[int(offset)]
       assert original != nil
