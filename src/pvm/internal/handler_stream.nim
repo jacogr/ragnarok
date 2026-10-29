@@ -114,7 +114,7 @@ type
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
-    # Keep the existing JIT pricing/probe/descriptor coordinates ahead of cold eager-only state.
+                            # Keep the existing JIT pricing/probe/descriptor coordinates ahead of cold eager-only state.
     sealedInfo: FlatSealedInfo # Cold construction policy; eager handlers never discover code during execution.
     sealedPrices: seq[FlatSealedPrice] # One containing-block price per source block; external pricing stays invocation-selected.
     when defined(pvmSourceSealingReceipt):
