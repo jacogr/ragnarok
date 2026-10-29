@@ -9,6 +9,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import signal
 import socket
 import stat
@@ -17,6 +18,29 @@ import time
 import tempfile
 from pathlib import Path
 from urllib.request import Request, urlopen
+
+
+def assert_log_records(text, records):
+    """Require each physical record, allowing only the final logger's explicitly counted losses."""
+    lines = text.splitlines()
+    summary = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z '
+                         r'\[warn\]\[startup\] logging dropped=([1-9][0-9]{0,19})$')
+    receipts = [(index, int(match[1])) for index, line in enumerate(lines)
+                if (match := summary.fullmatch(line))]
+    dropped = 0
+    if receipts:
+        # One joined process emits one final summary; ordinary text cannot grant an allowance.
+        assert len(receipts) == 1 and receipts[0][0] == len(lines)-1, text
+        dropped = receipts[0][1]
+        assert 0 < dropped <= 2**64-1, text
+    missing = []
+    for record in records:
+        fragments = (record,) if isinstance(record, str) else record
+        # Related fields from one status line spend at most one missing-record allowance.
+        assert fragments and all(isinstance(fragment, str) and fragment for fragment in fragments)
+        if not any(all(fragment in line for fragment in fragments) for line in lines):
+            missing.append(fragments)
+    assert len(missing) <= dropped, (missing, dropped, text)
 
 
 def run(binary, folder):
@@ -94,10 +118,10 @@ def run(binary, folder):
     finally:
         stop(process, output, log)
     service_log = log.read_text()
-    for message in ['UI listening on http://127.0.0.1:8418/', 'RPC listening on ws://127.0.0.1:9418/',
-                    'MCP listening on http://127.0.0.1:14141/mcp', 'Stopping UI listener',
-                    'Stopping RPC listener', 'Stopping MCP listener']:
-        assert message in service_log, service_log
+    assert_log_records(service_log, [
+        'UI listening on http://127.0.0.1:8418/', 'RPC listening on ws://127.0.0.1:9418/',
+        'MCP listening on http://127.0.0.1:14141/mcp', 'Stopping UI listener',
+        'Stopping RPC listener', 'Stopping MCP listener'])
     # Recently closed HTTP/RPC clients must not prevent an immediate foreground restart.
     process, output, log = start(folder/'ui-defaults', ['--with-ui', '--with-mcp', '--net-port', port()])
     stop(process, output, log)
@@ -114,27 +138,27 @@ def run(binary, folder):
             '--with-telemetry', '--telemetry-endpoint', endpoint,
             '--with-management', '--management-socket', management_socket])
         try:
-            deadline = time.monotonic()+10
+            deadline = time.monotonic()+5.5
             while 'Telemetry collector connection unavailable; retrying in 5s' not in log.read_text():
-                assert process.poll() is None and time.monotonic() < deadline, log.read_text()
+                assert process.poll() is None, log.read_text()
+                if time.monotonic() >= deadline:
+                    break # A dropped warning cannot be a synchronization barrier; check its receipt after stop.
                 time.sleep(0.02)
             collector.listen(1)
             collector.settimeout(10)
             connection, _ = collector.accept()
             with connection:
                 connection.settimeout(5)
+                # Actual registration proves connection, independently of logging.
                 assert connection.recv(2048), log.read_text()
-                deadline = time.monotonic()+5
-                while 'Connected to telemetry collector' not in log.read_text():
-                    assert process.poll() is None and time.monotonic() < deadline, log.read_text()
-                    time.sleep(0.02)
         finally:
             stop(process, output, log)
         service_log = log.read_text()
-        assert 'Telemetry destination: '+endpoint in service_log, service_log
-        assert 'Stopping telemetry exporter' in service_log, service_log
-        assert 'Management listening on '+management_socket in service_log, service_log
-        assert 'Stopping management listener' in service_log, service_log
+        assert_log_records(service_log, [
+            'Telemetry destination: '+endpoint, 'Stopping telemetry exporter',
+            'Management listening on '+management_socket, 'Stopping management listener',
+            'Telemetry collector connection unavailable; retrying in 5s',
+            'Connected to telemetry collector'])
     results.append('telemetry reports endpoint, refusal, bounded retry, connection and shutdown')
 
     # Successive real clients prove the default server outlives a bounded eight-request workload.
@@ -170,13 +194,10 @@ def run(binary, folder):
             str(isolated/'data/network/public.key'), '--net-timeout-ms', '2000']
     try:
         for mode in ['bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin']:
-            before = log.read_text().count('Request rejected: timed out before FIN')
             rejected = subprocess.run([*base, '--net-mode', mode], cwd=isolated,
                                       env=environment, capture_output=True, text=True, timeout=10)
             assert rejected.returncode == 2 and 'AUTH_OK' in rejected.stdout, rejected
             assert process.poll() is None, log.read_text()
-            if mode == 'no-fin':
-                assert log.read_text().count('Request rejected: timed out before FIN') > before, log.read_text()
             healthy = subprocess.run(base, cwd=isolated, env=environment,
                                      capture_output=True, text=True, timeout=10)
             assert healthy.returncode == 0 and 'EXCHANGE_OK 8' in healthy.stdout, healthy
@@ -190,6 +211,7 @@ def run(binary, folder):
         assert healthy.returncode == 0 and 'EXCHANGE_OK 8' in healthy.stdout, healthy
     finally:
         stop(process, output, log)
+    assert_log_records(log.read_text(), ['Request rejected: timed out before FIN'])
     results.append('malformed, timed-out and cancelled streams preserve later healthy exchanges')
 
     # Explicit locations replace defaults without creating the unused default root.
@@ -218,10 +240,10 @@ def run(binary, folder):
                             capture_output=True, text=True, timeout=15)
     (logged/'node.log').write_text(result.stderr)
     assert result.returncode == 0, result
-    for message in ['Ragnarok ', 'Platform:', 'Role: FULL; block production: disabled',
-                    'Local node identity:', 'JAMNP-S over QUIC', 'Waiting for peers',
-                    'sync target: unknown', 'Stopping peer networking', 'Shutdown complete']:
-        assert message in result.stderr, (message, result.stderr)
+    assert_log_records(result.stderr, [
+        'Ragnarok ', 'Platform:', 'Role: FULL; block production: disabled',
+        'Local node identity:', 'JAMNP-S over QUIC', ('Waiting for peers', 'sync target: unknown'),
+        'Stopping peer networking', 'Shutdown complete'])
     assert 'Idle' not in result.stderr and 'Caught up' not in result.stderr, result.stderr
     for line in result.stderr.splitlines():
         assert len(line) > 21 and line[4] == '-' and line[19:21] == 'Z ', line
@@ -244,7 +266,8 @@ def run(binary, folder):
     finally:
         stop(process, output, log)
     messages = log.read_text()
-    assert '[warn][network]' in messages and '[info]' not in messages and '[debug]' not in messages, messages
+    assert_log_records(messages, ['[warn][network]'])
+    assert '[info]' not in messages and '[debug]' not in messages, messages
     results.append('timestamped node identity, periodic sync status, shutdown and quiet levels')
 
     # Each real layout owner must create and reopen its own inferred namespace.

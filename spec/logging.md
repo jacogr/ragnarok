@@ -134,3 +134,23 @@ retained equal before/after usage over 1000 cycles. Five current-download Python
 source inventory, changed-source pinned formatting and whitespace checks passed. Evidence is
 retained under `build/node-logging-*`. Linux CI is separate evidence. Existing fixtures remain
 unchanged; sync target discovery/readiness is deliberately not inferred by this logging tranche.
+
+
+## Startup E2E loss accounting
+
+Startup diagnostics use the same deliberately lossy queue as other application records; no separate
+required-lifecycle delivery guarantee exists. Testnet startup checks require each expected physical
+record or enough explicitly counted missing records in the one exact final UTC startup drop warning.
+There is no allowance for unexplained, malformed, duplicate, nonfinal or insufficient loss receipts.
+Related fields from one periodic status line count as one physical record.
+
+HTTP/gzip/body checks, RPC/MCP socket probes, peer request/refusal/recovery, persistent identity,
+database reopen, graceful exit status, quiet levels and forbidden readiness claims remain independent
+hard checks. Telemetry proves connection by receiving its actual registration bytes; dropped diagnostic
+lines cannot become readiness barriers. The logger queue, producer admission/drop policy, formatting
+and native lifetime are unchanged.
+
+The focused Python regression replays the reported master failure shape (one missing UI start record,
+three counted drops), rejects that same unexplained absence without its receipt, and covers bounded
+allowances, same-line grouping and malformed/duplicate/nonfinal receipts. Exact failed-run artifact
+replay is retained under `build/startup-log-repair-*`.
