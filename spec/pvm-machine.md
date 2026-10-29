@@ -367,3 +367,31 @@ query against its fixed write-error oracle, all 256 width values, protected and 
 and exact fitting/overflowing final-page cases. Old page bytes and permissions remain checked
 after successful and failed preflights. Native qualification is pending CI; this API layer does
 not yet change the interpreter consumer or establish a runtime speed claim.
+
+## Fragmented interpreter store preflight
+
+The checked interpreter's `flatStoreSlow` uses `writableScalar` before marking dirty pages or
+changing private frame bytes. It no longer constructs and discards an immutable successor only
+to establish write eligibility. Error mapping, fault pages, byte order, all-width extent checks,
+source-owner retention, dirty marking and atomic cross-page refusal retain their existing order.
+Fast stack/read-write-region paths and immutable public `store` remain unchanged.
+
+The antecedent diagnosis used runtime `4862c18e426aec8f7414312d567cce9bac085f78` and immutable
+private confirmation `db1acd3a268f5648166957a99b062735fb2bbb87` in canonical CI
+[40919335087](https://github.com/jacogr/ragnarok/actions/runs/40919335087). With unrelated mapped
+pages increasing from4 to4096, additional fragmented-store instruction work grew from8593.7
+to234116.8 on ARM64 and9694.1 to255719.9 on x86_64. Fast-path work remained approximately7432
+and8479 respectively. The 4096-page ARM profile attributed52.49% of self instructions to page
+vector appends,28.02% to immutable store and15.78% to discarded result destruction; generated
+C retained the executed full-vector reference-copy loop. These are diagnostic instruction counts,
+with construction/publication excluded and clocks discarded, rather than timing or native JIT
+performance claims.
+
+Both hosts passed exact literal CPU/register/page/permission/byte outcomes, original frame and
+caller-image isolation, independent complete-state fingerprints, genuine assertion and wrong-byte
+controls, actual client-request calibration, equal fresh images and complete one-call/empty-trailer
+profiles. ARM artifact12917681840 SHA256
+`c08cbbb67d8c76be546f748f34afd50adb84f226b02b2b1c22426d28f367d4e1`;
+x86 artifact12916413873 SHA256
+`fdd13b961c0b6668f2c5a45453eeba5b7ad451e0f41ed689b9b876e55d2411f6`.
+The consumer's changed behavior still requires its own native CI and paired counter qualification.

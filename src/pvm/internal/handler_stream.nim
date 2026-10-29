@@ -451,8 +451,8 @@ proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
   true
 
 proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value: uint64): bool =
-  ## Rare complete immutable store preflight is discarded; private bytes mutate atomically only after its exact typed success.
-  let checked = store(f.sourceMemory, MemoryAddress(address), AccessWidth(byte(W)), RegisterValue(value))
+  ## Exact read-only scalar preflight precedes dirty marking and every private byte mutation.
+  let checked = writableScalar(f.sourceMemory, MemoryAddress(address), AccessWidth(byte(W)))
   if checked.error != MachineError.None:
     if checked.error == MachineError.Fault:
       f.faultPage = checked.faultPage
