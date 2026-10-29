@@ -36,6 +36,20 @@ int main(void) {
         assert(pvm_x86_arena_next(owner, next, registers) == 42);
         assert(pvm_x86_arena_next(owner, next + 1, registers) == UINT32_MAX);
         assert(pvm_x86_arena_next(NULL, next, registers) == UINT32_MAX);
+        /* Connected entries borrow RDI registers and RSI context independently, committing neither on refusal. */
+        const unsigned char region_bytes[] = {0x48,0xc7,0x06,7,0,0,0,
+                                             0x48,0xc7,0x07,9,0,0,0,0xb8,42,0,0,0,0xc3};
+        uint64_t state[5] = {0};
+        int32_t region = pvm_x86_arena_publish(owner, region_bytes, sizeof(region_bytes));
+        assert(region >= 0);
+        assert(pvm_x86_arena_region(owner, region, registers, state) == 42);
+        assert(registers[0] == 9 && state[0] == 7);
+        assert(pvm_x86_arena_region(NULL, region, registers, state) == UINT32_MAX);
+        assert(pvm_x86_arena_region(owner, region, NULL, state) == UINT32_MAX);
+        assert(pvm_x86_arena_region(owner, region, registers, NULL) == UINT32_MAX);
+        assert(pvm_x86_arena_region(owner, region + 1, registers, state) == UINT32_MAX);
+        assert(pvm_x86_arena_region(owner, 1024 * 1024, registers, state) == UINT32_MAX);
+        assert(registers[0] == 9 && state[0] == 7);
         if (repeat == 0) {
             /* Fill the physical arena without executing padding; refusal must preserve the original code. */
             unsigned char fill[4096];

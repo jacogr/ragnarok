@@ -45,8 +45,27 @@ def qualify(checks, compiler, rows=None):
                 'X86_PREFIX_CASES,2984\n' not in run['output'] or
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or
                 'X86_BRANCH_LITERAL_CASES,1296\n' not in run['output'] or
-                'X86_BRANCH_PREFIX_CASES,540\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
+                'X86_BRANCH_PREFIX_CASES,540\n' not in run['output'] or
+                'X86_REGION_PREFIX_CASES,1440\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
+        if name.startswith('x86-'):
+            # Deferred triples still retain complete original-source and same-owner/root/policy boundary checks.
+            if 'X86_CHECKED_THREE_SOURCE_CASES,3546\n' not in run['output'] or 'X86_EXISTING_ROOT_SOURCE_CASES,6\n' not in run['output']:
+                raise ValueError('Missing checked triple source/root controls')
+            # The new context oracle must execute on native storage; refused builds retain the existing full fallback matrix.
+            expected = 0 if refused else 1440
+            if 'X86_RESIDENT_CONTEXT_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete resident x86 context witness')
+        if name.startswith('x86-'):
+            # Native literals prove both compact width boundaries and arbitrary64 fallback; refusal must execute no native cases.
+            expected = 0 if refused else 3168
+            if 'X86_COMPACT_IMMEDIATE_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete compact immediate witness')
+        if name.startswith('x86-'):
+            # Independent whole-region arithmetic covers the restored emitter together with exact source/gas context.
+            expected = 0 if refused else 2120
+            if 'X86_REGION_ARITHMETIC_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete whole-region arithmetic witness')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.

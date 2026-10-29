@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Experimental ARM64 compiler for sealed register fragments and guarded connected blocks.
-## Code borrows invocation registers and a bounded scalar context, never guest/source pointers.
+## ARM64 scalar, guarded-memory and connected-block lowering with prepared source proofs.
+## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
 import std/assertions
 import ../[program, machine]
 
@@ -133,6 +133,18 @@ proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uin
   ## Arithmetic constants define all bits independently of the fixed conditional return selector.
   if fragment.compact: armCompactImmediate(fragment.words, destination, value)
   else: armImmediate(fragment.words, destination, value)
+
+proc emitArmShiftPair*(fragment: var ArmBlock, first, second: RegisterSlots,
+    firstImmediate, secondImmediate: uint64): bool =
+  ## Decline without mutation unless LSL64/LSR64 overwrite one destination with equal masked counts; full-block admission hides the intermediate value.
+  if first.destinationIndex != second.destinationIndex or second.bIndex != first.destinationIndex or
+      (firstImmediate and 63) != (secondImmediate and 63): return false
+  let source = armRead(fragment, first.bIndex)
+  let destination = armWrite(fragment, first.destinationIndex)
+  let amount = uint32(firstImmediate and 63)
+  # UBFM extracts exactly the low64-k bits; k=0 is a full-width copy and no instruction changes NZCV.
+  fragment.words.add(0xd3400000'u32 or ((63'u32-amount) shl 10) or (source shl 5) or destination)
+  true
 
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
@@ -267,7 +279,19 @@ proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
   span.guards.add(ArmReadGuard(at: span.body.words.len, conditional: conditional))
   span.body.words.add(word)
 
-proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32) =
+func armReadEncoding(opcode: range[124..130]): uint32 =
+  ## Unsigned widths clear their unused upper bits; signed widths extend directly into the full64-bit guest register.
+  case opcode
+  of 124: 0x38606800'u32 # LDRB Wt,[Xn,Xm].
+  of 125: 0x38a06800'u32 # LDRSB Xt,[Xn,Xm].
+  of 126: 0x78606800'u32 # LDRH Wt,[Xn,Xm].
+  of 127: 0x78a06800'u32 # LDRSH Xt,[Xn,Xm].
+  of 128: 0xb8606800'u32 # LDR Wt,[Xn,Xm].
+  of 129: 0xb8a06800'u32 # LDRSW Xt,[Xn,Xm].
+  else: 0xf8606800'u32 # LDR Xt,[Xn,Xm].
+
+proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+    opcode: range[124..130] = 130) =
   ## Address aliases consume the current resident value before the load writes its destination.
   let source = armRead(span.body, slots.bIndex)
   let destination = armWrite(span.body, slots.aIndex)
@@ -288,7 +312,8 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
     span.body.words.add(0xeb02003f'u32) # CMP X1,X2 proves offset < extent-minus-seven.
     span.body.words.add(0x54000082'u32) # HS skips exactly the pointer, load and accepted branch.
     span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR X2,[X17,#region*24+16].
-    span.body.words.add(0xf8616840'u32 or destination) # LDR Xdestination,[X2,X1], permitting unaligned words.
+    span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
+        destination) # The unchanged eight-byte extent proof also covers narrower unaligned reads.
     accepted[region] = span.body.words.len
     span.body.words.add(0x14000000'u32)
   armReadRefusal(span, 0x14000000'u32, false) # Missing/fragmented memory replays the complete original prefix.
@@ -370,8 +395,8 @@ proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
 
 
 proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32): seq[uint32] =
-  ## A first unsigned indirect word load guards fresh borrowed regions before any guest register is published.
+    displacement, ending: uint32, opcode: range[124..130] = 130): seq[uint32] =
+  ## A first indirect read of the selected signed/unsigned width guards fresh borrowed regions before any guest register is published.
   assert fragment.terminal.len == 0
   let destination = armWrite(fragment, slots.aIndex)
   let arithmetic = armInstructions(fragment)
@@ -400,7 +425,8 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     result.add(0xeb11005f'u32) # CMP Xoffset,Xextent.
     result.add(0x54000082'u32) # HS skips this region without reading its pointer.
     result.add(0xf9400031'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer,[Xcontext,#region*24+16].
-    result.add(0xf8626a20'u32 or destination) # LDR Xdestination,[Xpointer,Xoffset], including unaligned words.
+    result.add(armReadEncoding(opcode) or (2'u32 shl 16) or (17'u32 shl 5) or
+        destination) # The conservative eight-byte guard admits every selected width safely.
     accepted.add(result.len)
     result.add(0x14000000'u32)
   let missing = result.len
@@ -560,6 +586,12 @@ func armRegionMatches*(jit: ArmJit, headers, spans: array[3, uint32],
     if jit.region.headers[index] != headers[index] or jit.region.spans[index] != spans[index] or
         jit.region.prices[index] != prices[index]: return false
   true
+
+func armRegionChargeMatches*(jit: ArmJit, index: range[0..2], header, span: uint32,
+    price: uint64): bool {.inline.} =
+  ## Match one complete cached source-charge record without materializing temporary price/span arrays.
+  jit.region.status == 2 and jit.region.headers[index] == header and
+    jit.region.spans[index] == span and jit.region.prices[index] == price
 
 proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     count: range[2..3] = 3): bool =

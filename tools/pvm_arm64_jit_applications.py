@@ -24,11 +24,12 @@ from pvm_sieve_report import parse_process_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
 from pvm_benchmark import cpu_model
 from pvm_application_report import lifecycle_sections
+from pvm_process_replays import run_replays, replay_summary
 from pvm_comparison_policy import policy_receipt
 from setup_nimony import installed, cache_directory
 
 BUILD = ROOT/'build/tests/pvm-arm64-applications'
-BASELINE = os.environ.get('PVM_JIT_BASELINE')
+BASELINE = os.environ.get('PVM_JIT_BASELINE') or None
 ROLES = ('interpreter', 'baseline', 'jit', 'core', 'reference')
 COUNTERS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns', 'branches', 'headers')
 
@@ -244,6 +245,9 @@ def run(architecture="arm64", build=None, baseline=None):
     if len(report['runs'])!=70 or len(report['controls'])!=115: raise ValueError('Incomplete application cohort')
     if not any(r['parsed']['native']['operations']>0 for r in report['runs'] if r['role']=='jit'):
         raise ValueError('No native public execution')
+    if os.environ.get('PVM_JIT_PROCESS_REPLAYS') == '1':
+        # Replications reuse the exact admitted images and inputs, preserving the ordinary cohort and all refusal controls.
+        run_replays(checks, report, ids, cases, DOOM, parse_run)
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
     report['status']='passed'
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
@@ -258,6 +262,7 @@ def run(architecture="arm64", build=None, baseline=None):
             for col,value in zip(columns,values): col.append(value)
         lines.append('| '+case+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
     lines += lifecycle_sections(report).splitlines()
+    lines += replay_summary(report).splitlines()
     (folder/'summary.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 

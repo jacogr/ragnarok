@@ -3,7 +3,7 @@
 ## Native x86 scalar/alias equivalence, every source prefix and honest OS-refusal witnesses.
 import std/[assertions, syncio]
 import ../../src/codec/natural
-import ../../src/pvm/[program, machine, gas, step, registers]
+import ../../src/pvm/[program, machine, gas, step, registers, gas_plan, gas_memo]
 import ../../src/pvm/internal/[handler_stream, x86_jit]
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
@@ -430,3 +430,333 @@ for initial in [0'u64, 5, 31]:
         checkFlatSource(interpretedFrame)
         inc branchPrefixCases
 stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
+
+
+# Both charged blocks have positively cached scalar arms; the second returns to the first or exits to a real panic.
+let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
+    @[149'u8, 2, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+var regionCases = 0
+for paired in [false, true]:
+  # Use independently admitted interpreted owners; a cached native region cannot turn its own result into the oracle.
+  let program = if paired: pairedProgram else: branchProgram
+  let nativePlan = newFlatPlan(program, GasCycleLimit(100000))
+  var checkedCapture = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+  assert checkedCapture.error == FlatError.None
+  let checkedPlan = takeValue(checkedCapture)
+  var nativeFrame = newFlatFrame(nativePlan, [], warmInfo)
+  var checkedFrame = newFlatFrame(checkedPlan, [], warmInfo)
+  for visit in 0..<3:
+    # Reused source caches must discover and execute a real closed loop before boundary cases can count as native evidence.
+    resetFlatFrame(nativeFrame, warmInfo)
+    runFlat(nativeFrame, 1000)
+    assert nativeFrame.reason == StepError.None and nativeFrame.exit == StepExit.Panic
+  when defined(pvmX86JitRefuse):
+    assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64])
+  else:
+    let connected = flatX86RegionStatistics(nativeFrame)
+    assert connected[0] > 0 and connected[1] > connected[0]
+  for initial in [0'u64, 5, 31]:
+    for paid in [false, true]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:
+        for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 127, 128, 129]:
+          # Guard exits at either block retain precise original gas, source prefix, paid state and immutable source snapshots.
+          var info = warmInfo
+          info.registers[0] = RegisterValue(initial)
+          info.blockCharged = paid
+          info.gas = MachineGas(gas)
+          resetFlatFrame(nativeFrame, info)
+          resetFlatFrame(checkedFrame, info)
+          runFlat(nativeFrame, budget)
+          runFlat(checkedFrame, budget)
+          assert nativeFrame.reason == checkedFrame.reason and nativeFrame.exit == checkedFrame.exit
+          assert nativeFrame.remaining == checkedFrame.remaining
+          assert nativeFrame.info.pc == checkedFrame.info.pc
+          assert nativeFrame.info.gas == checkedFrame.info.gas
+          assert nativeFrame.info.gasDeficit == checkedFrame.info.gasDeficit
+          assert nativeFrame.info.blockCharged == checkedFrame.info.blockCharged
+          assert nativeFrame.info.registers == checkedFrame.info.registers
+          checkFlatSource(nativeFrame)
+          checkFlatSource(checkedFrame)
+          inc regionCases
+stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
+
+# The original scalar context is an independent oracle for resident visits and endpoint publication.
+var contextCases = 0
+when not defined(pvmX86JitRefuse):
+  let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
+  let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
+  for active in 1..2:
+    # Publish a real ordinary leaf first so the independently owned arena has genuine executable storage.
+    let jit = newX86Jit()
+    discard x86Entry(jit, 0, 32)
+    var warm = default(X86Block)
+    for operation in 0..<4: emitX86Operation(warm, 149, addSlots, 1)
+    assert publishX86Entry(jit, 0, 4, 4, warm)
+    var blocks = default(array[2, X86RegionBlock])
+    for index in 0..<active:
+      # Both blocks increment R0 and branch on R0<R1, with distinct gas prices and original header coordinates.
+      let header = uint32(7+index)
+      let following = if active == 1 or index == 1: 7'u32 else: 8'u32
+      var body = default(X86Block)
+      emitX86Operation(body, 149, addSlots, 1)
+      emitX86Branch(body, 172, compareSlots, 0, following, 10)
+      blocks[index] = X86RegionBlock(header: header, span: 2, operations: 2,
+        price: uint64(3+index*2), yes: following, no: 10, body: move(body))
+    assert publishX86Region(jit, blocks, range[1..2](active))
+    for initial in [0'u64, 4, 99, high(uint64)]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 8, 16, high(uint64)]:
+        for quota in [0'u64, 1, 2, 3, 4, 5, 10, 63, 64, high(uint64)]:
+          for sentinel in [0xffffffff'u64, 0xfedcba9876543210'u64]:
+            # Preserve arbitrary complete zero-block endpoint bits, not merely the normal frame's low-word sentinel.
+            var registers = default(RegisterFile)
+            for slot in 0..<13: registers[slot] = RegisterValue(0xfedcba9876540000'u64+uint64(slot))
+            registers[0] = RegisterValue(initial)
+            registers[1] = RegisterValue(5)
+            var expectedRegisters = registers
+            var state = [gas, quota, 0'u64, 0'u64, sentinel]
+            var expected = state
+            var destination = 7'u32
+            while destination < 10:
+              # A complete source block checks quota then gas before changing any guest/context byte.
+              let index = int(destination-7)
+              let price = uint64(3+index*2)
+              if expected[1] < 2 or expected[0] < price: break
+              expected[0] -= price
+              expected[1] -= 2
+              inc expected[index+2]
+              expected[4] = uint64(destination)
+              expectedRegisters[0] = RegisterValue(uint64(expectedRegisters[0])+1)
+              if uint64(expectedRegisters[0]) >= 5:
+                destination = 10
+              else:
+                destination = if active == 1 or index == 1: 7'u32 else: 8'u32
+            let returned = callX86Region(jit, registers, state)
+            assert returned == destination
+            assert registers == expectedRegisters
+            assert state == expected
+            inc contextCases
+stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)
+
+
+# Native-only full-bit literals cover every signed immediate encoding boundary and its mandatory fallback neighbors.
+var compactCases = 0
+when not defined(pvmX86JitRefuse):
+  const literals = [0'u64, 1, 127, 128, 255, 0x7fffffff'u64, 0x80000000'u64,
+    0xffffffff'u64, 0x100000000'u64, 0x7fffffffffffffff'u64, 0x8000000000000000'u64,
+    0xffffffff7fffffff'u64, 0xffffffff80000000'u64, 0xffffffffffffff7f'u64,
+    0xffffffffffffff80'u64, high(uint64)]
+  const seeds = [0'u64, 1, 127, 128, 0x7fffffff'u64, 0x80000000'u64,
+    0xffffffff'u64, 0x8000000000000000'u64, high(uint64)]
+  for opcode in [132'u8, 133, 134, 149]:
+    for alias in [0x10'u8, 0x00, 0xcc]:
+      # Genuine decoded slots cover distinct sources, self aliases and the highest guest register.
+      let source = owner([@[opcode, alias, 0], @[0'u8]])
+      let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+      for value in literals:
+        let jit = newX86Jit()
+        discard x86Entry(jit, 0, 4)
+        var fragment = default(X86Block)
+        emitX86Operation(fragment, opcode, slots, value)
+        for index in 0..<3: emitX86Operation(fragment, 100, identitySlots, 0)
+        assert publishX86Entry(jit, 0, 4, 4, fragment)
+        for seed in seeds:
+          # Wrapping equations use the full original constants, independently of emitter width selection.
+          var registers = default(RegisterFile)
+          for index in 0..<13: registers[index] = RegisterValue(uint64(index)+100)
+          registers[slots.bIndex] = RegisterValue(seed)
+          var expected = registers
+          let wanted = case opcode
+            of 132: seed and value
+            of 133: seed xor value
+            of 134: seed or value
+            else: seed+value
+          expected[slots.destinationIndex] = RegisterValue(wanted)
+          assert callX86Entry(jit, 0, registers) == 4
+          assert registers == expected
+          inc compactCases
+  for opcode in 81'u8..90'u8:
+    let source = owner([@[opcode, 0x10, 0, 0], @[0'u8]])
+    let slots = instructionRegisters(instruction(source, CodeAddress(0)))
+    for right in literals:
+      let jit = newX86Jit()
+      discard x86Entry(jit, 0, 8)
+      var warm = default(X86Block)
+      for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
+      assert publishX86Entry(jit, 0, 4, 4, warm)
+      var control = default(X86Block)
+      for index in 0..<4: emitX86Operation(control, 100, identitySlots, 0)
+      emitX86Branch(control, opcode, slots, right, 6, 7)
+      assert publishX86Entry(jit, 0, 4, 5, control, conditional = true)
+      for left in seeds:
+        # XOR of the sign bit orders signed values without a narrowing cast or host signed-overflow dependency.
+        let signedLeft = left xor 0x8000000000000000'u64
+        let signedRight = right xor 0x8000000000000000'u64
+        let taken = case opcode
+          of 81: left == right
+          of 82: left != right
+          of 83: left < right
+          of 84: left <= right
+          of 85: left >= right
+          of 86: left > right
+          of 87: signedLeft < signedRight
+          of 88: signedLeft <= signedRight
+          of 89: signedLeft >= signedRight
+          else: signedLeft > signedRight
+        var registers = default(RegisterFile)
+        for index in 0..<13: registers[index] = RegisterValue(uint64(index)+100)
+        registers[slots.aIndex] = RegisterValue(left)
+        let original = registers
+        assert callX86Branch(jit, 0, registers) == (if taken: 6'u32 else: 7'u32)
+        assert registers == original
+        inc compactCases
+stdout.writeLine("X86_COMPACT_IMMEDIATE_CASES," & $compactCases)
+
+
+# The useful whole-region arithmetic/context matrix remains independent of the rejected resident-register policy.
+var regionArithmeticCases = 0
+when not defined(pvmX86JitRefuse):
+  for opcode in 0..255:
+    if not supportedX86Opcode(byte(opcode)): continue
+    for pattern in [0'u8, 17, 128, 255]:
+      var part = @[byte(opcode)]
+      for index in 0..<24: part.add(pattern)
+      let source = owner([part, part, part, part, @[0'u8]])
+      let decoded = instruction(source, CodeAddress(0))
+      assert decoded.error == ProgramError.None
+      let slots = instructionRegisters(decoded)
+      let jit = newX86Jit()
+      discard x86Entry(jit, 0, 32)
+      var warm = default(X86Block)
+      for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
+      assert publishX86Entry(jit, 0, 4, 4, warm)
+      var body = default(X86Block)
+      for index in 0..<4: emitX86Operation(body, byte(opcode), slots, uint64(decoded.value.x))
+      emitX86Branch(body, 81, slots, 0, 10, 10)
+      var blocks = default(array[2, X86RegionBlock])
+      blocks[0] = X86RegionBlock(header: 7, span: 5, operations: 5,
+        price: 1, yes: 10, no: 10, body: move(body))
+      assert publishX86Region(jit, blocks, 1)
+      for seed in [0'u64, 31, 32, 63, 64, 127, 0x80000000'u64, 0xffffffff'u64,
+          0x8000000000000000'u64, high(uint64)]:
+        var registers = default(RegisterFile)
+        for index in 0..<13: registers[index] = RegisterValue(seed xor uint64(index))
+        var expected = registers
+        for index in 0..<4:
+          # Owner-decoded portable execution cannot consult the emitted region or its scalar accounting context.
+          let evaluated = evaluateRegisters(source, CodeAddress(uint32(index*25)), expected)
+          assert evaluated.error == RegisterError.None
+          expected = evaluated.value
+        var context = [100'u64, 5'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
+        assert callX86Region(jit, registers, context) == 10
+        assert registers == expected
+        assert context == [99'u64, 0'u64, 1'u64, 0'u64, 7'u64]
+        inc regionArithmeticCases
+stdout.writeLine("X86_REGION_ARITHMETIC_CASES," & $regionArithmeticCases)
+
+proc verifyThreeControl(frame: var FlatFrame, program: Program, info: MachineInfo, budget: uint64) =
+  ## Canonical single steps independently check every pure source prefix, charged state, PC and gas deficit.
+  let captured = captureMemory([], PageLimit(1))
+  assert captured.error == MachineError.None
+  let machine = captureMachine(program, captured.value, info)
+  assert machine.error == MachineError.None
+  var expected = machine.value
+  var exit = StepExit.Continued
+  var reason = StepError.StepLimitExceeded
+  var consumed = 0'u64
+  for attempt in 0'u64..<budget:
+    let next = stepOnce(expected, GasCycleLimit(100000))
+    assert next.error == StepError.None
+    expected = next.value.machine
+    exit = next.value.exit
+    if exit != StepExit.OutOfGas: inc consumed
+    if exit != StepExit.Continued:
+      reason = StepError.None
+      break
+  resetFlatFrame(frame, info)
+  runFlat(frame, budget)
+  let wanted = machineInfo(expected)
+  assert wanted.error == MachineError.None
+  let pc = if exit in [StepExit.Halt, StepExit.Panic]: CodeAddress(0) else: wanted.value.pc
+  if frame.reason != reason or frame.exit != exit:
+    echo "THREE_EXIT,", uint64(info.pc), ",", budget, ",", reason, ",", exit, ",", frame.reason,
+        ",", frame.exit
+  assert frame.reason == reason and frame.exit == exit
+  if frame.remaining != budget-consumed:
+    echo "THREE_REMAINING,", uint64(info.pc), ",", budget, ",", consumed, ",", frame.remaining
+  assert frame.remaining == budget-consumed
+  if frame.info.pc != pc or frame.info.gas != wanted.value.gas:
+    echo "THREE_PC_GAS,", uint64(info.pc), ",", budget, ",", uint64(pc), ",", uint64(frame.info.pc),
+        ",", uint64(wanted.value.gas), ",", uint64(frame.info.gas)
+  assert frame.info.pc == pc and frame.info.gas == wanted.value.gas
+  assert frame.info.gasDeficit == wanted.value.gasDeficit, "three-block gas deficit"
+  assert frame.info.blockCharged == wanted.value.blockCharged, "three-block paid state"
+  for slot in 0..<13:
+    if frame.info.registers[slot] != wanted.value.registers[slot]:
+      echo "THREE_REGISTER,", uint64(info.pc), ",", budget, ",", slot, ",", uint64(
+          wanted.value.registers[slot]), ",", uint64(frame.info.registers[slot])
+  assert frame.info.registers == wanted.value.registers
+  checkFlatSource(frame)
+
+# The established three exact source shapes form one closed round, with real panic blocks on every untaken arm.
+let threeProgram = owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 8, 0, 0, 0], @[0'u8],
+  @[151'u8, 0x22, 1], @[152'u8, 0x22, 1], @[173'u8, 0x43, 7, 0, 0, 0], @[0'u8],
+  @[200'u8, 0x65, 5], @[139'u8, 0x77, 1], @[82'u8, 0x18, 0, 0xe2, 0xff, 0xff, 0xff], @[0'u8],
+  @[149'u8, 0x99, 1], @[149'u8, 0x99, 1], @[149'u8, 0x99, 1], @[149'u8, 0x99, 1],
+  @[84'u8, 0x19, 12, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+var threeControls = 0
+var existingRootControls = 0
+for start in [0'u64, 11, 24]:
+  let plan = newFlatPlan(threeProgram, GasCycleLimit(100000))
+  var info = MachineInfo(pc: CodeAddress(start), gas: MachineGas(100000), registers: default(RegisterFile))
+  info.registers[2] = RegisterValue(high(uint64))
+  info.registers[4] = RegisterValue(1)
+  info.registers[6] = RegisterValue(0x8000000000000000'u64)
+  info.registers[7] = RegisterValue(high(uint64))
+  info.registers[8] = RegisterValue(1)
+  var frame = newFlatFrame(plan, [], info)
+  var cold = info
+  cold.pc = CodeAddress(38)
+  verifyThreeControl(frame, threeProgram, cold, 1000)
+  inc existingRootControls
+  verifyThreeControl(frame, threeProgram, info, 1000)
+  # Returning to the previously exercised source root retains its genuine workers after unsupported triple execution.
+  verifyThreeControl(frame, threeProgram, cold, 1000)
+  inc existingRootControls
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 2, 3, 4, 5, 8, 13, 21, 31, 127, 128, 129, 249, 250, 251, 252, 1000, high(uint64)]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 31, 32, 33, 63,
+          64, 65, 127, 128, 129, 249, 250, 251, 252, 1000]:
+        # All three guard endpoints preserve exact reservation refunds and every original header worker's paid-prefix convention.
+        var bounded = info
+        bounded.gas = MachineGas(gas)
+        bounded.blockCharged = paid
+        verifyThreeControl(frame, threeProgram, bounded, budget)
+        inc threeControls
+  for exitArm in [0, 1]:
+    var outside = info
+    if exitArm == 0: outside.registers[4] = RegisterValue(0)
+    else: outside.registers[8] = RegisterValue(0)
+    verifyThreeControl(frame, threeProgram, outside, 1000)
+    inc threeControls
+  var cache = takeFlatStream(frame)
+  var replacement = info
+  replacement.registers[0] = RegisterValue(17)
+  replacement.registers[5] = RegisterValue(high(uint64))
+  var fresh = newFlatFrame(plan, [], replacement)
+  restoreFlatStream(fresh, cache)
+  verifyThreeControl(fresh, threeProgram, replacement, 1000)
+  for policy in [0, 1]:
+    # A retained native root never bypasses complete or lazy pricing selected on the fresh invocation.
+    let complete = newGasPlan(threeProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+      blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+    let lazy = newGasMemo(threeProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+        cycles: GasCycleLimit(100000)))
+    assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
+    if policy == 0: assert selectFlatPrices(fresh, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(fresh, default(GasPlan), lazy.value) == StepError.None
+    let before = flatX86RegionStatistics(fresh)
+    verifyThreeControl(fresh, threeProgram, info, 1000)
+    assert flatX86RegionStatistics(fresh) == before
+    inc threeControls
+stdout.writeLine("X86_CHECKED_THREE_SOURCE_CASES," & $threeControls)
+stdout.writeLine("X86_EXISTING_ROOT_SOURCE_CASES," & $existingRootControls)
