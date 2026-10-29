@@ -99,8 +99,21 @@ class PolicyQualificationTests(unittest.TestCase):
 
 
 class QualificationTests(unittest.TestCase):
+    def witness_receipt(self, native, *, region='ARM_SELF_REGION_CASES,1920\n'):
+        """Model mandatory controls, with positive native counters only in the supported profile."""
+        counts = (64896, 507, 24843) if native else (0, 0, 0)
+        return ('TRANSFER_STATS,1,2\n' if native else 'TRANSFER_STATS,0,0\n') + (
+            f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
+            f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
+            f'ARM_LOAD_WIDTH_LITERAL_CASES,{counts[2]}\n'
+            'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
+            'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
+            ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
+
     def check(self, native, receipt=None, build_error=False):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
+        ordinary = self.witness_receipt(native)
+        refused = self.witness_receipt(False)
         class Checks:
             folder=Path('/tmp/pvm-ci-test')
             builds=[]
@@ -115,9 +128,9 @@ class QualificationTests(unittest.TestCase):
                     output=('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if native
                             else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
                 elif name=='witness-run':
-                    output=receipt if receipt is not None else (('TRANSFER_STATS,1,2\n' if native else '')+'ARM_SELF_REGION_CASES,1920\n')
+                    output=receipt if receipt is not None else ordinary
                 elif name=='witness-refused-run':
-                    output='TRANSFER_STATS,0,0\nARM_SELF_REGION_CASES,1920\n'
+                    output=refused
                 elif '-move-run' in name:
                     output='0\n0\n'
                 return dict(exit_code=0,output=output)
@@ -137,8 +150,9 @@ class QualificationTests(unittest.TestCase):
     def test_no_native_execution_and_compiler_failure(self):
         """Zero, missing or duplicate native counters and failed compilation never qualify the runner."""
         for receipt in ('','TRANSFER_STATS,0,0\n','TRANSFER_STATS,1,2\nTRANSFER_STATS,1,2\n'):
-            with self.subTest(receipt=receipt),self.assertRaises(ValueError):
-                self.check(True,receipt+'ARM_SELF_REGION_CASES,1920\n')
+            with self.subTest(receipt=receipt),self.assertRaisesRegex(ValueError,'publication/execution'):
+                complete = self.witness_receipt(True).replace('TRANSFER_STATS,1,2\n',receipt)
+                self.check(True,complete)
         with self.assertRaisesRegex(RuntimeError,'compiler failure'):
             self.check(True,build_error=True)
 
@@ -148,7 +162,27 @@ class QualificationTests(unittest.TestCase):
         for marker in ('', 'ARM_SELF_REGION_CASES,1919\n',
                        'ARM_SELF_REGION_CASES,1920\nARM_SELF_REGION_CASES,1920\n'):
             with self.subTest(marker=marker),self.assertRaisesRegex(ValueError,'one-block'):
-                self.check(True,'TRANSFER_STATS,1,2\n'+marker)
+                self.check(True,self.witness_receipt(True,region=marker))
+
+
+    def test_required_controls_are_independently_checked(self):
+        """Each new control must fail for its own missing/incomplete marker after all other gates pass."""
+        controls = (
+            ('ARM_SHIFT_PAIR_LITERAL_CASES',64896,'paired-shift'),
+            ('ARM_SHIFT_PAIR_DECLINE_CASES',507,'paired-shift'),
+            ('ARM_LOAD_WIDTH_LITERAL_CASES',24843,'guarded-load width'),
+            ('ARM_STORE_FALLBACK_CONTROL_CASES',43904,'checked-store source'),
+            ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
+            ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
+        )
+        complete = self.witness_receipt(True)
+        # Keep every unrelated gate valid so a mutation must reach the selected diagnostic.
+        for marker,count,reason in controls:
+            line = f'{marker},{count}\n'
+            # Both absent coverage and a truncated witness must fail independently.
+            for replacement in ('',f'{marker},{count-1}\n'):
+                with self.subTest(marker=marker,replacement=replacement),self.assertRaisesRegex(ValueError,reason):
+                    self.check(True,complete.replace(line,replacement))
 
 
 if __name__=='__main__':
