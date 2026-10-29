@@ -31,16 +31,28 @@ def observed():
                     hosts_sha256='hosts'+str(i), gas=100-i) for i in range(2)])
 
 
+def eager_output():
+    """Model distinct continuing calls with a frozen complete partition and live native counters."""
+    snapshot = '1,12,29,1,64,7,10,4,5,1,3'
+    lines = ['DOOM_EAGER_PREPARED,'+snapshot]
+    for call in range(2):
+        lines.extend([f'DOOM_CALL,{call},compiled,compiled,{100-call},1,{call+1},{4*(call+1)},1,1',
+                      f'DOOM_EAGER_REUSED,{call},'+snapshot])
+    return lines+['DOOM_SEQUENCE_OK,compiled,2']
+
+
 class DoomBackendTests(unittest.TestCase):
     def test_only_exact_opt_in_selects_the_interpreted_cohort(self):
         """Missing opt-in preserves the existing pair; malformed, reordered or widened cohorts cannot run."""
         self.assertEqual(backend_cohort(''), ('polkavm-interpreted', 'jit'))
         self.assertEqual(backend_cohort('polkavm-interpreted,interpreted'),
                          ('polkavm-interpreted', 'interpreted'))
+        self.assertEqual(backend_cohort('polkavm-interpreted,jit,compiled'),
+                         ('polkavm-interpreted', 'jit', 'compiled'))
         for requested in ('interpreted', 'jit,interpreted', 'interpreted,polkavm-interpreted',
                           'polkavm-interpreted,interpreted,interpreted',
                           'polkavm-interpreted,interpreted,jit', 'polkavm-interpreted, interpreted',
-                          'polkavm-interpreted,jit,compiled'):
+                          'compiled,polkavm-interpreted,jit', 'polkavm-interpreted,jit, compiled'):
             with self.subTest(requested=requested), self.assertRaisesRegex(ValueError, 'cohort'):
                 backend_cohort(requested)
 
@@ -100,6 +112,40 @@ class DoomBackendTests(unittest.TestCase):
 
 
 class NativePolicyReceiptTests(unittest.TestCase):
+    def test_eager_construction_is_frozen_and_native_work_advances_on_each_call(self):
+        """Only complete positive sealed receipts and live native deltas qualify the explicit eager process."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            for call in range(2):
+                (folder/f'call-{call}.state').write_bytes(bytes(129+4101))
+                (folder/f'call-{call}.events').write_bytes(events(call+1))
+                (folder/f'call-{call}.hosts').write_bytes(b'ordered host')
+            original = eager_output()
+            for architecture in ('arm64', 'x86_64'):
+                actual = observation('\n'.join(original), folder, 'compiled', 2, 1, architecture)
+                self.assertEqual(actual['construction']['compilation_passes'], 3)
+                self.assertEqual([row['actual'] for row in actual['calls']], ['compiled']*2)
+                changes = []
+                for field, value in ((1, '0'), (5, '0'), (7, '11'), (8, '0'), (11, '0'),
+                                     (2, str(2**64)), (3, '１'), (4, '-1')):
+                    changed = original.copy()
+                    fields = changed[0].split(',')
+                    fields[field] = value
+                    changed[0] = ','.join(fields)
+                    changes.append(changed)
+                for line, field, value in ((2, 2, '0'), (4, 3, '99'), (1, 3, 'interpreted'),
+                                            (3, 5, '2'), (3, 6, '1'), (3, 7, '4')):
+                    changed = original.copy()
+                    fields = changed[line].split(',')
+                    fields[field] = value
+                    changed[line] = ','.join(fields)
+                    changes.append(changed)
+                changes.extend([original[1:], original[:-1], original+['unexpected']])
+                for changed in changes:
+                    # Counterfactual copied lines never build or execute an image; each malformed witness must refuse.
+                    with self.subTest(architecture=architecture, changed=changed[:1]), self.assertRaises(ValueError):
+                        observation('\n'.join(changed), folder, 'compiled', 2, 1, architecture)
+
     """The real shared driver must report positive native work on both supported Linux CPUs."""
     def test_x86_and_arm_require_actual_jit_activity(self):
         """Matching image bytes alone cannot let an interpreted fallback count as a native default qualification."""
@@ -210,22 +256,32 @@ class InterpretedCohortOrchestrationTests(unittest.TestCase):
                         return dict(exit_code=2, output='unsupported DOOM comparison backend')
                     if name == 'unavailable-bridge':
                         return dict(exit_code=2, output='DOOM_BACKEND_UNAVAILABLE,polkavm-interpreted,BackendNotBuilt')
+                    if name == 'compiled' and mutation == 'absent-eager':
+                        return dict(exit_code=2, output='DOOM_BACKEND_UNAVAILABLE,compiled,BackendNotBuilt')
                     folder = Path(environment['RAGNAROK_DOOM_BACKEND_OUTPUT'])
                     lines = []
                     for call in range(2):
-                        observed_call = 0 if name == 'interpreted' and mutation == 'restart' and call == 1 else call
+                        observed_call = 0 if name in ('interpreted', 'compiled') and mutation == 'restart' and call == 1 else call
                         state = bytes([observed_call])*(129+4101)
                         hosts = f'ordered host {observed_call}'.encode()
                         event_bytes = events(observed_call+1)
-                        if name == 'interpreted' and call == 1:
+                        if name in ('interpreted', 'compiled') and call == 1:
                             if mutation == 'state': state = bytes([99])*(129+4101)
                             elif mutation == 'hosts': hosts = b'changed host order'
                             elif mutation == 'frame': event_bytes = events(9)
+                        if name == 'jit' and mutation == 'jit-state' and call == 1:
+                            state = bytes([77])*(129+4101)
                         (folder/f'call-{call}.state').write_bytes(state)
                         (folder/f'call-{call}.events').write_bytes(event_bytes)
                         (folder/f'call-{call}.hosts').write_bytes(hosts)
-                        counters = f'1,{call+1},{4*(call+1)},1,1' if name == 'jit' else '0,0,0,1,1'
+                        counters = f'1,{call+1},{4*(call+1)},1,1' if name in ('jit', 'compiled') else '0,0,0,1,1'
                         lines.append(f'DOOM_CALL,{call},{name},{name},{100-call},{counters}')
+                    if name == 'compiled':
+                        snapshot = '1,12,29,1,64,7,10,4,5,1,3'
+                        reused = [f'DOOM_EAGER_REUSED,{call},'+snapshot for call in range(2)]
+                        if mutation == 'eager-change':
+                            reused[1] = reused[1].replace(',12,29,', ',13,29,')
+                        lines = ['DOOM_EAGER_PREPARED,'+snapshot, lines[0], reused[0], lines[1], reused[1]]
                     return dict(exit_code=0, output='\n'.join(lines)+f'\nDOOM_SEQUENCE_OK,{name},2\n')
 
             with mock.patch.multiple(harness, ROOT=root, BUILD=build, DOOM=doom,
@@ -284,6 +340,35 @@ class InterpretedCohortOrchestrationTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'incomplete')
                 self.assertIn('1', report['error'])
                 self.assertEqual([row[0] for row in commands], ['polkavm-interpreted', 'interpreted'])
+
+    def test_eager_cohort_keeps_all_three_processes_and_freezes_real_owner_receipts(self):
+        """One linked image supplies three continuing engines with the separate eager protocol and unchanged controls."""
+        selected = 'polkavm-interpreted,jit,compiled'
+        report, commands, builds, error = self.run_cohort(selected)
+        self.assertIsNone(error)
+        self.assertEqual(report['status'], 'passed')
+        self.assertEqual(report['protocol'], 'doom-shared-eager-v1')
+        self.assertEqual(report['backends'], selected.split(','))
+        self.assertEqual([row[0] for row in commands], ['polkavm-interpreted', 'jit', 'compiled',
+            'assertions', 'wrong-backend', 'unavailable-bridge'])
+        self.assertEqual(len({row[1][0] for row in commands[:3]}), 1)
+        self.assertEqual(builds[0][1], ['pvmArm64Jit', 'polkavmRuntime', 'pvmSourceSealingReceipt'])
+        self.assertEqual(builds[1][1], ['pvmArm64Jit'])
+        self.assertEqual(len(report['controls']), 6)
+        self.assertEqual(report['runs'][2]['observed']['construction']['compilation_passes'], 3)
+        for name, args, env, parent in commands:
+            self.assertEqual(parent, selected)
+            self.assertEqual(env['PVM_DOOM_BACKENDS'], '' if name == 'wrong-backend' else selected)
+
+    def test_eager_cohort_refuses_missing_facility_changed_construction_and_either_wrong_engine_state(self):
+        """Neither a missing third process nor correct eager pixels can hide another selected engine's divergence."""
+        selected = 'polkavm-interpreted,jit,compiled'
+        for mutation in ('absent-eager', 'eager-change', 'jit-state', 'state', 'hosts', 'frame', 'restart'):
+            with self.subTest(mutation=mutation):
+                report, commands, builds, error = self.run_cohort(selected, mutation)
+                self.assertIsNotNone(error)
+                self.assertEqual(report['status'], 'incomplete')
+                self.assertEqual([row[0] for row in commands], ['polkavm-interpreted', 'jit', 'compiled'])
 
     def test_invalid_selector_replaces_stale_success_before_build_or_guest_work(self):
         """A malformed request cannot leave an old green report or launch native provisioning/guest work."""
