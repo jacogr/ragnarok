@@ -38,10 +38,18 @@ proc cycle(options: Options, expected: ApplicationCheckpointIdentity) {.raises.}
   ## Every configured startup owns fresh restored graphs and retires all service aliases on close.
   var owner = default(Services)
   defer: owner.close()
+  assert not owner.startupBlockAnchor.available
   assert owner.start(options, "checkpoint import")
+  let anchor = owner.startupBlockAnchor
+  assert anchor.available
+  assert array[32, byte](anchor.blockHash) == array[32, byte](
+      owner.chainView.bestBlock.value.blockHash)
+  assert uint32(anchor.slot) == owner.chainView.bestBlock.value.slot
   assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
   assert owner.chainView.retainedCount == 1 and owner.chainView.finalizedBlock.error !=
       GenesisError.None
+  owner.close()
+  assert not owner.startupBlockAnchor.available # Closed owners retain no live startup authority.
 proc main() {.raises.} =
   ## Invalid trust, profile, byte/map limits and native files never activate configured genesis instead.
   defer:

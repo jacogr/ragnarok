@@ -17,6 +17,14 @@ configuration and privately owns peer/stream state, callbacks and retained mesh 
 Both peer shapes use `app/services.nim` for optional service ownership/startup; transport
 callbacks retire before those shared services. Only lifecycle entry points are exported.
 
+## Peer announcements
+
+Optional UP0 discovery shares the authenticated outgoing catalog with CE128 through a distinct
+persistent stream route. Callbacks retain bounded detached bytes; host polling decodes complete
+messages and hashes announced headers. Available snapshots contain copied peer claims and source
+incarnation/sequence, never validated full/light state or trusted finality. Stream or TLS retirement
+revokes availability. See [continuous sync](../../spec/node-sync.md) for the trust and readiness contract.
+
 ## Canonical development block serving
 
 `quic/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and
@@ -27,3 +35,16 @@ copied bytes to its host; it grants no execution/adoption authority. A catalog e
 only after ordinary candidate validation, durable journal publication and canonical installation.
 Explicit teardown emits connection close while UDP is still live, retires both engines and only
 then releases callback storage. No consensus execution occurs inside native callbacks.
+
+The continuous current-sync owner composes that catalog with the ordinary one-child dispatcher.
+Discovery-only turns preserve live transports without granting reception/preparation authority;
+spent retry plans are explicitly renewed after delay. Only consumed canonical installation and
+live target evidence establish the copied full readiness observation. Rolling ancestor retention
+is bounded independently of the lifetime import count. See [node sync](../../spec/node-sync.md)
+for the command, trust and participation boundaries.
+
+`sync_targets.nim` is the shared scalar source/canonical-evidence boundary for normal import and
+Tiny authoring. It retains no canonical graph or producer-supplied success bit. Tiny settles
+pending input and evaluates fresh evidence at the actual signing call. Its server shares the
+bounded UP0 route with CE128 kind dispatch and publishes detached bytes only after durable
+admission; native callbacks perform no header hashing or full-state execution.

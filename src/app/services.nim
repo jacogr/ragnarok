@@ -102,6 +102,28 @@ type
   ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
     Publication, Maintenance, CurrentPublication, Retirement
 
+type StartupBlockAnchor* = object ## Detached independently configured full-state checkpoint, captured before disk history restoration.
+  case available: bool
+  of true:
+    hash: BlockHash
+    slot: HeaderSlot
+  else: discard # Defaults, light mode and closed startup retain no configured full anchor.
+
+func available*(anchor: StartupBlockAnchor): bool =
+  ## Only a successful full-state startup can expose its independent configured identity.
+  anchor.available
+func blockHash*(anchor: StartupBlockAnchor): BlockHash {.requires: anchor.available.} =
+  ## Imported best-head progress never replaces this fixed original configured hash.
+  anchor.hash
+func slot*(anchor: StartupBlockAnchor): HeaderSlot {.requires: anchor.available.} =
+  ## Slot is copied from the original checkpoint, independently of later canonical imports.
+  anchor.slot
+proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
+  ## Retire temporary full graph aliases before disk restoration or native startup workers begin.
+  let head = view.bestBlock
+  if head.error != GenesisError.None: return default(StartupBlockAnchor)
+  StartupBlockAnchor(available: true, hash: head.value.blockHash, slot: HeaderSlot(head.value.slot))
+
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   light: light_actor.LightRuntime
   rpc*: Server
@@ -111,6 +133,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   management*: ManagementServer
   telemetry*: Client
   chainText: string
+  startupAnchor: StartupBlockAnchor
   historyLimits: StateStoreLimits   # Historical decoding inherits the exact startup complete-map policy.
   historyLog: LogWriter             # Borrowed writer outlives Services and its joined disk worker.
   canonical: ApplicationChain
@@ -199,6 +222,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.rpc)
   `=wasMoved`(services.telemetry)
   `=wasMoved`(services.chainText)
+  `=wasMoved`(services.startupAnchor)
   `=wasMoved`(services.canonical)
   `=wasMoved`(services.adoption)
   `=wasMoved`(services.currentAdoption)
@@ -237,6 +261,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.rpc)
   `=destroy`(services.telemetry)
   `=destroy`(services.chainText)
+  `=destroy`(services.startupAnchor)
   `=destroy`(services.canonical)
   `=destroy`(services.adoption)
   `=destroy`(services.currentAdoption)
@@ -467,6 +492,7 @@ proc close*(services: var Services) =
   services.started = false
   services.chainRpc = false
   services.chainText = ""
+  services.startupAnchor = default(StartupBlockAnchor)
 
 # Read at most limit+1 bytes; empty output means missing, empty or oversized configuration.
 proc boundedFile(path: string, limit: int): string {.raises.} =
@@ -726,6 +752,9 @@ proc startServices(services: var Services, options: Options, role: string,
         return false
       services.canonical = seeded.value
       identity = chainIdentity(seeded.value.chainView.bestBlock) # Reuse capture without repeating map/header hashing.
+  if withState:
+    services.startupAnchor = captureStartupAnchor(
+        services.canonical.chainView) # Capture the independent seed/recovery checkpoint before restored unfinalized children can replace bestBlock.
   if options.diskStorage:
     if not withState or not services.setupDisk(options, limits, recovered.chainView.retainedCount > 0):
       services.close()
@@ -1821,3 +1850,7 @@ proc continueCurrentNamespaces*(services: Services, prior: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Current provenance and detached reconstruction remain excluded from every native graph lease until actual retirement.
   logical_continuation.continueCurrentNamespaces(prior, update, limits)
+
+func startupBlockAnchor*(services: Services): StartupBlockAnchor =
+  ## Read fixed startup metadata without borrowing canonical graphs, including during worker leases.
+  if services.started: services.startupAnchor else: default(StartupBlockAnchor)

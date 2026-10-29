@@ -8,7 +8,8 @@ It reads process arguments once, parses an owned `app/options.Options`, and disp
 foreground listening and bounded peer/mesh lifecycles, explicit bounded child downloads and no-socket selftests. Configuration is passed
 explicitly; transport, telemetry, RPC and UI modules do not inspect command-line globals. The current commands remain
 bounded development entry points with supported child admission, execution and publication.
-The long-running node, complete validation, consensus and validator lifecycles remain open.
+Continuous full-state catch-up and bounded Tiny participation share explicit readiness evidence.
+Complete production validation, consensus and validator lifecycles remain open.
 
 `app/cli_defaults.nim` owns typed defaults and bounds. `cli_catalog.nim` owns option metadata; `cli_commands.nim` validates named
 process inputs and normalizes them for bounded handlers. `cli_help.nim` renders the same catalog.
@@ -42,6 +43,11 @@ while the host polls scalar state, then the host installs the confirmed durable 
 RPC. Shutdown joins before input/canonical retirement. External checkpoint imports keep their own
 trust boundary and create a fresh disk path exclusively. See [disk operation](../disk-storage.md)
 and [the feature contract](../../spec/disk-state-store.md).
+
+Services also captures detached full-state startup checkpoint identity before disk history can
+restore a newer best head. Consumers of fixed trust metadata use that independent anchor rather
+than deriving authority from later imported canonical progress. This scalar observation retains
+no canonical ARC alias and is unavailable in default, closed or light lifetimes.
 
 `app/chain.nim` owns the canonical complete state and selected history independently of
 optional listener lifetime. It inherits an explicitly supplied head's store policy and accepts

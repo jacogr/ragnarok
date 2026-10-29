@@ -195,6 +195,7 @@ proc scenario(fixed: Fixture, disk: bool) {.raises.} =
   discard posix.close(mcp.fd)
   let options = configured(fixed, directory, reserved.port, mcpPort = mcp.port)
   assert owner.start(options, "light runtime test")
+  assert not owner.startupBlockAnchor.available # Partial light startup never grants a full-state configured anchor.
   checkHead(owner, 0)
   let mcpStatus = mcpTool(owner, mcp.port, "get_chain_status")
   assert "\"nodeMode\":\"light\"" in mcpStatus and "\"knownFacts\":\"0\"" in mcpStatus
