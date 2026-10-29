@@ -67,6 +67,7 @@ proc main(): int =
           stderr.writeLine("Invalid --fuzz-log-level / JAM_FUZZ_LOG_LEVEL")
           return 2
       if not logger.start(logging): return 2
+      shutdownWriter = logger.writer
       let available = backendAvailability(backend)
       if available != StepError.None:
         writeFailure(logger, "PVM_BACKEND_UNAVAILABLE requested=" & $backend & " reason=" & $available)
