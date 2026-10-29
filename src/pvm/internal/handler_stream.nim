@@ -2804,7 +2804,8 @@ proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
         if frame.handlers[offset] == flatX86Pending: frame.handlers[offset] = flatX86Execute
       else:
         if frame.handlers[offset] == flatArmPending: frame.handlers[offset] = flatArmExecute
-    assert uint64(frame.handlers.len) == nodes and frame.preparationUsed == work
+    assert uint64(frame.handlers.len) == nodes and frame.preparationUsed == work,
+      "sealed construction node/work occupancy differs from linear admission"
     info.sealed = true
     when defined(pvmSourceSealingReceipt): info.compilationPasses = frame.sealedInfo.compilationPasses
     frame.sealedInfo = info
