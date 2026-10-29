@@ -42,6 +42,21 @@ proc `=dup`*(source: FileRepository): FileRepository {.error.}
 proc requireClosed(repository: FileRepository) {.requires: not repository.active.} =
   ## Explicit close is required while native errors can still be handled by the caller.
   discard
+proc `=wasMoved`*(repository: var FileRepository) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(repository.managed)
+  `=wasMoved`(repository.managedMode)
+  `=wasMoved`(repository.descriptor)
+  `=wasMoved`(repository.directory)
+  `=wasMoved`(repository.active)
+  `=wasMoved`(repository.poisoned)
+  `=wasMoved`(repository.size)
+  `=wasMoved`(repository.limits)
+  `=wasMoved`(repository.memory)
+  `=wasMoved`(repository.chain)
+  `=wasMoved`(repository.schema)
+  `=wasMoved`(repository.context)
+
 proc `=destroy`*(repository: FileRepository) =
   ## Check native retirement before the managed immutable memory head is released.
   requireClosed(repository)

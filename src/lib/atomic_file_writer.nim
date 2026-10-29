@@ -21,6 +21,12 @@ proc `=dup`*(source: AtomicFileWriter): AtomicFileWriter {.error.}
 proc requireClosed(writer: AtomicFileWriter) {.requires: not writer.active.} =
   ## Forgetting explicit retirement cannot silently leak a live publication lock.
   discard
+proc `=wasMoved`*(writer: var AtomicFileWriter) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(writer.path)
+  `=wasMoved`(writer.descriptor)
+  `=wasMoved`(writer.active)
+
 proc `=destroy`*(writer: AtomicFileWriter) =
   ## Caller closes while its lifecycle is still controlled; managed destination bytes then retire normally.
   requireClosed(writer)

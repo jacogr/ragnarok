@@ -42,6 +42,10 @@ proc `=dup`*(source: ManagedDirectory): ManagedDirectory {.error.}
 proc requireClosed(directory: ManagedDirectory) {.requires: not directory.opened.} =
   ## Explicit retirement keeps native close failures observable.
   discard
+proc `=wasMoved`*(directory: var ManagedDirectory) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(directory.data)
+
 proc `=destroy`*(directory: ManagedDirectory) =
   ## Destruction may not silently abandon the persistent lock.
   requireClosed(directory)
@@ -316,6 +320,15 @@ proc `=dup`*(source: ManagedJournal): ManagedJournal {.error.}
 proc requireClosed(journal: ManagedJournal) {.requires: not journal.active.} =
   ## Explicit close releases the directory lease before its parent lock may retire.
   discard
+proc `=wasMoved`*(journal: var ManagedJournal) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(journal.descriptor)
+  `=wasMoved`(journal.state)
+  `=wasMoved`(journal.active)
+  `=wasMoved`(journal.poisoned)
+  `=wasMoved`(journal.size)
+  `=wasMoved`(journal.limit)
+
 proc `=destroy`*(journal: ManagedJournal) =
   ## A managed append descriptor may not outlive its observable close protocol.
   requireClosed(journal)

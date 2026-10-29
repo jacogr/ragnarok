@@ -63,6 +63,21 @@ proc `=copy`*(destination: var DiskStateStore, source: DiskStateStore) {.error.}
   ## The composite owner may never duplicate either native backend or its retirement obligation.
 proc `=dup`*(source: DiskStateStore): DiskStateStore {.error.}
   ## Actual lowering must refuse implicit duplication, including non-last-use sink calls.
+proc `=wasMoved`*(store: var DiskStateStore) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(store.journal)
+  `=wasMoved`(store.paged)
+  `=wasMoved`(store.pagedMode)
+  `=wasMoved`(store.pagedCache)
+  `=wasMoved`(store.pagedConfig)
+  `=wasMoved`(store.pagedTransport)
+  `=wasMoved`(store.state)
+  `=wasMoved`(store.limits)
+  `=wasMoved`(store.schema)
+  `=wasMoved`(store.location)
+  `=wasMoved`(store.historical)
+  `=wasMoved`(store.historyCleanup)
+
 proc `=destroy`*(store: DiskStateStore) =
   ## Both native backends enforce explicit retirement before resident state owners are released.
   `=destroy`(store.journal)

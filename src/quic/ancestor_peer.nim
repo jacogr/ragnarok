@@ -33,6 +33,25 @@ proc `=copy`*(destination: var AncestorPeer, source: AncestorPeer) {.error:
   ## Composite native owners require their own explicit copy contract.
 proc `=dup`*(source: AncestorPeer): AncestorPeer {.error.}
   ## Moving an active peer would invalidate native callback addresses; explicit close precedes owner retirement.
+proc `=wasMoved`*(peer: var AncestorPeer) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(peer.transport)
+  `=wasMoved`(peer.receiver)
+  `=wasMoved`(peer.route)
+  `=wasMoved`(peer.id)
+  `=wasMoved`(peer.handle)
+  `=wasMoved`(peer.expected)
+  `=wasMoved`(peer.limits)
+  `=wasMoved`(peer.started)
+  `=wasMoved`(peer.lastTick)
+  `=wasMoved`(peer.state)
+  `=wasMoved`(peer.reason)
+  `=wasMoved`(peer.opened)
+  `=wasMoved`(peer.checked)
+  `=wasMoved`(peer.verified)
+  `=wasMoved`(peer.pending)
+  `=wasMoved`(peer.bound)
+
 proc `=destroy`*(peer: AncestorPeer) =
   ## The caller retires transport callbacks while this aggregate and all nested owners still exist.
   assert not peer.opened and not peer.route.active and peer.handle == NativeStream(nil), "AncestorPeer requires explicit close"

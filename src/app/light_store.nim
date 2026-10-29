@@ -94,6 +94,11 @@ proc `=copy`*(destination: var LightPagedStore, source: LightPagedStore) {.error
   ## Native ownership cannot be copied between light application stores.
 proc `=dup`*(source: LightPagedStore): LightPagedStore {.error.}
   ## Retaining a partial snapshot never duplicates the unique writer.
+proc `=wasMoved`*(store: var LightPagedStore) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(store.writer)
+  `=wasMoved`(store.cache)
+
 proc `=destroy`*(store: LightPagedStore) =
   ## Explicit close joins the owning runtime before the native owner leaves scope.
   assert not store.opened

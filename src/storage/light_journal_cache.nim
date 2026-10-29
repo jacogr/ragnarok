@@ -34,6 +34,10 @@ proc `=dup`*(source: LightJournalCache): LightJournalCache {.error.}
 proc requireClosed(owner: LightJournalCache) {.requires: owner.data == nil.} =
   ## Native retirement errors must be observed through explicit close.
   discard
+proc `=wasMoved`*(owner: var LightJournalCache) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(owner.data)
+
 proc `=destroy`*(owner: LightJournalCache) =
   ## Moved-from nil owners are inert; destroying a live lease without close is misuse.
   requireClosed(owner)
@@ -455,6 +459,10 @@ proc `=dup`*(source: LightJournalRecovery): LightJournalRecovery {.error.}
 proc requireClosed(recovery: LightJournalRecovery) {.requires: recovery.data == nil.} =
   ## A caller must explicitly repair-transfer or close every held inspection.
   discard
+proc `=wasMoved`*(recovery: var LightJournalRecovery) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(recovery.data)
+
 proc `=destroy`*(recovery: LightJournalRecovery) =
   ## Moved-from recovery values are inert; live native inspection cannot silently retire in destruction.
   requireClosed(recovery)

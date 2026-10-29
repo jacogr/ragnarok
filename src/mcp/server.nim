@@ -56,6 +56,13 @@ proc `=copy`*(destination: var McpServer, source: McpServer) {.error: "MCP serve
   ## Descriptor ownership cannot be copied.
 proc `=dup`*(source: McpServer): McpServer {.error.}
   ## Implicit duplication cannot duplicate descriptor retirement.
+proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(server.opened)
+  `=wasMoved`(server.fd)
+  `=wasMoved`(server.port)
+  `=wasMoved`(server.connections)
+
 proc `=destroy`*(server: McpServer) =
   ## Retire partial startup and accepted sockets before releasing serialized storage.
   for slot in server.connections:

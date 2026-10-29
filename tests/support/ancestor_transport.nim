@@ -30,7 +30,7 @@ proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   if borrowed == nil:
     assert false, "missing stable producer borrow"
     return # Native callbacks must never outlive or precede producer binding.
-  let receiver: ptr AncestorReceiver = borrowed # Preserve a checked non-null borrow across successive mutable receiver calls.
+  let receiver = borrowed # The nil guard remains valid across successive mutable pointee calls.
   if event == 0:
     assert client.stream == NativeStream(nil)
     client.stream = stream

@@ -48,6 +48,34 @@ proc `=copy`*(destination: var ResourceSampler, source: ResourceSampler) {.error
   ## Copying would duplicate native stream cleanup authority.
 proc `=dup`*(source: ResourceSampler): ResourceSampler {.error.}
   ## Implicit aggregate duplication is prohibited too.
+proc `=wasMoved`*(sampler: var ResourceSampler) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(sampler.directory)
+  `=wasMoved`(sampler.directoryOpen)
+  `=wasMoved`(sampler.nextMemory)
+  `=wasMoved`(sampler.nextDatabase)
+  `=wasMoved`(sampler.sampled)
+  `=wasMoved`(sampler.memoryKnown)
+  `=wasMoved`(sampler.diskKnown)
+  `=wasMoved`(sampler.databaseKnown)
+  `=wasMoved`(sampler.databaseEnabled)
+  `=wasMoved`(sampler.resident)
+  `=wasMoved`(sampler.heapOccupied)
+  `=wasMoved`(sampler.heapReserved)
+  `=wasMoved`(sampler.total)
+  `=wasMoved`(sampler.free)
+  `=wasMoved`(sampler.available)
+  `=wasMoved`(sampler.logical)
+  `=wasMoved`(sampler.allocated)
+  `=wasMoved`(sampler.files)
+  `=wasMoved`(sampler.scanLogical)
+  `=wasMoved`(sampler.scanAllocated)
+  `=wasMoved`(sampler.scanFiles)
+  `=wasMoved`(sampler.scanCount)
+  `=wasMoved`(sampler.filesystemPath)
+  `=wasMoved`(sampler.databasePath)
+  `=wasMoved`(sampler.databaseStatus)
+
 proc `=destroy`*(sampler: ResourceSampler) =
   ## Directory scans may retire midway without retaining handles or strings.
   var directory = sampler.directory # A mutable copy lets this retiring owner call the public close API.

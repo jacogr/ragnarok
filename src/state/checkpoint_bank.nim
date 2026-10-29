@@ -31,6 +31,11 @@ proc `=copy`*(destination: var CheckpointBank, source: CheckpointBank) {.error.}
   ## A composite bank independently rejects duplicated lock retirement obligations.
 proc `=dup`*(source: CheckpointBank): CheckpointBank {.error.}
   ## Actual ARC lowering must reject bank duplication even with a noncopyable child.
+proc `=wasMoved`*(bank: var CheckpointBank) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(bank.selector)
+  `=wasMoved`(bank.prefix)
+
 proc `=destroy`*(bank: CheckpointBank) =
   ## Explicit close is checked by the native owner before both managed paths retire.
   `=destroy`(bank.selector)

@@ -8,7 +8,7 @@ import unittest
 import textwrap
 import tempfile
 from unittest.mock import Mock, patch
-from workflow_fixtures import event_context, expression, job_condition, job_section
+from workflow_fixtures import event_context, expression, job_condition, job_section, family_section
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'tools/pvm_interpreter_compare.py')
@@ -188,7 +188,15 @@ class InterpreterLinuxTests(unittest.TestCase):
         """Regular performance monitoring retains the complete comparison and its evidence."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = job_section(text,'pvm-comparison')
-        self.assertIn('run: make bench-pvm-interpreter',section)
+        for group,command,other in (('x86_64','x86','arm64'),('arm64','arm64','x86')):
+            # Inspect applicable steps, so a command present only on the wrong native runner cannot satisfy this contract.
+            with self.subTest(architecture=group):
+                native = family_section(text,'pvm-comparison',group)
+                self.assertIn('run: make check-pvm-native',native)
+                self.assertIn('run: make bench-pvm-'+command+'-applications',native)
+                self.assertNotIn('run: make bench-pvm-'+other+'-applications',native)
+                self.assertIn('build/tests/pvm-'+command+'-applications/*.json',native)
+                self.assertIn('build/tests/pvm-'+command+'-applications/summary.md',native)
         self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
         self.assertIn('if: always()',section)
         for context,wanted in ((event_context(),True),

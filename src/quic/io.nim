@@ -137,6 +137,14 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
 # A descriptor has exactly one endpoint owner; explicit moves are allowed, copies are not.
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
 
+proc `=wasMoved`*(endpoint: var UdpEndpoint) {.nodestroy, inline.} =
+  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
+  `=wasMoved`(endpoint.descriptor)
+  `=wasMoved`(endpoint.opened)
+  `=wasMoved`(endpoint.ipv6)
+  `=wasMoved`(endpoint.portValue)
+  `=wasMoved`(endpoint.registration)
+
 proc `=destroy`*(endpoint: UdpEndpoint) =
   ## Scope retirement releases registration first and then the OS resource, including failed setup paths.
   if endpoint.opened:

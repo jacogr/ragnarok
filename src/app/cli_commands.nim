@@ -4,7 +4,7 @@
 ## Normalize named command inputs into the existing private command-handler representation.
 ## Positional command values and unknown/duplicate flags are refused before startup.
 
-import std/strutils
+import std/[strutils, os]
 import ./cli_catalog
 
 proc unsignedValue*(text: string, value: var uint64): bool =
@@ -102,6 +102,12 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     if not standalone: normalized.add(arguments[0]) # Standalone information/selftest flags have no command values.
     for value in service: normalized.add(value)
     return true
+  let dataValues = fields[optionIndex("--data-dir")]
+  let directory = if dataValues.len > 0: dataValues[0] else: DefaultDataDirectory
+  if directory.find(char(0)) >= 0: refuse("--data-dir must not contain NUL")
+  let certGiven = fields[optionIndex("--net-cert")].len > 0
+  let keyGiven = fields[optionIndex("--net-key")].len > 0
+  if certGiven != keyGiven: refuse("Supply --net-cert and --net-key together, or omit both to generate a persistent identity")
   var recipe: seq[string] = @[]
   case topic
   of "server", "client":
@@ -130,8 +136,17 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     var value = ""
     if fields[found].len > 0:
       value = fields[found][0]
+    elif flag == "--net-cert": value = directory / "network" / "cert.pem"
+    elif flag == "--net-key": value = directory / "network" / "key.pem"
+    elif flag == "--net-peer-key" and topic != "server":
+      refuse("Missing required option for " & topic & ": " & flag)
+    elif flag == "--net-remote-port": value = $(DefaultNetworkPort+1)
+    elif flag == "--net-timeout-ms" and topic == "server":
+      let modes = fields[optionIndex("--net-mode")]
+      let listening = modes.len == 0 or modes[0] == DefaultServerMode
+      value = $(if listening: DefaultServerTimeoutMs else: DefaultTimeoutMs)
     elif OptionSpecs[found].fallback != OptionDefault.Required:
-      value = OptionSpecs[found].defaultValue # One default supplies both help and normalized execution.
+      value = OptionSpecs[found].defaultValue(topic) # One default supplies both help and normalized execution.
     else:
       refuse("Missing required option for " & topic & ": " & flag)
     case flag
@@ -141,8 +156,11 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       let modes = fields[optionIndex("--net-mode")]
       let maximum = if topic == "server" and modes.len > 0 and modes[0] == "offload":
           MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
-      if not boundedNumber(value, 1, uint64(maximum)):
+      let listening = topic == "server" and (modes.len == 0 or modes[0] == DefaultServerMode)
+      if not boundedNumber(value, (if listening: 0'u64 else: 1'u64), uint64(maximum)):
         refuse(flag & " must be in 1.." & $maximum)
+    of "--net-mode":
+      if value == DefaultServerMode and topic != "server": refuse("--net-mode listen is only available for server")
     of "--devnet-index":
       if not boundedNumber(value, 0, 5): refuse(flag & " must be in 0..5")
     of "--devnet-base-port":
@@ -176,6 +194,35 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       if values.len > 0:
         output.add(flag)
         output.add(values[0])
+  let state = fields[optionIndex("--with-state")].len > 0
+  let telemetry = fields[optionIndex("--with-telemetry")].len > 0
+  if (state or telemetry) and fields[optionIndex("--chain")].len == 0:
+    service.add("--chain"); service.add(DefaultChainFile)
+  if topic in ["server", "client", "mesh", "download", "download-current"]:
+    # Only selected features receive paths; omitted flags never enable state, disk or remote services.
+    let lightValues = fields[optionIndex("--state-mode")]
+    let light = lightValues.len > 0 and lightValues[0] == "light"
+    let storage = fields[optionIndex("--state-storage")]
+    let layouts = fields[optionIndex("--state-layout")]
+    if state and storage.len > 0 and storage[0] == "disk":
+      var layout = if light: StateDiskLayout.Paged else: DefaultStateLayout
+      if layouts.len > 0:
+        case layouts[0]
+        of "journal": layout = StateDiskLayout.Journal
+        of "managed": layout = StateDiskLayout.Managed
+        of "paged": layout = StateDiskLayout.Paged
+        else: refuse("Invalid --state-layout")
+      elif light:
+        service.add("--state-layout"); service.add("paged")
+      if fields[optionIndex("--state-db")].len == 0:
+        service.add("--state-db"); service.add(defaultDatabase(directory, light, layout))
+    if fields[optionIndex("--with-management")].len > 0 and fields[optionIndex(
+        "--management-socket")].len == 0:
+      try:
+        let root = if isAbsolute(directory): directory else: getCurrentDir() / directory
+        service.add("--management-socket"); service.add(root / "management" / "admin.sock")
+      except:
+        refuse("Unable to resolve the default management socket directory")
   for value in service: output.add(value)
   normalized = output # No partly constructed command escapes an invalid required field or repeated list.
   true

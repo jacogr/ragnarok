@@ -7,8 +7,8 @@
 
 ```
 
-Official October 26, 2026 archive, commit
-`358b9bce4dd855453f57a80a0c499b0b2e27d7ee`. `uname -srmp`:
+Official October 28, 2026 archive, commit
+`63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`. `uname -srmp`:
 `Darwin 27.0.0 arm64 arm`.
 
 ## Description
@@ -34,8 +34,8 @@ Exit code: 1.
 ```text
 assertions.nim(38)       raiseAssert
 Error: unhandled exception: nifcore.nim(1281, 3) `c.rem == 0` into: body did not consume all 6 children (left 6) [AssertionDefect]
-nifmake: command failed (exit code 1): /Users/<user>/Projects/<project>/build/toolchain/nightly-358b9bce4dd855453f57a80a0c499b0b2e27d7ee/nimony/bin/nimsem --mm:arc --cc:clang --nimcache:cache --define:nimNativeAlloc --define:nimNativeIo m --isMain cache/repn6ksyd1.p.nif
-FAILURE: /Users/<user>/Projects/<project>/build/toolchain/nightly-358b9bce4dd855453f57a80a0c499b0b2e27d7ee/nimony/bin/nifmake --rerun -j run --progress:0:50 cache/repn6ksyd1.build.nif
+nifmake: command failed (exit code 1): /Users/<user>/Projects/<project>/build/toolchain/nightly-63fed6cb4b2f59d34c9fbb18f1796e671e2024e4/nimony/bin/nimsem --mm:arc --cc:clang --nimcache:cache --define:nimNativeAlloc --define:nimNativeIo m --isMain cache/repn6ksyd1.p.nif
+FAILURE: /Users/<user>/Projects/<project>/build/toolchain/nightly-63fed6cb4b2f59d34c9fbb18f1796e671e2024e4/nimony/bin/nifmake --rerun -j run --progress:0:50 cache/repn6ksyd1.build.nif
 ```
 
 ## Expected Output
@@ -62,8 +62,7 @@ not a claim that qualified and unqualified lookup always resolve identically.
 
 The final one-line reproducer failed with the same assertion in five independent empty directories
 outside the project. Removing its only line compiles with exit zero. The unqualified control
-also compiles with exit zero. No project imports or configuration are required. These are
-compilation checks; control executables were not run. Earlier probes with an aliased
+also compiles with exit zero. No project imports or configuration are required. Both latest-archive control executables also exit zero. Earlier probes with an aliased
 `std/assertions` import also reproduced the same assertion for existing and absent names.
 
 Searches of open/closed upstream issues and PRs for qualified declared, declared crash and the
@@ -72,7 +71,9 @@ assertion text found no exact trigger match on October 28, 2026.
 reports 115 children in a different program; it does not establish that this trigger is already
 covered. Refresh duplicate triage before submission. No root cause is asserted.
 
-Newest nightly/current master, other compiler versions, Linux runtime and a regression bisect:
-not checked. Retest the next nightly before deciding to submit. This is a local draft for
+The same trigger also fails on the October 26 archive
+`358b9bce4dd855453f57a80a0c499b0b2e27d7ee`. The newest published October 28 archive
+is checked here; a separate build of upstream master, Linux runtime and a regression bisect
+are not checked. The reproducer remains available for maintainer submission after duplicate review. This is a local draft for
 maintainer review, not a filed issue. Private project paths in the final observed output are
 redacted as `/Users/<user>/Projects/<project>`; other output is unchanged.

@@ -20,7 +20,7 @@ assert not disabled.telemetryEnabled() and disabled.rpcPort() == 0 and disabled.
 
 # MCP is opt-in independently of WS/UI, with strict port validation and enabled-only collisions.
 var mcp = default(Options)
-assert parseCanonicalOptions(@["server", "--mcp-port", "19800"], mcp)
+assert parseCanonicalOptions(@["server", "--mcp-port", "9418"], mcp)
 assert mcp.mcpPort == 0 and mcp.rpcPort == 0
 assert parseCanonicalOptions(@["server", "--with-mcp"], mcp)
 assert mcp.mcpPort == 14141 and mcp.rpcPort == 0 and mcp.uiPort == 0
@@ -31,8 +31,8 @@ for arguments in [@["server", "--with-mcp", "--with-mcp"],
     @["server", "--mcp-port", "0"], @["server", "--mcp-port", "65536"],
     @["server", "--mcp-port", "-1"], @["server", "--mcp-port", "abc"],
     @["server", "--mcp-port"], @["server", "--mcp-port", "1", "--mcp-port", "2"],
-    @["server", "--with-mcp", "--with-rpc", "--mcp-port", "19800"],
-    @["server", "--with-mcp", "--with-ui", "--mcp-port", "8888"],
+    @["server", "--with-mcp", "--with-rpc", "--mcp-port", "9418"],
+    @["server", "--with-mcp", "--with-ui", "--mcp-port", "8418"],
     @["check-traces", "--with-mcp"]]:
   assert not parseCanonicalOptions(arguments, mcp)
   assert not mcp.valid and mcp.mcpPort == 0 # No failed parse retains earlier activation.
@@ -40,16 +40,16 @@ for arguments in [@["server", "--with-mcp", "--with-mcp"],
 # UI implies RPC, with defaults or independently configured ports in any trailing order.
 var ui = default(Options)
 assert parseCanonicalOptions(@["server", "--with-ui"], ui)
-assert ui.uiPort() == 8888 and ui.rpcPort() == 19800
+assert ui.uiPort() == 8418 and ui.rpcPort() == 9418
 var custom = default(Options)
 assert parseCanonicalOptions(@["mesh", "--ui-port", "9001", "--with-ui", "--with-rpc", "--rpc-port",
     "9002", "--chain", "chain.json", "--with-telemetry", "--telemetry-endpoint", "127.0.0.1:9003"], custom)
 assert custom.uiPort() == 9001 and custom.rpcPort() == 9002 and custom.telemetryEnabled()
 assert custom.chainPath() == "chain.json" and custom.telemetryEndpoint() == "127.0.0.1:9003"
-assert ui.rpcPort() == 19800 and not ui.telemetryEnabled() # Independent invocations never share mutable state.
+assert ui.rpcPort() == 9418 and not ui.telemetryEnabled() # Independent invocations never share mutable state.
 
 # Malformed parses clear a previously valid output; neither partial flags nor old values escape.
-for arguments in [@["server", "--with-ui", "--ui-port", "19800"],
+for arguments in [@["server", "--with-ui", "--ui-port", "9418"],
     @["server", "--with-ui", "--with-ui"], @["server", "--rpc-port", "65536"],
     @["server", "--rpc-port", "0"], @["server", "--rpc-port", "no"],
     @["server", "--with-rpc", "--unknown"], @["server", "--with-telemetry"],
@@ -81,7 +81,7 @@ assert parseCanonicalOptions(@["mesh", "--state-write-bytes", "18446744073709551
   "other.json",
   "--state-writes", "00000000000000000001", "--with-state", "--with-ui"], state)
 assert state.stateEnabled and uint64(state.stateWrites) == 1
-assert uint64(state.stateWriteBytes) == high(uint64) and state.rpcPort == 19800
+assert uint64(state.stateWriteBytes) == high(uint64) and state.rpcPort == 9418
 assert alias.chainPath == "seed.json" and uint64(alias.stateWrites) == high(uint64)
 
 # Omitted ceilings default independently; explicit zero and later parses never inherit prior values.

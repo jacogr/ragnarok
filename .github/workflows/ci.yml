@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, jit-x86, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       pvm_prepared_baseline:
@@ -374,6 +374,8 @@ jobs:
             build/ci/*.log
             build/tests/e2e/*.log
             build/tests/e2e/results.json
+            build/tests/e2e/startup-defaults/**/*.log
+            build/tests/e2e/startup-defaults/**/results.json
             build/tests/e2e/current-download-work/**/*.log
             build/tests/e2e/current-download-work/**/*.stdout
             build/tests/e2e/current-download-work/**/*.stderr
@@ -698,19 +700,13 @@ jobs:
 
   # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
   pvm-comparison:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'jit-x86' || inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / PVM Comparison (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family:
-          - name: Linux ARM64
-            group: arm64
-            os: *ubuntu-arm-version
-          - name: Linux x86-64
-            group: x86_64
-            os: *ubuntu-x86-version
+        family: ${{ fromJSON(inputs.suite == 'jit-x86' && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
@@ -735,18 +731,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
+      - name: Install scoped x86 profiler
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: sudo apt-get install --yes --no-install-recommends valgrind binutils
+      - name: Qualify opt-in Linux x86-64 JIT
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make check-pvm-x86-jit
+      - name: Compare opt-in x86 JIT and checked interpreters
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make bench-pvm-x86-applications
+      - name: Profile current x86 invocation boundaries
+        if: ${{ inputs.suite == 'jit-x86' }}
+        run: make profile-pvm-x86-jit
       - name: Qualify PVM on the native Linux architecture
+        if: ${{ inputs.suite != 'jit-x86' }}
         run: make check-pvm-native
-      - name: Compare checked interpreters on Linux x86-64
-        if: ${{ matrix.family.group == 'x86_64' }}
-        run: make bench-pvm-interpreter
+      - name: Compare public x86 JIT and checked interpreters
+        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' }}
+        run: make bench-pvm-x86-applications
       - name: Compare public ARM64 JIT and checked interpreters
         if: ${{ matrix.family.group == 'arm64' }}
         run: make bench-pvm-arm64-applications
       - name: Show complete comparison
         if: always()
         run: |
-          for summary in build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
+          for summary in build/tests/pvm-x86-jit/summary.md build/tests/pvm-x86-applications/summary.md build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
             if test -f "$summary"; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
             fi
@@ -759,6 +768,13 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
           path: |
+            build/tests/pvm-x86-applications/*.json
+            build/tests/pvm-x86-applications/*.log
+            build/tests/pvm-x86-applications/summary.md
+            build/tests/pvm-x86-profiles/*
+            build/tests/pvm-x86-jit/*.json
+            build/tests/pvm-x86-jit/*.log
+            build/tests/pvm-x86-jit/summary.md
             build/tests/pvm-interpreter-linux/*.json
             build/tests/pvm-interpreter-linux/*.log
             build/tests/pvm-interpreter-linux/summary.md

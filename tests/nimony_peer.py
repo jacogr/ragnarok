@@ -55,15 +55,15 @@ def controls(binary, fixtures):
     for text in ('0', '-1', '65536', 'no', ''):
         cases.append(('rpc-port-'+text, [*base, '--with-rpc', '--rpc-port', text]))
     cases += [('rpc-missing', [*base, '--rpc-port']),
-              ('rpc-duplicate', [*base, '--with-rpc', '--rpc-port', '19800', '--rpc-port', '19801']),
-              ('rpc-selftest', ['--selftest', '--with-rpc', '--rpc-port', '19800'])]
+              ('rpc-duplicate', [*base, '--with-rpc', '--rpc-port', '9418', '--rpc-port', '19801']),
+              ('rpc-selftest', ['--selftest', '--with-rpc', '--rpc-port', '9418'])]
     # UI configuration uses the same strict trailing parser and distinct listener ports.
     for text in ('0', '-1', '65536', 'no', ''):
         cases.append(('ui-port-'+text, [*base, '--with-ui', '--ui-port', text]))
     cases += [('ui-old-directory-option', [*base, '--with-ui', '--ui-dir', 'unused']),
               ('ui-missing-port', [*base, '--with-ui', '--ui-port']),
               ('ui-duplicate', [*base, '--with-ui', '--with-ui']),
-              ('ui-port-collision', [*base, '--with-ui', '--ui-port', '19800']),
+              ('ui-port-collision', [*base, '--with-ui', '--ui-port', '9418']),
               ('ui-selftest', ['--selftest', '--with-ui']),
               ('ui-dir-missing', [*base, '--with-ui', '--ui-dev-dir']),
               ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]

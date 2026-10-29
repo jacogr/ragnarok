@@ -7,9 +7,10 @@ import sys
 import re
 import subprocess
 import unittest
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from pvm_doom_backends import Mismatch, compare, negative_frames, rgba_frames
+from pvm_doom_backends import Mismatch, compare, negative_frames, rgba_frames, observation
 from workflow_fixtures import event_context, expression, job_condition, job_section
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,6 +81,26 @@ class DoomBackendTests(unittest.TestCase):
         context = event_context('workflow_dispatch', suite='pvm-backends')
         self.assertTrue(expression(job_condition(text, 'pvm-doom-backends'), context))
         self.assertFalse(expression(job_condition(text, 'interop'), context))
+
+
+
+
+class NativePolicyReceiptTests(unittest.TestCase):
+    """The real shared driver must report positive native work on both supported Linux CPUs."""
+    def test_x86_and_arm_require_actual_jit_activity(self):
+        """Matching image bytes alone cannot let an interpreted fallback count as a native default qualification."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            for call in range(2):
+                (folder/f'call-{call}.state').write_bytes(bytes(129+4101))
+                (folder/f'call-{call}.events').write_bytes(events(call+1))
+                (folder/f'call-{call}.hosts').write_bytes(b'host')
+            native='DOOM_CALL,0,jit,jit,100,1,1,4,1,1\nDOOM_CALL,1,jit,jit,99,1,2,8,1,1\nDOOM_SEQUENCE_OK,jit,2\n'
+            for architecture in ('arm64','x86_64'):
+                result=observation(native,folder,'jit',2,1,architecture)
+                self.assertEqual(len(result['frames']),2)
+                with self.assertRaisesRegex(ValueError,'missing positive'):
+                    observation(native.replace(',jit,jit,',',jit,interpreted,'),folder,'jit',2,1,architecture)
 
 
 if __name__ == '__main__':
