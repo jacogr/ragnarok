@@ -346,3 +346,24 @@ constant-invalid load/store probes require the exact checked-precondition error.
 The prepared suite retains all 139 opcode families, faults, host suspension, budgets
 and lifetime checks. Performance qualification is recorded in
 [pvm-prepared-blocks.md](pvm-prepared-blocks.md).
+
+## Read-only scalar write preflight
+
+`writableScalar(memory, address, width)` checks the same complete write extent as immutable
+`store`, returning `MachineResult[bool]` with `true` on success and the identical typed failure
+and aligned fault page on refusal. It reuses the private scalar-span resolver, allocates no
+page vector or payload, and retains no page slot or borrowed storage beyond the call. It does
+not change the supplied memory or any alias. A later independent operation must check again
+against its own current immutable owner.
+
+The query preserves invalid-owner-before-width precedence, widths 1/2/4/8, low32 address
+masking, final-page exclusive-end overflow, the protected low64KiB prefix and cross-page
+presence-before-write-permission ordering (including GP-PVM-008). Natural host ranges continue
+to use their separate `writableRange` contract. Public immutable `store` still publishes an
+independent snapshot and may copy O(mapped pages) references.
+
+The existing `pvm_machine` dense independent permission/byte reference now also checks this
+query against its fixed write-error oracle, all 256 width values, protected and masked addresses,
+and exact fitting/overflowing final-page cases. Old page bytes and permissions remain checked
+after successful and failed preflights. Native qualification is pending CI; this API layer does
+not yet change the interpreter consumer or establish a runtime speed claim.

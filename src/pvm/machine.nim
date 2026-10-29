@@ -602,6 +602,14 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
         8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
+proc writableScalar*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[bool] =
+  ## Check the exact scalar-store permissions and fault order without allocating or changing memory.
+  ## Success carries true; failure preserves store's typed reason and aligned fault page.
+  ## Addresses use their low32 bits, including the exclusive-end overflow and protected-prefix rules.
+  let checked = scalarSpan[false, true](memory, address, width)
+  if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
+  MachineResult[bool](status: MachineError.None, completed: true)
+
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
   ## Preflight once, then clone only touched pages and publish an independent atomic snapshot.
