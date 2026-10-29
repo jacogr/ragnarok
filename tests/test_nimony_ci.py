@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, jit-arm-calibrate, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -96,6 +96,23 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('run: make profile-pvm-arm64-linux',section)
         self.assertIn('build/tests/pvm-arm64-profiles/*',section)
         self.assertNotIn('continue-on-error',section)
+
+    def test_arm_replay_uses_sealed_native_applications_without_profiling(self):
+        """Fresh ARM processes retain native gates and checks without activating x86 or collecting diagnostic timings."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        context=event_context('workflow_dispatch',suite='jit-arm-replay')
+        self.assertTrue(expression(job_condition(text,'pvm-comparison'),context))
+        self.assertEqual(selected_families(text,'pvm-comparison',context),
+                         [dict(name='Linux ARM64',group='arm64',os='ubuntu-26.04-arm')])
+        section=job_section(text,'pvm-comparison')
+        flag=re.search(r'PVM_JIT_PROCESS_REPLAYS: \$\{\{ (.+) \}\}',section).group(1)
+        for suite in ('jit-arm-replay','jit-x86-replay'):
+            self.assertEqual(expression(flag,event_context('workflow_dispatch',suite=suite)),'1')
+        for suite in ('jit-arm-profile','jit-x86','bench-pvm','full'):
+            self.assertEqual(expression(flag,event_context('workflow_dispatch',suite=suite)),'0')
+        profile=section.split('- name: Profile paired ARM invocation boundaries',1)[1].split('- name:',1)[0]
+        condition=re.search(r'if: \$\{\{ (.+) \}\}',profile).group(1)
+        self.assertFalse(expression(condition,context))
 
     def test_arm_calibration_reuses_one_job_without_guest_work(self):
         """Profiler repair controls select ARM alone and skip native guest qualification/comparison steps."""
