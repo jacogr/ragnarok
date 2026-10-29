@@ -133,3 +133,13 @@ Report SHA256 (applications, native, profiles):
 Exact ignored evidence: `build/pvm-arm-load-widths/third/tests`. Later CI-only or
 documentation restacks preserve this measured-head provenance; the final retained
 bundle receives its own public comparison.
+
+## Final retained-stack qualification
+
+The [two-architecture retained-stack receipt](pvm-jit-region-qualification.md) records final
+run 40808153188 at `e987b44772a3e0d2886033dc614595a7c50b97d5` against exact master
+`5e873ba53fa36320ed27701e5a64a9ffdbb85d7d`. Both native qualifiers and all complete public
+application comparisons pass. The final stack excludes the deferred x86 triple-region and shift
+experiments; this ARM implementation is unchanged from its isolated qualified trial. The receipt
+includes public, constructor, cold, retained-core and reference lifecycle scopes without pooling
+different runners or attributing aggregate gains to this layer alone.
