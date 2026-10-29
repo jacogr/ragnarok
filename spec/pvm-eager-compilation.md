@@ -79,6 +79,33 @@ identities. The suite can truthfully exercise a typed unavailable facility on th
 positive receipts require an actual sealed shared implementation and cannot be inferred from
 ordinary native build flags or a passing unavailable-control run.
 
+### Bounded private correctness receipt
+
+[CI run 40903375793](https://github.com/jacogr/ragnarok/actions/runs/40903375793) passed Smoke and
+both Linux architecture jobs at diagnostic `9e6cabd47288e209443466b77b85010b157ca3e0`. Runtime
+`fc164c1b8488bd372ade074e1332a9e967c7c435` combines public source
+`ccd2e63b93c2804664660c9115b87512232bc352` with exactly four shared files pinned from
+`5719c065ec9fc037dfee739cc649cb66b905f7b6`: `handler_stream`, `arm64_jit`, `x86_jit`, `source_seal`.
+The private diagnostic changes only the canonical workflow and its job inventory/identity tests.
+Its 61 inert safeguards pass. This is explicit private integration evidence, not master execution
+or shared implementation/performance acceptance.
+
+Each architecture ran app/runtime/compiled suites in plain and native profiles, precise storage
+and wrong-host refusals, and a positive-on-refused assertion control that failed as required.
+Author raw-artifact audit rehashed all 18 actual retained ELFs, both original bridge libraries,
+exact compiler/process logs and stdout, ARC/release/bounds/ThinLTO/native flags, eight copied ARC
+observations of 1000 lifecycle iterations, and 673 tracked Git input hashes per host. The tracked
+hash maps are identical across architectures and match exact runtime Git bytes. Original Rust ABI
+tests passed (three per host). Compiler/Clang executable bytes were not retained; their hashes
+remain provenance only. The ARC reporting helper is bound by Git provenance, outside the separate
+before/after input manifest; its caller's lifecycle assertions are covered source and actual runs.
+
+The ordinary public-source [Smoke run 40902323492](https://github.com/jacogr/ragnarok/actions/runs/40902323492)
+passed on `ccd2e63b93c2804664660c9115b87512232bc352`. Subsequent evidence-only documentation does not
+change these runtime/test/helper/pin/configuration inputs. Full continuing-DOOM and performance
+qualification are not supplied by this bounded public-unit receipt. Independent final review
+and separate shared implementation readiness remain required.
+
 This increment does not close #1733. Complete native opcode coverage, broad compiled-engine
 comparison and performance acceptance remain separate requirements. No rejected shared performance
 result is relabeled as acceptance, and this feature adds no disk cache, cross compilation,
