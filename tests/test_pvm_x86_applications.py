@@ -5,7 +5,7 @@ import unittest
 from pvm_jit_platform import native_defines
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
-from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs
+from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs, profile_plan
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -68,6 +68,31 @@ class X86ProfileScopeTests(unittest.TestCase):
             self.assertEqual(left['RAGNAROK_PVM_SIEVE_SAMPLES'], '13')
             self.assertEqual(left['RAGNAROK_PVM_LOCAL_ONECALL'], '0')
 
+
+    def test_arm_profiles_compare_exact_parent_and_current(self):
+        """The ARM diagnostic binds its own sealed cohort and both genuine DOOM phases, never x86 inputs."""
+        plan=profile_plan('arm64')
+        self.assertEqual(plan['roles'],('baseline','jit'))
+        make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
+        self.assertIn('profile-pvm-arm64-linux:\n',make)
+        self.assertNotIn('profile-pvm-arm64-linux: bench-',make)
+        self.assertEqual(plan['cases'],(('sieve',100000),('init',0),('tick',0)))
+        self.assertEqual(plan['cohort'].name,'pvm-arm64-applications')
+        for case,limit in plan['cases']:
+            environment=profile_environment(case,limit,'jit','arm64')
+            self.assertEqual(environment['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+            self.assertEqual(environment['RAGNAROK_PVM_LOCAL_ONECALL'],'0')
+            if case in ('init','tick'):
+                self.assertEqual(environment['RAGNAROK_PVM_DOOM_PHASE'],case)
+            else:
+                self.assertIn('pvm-arm64-applications/inputs',environment['RAGNAROK_PVM_SIEVE_INPUT'])
+        baseline=profile_environment('sieve',100000,'baseline','arm64')
+        current=profile_environment('sieve',100000,'jit','arm64')
+        self.assertEqual(baseline.pop('RAGNAROK_PVM_BACKEND'),'')
+        self.assertEqual(current.pop('RAGNAROK_PVM_BACKEND'),'jit')
+        self.assertEqual(baseline,current)
+        with self.assertRaises(ValueError):profile_plan('riscv64')
+        self.assertEqual(profile_plan('x86_64')['roles'],('interpreter','jit'))
 
     def test_native_activity_cannot_turn_into_fallback(self):
         """Identical source/output alone cannot certify that an instrumented JIT actually executed native code."""

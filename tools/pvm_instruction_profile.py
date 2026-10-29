@@ -58,6 +58,46 @@ def profile_counts(text, allow_empty=False):
     return counts
 
 
+def exclusive_costs(text, allow_empty=False):
+    """Sum actual instruction rows, excluding every call-arc cost even when a synthetic ancestry arc has zero calls."""
+    totals = profile_counts(text, allow_empty=allow_empty)
+    if re.findall(r'^positions: (.+)$', text, re.M) != ['line']:
+        raise ValueError('Unsupported profile positions')
+    names = list(totals)
+    own = {}
+    symbol, arc = '', False
+    for line in text.splitlines():
+        # Function headers name self rows; an immediately following arc cost belongs to its callee instead.
+        if line.startswith('fn='):
+            if arc: raise ValueError('Incomplete call arc')
+            symbol = line[3:]
+        elif line.startswith('calls='):
+            if arc: raise ValueError('Incomplete call arc')
+            arc = True
+        elif re.match(r'^(?:[0-9]+|[+-][0-9]+|\*) ', line):
+            if not symbol: raise ValueError('Instruction cost lacks a function')
+            raw = line.split()[1:]
+            if not raw or len(raw) > len(names) or any(re.fullmatch(r'[0-9]+', value) is None for value in raw):
+                raise ValueError('Invalid instruction event row')
+            values = [*map(int, raw), *([0]*(len(names)-len(raw)))]
+            if not arc:
+                # Include each actual event exactly once; inherited zero-call ancestry is never self work.
+                costs = own.setdefault(symbol, dict.fromkeys(names, 0))
+                for name, value in zip(names, values): costs[name] += value
+            arc = False
+    if arc or any(sum(row[name] for row in own.values()) != totals[name] for name in names):
+        raise ValueError('Exclusive instruction costs do not match complete profile totals')
+    return dict(sorted(own.items(), key=lambda pair: pair[1]['Ir'], reverse=True))
+
+
+def selected_calibration_work(text):
+    """Only selected/inside self instructions may be collected; zero-self ancestry nodes are not outside work."""
+    own=exclusive_costs(text)
+    selected=own.get('pvm_profile_selected',{}).get('Ir',0)
+    return selected > 0 and all(name in ('pvm_profile_selected','pvm_profile_inside') or row['Ir']==0
+                               for name,row in own.items())
+
+
 def calibration_passed(result, text, selected):
     """A matching selected function collects instructions; a deliberately absent scope collects none."""
     if result['exit_code'] or result['output'].strip() != 'PVM profile calibration passed':
@@ -66,8 +106,11 @@ def calibration_passed(result, text, selected):
         counts = profile_counts(text, allow_empty=not selected)
     except ValueError:
         return False
-    return ((counts['Ir'] > 0 and 'fn=pvm_profile_selected' in text
-             and 'fn=pvm_profile_outside' not in text) if selected else counts['Ir'] == 0)
+    try:
+        return selected_calibration_work(text) if selected else (all(value==0 for value in counts.values()) and
+            all(value==0 for row in exclusive_costs(text,allow_empty=True).values() for value in row.values()))
+    except ValueError:
+        return False
 
 
 def last_call_calibration_passed(single, repeated, final):
@@ -75,10 +118,8 @@ def last_call_calibration_passed(single, repeated, final):
     counts = []
     for text in (single, repeated, final):
         # Require actual selected function records, not caller references or a partial/empty dump.
-        if (re.search(r'^fn=pvm_profile_selected$', text, re.M) is None
-                or re.search(r'^fn=pvm_profile_outside$', text, re.M) is not None):
-            return False
         try:
+            if not selected_calibration_work(text): return False
             counts.append(profile_counts(text)['Ir'])
         except ValueError:
             return False
@@ -214,7 +255,7 @@ def final_return_dump(output, executions):
 
 
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            dump_symbols=(), executions=1, arguments=(), deep=False):
+            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False):
     """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
@@ -222,11 +263,11 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
         # Retire every private old part before collection, never reuse counters from another invocation.
         part.unlink()
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
-        '--toggle-collect='+scope, '--cache-sim='+('yes' if deep else 'no'), '--branch-sim=yes',
+        *(['--toggle-collect='+scope] if not requests else []), '--cache-sim='+('yes' if deep else 'no'), '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
         *(['--read-inline-info=yes', '--compress-pos=no', '--demangle=no',
            '--I1=32768,8,64', '--D1=32768,8,64', '--LL=8388608,16,64'] if deep else []),
-        *('--dump-after='+symbol for symbol in dump_symbols),
+        *('--dump-after='+symbol for symbol in dump_symbols if not requests),
         '--callgrind-out-file='+str(output),
         '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary, *arguments], name,
         environment=environment, timeout=timeout)
@@ -238,10 +279,10 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
     return result, output
 
 
-def calibrate_scope(checks, report):
+def calibrate_scope(checks, report, requests=False):
     """Share classified selected/absent/repeated/return-dump controls without rebuilding a guest image."""
     control = ROOT/'tests/support/pvm_profile_control.c'
-    compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), control], 'control-build')
+    compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), *(['-DPVM_PROFILE_REQUESTS'] if requests else []), control], 'control-build')
     report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
     if compiled['exit_code']:
         raise RuntimeError('profile calibration build failed')
@@ -250,7 +291,8 @@ def calibrate_scope(checks, report):
         # The unmatched scope proves whole-process counts cannot silently substitute for selected execution.
         name = 'control-selected' if selected else 'control-absent'
         result, output = collect(checks, checks.folder/'control', name,
-            'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30)
+            'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30,
+            arguments=('off',) if requests and not selected else (), requests=requests)
         text = output.read_text()
         if selected:
             # Preserve the single-call reference for independently repeated/reset controls.
@@ -266,7 +308,7 @@ def calibrate_scope(checks, report):
         name = 'control-last-only' if dumped else 'control-repeated'
         result, output = collect(checks, checks.folder/'control', name, 'pvm_profile_?elected',
             dict(os.environ), 30, dump_symbols=('pvm_profile_selected',) if dumped else (), executions=2,
-            arguments=('twice',))
+            arguments=('twice-dump',) if requests and dumped else ('twice',), requests=requests)
         text = output.read_text()
         passed = calibration_passed(result, text, True)
         if dumped:
