@@ -9,7 +9,7 @@
 
 import std/[cmdline, syncio]
 import ../../src/state/guarantee_credentials
-import ../../src/codec/state_safrole
+import ../../src/codec/state/safrole as state_safrole
 let outcome = if paramStr(1) == "error":
   verifyGuaranteeCredentials([], default(ValidatorStateSnapshot), default(ValidatorStateSnapshot),
     default(StateEntropy), StateTime(0), [], default(GuaranteeCredentialConfig))

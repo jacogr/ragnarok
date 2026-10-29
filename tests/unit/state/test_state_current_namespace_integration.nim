@@ -9,11 +9,20 @@ import ../../support/[current_namespace_context, service_namespace_seed,
     parent_globals_context, supplied_logical_context, supplied_services_context,
     state_inventory_context, arc_evidence]
 import ../../../src/chain/[provider, genesis]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_profile,
-    current_globals, current_state, current_logical, accumulation_current_update, global_snapshot,
-    store, inventory, manifest, supplied_logical_inventory, supplied_services, account_audit_plan,
-    account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state, logical as current_logical]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/[global_snapshot, store, inventory, manifest]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Exact map matching happens before hash-free audit planning and observational projections.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

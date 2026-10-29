@@ -4,7 +4,9 @@
 ## Real RPC exposes exactly the recovered head/map/header while absent ancestors and finality remain unavailable.
 import std/[assertions, syncio, envvars, strutils, base64]
 import std/posix/posix
-import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store

@@ -4,7 +4,7 @@
 
 ## Refuse substituting a projection for bound history or a full map for a ready ring.
 
-import ../../../src/state/[accumulation_ready]
+import ../../../src/state/accumulation/ready as accumulation_ready
 var source: AccumulationReadyProjection
 var config: AccumulationReadyConfig
 discard prepareAccumulationReady(source, config)

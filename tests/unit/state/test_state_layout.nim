@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_layout, bounded, composite]
+import ../../../src/codec/state/layout as state_layout
+import ../../../src/codec/[bounded, composite]
 
 # Only complete success authorizes access to node metadata, hashes or keys.
 proc checked[T](parsed: StateLayoutResult[T]): T =

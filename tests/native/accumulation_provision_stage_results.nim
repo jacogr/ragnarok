@@ -3,8 +3,9 @@
 
 ## No inactive provision phase payload may escape default or refused preparation.
 import std/cmdline
-import ../../src/state/[accumulation_provision_stage, accumulation_provisions,
-    accumulation_account_stage]
+import ../../src/state/accumulation/provision/stage as accumulation_provision_stage
+import ../../src/state/accumulation/provisions as accumulation_provisions
+import ../../src/state/accumulation/account/stage as accumulation_account_stage
 let owner = default(AccumulationProvisionStageResult[PreparedAccumulationProvisionStage])
 let refused = prepareAccumulationProvisionStage(default(PreparedAccumulationAccountStage), default(
     AccumulationProvisionUnionLimits))

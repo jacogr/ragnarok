@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "context"}
 
 ## Captured trust and selected reasons remain private immutable ownership.
-import ../../../src/app/checkpoint_trust
+import ../../../src/app/checkpoint/trust as checkpoint_trust
 let owner = default(TrustedApplicationCheckpoint)
 discard owner.context

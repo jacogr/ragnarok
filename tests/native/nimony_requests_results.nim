@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_requests
+include ../../src/codec/state/requests
 # Faults apply to this test-only observer-linked adapter, never production corpus binaries.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 ## Select source mode from runtime input so inactive-field checks execute rather than fold at compilation.

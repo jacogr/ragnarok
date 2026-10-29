@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal","expected": "openArray","early": ["encodeErasureWords(","[1] expected: openArray[ErasureWord] but got: array[0..2, uint16]"]}
 
-import ../../../src/state/[erasure_words, erasure_layout]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure/[words as erasure_words, layout as erasure_layout]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 discard encodeErasureWords([0'u16, 1, 2], ErasureShards(6), ErasureWordLimits())

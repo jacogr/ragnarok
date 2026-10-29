@@ -5,15 +5,28 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, computed_guarantee, computed_report, block_transition,
-  block_admission, report_transition, store, input_refinement, availability_specifier,
-  export_erasure, bundle_erasure,
-  erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
+import ../../src/state/computed/[transition as computed_transition, profile as computed_profile,
+    lookup as computed_lookup, recent as computed_recent, state as computed_state,
+    links as computed_links, guarantee as computed_guarantee, report as computed_report]
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/report/transition as report_transition
+import ../../src/state/[store, input_refinement]
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/[auditable_bundle, extrinsic_inputs]
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
 import ../../src/chain/[genesis, parameters]
-import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
-  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes,
-  state_privileges, state_statistics, state_accounts]
+import ../../src/codec/[assurances, bounded, header, block_codec]
+import ../../src/codec/work/[package as work_package, report as work_report]
+import ../../src/codec/composite
+import ../../src/codec/state/[safrole as state_safrole, layout as state_layout, trie as state_trie,
+    availability as state_availability, authorization as state_authorization,
+    disputes as state_disputes, privileges as state_privileges, statistics as state_statistics,
+    accounts as state_accounts]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,

@@ -5,8 +5,11 @@
 ## Complete independent erasure bytes, exact aggregate caps and original executed-bundle provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[auditable_bundle, erasure_layout, erasure_words, bundle_erasure]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/auditable_bundle
+import ../../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../../src/state/bundle_erasure
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/crypto/primitives
 import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_bundle_erasure_vectors, arc_evidence]
 

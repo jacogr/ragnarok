@@ -6,10 +6,16 @@
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
     current_logical_proof_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_logical, accumulation_current_update,
-    proof_plan, planned_proof, proof_view, proof_global, trie_proof, store]
-import ../../../src/app/[proof_query, proof_worker]
-import ../../../src/codec/[bounded, report_owned, state_layout]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[view as proof_view, global as proof_global]
+import ../../../src/state/[trie_proof, store]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/layout as state_layout
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar-only deadline polling never retains, drops or copies a canonical alias while the worker leases it.
 proc waitDone(worker: var StateProofWorker) =

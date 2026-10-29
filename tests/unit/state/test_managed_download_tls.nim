@@ -6,10 +6,12 @@ import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../support/[application_download_chain, application_download_command_context,
   application_download_disk_context, block_download_transport, managed_storage_samples]
-import ../../../src/app/[download_command, services, options]
+import ../../../src/app/download/command as download_command
+import ../../../src/app/[services, options]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/[managed_manifest, managed_io, file_errors]
+import ../../../src/storage/managed/[manifest as managed_manifest, io as managed_io]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/[bounded, report_owned]
 const
   ChainPath = "managed-download-chain.json"

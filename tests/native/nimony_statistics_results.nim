@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_statistics
+include ../../src/codec/state/statistics
 let useDefault = paramStr(2) == "default"
 let policy = ActivityConfig(cores: CoreCount(3), current: ValidatorCount(6),
     previous: ValidatorCount(9), maxServices: ElementLimit(2), maxBytes: ByteLimit(2000))

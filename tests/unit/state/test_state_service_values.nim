@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_service_values, bounded]
+import ../../../src/codec/state/service_values as state_service_values
+import ../../../src/codec/bounded
 
 ## An opaque retained value survives source key/value scope and every caller mutation.
 proc captured(): ServiceValueSnapshot =

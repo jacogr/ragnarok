@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ErasureShardIndex", "early": ["exportErasureChunk(", "[2] expected: ErasureShardIndex but got: OriginalShardIndex"]}
 
-import ../../../src/state/[export_erasure, export_commitment, erasure_layout, erasure_words]
+import "../../../src/state/export/erasure" as export_erasure
+import "../../../src/state/export/commitment" as export_commitment
+import ../../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
 discard exportErasureChunk(default(ExportErasure), OriginalShardIndex(0), ExportErasureIndex(0))

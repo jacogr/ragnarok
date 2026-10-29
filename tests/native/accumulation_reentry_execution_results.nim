@@ -4,9 +4,11 @@
 ## Refused reentry bootstrap/completion results expose neither retained owners nor unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_reentry_invocation, accumulation_reentry_execution,
-  accumulation_reentry, accumulation_execution, accumulation_inputs, accumulation_service,
-  accumulation_invocation]
+import ../../src/state/accumulation/reentry/[invocation as accumulation_reentry_invocation,
+    execution as accumulation_reentry_execution]
+import ../../src/state/accumulation/[reentry as accumulation_reentry,
+    execution as accumulation_execution, inputs as accumulation_inputs,
+    service as accumulation_service, invocation as accumulation_invocation]
 
 let argument = paramStr(1)
 let invocation = if argument == "inv-default": default(AccumulationReentryInvocationResult[ReentryAccumulationInvocation])

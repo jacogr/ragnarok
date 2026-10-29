@@ -4,6 +4,6 @@
 
 ## Union source/value owners are private.
 
-import ../../../src/state/accumulation_provisions
+import ../../../src/state/accumulation/provisions as accumulation_provisions
 var plan: PreparedAccumulationProvisions
 discard plan.data

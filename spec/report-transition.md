@@ -1,6 +1,6 @@
 # Atomic block/report publication
 
-`src/state/report_transition.nim` adds `advanceBlockReports`, the full-state in-memory entry point
+`src/state/report/transition.nim` adds `advanceBlockReports`, the full-state in-memory entry point
 for the currently implemented admission, disputes, Safrole, assurance and report stages. It is
 not complete block execution: accumulation/PVM, other extrinsic execution, final history and
 bookkeeping integration, wall-clock admission and block import remain separate work.

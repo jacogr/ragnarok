@@ -4,7 +4,8 @@
 ## Runtime misuse probes reach actual success-only extraction under checked optimized compilation.
 import std/[assertions, cmdline]
 import ../../src/state/trie_proof
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc extract[T](outcome: StateProofResult[T]) =
   ## The same generic public accessor must reject defaults and every actual failure payload type.
   discard outcome.value

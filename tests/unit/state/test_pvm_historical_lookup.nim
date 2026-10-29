@@ -5,9 +5,12 @@
 ## Literal historical intervals, full-width gas/memory and genuine host execution verify read-only refinement lookup.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_lookup, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values,
-  state_requests, state_trie, work_report]
+import ../../../src/state/refinement/lookup as refinement_lookup
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests, trie as state_trie]
+import ../../../src/codec/work/report as work_report
 import ../../../src/pvm/[machine, program, step, gas]
 import ../../support/arc_evidence
 

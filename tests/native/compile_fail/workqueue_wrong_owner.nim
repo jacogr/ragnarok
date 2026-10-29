@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[1] expected: ReadySnapshot but got: AccumulatedSnapshot"}
 
-import ../../../src/codec/state_workqueues
+import ../../../src/codec/state/workqueues as state_workqueues
 let owner = default(AccumulatedSnapshot)
 discard readySlotCount(owner, WorkQueueSlot(0))

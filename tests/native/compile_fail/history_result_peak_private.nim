@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_history, state_trie]
+import ../../../src/codec/state/[history as state_history, trie as state_trie]
 let value = default(HistoryResult[HistoryPeak])
 discard value.completed

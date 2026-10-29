@@ -4,6 +4,6 @@
 ## Direct success-payload extraction cannot bypass the guarded result accessor.
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/app/block_download
+import "../../../src/app/block/download" as block_download
 var outcome = default(BlockDownloadResult[BlockDownloadId])
 discard outcome.completed

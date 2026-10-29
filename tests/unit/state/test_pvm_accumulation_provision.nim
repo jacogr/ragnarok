@@ -6,9 +6,13 @@
 ## Covers local failure rollback, checkpoint separation, full-width arithmetic and repeated ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_effects,
-  accumulation_context, accumulation_invocation, accumulation_service, store]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    dispatch as accumulation_dispatch, effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation,
+    service as accumulation_service]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/pvm/[machine, program, step, gas]
 import ../../support/[pvm_accumulation_provision, arc_evidence]
 

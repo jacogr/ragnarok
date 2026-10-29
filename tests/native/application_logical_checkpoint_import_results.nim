@@ -4,9 +4,13 @@
 ## Authenticate every detached entry against an independently qualified successor and retain physical/source ownership across input mutation and scope retirement.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
-import ../../src/app/[logical_checkpoint_import, logical_checkpoint, chain]
-import ../../src/state/[current_logical, current_checkpoint, checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import "../../src/app/logical/checkpoint/import" as logical_checkpoint_import
+import ../../src/app/logical/checkpoint as logical_checkpoint
+import ../../src/app/chain
+import ../../src/state/current/[logical as current_logical, checkpoint as current_checkpoint]
+import ../../src/state/[checkpoint, store]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 import ../../src/chain/genesis
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Exercise genuine backend refusal independently of shape and root validation.

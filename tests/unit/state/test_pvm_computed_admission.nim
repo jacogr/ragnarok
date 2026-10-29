@@ -5,10 +5,16 @@
 ## Genuine computed package admission preserves original semantic policy and exact child failures.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_admission, computed_inclusion, computed_batch, report_admission,
-  report_policy, report_packages, guarantors, report_anchors, guarantee_credentials,
-  block_transition,
-  block_admission, store]
+import ../../../src/state/computed/[admission as computed_admission,
+    inclusion as computed_inclusion, batch as computed_batch]
+import ../../../src/state/report/[admission as report_admission, policy as report_policy,
+    packages as report_packages]
+import ../../../src/state/guarantors
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../../src/codec/bounded
 import ../../support/[pvm_computed_admission, arc_evidence]
 

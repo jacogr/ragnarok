@@ -5,8 +5,11 @@
 import std/[assertions, syncio]
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash,
   storage_crash_appends, storage_bootstrap_faults]
-import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, database_identity]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/managed/repository as managed_repository
+import ../../src/storage/database_identity
 import ../../src/codec/bounded
 proc bootstrapCrashCase*(label: string, managed: bool, operation, skip: cint): uint64 {.raises.} =
   ## Arm before exclusive creation, then verify preserved forensic names before any independently strict admission.

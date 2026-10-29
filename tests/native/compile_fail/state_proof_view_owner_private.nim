@@ -3,6 +3,6 @@
 
 ## External callers cannot fabricate partial verified state or nested success/failure payloads.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/state/proof_view
+import ../../../src/state/proof/view as proof_view
 let owner = default(ProofView)
 discard owner.data

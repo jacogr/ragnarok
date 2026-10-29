@@ -3,8 +3,10 @@
 
 ## Explicit restoration and complete audit policies avoid unsupported nested-constant field folding.
 import ./[account_audit_plan_context, state_inventory_context]
-import ../../src/state/[planned_account_checkpoint, validated_checkpoint, store, global_snapshot]
-import ../../src/codec/[bounded, state_composition]
+import ../../src/state/planned/account_checkpoint as planned_account_checkpoint
+import ../../src/state/[validated_checkpoint, store, global_snapshot]
+import ../../src/codec/bounded
+import ../../src/codec/state/composition as state_composition
 const plannedCheckpointTestLimits* = PlannedAccountCheckpointLimits(
   serialization: StateCheckpointLimits(checkpointBytes: ByteLimit(524288),
     store: StateStoreLimits(trie: inventoryMapLimits, writes: ElementLimit(64),

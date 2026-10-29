@@ -4,9 +4,14 @@
 ## Independent sixteen-chapter fixtures and service evidence roundtrip through exact planned projections.
 import std/[assertions, envvars, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_plan, proof_view, proof_service, planned_proof, trie_proof]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_accounts,
-    state_safrole, state_consensus, state_composition]
+import ../../../src/state/proof/[global as proof_global, plan as proof_plan, view as proof_view,
+    service as proof_service]
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/trie_proof
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, safrole as state_safrole, consensus as state_consensus,
+    composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained backend observer to prove projection never rehashes already verified facts.

@@ -8,7 +8,8 @@
 ## rejection diagnostic and exit status.
 
 import std/cmdline
-import ../../src/state/[report_admission, block_transition]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
 let missing = default(BlockTransitionResult)
 if paramStr(1) == "profile":
   discard missing.blockTransitionProfile # A default coordinator result has no authenticated profile.

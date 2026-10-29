@@ -5,15 +5,20 @@
 
 import std/assertions
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, composite, header, c2_records, report_owned, owned,
-  work_report, work_digest, state_accounts, state_service_values, state_layout, state_workqueues, state_trie]
-import ../../src/state/[accumulation_execution, accumulation_round, accumulation_batch,
-  accumulation_dispatch, accumulation_skip, accumulation_outcome, accumulation_context,
-  accumulation_transfers, accumulation_transfer_partition, accumulation_round_transfers,
-  accumulation_continuation,
-  accumulation_continuation_inputs, accumulation_inputs, accumulation_service,
-  accumulation_operands,
-  accumulation_provisions, store]
+import ../../src/codec/[bounded, composite, header, c2_records, report_owned, owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, workqueues as state_workqueues, trie as state_trie]
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, batch as accumulation_batch, dispatch as accumulation_dispatch,
+    skip as accumulation_skip, outcome as accumulation_outcome, context as accumulation_context,
+    transfers as accumulation_transfers, transfer_partition as accumulation_transfer_partition]
+import ../../src/state/accumulation/round/transfers as accumulation_round_transfers
+import ../../src/state/accumulation/continuation as accumulation_continuation
+import ../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../src/state/accumulation/[inputs as accumulation_inputs, service as accumulation_service,
+    operands as accumulation_operands, provisions as accumulation_provisions]
+import ../../src/state/store
 import ../../src/pvm/[machine, step]
 import ./[accumulation_execution_context, pvm_accumulation_context, pvm_accumulation_program, report_context]
 

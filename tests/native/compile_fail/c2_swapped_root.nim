@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "nominal","expected": "got: ReportHash[2] but wanted: ReportHash[1]"}
 
-import ../../../src/codec/[c2_records, work_report]
+import ../../../src/codec/c2_records
+import ../../../src/codec/work/report as work_report
 let value = AvailabilitySpec(erasureRoot: SegmentRoot())
 discard value

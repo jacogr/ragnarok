@@ -11,8 +11,9 @@
 
 import std/[algorithm, assertions]
 import ./parameters
-import ../codec/[block_codec, composite, tickets, header, assurances, bounded, state_layout,
-    state_trie, state_safrole, state_accounts, state_consensus]
+import ../codec/[block_codec, composite, tickets, header, assurances, bounded]
+import ../codec/state/[layout as state_layout, trie as state_trie, safrole as state_safrole,
+    accounts as state_accounts, consensus as state_consensus]
 import ../state/store
 import ../crypto/primitives
 

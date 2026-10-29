@@ -5,8 +5,9 @@
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
 import ../../src/state/[footprint_audit, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/codec/bounded
+import ../../src/codec/state/accounts as state_accounts
+include ./composition_fixture
 proc extract(outcome: FootprintAuditResult[CheckedAccountFootprints]): CheckedAccountFootprints {.noinline.} =
   ## Prevent static simplification of the guarded complete audit payload.
   outcome.value

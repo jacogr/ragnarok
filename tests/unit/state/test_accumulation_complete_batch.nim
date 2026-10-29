@@ -5,11 +5,15 @@
 ## Complete input coverage merges certified skipped credits and actual execution effects atomically.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_inputs, accumulation_service,
-  accumulation_queue, accumulation_operands,
-  accumulation_skip, accumulation_dispatch, accumulation_outcome, accumulation_provisions, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_service_values,
-  state_layout, state_trie, state_workqueues, assurances]
+import ../../../src/state/accumulation/[batch as accumulation_batch, inputs as accumulation_inputs,
+    service as accumulation_service, queue as accumulation_queue, operands as accumulation_operands,
+    skip as accumulation_skip, dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    provisions as accumulation_provisions]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, trie as state_trie, workqueues as state_workqueues]
+import ../../../src/codec/assurances
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
   pvm_accumulation_provision, arc_evidence]

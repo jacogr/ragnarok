@@ -4,6 +4,6 @@
 
 ## Reject an account identity used as an outgoing transfer ordinal.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 discard effectTransferAt(default(AccumulationEffectContext), ServiceIndex(42))

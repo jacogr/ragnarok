@@ -5,9 +5,12 @@
 ## Real terminal yields become immutable single-round output pairs and explicit history roots.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_outputs, accumulation_execution, accumulation_inputs,
-  accumulation_outcome, accumulation_batch, accumulation_round, history, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_trie]
+import ../../../src/state/accumulation/[outputs as accumulation_outputs,
+    execution as accumulation_execution, inputs as accumulation_inputs,
+    outcome as accumulation_outcome, batch as accumulation_batch, round as accumulation_round]
+import ../../../src/state/[history, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[outputs as state_outputs, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_execution_context, pvm_accumulation_context,
   pvm_accumulation_program, arc_evidence]

@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Callers cannot select completion success or failed-child alternatives.
-import ../../../src/state/accumulation_current_completion
+import ../../../src/state/accumulation/current/completion as accumulation_current_completion
 let outcome = default(CurrentAccumulationCompletionResult)
 discard outcome.status

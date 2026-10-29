@@ -4,6 +4,6 @@
 
 ## Refuse raw construction or retagging across the finalized statistics boundary.
 
-import ../../../src/state/accumulation_statistics
+import ../../../src/state/accumulation/statistics as accumulation_statistics
 var outcome: AccumulationStatisticsResult[PreparedAccumulationStatistics]
 discard outcome.completed

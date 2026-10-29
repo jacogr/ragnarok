@@ -5,11 +5,15 @@
 # @@Verification={"arc":"paged_state_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/state/[store, paged_state]
-import ../../../src/storage/[full_paged_codec, full_paged_store, full_paged_build,
-  full_paged_stream,
-  node_records, managed_manifest, file_errors]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/state/store
+import ../../../src/state/paged/state as paged_state
+import ../../../src/storage/full/paged/[codec as full_paged_codec, store as full_paged_store,
+    build as full_paged_build, stream as full_paged_stream]
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 func stateLimits(): StateStoreLimits =
   ## Full-map and mutation ceilings stay independent of native streaming/construction work.
   StateStoreLimits(trie: policy().trie, writes: ElementLimit(10), writeValueBytes: ByteLimit(10000))

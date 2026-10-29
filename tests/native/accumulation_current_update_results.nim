@@ -5,7 +5,9 @@
 import std/cmdline
 import ../../src/chain/provider
 import ../../src/codec/bounded
-import ../../src/state/[accumulation_current_update, accumulation_current_consensus, store]
+import ../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import ../../src/state/store
 let result = default(CurrentChainPreparationResult)
 let owner = default(PreparedCurrentChainUpdate)
 var state = default(StateStore)

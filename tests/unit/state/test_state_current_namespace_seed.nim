@@ -7,10 +7,15 @@ import ../../support/[current_namespace_context, service_namespace_seed,
     accumulation_current_chain_context, current_checkpoint_context, parent_profile_context,
     parent_globals_context, supplied_logical_context, current_state_context, state_inventory_context]
 import ../../../src/chain/[provider, genesis]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_profile,
-    current_globals, current_state, current_logical, accumulation_current_update, global_snapshot,
-    store, inventory, manifest, supplied_logical_inventory]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state, logical as current_logical]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/[global_snapshot, store, inventory, manifest]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 proc verify(view: ChainView, seeds: openArray[ServiceNamespaceSeed]) =
   ## Only the original selected complete snapshot may match supplied namespaces.
   let profile = captureParentProfile(view, parentProfileTestLimits).value

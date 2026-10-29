@@ -3,9 +3,10 @@
 
 ## Genuine signed current statistics scenarios include unavailable work, original annulment and a deleted transfer recipient.
 import std/assertions
-import ../../src/codec/[bounded, report_owned, work_digest]
-import ../../src/state/[accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_statistics]
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/work/digest as work_digest
+import ../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence, statistics as accumulation_current_statistics]
 import ./[accumulation_execution_context, accumulation_current_round_context,
   accumulation_current_sequence_context, accumulation_current_driver_context, pvm_accumulation_program]
 

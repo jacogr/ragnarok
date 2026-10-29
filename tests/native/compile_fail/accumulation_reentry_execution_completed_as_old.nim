@@ -4,6 +4,7 @@
 
 ## Reject substitution of nominal reentry bootstrap/completion provenance.
 
-import ../../../src/state/[accumulation_reentry, accumulation_reentry_execution]
+import ../../../src/state/accumulation/reentry as accumulation_reentry
+import ../../../src/state/accumulation/reentry/execution as accumulation_reentry_execution
 var completed: CompletedAccumulationReentry
 discard prepareAccumulationReentry(completed, default(AccumulationReentryConfig))

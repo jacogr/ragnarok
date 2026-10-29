@@ -5,9 +5,13 @@
 ## Independent complete availability fields, raw-leaf trees, hash preflight and immutable original provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[availability_specifier, export_erasure, bundle_erasure, erasure_words,
-  erasure_layout, auditable_bundle]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/availability/specifier as availability_specifier
+import "../../../src/state/export/erasure" as export_erasure
+import ../../../src/state/bundle_erasure
+import ../../../src/state/erasure/[words as erasure_words, layout as erasure_layout]
+import ../../../src/state/auditable_bundle
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/crypto/primitives
 import ../../support/[pvm_export_erasure, pvm_availability_vectors, arc_evidence]
 

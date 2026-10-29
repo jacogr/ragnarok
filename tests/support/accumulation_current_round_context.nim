@@ -3,11 +3,13 @@
 
 ## Maintained tiny-chain current round configuration and real deferred-transfer/yield programs.
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, composite, state_outputs]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/outputs as state_outputs
 import ../../src/pvm/[machine, step, gas]
-import ../../src/state/[accumulation_current_round, accumulation_guest_runner,
-  accumulation_provisions,
-  accumulation_annulled_outputs, accumulation_transfers, accumulation_pending_transfers]
+import ../../src/state/accumulation/current/round as accumulation_current_round
+import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    provisions as accumulation_provisions, annulled_outputs as accumulation_annulled_outputs,
+    transfers as accumulation_transfers, pending_transfers as accumulation_pending_transfers]
 import ./[accumulation_current_guests_context, pvm_accumulation_program]
 proc currentRoundLimits*(): CurrentAccumulationRoundLimits =
   ## Independent phase policies make every actual parent refusal observable without weakening later completeness.

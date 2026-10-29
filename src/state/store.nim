@@ -9,8 +9,10 @@
 ## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
 
 import std/[algorithm, assertions]
-import ../codec/[state_trie, state_layout, bounded]
-import ../storage/[full_state_trie, node_records]
+import ../codec/state/[trie as state_trie, layout as state_layout]
+import ../codec/bounded
+import ../storage/full/state_trie as full_state_trie
+import ../storage/node/records as node_records
 
 type
   StateEntryIndex* = distinct int ## Sorted ordinal interpreted only against the supplied immutable complete-map snapshot.

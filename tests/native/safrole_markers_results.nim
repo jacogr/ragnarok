@@ -7,8 +7,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/safrole_markers
-import ../../src/codec/[state_safrole, header]
+import ../../src/state/safrole/markers as safrole_markers
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/header
 let outcome = if paramStr(1) == "default": default(SafroleMarkerResult) else:
   deriveSafroleMarkers([], [], StateTime(0), StateTime(1), default(StateEntropy), default(
       SafroleMarkerConfig)) # Actual invalid policy refusal.

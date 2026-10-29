@@ -3,7 +3,7 @@
 
 ## Failed/default backend operations expose neither reply nor prepared chain prefix.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/app/fuzz_backend
-import ../../../src/state/fuzz_protocol
+import ../../../src/app/fuzz/backend as fuzz_backend
+import ../../../src/state/fuzz/protocol as fuzz_protocol
 let outcome = default(FuzzBackendResult[FuzzMessage])
 discard outcome.completed

@@ -4,7 +4,8 @@
 ## Dynamic proof-result/lookup misuse probes share a real successful empty-root control.
 import std/[assertions, cmdline, syncio]
 import ../../src/storage/state_proof
-import ../../src/codec/[state_layout, state_trie, bounded]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../src/codec/bounded
 proc main() =
   ## Arguments select runtime invalid/default objects; compiler success is not a runtime verdict.
   let member = paramStr(1)

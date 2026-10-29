@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "service"}
 
 ## Caller cannot forge source-bound content authority or alter failed alternatives.
-import ../../../src/state/preimage_content
+import ../../../src/state/preimage/content as preimage_content
 var value = default(PreimageContentResult[CheckedPreimageContent])
 discard value.service

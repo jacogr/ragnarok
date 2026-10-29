@@ -5,9 +5,12 @@
 # @@Verification={"arc": "state_current_globals_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
-import ../../../src/state/[current_globals, current_profile, global_snapshot,
-    accumulation_current_update, store]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition]
+import ../../../src/state/current/[globals as current_globals, profile as current_profile]
+import ../../../src/state/global_snapshot
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hash primitives only after genuine current execution finishes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

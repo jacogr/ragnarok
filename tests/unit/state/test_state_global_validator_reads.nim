@@ -4,8 +4,10 @@
 ## Staging/active/previous roster evidence retains its namespace and opaque fixed record order.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, safrole as state_safrole,
+    trie as state_trie]
 let config = ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
     maxBytes: ByteLimit(3000))
 for chapter in [ValidatorChapter.Staging, ValidatorChapter.Active, ValidatorChapter.Previous]:

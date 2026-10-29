@@ -5,10 +5,14 @@
 ## Each alternative preserves normalized outputs, gas, inner frame publication and immutable sources.
 import std/[assertions, syncio]
 import ../../../src/app/options
-import ../../../src/state/[authorization_invocation, refinement_outcome, refinement_dispatch,
-    accumulation_dispatch, accumulation_machine]
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/state/refinement/[outcome as refinement_outcome,
+    dispatch as refinement_dispatch]
+import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    machine as accumulation_machine]
 import ../../../src/pvm/[machine, step, gas, host_fetch, refinement_exports, inner_machines]
-import ../../../src/codec/[bounded, c2_records, work_report, work_digest]
+import ../../../src/codec/[bounded, c2_records]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
 import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome,
     pvm_accumulation_context, pvm_accumulation_program, pvm_inner_lifecycle, pvm_inner_invoke]
 

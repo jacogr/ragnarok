@@ -5,11 +5,13 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/disk_history_context
-import ../../../src/app/[chain, historical_record]
+import ../../../src/app/chain
+import ../../../src/app/historical/record as historical_record
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/[history_index, history_files, database_identity]
-import ../../../src/lib/atomic_file
+import ../../../src/storage/history/[index as history_index, files as history_files]
+import ../../../src/storage/database_identity
+import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/codec/[bounded, header]
 
 proc historyPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}

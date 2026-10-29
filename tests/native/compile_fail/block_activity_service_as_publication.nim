@@ -4,6 +4,7 @@
 
 ## Raw service metrics cannot replace complete source-matched C(13) preparation at publication.
 
-import ../../../src/state/[block_activity, service_activity]
+import "../../../src/state/block/activity" as block_activity
+import ../../../src/state/service/activity as service_activity
 var source: PreparedServiceActivity
 discard publishBlockActivity(source)

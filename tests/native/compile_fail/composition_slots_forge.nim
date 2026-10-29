@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "slots"}
 
-import ../../../src/codec/state_composition
+import ../../../src/codec/state/composition as state_composition
 discard StateChapters(slots: default(array[16, StateChapterSnapshot]))

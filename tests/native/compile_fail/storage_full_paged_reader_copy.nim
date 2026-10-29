@@ -3,7 +3,7 @@
 
 ## Actual ARC lowering rejects duplication of an explicitly retired full-state reader pin.
 # @@Verification={"group":"ownership_compile","build_name":"storage-full-paged-reader-copy","expected":"'=dup' is not available for type <FullPagedReader>"}
-import ../../../src/storage/full_paged_store
+import ../../../src/storage/full/paged/store as full_paged_store
 proc duplicate(source: FullPagedReader): FullPagedReader =
   ## Returning a borrowed owner would duplicate native descriptor retirement authority.
   source

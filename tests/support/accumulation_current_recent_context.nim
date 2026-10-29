@@ -3,8 +3,8 @@
 
 ## Genuine current recent-history predecessors distinguish processed reports from newly guaranteed reports.
 import ../../src/codec/report_owned
-import ../../src/state/[accumulation_current_ready, accumulation_current_finalization,
-  accumulation_current_driver]
+import ../../src/state/accumulation/current/[ready as accumulation_current_ready,
+    finalization as accumulation_current_finalization, driver as accumulation_current_driver]
 import ./[accumulation_current_outputs_context, accumulation_current_finalization_context,
   accumulation_current_driver_context, accumulation_current_round_context,
   accumulation_execution_context, accumulation_ready_witnesses]

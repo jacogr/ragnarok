@@ -61,7 +61,7 @@ directories. Its empty-source and unqualified controls compile and execute succe
 The [standalone draft](nimony-reports-2026-10-28/qualified-declared.md) retains exact redacted
 current output. No upstream issue was filed. See the [issue register](compiler-issues.md).
 
-Linux-target semantic checking from the macOS archive asserts in `app/cli_catalog.nim`.
+Linux-target semantic checking from the macOS archive asserts in `app/cli/catalog.nim`.
 The same focused check asserts under the old October 26 archive with identical source and flags;
 this does not establish a new upgrade regression or a native Linux failure. Native Linux CI
 must qualify the published PR; record that result separately from local macOS tests.

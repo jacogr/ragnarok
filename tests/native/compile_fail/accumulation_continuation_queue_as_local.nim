@@ -4,6 +4,7 @@
 
 ## Refuse access or substitution across the admitted continuation planning boundary.
 
-import ../../../src/state/[accumulation_continuation, accumulation_queue]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    queue as accumulation_queue]
 var plan: PreparedAccumulationContinuation
 discard continuationReportAt(plan, AccumulationIndex(0))

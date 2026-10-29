@@ -5,8 +5,12 @@
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, managed_repository, managed_manifest, node_repository, database_identity]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/database_identity
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc main() {.raises.} =
   ## A plausible torn append may be removed only under an exact prefix token, even when later map policy refuses.
   let limits = managedStorageLimits()

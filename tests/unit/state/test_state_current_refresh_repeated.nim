@@ -6,9 +6,16 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
     supplied_services_context, arc_evidence]
-import ../../../src/state/[current_identities, current_request_keys, current_refresh_plan,
-    current_logical_refresh, current_logical, current_state, current_globals, current_profile,
-    supplied_logical_inventory, supplied_services, inventory, manifest, store, accumulation_current_update]
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Every actual child preparation and key derivation completes before its hash-free frozen-plan assertions.

@@ -6,7 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[3] expected: WorkQueueHashIndex but got: AccumulationIndex", "early": ["accumulationDependencyAt(", "[3] expected: WorkQueueHashIndex but got: AccumulationIndex"]}
 
-import ../../../src/state/accumulation_queue
-import ../../../src/codec/state_workqueues
+import ../../../src/state/accumulation/queue as accumulation_queue
+import ../../../src/codec/state/workqueues as state_workqueues
 discard accumulationDependencyAt(default(AccumulationQueuePlan), AccumulationIndex(0),
   AccumulationIndex(0))

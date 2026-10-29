@@ -7,7 +7,8 @@
 ## interface.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[state_workqueues, report_owned, owned, bounded]
+import ../../../src/codec/state/workqueues as state_workqueues
+import ../../../src/codec/[report_owned, owned, bounded]
 
 ## Scope exit must not release the child report retained through a copied item observation.
 proc detached(report: OwnedReport, config: WorkQueueConfig): OwnedReport =

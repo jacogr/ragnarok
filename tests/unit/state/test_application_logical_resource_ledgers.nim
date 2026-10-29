@@ -4,10 +4,13 @@
 ## Independent complete-map, compact and retained raw-key ledgers admit exact policies and reject one-short bounds without changing frozen target authority.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context]
-import ../../../src/app/[collected_supplied_plan, collected_supplied_state]
-import ../../../src/state/[current_logical, current_state, supplied_logical_inventory, inventory,
-    manifest, store]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../../src/state/current/[logical as current_logical, state as current_state]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc main() {.raises.} =
   ## Read actual fixed accounting only after genuine complete qualification; no guessed cardinality or root equivalence substitutes a resource ledger.
   let fixture = collectedNativeFixture()

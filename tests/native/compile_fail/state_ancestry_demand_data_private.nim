@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## External code cannot forge the retained ancestry, discovery or prepared admission certificate.
-import ../../../src/state/report_anchors
+import ../../../src/state/report/anchors as report_anchors
 let owner = default(ReportLookupDemand)
 discard owner.data

@@ -10,12 +10,22 @@ import ../../support/[current_namespace_execution_context, current_logical_histo
     parent_globals_context, supplied_logical_context, current_identity_context,
     accumulation_current_candidate_context, current_logical_proof_context,
     current_namespace_refresh_context, arc_evidence]
-import ../../../src/app/[services, options, current_block_input, current_handoff]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_service_values]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    current_request_keys, current_refresh_plan, current_logical_refresh,
-    accumulation_current_update, store, block_admission, report_admission]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
 type RetainedHistoryPlan = object ## Only actual successful opaque plan construction grants this test descriptor; mutable fields grant no State authority.
   plan: CurrentLogicalRefreshPlan
   state: StateStoreSnapshot

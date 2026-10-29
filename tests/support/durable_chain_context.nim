@@ -5,8 +5,12 @@
 import std/assertions
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[block_codec, header, report_owned]
-import ../../src/state/[accumulation_finalization, accumulation_validators, accumulation_times,
-  accumulation_statistics, report_admission, block_transition, block_admission]
+import ../../src/state/accumulation/[finalization as accumulation_finalization,
+    validators as accumulation_validators, times as accumulation_times,
+    statistics as accumulation_statistics]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
 import ./accumulation_activity_context
 
 type DurableChainFixture* = object ## Successful source certificates are authored by existing execution fixtures only.

@@ -42,7 +42,7 @@ Allocation exhaustion remains fail-stop; cryptographic refusal returns a typed f
 C(5)/C(10) through an atomic write batch and preserves no-op budgets. Planning and failed
 publication leave all original entries/root unchanged.
 
-`src/state/block_transition.nim` adds `advanceBlockState`: #27 admission binds one block, disputes
+`src/state/block/transition.nim` adds `advanceBlockState`: #27 admission binds one block, disputes
 come from that block's own extrinsic, and the literal marker is checked against its own header.
 Safrole receives the derived complete posterior offender set, never a caller-supplied projection.
 Disputes and Safrole run on a private store handle. One final handle replacement publishes all

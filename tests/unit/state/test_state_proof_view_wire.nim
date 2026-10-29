@@ -3,8 +3,10 @@
 
 ## Local partial-view transport preserves sorted keys, raw witnesses and explicit external root authority.
 import std/[assertions, syncio]
-import ../../../src/state/[trie_proof, proof_view]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/state/trie_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Exact outer/inner quotas and detached output remain separate from verified root trust.
   let key = chapterKey(StateChapter(1))

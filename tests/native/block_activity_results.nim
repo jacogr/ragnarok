@@ -4,7 +4,8 @@
 ## Defaults and failures cannot expose complete C(13), a source graph, profile or published map.
 
 import std/cmdline
-import ../../src/state/[block_activity, service_activity]
+import "../../src/state/block/activity" as block_activity
+import ../../src/state/service/activity as service_activity
 let argument = paramStr(1)
 let owner = default(PreparedBlockActivity)
 let published = default(PublishedBlockActivity)

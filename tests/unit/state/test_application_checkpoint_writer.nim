@@ -6,7 +6,9 @@
 ## Cooperative whole-envelope ownership preserves path identity, contention and precise recovery across close/reopen.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_identity, checkpoint_transfer, checkpoint_writer, checkpoint_file]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[identity as checkpoint_identity,
+    transfer as checkpoint_transfer, writer as checkpoint_writer, file as checkpoint_file]
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]

@@ -10,12 +10,19 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command, startup, node_logging]
+import ./app/options
+import ./app/cli/[help as cli_help, commands as cli_commands]
+import ./app/download/command as download_command
+import ./app/current/download/command as current_download_command
+import ./app/trace/check_command as trace_check_command
+import ./app/historical/query as historical_query
+import ./app/fuzz/target as fuzz_target
+import ./app/[devnet_command, pvm_command, startup, node_logging]
 import ./pvm/step
 import ./version
-import ./lib/[logging, json_writer]
-import ./storage/history_index
+import ./lib/logging
+import ./lib/json/writer as json_writer
+import ./storage/history/index as history_index
 
 proc writeFailure(logger: var Logger, message: string) =
   ## Command producers have retired; drain and join stderr logging before its final CLI line.

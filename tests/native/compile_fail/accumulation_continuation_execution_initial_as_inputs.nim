@@ -4,6 +4,7 @@
 
 ## Reject replacement of nominal continuation completion provenance.
 
-import ../../../src/state/[accumulation_continuation_execution, accumulation_execution]
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../../src/state/accumulation/execution as accumulation_execution
 var initial: CompletedBlockAccumulation
 discard completeAccumulationContinuation(initial, [], [], default(AccumulationExecutionLimits))

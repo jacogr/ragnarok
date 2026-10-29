@@ -4,9 +4,12 @@
 ## Genuine deterministic Ed25519 credentials for original computed messages and owner-selected test keys.
 
 import std/assertions
-import ../../src/state/[computed_guarantors, computed_roster, computed_transition, computed_profile,
-  computed_lookup, computed_recent, computed_state, computed_links, computed_guarantee]
-import ../../src/codec/[guarantees, state_safrole]
+import ../../src/state/computed/[guarantors as computed_guarantors, roster as computed_roster,
+    transition as computed_transition, profile as computed_profile, lookup as computed_lookup,
+    recent as computed_recent, state as computed_state, links as computed_links,
+    guarantee as computed_guarantee]
+import ../../src/codec/guarantees
+import ../../src/codec/state/safrole as state_safrole
 import ../../src/crypto/[primitives, guarantee]
 import ./pvm_computed_guarantors
 

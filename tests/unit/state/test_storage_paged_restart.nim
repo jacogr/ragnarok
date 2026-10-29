@@ -5,11 +5,19 @@
 # @@Verification={"arc":"storage_paged_restart_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, paged_reference, paged_native_fixture]
-import ../../../src/storage/[paged_stream, paged_codec, paged_store, paged_io, state_proof,
-  full_state_trie, light_state_cache, managed_manifest, light_delta, durability, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
-import ../../../src/state/paged_proof_view as transport
-import ../../../src/state/proof_view as partial
+import ../../../src/storage/paged/[stream as paged_stream, codec as paged_codec,
+    store as paged_store, io as paged_io]
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/light/state_cache as light_state_cache
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/durability
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/paged/proof_view as transport
+import ../../../src/state/proof/view as partial
 type Memory = ref object ## Independent test transport owns bytes and deterministic callback refusal.
   bytes: seq[byte]
   calls, failAt: int

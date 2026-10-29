@@ -4,10 +4,16 @@
 ## Actual common-source parent/junior guest fixtures for accpar conflict and account-source witnesses.
 ## Independent pure plans retain these real normalized outcomes; no test-authored decision replaces execution.
 import std/assertions
-import ../../src/state/[accumulation_annulment, accumulation_outcome, accumulation_dispatch, store]
+import ../../src/state/accumulation/[annulment as accumulation_annulment,
+    outcome as accumulation_outcome, dispatch as accumulation_dispatch]
+import ../../src/state/store
 import ../../src/pvm/machine
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, state_accounts, state_layout, state_trie, header, state_safrole]
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
+import ../../src/codec/header
+import ../../src/codec/state/safrole as state_safrole
 import ./[accumulation_batch_context, pvm_accumulation_program, pvm_accumulation_context]
 
 proc annulmentPolicy*(): AccumulationAnnulmentLimits =

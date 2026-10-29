@@ -6,12 +6,24 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_transition_context,
     accumulation_current_candidate_context, collected_logical_context, arc_evidence]
-import ../../../src/app/[current_logical, preparation_worker, current_block_input, block_input,
-    candidate, chain]
-import ../../../src/state/[parent_logical, current_logical, current_identities,
-    current_request_keys, current_refresh_plan, current_logical_refresh, current_profile,
-    current_state, current_globals, accumulation_current_update,
-    accumulation_round, accumulation_queue, report_admission, block_transition, block_admission, store]
+import ../../../src/app/current/logical as current_logical
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, chain]
+import ../../../src/state/parent/logical as parent_logical
+import ../../../src/state/current/[logical as current_logical, identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/[profile as current_profile, state as current_state,
+    globals as current_globals]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../../src/codec/[bounded, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Backend failure injection is enabled only after actual worker collection, on the host.

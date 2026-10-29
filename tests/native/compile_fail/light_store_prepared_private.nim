@@ -3,6 +3,6 @@
 
 ## Callers cannot forge a prepared target or substitute the expected source incarnation.
 # @@Verification={"group":"privacy","expected":"target"}
-import ../../../src/app/light_store
+import ../../../src/app/light/store as light_store
 let prepared = default(PreparedLightPublication)
 discard prepared.target

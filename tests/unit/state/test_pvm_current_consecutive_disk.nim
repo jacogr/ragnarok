@@ -4,10 +4,11 @@
 ## Consecutive current commands persist every exact history map, with atomic retained-prefix refusal across both layouts and RPC modes.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[current_download_command, services]
+import ../../../src/app/current/download/command as current_download_command
+import ../../../src/app/services
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[block_codec, report_owned, bounded]
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
   current_download_command_context, current_services_disk_samples, managed_storage_samples,

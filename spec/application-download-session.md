@@ -4,7 +4,7 @@
 
 Join the [download scheduler](application-download-schedule.md),
 [CE 128 stream controller](application-download-stream.md) and existing block
-receiver in one non-copyable `quic/block_download_session` owner. Preserve JAMNP-S
+receiver in one non-copyable `quic/block/download/session` owner. Preserve JAMNP-S
 `439c45aad135dc654b3de6f56d7d694fd02b7aa8` and the GP/vector pins in
 [block download](application-block-download.md). No wire or consensus rule changes.
 

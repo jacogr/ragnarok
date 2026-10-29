@@ -6,8 +6,12 @@ import std/[assertions, cmdline, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, state_layout, state_safrole, report_owned, block_codec, tickets]
-import ../../src/state/[store, accumulation_current_update, ticket_admission]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, safrole as state_safrole]
+import ../../src/codec/[report_owned, block_codec, tickets]
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/ticket/admission as ticket_admission
 import ../../src/bandersnatch/bandersnatch
 import ../support/[current_consecutive_context, accumulation_current_chain_context]
 

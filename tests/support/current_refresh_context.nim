@@ -3,7 +3,9 @@
 
 ## Explicit exact nonempty current reconstruction policy, independent of source payload ownership.
 import ./current_request_keys_context
-import ../../src/state/[current_refresh_plan, current_request_keys, supplied_services]
+import ../../src/state/current/refresh/plan as current_refresh_plan
+import ../../src/state/current/request_keys as current_request_keys
+import ../../src/state/supplied/services as supplied_services
 import ../../src/codec/[bounded, report_owned]
 const currentRefreshTestLimits* = CurrentRefreshLimits(projection: SuppliedServicesLimits(
     services: ElementLimit(2), facts: ElementLimit(14), perValue: ByteLimit(3), bytes: ByteLimit(

@@ -3,8 +3,9 @@
 
 ## Default/refused output owners cannot expose pairs, wire, source or roots.
 import std/cmdline
-import ../../src/codec/state_outputs
-import ../../src/state/[accumulation_current_outputs, accumulation_current_driver]
+import ../../src/codec/state/outputs as state_outputs
+import ../../src/state/accumulation/current/[outputs as accumulation_current_outputs,
+    driver as accumulation_current_driver]
 let owner = default(CurrentAccumulationOutputsResult[PreparedCurrentAccumulationOutputs])
 let outputs = default(PreparedCurrentAccumulationOutputs)
 let refused = prepareCurrentAccumulationOutputs(default(CompletedCurrentAccumulationSequence),

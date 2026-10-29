@@ -4,8 +4,10 @@
 ## Isolated default/refused historical lookup accessors retain their optimized runtime contracts.
 
 import std/[assertions, cmdline]
-import ../../src/state/[refinement_lookup, store]
-import ../../src/codec/[composite, work_report]
+import ../../src/state/refinement/lookup as refinement_lookup
+import ../../src/state/store
+import ../../src/codec/composite
+import ../../src/codec/work/report as work_report
 import ../../src/pvm/[machine, step]
 
 proc checkRefusal(outcome: HistoricalLookupResult[HistoricalLookupContext]) =

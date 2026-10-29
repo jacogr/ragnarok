@@ -6,7 +6,9 @@ import std/[assertions, syncio]
 import ../../support/disk_history_context
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/codec/[header, state_trie, bounded]
+import ../../../src/codec/header
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 proc main() {.raises.} =
   ## Restore the exact newest suffix plus an older finalized anchor without silently dropping either.
   let fixture = diskHistoryFixture()

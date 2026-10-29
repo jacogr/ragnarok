@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Creation union ownership and result storage stay private.
-import ../../../src/state/[accumulation_creation_union, accumulation_annulment]
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    annulment as accumulation_annulment]
 let refused = prepareAccumulationCreationUnion(default(PreparedAccumulationAnnulment), default(
     AccumulationCreationLimits))
 discard refused.status

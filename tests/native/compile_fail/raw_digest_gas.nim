@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: Gas"}
 
-import ../../../src/codec/work_digest
+import ../../../src/codec/work/digest as work_digest
 var wrong = default(uint64)
 var value = default(WorkDigest)
 value.accumulateGas = wrong

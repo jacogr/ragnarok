@@ -75,7 +75,7 @@ python3 tools/compare_storage_resource_panels.py \
   --panel lifetimes \
   --baseline build/baseline/storage-lifetimes/results.json \
   --candidate build/tests/storage-lifetimes/results.json \
-  --allow-source src/storage/node_repository.nim \
+  --allow-source src/storage/node/repository.nim \
   --output build/storage-lifetime-comparison.md
 
 python3 tools/storage_resource_diagnostics.py \

@@ -29,7 +29,7 @@ this assessment is not a fresh run of every corpus against the baseline.
 
 The GP accumulation dispatcher admits identifiers 0–6 and 16–29: 21 calls.
 Refinement-only identifiers 7–15 take accumulation's unknown-call branch. The
-[dispatcher](../src/state/accumulation_dispatch.nim) implements that same partition.
+[dispatcher](../src/state/accumulation/dispatch.nim) implements that same partition.
 
 The partial state and invocation context contain accounts, privileges, queues,
 staging keys, transfers, provisions and selected regular/exceptional effects.

@@ -3,8 +3,9 @@
 
 ## Default/refused current pool owners expose no earlier source, encoding, map or inactive cause.
 import std/cmdline
-import ../../src/state/[accumulation_current_authorization, accumulation_authorization,
-    accumulation_current_preimages]
+import ../../src/state/accumulation/current/authorization as accumulation_current_authorization
+import ../../src/state/accumulation/authorization as accumulation_authorization
+import ../../src/state/accumulation/current/preimages as accumulation_current_preimages
 let owner = default(CurrentAccumulationAuthorizationResult[
     PreparedCurrentAccumulationAuthorization])
 let pools = default(PreparedCurrentAccumulationAuthorization)

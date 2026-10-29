@@ -1,6 +1,6 @@
 # Shared-path persistent trie mutation batches
 
-Scope: merge a validated complete-state write batch through `src/storage/full_state_trie.nim`
+Scope: merge a validated complete-state write batch through `src/storage/full/state_trie.nim`
 without repeatedly copying the same affected path. The [trie contract](full-state-trie.md),
 public API, hash domains, immutable ownership and inherited policy remain unchanged.
 

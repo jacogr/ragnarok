@@ -7,11 +7,18 @@ import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context, current_namespace_refresh_context, service_namespace_seed,
     accumulation_execution_context, supplied_services_context, arc_evidence]
-import ../../../src/state/[current_identities, current_request_keys, current_refresh_plan,
-    current_logical_refresh, current_logical, supplied_logical_inventory, supplied_services,
-    inventory, manifest, store, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_composition,
-    state_service_values, state_requests]
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Every actual original/current source and cached request key precedes independent hash-free copy admission.

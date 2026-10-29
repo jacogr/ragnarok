@@ -5,10 +5,14 @@
 
 import std/[assertions, syncio]
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_execution, computed_finalization, accumulation_driver,
-  accumulation_runner, accumulation_dispatch, accumulation_execution, accumulation_batch,
-  accumulation_reentry, accumulation_continuation, accumulation_outputs]
-import ../../src/codec/[bounded, state_outputs]
+import ../../src/state/computed/[execution as computed_execution,
+    finalization as computed_finalization]
+import ../../src/state/accumulation/[driver as accumulation_driver, runner as accumulation_runner,
+    dispatch as accumulation_dispatch, execution as accumulation_execution,
+    batch as accumulation_batch, reentry as accumulation_reentry,
+    continuation as accumulation_continuation, outputs as accumulation_outputs]
+import ../../src/codec/bounded
+import ../../src/codec/state/outputs as state_outputs
 import ../../src/pvm/step
 import ./[pvm_computed_execution, accumulation_execution_context]
 

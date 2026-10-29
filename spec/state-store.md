@@ -24,7 +24,7 @@ the [separately authorized integration contract](state-store-incremental.md).
 - `newStateStore(entries, limits)` validates the complete mapping/root before copying caller
   bytes into private ARC storage. Duplicate initial keys reject. Input order is irrelevant.
 - `snapshot(store)` retains the current version as an opaque `StateStoreSnapshot`. The name is
-  distinct from the existing typed-composition `StateSnapshot` in `codec/state_composition`.
+  distinct from the existing typed-composition `StateSnapshot` in `codec/state/composition`.
 - `snapshot.lookup(key)` returns either a retained `StateValue`, `MissingKey`, or an initialization
   error. A present empty value is successful with length zero. The view retains its exact owner;
   it exposes a length and an explicitly copied byte sequence, never mutable backing storage.

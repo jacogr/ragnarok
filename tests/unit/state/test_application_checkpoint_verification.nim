@@ -6,11 +6,13 @@
 ## Verification-only receipts preserve complete format/context checks while retiring every restored map on its allocating thread.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_file, checkpoint_writer, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[file as checkpoint_file, writer as checkpoint_writer,
+    identity as checkpoint_identity]
 import ../../../src/state/store
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-verification"
 proc cycle(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpointIdentity) =

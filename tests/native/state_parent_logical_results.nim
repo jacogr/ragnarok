@@ -4,7 +4,8 @@
 ## Strict selected logical-parent result/source guards retain real signed complete-parent positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_logical_context, supplied_logical_context]
-import ../../src/state/[parent_logical, parent_globals, supplied_logical_inventory]
+import ../../src/state/parent/[logical as parent_logical, globals as parent_globals]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
 import ../../src/codec/report_owned
 proc extract(outcome: ParentLogicalResult[SelectedLogicalParent]) {.noinline.} =
   ## Failed/default seed grants no logical parent.

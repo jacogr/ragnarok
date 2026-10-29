@@ -4,8 +4,9 @@
 ## Checked default/failed head extraction cannot fabricate initialized selection metadata.
 
 import std/[assertions, cmdline]
-import ../../src/state/checkpoint_head
-import ../../src/codec/[state_trie, bounded]
+import ../../src/state/checkpoint/head as checkpoint_head
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 
 proc main() =
   ## The real round-trip positive control precedes independent default/result misuse alternatives.

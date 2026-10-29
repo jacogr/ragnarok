@@ -4,12 +4,13 @@
 ## Known staged/durable process exits after recovered execution preserve exact complete files and release child-only native locks.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[services, chain, candidate, checkpoint_identity, checkpoint_codec,
-  checkpoint_recovery,
-  checkpoint_transfer, checkpoint_worker, checkpoint_file, checkpoint_writer]
+import ../../../src/app/[services, chain, candidate]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery, transfer as checkpoint_transfer, worker as checkpoint_worker,
+    file as checkpoint_file, writer as checkpoint_writer]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned, header]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution

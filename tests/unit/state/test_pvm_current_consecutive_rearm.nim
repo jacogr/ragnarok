@@ -4,13 +4,18 @@
 ## Clock, ancestor-count, malformed-header and byte-budget rearm refusals preserve actual adopted authority before genuine continuation.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, current_handoff, download_schedule, preparation_worker]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers, current_block_download_stream]
+import ../../../src/app/[services, options]
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/preparation_worker
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
 import ../../../src/state/store
 import ../../../src/codec/bounded
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
   block_download_transport, current_consecutive_context, current_consecutive_download_context,

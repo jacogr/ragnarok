@@ -3,6 +3,6 @@
 
 ## Immutable light snapshots expose no mutable cache or proof backing storage.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/app/light_store
+import ../../../src/app/light/store as light_store
 let snapshot = default(LightStorageSnapshot)
 discard snapshot.data

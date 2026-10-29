@@ -4,8 +4,9 @@
 ## Services owns detached export lifetime, stable parent address and acknowledgement-gated joined publication receipts.
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, checkpoint_identity, checkpoint_transfer,
-    checkpoint_worker, checkpoint_file]
+import ../../../src/app/[services, options]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity,
+    transfer as checkpoint_transfer, worker as checkpoint_worker, file as checkpoint_file]
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 const FileName = "application-checkpoint-services-export"

@@ -4,9 +4,15 @@
 ## Literal core tuples and genuinely signed incoming/available contexts verify independent activity families.
 
 import std/assertions
-import ../../src/state/[core_activity, report_admission, guarantee_credentials, block_transition, availability]
-import ../../src/codec/[bounded, composite, owned, report_owned, work_report, work_digest,
-    state_statistics, assurances]
+import ../../src/state/core/activity as core_activity
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/availability
+import ../../src/codec/[bounded, composite, owned, report_owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/statistics as state_statistics
+import ../../src/codec/assurances
 import ./report_context
 import ./report_admission_context
 

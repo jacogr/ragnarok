@@ -1,6 +1,6 @@
 # Report anchor validation
 
-`src/state/report_anchors.nim` adds two read-only stages after report policy. Its private acyclic
+`src/state/report/anchors.nim` adds two read-only stages after report policy. Its private acyclic
 ARC owners retain each exact earlier certificate, captured history and checked ancestor headers.
 Default/refused tagged results contain only their reason; extraction requires selected success.
 This is not complete report admission or state publication.

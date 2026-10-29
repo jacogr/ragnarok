@@ -9,7 +9,7 @@
 # @@Verification={"group": "contracts", "expected": "history.mode == Available"}
 
 import std/assertions
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 let history = requestedHistory()
 assert history.state == RequestState.Requested
 discard history.since

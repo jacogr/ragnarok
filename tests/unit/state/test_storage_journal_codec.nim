@@ -3,7 +3,8 @@
 
 ## Complete journal framing rejects truncation, tampering, huge lengths and ambiguous consumption.
 import std/[assertions, syncio]
-import ../../../src/storage/[journal_codec, record_codec, node_records, node_repository]
+import ../../../src/storage/[journal_codec, record_codec]
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/bounded
 proc main() =
   ## Independent exact bytes protect length/generation endianness and checksum coverage.

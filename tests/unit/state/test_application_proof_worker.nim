@@ -4,9 +4,9 @@
 ## A single native proof slot retains capacity and state authority until exact collection or join.
 import std/[assertions, syncio, monotimes, times]
 import ../../support/proof_query_context
-import ../../../src/app/[proof_query, proof_worker]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/chain/genesis
-import ../../../src/state/proof_service
+import ../../../src/state/proof/service as proof_service
 import ../../../src/codec/bounded
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between scalar worker polls under a fixed test deadline.

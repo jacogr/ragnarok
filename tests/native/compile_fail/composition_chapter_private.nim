@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_composition
+import ../../../src/codec/state/composition as state_composition
 let part = default(StateChapterSnapshot)
 discard part.data

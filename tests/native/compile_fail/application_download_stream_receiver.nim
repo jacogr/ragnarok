@@ -4,6 +4,6 @@
 ## Receiver identity cannot be retargeted after binding.
 # @@Verification={"group": "privacy", "expected": "receiver"}
 
-import ../../../src/quic/block_download_stream
+import "../../../src/quic/block/download/stream" as block_download_stream
 var route = default(BlockDownloadStream)
 discard route.receiver

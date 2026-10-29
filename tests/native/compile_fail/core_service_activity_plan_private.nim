@@ -4,6 +4,6 @@
 
 ## Per-block activity ownership and result alternatives remain private.
 
-import ../../../src/state/core_service_activity
+import ../../../src/state/core/service_activity as core_service_activity
 var owner: CoreServiceActivityProjection
 discard owner.data

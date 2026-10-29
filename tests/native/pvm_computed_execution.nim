@@ -4,8 +4,9 @@
 ## Strict actual computed execution/result-cause probes retain a real paid guest as their positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_execution, computed_round, accumulation_runner,
-  accumulation_execution, accumulation_dispatch]
+import ../../src/state/computed/[execution as computed_execution, round as computed_round]
+import ../../src/state/accumulation/[runner as accumulation_runner,
+    execution as accumulation_execution, dispatch as accumulation_dispatch]
 import ../../src/codec/bounded
 import ../../src/pvm/step
 import ../support/pvm_computed_execution

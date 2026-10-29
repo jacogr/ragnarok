@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedWorkReport", "early": ["prepareComputedGuarantee(", "[1] expected: ComputedWorkReport but got: AvailabilityCommitment"]}
 
-import ../../../src/state/[computed_guarantee, availability_specifier]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed/guarantee as computed_guarantee
+import ../../../src/state/availability/specifier as availability_specifier
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 discard prepareComputedGuarantee(default(AvailabilityCommitment), ByteLimit(1000))

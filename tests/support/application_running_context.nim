@@ -6,9 +6,12 @@
 import std/[assertions, strutils]
 import ../../src/app/candidate
 import ../../src/chain/parameters
-import ../../src/lib/json_writer
-import ../../src/codec/[bounded, block_codec, header, report_owned, state_layout,
-  state_privileges, state_accounts, state_service_values, state_authorization, state_statistics, work_digest]
+import ../../src/lib/json/writer as json_writer
+import ../../src/codec/[bounded, block_codec, header, report_owned]
+import ../../src/codec/state/[layout as state_layout, privileges as state_privileges,
+    accounts as state_accounts, service_values as state_service_values,
+    authorization as state_authorization, statistics as state_statistics]
+import ../../src/codec/work/digest as work_digest
 import ../../src/state/store
 import ../../src/crypto/primitives
 import ../../src/pvm/step

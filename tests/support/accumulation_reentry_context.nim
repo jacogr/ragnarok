@@ -4,13 +4,21 @@
 ## Signed four-report reentry fixtures retain actual completed prior rounds and immutable full-map provenance.
 
 import std/assertions
-import ../../src/state/[accumulation_reentry, accumulation_reentry_invocation,
-  accumulation_continuation_execution, accumulation_continuation_inputs, accumulation_continuation,
-  accumulation_execution, accumulation_round, accumulation_inputs, accumulation_service,
-  accumulation_invocation, accumulation_dispatch, accumulation_skip, accumulation_effects,
-  accumulation_machine, store]
-import ../../src/codec/[bounded, composite, report_owned, work_report, work_digest,
-  state_workqueues, state_history, state_layout, state_trie, c2_records]
+import ../../src/state/accumulation/reentry as accumulation_reentry
+import ../../src/state/accumulation/reentry/invocation as accumulation_reentry_invocation
+import ../../src/state/accumulation/continuation/[execution as accumulation_continuation_execution,
+    inputs as accumulation_continuation_inputs]
+import ../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
+    service as accumulation_service, invocation as accumulation_invocation,
+    dispatch as accumulation_dispatch, skip as accumulation_skip, effects as accumulation_effects,
+    machine as accumulation_machine]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, report_owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/[workqueues as state_workqueues, history as state_history,
+    layout as state_layout, trie as state_trie]
+import ../../src/codec/c2_records
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[accumulation_execution_context, accumulation_continuation_execution_context,
   accumulation_batch_context, pvm_accumulation_provision, pvm_accumulation_context, report_context]

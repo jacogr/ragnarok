@@ -4,13 +4,18 @@
 ## Explicit current command policies and independent forked TLS responders preserve exact requests, scalar progress and joined cleanup.
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
-import ../../src/app/[current_download_command, current_download_policy, current_block_input,
-  download_schedule, options]
-import ../../src/quic/[current_block_download_loop, current_block_download_stream]
+import ../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/download/schedule as download_schedule
+import ../../src/app/options
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/bounded
 import ../../src/crypto/primitives
-import ../../src/state/[block_admission, report_admission]
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/report/admission as report_admission
 import ./[accumulation_current_chain_context, accumulation_current_candidate_context,
   current_application_context, current_services_disk_samples, block_download_transport]
 type CurrentDownloadExchange* = object ## Scalar outcomes retain no canonical map or live native owner.

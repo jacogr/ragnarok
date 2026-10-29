@@ -3,11 +3,15 @@
 
 ## Checked canonical/lifecycle guards must reject access even after execution finishes but before collection.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[services, options, preparation_worker, block_input, candidate]
-import ../../src/app/[checkpoint_identity, checkpoint_transfer, checkpoint_codec]
+import ../../src/app/[services, options, preparation_worker]
+import "../../src/app/block/input" as block_input
+import ../../src/app/candidate
+import ../../src/app/checkpoint/[identity as checkpoint_identity, transfer as checkpoint_transfer,
+    codec as checkpoint_codec]
 import ../../src/rpc/server
 import ../../src/codec/[bounded, block_codec, report_owned, header]
-import ../../src/state/[accumulation_finalization, accumulation_completion]
+import ../../src/state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion]
 import ../support/application_candidate_context
 
 proc main() {.raises.} =

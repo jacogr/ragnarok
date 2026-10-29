@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: AccumulationIndex but got: WorkQueueSlot", "early": ["accumulationAt(", "[2] expected: AccumulationIndex but got: WorkQueueSlot"]}
 
-import ../../../src/state/accumulation_queue
-import ../../../src/codec/state_workqueues
+import ../../../src/state/accumulation/queue as accumulation_queue
+import ../../../src/codec/state/workqueues as state_workqueues
 discard accumulationAt(default(AccumulationQueuePlan), WorkQueueSlot(0))

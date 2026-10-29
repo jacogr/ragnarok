@@ -4,9 +4,12 @@
 ## Explicit host adapter limits and bounded native lifecycle helpers for genuine current receipts.
 import std/[assertions, monotimes, times]
 import ./[current_identity_context, current_namespace_refresh_context, accumulation_current_candidate_context]
-import ../../src/app/[current_logical, preparation_worker, current_block_input, candidate, chain]
+import ../../src/app/current/logical as current_logical
+import ../../src/app/preparation_worker
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/[candidate, chain]
 import ../../src/codec/[bounded, block_codec, header]
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between synchronized scalar polls; every external canonical alias remains untouched.
 proc collectedLogicalTestLimits*(): CollectedLogicalLimits =

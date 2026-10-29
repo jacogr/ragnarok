@@ -9,8 +9,10 @@
 ## assignments and new-offender access.
 
 import std/[algorithm, assertions]
-import ../codec/[disputes, state_disputes, state_safrole, state_availability,
-  state_layout, state_trie, bounded, assurances, guarantees, report_owned, owned, header]
+import ../codec/disputes
+import ../codec/state/[disputes as state_disputes, safrole as state_safrole,
+    availability as state_availability, layout as state_layout, trie as state_trie]
+import ../codec/[bounded, assurances, guarantees, report_owned, owned, header]
 import ../crypto/primitives
 import ./store
 

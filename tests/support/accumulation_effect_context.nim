@@ -4,11 +4,16 @@
 ## Authored native test preparation for checkpoint/yield cases and strict result-extraction probes.
 ## preparedEffectContexts builds a genuine public-API initial I over a complete synthetic map with incoming credit.
 
-import ../../src/state/[accumulation_context, accumulation_invocation, accumulation_service,
-  accumulation_inputs, accumulation_operands, accumulation_queue, store]
-import ../../src/codec/[bounded, assurances, composite, header, work_digest, c2_records,
-  state_accounts, state_authorization, state_safrole, state_privileges, state_workqueues,
-  state_service_values, state_trie, state_layout]
+import ../../src/state/accumulation/[context as accumulation_context,
+    invocation as accumulation_invocation, service as accumulation_service,
+    inputs as accumulation_inputs, operands as accumulation_operands, queue as accumulation_queue]
+import ../../src/state/store
+import ../../src/codec/[bounded, assurances, composite, header]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/c2_records
+import ../../src/codec/state/[accounts as state_accounts, authorization as state_authorization,
+    safrole as state_safrole, privileges as state_privileges, workqueues as state_workqueues,
+    service_values as state_service_values, trie as state_trie, layout as state_layout]
 import ../../src/crypto/primitives
 
 proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulationContexts =

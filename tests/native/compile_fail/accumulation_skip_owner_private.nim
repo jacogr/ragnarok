@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/accumulation_skip
+import ../../../src/state/accumulation/skip as accumulation_skip
 let owner = default(SkippedAccumulation)
 discard owner.data # Successful storage remains private.

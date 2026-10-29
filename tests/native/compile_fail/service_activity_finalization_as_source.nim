@@ -4,7 +4,8 @@
 
 ## A raw projection or finalized state cannot replace genuine statistics and original block provenance.
 
-import ../../../src/state/[service_activity, accumulation_finalization]
+import ../../../src/state/service/activity as service_activity
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 var source: PreparedFinalAccumulation
 var config: ServiceActivityConfig
 discard prepareServiceActivity(source, config)

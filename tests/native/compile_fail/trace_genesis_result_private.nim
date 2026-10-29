@@ -3,6 +3,6 @@
 
 ## Default/failed Genesis or bootstrap alternatives cannot expose trusted successful prefixes through public fields.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/state/trace_genesis
+import ../../../src/state/trace/genesis as trace_genesis
 let source = default(TraceGenesisResult[TraceGenesis])
 discard source.completed

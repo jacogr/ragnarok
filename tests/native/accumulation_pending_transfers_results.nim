@@ -3,9 +3,11 @@
 
 ## Dynamic strict guards for pending ownership, first-entry absence and selected nested partition reasons.
 import std/[cmdline, syncio]
-import ../../src/state/[accumulation_pending_transfers, accumulation_transfer_partition,
-    accumulation_transfers, store]
-import ../../src/codec/[bounded, composite, state_accounts, state_trie]
+import ../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
+    transfer_partition as accumulation_transfer_partition, transfers as accumulation_transfers]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/[accounts as state_accounts, trie as state_trie]
 
 proc empty(): PreparedPendingTransfers =
   ## Validate real positive setup before any deliberate invalid extraction.

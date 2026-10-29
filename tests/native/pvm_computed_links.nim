@@ -4,7 +4,9 @@
 ## Strict optimized lookup-owner result guards with a genuine independent exporter-wire positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
+import ../../src/state/computed/[links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../src/state/report/identity as report_identity
 import ../../src/codec/bounded
 import ../support/[pvm_computed_links, pvm_computed_report, pvm_computed_report_vectors]
 

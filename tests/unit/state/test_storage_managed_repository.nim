@@ -6,9 +6,14 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[managed_repository, managed_manifest, managed_io, node_repository,
-  node_records, full_state_trie, database_identity, file_errors]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest,
+    io as managed_io]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc cycle(path: string, limits: ManagedLimits) =
   ## Repeated reopen must release all native and immutable graph owners.
   var repository = default(ManagedRepository)

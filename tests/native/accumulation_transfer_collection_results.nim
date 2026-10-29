@@ -5,7 +5,8 @@
 
 import std/[cmdline, syncio]
 import ../../src/codec/bounded
-import ../../src/state/[accumulation_transfers, accumulation_outcome, accumulation_annulment]
+import ../../src/state/accumulation/[transfers as accumulation_transfers,
+    outcome as accumulation_outcome, annulment as accumulation_annulment]
 let argument = paramStr(1)
 let absent = default(PreparedAccumulationTransfers)
 case argument

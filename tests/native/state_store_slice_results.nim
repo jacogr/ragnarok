@@ -5,7 +5,8 @@
 
 import std/cmdline
 import ../../src/state/store
-import ../../src/codec/[bounded, state_trie, state_layout]
+import ../../src/codec/bounded
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
 let state = newStateStore([StateEntry(key: default(StateKey), value: @[1'u8])],
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(1),
     totalValueBytes: ByteLimit(1), nodes: TrieNodeLimit(1000)))).value

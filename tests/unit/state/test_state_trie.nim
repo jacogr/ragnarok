@@ -7,7 +7,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 ## Exercise public ownership/result contracts independently of the batch oracle's root comparisons.
 proc main() =

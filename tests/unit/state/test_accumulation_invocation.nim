@@ -7,11 +7,16 @@
 # @@Verification={"arc": "accumulation_invocation_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[accumulation_invocation, accumulation_service, accumulation_inputs,
-  accumulation_operands, accumulation_round, accumulation_queue, report_admission, store]
-import ../../../src/codec/[bounded, state_safrole, state_privileges, state_workqueues,
-  state_accounts,
-  state_service_values, state_layout, state_trie, composite, header, report_owned, c2_records]
+import ../../../src/state/accumulation/[invocation as accumulation_invocation,
+    service as accumulation_service, inputs as accumulation_inputs,
+    operands as accumulation_operands, round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[safrole as state_safrole, privileges as state_privileges,
+    workqueues as state_workqueues, accounts as state_accounts,
+    service_values as state_service_values, layout as state_layout, trie as state_trie]
+import ../../../src/codec/[composite, header, report_owned, c2_records]
 import ../../../src/crypto/primitives
 import ../../support/[report_context, report_admission_context, arc_evidence]
 

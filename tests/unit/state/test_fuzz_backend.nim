@@ -4,8 +4,9 @@
 ## Arbitrary owned fuzz seeds and typed local refusals do not acquire production bootstrap or consensus Error authority.
 import std/[assertions, syncio]
 import ../../support/[fuzz_backend_context, fuzz_protocol_context]
-import ../../../src/app/fuzz_backend
-import ../../../src/state/[fuzz_protocol, store]
+import ../../../src/app/fuzz/backend as fuzz_backend
+import ../../../src/state/fuzz/protocol as fuzz_protocol
+import ../../../src/state/store
 import ../../../src/chain/parameters
 import ../../../src/codec/bounded
 proc main() =

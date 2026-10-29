@@ -10,10 +10,17 @@
 # @@Verification={"arc": "report_packages_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
-import ../../../src/state/[report_packages, report_anchors, report_policy, guarantee_credentials, store]
-import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,
-  state_layout, state_trie, state_history, state_availability, state_workqueues,
-  report_owned, owned, work_report, composite]
+import ../../../src/state/report/[packages as report_packages, anchors as report_anchors,
+    policy as report_policy]
+import ../../../src/state/[guarantee_credentials, store]
+import ../../../src/codec/[bounded, guarantees, assurances]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[disputes, header]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    history as state_history, availability as state_availability, workqueues as state_workqueues]
+import ../../../src/codec/[report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/composite
 import ../../support/[arc_evidence, report_context]
 
 ## Refuse hashing after preparing valid inputs to prove the state-backed stage has no crypto/write side effects.

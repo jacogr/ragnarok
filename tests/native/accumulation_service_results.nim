@@ -5,10 +5,14 @@
 ## Dynamic modes require the selected-success diagnostic for defaults, refusals and unavailable code.
 
 import std/cmdline
-import ../../src/state/[accumulation_service, accumulation_inputs, accumulation_operands,
-  accumulation_queue, accumulation_round, store]
-import ../../src/codec/[bounded, state_accounts, state_privileges, state_workqueues, header,
-    state_trie]
+import ../../src/state/accumulation/[service as accumulation_service, inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue, round as accumulation_round]
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    workqueues as state_workqueues]
+import ../../src/codec/header
+import ../../src/codec/state/trie as state_trie
 
 ## Build an actual existing account with absent code; this successful context must refuse code extraction.
 proc unavailable(): PreparedAccumulationService =

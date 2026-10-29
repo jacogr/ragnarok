@@ -4,7 +4,8 @@
 ## Guard selected-parent global evidence with a genuine signed configured-parent positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_profile_context, parent_globals_context]
-import ../../src/state/[parent_globals, parent_profile, global_snapshot]
+import ../../src/state/parent/[globals as parent_globals, profile as parent_profile]
+import ../../src/state/global_snapshot
 import ../../src/chain/provider
 import ../../src/codec/report_owned
 proc extract(outcome: ParentGlobalsResult[SelectedParentGlobals]) {.noinline.} =

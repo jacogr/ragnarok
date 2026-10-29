@@ -9,5 +9,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_availability, state_trie]
+import ../../../src/codec/state/[availability as state_availability, trie as state_trie]
 discard AvailabilityResult[AvailabilityInfo](status: AvailabilityError.None)

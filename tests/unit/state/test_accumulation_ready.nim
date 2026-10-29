@@ -5,11 +5,17 @@
 ## Independent ready expiry/edit witnesses and genuine stopped-source private publication with ARC release evidence.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_ready, accumulation_history, accumulation_finalization,
-  accumulation_outputs, accumulation_reentry, accumulation_continuation, accumulation_execution,
-  accumulation_inputs, accumulation_dispatch, store]
-import ../../../src/codec/[bounded, composite, owned, report_owned, work_report, header,
-  state_workqueues, state_outputs, state_layout, state_trie]
+import ../../../src/state/accumulation/[ready as accumulation_ready,
+    history as accumulation_history, finalization as accumulation_finalization,
+    outputs as accumulation_outputs, reentry as accumulation_reentry,
+    continuation as accumulation_continuation, execution as accumulation_execution,
+    inputs as accumulation_inputs, dispatch as accumulation_dispatch]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, owned, report_owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/header
+import ../../../src/codec/state/[workqueues as state_workqueues, outputs as state_outputs,
+    layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   pvm_accumulation_provision, report_context, arc_evidence]
 

@@ -5,8 +5,10 @@
 # @@Verification={"arc": "storage_journal_framing_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_snapshot_samples]
-import ../../../src/storage/[node_repository, node_records, record_codec, journal_codec, snapshot_codec]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, journal_codec, snapshot_codec]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real hash refusal distinguishes preflight from mandatory raw integrity and the outer checksum.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

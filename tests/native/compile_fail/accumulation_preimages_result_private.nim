@@ -4,6 +4,6 @@
 
 ## Bound preimage source, results and discriminators remain private.
 
-import ../../../src/state/accumulation_preimages
+import ../../../src/state/accumulation/preimages as accumulation_preimages
 var owner: AccumulationPreimageResult[int]
 discard owner.completed

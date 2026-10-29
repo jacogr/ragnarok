@@ -3,8 +3,10 @@
 
 ## Dynamic plan/result misuse guards have genuine initialized empty-knowledge positive controls.
 import std/[cmdline, syncio]
-import ../../src/storage/[light_snapshot, light_state_cache, database_identity]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../src/storage/database_identity
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 let member = paramStr(1)
 let origin = paramStr(2)
 if member == "result" and origin != "valid":

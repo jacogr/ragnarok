@@ -4,7 +4,8 @@
 ## A live worker address, unjoined native lifetime and unselected result alternatives enforce runtime contracts.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/app/[checkpoint_worker, checkpoint_file, checkpoint_identity]
+import ../../src/app/checkpoint/[worker as checkpoint_worker, file as checkpoint_file,
+    identity as checkpoint_identity]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_worker_context
 proc extractAdmission(admission: ApplicationCheckpointAdmission) =

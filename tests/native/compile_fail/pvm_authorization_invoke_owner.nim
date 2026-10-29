@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/authorization_invocation
+import ../../../src/state/authorization/invocation as authorization_invocation
 var owner: AuthorizationInvocation
 discard owner.data

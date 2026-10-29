@@ -5,8 +5,11 @@
 # @@Verification={"arc":"storage_light_streaming_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_state_cache, state_proof, full_state_trie]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/state_cache as light_state_cache
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Stream source failures must retain exact proof-attempt and private-prefix retirement evidence.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

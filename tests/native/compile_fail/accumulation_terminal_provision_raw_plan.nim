@@ -4,7 +4,9 @@
 
 ## A caller-selected context union cannot substitute for a terminal-bound slot certificate.
 
-import ../../../src/state/[accumulation_terminal_provisions, accumulation_provisions, store]
+import ../../../src/state/accumulation/[terminal_provisions as accumulation_terminal_provisions,
+    provisions as accumulation_provisions]
+import ../../../src/state/store
 var state: StateStore
 var plan: PreparedAccumulationProvisions
 discard integrateTerminalAccumulationProvisions(state, plan)

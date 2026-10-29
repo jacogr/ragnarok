@@ -4,7 +4,10 @@
 ## Bounded test-authored logical identities qualify actual candidate values without supplying any posterior values.
 import std/assertions
 import ../../src/state/store
-import ../../src/codec/[bounded, state_layout, state_accounts, state_service_values, state_requests, state_composition]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests,
+    composition as state_composition]
 
 type
   DeclaredHash* = object

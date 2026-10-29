@@ -4,6 +4,6 @@
 
 ## Reject raw construction or retagging across authenticated ready-queue ownership.
 
-import ../../../src/state/accumulation_ready
+import ../../../src/state/accumulation/ready as accumulation_ready
 var outcome: AccumulationReadyResult[PreparedAccumulationReady]
 outcome.status = AccumulationReadyError.None

@@ -4,11 +4,13 @@
 ## Real child-only kernel refusals cannot splice application metadata and complete-map bytes or lose the old envelope.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_writer, checkpoint_worker, checkpoint_file,
-    checkpoint_transfer, checkpoint_codec, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[writer as checkpoint_writer, worker as checkpoint_worker,
+    file as checkpoint_file, transfer as checkpoint_transfer, codec as checkpoint_codec,
+    identity as checkpoint_identity]
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context,
     file_size_ceiling]
 const

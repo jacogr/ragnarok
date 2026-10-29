@@ -6,13 +6,17 @@ import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context,
     historical_samples, managed_storage_samples]
-import ../../../src/app/[services, options, chain, handoff, preparation_worker, block_input,
-  historical_query, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[services, options, chain, handoff, preparation_worker]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/historical/query as historical_query
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/[history_index, managed_manifest]
+import ../../../src/storage/history/index as history_index
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/lib/json_writer
+import ../../../src/lib/json/writer as json_writer
 proc retentionPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each assertion/crash leaves only its own ignored process namespace for inspection.
 proc configured(chain, path, backend: string, selection: int): Options =

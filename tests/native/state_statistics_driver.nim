@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_statistics, state_trie, bounded]
+import ../../src/codec/state/[statistics as state_statistics, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve empty arrays and malformed empty wire without inventing protocol bytes.
 proc unhex(text: string): seq[byte] =

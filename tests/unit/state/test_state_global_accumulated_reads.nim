@@ -4,8 +4,10 @@
 ## Accumulated package sets retain slot/ordinal identity and reject authenticated noncanonical ordering.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_workqueues, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[workqueues as state_workqueues, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = WorkQueueConfig(epochSlots: EpochSlots(2), cores: CoreCount(2), perSlot: ElementLimit(2),
   totalItems: ElementLimit(2), perDependencies: ElementLimit(2), totalDependencies: ElementLimit(2),
   reportBytes: ByteLimit(60000), maxBytes: ByteLimit(65536))

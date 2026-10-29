@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Planned authentication results cannot expose or forge their success alternative.
-import ../../../src/state/planned_proof
+import ../../../src/state/planned/proof as planned_proof
 let private = default(PlannedProofResult[bool])
 discard private.completed

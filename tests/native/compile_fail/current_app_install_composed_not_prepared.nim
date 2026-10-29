@@ -4,6 +4,6 @@
 
 ## Canonical installation requires current opaque preparation, not just state composition.
 import ../../../src/app/chain
-import ../../../src/state/accumulation_current_consensus
+import ../../../src/state/accumulation/current/consensus as accumulation_current_consensus
 var owner = default(ApplicationChain)
 owner.installPrepared(default(PreparedCurrentAccumulationConsensus))

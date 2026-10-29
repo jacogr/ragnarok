@@ -3,6 +3,6 @@
 
 ## Scheduling authority remains private.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/app/download_schedule
+import ../../../src/app/download/schedule as download_schedule
 var owner = default(DownloadSelection)
 discard owner.status

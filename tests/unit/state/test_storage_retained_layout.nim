@@ -3,8 +3,12 @@
 
 ## Public-operation retained heap measurements separate payload slopes from immutable graph overhead.
 import std/[assertions, envvars, syncio]
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 type
   Fixture = object ## Only serialized transport and scalar expectations outlive graph construction.

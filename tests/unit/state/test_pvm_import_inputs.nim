@@ -5,8 +5,11 @@
 ## Bind every ordered package import to real verified leaf owners, with exact dictionaries and bounded ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/[import_inputs, import_justification, extrinsic_inputs]
-import ../../../src/codec/[bounded, work_package, work_report]
+import "../../../src/state/import/inputs" as import_inputs
+import "../../../src/state/import/justification" as import_justification
+import ../../../src/state/extrinsic_inputs
+import ../../../src/codec/bounded
+import ../../../src/codec/work/[package as work_package, report as work_report]
 import ../../../src/pvm/host_fetch
 import ../../support/[pvm_import_inputs, pvm_import_justification, pvm_import_vectors, arc_evidence]
 

@@ -4,10 +4,16 @@
 
 ## Genuine unavailable-code certificates preserve liquid/protected/zero credits and common-frame ownership in M selection.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulment, accumulation_account_selection,
-  accumulation_outcome, accumulation_inputs, accumulation_service, accumulation_skip, store]
-import ../../../src/codec/[bounded, header, state_accounts, state_service_values, state_layout,
-  state_trie, state_privileges, state_safrole, c2_records]
+import ../../../src/state/accumulation/annulment as accumulation_annulment
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/[outcome as accumulation_outcome,
+    inputs as accumulation_inputs, service as accumulation_service, skip as accumulation_skip]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, trie as state_trie, privileges as state_privileges,
+    safrole as state_safrole]
+import ../../../src/codec/c2_records
 import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
 
 # Account-source selection must retain precredited maps, never recompute or publish their roots.

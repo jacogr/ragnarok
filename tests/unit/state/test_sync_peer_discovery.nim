@@ -4,9 +4,15 @@
 ## Real pinned TLS peers exchange independently framed UP0 bytes; retired sources cannot retain targets.
 import std/[assertions, envvars, monotimes, times, syncio]
 import std/posix/posix
-import ../../../src/quic/[announcements, announcement_stream, current_block_download_peers,
-  current_block_download_session, current_block_download_stream, transport, protocol]
-import ../../../src/app/[download_schedule, services, options, current_block_input, current_block_download]
+import ../../../src/quic/[announcements, announcement_stream]
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/session" as current_block_download_session
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../../src/quic/[transport, protocol]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import "../../../src/app/current/block/download" as current_block_download
 import ../../../src/codec/report_owned
 import ../../support/[current_application_context, accumulation_current_chain_context,
   accumulation_current_candidate_context]

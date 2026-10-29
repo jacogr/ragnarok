@@ -5,8 +5,11 @@
 # @@Verification={"arc":"storage_full_paged_epoch_reopen_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  managed_manifest, file_errors]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    store as full_paged_store]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/file/errors as file_errors
 proc path(label: string): string =
   ## New namespaces isolate genuine pins and fault schedules without namespace-wide recovery scans.
   "full-epoch-reopen-" & $storageProcessId() & "-" & label

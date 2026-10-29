@@ -4,7 +4,8 @@
 ## Structural proof capture protects canonical framing, independent ceilings and immutable ownership.
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc main() =
   ## Captures are unverified witnesses, including a valid explicit empty path.

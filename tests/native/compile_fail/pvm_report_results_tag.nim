@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/refinement_report
+import ../../../src/state/refinement/report as refinement_report
 var outcome: RefinementReportResult[RefinedPackage]
 discard outcome.status

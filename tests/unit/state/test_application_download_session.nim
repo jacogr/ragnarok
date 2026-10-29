@@ -7,11 +7,16 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/quic/[block_download_session, block_download_stream, transport]
-import ../../../src/app/[block_download, download_schedule, block_input, candidate, services,
-    options, chain, handoff]
+import "../../../src/quic/block/download/session" as block_download_session
+import "../../../src/quic/block/download/stream" as block_download_stream
+import ../../../src/quic/transport
+import "../../../src/app/block/download" as block_download
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, services, options, chain, handoff]
 import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, accumulation_finalization]
+import ../../../src/state/store
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/[application_candidate_context, accumulation_completion_context,
   block_download_transport, arc_evidence]
 

@@ -6,18 +6,30 @@
 ## Genuine assured execution composes current history and bookkeeping without replaying guests or mutating the original parent.
 
 import std/[assertions, syncio]
-import ../../../src/state/[assured_composition, assured_execution, assured_queue,
-  computed_assurances,
-  accumulation_driver, accumulation_finalization, accumulation_outputs, accumulation_completion,
-  accumulation_consensus, accumulation_execution, accumulation_round, accumulation_queue,
-  accumulation_history, accumulation_activity, accumulation_validators,
-  accumulation_continuation_inputs, accumulation_batch, validator_projection,
-  accumulation_continuation,
-  report_admission,
-  block_transition, block_admission, report_assignments, store]
+import ../../../src/state/assured/[composition as assured_composition,
+    execution as assured_execution, queue as assured_queue]
+import ../../../src/state/computed/assurances as computed_assurances
+import ../../../src/state/accumulation/[driver as accumulation_driver,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    completion as accumulation_completion, consensus as accumulation_consensus,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    history as accumulation_history, activity as accumulation_activity,
+    validators as accumulation_validators]
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../../src/state/accumulation/batch as accumulation_batch
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/state/accumulation/continuation as accumulation_continuation
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/assignments as report_assignments
+import ../../../src/state/store
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, assurances, state_layout, state_accounts, state_service_values,
-  state_workqueues, state_statistics, report_owned]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values, workqueues as state_workqueues,
+    statistics as state_statistics]
+import ../../../src/codec/report_owned
 import ../../../src/pvm/step
 import ../../support/[pvm_assured_composition, arc_evidence]
 

@@ -7,7 +7,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/[block_admission, safrole_transition, store]
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/safrole/transition as safrole_transition
+import ../../src/state/store
 import ../../src/codec/[block_codec, header]
 var state = default(StateStore)
 case paramStr(1)

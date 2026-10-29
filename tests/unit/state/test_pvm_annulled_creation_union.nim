@@ -4,12 +4,14 @@
 
 ## Real new/supervisor/eject guests prove final n membership, original cancellation and same-frame collision invalidity.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_creation_union, accumulation_annulment,
-  accumulation_dispatch,
-  accumulation_outcome, accumulation_effects, accumulation_inputs, accumulation_invocation, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_service_values,
-  state_privileges,
-  state_layout, state_trie]
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    annulment as accumulation_annulment, dispatch as accumulation_dispatch,
+    outcome as accumulation_outcome, effects as accumulation_effects, inputs as accumulation_inputs,
+    invocation as accumulation_invocation]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    privileges as state_privileges, layout as state_layout, trie as state_trie]
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,

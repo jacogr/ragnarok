@@ -5,11 +5,18 @@
 # @@Verification={"arc":"state_current_refresh_logical_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, current_logical_refresh_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_refresh, current_refresh_plan,
-    current_request_keys, current_identities, current_profile, current_globals, current_state,
-    current_logical, supplied_logical_inventory, inventory, manifest, store,
-    accumulation_current_update, global_snapshot]
-import ../../../src/codec/[bounded, report_owned, state_trie, state_composition]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/refresh as current_refresh
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/[request_keys as current_request_keys,
+    identities as current_identities, profile as current_profile, globals as current_globals,
+    state as current_state, logical as current_logical]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/global_snapshot
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original/current/request/reconstruction preparation completes before zero-hash full planning or backend refusal observation.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

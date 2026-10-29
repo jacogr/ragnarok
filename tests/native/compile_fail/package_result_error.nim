@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[work_package, work_report]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 var value = default(PackageResult[int])
 value.error = PackageError.None

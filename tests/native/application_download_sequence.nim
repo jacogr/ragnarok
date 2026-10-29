@@ -3,8 +3,9 @@
 
 ## Independent real TLS responder and durable-map witness for the actual application executable.
 import std/[assertions, syncio, envvars, monotimes, times, os]
-import ../../src/app/download_policy
-import ../../src/quic/[block_download_loop, block_download_stream]
+import ../../src/app/download/policy as download_policy
+import "../../src/quic/block/download/loop" as block_download_loop
+import "../../src/quic/block/download/stream" as block_download_stream
 import ../../src/codec/report_owned
 import ../support/[application_download_chain, application_download_command_context,
   application_download_disk_context, block_download_transport]

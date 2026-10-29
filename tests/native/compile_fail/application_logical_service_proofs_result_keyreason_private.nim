@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "keyReason"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/logical_service_proof
+import ../../../src/app/logical/service_proof as logical_service_proof
 let source = default(LogicalServiceProofResult[int])
 discard source.keyReason

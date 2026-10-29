@@ -5,9 +5,11 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, planned_review_checkpoint_context, economic_profile_context]
 import ../../src/chain/parameters
-import ../../src/state/[planned_review_checkpoint, account_review, checkpoint, store, manifest, economic_profile]
-import ../../src/codec/state_trie
-include composition_fixture
+import ../../src/state/planned/review_checkpoint as planned_review_checkpoint
+import ../../src/state/account/review as account_review
+import ../../src/state/[checkpoint, store, manifest, economic_profile]
+import ../../src/codec/state/trie as state_trie
+include ./composition_fixture
 proc extract(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## No failed/default adapter result grants a review.
   discard outcome.value

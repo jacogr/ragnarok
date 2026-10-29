@@ -4,8 +4,16 @@
 ## Managed retained logical proof submission preserves typed admission failures and actual cancelled-Done collection/join ownership.
 import std/[assertions, syncio, cmdline, monotimes, times, envvars]
 import std/posix/posix
-import ../../src/app/[services, logical_proof, proof_query, proof_worker, current_block_input, preparation_worker]
-import ../../src/state/[current_logical, proof_plan, planned_proof, proof_view, store]
+import ../../src/app/services
+import ../../src/app/logical/proof as logical_proof
+import ../../src/app/proof/[query as proof_query, worker as proof_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/preparation_worker
+import ../../src/state/current/logical as current_logical
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/state/store
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_logical_services_context,

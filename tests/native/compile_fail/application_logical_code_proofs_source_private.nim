@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "source"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/logical_code_proof
+import ../../../src/app/logical/code/proof as logical_code_proof
 let source = default(LogicalCodeProof)
 discard source.source

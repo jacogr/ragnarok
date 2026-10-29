@@ -7,7 +7,7 @@
 
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/codec/bounded
 import ../../support/arc_evidence
 

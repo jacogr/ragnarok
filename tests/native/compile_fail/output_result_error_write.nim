@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/state_outputs
+import ../../../src/codec/state/outputs as state_outputs
 var parsed = default(OutputLogResult[int])
 parsed.error = OutputLogError.None

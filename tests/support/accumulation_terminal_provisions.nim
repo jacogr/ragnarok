@@ -4,9 +4,12 @@
 ## Actual guest executions and explicit posterior maps for terminal-selected provision witnesses.
 ## Uses maintained public dispatch/assembly helpers; no forged contexts, outcomes or protocol verdicts.
 
-import ../../src/state/[accumulation_dispatch, accumulation_provisions, store]
+import ../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    provisions as accumulation_provisions]
+import ../../src/state/store
 import ../../src/pvm/[machine, program, gas, step, host_fetch]
-import ../../src/codec/[bounded, composite, state_accounts, state_trie]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/[accounts as state_accounts, trie as state_trie]
 import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision,
   accumulation_provision_integration]
 

@@ -8,7 +8,9 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_requests, state_service_values, state_trie, bounded]
+import ../../../src/codec/state/[requests as state_requests, service_values as state_service_values,
+    trie as state_trie]
+import ../../../src/codec/bounded
 
 ## A decoded fixed tagged history survives source mutation, caller-input destruction and local scope exit.
 proc captured(config: RequestEntryConfig): RequestHistoryRead =

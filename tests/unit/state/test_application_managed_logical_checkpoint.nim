@@ -5,8 +5,12 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[collected_native_context, collected_logical_services_context, managed_supplied_context]
-import ../../../src/app/[services, logical_checkpoint, current_block_input]
-import ../../../src/state/[current_logical, current_checkpoint, accumulation_current_update, store]
+import ../../../src/app/services
+import ../../../src/app/logical/checkpoint as logical_checkpoint
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/state/current/[logical as current_logical, checkpoint as current_checkpoint]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/codec/bounded
 proc main() {.raises.} =
   ## Actual Services preparation owns the selected prior; source extraction/copy occurs only after matching collection.

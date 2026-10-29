@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "initialized"}
 
 ## Frozen review source, policies and successful admission alternatives cannot be replaced externally.
-import ../../../src/state/current_review
+import ../../../src/state/current/review as current_review
 let source = default(CurrentReviewPlan)
 discard source.initialized

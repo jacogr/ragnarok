@@ -9,9 +9,14 @@ import std/posix/posix
 import ../../../src/app/[services, options]
 import ../../../src/chain/genesis
 import ../../../src/rpc/[server, protocol]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole]
 from ../../../src/codec/composite import ServiceIndex
-import ../../../src/state/[proof_plan, planned_proof, proof_view, proof_service, proof_global]
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[view as proof_view, service as proof_service,
+    global as proof_global]
 import ../../support/[proof_query_context, rpc_socket, arc_evidence, management_socket]
 from ../../support/application_candidate_context import SeedFixture
 

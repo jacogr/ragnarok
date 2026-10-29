@@ -3,7 +3,8 @@
 
 ## Default/refused global phases expose no inactive owner, component or failure payload.
 import std/cmdline
-import ../../src/state/[accumulation_global_stage, accumulation_provision_stage]
+import ../../src/state/accumulation/global/stage as accumulation_global_stage
+import ../../src/state/accumulation/provision/stage as accumulation_provision_stage
 let owner = default(AccumulationGlobalStageResult[PreparedAccumulationGlobalStage])
 let refused = prepareAccumulationGlobalStage(default(PreparedAccumulationProvisionStage), default(
     AccumulationGlobalStageLimits))

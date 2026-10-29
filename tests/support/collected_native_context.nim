@@ -4,10 +4,19 @@
 ## Genuine signed current receipts and explicitly supplied known namespaces for host consumer witnesses.
 import std/[assertions, envvars, syncio]
 import ./[current_repeated_logical_context, collected_logical_context, accumulation_current_candidate_context]
-import ../../src/app/[chain, preparation_worker, current_block_input, candidate]
-import ../../src/state/[accumulation_current_update, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission, store]
-import ../../src/codec/[bounded, report_owned, state_composition, state_layout, state_accounts, header]
+import ../../src/app/[chain, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/candidate
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/[composition as state_composition, layout as state_layout,
+    accounts as state_accounts]
+import ../../src/codec/header
 type CollectedNativeFixture* = object ## Test descriptors retain immutable genuine receipt/chain and independent supplied declarations.
   fixture*: CurrentRepeatedLogicalFixture
   chain*: ApplicationChain

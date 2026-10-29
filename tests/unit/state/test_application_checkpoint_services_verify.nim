@@ -4,8 +4,10 @@
 ## Services verification owns independent decoded state and preserves its distinct joined receipt through a canonical execution lease.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[services, block_input, checkpoint_worker, checkpoint_identity,
-    checkpoint_transfer, checkpoint_file]
+import ../../../src/app/services
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/checkpoint/[worker as checkpoint_worker, identity as checkpoint_identity,
+    transfer as checkpoint_transfer, file as checkpoint_file]
 import ../../../src/rpc/server
 import ../../../src/codec/bounded
 import ../../../src/chain/genesis

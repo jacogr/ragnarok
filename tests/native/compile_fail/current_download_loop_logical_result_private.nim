@@ -3,6 +3,6 @@
 
 ## Logical dispatcher source/result ownership cannot bypass explicit configure, adoption or rearm gates.
 # @@Verification={"group": "privacy", "expected": "logicalResult"}
-import ../../../src/quic/current_block_download_loop
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
 var owner = default(CurrentDownloadLoop)
 discard owner.logicalResult

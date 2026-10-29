@@ -5,7 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: StepError but wanted: RefinementDispatchError"}
 
-import ../../../src/state/[refinement_outcome, refinement_dispatch]
+import ../../../src/state/refinement/[outcome as refinement_outcome,
+    dispatch as refinement_dispatch]
 let outcome = default(RefinementInvocationResult[RefinementInvocation])
 let wrong: RefinementDispatchError = outcome.executionError
 discard wrong

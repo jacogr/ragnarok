@@ -3,10 +3,13 @@
 
 ## Explicit finite full-profile test policy uses341 cores,1023 validators and600 slots without replacing source-derived GP facts.
 import ./fuzz_guest_replay_context
-import ../../src/app/fuzz_backend
+import ../../src/app/fuzz/backend as fuzz_backend
 import ../../src/chain/genesis
-import ../../src/codec/[bounded, assurances, header, tickets, work_digest, state_authorization, state_privileges]
-import ../../src/state/[guarantors, report_policy, report_anchors]
+import ../../src/codec/[bounded, assurances, header, tickets]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/state/[authorization as state_authorization, privileges as state_privileges]
+import ../../src/state/guarantors
+import ../../src/state/report/[policy as report_policy, anchors as report_anchors]
 
 proc profileReplayConfig(cores, validators, slots, tickets, rotation, tail,
     blockGas: uint64): FuzzBackendConfig =

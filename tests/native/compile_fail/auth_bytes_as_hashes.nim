@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: ElementLimit"}
 
-import ../../../src/codec/[state_authorization, bounded]
+import ../../../src/codec/state/authorization as state_authorization
+import ../../../src/codec/bounded
 let bytes = default(ByteLimit)
 let policy = AuthorizationConfig(maxHashes: bytes)
 discard policy

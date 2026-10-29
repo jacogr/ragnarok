@@ -4,6 +4,6 @@
 
 ## Refuse raw construction or retagging of original-block-bound block activity.
 
-import ../../../src/state/block_activity
+import "../../../src/state/block/activity" as block_activity
 var outcome: BlockActivityResult[PreparedBlockActivity]
 discard outcome.completed

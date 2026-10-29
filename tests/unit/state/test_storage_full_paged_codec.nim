@@ -3,9 +3,13 @@
 
 ## Independent fixed-offset metadata and physical-record witnesses exercise full paging's format boundary.
 import std/[assertions, syncio]
-import ../../../src/storage/[full_paged_codec, paged_codec, database_identity, managed_manifest,
-  node_records, node_repository]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/codec as full_paged_codec
+import ../../../src/storage/paged/codec as paged_codec
+import ../../../src/storage/database_identity
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive fault injection never substitutes format or graph-validation logic.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

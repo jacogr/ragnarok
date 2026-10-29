@@ -4,8 +4,11 @@
 ## Construct genuine authorization-bound sources after fixing their import manifests and context.
 
 import std/assertions
-import ../../src/state/[report_identity, authorized_refinement, authorization_invocation]
-import ../../src/codec/[bounded, composite, work_package, work_report]
+import ../../src/state/report/identity as report_identity
+import ../../src/state/authorized_refinement
+import ../../src/state/authorization/invocation as authorization_invocation
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, report as work_report]
 import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_results]
 
 proc identityLimits*(): ReportIdentityLimits =

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_statistics, state_trie]
+import ../../../src/codec/state/[statistics as state_statistics, trie as state_trie]
 let value = default(ActivityResult[ServiceStatisticsEntry])
 discard value.completed

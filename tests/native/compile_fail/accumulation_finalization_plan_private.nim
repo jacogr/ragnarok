@@ -4,6 +4,6 @@
 
 ## Reject raw construction or retagging across the terminal full-map finalization boundary.
 
-import ../../../src/state/accumulation_finalization
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 var plan: PreparedFinalAccumulation
 discard plan.data

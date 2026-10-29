@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/[sealer_state, sealer_schedule]
+import ../../../src/state/sealer/[state as sealer_state, schedule as sealer_schedule]
 var hidden = default(SealerStateResult)
 hidden.status = SealerScheduleError.None

@@ -9,12 +9,19 @@ import std/[assertions, syncio, envvars, strutils]
 import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/rpc/protocol
-import ../../../src/lib/json_writer
-import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
-import ../../../src/state/[store, accumulation_state, accumulation_chain, accumulation_completion,
-  accumulation_finalization, accumulation_times, accumulation_statistics, accumulation_validators,
-  accumulation_activity, accumulation_round, accumulation_queue, accumulation_runner,
-  accumulation_driver, report_admission, block_transition, block_admission]
+import ../../../src/lib/json/writer as json_writer
+import ../../../src/codec/[header, bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[state as accumulation_state, chain as accumulation_chain,
+    completion as accumulation_completion, finalization as accumulation_finalization,
+    times as accumulation_times, statistics as accumulation_statistics,
+    validators as accumulation_validators, activity as accumulation_activity,
+    round as accumulation_round, queue as accumulation_queue, runner as accumulation_runner,
+    driver as accumulation_driver]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
 import ../../support/[accumulation_activity_context, accumulation_completion_context,
   accumulation_execution_context, accumulation_runner_context, arc_evidence]
 import ../../support/report_admission_context as report_fixture

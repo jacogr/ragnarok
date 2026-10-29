@@ -4,9 +4,13 @@
 ## Logical review keeps original compact identity and full economic provenance distinct from the retained raw-key companion.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context, current_logical_review_context]
-import ../../../src/app/logical_review
-import ../../../src/state/[current_logical, current_state, current_review,
-    supplied_logical_inventory, inventory, account_review, account_review_plan]
+import ../../../src/app/logical/review as logical_review
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    review as current_review]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/inventory
+import ../../../src/state/account/review as account_review
+import ../../../src/state/account/review/plan as account_review_plan
 import ../../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fault actual content predicates only after real supplied qualification and original source capture.

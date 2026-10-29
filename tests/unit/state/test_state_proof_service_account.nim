@@ -4,8 +4,10 @@
 ## Current 105-byte accounts retain supervisor fields and distinguish every refusal category.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 proc main() =
   ## Fixed literal fields cover full-width values and the current supervisor account schema.
   let service = ServiceIndex(7)

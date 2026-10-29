@@ -5,5 +5,5 @@
 
 ## Nominal coordinates and partial evidence cannot impersonate compact source authority.
 import ../../../src/state/inventory
-import ../../../src/state/proof_view
+import ../../../src/state/proof/view as proof_view
 discard captureStateInventory(default(ProofView), [], StateInventoryLimits())

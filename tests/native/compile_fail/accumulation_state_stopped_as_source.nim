@@ -4,7 +4,10 @@
 
 ## Only the immutable finalized execution successor authorizes state application.
 
-import ../../../src/state/[accumulation_state, accumulation_completion, store, accumulation_driver]
+import ../../../src/state/accumulation/[state as accumulation_state,
+    completion as accumulation_completion]
+import ../../../src/state/store
+import ../../../src/state/accumulation/driver as accumulation_driver
 var target: StateStore
 var source: StoppedAccumulation
 discard applyAccumulationState(target, source, default(AccumulationCompositionLimits))

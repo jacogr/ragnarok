@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[work_digest, composite, bounded]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/[composite, bounded]
 
 # Default digest results remain failures; zero-filled successful digest values are not substituted.
 let defaultDigestResult = default(DigestResult)

@@ -4,6 +4,7 @@
 
 ## Refuse substitution across finalized-source and nominal statistics-ordinal boundaries.
 
-import ../../../src/state/[accumulation_statistics, accumulation_inputs]
+import ../../../src/state/accumulation/[statistics as accumulation_statistics,
+    inputs as accumulation_inputs]
 var plan: PreparedAccumulationStatistics
 discard statisticsAt(plan, InvocationServiceIndex(0))

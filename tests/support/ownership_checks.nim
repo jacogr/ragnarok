@@ -8,7 +8,9 @@
 ## test-only.
 
 import std/[assertions, syncio]
-import ../../src/codec/[bounded, composite, work_digest, owned]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/owned
 
 # Compare snapshot bytes to the independently checked canonical prefix and each validated payload.
 proc verifySnapshot(frame: OwnedFrame, wire: openArray[byte], consumed: int,

@@ -10,7 +10,9 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../../src/codec/[c2_records, bounded, composite]
+import ../../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../../src/codec/assurances
 
 # Complete success is required before reading application fields, retained owners or progress.
 proc checked[T](parsed: RecordResult[T]): T =

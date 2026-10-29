@@ -4,7 +4,8 @@
 ## Snapshot proof generation must preserve source roots, policies and retained historical ownership.
 import std/[assertions, syncio]
 import ../../../src/state/[store, trie_proof, snapshot_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Present-empty and absence remain distinct through the complete snapshot adapter.
   let mapLimits = StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(40),

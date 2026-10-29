@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Callers cannot fabricate retained current disk publication authority.
-import ../../../src/app/disk_chain
+import ../../../src/app/disk/chain as disk_chain
 let publication = default(PreparedCurrentDiskPublication)
 discard publication.data

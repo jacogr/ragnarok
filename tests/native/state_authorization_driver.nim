@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_authorization, state_trie, bounded, assurances]
+import ../../src/codec/state/[authorization as state_authorization, trie as state_trie]
+import ../../src/codec/[bounded, assurances]
 
 ## Keep an empty byte source expressible as a single transport token.
 proc unhex(text: string): seq[byte] =

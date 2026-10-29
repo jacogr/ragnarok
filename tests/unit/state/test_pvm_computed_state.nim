@@ -6,9 +6,12 @@
 ## Exact original execution/admission map ownership, equal-root/stale refusal and fixed acyclic lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_state, computed_links, computed_guarantee, computed_report,
-  block_admission, store]
-import ../../../src/codec/[state_trie, header]
+import ../../../src/state/computed/[state as computed_state, links as computed_links,
+    guarantee as computed_guarantee, report as computed_report]
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/header
 import ../../support/[pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

@@ -3,8 +3,10 @@
 
 ## Bounded source-bound account footprint equations certify only dependent metadata fields.
 ## Complete inventory provenance survives; preimage content, economics and STF validity remain separate.
-import ../codec/[bounded, state_accounts]
-import ./[inventory, account_footprint]
+import ../codec/bounded
+import ../codec/state/accounts as state_accounts
+import ./inventory
+import ./account/footprint as account_footprint
 
 type
   FootprintAuditLimits* = object ## Service rows and traversed storage/request facts have independent bounds.

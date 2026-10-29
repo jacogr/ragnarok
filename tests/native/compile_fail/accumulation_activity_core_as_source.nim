@@ -4,8 +4,8 @@
 
 ## Detached statistics cannot construct a certified combined activity candidate.
 
-import ../../../src/state/accumulation_activity
-import ../../../src/state/core_service_activity
+import ../../../src/state/accumulation/activity as accumulation_activity
+import ../../../src/state/core/service_activity as core_service_activity
 var source: CoreServiceActivityProjection
 var config: AccumulationActivityConfig
 discard prepareAccumulationActivity(source, config)

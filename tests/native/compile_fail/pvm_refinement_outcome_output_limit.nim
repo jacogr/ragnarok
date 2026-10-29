@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: MemoryByteLimit but wanted: OutputByteLimit"}
 
-import ../../../src/state/refinement_outcome
+import ../../../src/state/refinement/outcome as refinement_outcome
 import ../../../src/pvm/machine
 discard RefinementInvocationLimits(output: MemoryByteLimit(0))

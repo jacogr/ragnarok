@@ -3,6 +3,6 @@
 
 ## Advisory retention plans expose no mutable internal choices or ready flag.
 # @@Verification={"group": "privacy", "expected": "removed"}
-import ../../../src/storage/light_snapshot
+import ../../../src/storage/light/snapshot as light_snapshot
 let hidden = default(LightRetentionPlan)
 discard hidden.removed

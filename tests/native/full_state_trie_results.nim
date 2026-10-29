@@ -4,8 +4,10 @@
 ## Dynamic invalid-access probes with valid controls under the same optimized profile.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[full_state_trie, node_records]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/records as node_records
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc main() =
   ## Select dynamic sources so checked preconditions are exercised at runtime.

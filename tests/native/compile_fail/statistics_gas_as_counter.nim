@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ActivityGas"}
 
-import ../../../src/codec/state_statistics
+import ../../../src/codec/state/statistics as state_statistics
 var record: ValidatorActivity
 record[ValidatorMeasure.Blocks] = ActivityGas(1)

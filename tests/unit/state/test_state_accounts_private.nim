@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_accounts
+include ../../../src/codec/state/accounts
 
 ## Construct complete fixed fields independently of decoder offsets or encoded payloads.
 proc source(marker: byte): ServiceMetadata =

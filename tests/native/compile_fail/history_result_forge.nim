@@ -9,5 +9,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_history, state_trie]
+import ../../../src/codec/state/[history as state_history, trie as state_trie]
 discard HistoryResult[HistoryInfo](status: HistoryError.None)

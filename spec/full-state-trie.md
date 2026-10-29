@@ -1,7 +1,7 @@
 # Immutable incremental complete-state trie
 
 Scope: the first increment of [the storage direction](../docs/design/state-storage.md),
-implemented in [`src/storage/full_state_trie.nim`](../src/storage/full_state_trie.nim).
+implemented in [`src/storage/full/state_trie.nim`](../src/storage/full/state_trie.nim).
 Authority: Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` M and B/L, with unchanged [pins](pins.json).
 

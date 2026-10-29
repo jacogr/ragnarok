@@ -7,10 +7,16 @@ import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_plan_context,
     economic_profile_context, arc_evidence]
 import ../../../src/chain/parameters
-import ../../../src/state/[account_review_plan, account_review, inventory, account_audit_plan,
-  footprint_audit,
-  service_directory, supervision_table, economics_table, economic_profile, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, state_accounts, state_requests]
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/account/review as account_review
+import ../../../src/state/inventory
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/footprint_audit
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/[supervision_table, economics_table, economic_profile]
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and refuse hashing while checking preparation and report/resource failures.

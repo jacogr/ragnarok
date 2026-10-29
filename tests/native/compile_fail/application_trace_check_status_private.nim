@@ -3,6 +3,6 @@
 
 ## A failed/default offline command cannot be retagged or expose a successful final root.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/app/trace_check_command
+import ../../../src/app/trace/check_command as trace_check_command
 let source = default(TraceCheckCommandOutcome)
 discard source.status

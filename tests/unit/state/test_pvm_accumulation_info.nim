@@ -6,9 +6,15 @@
 
 import std/[assertions, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie, c2_records]
-import ../../../src/state/[accumulation_dispatch, accumulation_machine, accumulation_invocation,
-  accumulation_service, accumulation_context, accumulation_effects, store]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/c2_records
+import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    machine as accumulation_machine, invocation as accumulation_invocation,
+    service as accumulation_service, context as accumulation_context,
+    effects as accumulation_effects]
+import ../../../src/state/store
 import ../../../src/pvm/[machine, program, step, gas, host_fetch]
 import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
 

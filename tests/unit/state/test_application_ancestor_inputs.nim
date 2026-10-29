@@ -6,10 +6,11 @@
 ## Exact file capture is bounded and atomic; structural headers never imply ancestry authority.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[ancestor_inputs, chain]
+import ../../../src/app/ancestor/inputs as ancestor_inputs
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 
 proc cycle(config: HeaderConfig, size: uint64) =

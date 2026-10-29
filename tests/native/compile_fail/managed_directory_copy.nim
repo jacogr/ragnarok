@@ -3,7 +3,7 @@
 
 ## Stable directory locks cannot be duplicated during ARC lowering.
 # @@Verification={"group":"ownership_compile","build_name":"managed-directory-copy","expected":"'=dup' is not available for type <ManagedDirectory>"}
-import ../../../src/storage/managed_io
+import ../../../src/storage/managed/io as managed_io
 proc duplicated(source: ManagedDirectory): ManagedDirectory =
   ## Returning a borrowed native owner would duplicate lock retirement authority.
   source

@@ -4,9 +4,17 @@
 ## Frozen supplied input survives caller mutation/scope retirement and preserves actual qualification, resource and stale-source failures.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
-import ../../src/app/[frozen_supplied, collected_supplied_plan, collected_supplied_state, chain]
-import ../../src/state/[current_logical, supplied_services, accumulation_current_update, store]
-import ../../src/codec/[bounded, state_composition, state_service_values]
+import ../../src/app/frozen_supplied
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/app/chain
+import ../../src/state/current/logical as current_logical
+import ../../src/state/supplied/services as supplied_services
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[composition as state_composition,
+    service_values as state_service_values]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject backend refusal only after source planning and detached input capture.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

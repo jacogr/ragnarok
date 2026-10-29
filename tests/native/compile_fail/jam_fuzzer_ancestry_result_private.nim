@@ -3,6 +3,6 @@
 
 ## A failed ancestry lookup cannot expose a fabricated successful ordinal or context.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/state/fuzz_ancestry
+import ../../../src/state/fuzz/ancestry as fuzz_ancestry
 let outcome = default(FuzzAncestryResult[FuzzAncestry])
 discard outcome.completed

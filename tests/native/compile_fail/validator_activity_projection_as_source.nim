@@ -4,7 +4,7 @@
 
 ## A raw projection cannot replace genuine report admission and original block provenance.
 
-import ../../../src/state/[validator_activity]
+import ../../../src/state/validator/activity as validator_activity
 var source: ValidatorActivityProjection
 var config: ValidatorActivityConfig
 discard prepareValidatorActivity(source, config)

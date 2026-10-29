@@ -6,5 +6,5 @@
 # @@Verification={"group": "nominal", "expected": "ByteLimit", "early": ["prepareAuditableBundle(", "[2] expected: ByteLimit but got: BundleLength"]}
 
 import ../../../src/state/[auditable_bundle, input_refinement]
-import ../../../src/codec/work_report
+import ../../../src/codec/work/report as work_report
 discard prepareAuditableBundle(default(InputRefinement), BundleLength(4096))

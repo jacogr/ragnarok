@@ -7,8 +7,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/ticket_admission
-import ../../src/codec/[state_safrole, state_consensus]
+import ../../src/state/ticket/admission as ticket_admission
+import ../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
 
 let outcome = if paramStr(1) == "default": default(TicketAdmissionResult) else:
   admitSafroleTickets([], StateTime(0), StateTime(1), default(StateEntropyWord), [], default(

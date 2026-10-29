@@ -5,10 +5,14 @@
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[disk_history_context, managed_storage_samples, managed_disk_history_context]
-import ../../../src/app/[chain, disk_chain, disk_worker]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, managed_repository, managed_manifest, node_repository, database_identity]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/database_identity
 proc waitDone(worker: var DiskPublicationWorker) =
   ## Only scalar state is observed until collection or joined shutdown ends every exclusive graph borrow.
   let started = getMonoTime()

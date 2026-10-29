@@ -3,5 +3,6 @@
 # @@Verification={"group":"nominal","expected":"AnnulmentOutputIndex","early":["annulmentOutputAt(","[2] expected: AnnulmentOutputIndex but got: AccumulationAnnulmentIndex"]}
 
 ## Producer outcome ordinals cannot substitute selected service/hash pair ordinals.
-import ../../../src/state/[accumulation_annulled_outputs, accumulation_annulment]
+import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
+    annulment as accumulation_annulment]
 discard annulmentOutputAt(default(PreparedAnnulmentOutputs), AccumulationAnnulmentIndex(0))

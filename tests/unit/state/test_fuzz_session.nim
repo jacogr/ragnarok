@@ -4,8 +4,10 @@
 ## Session order, unique request tickets, exact negotiation and every frame split are native boundary witnesses.
 import std/[assertions, syncio]
 import ../../support/fuzz_protocol_context
-import ../../../src/state/[fuzz_protocol, fuzz_session, store]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/state/fuzz/[protocol as fuzz_protocol, session as fuzz_session]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc peer(): FuzzPeer =
   ## The host explicitly advertises current GP and implemented features.
   FuzzPeer(protocol: 1, features: 3, jam: FuzzVersion(major: 0, minor: 8, patch: 0), name: "test")

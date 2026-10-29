@@ -4,6 +4,6 @@
 # @@Verification={"group":"privacy","expected":"keep"}
 
 ## The zero/archive sentinel is available only through validated policy constructors.
-import ../../../src/storage/history_index
+import ../../../src/storage/history/index as history_index
 let policy = default(HistoryPolicy)
 discard policy.keep

@@ -6,11 +6,18 @@
 ## Actual successor signatures free prior computed reports at strict quorum while retaining original chain ownership and precise refusals.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_assurances, computed_chain, block_transition, block_admission,
-    availability, safrole_transition, safrole_authentication, store]
+import ../../../src/state/computed/[assurances as computed_assurances, chain as computed_chain]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/availability
+import ../../../src/state/safrole/[transition as safrole_transition,
+    authentication as safrole_authentication]
+import ../../../src/state/store
 import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[bounded, header, block_codec, state_layout, state_availability,
-    report_owned, owned, assurances, tickets, state_safrole]
+import ../../../src/codec/[bounded, header, block_codec]
+import ../../../src/codec/state/[layout as state_layout, availability as state_availability]
+import ../../../src/codec/[report_owned, owned, assurances, tickets]
+import ../../../src/codec/state/safrole as state_safrole
 import ../../../src/crypto/assurance_context
 import ../../support/[pvm_computed_assurances, arc_evidence]
 

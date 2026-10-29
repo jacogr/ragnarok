@@ -4,6 +4,6 @@
 ## An integer stream identity cannot silently stand in for a reception generation.
 # @@Verification={"group": "nominal", "expected": "CurrentBlockInputId", "early": ["cancel", "[2] expected: CurrentBlockInputId but got: int"]}
 
-import ../../../src/app/current_block_input
+import "../../../src/app/current/block/input" as current_block_input
 var input = default(CurrentBlockInput)
 discard input.cancel(1)

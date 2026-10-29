@@ -46,9 +46,9 @@ authored nonempty numeric/octet cases provide the substantive order/association 
 
 | Term | Current implementation |
 | --- | --- |
-| Work outputs, digests and complete reports | `composite.nim`, `work_digest.nim`, `work_report.nim`, retained `report_owned.nim`. |
+| Work outputs, digests and complete reports | `composite.nim`, `src/codec/work/digest.nim`, `src/codec/work/report.nim`, retained `report_owned.nim`. |
 | Availability specification | Standalone 104-byte value codec in `c2_records.nim`, using existing nominal report fields and explicit core/byte policy. |
-| Refinement context, imports, input commitments, work items/packages | `work_package.nim`, standalone components and package aggregate policy. |
+| Refinement context, imports, input commitments, work items/packages | `src/codec/work/package.nim`, standalone components and package aggregate policy. |
 | Tickets, preimages, guarantees, assurances, disputes | Dedicated family modules, exact framing and structural policies. |
 | Safrole winning ticket, epoch/winner markers, full/signing headers | `header.nim`, distinct sealed/unsigned owners and retained marker access. |
 | Complete extrinsic and block | `block_codec.nim`, typed components, complete preflight and retained children. |
@@ -70,7 +70,7 @@ operand vectors. No standalone transfer/operand codec fixture family exists at t
 
 ## State-layout extension
 
-`state_layout.nim` implements the three 31-byte key constructors and 64-byte branch/leaf
+`src/codec/state/layout.nim` implements the three 31-byte key constructors and 64-byte branch/leaf
 encodings from the pinned state-merklization chapter. It copies fixed metadata and hashes canonical
 node bytes through the existing primitive bridge. A decoded left child is a nominal **255-bit
 commitment**, never a fabricated full node hash. Root construction is covered separately below;
@@ -84,7 +84,7 @@ Git blob; its generator is never executed. See [the contract](../spec/state-layo
 
 ## Serialized state trie roots
 
-`state_trie.nim` calculates M over already serialized 31-byte key/value entries. It preserves every
+`src/codec/state/trie.nim` calculates M over already serialized 31-byte key/value entries. It preserves every
 MSB-first unary branch, uses the zero empty identity, rejects duplicate keys and checks exact
 nonempty-node work plus individual/aggregate payload ceilings before hashing. Inputs remain
 borrowed only for the call; returned roots are independent fixed values.
@@ -97,7 +97,7 @@ separate. See [the root contract](../spec/state-trie.md).
 
 ## Safrole-related state serialization
 
-`state_safrole.nim` implements T chapters 6–9 and 11: four entropy words, full 336-byte validator
+`src/codec/state/safrole.nim` implements T chapters 6–9 and 11: four entropy words, full 336-byte validator
 rosters for staging/active/previous, and E4 timeslot. Variable rosters enforce canonical count
 framing, protocol population and explicit resource ceilings before allocation. Decoder snapshots
 retain private immutable copied records; owner-bound field extraction returns independent values.
@@ -110,7 +110,7 @@ remain open. See [the component contract](../spec/state-safrole.md).
 
 ## Authorization state serialization
 
-`state_authorization.nim` implements T chapters 1–2: ordered per-core pools with canonical inner
+`src/codec/state/authorization.nim` implements T chapters 1–2: ordered per-core pools with canonical inner
 counts (0..8 hashes) and fixed queues (80 hashes), with no outer core count. Explicit core/hash/byte
 ceilings precede allocation; decoded snapshots retain private immutable core-bound rows and expose
 only independent fixed hash copies. Sequence order and repeated values remain unchanged.
@@ -122,7 +122,7 @@ and authorization transitions remain separate. See [the contract](../spec/state-
 
 ## Safrole basic-state serialization
 
-`state_consensus.nim` implements T chapter 4: pending full validators, opaque 144-byte ring
+`src/codec/state/consensus.nim` implements T chapter 4: pending full validators, opaque 144-byte ring
 commitment, tagged ticket/key sealer schedule and bounded ticket accumulator. Fixed schedules omit
 counts; tickets use C.2's identifier/E1-attempt record. Whole-parent preflight precedes child/parent
 allocation. Immutable parent owners retain nested roster/schedule/accumulator storage privately.
@@ -137,7 +137,7 @@ fixtures. Chapter 5 is now covered separately below; other state chapters remain
 
 ## Dispute judgment/offender state serialization
 
-`state_disputes.nim` implements T chapter 5's canonical good/bad/wonky report sets and offender-key
+`src/codec/state/disputes.nim` implements T chapter 5's canonical good/bad/wonky report sets and offender-key
 set. Each has its own canonical natural count and strictly increasing fixed-octet order. Per-set,
 aggregate item and complete-byte ceilings precede allocation; no owner is constructed until all
 four sets are valid. Extraction retains nominal report/key separation and immutable copied values.
@@ -150,7 +150,7 @@ separately below. See [the contract](../spec/state-disputes.md).
 
 ## Recent history and accumulation-output belt serialization
 
-`state_history.nim` implements T chapter 3's ordered recent records, canonical package/segment
+`src/codec/state/history.nim` implements T chapter 3's ordered recent records, canonical package/segment
 root dictionaries, E4 slots and variable optional belt peaks. It follows T's explicit
 header/super-peak/state-root order. Empty versus present-zero peaks retain distinct tagged values;
 holes and trailing absences remain unchanged. Whole-parent preflight precedes all retained storage.
@@ -163,7 +163,7 @@ is made. Chapter 10 is now covered below. See [the contract](../spec/state-histo
 
 ## Availability-assignment state serialization
 
-`state_availability.nim` implements T chapter 10's fixed core sequence of optional full guarantees
+`src/codec/state/availability.nim` implements T chapter 10's fixed core sequence of optional full guarantees
 and separate E4 registration times. Standalone scan/measure/capture/encoding helpers share the
 existing guarantee record rules; extrinsic inter-record core ordering remains intact. Every slot
 and nested child validates before parent/child allocation. Extracted guarantees retain immutable
@@ -178,7 +178,7 @@ below. See [the contract](../spec/state-availability.md).
 
 ## Privileged-service configuration state extension
 
-`state_privileges.nim` implements T chapter 12: fixed E4 manager/core assigners/delegator/registrar
+`src/codec/state/privileges.nim` implements T chapter 12: fixed E4 manager/core assigners/delegator/registrar
 and a count-prefixed dictionary of E4 service IDs and E8 gas allowances. Strict numeric key
 order, uint32 service bounds, full uint64 gas, resource policy and whole-parent preflight precede
 allocation. Private ARC snapshots expose copied roles, nominal core extraction and fixed copied
@@ -193,7 +193,7 @@ below. See [the contract](../spec/state-privileges.md).
 
 ## Activity statistics state extension
 
-`state_statistics.nim` implements pinned T chapter 13: separate count-prefixed current/previous
+`src/codec/state/statistics.nim` implements pinned T chapter 13: separate count-prefixed current/previous
 validator arrays with six E4 counters per record, fixed core tuples of eight naturals, and a
 numeric-key service dictionary with eleven natural fields per value. Separate roster populations
 support epoch resizing. Full preflight precedes allocation; private ARC owners expose copied,
@@ -212,7 +212,7 @@ See [the contract and exact trace evidence](../spec/state-statistics.md).
 
 ## Ready and accumulated work state extension
 
-`state_workqueues.nim` implements T chapters 14/15 as fixed epoch rings without an outer count.
+`src/codec/state/workqueues.nim` implements T chapters 14/15 as fixed epoch rings without an outer count.
 Ready slots contain count-prefixed ordered report/dependency-set pairs; accumulated slots contain
 count-prefixed canonical package-hash sets. Each report retains the existing child structural
 policy. Independent row/aggregate item, dependency, child-byte and parent-byte ceilings preflight
@@ -230,7 +230,7 @@ See [the contract](../spec/state-workqueues.md).
 
 ## Last accumulation output state extension
 
-`state_outputs.nim` implements T chapter 16 as one count-prefixed ordered sequence of E4 service
+`src/codec/state/outputs.nim` implements T chapter 16 as one count-prefixed ordered sequence of E4 service
 IDs and fixed 32-byte output commitments. The complete count/extent/byte policy is checked before
 allocation or payload access. Private acyclic ARC owners expose only copied fixed pairs/counts
 through nominal indices. Encoding preserves supplied sequence order and duplicates structurally;
@@ -247,7 +247,7 @@ See [the contract](../spec/state-outputs.md).
 
 ## Service-account metadata extension
 
-`state_accounts.nim` implements C(255, service): version zero, code hash, five E8 fields and four
+`src/codec/state/accounts.nim` implements C(255, service): version zero, code hash, five E8 fields and four
 E4 fields in a fixed 89-byte payload. Service identity remains in the interleaved chapter key.
 The decoder returns independent fixed values without heap ownership after complete policy/version/
 payload checks. Distinct balance, gas, storage-size/item, timeslot and service types preserve roles;
@@ -263,7 +263,7 @@ parity gate is unchanged. See [the contract](../spec/state-accounts.md).
 
 ## Service storage and preimage entry extension
 
-`state_service_values.nim` implements C(service, E4(uint32-max) || raw key) storage mappings and
+`src/codec/state/service_values.nim` implements C(service, E4(uint32-max) || raw key) storage mappings and
 C(service, E4(uint32-max-1) || hash) preimage mappings, with unframed raw values. Logical key/value
 policy and native scratch extent precede key hashing/output copying. Capture of an existing key
 retains independent raw bytes and checks its interleaved service identity, requiring no original
@@ -279,7 +279,7 @@ See [the contract](../spec/state-service-values.md).
 
 ## Service request-history extension
 
-`state_requests.nim` implements C(service, E4(length) || lookup hash) and count-prefixed 0..3 E4
+`src/codec/state/requests.nim` implements C(service, E4(length) || lookup hash) and count-prefixed 0..3 E4
 history slots. Fixed tagged alternatives expose only actual mode fields; defaults/failures remain
 separate. Complete count/item/byte preflight precedes copying, key hashing and output allocation.
 No chronology, availability, request lifecycle or preimage/context invariant is inferred.

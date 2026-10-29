@@ -3,7 +3,7 @@
 
 ## Default worker receipts/admission cannot be mistaken for completed current disk IO or valid retirement authority.
 import std/cmdline
-import ../../src/app/disk_worker
+import ../../src/app/disk/worker as disk_worker
 let completion = default(DiskPublicationCompletion)
 let admission = default(DiskPublicationAdmission)
 case paramStr(1)

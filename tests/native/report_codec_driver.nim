@@ -7,7 +7,9 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[composite, bounded, work_digest, work_report, report_owned, owned]
+import ../../src/codec/[composite, bounded]
+import ../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../src/codec/[report_owned, owned]
 
 # Use Nimony's checked unsigned parser without narrowing valid uint64 fixture values through signed int.
 proc unsigned(text: string): uint64 =

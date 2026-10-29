@@ -3,6 +3,6 @@
 
 ## Joined session internals cannot be forged or retagged.
 # @@Verification={"group": "privacy", "expected": "successful"}
-import ../../../src/quic/block_download_session
+import "../../../src/quic/block/download/session" as block_download_session
 var owner = default(DownloadSessionResult[bool])
 discard owner.successful

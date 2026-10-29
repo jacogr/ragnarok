@@ -5,7 +5,9 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_state_context, current_typed_context,
     accumulation_current_chain_context, supplied_logical_context]
-import ../../src/state/[current_logical, current_state, supplied_logical_inventory, inventory, manifest]
+import ../../src/state/current/[logical as current_logical, state as current_state]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/state/[inventory, manifest]
 import ../../src/codec/report_owned
 proc extract(outcome: CurrentLogicalResult[CurrentLogicalState]) {.noinline.} =
   ## Failed/default results grant no logical owner.

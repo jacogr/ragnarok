@@ -3,6 +3,6 @@
 
 ## Initial membership and actual header evidence cannot be overwritten through a public owner.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/state/fuzz_ancestry
+import ../../../src/state/fuzz/ancestry as fuzz_ancestry
 let context = default(FuzzAncestry)
 discard context.data

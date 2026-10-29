@@ -4,13 +4,20 @@
 ## Original report context after a real adoption resumes hash-free under the same clock/token, or preserves only the actually selected prefix.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, chain, current_handoff, current_block_download,
-    current_block_input, download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers, current_block_download_session]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/current/handoff as current_handoff
+import "../../../src/app/current/block/download" as current_block_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/session" as current_block_download_session
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
-import ../../../src/state/[store, accumulation_current_update, report_anchors]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
 import ../../support/[current_guarantee_sequence_context, current_consecutive_context,
   current_consecutive_download_context, current_download_command_context,

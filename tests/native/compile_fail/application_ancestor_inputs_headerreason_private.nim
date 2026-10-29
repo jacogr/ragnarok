@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "headerReason"}
 
 ## Captured headers and refusal alternatives cannot be forged through raw fields.
-import ../../../src/app/ancestor_inputs
+import ../../../src/app/ancestor/inputs as ancestor_inputs
 let owner = default(AncestorInputResult)
 discard owner.headerReason

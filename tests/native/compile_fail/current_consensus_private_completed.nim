@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Current composed-state proof representation stays private.
-import ../../../src/state/[accumulation_current_consensus, accumulation_consensus,
-    accumulation_current_authorization]
+import ../../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/accumulation/current/authorization as accumulation_current_authorization
 let refused = prepareCurrentAccumulationConsensus(default(PreparedCurrentAccumulationAuthorization),
     default(AccumulationConsensusLimits))
 discard refused.completed

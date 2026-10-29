@@ -5,11 +5,17 @@
 ## Genuine host effects retain exact successful modification membership across equal roots and checkpoints.
 import std/[assertions, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_layout,
-    state_service_values, state_requests, state_outputs, state_privileges, state_authorization,
-    state_safrole, state_trie, c2_records]
-import ../../../src/state/[accumulation_dispatch, accumulation_effects, accumulation_context,
-    accumulation_invocation, accumulation_machine, accumulation_outcome, accumulation_inputs, store]
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests, outputs as state_outputs,
+    privileges as state_privileges, authorization as state_authorization, safrole as state_safrole,
+    trie as state_trie]
+import ../../../src/codec/c2_records
+import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    effects as accumulation_effects, context as accumulation_context,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    outcome as accumulation_outcome, inputs as accumulation_inputs]
+import ../../../src/state/store
 import ../../../src/pvm/[machine, step, gas, host_fetch]
 import ../../../src/crypto/primitives
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program,

@@ -7,8 +7,10 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/[sealer_state, sealer_schedule, store]
-import ../../src/codec/[state_safrole, state_trie, bounded]
+import ../../src/state/sealer/[state as sealer_state, schedule as sealer_schedule]
+import ../../src/state/store
+import ../../src/codec/state/[safrole as state_safrole, trie as state_trie]
+import ../../src/codec/bounded
 
 ## A real initialized parent deliberately lacks C(4), giving a distinct actual publication refusal.
 proc refused(): SealerStateResult =

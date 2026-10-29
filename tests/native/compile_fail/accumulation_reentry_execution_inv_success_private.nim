@@ -4,6 +4,6 @@
 
 ## Reject private reentry bootstrap/completion payload access.
 
-import ../../../src/state/accumulation_reentry_invocation
+import ../../../src/state/accumulation/reentry/invocation as accumulation_reentry_invocation
 var result: AccumulationReentryInvocationResult[int]
 discard result.completed

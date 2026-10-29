@@ -8,7 +8,7 @@ verification. Existing Gray Paper hashes remain unchanged in `spec/pins.json`.
 
 ## Input and output contract
 
-`src/state/ticket_admission.nim` implements `admitSafroleTickets`. It borrows exact serialized
+`src/state/ticket/admission.nim` implements `admitSafroleTickets`. It borrows exact serialized
 C(4), fixed owned ticket records and posterior entropy[2] synchronously. The caller supplies
 parent/new slots and explicit chain/resource parameters. The C(4) input must already contain
 posterior pending validators and their ring root, while retaining the prior accumulator and
@@ -95,7 +95,7 @@ are outside this increment.
 
 ## Atomic working-store adapter
 
-`src/state/ticket_state.nim` adds `admitSafroleTicketsState`. The caller supplies the retained
+`src/state/ticket/state.nim` adds `admitSafroleTicketsState`. The caller supplies the retained
 parent slot and target slot. Run roster/root rotation first, then entropy/time advancement, then
 this admission step on the private working store. Exact C(11) must already equal the target slot;
 C(6) must be exactly 128 bytes. The adapter obtains entropy[2] from that same retained snapshot,

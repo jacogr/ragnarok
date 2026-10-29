@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[state_statistics, state_trie]
+import ../../../src/codec/state/[statistics as state_statistics, trie as state_trie]
 var value = default(ActivityResult[ActivityInfo])
 value.error = ActivityError.None

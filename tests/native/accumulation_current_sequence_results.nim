@@ -3,7 +3,8 @@
 
 ## Default/refused current sequences and plans expose no successful source/history/input or inactive parent reason.
 import std/cmdline
-import ../../src/state/[accumulation_current_sequence, accumulation_current_round]
+import ../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
 let owner = default(CurrentSequenceResult[PreparedCurrentContinuation])
 let refusedSource = startCurrentAccumulationSequence(default(PreparedCurrentAccumulationRound))
 let sequence = default(CurrentAccumulationSequence)

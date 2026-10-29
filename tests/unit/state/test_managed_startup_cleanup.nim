@@ -5,8 +5,10 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/managed_storage_samples
-import ../../../src/app/[services, options, disk_worker, disk_chain]
-import ../../../src/storage/[managed_manifest, managed_io, file_errors]
+import ../../../src/app/[services, options]
+import ../../../src/app/disk/[worker as disk_worker, chain as disk_chain]
+import ../../../src/storage/managed/[manifest as managed_manifest, io as managed_io]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc pathExists(path: cstring, mode: cint): cint {.importc: "access", header: "<unistd.h>".}
   ## Native zero-mode existence checks witness the absent pending entry without reading it.

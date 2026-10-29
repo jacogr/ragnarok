@@ -4,14 +4,20 @@
 ## Real signed guarantees, ancestor lookup and current PVM effects reach native durability, RPC notification and strict restart.
 import std/[assertions, envvars, syncio, base64, strutils]
 import std/posix/posix
-import ../../../src/app/[chain, candidate, disk_chain, disk_worker]
+import ../../../src/app/[chain, candidate]
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/rpc/server
 import ../../../src/codec/[bounded, report_owned, block_codec, composite]
-import ../../../src/state/[store, disk_store, block_admission, report_admission,
-  accumulation_current_consensus, accumulation_current_update]
-import ../../../src/storage/[file_repository, database_identity, node_repository,
-    managed_repository, managed_manifest]
+import ../../../src/state/[store, disk_store]
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/current/[consensus as accumulation_current_consensus,
+    update as accumulation_current_update]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/database_identity
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   accumulation_current_disk_context, accumulation_provision_integration,
   pvm_accumulation_provision, managed_storage_samples, rpc_socket]

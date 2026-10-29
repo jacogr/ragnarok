@@ -27,7 +27,7 @@ Telemetry activation is rejected until concrete outgoing-endpoint lifecycle repo
 
 Policy v1 is a bounded UTF-8-compatible ASCII key/value document beginning with
 `ragnarok-download-policy-v1`. Its explicit dotted keys follow DownloadLoopLimits;
-all 314 leaves must occur exactly once. The [frozen schema](../src/app/download_policy_fields.nim)
+all 314 leaves must occur exactly once. The [frozen schema](../src/app/download/policy/fields.nim)
 lists their exact names. Each is canonical unsigned decimal,
 including explicit zero where a stage permits it. Reject unknown, duplicate,
 missing, signed, non-decimal, overflowing and narrow-width values. Blank and

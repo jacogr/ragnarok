@@ -6,8 +6,10 @@
 import std/[assertions, envvars, syncio]
 import ../../support/arc_evidence
 import ../../../src/state/[global_snapshot, manifest, store]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_composition,
-    state_consensus, state_accounts, state_service_values, state_requests]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition, consensus as state_consensus, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing only for preflight or explicit backend rollback witnesses.

@@ -7,11 +7,15 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[block_download, block_input, services, options, chain, candidate, handoff,
-    download_schedule, preparation_worker]
+import "../../../src/app/block/download" as block_download
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[services, options, chain, candidate, handoff]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/preparation_worker
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, header, report_owned, assurances]
-import ../../../src/state/[store, accumulation_finalization]
+import ../../../src/state/store
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/[application_candidate_context, accumulation_completion_context,
   block_download_transport, arc_evidence]
 

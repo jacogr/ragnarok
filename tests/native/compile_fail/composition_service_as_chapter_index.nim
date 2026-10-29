@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: StateChapterId but got: ServiceIndex"}
 
-import ../../../src/codec/[state_composition, state_accounts]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 let chapters = default(StateChapters)
 discard chapters[ServiceIndex(1)]

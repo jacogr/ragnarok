@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "fileReason"}
 
 ## File refusal cannot be substituted for a successful recovery graph.
-import ../../../src/app/checkpoint_recovery
+import ../../../src/app/checkpoint/recovery as checkpoint_recovery
 let outcome = default(ApplicationRecoveryResult)
 discard outcome.fileReason

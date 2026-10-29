@@ -9,7 +9,7 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-include ../../src/codec/state_composition
+include ../../src/codec/state/composition
 include ./composition_fixture
 import ../support/probe_cases
 

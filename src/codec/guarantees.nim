@@ -9,7 +9,9 @@
 ## checked report access.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded, composite, work_report, report_owned, owned, assurances]
+import ./[natural, fixed_unsigned, bounded, composite]
+import ./work/report as work_report
+import ./[report_owned, owned, assurances]
 
 type
   GuaranteeSlot* = distinct uint32 ## A guarantee's evaluation slot is separate from anchor/lookup timeslots.

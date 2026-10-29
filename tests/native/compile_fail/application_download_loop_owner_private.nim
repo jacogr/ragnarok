@@ -3,6 +3,6 @@
 
 ## A caller cannot replace the exclusively borrowed Services pointer.
 # @@Verification={"group": "privacy", "expected": "owner"}
-import ../../../src/quic/block_download_loop
+import "../../../src/quic/block/download/loop" as block_download_loop
 var dispatcher = default(BlockDownloadLoop)
 discard dispatcher.owner

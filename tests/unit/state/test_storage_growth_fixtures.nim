@@ -4,8 +4,9 @@
 ## Independently check sustained fixture revisions, generation256 wrap and complete retained maps.
 import std/[assertions, syncio]
 import ../../support/storage_growth_samples
-import ../../../src/storage/[node_repository, full_state_trie]
-import ../../../src/codec/state_layout
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/layout as state_layout
 
 for hot in [false, true]:
   # Hot keys revisit256 identities; sweep keys advance across the full map.

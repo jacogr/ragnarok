@@ -3,7 +3,9 @@
 
 ## Worker-specific failure extraction and input-owner destruction remain checked runtime contracts.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[block_download, block_input, services, options, preparation_worker]
+import "../../src/app/block/download" as block_download
+import "../../src/app/block/input" as block_input
+import ../../src/app/[services, options, preparation_worker]
 import ../../src/codec/[bounded, report_owned]
 import ../support/application_candidate_context
 

@@ -4,10 +4,16 @@
 ## Independent epoch arrays and genuinely signed report-admission sources exercise validator counter ordering.
 
 import std/assertions
-import ../../src/state/[validator_activity, report_admission, guarantee_credentials,
-    block_transition, block_admission, store]
-import ../../src/codec/[bounded, composite, owned, state_statistics, state_safrole, state_layout,
-  state_trie, assurances, tickets, report_owned, block_codec, header]
+import ../../src/state/validator/activity as validator_activity
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, owned]
+import ../../src/codec/state/[statistics as state_statistics, safrole as state_safrole,
+    layout as state_layout, trie as state_trie]
+import ../../src/codec/[assurances, tickets, report_owned, block_codec, header]
 import ./report_admission_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

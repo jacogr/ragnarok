@@ -4,13 +4,16 @@
 ## Actual TLS stream retirement precedes token-bound context discovery and resumed worker execution.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[block_input, block_download, candidate, chain, services, options,
-    preparation_worker, handoff, download_schedule]
-import ../../../src/app/download_schedule
-import ../../../src/quic/block_download_session
+import "../../../src/app/block/input" as block_input
+import "../../../src/app/block/download" as block_download
+import ../../../src/app/[candidate, chain, services, options, preparation_worker, handoff]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/quic/block/download/session" as block_download_session
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
-import ../../../src/state/[report_anchors, accumulation_completion]
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/accumulation/completion as accumulation_completion
 import ../../support/[application_candidate_context, accumulation_completion_context]
 import ../../support/block_download_transport
 import ../../support/report_admission_context as report_context

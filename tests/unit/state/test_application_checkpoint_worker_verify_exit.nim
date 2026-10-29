@@ -4,12 +4,13 @@
 ## Independent child verification exits preserve exact file bytes and release locks without transferring any decoded graph.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_worker, checkpoint_writer, checkpoint_file,
-    checkpoint_codec, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[worker as checkpoint_worker, writer as checkpoint_writer,
+    file as checkpoint_file, codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../../src/state/store
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context]
 const
   Directory = "application-checkpoint-worker-verify-exit"

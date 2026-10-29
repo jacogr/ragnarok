@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "service"}
 
 ## Caller cannot forge complete request association authority or mutate failed alternatives.
-import ../../../src/state/preimage_linkage
+import ../../../src/state/preimage/linkage as preimage_linkage
 var value = default(PreimageLinkageResult[CheckedPreimageLinkage])
 discard value.service

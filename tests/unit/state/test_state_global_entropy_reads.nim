@@ -4,8 +4,10 @@
 ## Every entropy word is retained independently; malformed present evidence never becomes a zero default.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, safrole as state_safrole,
+    trie as state_trie]
 var words = default(StateEntropy)
 for i in 0..<4:
   # Distinct word positions and endpoint bytes expose ordering or truncation mistakes.

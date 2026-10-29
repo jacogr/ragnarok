@@ -4,13 +4,17 @@
 ## Real guest values remain supplied at slot2 across duplicate calls; mixed body refusal and a short local union budget preserve exact prefixes.
 import std/[assertions, syncio, envvars, monotimes]
 import std/posix/posix
-import ../../../src/app/[chain, candidate, services, current_download_command]
+import ../../../src/app/[chain, candidate, services]
+import ../../../src/app/current/download/command as current_download_command
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded, composite, state_service_values, state_requests]
+import ../../../src/codec/[report_owned, bounded, composite]
+import ../../../src/codec/state/[service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_completion,
-  accumulation_current_activity, preimages]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    completion as accumulation_current_completion, activity as accumulation_current_activity]
+import ../../../src/state/preimages
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_provision_sequence_context, current_consecutive_download_context,
   current_sequence_command_context, current_services_disk_samples, managed_storage_samples,
   block_download_transport]

@@ -18,7 +18,7 @@ See [the module guide](README.md) and [feature contract](../../spec/full-state-t
 ## Authorized in-memory StateStore tranche
 
 The maintainer explicitly authorized db #1, coordinated with idle state #5, to integrate only
-`full_state_trie.nim` into `src/state/store.nim` in three stacked PRs. Preserve StateStore's public
+`full/state_trie.nim` into `src/state/store.nim` in three stacked PRs. Preserve StateStore's public
 API, sorted iteration, retained values/forks and atomic publication; validate existing consumers.
 This narrow authorization supersedes the earlier isolation gate for that task only. Disk adoption,
 canonical durable heads, startup configuration and unrelated state/PVM work remain gated.

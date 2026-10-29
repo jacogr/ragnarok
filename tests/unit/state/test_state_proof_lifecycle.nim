@@ -5,7 +5,8 @@
 # @@Verification={"arc": "state_proof_lifecycle_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/state/[store, trie_proof, snapshot_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/arc_evidence
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer between success/refusal recovery stages.

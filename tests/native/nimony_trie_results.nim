@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_trie
+include ../../src/codec/state/trie
 
 # Sequential test-only backend refusal is absent from the production-linked root corpus.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

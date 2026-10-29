@@ -3,6 +3,6 @@
 
 ## State callers cannot bypass typed state/root adapters through the underlying raw file owner.
 # @@Verification={"group": "privacy", "expected": "native"}
-import ../../../src/state/checkpoint_writer
+import ../../../src/state/checkpoint/writer as checkpoint_writer
 let writer = default(CheckpointWriter)
 discard writer.native

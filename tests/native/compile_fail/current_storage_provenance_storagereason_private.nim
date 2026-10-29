@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "storageReason"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/accumulation_current_update
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 let source = default(CurrentChainPreparationResult)
 discard source.storageReason

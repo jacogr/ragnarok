@@ -3,6 +3,6 @@
 
 ## External callers cannot forge retained logical startup authority.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/app/[current_logical_startup]
+import ../../../src/app/current/logical/startup as current_logical_startup
 var owner = default(CurrentLogicalDeclarations)
 discard owner.data

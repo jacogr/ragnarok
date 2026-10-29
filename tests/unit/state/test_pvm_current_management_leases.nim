@@ -4,12 +4,20 @@
 ## Independent local management HTTP stays responsive while actual current native leases remain uncollected.
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_input, current_handoff,
-    preparation_worker, disk_worker, disk_chain, proof_query, proof_worker]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/preparation_worker
+import ../../../src/app/disk/[worker as disk_worker, chain as disk_chain]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, proof_plan, accumulation_current_update]
-import ../../../src/codec/[bounded, state_trie, report_owned, block_codec]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/[report_owned, block_codec]
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
 import ../../support/[management_socket, proof_query_context, current_application_context,
     current_consecutive_context, current_services_disk_samples, managed_storage_samples]

@@ -3,7 +3,8 @@
 
 ## Default/refused coverage alternatives cannot expose complete rows or inactive provider owners.
 import std/cmdline
-import ../../src/state/[accumulation_coverage, accumulation_annulment]
+import ../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment]
 import ../../src/codec/header
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationCoverage)

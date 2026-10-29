@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: LookupSlot but wanted: AnchorSlot"}
 
-import ../../../src/codec/work_report
+import ../../../src/codec/work/report as work_report
 let wrong = ReportHeader(anchorSlot: LookupSlot(0))
 discard wrong

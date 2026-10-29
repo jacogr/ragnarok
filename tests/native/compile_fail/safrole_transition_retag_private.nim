@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/safrole_transition
+import ../../../src/state/safrole/transition as safrole_transition
 var hidden = default(SafroleTransitionResult)
 hidden.status = SafroleTransitionError.None

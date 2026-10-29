@@ -4,8 +4,9 @@
 ## Exercise every required account/provision hash without assuming whole-map reconstruction.
 ## Exposes assertBatchHashRollback for observer-linked creation/deletion publication witnesses.
 import std/assertions
-import ../../src/state/[accumulation_batch, accumulation_provisions,
-  accumulation_terminal_provisions, store]
+import ../../src/state/accumulation/[batch as accumulation_batch,
+    provisions as accumulation_provisions, terminal_provisions as accumulation_terminal_provisions]
+import ../../src/state/store
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the observer before measuring a real successful publication.

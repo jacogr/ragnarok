@@ -4,8 +4,10 @@
 ## Strict optimized recent-anchor result guards include genuine independent full C3 correction controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_recent, computed_state]
-import ../../src/codec/[bounded, state_history, assurances]
+import ../../src/state/computed/[recent as computed_recent, state as computed_state]
+import ../../src/codec/bounded
+import ../../src/codec/state/history as state_history
+import ../../src/codec/assurances
 import ../support/[pvm_computed_recent, pvm_computed_state_vectors]
 
 proc check[T](outcome: ComputedRecentResult[T], reason: ComputedRecentError) =

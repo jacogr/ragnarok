@@ -6,8 +6,11 @@ import std/assertions
 import ../../src/app/chain
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/report_owned
-import ../../src/state/[accumulation_current_update, accumulation_current_consensus,
-    report_admission, block_transition, block_admission]
+import ../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
 import ./[current_consecutive_context, accumulation_current_chain_context]
 proc currentRotatedSequenceFixture*(base: OwnedReport,
     count: Positive = 3): CurrentConsecutiveFixture =

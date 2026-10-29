@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/[work_digest, composite]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/composite
 let invalid = DigestResult(error: CompositeError.Truncated, value: WorkDigest())
 discard invalid

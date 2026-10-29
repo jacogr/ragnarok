@@ -4,8 +4,14 @@
 ## Test-only composition for the agreed collection-before-enqueue consumer; no new public review adapter, predicate or policy.
 import std/assertions
 import ./account_review_plan_context
-import ../../src/state/[current_logical, current_state, current_review, account_review_plan,
-    account_review, inventory, account_audit_plan, footprint_audit, preimage_content, preimage_linkage]
+import ../../src/state/current/[logical as current_logical, state as current_state,
+    review as current_review]
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/state/account/review as account_review
+import ../../src/state/inventory
+import ../../src/state/account/audit/plan as account_audit_plan
+import ../../src/state/footprint_audit
+import ../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../src/codec/bounded
 type CurrentLogicalReviewComposition* = object ## Test descriptors keep original complete logical provenance beside the existing current-source review, without joining different compact captures.
   logical*: CurrentLogicalState

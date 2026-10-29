@@ -4,7 +4,8 @@
 ## Default/refused bound preimage results expose neither partial owners nor unselected child causes.
 
 import std/cmdline
-import ../../src/state/[accumulation_preimages, accumulation_activity]
+import ../../src/state/accumulation/[preimages as accumulation_preimages,
+    activity as accumulation_activity]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationPreimages)

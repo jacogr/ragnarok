@@ -6,8 +6,10 @@ import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[block_codec, report_owned]
-import ../../src/state/[accumulation_current_completion, accumulation_current_update,
-    report_admission, block_admission]
+import ../../src/state/accumulation/current/[completion as accumulation_current_completion,
+    update as accumulation_current_update]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/admission" as block_admission
 import ./[current_consecutive_context, accumulation_current_chain_context,
   accumulation_execution_context, accumulation_activity_context, accumulation_current_round_context]
 

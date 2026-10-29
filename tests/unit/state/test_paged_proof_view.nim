@@ -5,9 +5,14 @@
 # @@Verification={"arc":"paged_proof_view_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, paged_native_fixture]
-import ../../../src/state/[paged_proof_view, proof_view, trie_proof]
-import ../../../src/storage/[paged_store, paged_stream, paged_codec, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/state/paged/proof_view as paged_proof_view
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/trie_proof
+import ../../../src/storage/paged/[store as paged_store, stream as paged_stream,
+    codec as paged_codec]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc limits(): PagedProofViewLimits =
   ## Explicit independent batch retention and per-query native work policies bound the bridge.
   PagedProofViewLimits(proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(10000)),

@@ -11,7 +11,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/codec/state_disputes
+include ../../../src/codec/state/disputes
 
 ## Small explicit per-set and whole-parent ceilings include all four canonical count prefixes.
 proc policy(): DisputeStateConfig =

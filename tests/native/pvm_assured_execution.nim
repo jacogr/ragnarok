@@ -4,8 +4,9 @@
 ## Strict actual assured execution result guards with genuine success and precise maintained phase refusals.
 
 import std/[assertions, cmdline]
-import ../../src/state/[assured_execution, assured_queue, accumulation_execution,
-    accumulation_round, accumulation_runner]
+import ../../src/state/assured/[execution as assured_execution, queue as assured_queue]
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, runner as accumulation_runner]
 import ../../src/codec/bounded
 import ../support/pvm_assured_execution
 

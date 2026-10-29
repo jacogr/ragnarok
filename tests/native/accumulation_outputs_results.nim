@@ -4,9 +4,11 @@
 ## Default and refused completed-history output projections cannot expose pairs, roots or unrelated reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_outputs, accumulation_execution,
-  accumulation_continuation_execution, accumulation_reentry]
-import ../../src/codec/state_outputs
+import ../../src/state/accumulation/[outputs as accumulation_outputs,
+    execution as accumulation_execution]
+import ../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../src/state/accumulation/reentry as accumulation_reentry
+import ../../src/codec/state/outputs as state_outputs
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationOutputs)

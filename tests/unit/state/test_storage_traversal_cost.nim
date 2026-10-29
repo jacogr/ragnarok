@@ -3,8 +3,11 @@
 
 ## Isolated physical repository workloads measure retained table memory and checked shallow/deep graph walks.
 import std/[assertions, syncio, envvars, monotimes, times]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, record_codec]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/record_codec
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 type
   Scenario = object ## One mutable owner and nine immutable readers keep all measured storage reachable.

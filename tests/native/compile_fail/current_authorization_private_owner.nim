@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Current pool proof representation stays private.
-import ../../../src/state/[accumulation_current_authorization, accumulation_authorization,
-    accumulation_current_preimages]
+import ../../../src/state/accumulation/current/authorization as accumulation_current_authorization
+import ../../../src/state/accumulation/authorization as accumulation_authorization
+import ../../../src/state/accumulation/current/preimages as accumulation_current_preimages
 let refused = prepareCurrentAccumulationAuthorization(default(PreparedCurrentAccumulationPreimages),
     default(AccumulationAuthorizationLimits))
 discard default(PreparedCurrentAccumulationAuthorization).data

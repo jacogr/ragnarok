@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "initialized"}
 
 ## Original selection/global evidence and tagged alternatives remain private.
-import ../../../src/state/parent_globals
+import ../../../src/state/parent/globals as parent_globals
 var owner = default(SelectedParentGlobals)
 discard owner.initialized

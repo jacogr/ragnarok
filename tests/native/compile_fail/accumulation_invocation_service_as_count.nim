@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "AccumulationArgumentCount", "early": ["accumulationArguments(", "[3] expected: AccumulationArgumentCount but got: ServiceIndex"]}
 
-import ../../../src/state/[accumulation_invocation, store]
+import ../../../src/state/accumulation/invocation as accumulation_invocation
+import ../../../src/state/store
 import ../../../src/codec/[bounded, composite, header]
 discard accumulationArguments(HeaderSlot(0), ServiceIndex(0), ServiceIndex(0))

@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../src/codec/bounded
 
 ## Read exact trusted hex tokens; production state values remain raw bytes.
 proc unhex(text: string): seq[byte] =

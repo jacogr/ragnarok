@@ -4,8 +4,10 @@
 ## Detached export remains available through a real canonical execution lease and joined aggregate shutdown.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[services, block_input, checkpoint_worker, checkpoint_transfer,
-    checkpoint_identity, checkpoint_file]
+import ../../../src/app/services
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer,
+    identity as checkpoint_identity, file as checkpoint_file]
 import ../../../src/rpc/server
 import ../../../src/codec/bounded
 import ../../../src/chain/genesis

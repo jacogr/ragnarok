@@ -4,6 +4,6 @@
 
 ## Publication result payloads and discriminators remain private.
 
-import ../../../src/state/accumulation_block_publication
+import "../../../src/state/accumulation/block/publication" as accumulation_block_publication
 var outcome: AccumulationPublicationResult
 discard outcome.completed

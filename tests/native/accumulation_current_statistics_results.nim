@@ -3,8 +3,9 @@
 
 ## Default/refused current statistics cannot reveal initialized empty values or detached terminal ownership.
 import std/cmdline
-import ../../src/codec/state_statistics
-import ../../src/state/[accumulation_current_statistics, accumulation_current_driver]
+import ../../src/codec/state/statistics as state_statistics
+import ../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver]
 let owner = default(CurrentAccumulationStatisticsResult[PreparedCurrentAccumulationStatistics])
 let statistics = default(PreparedCurrentAccumulationStatistics)
 let refused = prepareCurrentAccumulationStatistics(default(CompletedCurrentAccumulationSequence),

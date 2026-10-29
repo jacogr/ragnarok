@@ -5,8 +5,12 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io, storage_bootstrap_faults]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, file_migration, database_identity]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/repository as managed_repository
+import ../../../src/storage/file/migration as file_migration
+import ../../../src/storage/database_identity
 proc scenario(writeFault: bool, skip, failures: cint, permanent = false): uint64 {.raises.} =
   ## Capture one exact contextual source revision and independently observe every destination boundary.
   resetIo()

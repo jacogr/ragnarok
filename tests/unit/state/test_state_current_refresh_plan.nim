@@ -5,8 +5,10 @@
 # @@Verification={"arc":"state_current_refresh_plan_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, arc_evidence]
-import ../../../src/state/[current_refresh_plan, current_request_keys]
-import ../../../src/codec/[bounded, report_owned, state_composition]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/request_keys as current_request_keys
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/composition as state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Complete actual source/key derivation precedes hash-free planning observations.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

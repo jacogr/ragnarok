@@ -4,7 +4,8 @@
 ## Strict default cache/result guards with an actual nonempty signed/current key derivation control.
 import std/[assertions, cmdline, syncio]
 import ../support/current_request_keys_context
-import ../../src/state/[current_request_keys, inventory]
+import ../../src/state/current/request_keys as current_request_keys
+import ../../src/state/inventory
 import ../../src/codec/report_owned
 proc extract(value: CurrentRequestKeyResult[CurrentRequestKeys]) {.noinline.} =
   ## Defaults and failed captures expose no partial key cache.

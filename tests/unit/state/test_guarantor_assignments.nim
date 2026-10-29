@@ -11,7 +11,10 @@
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/guarantors
-import ../../../src/codec/[state_safrole, assurances, bounded, header, guarantees, work_report, disputes]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[assurances, bounded, header, guarantees]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/disputes
 import ../../support/arc_evidence
 
 ## The existing test observer refuses hash calls while retaining the maintained production backend otherwise.

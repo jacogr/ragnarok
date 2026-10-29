@@ -4,8 +4,10 @@
 ## Separate native processes prepare and strictly reopen owned larger fixtures with an exact expected root.
 import std/[assertions, cmdline, syncio]
 import ../support/[storage_deployment_samples, storage_deployment_backends, storage_allocations]
-import ../../src/storage/[node_repository, file_repository, database_identity]
-import ../../src/codec/state_trie
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/database_identity
+import ../../src/codec/state/trie as state_trie
 
 proc rootHex(root: StateRoot): string =
   ## The producer emits one canonical lowercase identity without deriving checkpoint or protocol authority.

@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "GuaranteeSlot", "early": ["computedGuarantorAt(", "[2] expected: GuaranteeSlot but got: StateTime"]}
 
-import ../../../src/state/computed_guarantors
-import ../../../src/codec/[guarantees, state_safrole]
+import ../../../src/state/computed/guarantors as computed_guarantors
+import ../../../src/codec/guarantees
+import ../../../src/codec/state/safrole as state_safrole
 discard computedGuarantorAt(default(ComputedGuarantors), StateTime(0), GuarantorIndex(0))

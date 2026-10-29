@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "availabilityReason"}
 
-import ../../../src/state/block_transition
+import "../../../src/state/block/transition" as block_transition
 var outcome = default(BlockTransitionResult)
 discard outcome.availabilityReason # Must fail before native generation.

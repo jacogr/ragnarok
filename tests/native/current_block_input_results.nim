@@ -4,7 +4,8 @@
 ## Default/refused reception results expose no generation, successor or unselected failed child.
 
 import std/cmdline
-import ../../src/app/[current_block_input, chain, candidate]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
 
 var input = default(CurrentBlockInput)

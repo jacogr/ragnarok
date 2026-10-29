@@ -4,6 +4,7 @@
 
 ## A detached complete-map snapshot cannot substitute authenticated finalized execution ownership.
 
-import ../../../src/state/[accumulation_completion, store]
+import ../../../src/state/accumulation/completion as accumulation_completion
+import ../../../src/state/store
 
 discard prepareAccumulationComposition(default(StateStoreSnapshot), default(AccumulationCompositionLimits))

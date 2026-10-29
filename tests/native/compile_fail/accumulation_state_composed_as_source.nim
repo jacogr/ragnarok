@@ -4,8 +4,10 @@
 
 ## Only the immutable finalized execution successor authorizes state application.
 
-import ../../../src/state/[accumulation_state, accumulation_completion, store,
-    accumulation_consensus]
+import ../../../src/state/accumulation/[state as accumulation_state,
+    completion as accumulation_completion]
+import ../../../src/state/store
+import ../../../src/state/accumulation/consensus as accumulation_consensus
 var target: StateStore
 var source: PreparedAccumulationConsensus
 discard applyAccumulationState(target, source, default(AccumulationCompositionLimits))

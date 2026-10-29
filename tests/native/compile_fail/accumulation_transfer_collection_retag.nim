@@ -4,6 +4,6 @@
 
 ## Collection storage and semantic ordinals cannot bypass the guarded public API.
 
-import ../../../src/state/accumulation_transfers
+import ../../../src/state/accumulation/transfers as accumulation_transfers
 var result: AccumulationTransferCollectionResult[PreparedAccumulationTransfers]
 result.status = AccumulationTransferCollectionError.None

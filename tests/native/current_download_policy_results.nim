@@ -4,9 +4,10 @@
 ## Private policy alternatives enforce actual runtime extraction contracts, including genuine successful control.
 
 import std/[cmdline, assertions]
-import ../../src/app/current_download_policy
-import ../../src/quic/[current_block_download_loop, current_block_download_stream]
-import ../../src/app/download_schedule
+import ../../src/app/current/download/policy as current_download_policy
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../src/app/download/schedule as download_schedule
 import ../../src/codec/bounded
 
 proc admitted(): CurrentDownloadPolicyResult =

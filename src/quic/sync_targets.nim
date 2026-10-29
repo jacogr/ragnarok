@@ -5,7 +5,7 @@
 ## stream snapshots refresh source age; only independently anchored canonical views satisfy targets.
 
 import ./[announcements, announcement_stream]
-import ../app/download_schedule
+import ../app/download/schedule as download_schedule
 import ../codec/header
 import ../chain/[provider, genesis]
 

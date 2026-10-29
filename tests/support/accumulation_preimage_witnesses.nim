@@ -4,9 +4,11 @@
 ## Literal signed preimage inputs and request/value bytes verify canonical state fulfillment.
 
 import std/assertions
-import ../../src/state/[accumulation_preimages, preimages, store]
-import ../../src/codec/[bounded, composite, owned, header, state_layout, state_trie,
-  state_service_values]
+import ../../src/state/accumulation/preimages as accumulation_preimages
+import ../../src/state/[preimages, store]
+import ../../src/codec/[bounded, composite, owned, header]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    service_values as state_service_values]
 import ../../src/crypto/primitives
 import ./[report_context, pvm_accumulation_provision]
 

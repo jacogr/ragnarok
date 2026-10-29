@@ -4,9 +4,12 @@
 ## Bind successful bounded authorization to its own ordered refinement and canonical digest projection.
 ## This execution owner is not an availability certificate; state composition/publication remains separate.
 
-import ../codec/[composite, work_digest, work_report]
+import ../codec/composite
+import ../codec/work/[digest as work_digest, report as work_report]
 import ../pvm/host_fetch
-import ./[authorization_invocation, refinement_report, refinement_dispatch, refinement_digest]
+import ./authorization/invocation as authorization_invocation
+import ./refinement/[report as refinement_report, dispatch as refinement_dispatch,
+    digest as refinement_digest]
 
 type
   AuthorizedRefinementError* {.pure.} = enum ## Refusals contain no partial report/digests or invented source authority.

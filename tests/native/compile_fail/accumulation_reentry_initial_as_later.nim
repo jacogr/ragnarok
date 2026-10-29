@@ -4,6 +4,7 @@
 
 ## Reject substitution of nominal reentry source/report domains.
 
-import ../../../src/state/[accumulation_reentry, accumulation_execution]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    execution as accumulation_execution]
 var initial: CompletedBlockAccumulation
 discard prepareAccumulationReentry(initial, default(AccumulationReentryConfig))

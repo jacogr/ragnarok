@@ -4,7 +4,9 @@
 ## Refused reentry preparation exposes neither usable source/input/state owners nor unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_reentry, accumulation_continuation_execution, accumulation_continuation]
+import ../../src/state/accumulation/reentry as accumulation_reentry
+import ../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../src/state/accumulation/continuation as accumulation_continuation
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationReentry)

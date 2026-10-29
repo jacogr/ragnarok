@@ -5,9 +5,14 @@
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context, current_consecutive_context,
     accumulation_current_candidate_context]
-import ../../src/app/[current_logical, chain, preparation_worker]
-import ../../src/state/[current_logical, parent_logical, current_request_keys,
-    current_logical_refresh, accumulation_current_update, store]
+import ../../src/app/current/logical as current_logical
+import ../../src/app/[chain, preparation_worker]
+import ../../src/state/current/logical as current_logical
+import ../../src/state/parent/logical as parent_logical
+import ../../src/state/current/request_keys as current_request_keys
+import ../../src/state/current/logical/refresh as current_logical_refresh
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/store
 import ../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive refusal occurs after preparation has completed, without replacing source or policy.

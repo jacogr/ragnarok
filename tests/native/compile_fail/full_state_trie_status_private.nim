@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/storage/full_state_trie
+import ../../../src/storage/full/state_trie as full_state_trie
 
 let hidden = default(TrieResult[FullStateTrie])
 discard hidden.status

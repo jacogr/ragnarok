@@ -4,7 +4,8 @@
 
 ## Refuse substitution across completed-history provenance and traversal-policy boundaries.
 
-import ../../../src/state/[accumulation_outputs, accumulation_reentry]
+import ../../../src/state/accumulation/[outputs as accumulation_outputs,
+    reentry as accumulation_reentry]
 var source: PreparedAccumulationReentry
 var limits: AccumulationOutputHistoryLimits
 discard prepareAccumulationOutputs(source, limits)

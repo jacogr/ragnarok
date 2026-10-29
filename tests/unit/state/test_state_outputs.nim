@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_outputs, bounded]
+import ../../../src/codec/state/outputs as state_outputs
+import ../../../src/codec/bounded
 
 ## Capture an immutable sequence that survives local source/wire scope and all later caller mutation.
 proc captured(config: OutputLogConfig): OutputLogSnapshot =

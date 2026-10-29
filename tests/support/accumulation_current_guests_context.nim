@@ -3,10 +3,19 @@
 
 ## Current tiny-chain guest proof ceilings reuse maintained signed-runner engine configuration.
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, work_digest, composite, state_authorization, state_safrole, state_privileges]
-import ../../src/state/[accumulation_guest_runner, accumulation_annulment, accumulation_coverage,
-    accumulation_account_stage, accumulation_account_selection, accumulation_creation_union,
-    accumulation_selected_writes, accumulation_global_stage, accumulation_global_roles]
+import ../../src/codec/bounded
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/composite
+import ../../src/codec/state/[authorization as state_authorization, safrole as state_safrole,
+    privileges as state_privileges]
+import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    annulment as accumulation_annulment, coverage as accumulation_coverage]
+import ../../src/state/accumulation/account/[stage as accumulation_account_stage,
+    selection as accumulation_account_selection]
+import ../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    selected_writes as accumulation_selected_writes]
+import ../../src/state/accumulation/global/[stage as accumulation_global_stage,
+    roles as accumulation_global_roles]
 import ./accumulation_runner_context
 proc currentGuestLimits*(): AccumulationGuestLimits =
   ## Reuse maintained tiny-chain engine ceilings while explicitly enabling current proof capture.

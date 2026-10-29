@@ -5,7 +5,8 @@
 
 import std/[assertions, cmdline]
 import ../../src/pvm/[refinement_exports, machine]
-import ../../src/codec/[bounded, work_digest]
+import ../../src/codec/bounded
+import ../../src/codec/work/digest as work_digest
 
 proc checkRefusal(outcome: RefinementExportResult) =
   ## Positive control confirms missing invocation exports before forbidden extraction.

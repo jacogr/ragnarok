@@ -3,6 +3,6 @@
 
 ## Fixed child observations do not expose the private original/candidate update graph.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/state/accumulation_current_update
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 var update: PreparedCurrentChainUpdate
 discard update.data

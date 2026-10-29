@@ -7,7 +7,10 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_workqueues, report_owned, owned, state_trie, bounded]
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/codec/[report_owned, owned]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 
 ## Empty transport tokens preserve malformed empty input or an empty source set without a fake byte.
 proc unhex(text: string): seq[byte] =

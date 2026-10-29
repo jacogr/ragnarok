@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ErasureShardIndex", "early": ["bundleErasureChunk(", "[2] expected: ErasureShardIndex but got: OriginalShardIndex"]}
 
-import ../../../src/state/[bundle_erasure, erasure_layout, erasure_words, auditable_bundle]
+import ../../../src/state/bundle_erasure
+import ../../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../../src/state/auditable_bundle
 discard bundleErasureChunk(default(BundleErasure), OriginalShardIndex(0))

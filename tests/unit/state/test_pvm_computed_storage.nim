@@ -6,13 +6,20 @@
 ## Actual guest storage effects survive computed execution, finalization and canonical chain publication only under the selected implication.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_chain, computed_state_publication, computed_composition,
-    computed_finalization, computed_execution, accumulation_runner, accumulation_execution,
-    accumulation_batch,
-    accumulation_provisions, accumulation_outcome, accumulation_context, accumulation_effects,
-    accumulation_consensus, accumulation_finalization, store]
+import ../../../src/state/computed/chain as computed_chain
+import ../../../src/state/computed/state/publication as computed_state_publication
+import ../../../src/state/computed/[composition as computed_composition,
+    finalization as computed_finalization, execution as computed_execution]
+import ../../../src/state/accumulation/[runner as accumulation_runner,
+    execution as accumulation_execution, batch as accumulation_batch,
+    provisions as accumulation_provisions, outcome as accumulation_outcome,
+    context as accumulation_context, effects as accumulation_effects,
+    consensus as accumulation_consensus, finalization as accumulation_finalization]
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, assurances, state_layout, state_accounts, state_service_values, state_statistics]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values, statistics as state_statistics]
 import ../../support/[pvm_computed_storage_program, pvm_computed_execution, pvm_computed_chain,
     pvm_computed_state_publication, arc_evidence]
 

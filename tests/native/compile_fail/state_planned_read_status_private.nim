@@ -4,6 +4,7 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## External callers must not forge or bypass guarded authenticated-read alternatives.
-import ../../../src/state/[planned_proof, proof_plan, proof_view]
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[plan as proof_plan, view as proof_view]
 let private = default(PlannedProofResult[ProofView])
 discard private.status

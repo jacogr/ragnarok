@@ -3,7 +3,7 @@
 
 ## File status and selected payloads cannot be rewritten by consumers.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/app/checkpoint_file
+import ../../../src/app/checkpoint/file as checkpoint_file
 import ../../../src/state/store
 let outcome = default(ApplicationCheckpointFileResult[StateStore])
 discard outcome.status

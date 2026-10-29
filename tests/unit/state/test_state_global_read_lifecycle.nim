@@ -5,12 +5,16 @@
 # @@Verification={"arc": "state_global_read_lifecycle_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[proof_global_helpers, arc_evidence]
-import ../../../src/state/[proof_global, proof_view, planned_proof]
-import ../../../src/codec/[bounded, assurances, state_layout, state_trie, state_composition,
-  state_consensus, state_safrole,
-  state_authorization, state_history, state_disputes, state_availability, guarantees,
-  state_privileges,
-  state_statistics, state_workqueues, state_outputs]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition, consensus as state_consensus, safrole as state_safrole,
+    authorization as state_authorization, history as state_history, disputes as state_disputes,
+    availability as state_availability]
+import ../../../src/codec/guarantees
+import ../../../src/codec/state/[privileges as state_privileges, statistics as state_statistics,
+    workqueues as state_workqueues, outputs as state_outputs]
 include ../../native/composition_fixture
 proc cycle(source: ProofView) =
   ## Every temporary plan, partial owner and typed chapter dies before the allocator is sampled.

@@ -4,8 +4,10 @@
 ## Dynamic planned-checkpoint payload/phase guards retain genuine expected-root restoration as their control.
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, planned_account_checkpoint_context]
-import ../../src/state/[planned_account_checkpoint, account_invariants, checkpoint, manifest, store]
-include composition_fixture
+import ../../src/state/planned/account_checkpoint as planned_account_checkpoint
+import ../../src/state/account/invariants as account_invariants
+import ../../src/state/[checkpoint, manifest, store]
+include ./composition_fixture
 proc extract(outcome: PlannedAccountCheckpointResult): CheckedAccountInvariants {.noinline.} =
   ## Default or failed restoration grants no joined source-bearing evidence.
   outcome.value

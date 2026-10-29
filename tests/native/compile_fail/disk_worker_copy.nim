@@ -3,7 +3,7 @@
 
 ## Composite native disk worker duplication must fail actual ARC lowering.
 # @@Verification={"group":"ownership_compile","build_name":"disk-worker-copy","expected":"'=dup' is not available for type <DiskPublicationWorker>"}
-import ../../../src/app/disk_worker
+import ../../../src/app/disk/worker as disk_worker
 proc duplicated(source: DiskPublicationWorker): DiskPublicationWorker =
   ## Returning a borrowed thread owner would duplicate locks and a fixed-address native borrower.
   source

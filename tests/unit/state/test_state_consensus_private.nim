@@ -11,7 +11,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/codec/state_consensus
+include ../../../src/codec/state/consensus
 
 # Use the exact tiny structural widths with independently configurable source bytes.
 proc policy(): SafroleStateConfig =

@@ -7,10 +7,14 @@
 # @@Verification={"arc": "accumulation_provisions_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation,
-  accumulation_service, preimages, store]
-import ../../../src/codec/[bounded, composite, state_outputs, state_accounts, state_requests,
-  state_service_values, state_trie, state_layout]
+import ../../../src/state/accumulation/[effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation,
+    service as accumulation_service]
+import ../../../src/state/[preimages, store]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[outputs as state_outputs, accounts as state_accounts,
+    requests as state_requests, service_values as state_service_values, trie as state_trie,
+    layout as state_layout]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_effect_context, arc_evidence]
 

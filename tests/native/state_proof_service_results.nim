@@ -4,8 +4,11 @@
 ## Strict runtime failures forbid typed reads, plans and responses from yielding failed/default payloads.
 import std/[assertions, cmdline]
 import ../support/proof_service_helpers
-import ../../src/state/[proof_service, proof_view, trie_proof]
-import ../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
+import ../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../src/state/trie_proof
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values, requests as state_requests]
 proc extract[T](outcome: ServiceProofResult[T]) =
   ## Runtime result selection is mandatory even for default and failed generic payloads.
   discard outcome.value

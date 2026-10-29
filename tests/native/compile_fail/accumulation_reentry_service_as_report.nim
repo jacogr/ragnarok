@@ -4,6 +4,7 @@
 
 ## Reject substitution of nominal reentry source/report domains.
 
-import ../../../src/state/[accumulation_reentry, accumulation_inputs]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    inputs as accumulation_inputs]
 var plan: PreparedAccumulationReentry
 discard reentryReportAt(plan, InvocationServiceIndex(0))

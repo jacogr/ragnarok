@@ -4,8 +4,9 @@
 ## Dynamic phase guards retain a genuine expected-root restored certificate as their positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, account_checkpoint_context]
-import ../../src/state/[account_checkpoint, account_invariants, checkpoint, manifest, store]
-include composition_fixture
+import ../../src/state/account/[checkpoint as account_checkpoint, invariants as account_invariants]
+import ../../src/state/[checkpoint, manifest, store]
+include ./composition_fixture
 proc extract(outcome: AccountCheckpointResult): CheckedAccountInvariants {.noinline.} =
   ## Default restoration has no completed source-bearing certificate.
   outcome.value

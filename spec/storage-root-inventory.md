@@ -1,7 +1,7 @@
 # Bounded stable retained-root inventories
 
 Scope: remove quadratic duplicate detection from `selectRepositoryRoots` in
-`src/storage/node_repository.nim`. Existing graph, root authority, image order and disk contracts
+`src/storage/node/repository.nim`. Existing graph, root authority, image order and disk contracts
 remain unchanged. This feature owns its implementation, dedicated suite and independent fixture.
 
 ## Algorithm and contract

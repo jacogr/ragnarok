@@ -4,11 +4,16 @@
 
 ## Genuine signed bytes retain current-only authority through fragmented reception, lookup suspension and deferred installation.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, candidate, current_block_input, current_handoff]
+import ../../../src/app/[chain, candidate]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned, block_codec, header, composite, assurances]
-import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus,
-  accumulation_current_update]
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/current/[consensus as accumulation_current_consensus,
+    update as accumulation_current_update]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

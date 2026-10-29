@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit current completion policies match the signed two-core execution fixture and every current state phase.
-import ../../src/state/[accumulation_current_completion, accumulation_accounts,
-  accumulation_activity, accumulation_preimages, accumulation_authorization, accumulation_consensus, preimages]
+import ../../src/state/accumulation/current/completion as accumulation_current_completion
+import ../../src/state/accumulation/[accounts as accumulation_accounts,
+    activity as accumulation_activity, preimages as accumulation_preimages,
+    authorization as accumulation_authorization, consensus as accumulation_consensus]
+import ../../src/state/preimages
 import ../../src/codec/[bounded, composite]
 import ./[accumulation_current_statistics_context, accumulation_current_finalization_context,
   accumulation_ready_witnesses, accumulation_recent_witnesses, accumulation_activity_context,

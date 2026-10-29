@@ -3,6 +3,6 @@
 
 ## Prepared payload and discriminator cannot escape the sole owner.
 # @@Verification={"group": "privacy", "expected": "commitment"}
-import ../../../src/state/checkpoint_transfer
+import ../../../src/state/checkpoint/transfer as checkpoint_transfer
 let checkpoint = default(PreparedCheckpoint)
 discard checkpoint.commitment

@@ -5,8 +5,8 @@
 ## Dynamic command-line modes must terminate at the selected-success contract, never expose defaults.
 
 import std/cmdline
-import ../../src/state/[accumulation_round, accumulation_queue]
-import ../../src/codec/state_privileges
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/codec/state/privileges as state_privileges
 
 # Dynamic selection retains a runtime refusal path rather than a compile-time constant-invalid extraction.
 let outcome = if paramStr(1) == "refused":

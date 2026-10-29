@@ -3,10 +3,12 @@
 
 ## Signed current sequence fixture excludes an available report initially and holds a supervised transfer for later execution.
 import std/assertions
-import ../../src/codec/[bounded, composite, report_owned, work_digest]
-import ../../src/state/[accumulation_current_sequence, accumulation_current_round,
-  accumulation_round,
-  accumulation_transfer_partition]
+import ../../src/codec/[bounded, composite, report_owned]
+import ../../src/codec/work/digest as work_digest
+import ../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
+import ../../src/state/accumulation/[round as accumulation_round,
+    transfer_partition as accumulation_transfer_partition]
 import ./[accumulation_execution_context, accumulation_current_round_context]
 proc currentContinuationLimits*(): CurrentContinuationLimits =
   ## Small finite ceilings include the affordable report, its digest and one held transfer classification.

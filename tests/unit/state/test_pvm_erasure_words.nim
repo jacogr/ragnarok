@@ -5,8 +5,9 @@
 ## Independent full parity witnesses, exact field-work bounds and immutable scalar-code ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/erasure_words
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure/words as erasure_words
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../support/[pvm_erasure_vectors, arc_evidence]
 
 proc generous(): ErasureWordLimits =

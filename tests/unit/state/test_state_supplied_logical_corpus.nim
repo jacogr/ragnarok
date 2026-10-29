@@ -5,9 +5,12 @@
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context,
     supplied_logical_context, supplied_services_context]
-import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint,
-    inventory, supplied_logical_inventory, supplied_services]
-import ../../../src/codec/[bounded, state_trie, state_composition, state_requests]
+import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint, inventory]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, composition as state_composition,
+    requests as state_requests]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Full raw-key/payload projection must work after matching with the hash backend disabled.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

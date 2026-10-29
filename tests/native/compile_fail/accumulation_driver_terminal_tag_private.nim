@@ -4,6 +4,6 @@
 
 ## Driver and stopped alternatives expose no mutable construction or raw extraction fields.
 
-import ../../../src/state/accumulation_driver
+import ../../../src/state/accumulation/driver as accumulation_driver
 var outcome: StoppedAccumulation
 discard outcome.selection

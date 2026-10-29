@@ -11,8 +11,8 @@ bounded development entry points with supported child admission, execution and p
 Continuous full-state catch-up and bounded Tiny participation share explicit readiness evidence.
 Complete production validation, consensus and validator lifecycles remain open.
 
-`app/cli_defaults.nim` owns typed defaults and bounds. `cli_catalog.nim` owns option metadata; `cli_commands.nim` validates named
-process inputs and normalizes them for bounded handlers. `cli_help.nim` renders the same catalog.
+`app/cli/defaults.nim` owns typed defaults and bounds. `cli/catalog.nim` owns option metadata; `cli/commands.nim` validates named
+process inputs and normalizes them for bounded handlers. `cli/help.nim` renders the same catalog.
 `app/startup.nim` provisions an owned persistent transport identity and selected parent directories
 only after complete CLI validation. Bundled TLS primitives generate keys/certificates; Nim owns
 JAM naming, file publication and identity reuse. Explicit credentials are never rewritten.
@@ -64,8 +64,8 @@ using the retained head's parent/map/parameters and explicit stage policies, the
 complete finalized success. The download dispatcher supplies network acquisition and managed
 asynchronous preparation for this supported path. See [the handoff contract](../../spec/application-chain.md).
 
-`app/download_command.nim` owns stable Services and dispatcher lifetimes for the explicit
-`download` command. `app/download_policy.nim` loads a bounded, complete versioned policy file;
+`app/download/command.nim` owns stable Services and dispatcher lifetimes for the explicit
+`download` command. `app/download/policy.nim` loads a bounded, complete versioned policy file;
 no gas, stage, retry or network budget is inferred. Up to sixteen explicitly pinned loopback peers
 supply a finite sequence of up to 64 children, default one, with asynchronous preparation outside
 callbacks and success only after actual deferred adoption. The authenticated catalog remains
@@ -117,7 +117,7 @@ Future mutations require explicit host scheduling. See [management RPC](../../sp
 
 ## Bounded development validators
 
-`app/block_author.nim` derives empty-block fallback eligibility and markers from an exact complete
+`app/block/author.nim` derives empty-block fallback eligibility and markers from an exact complete
 parent using the ordinary Safrole components, then signs native entropy/seal transcripts. It
 returns immutable block bytes without adoption authority. `app/devnet_command.nim` owns the
 bounded Tiny validator host loop, explicit six-second development clock, complete canonical

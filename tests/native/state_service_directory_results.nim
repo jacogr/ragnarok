@@ -4,9 +4,11 @@
 ## Dynamic directory payload guards retain genuine complete-source lookup as the positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
-import ../../src/state/[service_directory, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/state/service/directory as service_directory
+import ../../src/state/inventory
+import ../../src/codec/bounded
+import ../../src/codec/state/accounts as state_accounts
+include ./composition_fixture
 proc extract(outcome: ServiceDirectoryResult[StateServiceDirectory]): StateServiceDirectory {.noinline.} =
   ## Default and failed directory construction have no source-bearing success.
   outcome.value

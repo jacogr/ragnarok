@@ -4,7 +4,7 @@ The [contract](storage-bounded-admission.md) starts at merged
 `d5064139a6775faf2b82c53d941522ab7d65ae31`. The clean baseline capture is
 `08bd7723cb8000ee34d9ad8cd4c5050f23a97f47`; the clean final candidate is
 `048c01e9542f5a3c72eb562a247bcd0ebc7c1a4d` (layer 27). The two production changes are
-`src/storage/record_codec.nim` and `src/storage/node_repository.nim`. The only other approved
+`src/storage/record_codec.nim` and `src/storage/node/repository.nim`. The only other approved
 benchmark-input difference is `Makefile`, which adds optional paired-run targets. No compiler,
 provider, native fixture, physical format, checked build flag or default Perf workload changes.
 

@@ -4,8 +4,13 @@
 ## Independent per-block service tuples exercise pure and genuine-block refinement/provision/accumulation coordination.
 
 import std/assertions
-import ../../src/state/[service_activity, accumulation_statistics, accumulation_finalization, store]
-import ../../src/codec/[bounded, composite, owned, report_owned, work_report, work_digest, state_statistics]
+import ../../src/state/service/activity as service_activity
+import ../../src/state/accumulation/[statistics as accumulation_statistics,
+    finalization as accumulation_finalization]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, owned, report_owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/statistics as state_statistics
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

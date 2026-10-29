@@ -3,10 +3,13 @@
 
 ## Current activity fixtures share exact signed inputs with legacy witnesses and retain real current completion.
 import ./service_namespace_seed
-import ../../src/codec/[bounded, header, composite, report_owned, state_authorization, state_trie]
-import ../../src/state/[accumulation_current_activity, accumulation_current_validators,
-  accumulation_current_recent, accumulation_current_ready, accumulation_current_finalization,
-  accumulation_current_driver, accumulation_provisions]
+import ../../src/codec/[bounded, header, composite, report_owned]
+import ../../src/codec/state/[authorization as state_authorization, trie as state_trie]
+import ../../src/state/accumulation/current/[activity as accumulation_current_activity,
+    validators as accumulation_current_validators, recent as accumulation_current_recent,
+    ready as accumulation_current_ready, finalization as accumulation_current_finalization,
+    driver as accumulation_current_driver]
+import ../../src/state/accumulation/provisions as accumulation_provisions
 import ./[accumulation_activity_context, accumulation_current_finalization_context,
   accumulation_current_round_context, accumulation_current_driver_context,
   accumulation_execution_context, accumulation_recent_witnesses, accumulation_ready_witnesses,

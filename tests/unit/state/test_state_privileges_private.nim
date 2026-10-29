@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_privileges
+include ../../../src/codec/state/privileges
 
 ## Small explicit per-component work and byte ceilings include every fixed role and dictionary count.
 proc policy(): PrivilegeConfig =

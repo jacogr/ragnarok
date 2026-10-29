@@ -5,10 +5,13 @@
 
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[preparation_worker, block_input, candidate, chain]
+import ../../../src/app/preparation_worker
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, chain]
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, accumulation_finalization]
+import ../../../src/state/store
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/[application_candidate_context, accumulation_completion_context]
 
 proc receive(input: var BlockInput, chain: ApplicationChain, wire: openArray[byte]): BlockInputId =

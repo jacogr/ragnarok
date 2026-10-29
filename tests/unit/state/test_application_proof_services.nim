@@ -3,9 +3,10 @@
 
 ## Real selected-state proof jobs hold the Services graph/RPC gate through cancellation and Done.
 import std/[assertions, syncio, monotimes, times]
-import ../../../src/app/[services, options, proof_query, proof_worker]
+import ../../../src/app/[services, options]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/proof_service
+import ../../../src/state/proof/service as proof_service
 import ../../../src/codec/bounded
 import ../../../src/rpc/server
 import ../../support/proof_query_context

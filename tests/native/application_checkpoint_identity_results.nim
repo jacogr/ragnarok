@@ -3,7 +3,8 @@
 
 ## Runtime guards use opaque extraction helpers, with the same helpers exercised on genuine captured context.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[checkpoint_identity, chain]
+import ../../src/app/checkpoint/identity as checkpoint_identity
+import ../../src/app/chain
 import ../../src/codec/bounded
 import ../support/application_checkpoint_context
 proc extract(outcome: ApplicationCheckpointIdentityResult) =

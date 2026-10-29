@@ -11,8 +11,10 @@
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/[disputes, store]
-import ../../../src/codec/[disputes, state_disputes, state_availability, state_safrole,
-  state_layout, state_trie, bounded, assurances, guarantees, header, report_owned]
+import ../../../src/codec/disputes
+import ../../../src/codec/state/[disputes as state_disputes, availability as state_availability,
+    safrole as state_safrole, layout as state_layout, trie as state_trie]
+import ../../../src/codec/[bounded, assurances, guarantees, header, report_owned]
 import ../../../src/crypto/primitives
 import ../../support/arc_evidence
 

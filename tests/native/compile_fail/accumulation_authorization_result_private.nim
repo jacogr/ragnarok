@@ -4,6 +4,6 @@
 
 ## Source-bound authorization owners, result payloads and tags remain private.
 
-import ../../../src/state/accumulation_authorization
+import ../../../src/state/accumulation/authorization as accumulation_authorization
 var owner: AccumulationAuthorizationResult[int]
 discard owner.completed

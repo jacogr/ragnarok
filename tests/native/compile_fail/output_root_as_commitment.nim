@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: StateNodeHash but wanted: OutputCommitment"}
 
-import ../../../src/codec/[state_outputs, state_layout]
+import ../../../src/codec/state/[outputs as state_outputs, layout as state_layout]
 let value = AccumulationOutput(commitment: default(StateNodeHash))
 discard value

@@ -4,10 +4,12 @@
 
 ## Publishing freezes one genuine current update; only its exact installed child can complete the bounded host handoff.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, current_handoff]
+import ../../../src/app/chain
+import ../../../src/app/current/handoff as current_handoff
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[store, accumulation_current_update]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../support/[accumulation_current_chain_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Host publication bookkeeping cannot repeat primitive work.

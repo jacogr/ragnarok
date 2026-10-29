@@ -110,7 +110,7 @@ Compare complete clean-source reports with explicitly reviewed source difference
 python3 tools/compare_storage_benchmarks.py \
   --baseline build/evidence-storage-growth-pre-index/results.json \
   --candidate build/tests/storage-benchmark/results.json \
-  --allow-source src/storage/node_repository.nim \
+  --allow-source src/storage/node/repository.nim \
   --allow-source tools/storage_growth_report.py \
   --output build/storage-comparison.md
 ```

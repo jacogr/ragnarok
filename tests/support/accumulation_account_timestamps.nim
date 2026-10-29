@@ -4,8 +4,12 @@
 ## Independent timestamp octets, complete-map roots and genuine statistics ownership witnesses for account finalization.
 
 import std/assertions
-import ../../src/codec/[bounded, composite, header, state_accounts, state_layout, state_trie, state_statistics]
-import ../../src/state/[accumulation_accounts, accumulation_statistics, accumulation_finalization, store]
+import ../../src/codec/[bounded, composite, header]
+import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, statistics as state_statistics]
+import ../../src/state/accumulation/[accounts as accumulation_accounts,
+    statistics as accumulation_statistics, finalization as accumulation_finalization]
+import ../../src/state/store
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

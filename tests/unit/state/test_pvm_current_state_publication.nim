@@ -5,16 +5,29 @@
 ## Exact-parent publication adopts prepared complete snapshots without rehashing, replay or losing inherited policy/history.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_publication, accumulation_current_consensus,
-  accumulation_consensus, accumulation_current_authorization, accumulation_authorization,
-  accumulation_current_preimages, accumulation_preimages, accumulation_current_activity,
-  accumulation_activity, accumulation_current_validators, accumulation_current_recent,
-  accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_statistics, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round, accumulation_queue,
-  report_admission, block_transition, block_admission, core_service_activity, preimages,
-  authorization, store]
-import ../../../src/codec/[bounded, composite, report_owned, state_layout, state_trie]
+import ../../../src/state/accumulation/current/[publication as accumulation_current_publication,
+    consensus as accumulation_current_consensus]
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/accumulation/current/authorization as accumulation_current_authorization
+import ../../../src/state/accumulation/authorization as accumulation_authorization
+import ../../../src/state/accumulation/current/preimages as accumulation_current_preimages
+import ../../../src/state/accumulation/preimages as accumulation_preimages
+import ../../../src/state/accumulation/current/activity as accumulation_current_activity
+import ../../../src/state/accumulation/activity as accumulation_activity
+import ../../../src/state/accumulation/current/[validators as accumulation_current_validators,
+    recent as accumulation_current_recent, ready as accumulation_current_ready,
+    finalization as accumulation_current_finalization, accounts as accumulation_current_accounts,
+    statistics as accumulation_current_statistics, driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence, round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/[preimages, authorization, store]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_current_activity_context, report_context, arc_evidence]
 
 # Prepare genuine candidates first; publication must remain successful even while every Blake2b call would refuse.

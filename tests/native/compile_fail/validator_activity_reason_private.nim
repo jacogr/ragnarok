@@ -4,6 +4,6 @@
 
 ## Refuse raw construction or retagging of original-block-bound validator activity.
 
-import ../../../src/state/validator_activity
+import ../../../src/state/validator/activity as validator_activity
 var outcome: ValidatorActivityResult[PreparedValidatorActivity]
 outcome.status = ValidatorActivityError.None

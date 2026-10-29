@@ -3,5 +3,7 @@
 # @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentAccumulationValidators but got: PreparedAccumulationValidators", "early": ["prepareCurrentAccumulationActivity(", "[1] expected: PreparedCurrentAccumulationValidators but got: PreparedAccumulationValidators"]}
 
 ## Exact current validator ownership is required.
-import ../../../src/state/[accumulation_current_activity, accumulation_activity, accumulation_validators]
+import ../../../src/state/accumulation/current/activity as accumulation_current_activity
+import ../../../src/state/accumulation/[activity as accumulation_activity,
+    validators as accumulation_validators]
 discard prepareCurrentAccumulationActivity(default(PreparedAccumulationValidators), default(AccumulationActivityConfig))

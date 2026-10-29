@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Default preparation results cannot expose private selected payloads.
-import ../../../src/state/accumulation_current_update
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 let outcome = default(CurrentChainPreparationResult)
 discard outcome.completed

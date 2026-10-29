@@ -4,6 +4,6 @@
 
 ## Reject a service identity used as an immutable traced-key ordinal.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 discard effectAccountWriteKeyAt(default(AccumulationEffectContext), ServiceIndex(42))

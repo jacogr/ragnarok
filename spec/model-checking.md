@@ -67,7 +67,7 @@ summary lists base, mutant and witness verdicts; artifacts retain logs, replayab
 and results for seven days. `make summary-models` renders the same report locally. Native `application_preparation_worker` tests cover actual reuse, foreign/stale tickets,
 cancellation and joined shutdown; the model is complementary evidence, not a native test substitute.
 
-The new `src/app/proof_worker.nim` uses the same lock/condition/phase/stop transitions. Its
+The new `src/app/proof/worker.nim` uses the same lock/condition/phase/stop transitions. Its
 `submit` moves an admitted immutable query into the slot instead of borrowing input pointers;
 `collect` and joined `close` retire that owner. The same six-variable model checks its lease
 retention and join ordering. Query move semantics, exact proof outcomes and ticket identity
@@ -76,7 +76,7 @@ remain covered by the native `application_proof_worker` suite and compiler owner
 ## Disk publication and host installation
 
 `application_disk_worker.nif` checks one admitted publication/maintenance against
-`src/app/disk_worker.nim` (`submit`, `run`, `collect`, `close`). Locked dispatch,
+`src/app/disk/worker.nim` (`submit`, `run`, `collect`, `close`). Locked dispatch,
 unlocked I/O, activation retirement, locked Done publication, stop observation and joined
 retirement are distinct transitions. Success and uncertain failure are abstract receipt tags;
 queued shutdown returns NotExecuted. The graph lease must survive until collection/join,

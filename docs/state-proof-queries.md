@@ -7,7 +7,7 @@ Public RPC proof methods, remote root discovery and partial light-state generati
 ## Admission and ownership
 
 Start a stable `Services` owner with complete canonical state. Build a semantic plan with the
-constructors in `state/proof_service`, or a generic global/mixed `StateProofPlan`, and choose an
+constructors in `state/proof/service`, or a generic global/mixed `StateProofPlan`, and choose an
 explicit `BlockHash`. See [global reads](state-global-proofs.md) for chapter selectors and typed readers. Supply every
 `ProofQueryLimits` policy: full-map entries/nodes, individual proof nodes/value bytes, aggregate
 proof counts/nodes/value bytes, retained-view counts/value bytes, encoded bytes and hash work.
@@ -24,9 +24,10 @@ lease. Put selection in a separate activation that returns only the fixed hash:
 
 ```nim
 import std/assertions
-import src/app/[services, proof_query, proof_worker]
-import src/chain/[genesis, provider]
-import src/state/proof_service
+import ./app/services
+import ./app/proof/[query as proof_query, worker as proof_worker]
+import ./chain/[genesis, provider]
+import ./state/proof/service
 
 proc selectedHeadHash(owner: Services): BlockHash =
   ## Every history/selected-state temporary retires before returning this fixed copied identity.

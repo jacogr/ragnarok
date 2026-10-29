@@ -7,10 +7,15 @@
 # @@Verification={"arc": "accumulation_effects_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation,
-  accumulation_service, accumulation_inputs, store]
-import ../../../src/codec/[bounded, composite, state_outputs, state_accounts, state_privileges,
-  state_authorization, state_safrole, state_trie, state_layout, c2_records]
+import ../../../src/state/accumulation/[effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation,
+    service as accumulation_service, inputs as accumulation_inputs]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[outputs as state_outputs, accounts as state_accounts,
+    privileges as state_privileges, authorization as state_authorization, safrole as state_safrole,
+    trie as state_trie, layout as state_layout]
+import ../../../src/codec/c2_records
 import ../../support/[accumulation_effect_context, arc_evidence]
 
 ## Refuse hashing only after genuine prepared source construction; effect transitions must never invoke it.

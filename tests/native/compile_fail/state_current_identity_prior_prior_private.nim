@@ -3,6 +3,6 @@
 
 ## Completed/current versus configured source selection and retained logical provenance stay private.
 # @@Verification={"group":"privacy","expected":"prior"}
-import ../../../src/state/current_identities
+import ../../../src/state/current/identities as current_identities
 var owner: PreservedCurrentIdentities
 discard owner.prior

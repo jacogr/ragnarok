@@ -5,7 +5,7 @@
 import std/syncio
 import ../../support/fuzz_protocol_context
 import ../../../src/state/store
-include ../../../src/app/fuzz_socket
+include ../../../src/app/fuzz/socket
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## A real client connects through the listener rather than bypassing descriptor admission.

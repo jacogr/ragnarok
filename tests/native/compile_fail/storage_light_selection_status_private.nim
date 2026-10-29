@@ -3,6 +3,6 @@
 
 ## Selected light journal metadata remains private behind guarded accessors.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/storage/light_journal_manifest
+import ../../../src/storage/light/journal/manifest as light_journal_manifest
 let hidden = default(LightSelectionResult[LightJournalManifest])
 discard hidden.status

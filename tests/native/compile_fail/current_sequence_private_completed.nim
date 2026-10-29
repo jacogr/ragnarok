@@ -3,7 +3,7 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Source-bound plan result alternatives stay private.
-import ../../../src/state/accumulation_current_sequence
+import ../../../src/state/accumulation/current/sequence as accumulation_current_sequence
 let refused = planCurrentAccumulationContinuation(default(CurrentAccumulationSequence), default(
     CurrentContinuationLimits))
 discard refused.completed

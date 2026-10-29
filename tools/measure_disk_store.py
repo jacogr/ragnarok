@@ -105,7 +105,7 @@ def main():
         runs.append(dict(**{key: value for key, value in run.items() if key != 'output'}, phase_nanoseconds=timings))
     validate_samples(samples)
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    sources = sorted((ROOT/'src/storage').glob('*.nim'))+[ROOT/'src/state/store.nim', ROOT/'src/state/disk_store.nim']
+    sources = sorted((ROOT/'src/storage').rglob('*.nim'))+[ROOT/'src/state/store.nim', ROOT/'src/state/disk_store.nim']
     report = dict(head=head, source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   implementation_sha256=hashlib.sha256(b''.join(path.read_bytes() for path in sources)).hexdigest(),
                   profile=PROFILE, platform=platform.platform(), samples=samples, runs=runs,

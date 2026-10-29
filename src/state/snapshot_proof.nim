@@ -3,8 +3,10 @@
 
 ## Generate bounded witnesses from the existing complete immutable snapshot interface.
 ## No storage internals, database format or partial-state publication are involved.
-import ./[store, trie_proof, proof_service, proof_plan]
-import ../codec/[bounded, state_layout, state_trie]
+import ./[store, trie_proof]
+import ./proof/[service as proof_service, plan as proof_plan]
+import ../codec/bounded
+import ../codec/state/[layout as state_layout, trie as state_trie]
 
 proc copySnapshotEntries(snapshot: StateStoreSnapshot, mapLimits: StateTrieLimits,
     entries: var seq[StateEntry]): StateProofError =

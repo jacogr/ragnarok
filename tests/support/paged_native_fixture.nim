@@ -3,8 +3,12 @@
 
 ## Independent root-bound native paged fixtures and synchronous replayable test producers.
 import std/assertions
-import ../../src/storage/[paged_store, paged_codec, paged_stream, light_state_cache, state_proof, full_state_trie]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/paged/[store as paged_store, codec as paged_codec, stream as paged_stream]
+import ../../src/storage/light/state_cache as light_state_cache
+import ../../src/storage/state_proof
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 type PagedNativeFixture* = object ## Independent complete-map roots constrain two different same-shape paged knowledge stores.
   config*: PagedNativeConfig
   records*: seq[LightStateProof]

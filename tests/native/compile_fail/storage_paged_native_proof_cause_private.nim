@@ -3,6 +3,6 @@
 
 ## The selected native result discriminator/cause is private and cannot be forged.
 # @@Verification={"group":"privacy","expected":"proofCause"}
-import ../../../src/storage/paged_store
+import ../../../src/storage/paged/store as paged_store
 let outcome = default(PagedNativeResult[bool])
 discard outcome.proofCause

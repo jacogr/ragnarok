@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/report_assignments
+import ../../../src/state/report/assignments as report_assignments
 let owner = default(ReportAssignmentPlan)
 discard owner.data # Must fail before lowering.

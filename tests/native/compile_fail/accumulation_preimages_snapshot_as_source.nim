@@ -4,7 +4,8 @@
 
 ## Detached admission or complete state cannot replace the authenticated activity source.
 
-import ../../../src/state/[accumulation_preimages, store]
+import ../../../src/state/accumulation/preimages as accumulation_preimages
+import ../../../src/state/store
 var source: StateStoreSnapshot
 var limits: AccumulationPreimageLimits
 discard prepareAccumulationPreimages(source, limits)

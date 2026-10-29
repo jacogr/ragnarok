@@ -4,8 +4,9 @@
 
 ## Reject a service creation proposal used as a transfer destination.
 
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[state_accounts, c2_records]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 discard prepareAccumulationTransfer(default(AccumulationEffects), AccumulationDesiredService(99),
   TransferBalance(0), Gas(0), default(TransferMemo), default(Parameters))

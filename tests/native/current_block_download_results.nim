@@ -3,7 +3,9 @@
 
 ## Default/refused current results and unrelated selected failure payloads never grant successful authority.
 import std/cmdline
-import ../../src/app/[current_block_download, current_block_input, chain, candidate]
+import "../../src/app/current/block/download" as current_block_download
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/[chain, candidate]
 let argument = paramStr(1)
 var download = default(CurrentBlockDownload)
 let missing = default(ApplicationChain)

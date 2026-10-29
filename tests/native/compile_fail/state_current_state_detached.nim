@@ -4,5 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "CurrentGlobalSerialization", "early": ["qualifyCurrentState(", "[1] expected: CurrentGlobalSerialization but got: ValidatedGlobalState"]}
 
 ## Generic global framing cannot replace the original current-bound producer/profile owner.
-import ../../../src/state/[current_state, global_snapshot, inventory]
+import ../../../src/state/current/state as current_state
+import ../../../src/state/[global_snapshot, inventory]
 discard qualifyCurrentState(default(ValidatedGlobalState), [], StateInventoryLimits())

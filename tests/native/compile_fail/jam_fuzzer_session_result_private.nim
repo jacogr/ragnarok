@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Failed/default protocol results cannot expose an unguarded successful payload.
-import ../../../src/state/fuzz_session
+import ../../../src/state/fuzz/session as fuzz_session
 let outcome = default(FuzzSessionResult[FuzzDispatch])
 discard outcome.completed

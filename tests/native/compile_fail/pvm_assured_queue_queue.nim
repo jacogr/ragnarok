@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "queueReason"}
 
-import ../../../src/state/assured_queue
+import ../../../src/state/assured/queue as assured_queue
 var candidate: AssuredQueueResult[AssuredAccumulationQueue]
 discard candidate.queueReason

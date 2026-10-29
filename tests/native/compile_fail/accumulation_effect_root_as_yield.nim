@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "OutputCommitment", "early": ["recordAccumulationYield(", "[2] expected: OutputCommitment but got: StateRoot"]}
 
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/state_trie
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/state/trie as state_trie
 discard recordAccumulationYield(default(AccumulationEffects), default(StateRoot))

@@ -6,9 +6,13 @@
 import std/[assertions, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, header, block_codec, report_owned, state_layout, state_safrole]
-import ../../src/state/[store, block_transition, safrole_transition, accumulation_chain,
-    accumulation_state, accumulation_completion]
+import ../../src/codec/[bounded, header, block_codec, report_owned]
+import ../../src/codec/state/[layout as state_layout, safrole as state_safrole]
+import ../../src/state/store
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/safrole/transition as safrole_transition
+import ../../src/state/accumulation/[chain as accumulation_chain, state as accumulation_state,
+    completion as accumulation_completion]
 import ../../src/crypto/extrinsic_commitment
 import ../../src/bandersnatch/bandersnatch
 import ./[application_candidate_context, accumulation_completion_context]

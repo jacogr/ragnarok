@@ -7,12 +7,18 @@ import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[accumulation_current_chain_context, accumulation_provision_integration,
   managed_storage_samples, rpc_socket, arc_evidence]
-import ../../../src/app/[chain, disk_chain]
+import ../../../src/app/chain
+import ../../../src/app/disk/chain as disk_chain
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/state/[store, disk_store, accumulation_current_update]
-import ../../../src/storage/[file_repository, node_repository, node_records, record_codec,
-  database_identity, managed_repository, managed_manifest]
-import ../../../src/codec/[bounded, state_trie, report_owned]
+import ../../../src/state/[store, disk_store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, database_identity]
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/report_owned
 import ../../../src/rpc/server
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.

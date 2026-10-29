@@ -3,8 +3,8 @@
 
 ## Arithmetic extraction guards require linked assertions and a genuine representable control.
 import std/[assertions, cmdline, syncio]
-import ../../src/state/account_footprint
-import ../../src/codec/state_accounts
+import ../../src/state/account/footprint as account_footprint
+import ../../src/codec/state/accounts as state_accounts
 proc extract(outcome: AccountFootprintResult): AccountFootprint {.noinline.} =
   ## Keep default/refused payload extraction dynamic in the checked native binary.
   outcome.value

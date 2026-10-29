@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Collected logical result storage cannot be retagged or extracted directly.
-import ../../../src/app/current_logical
+import ../../../src/app/current/logical as current_logical
 let owner = default(CollectedLogicalResult)
 discard owner.status

@@ -6,7 +6,8 @@
 ## Exact selected-head facts, profile mismatch and detached scalar ownership guard checkpoint identity capture.
 
 import std/[assertions, syncio]
-import ../../../src/app/[checkpoint_identity, chain]
+import ../../../src/app/checkpoint/identity as checkpoint_identity
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../support/[application_checkpoint_context, arc_evidence]
 proc detached(): ApplicationCheckpointIdentity {.raises.} =

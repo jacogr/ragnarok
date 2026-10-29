@@ -7,12 +7,18 @@ import std/posix/posix
 import ../../support/[disk_history_context, historical_samples, managed_storage_samples,
   durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
 import ../../support/report_context as signed_fixture
-import ../../../src/app/[chain, disk_chain, disk_history, historical_context, historical_record,
-  historical_disk, ancestor_inputs]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, history as disk_history]
+import ../../../src/app/historical/[context as historical_context, record as historical_record,
+    disk as historical_disk]
+import ../../../src/app/ancestor/inputs as ancestor_inputs
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[history_index, history_files, file_repository, managed_manifest,
-    node_repository, database_identity]
+import ../../../src/storage/history/[index as history_index, files as history_files]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/database_identity
 import ../../../src/codec/[bounded, header, report_owned]
 
 proc retentionPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}

@@ -6,13 +6,15 @@
 
 import std/strutils
 import ../chain/[genesis, parameters, presets]
-import ../codec/[bounded, header, state_layout, state_trie, state_safrole, state_consensus,
-  state_disputes, state_authorization, state_history, state_privileges, state_statistics,
-  state_workqueues, state_outputs]
+import ../codec/[bounded, header]
+import ../codec/state/[layout as state_layout, trie as state_trie, safrole as state_safrole,
+    consensus as state_consensus, disputes as state_disputes, authorization as state_authorization,
+    history as state_history, privileges as state_privileges, statistics as state_statistics,
+    workqueues as state_workqueues, outputs as state_outputs]
 import ../crypto/[primitives, validator_keys]
 import ../bandersnatch/bandersnatch
 import ../state/store
-import ../lib/json_writer
+import ../lib/json/writer as json_writer
 
 proc tinySigningKey*(index: range[0..5]): BsResult[BsKey] =
   ## Use JIP-5 development identities Alice through Fergie for actual Tiny block signing.

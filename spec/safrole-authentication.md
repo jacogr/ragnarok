@@ -7,7 +7,7 @@ in [the primitive contract](bandersnatch.md); all twenty consumed trace JSON blo
 
 ## Core contract
 
-`src/state/safrole_authentication.nim` accepts an immutable complete signed header, exact posterior
+`src/state/safrole/authentication.nim` accepts an immutable complete signed header, exact posterior
 C(4)/C(8), parent timeslot/entropy and independent finite chapter/roster/header ceilings. The actual
 posterior active population bounds the author index independently of structural header limits.
 The selected schedule entry is indexed cyclically by target slot modulo epoch length.

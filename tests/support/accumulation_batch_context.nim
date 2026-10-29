@@ -5,13 +5,18 @@
 ## Complete source maps retain code, storage, requests and unrelated chapters; no production verdict is replaced.
 
 import std/assertions
-import ../../src/state/[accumulation_inputs, accumulation_operands, accumulation_queue,
-  accumulation_service, accumulation_invocation, accumulation_machine, accumulation_dispatch,
-  accumulation_batch, store]
-import ../../src/codec/[assurances, bounded, composite, header, work_digest, c2_records,
-  state_privileges,
-  state_workqueues, state_accounts, state_service_values, state_authorization, state_safrole,
-  state_layout, state_trie]
+import ../../src/state/accumulation/[inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue, service as accumulation_service,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, batch as accumulation_batch]
+import ../../src/state/store
+import ../../src/codec/[assurances, bounded, composite, header]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/c2_records
+import ../../src/codec/state/[privileges as state_privileges, workqueues as state_workqueues,
+    accounts as state_accounts, service_values as state_service_values,
+    authorization as state_authorization, safrole as state_safrole, layout as state_layout,
+    trie as state_trie]
 import ../../src/pvm/[initialize, machine, program, step, host_fetch, gas]
 import ../../src/crypto/primitives
 import ../../src/chain/parameters

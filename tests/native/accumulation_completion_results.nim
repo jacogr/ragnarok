@@ -4,7 +4,8 @@
 ## Default/refused completion results contain no candidate or unselected failed phase.
 
 import std/cmdline
-import ../../src/state/[accumulation_completion, accumulation_driver, accumulation_finalization]
+import ../../src/state/accumulation/[completion as accumulation_completion,
+    driver as accumulation_driver, finalization as accumulation_finalization]
 
 let argument = paramStr(1)
 let outcome = if argument == "default": default(AccumulationCompletionResult)

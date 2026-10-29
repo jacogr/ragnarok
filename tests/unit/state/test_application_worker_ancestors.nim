@@ -6,10 +6,12 @@
 ## Actual native worker leases span signed report discovery and resumed execution with explicit cancellation/collection barriers.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[block_input, candidate, chain, preparation_worker]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, chain, preparation_worker]
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
-import ../../../src/state/[report_anchors, accumulation_finalization]
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/[application_candidate_context, arc_evidence]
 import ../../support/report_admission_context as report_context
 

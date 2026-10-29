@@ -9,14 +9,23 @@ import ./node_logging
 
 import std/[os, strutils, times, monotimes, syncio]
 import ../pvm/backend
-import ./[chain, candidate, block_author, tiny_genesis, current_download_policy, download_schedule]
+import ./[chain, candidate]
+import "./block/author" as block_author
+import ./tiny_genesis
+import ./current/download/policy as current_download_policy
+import ./download/schedule as download_schedule
 import ../chain/[genesis, provider, parameters]
 import ../codec/[bounded, header, block_codec]
-import ../state/[store, checkpoint, accumulation_current_update, block_transition, safrole_transition]
+import ../state/[store, checkpoint]
+import ../state/accumulation/current/update as accumulation_current_update
+import "../state/block/transition" as block_transition
+import ../state/safrole/transition as safrole_transition
 import ../bandersnatch/bandersnatch
 import ../crypto/[primitives, validator_keys]
-import ../quic/[devnet, protocol, announcements, current_block_download_peers, sync_targets]
-import ../lib/atomic_file
+import ../quic/[devnet, protocol, announcements]
+import "../quic/current/block/download/peers" as current_block_download_peers
+import ../quic/sync_targets
+import ../lib/atomic/file as atomic_file
 
 proc number(text: string, maximum: uint64, output: var uint64): bool =
   ## Canonical bounded decimal is parsed before any multiplication, narrowing or time arithmetic.

@@ -3,6 +3,6 @@
 
 ## Caller code cannot mutate a successful inventory's owned identities.
 # @@Verification={"group":"privacy","expected":"queries"}
-import ../../../src/storage/paged_stream
+import ../../../src/storage/paged/stream as paged_stream
 let inventory = default(PagedQueryInventory)
 discard inventory.queries

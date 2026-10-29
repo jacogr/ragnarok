@@ -3,8 +3,11 @@
 
 ## Callback-live allocation witnesses reject hidden complete transport materialization on bounded delivery.
 import std/[algorithm, assertions, syncio]
-import ../../../src/storage/[full_state_trie, node_records, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 type
   Fixture = object ## Only stable encoded inputs and independent scalar expectations survive setup.

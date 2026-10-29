@@ -3,8 +3,10 @@
 # @@Verification={"group":"nominal","expected":"ServiceIndex","early":["recordAccumulationDirectTransfer(","[2] expected: ServiceIndex but got: AccountSlot"]}
 
 ## Direct funding uses distinct account and mode domains.
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[composite, state_accounts, c2_records]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/composite
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 
 discard recordAccumulationDirectTransfer(default(AccumulationEffects), AccountSlot(0),

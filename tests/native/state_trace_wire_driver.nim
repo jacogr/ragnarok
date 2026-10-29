@@ -3,8 +3,10 @@
 
 ## Compare published RawState prefixes against independent exact bytes and complete checkpoint maps.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/state/[trace_state, store, checkpoint]
-import ../../src/codec/[state_trie, bounded]
+import ../../src/state/trace/state as trace_state
+import ../../src/state/[store, checkpoint]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 proc unhex(text: string): seq[byte] =
   ## Decode only the maintained request transport; production codecs validate actual framing and roots.
   assert text.len mod 2 == 0

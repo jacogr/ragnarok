@@ -47,7 +47,7 @@ uses its built-in bounded host policy and listens on `JAM_FUZZ_SOCK_PATH`.
 introspection. Missing required configuration and extra Fuzz arguments fail locally.
 
 The immutable chain catalog is `src/chain/presets.nim`; native host defaults live
-in `src/app/fuzz_policy.nim`. Chain-dependent policy fields come from that catalog;
+in `src/app/fuzz/policy.nim`. Chain-dependent policy fields come from that catalog;
 resource ceilings remain explicit. Fuzz uses the approved D900 interpretation.
 Legacy explicit-policy commands remain for existing internal regression callers.
 

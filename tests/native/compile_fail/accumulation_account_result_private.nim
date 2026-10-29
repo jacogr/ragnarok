@@ -4,6 +4,6 @@
 
 ## Reject raw construction or retagging across statistics-bound account ownership.
 
-import ../../../src/state/accumulation_accounts
+import ../../../src/state/accumulation/accounts as accumulation_accounts
 var outcome: AccumulationAccountResult[PreparedAccumulationAccounts]
 discard outcome.completed

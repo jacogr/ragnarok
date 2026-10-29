@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "continuation"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/current_logical_download
+import ../../../src/app/current/logical/download as current_logical_download
 let source = default(CurrentLogicalDownloadPolicy)
 discard source.continuation

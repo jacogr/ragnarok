@@ -3,8 +3,9 @@
 
 ## Explicit complete supplied host qualification policies and genuine native fixture composition.
 import ./[collected_native_context, current_namespace_refresh_context]
-import ../../src/app/[collected_supplied_plan, collected_supplied_state]
-import ../../src/state/current_logical
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/state/current/logical as current_logical
 proc collectedSuppliedTestLimits*(): CollectedSuppliedLimits =
   ## Whole map and retained raw-key policies are independently stated by the maintained namespace fixture.
   let policy = namespaceLogicalLimits()

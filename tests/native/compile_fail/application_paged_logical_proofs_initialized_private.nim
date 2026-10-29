@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "initialized"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/paged_logical_proof
+import ../../../src/app/paged/logical_proof as paged_logical_proof
 let source = default(LogicalProofPages)
 discard source.initialized

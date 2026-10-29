@@ -8,8 +8,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/safrole_authentication
-import ../../src/codec/[header, state_safrole]
+import ../../src/state/safrole/authentication as safrole_authentication
+import ../../src/codec/header
+import ../../src/codec/state/safrole as state_safrole
 if paramStr(1) == "forge":
   let reason = if paramStr(2) == "none": SafroleAuthError.None else: SafroleAuthError.InvalidConfig # Runtime-selected input cannot authorize manufactured success.
   discard safroleAuthFailure(reason)

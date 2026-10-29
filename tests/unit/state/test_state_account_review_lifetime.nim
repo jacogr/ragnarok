@@ -7,9 +7,12 @@ import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_checkpoint_context,
     economic_profile_context, arc_evidence]
 import ../../../src/chain/parameters
-import ../../../src/state/[account_review_checkpoint, account_review, economic_profile, inventory,
-    manifest, store, checkpoint]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_service_values, state_trie]
+import ../../../src/state/account/review/checkpoint as account_review_checkpoint
+import ../../../src/state/account/review as account_review
+import ../../../src/state/[economic_profile, inventory, manifest, store, checkpoint]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    service_values as state_service_values, trie as state_trie]
 include ../../native/composition_fixture
 proc retainedSource(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile): StateStoreSnapshot =

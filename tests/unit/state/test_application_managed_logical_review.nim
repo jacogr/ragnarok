@@ -7,9 +7,14 @@ import std/posix/posix
 import ../../support/[collected_native_context, collected_logical_services_context,
     managed_supplied_context,
     current_logical_review_context]
-import ../../../src/app/[services, logical_review, current_block_input, current_handoff]
-import ../../../src/state/[current_logical, current_state, current_review, account_review,
-    inventory, manifest, store]
+import ../../../src/app/services
+import ../../../src/app/logical/review as logical_review
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    review as current_review]
+import ../../../src/state/account/review as account_review
+import ../../../src/state/[inventory, manifest, store]
 proc main() {.raises.} =
   ## Genuine current preparation finishes its actual managed lease before any logical predicate or report work begins.
   let fixture = collectedNativeFixture()

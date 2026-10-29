@@ -6,10 +6,15 @@
 import std/[assertions, strutils]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/lib/json_writer
-import ../../src/codec/[block_codec, header, bounded, report_owned, state_layout]
-import ../../src/state/[store, accumulation_finalization, accumulation_validators,
-  accumulation_statistics, accumulation_times, accumulation_activity, report_admission, block_admission]
+import ../../src/lib/json/writer as json_writer
+import ../../src/codec/[block_codec, header, bounded, report_owned]
+import ../../src/codec/state/layout as state_layout
+import ../../src/state/store
+import ../../src/state/accumulation/[finalization as accumulation_finalization,
+    validators as accumulation_validators, statistics as accumulation_statistics,
+    times as accumulation_times, activity as accumulation_activity]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/admission" as block_admission
 import ./[accumulation_activity_context, accumulation_execution_context,
   accumulation_runner_context, accumulation_completion_context]
 import ./report_admission_context as report_fixture

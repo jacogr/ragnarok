@@ -6,7 +6,7 @@ Vector revision remains `d3c089c9a1d5352ad353626d7a2db8589f137b2a`; no pins adva
 
 ## State-derived immutable markers
 
-`src/state/safrole_markers.nim` derives a complete expected pair from exact serialized parent and
+`src/state/safrole/markers.nim` derives a complete expected pair from exact serialized parent and
 staged posterior C(4), retained parent entropy, advancing parent/target slots, chain epoch/tail
 parameters and independent finite chapter/marker ceilings. Chapter parsing is exact; neither
 contest is sorted or repaired. Defaults and failures carry no partial markers. Success owns both

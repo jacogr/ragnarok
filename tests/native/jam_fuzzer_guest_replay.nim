@@ -6,14 +6,22 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, accumulation_current_chain_context,
     fuzz_guest_replay_context, fuzz_full_replay_context]
 import ../support/current_stf_epoch_context as epoch
-import ../../src/app/[fuzz_backend, fuzz_rejection, candidate]
+import ../../src/app/fuzz/[backend as fuzz_backend, rejection as fuzz_rejection]
+import ../../src/app/candidate
 import ../../src/chain/[genesis, parameters, presets, provider]
 import ../../src/codec/[bounded, block_codec, header, report_owned]
-import ../../src/state/[store, checkpoint, fuzz_protocol, report_admission, report_anchors,
-    guarantee_credentials, block_transition, block_admission, safrole_transition, availability,
-    accumulation_current_completion,
-    accumulation_current_recent, accumulation_current_activity, accumulation_current_authorization,
-    accumulation_current_driver, accumulation_current_round]
+import ../../src/state/[store, checkpoint]
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/report/[admission as report_admission, anchors as report_anchors]
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/safrole/transition as safrole_transition
+import ../../src/state/availability
+import ../../src/state/accumulation/current/[completion as accumulation_current_completion,
+    recent as accumulation_current_recent, activity as accumulation_current_activity,
+    authorization as accumulation_current_authorization, driver as accumulation_current_driver,
+    round as accumulation_current_round]
 
 type
   SiblingMap = object ## One immutable header and its observed checkpoint remain paired for bounded retention checks.

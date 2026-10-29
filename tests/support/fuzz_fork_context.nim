@@ -5,7 +5,8 @@
 import std/assertions
 import ./[current_consecutive_context, accumulation_current_chain_context]
 import ../../src/chain/genesis
-import ../../src/codec/[bounded, header, block_codec, state_safrole, state_layout]
+import ../../src/codec/[bounded, header, block_codec]
+import ../../src/codec/state/[safrole as state_safrole, layout as state_layout]
 import ../../src/state/store
 import ../../src/bandersnatch/bandersnatch
 proc fuzzSiblingChild*(parent: BlockSnapshot, author: AuthorIndex): OwnedBlock =

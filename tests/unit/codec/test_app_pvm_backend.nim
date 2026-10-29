@@ -3,7 +3,8 @@
 
 ## Canonical backend CLI defaults, all explicit modes, strict refusals and dedicated-command extraction.
 import std/[assertions, syncio, strutils]
-import ../../../src/app/[options, cli_help]
+import ../../../src/app/options
+import ../../../src/app/cli/help as cli_help
 
 proc peer(): seq[string] =
   ## A complete named service command isolates backend parsing from missing transport arguments.

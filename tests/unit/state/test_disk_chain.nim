@@ -5,11 +5,16 @@
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[disk_history_context, durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
-import ../../../src/app/[chain, disk_chain, disk_history]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, history as disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, node_repository, node_records, record_codec, database_identity]
-import ../../../src/codec/[block_codec, bounded, state_trie, report_owned]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, database_identity]
+import ../../../src/codec/[block_codec, bounded]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/report_owned
 import ../../../src/rpc/server
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.

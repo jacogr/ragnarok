@@ -5,8 +5,12 @@
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, header, state_layout, state_safrole, bounded]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus]
+import ../../../src/codec/[report_owned, header]
+import ../../../src/codec/state/[layout as state_layout, safrole as state_safrole]
+import ../../../src/codec/bounded
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
     accumulation_current_chain_context, current_services_disk_samples]
 

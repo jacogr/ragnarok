@@ -7,7 +7,8 @@
 ## needed by callers.
 
 import std/assertions
-import ../../src/codec/[state_safrole, assurances, bounded]
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/[assurances, bounded]
 from ../../src/codec/disputes import OffenderKey
 from ../../src/codec/header import EpochSlots
 export state_safrole, assurances, bounded, OffenderKey, EpochSlots

@@ -4,9 +4,10 @@
 ## Strict atomic assured chain result and receipt guards with actual success and genuine late failures.
 
 import std/[assertions, cmdline]
-import ../../src/state/[assured_chain, assured_composition, store]
+import ../../src/state/assured/[chain as assured_chain, composition as assured_composition]
+import ../../src/state/store
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/codec/state_layout
+import ../../src/codec/state/layout as state_layout
 import ../support/[pvm_assured_chain, pvm_computed_chain]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

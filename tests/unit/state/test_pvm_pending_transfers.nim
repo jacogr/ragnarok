@@ -4,9 +4,14 @@
 
 ## Genuine terminal outputs and prior partitions preserve carry order and gas without a second refund.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_pending_transfers, accumulation_transfer_partition,
-    accumulation_transfers, accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie, c2_records]
+import ../../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
+    transfer_partition as accumulation_transfer_partition, transfers as accumulation_transfers,
+    outcome as accumulation_outcome, effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/c2_records
 import ../../support/[accumulation_transfers, arc_evidence]
 
 # Queue preparation and partitioning perform no new state hashes or publication.

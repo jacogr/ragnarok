@@ -6,9 +6,12 @@
 ## Posterior population/core/shard eligibility with genuine epoch shrink, immutable provenance and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_roster, computed_transition, computed_profile, block_transition,
-  store]
-import ../../../src/codec/[assurances, bounded, state_safrole, state_layout]
+import ../../../src/state/computed/[roster as computed_roster, transition as computed_transition,
+    profile as computed_profile]
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/store
+import ../../../src/codec/[assurances, bounded]
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout]
 import ../../support/[pvm_computed_roster, pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

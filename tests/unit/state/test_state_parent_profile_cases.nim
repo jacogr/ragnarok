@@ -6,10 +6,14 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_checkpoint_context,
     parent_profile_context, arc_evidence]
-import ../../../src/state/[parent_profile, store, accumulation_current_update]
+import ../../../src/state/parent/profile as parent_profile
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie, state_safrole,
-    state_consensus, state_composition, assurances, header]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole, consensus as state_consensus, composition as state_composition]
+import ../../../src/codec/[assurances, header]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## All changed maps and genuine transitions are constructed before hash-free qualification begins.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

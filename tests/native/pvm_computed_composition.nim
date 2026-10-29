@@ -4,8 +4,10 @@
 ## Strict computed full-state composition/refusal probes retain genuine composed pending guarantees as a positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_composition, computed_finalization, accumulation_completion,
-  accumulation_consensus]
+import ../../src/state/computed/[composition as computed_composition,
+    finalization as computed_finalization]
+import ../../src/state/accumulation/[completion as accumulation_completion,
+    consensus as accumulation_consensus]
 import ../../src/codec/bounded
 import ../support/pvm_computed_composition
 

@@ -149,7 +149,7 @@ Dedicated budget and input/output mutation cases check metadata ownership indepe
 
 ## Local application-head context
 
-`app/disk_head.nim` encodes exact chain identity, nonzero journal generation, existing full
+`app/disk/head.nim` encodes exact chain identity, nonzero journal generation, existing full
 ApplicationCheckpointIdentity and one exact sealed-header extent. The enclosing contextual frame
 checksums all fields. Restore compares configured chain/profile, frame generation and complete
 posterior map before structural capture, then verifies exact block identity/time/root/profile.
@@ -180,7 +180,7 @@ failure and real partial-write recovery suites pass through the refactored node-
 
 ## Opaque canonical preparation
 
-`state/accumulation_publication.nim` runs the unchanged accumulation coordinator on private state
+`state/accumulation/publication.nim` runs the unchanged accumulation coordinator on private state
 and history handles. A successful opaque update retains the exact original parent snapshot and
 entire original ordered view, plus its private successful successor. Installation checks exact
 owners, complete profiles, retained history and finality before durability; a guarded final install
@@ -239,7 +239,7 @@ separate genuine signed execution fixtures.
 
 ## Bounded durable history context
 
-`app/disk_history.nim` encodes one exact `RAGNAROK-DISK-CHAIN-V1\n` representation:
+`app/disk/history.nim` encodes one exact `RAGNAROK-DISK-CHAIN-V1\n` representation:
 a retained count (1..8), finality tag (0 absent, 1..count referencing the retained owner,
 255 for one detached older anchor), then oldest-to-newest retained single-head contexts and
 an optional detached finalized context. Each entry has a full 32-byte posterior-root hint,
@@ -263,7 +263,7 @@ The local-history fixtures contain structurally authored headers, not execution 
 
 ## Disk-chain coordination
 
-`app/disk_chain.nim` creates a contextual database exclusively and provisions detached older
+`app/disk/chain.nim` creates a contextual database exclusively and provisions detached older
 finality followed by the retained suffix through ordinary valid single-root publications.
 At most nine bootstrap revisions are followed by a final canonical context-only publication.
 Bootstrap markers deliberately cannot decode as canonical history; interrupted initialization
@@ -289,7 +289,7 @@ continues to require independent trust and does not inherit local history/finali
 
 ## Native disk-publication worker
 
-`app/disk_worker.nim` owns one fixed-address native thread and one bounded publication slot.
+`app/disk/worker.nim` owns one fixed-address native thread and one bounded publication slot.
 Submission borrows stable disk/publication addresses and all their ARC aliases exclusively until
 Done collection or joined close. The host preflights and pauses RPC beforehand, touches only scalar
 worker state while native IO runs, then checks the actual receipt and installs the prepared update
@@ -560,7 +560,7 @@ No low-level append/truncation operation supplies graph, canonical-head or rollb
 
 ## Managed repository admission
 
-`managed_repository.nim` owns the stable directory and selected journal leases together. Creation
+`src/storage/managed/repository.nim` owns the stable directory and selected journal leases together. Creation
 requires an opaque complete retained-root selection with a nonzero state generation. It preflights
 and admits an independent snapshot before creating files, then publishes CURRENT only after both
 selected files are synchronized. Existing paths are never reset. Failed creation preserves forensic
@@ -624,7 +624,7 @@ candidates, selected/future deletion refusal, repeated cleanup and preservation 
 
 ## Explicit legacy-file migration
 
-`file_migration.nim` copies a live locked legacy repository into an absent managed directory. It
+`src/storage/file/migration.nim` copies a live locked legacy repository into an absent managed directory. It
 checks the source's already admitted chain identity and schema, selects an explicit complete root
 union including the current root, and preserves the selected generation and context. All existing
 source bytes and its lock remain untouched. The destination is a separately admitted owner; later

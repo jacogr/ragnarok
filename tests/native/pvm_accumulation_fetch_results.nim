@@ -4,7 +4,7 @@
 ## Failed machine-derived fetch assembly cannot expose a partial immutable context.
 
 import std/cmdline
-import ../../src/state/[accumulation_fetch, accumulation_machine]
+import ../../src/state/accumulation/[fetch as accumulation_fetch, machine as accumulation_machine]
 import ../../src/chain/parameters
 import ../../src/pvm/[initialize, program, machine, host_fetch]
 import ../../src/codec/[bounded, c2_records]

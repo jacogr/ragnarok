@@ -4,14 +4,21 @@
 ## Genuine signed initial rounds and tiny guest programs for complete execution gas accounting.
 
 import ../../src/chain/parameters
-import ../../src/state/[accumulation_round, accumulation_inputs, accumulation_operands,
-  accumulation_batch, accumulation_queue,
-  report_admission,
-  accumulation_service, accumulation_invocation, accumulation_machine, accumulation_dispatch,
-  accumulation_skip, accumulation_execution, accumulation_effects, store]
-import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_accounts,
-  state_service_values, state_privileges, state_workqueues, state_authorization, state_trie,
-  state_safrole, state_history, c2_records]
+import ../../src/state/accumulation/[round as accumulation_round, inputs as accumulation_inputs,
+    operands as accumulation_operands, batch as accumulation_batch, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import ../../src/state/accumulation/[service as accumulation_service,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, skip as accumulation_skip,
+    execution as accumulation_execution, effects as accumulation_effects]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, header, report_owned]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    privileges as state_privileges, workqueues as state_workqueues,
+    authorization as state_authorization, trie as state_trie, safrole as state_safrole,
+    history as state_history]
+import ../../src/codec/c2_records
 import ../../src/crypto/primitives
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[report_context, report_admission_context, pvm_accumulation_context,

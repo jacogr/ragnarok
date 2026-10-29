@@ -3,5 +3,7 @@
 # @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentAccumulationFinalization but got: PreparedAccumulationHistory", "early": ["prepareCurrentAccumulationReady(", "[1] expected: PreparedCurrentAccumulationFinalization but got: PreparedAccumulationHistory"]}
 
 ## Exact current finalization ownership is required.
-import ../../../src/state/[accumulation_current_ready, accumulation_ready, accumulation_history]
+import ../../../src/state/accumulation/current/ready as accumulation_current_ready
+import ../../../src/state/accumulation/[ready as accumulation_ready,
+    history as accumulation_history]
 discard prepareCurrentAccumulationReady(default(PreparedAccumulationHistory), default(AccumulationReadyConfig))

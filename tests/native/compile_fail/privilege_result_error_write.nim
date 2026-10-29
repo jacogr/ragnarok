@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[state_privileges, state_trie]
+import ../../../src/codec/state/[privileges as state_privileges, trie as state_trie]
 var value = default(PrivilegeResult[PrivilegeInfo])
 value.error = PrivilegeError.None

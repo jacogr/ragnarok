@@ -4,6 +4,7 @@
 
 ## Refuse access or substitution across the admitted execution certificate boundary.
 
-import ../../../src/state/[accumulation_execution, accumulation_provisions]
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    provisions as accumulation_provisions]
 var plan: CompletedBlockAccumulation
 discard executionGasAt(plan, AccumulationProvisionSourceIndex(0))

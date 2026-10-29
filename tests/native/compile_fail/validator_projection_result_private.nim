@@ -4,6 +4,6 @@
 
 ## Projection owners and result alternatives remain private.
 
-import ../../../src/state/validator_projection
+import ../../../src/state/validator/projection as validator_projection
 var outcome: ValidatorActivityResult[int]
 discard outcome.completed

@@ -6,8 +6,11 @@ import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, node_repository, database_identity, durability]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/[database_identity, durability]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 proc run() {.raises.} =
   ## Seed from an ordinary snapshot, publish sparse changes, then independently authorize reopen.
   var path = "disk-state-store.db"

@@ -4,8 +4,10 @@
 ## Real pinned TLS validates changing parent requests, retained lineage, exact partial progress and bounded retry/deadline behavior.
 import std/[assertions, syncio, envvars, os]
 import std/posix/posix
-import ../../../src/app/[download_command, download_policy, options]
-import ../../../src/quic/[block_download_loop, block_download_stream]
+import ../../../src/app/download/[command as download_command, policy as download_policy]
+import ../../../src/app/options
+import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/quic/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, report_owned, header]
 import ../../support/[application_download_chain, application_download_command_context, block_download_transport]
 

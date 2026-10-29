@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 let owner = HistorySnapshot(data: nil)
 discard owner

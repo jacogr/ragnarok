@@ -59,7 +59,7 @@ class ReopenComparisonTests(unittest.TestCase):
 
     def test_matching_reports_and_explicit_source_change(self):
         before = fixture(); after = copy.deepcopy(before)
-        name = 'src/storage/managed_io.nim'
+        name = 'src/storage/managed/io.nim'
         after['inputs']['sources'][name] = 'f'*64
         after['rows'][0]['resources']['peak_rss_bytes'] = 500000
         with self.assertRaisesRegex(ValueError, 'Unapproved'):

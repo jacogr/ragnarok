@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "StateValueHash"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 let wrong = default(StateValueHash)
 let right = default(StateNodeHash)
 discard encodeStateBranch(wrong, right)

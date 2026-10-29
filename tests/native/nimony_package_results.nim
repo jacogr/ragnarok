@@ -7,7 +7,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/codec/[work_package, work_report, bounded]
+import ../../src/codec/work/[package as work_package, report as work_report]
+import ../../src/codec/bounded
 
 let useDefault = paramStr(2) == "default"
 let empty: seq[byte] = @[]

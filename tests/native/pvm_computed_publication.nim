@@ -4,8 +4,12 @@
 ## Strict successor, receiver and nested store-cause probes with genuine admitted computed source controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_publication, computed_admission, report_admission,
-  block_transition, block_admission, store]
+import ../../src/state/computed/[publication as computed_publication,
+    admission as computed_admission]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
 import ../../src/codec/bounded
 import ../support/pvm_computed_publication
 

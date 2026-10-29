@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_statistics, bounded]
+import ../../../src/codec/state/statistics as state_statistics
+import ../../../src/codec/bounded
 
 ## The retained snapshot outlives local source/wire arrays and preserves all statistical families.
 proc captured(config: ActivityConfig): ActivitySnapshot =

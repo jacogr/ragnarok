@@ -4,7 +4,8 @@
 
 ## Refuse substitution of a prepared prefix or output projection for a terminal full-state candidate.
 
-import ../../../src/state/[accumulation_finalization, accumulation_outputs, accumulation_reentry]
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    outputs as accumulation_outputs, reentry as accumulation_reentry]
 var source: PreparedAccumulationReentry
 var limits: AccumulationOutputHistoryLimits
 discard prepareFinalAccumulation(source, limits)

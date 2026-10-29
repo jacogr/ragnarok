@@ -4,7 +4,7 @@
 ## Structural ancestry witnesses use explicitly authored sealed-header bytes without claiming signature or execution validity.
 import std/assertions
 import ./fuzz_protocol_context
-import ../../src/state/[fuzz_protocol, fuzz_ancestry]
+import ../../src/state/fuzz/[protocol as fuzz_protocol, ancestry as fuzz_ancestry]
 import ../../src/codec/[bounded, header]
 import ../../src/crypto/primitives
 proc fuzzAncestryTestLimits*(): FuzzAncestryLimits =

@@ -3,6 +3,6 @@
 
 ## Callers cannot mutate admitted untrusted wire or replace its independently selected identity.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/app/light_proof_import
+import ../../../src/app/light/proof_import as light_proof_import
 let request = default(LightProofImport)
 discard request.data

@@ -4,8 +4,11 @@
 ## Same-prefix addresses cannot bypass full equality, canonical image order, graph uniqueness or limits.
 import std/[assertions, syncio]
 import ../../support/storage_growth_samples
-import ../../../src/storage/[node_repository, node_records, full_state_trie, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/record_codec
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 proc prefix(digest: StateNodeHash): int =
   ## Independent witness selection shares twelve bits without treating the prefix as an address.

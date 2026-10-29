@@ -4,12 +4,19 @@
 
 ## Genuine account mutations prove selected physical key/value ownership across M, n, cancellation and skipped credits.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_selected_writes, accumulation_annulment,
-  accumulation_account_selection, accumulation_creation_union, accumulation_dispatch,
-  accumulation_outcome, accumulation_effects, accumulation_inputs, accumulation_service,
-  accumulation_skip, accumulation_invocation, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_privileges,
-  state_service_values, state_requests, state_layout, state_trie, c2_records]
+import ../../../src/state/accumulation/[selected_writes as accumulation_selected_writes,
+    annulment as accumulation_annulment]
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    effects as accumulation_effects, inputs as accumulation_inputs, service as accumulation_service,
+    skip as accumulation_skip, invocation as accumulation_invocation]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    service_values as state_service_values, requests as state_requests, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,

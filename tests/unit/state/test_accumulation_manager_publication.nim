@@ -5,10 +5,13 @@
 ## Real parallel bless/assign guests prove manager precedence, original queue authority and atomic bounded full-map publication.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_effects, accumulation_context,
-  accumulation_dispatch, accumulation_outcome, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_privileges,
-  state_authorization, state_layout, state_trie]
+import ../../../src/state/accumulation/[batch as accumulation_batch,
+    effects as accumulation_effects, context as accumulation_context,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    authorization as state_authorization, layout as state_layout, trie as state_trie]
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, pvm_accumulation_context,

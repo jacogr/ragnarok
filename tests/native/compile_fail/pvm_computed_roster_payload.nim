@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_roster
+import ../../../src/state/computed/roster as computed_roster
 var candidate: ComputedRosterResult[RosterEligibleComputedReport]
 discard candidate.completed

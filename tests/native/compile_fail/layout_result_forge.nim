@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 discard StateLayoutResult[StateKey](status: StateLayoutError.None)

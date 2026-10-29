@@ -3,5 +3,5 @@
 # @@Verification={"group":"nominal","expected":"AccumulationDispatchResult","early":["normalizeAccumulationOutcome(","[1] expected: AccumulationDispatchResult but got: SkippedAccumulation"]}
 
 ## A genuine no-execution proof cannot fabricate a completed interpreter outcome.
-import ../../../src/state/[accumulation_skip, accumulation_outcome]
+import ../../../src/state/accumulation/[skip as accumulation_skip, outcome as accumulation_outcome]
 discard normalizeAccumulationOutcome(default(SkippedAccumulation))

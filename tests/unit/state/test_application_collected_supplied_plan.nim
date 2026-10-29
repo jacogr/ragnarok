@@ -4,8 +4,13 @@
 ## Frozen plans bind exact actual native receipts, original child profiles and policies before supplied namespace matching.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, current_namespace_refresh_context]
-import ../../../src/app/[collected_supplied_plan, collected_update, preparation_worker, current_block_input]
-import ../../../src/state/[current_profile, current_globals, accumulation_current_update, store]
+import ../../../src/app/collected/supplied/plan as collected_supplied_plan
+import ../../../src/app/collected/update as collected_update
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/state/current/[profile as current_profile, globals as current_globals]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/codec/bounded
 proc main() {.raises.} =
   ## Actual collected execution is the only target; caller policy mutation and default sources grant no substitute.

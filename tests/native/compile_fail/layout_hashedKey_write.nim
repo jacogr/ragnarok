@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "hashedKey"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 var value = default(StateNodeInfo)
 value.hashedKey = default(StateKey)

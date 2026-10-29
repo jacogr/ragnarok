@@ -8,7 +8,8 @@ import std/[os, dirs, paths, posix/posix]
 import ../management/file_status
 import ./options
 import ../quic/protocol
-import ../lib/[atomic_file, atomic_file_writer]
+import ../lib/atomic/file as atomic_file
+import ../lib/atomic/file/writer as atomic_file_writer
 import ../codec/bounded
 
 proc generateKey(pem: ptr byte, capacity: csize_t, length: ptr csize_t,

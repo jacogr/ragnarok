@@ -6,7 +6,7 @@
 ## Original age/chain/root correspondence, bounded work, late faults and immutable retained ancestry.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_lookup, computed_recent]
+import ../../../src/state/computed/[lookup as computed_lookup, recent as computed_recent]
 import ../../../src/codec/[bounded, header]
 import ../../support/[pvm_computed_lookup, pvm_computed_lookup_vectors, arc_evidence]
 

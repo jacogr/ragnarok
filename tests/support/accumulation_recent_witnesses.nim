@@ -4,12 +4,19 @@
 ## Literal C(3) framing and an independent Keccak tree bind original headers and guarantees to completed outputs.
 
 import std/assertions
-import ../../src/state/[accumulation_recent, history, accumulation_ready, accumulation_history,
-  accumulation_finalization,
-  accumulation_outputs, accumulation_execution, accumulation_round, accumulation_queue,
-  report_admission, guarantee_credentials, block_transition, block_admission, store]
-import ../../src/codec/[assurances, bounded, header, report_owned, state_history, state_outputs,
-    state_layout, state_trie]
+import ../../src/state/accumulation/recent as accumulation_recent
+import ../../src/state/history
+import ../../src/state/accumulation/[ready as accumulation_ready, history as accumulation_history,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/[assurances, bounded, header, report_owned]
+import ../../src/codec/state/[history as state_history, outputs as state_outputs,
+    layout as state_layout, trie as state_trie]
 import ../../src/crypto/primitives
 import ./[report_context, pvm_accumulation_context]
 

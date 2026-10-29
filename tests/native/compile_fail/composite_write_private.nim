@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "byteWritten"}
 
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 let value = default(CompositeWrite)
 discard value.byteWritten

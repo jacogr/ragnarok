@@ -4,8 +4,10 @@
 ## Default and invalid finalization results cannot expose maps, terminal progress or unrelated reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_finalization, accumulation_outputs,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_driver]
+import ../../src/state/accumulation/[finalization as accumulation_finalization,
+    outputs as accumulation_outputs]
+import ../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../src/state/accumulation/[reentry as accumulation_reentry, driver as accumulation_driver]
 
 let argument = paramStr(1)
 let owner = default(PreparedFinalAccumulation)

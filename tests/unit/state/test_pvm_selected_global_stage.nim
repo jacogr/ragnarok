@@ -4,12 +4,19 @@
 
 ## Signed bless/assign/designate hosts preserve original payload authority across handoff and annulment.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_layout, state_authorization,
-  state_privileges, state_safrole, c2_records]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[layout as state_layout, authorization as state_authorization,
+    privileges as state_privileges, safrole as state_safrole]
+import ../../../src/codec/c2_records
 import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_global_stage, accumulation_global_roles,
-  accumulation_provision_stage, accumulation_provisions, accumulation_account_stage,
-  accumulation_block_guests, accumulation_guest_runner, store]
+import ../../../src/state/accumulation/global/[stage as accumulation_global_stage,
+    roles as accumulation_global_roles]
+import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage
+import ../../../src/state/accumulation/provisions as accumulation_provisions
+import ../../../src/state/accumulation/account/stage as accumulation_account_stage
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/guest_runner as accumulation_guest_runner
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
   pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

@@ -5,9 +5,13 @@
 # @@Verification={"arc":"storage_full_paged_graph_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, paged_codec, paged_stream,
-  node_records, node_repository, managed_manifest, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream]
+import ../../../src/storage/paged/[codec as paged_codec, stream as paged_stream]
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/database_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 
 let left = leaf(0, @[1'u8, 2, 3])

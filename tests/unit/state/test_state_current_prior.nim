@@ -5,7 +5,8 @@
 # @@Verification={"arc":"state_current_prior_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_checkpoint_context, arc_evidence]
-import ../../../src/state/[accumulation_current_update, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[report_owned, bounded]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

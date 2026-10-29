@@ -5,7 +5,9 @@
 import std/assertions
 import std/posix/posix
 import ./storage_samples
-import ../../src/storage/[managed_repository, managed_manifest, managed_io, file_errors]
+import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest,
+    io as managed_io]
+import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 proc managedStorageLimits*(): ManagedLimits =
   ## Keep physical budgets generous while preserving the ordinary complete graph ceilings.

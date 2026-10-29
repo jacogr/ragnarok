@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ImportCount but wanted: ExportCount"}
 
-import ../../../src/codec/work_digest
+import ../../../src/codec/work/digest as work_digest
 var wrong = default(ImportCount)
 var value = default(RefineLoad)
 value.exports = wrong

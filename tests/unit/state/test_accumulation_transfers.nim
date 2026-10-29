@@ -5,10 +5,12 @@
 ## Collect actual terminal-selected transfers with exact ordering, bounds, immutable provenance and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_transfers, accumulation_outcome, accumulation_dispatch,
-  accumulation_effects, accumulation_context]
-import ../../../src/codec/[bounded, c2_records, composite, state_accounts, state_layout,
-    state_service_values, state_trie]
+import ../../../src/state/accumulation/[transfers as accumulation_transfers,
+    outcome as accumulation_outcome, dispatch as accumulation_dispatch,
+    effects as accumulation_effects, context as accumulation_context]
+import ../../../src/codec/[bounded, c2_records, composite]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, trie as state_trie]
 import ../../../src/pvm/step
 import ../../support/[accumulation_transfers, arc_evidence]
 

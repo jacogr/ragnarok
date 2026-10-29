@@ -6,8 +6,10 @@ import std/[assertions, envvars, syncio]
 import ../../../src/app/[candidate, chain]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
-import ../../../src/state/[report_admission, report_anchors, accumulation_completion,
-  accumulation_finalization, accumulation_chain, store]
+import ../../../src/state/report/[admission as report_admission, anchors as report_anchors]
+import ../../../src/state/accumulation/[completion as accumulation_completion,
+    finalization as accumulation_finalization, chain as accumulation_chain]
+import ../../../src/state/store
 import ../../support/[application_candidate_context, accumulation_completion_context]
 import ../../support/report_admission_context as report_context
 

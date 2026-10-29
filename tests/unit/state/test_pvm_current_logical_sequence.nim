@@ -10,12 +10,23 @@ import ../../support/[current_namespace_execution_context, current_application_c
     accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
     supplied_logical_context, current_identity_context, current_logical_proof_context,
     pvm_accumulation_program, current_services_disk_samples, managed_storage_samples, current_namespace_refresh_context]
-import ../../../src/app/[services, options, current_block_input, current_handoff, disk_worker]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/disk/worker as disk_worker
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_layout, state_accounts, state_service_values]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    current_logical, accumulation_current_update, store, block_admission, report_admission, supplied_services]
-import ../../../src/storage/managed_manifest
+import ../../../src/codec/[bounded, block_codec, report_owned]
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[identities as current_identities, logical as current_logical]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/supplied/services as supplied_services
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
 proc overwriteCode(): seq[byte] =
   ## Actual write host targets the existing raw key5 of funded service99; the original present-empty value grows without creating a namespace identity.

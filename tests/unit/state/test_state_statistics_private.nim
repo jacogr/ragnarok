@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_statistics
+include ../../../src/codec/state/statistics
 
 ## Independent current/previous populations model a resized epoch with bounded core/service work.
 proc policy(): ActivityConfig =

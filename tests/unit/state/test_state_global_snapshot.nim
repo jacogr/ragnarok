@@ -6,9 +6,9 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[proof_global_helpers, arc_evidence]
 import ../../../src/state/[global_snapshot, store]
-import ../../../src/codec/[bounded, assurances, composite, state_layout, state_trie,
-    state_composition,
-    state_consensus]
+import ../../../src/codec/[bounded, assurances, composite]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition, consensus as state_consensus]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after constructing the complete immutable test source.

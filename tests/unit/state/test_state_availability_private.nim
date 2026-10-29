@@ -12,7 +12,7 @@
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[report_owned, owned]
-include ../../../src/codec/state_availability
+include ../../../src/codec/state/availability
 var fixture: seq[byte] = @[]
 # Fixture I/O is trusted setup; unavailable input cannot count as coverage.
 try:

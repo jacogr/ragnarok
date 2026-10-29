@@ -9,11 +9,11 @@ than a single block executor; their exact supported boundaries live in the linke
 | Area | Contents |
 | --- | --- |
 | [`store.nim`](store.nim) | Atomic write batches, immutable complete-map snapshots, retained values and private forks |
-| `checkpoint*` | Complete-map checkpoint encoding/validation, bounded file access and managed publication workers |
+| `checkpoint.nim` and `checkpoint/` | Complete-map checkpoint encoding/validation, bounded file access and managed publication workers |
 | Authorization, entropy, history, validators, tickets and Safrole | Bounded component transitions and atomic chapter publication |
-| `block_*`, `extrinsic_inputs`, report and guarantee modules | Structural admission, authentication/projection boundaries and selected block transitions |
+| `block/`, `extrinsic_inputs`, report and guarantee modules | Structural admission, authentication/projection boundaries and selected block transitions |
 | [`ancestor_context.nim`](ancestor_context.nim) | Immutable sealed ancestry, child-committed lookup proofs and [bounded report context discovery](../../spec/state-ancestor-context.md) |
-| `accumulation_*` | Prepared service inputs, credited execution contexts, host effects, continuation/reentry and selected successor composition |
+| `accumulation/` | Prepared service inputs, credited execution contexts, host effects, continuation/reentry and selected successor composition |
 | Refinement, assured/computed, bundle, import/export and erasure modules | Bounded work execution, provenance, data availability and publication stages |
 
 `StateStore` retains a complete full-state mapping and uses the incremental

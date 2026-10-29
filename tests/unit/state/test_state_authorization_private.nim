@@ -11,7 +11,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/codec/state_authorization
+include ../../../src/codec/state/authorization
 
 # Return an immutable owner after all local source rows, entry bytes and wire aliases have retired.
 proc escaped(kind: AuthorizationKind, marker: byte): AuthorizationSnapshot =

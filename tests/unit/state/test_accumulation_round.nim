@@ -7,10 +7,15 @@
 # @@Verification={"arc": "accumulation_round_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[accumulation_round, accumulation_inputs, accumulation_operands,
-  accumulation_queue, report_admission, store]
-import ../../../src/codec/[bounded, composite, header, work_digest, report_owned,
-  c2_records, state_workqueues, state_privileges, state_layout, state_trie]
+import ../../../src/state/accumulation/[round as accumulation_round, inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/[report_owned, c2_records]
+import ../../../src/codec/state/[workqueues as state_workqueues, privileges as state_privileges,
+    layout as state_layout, trie as state_trie]
 import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Finite local budgets independently bound parent decoding, traversal and materialized service inputs.

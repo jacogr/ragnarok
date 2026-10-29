@@ -3,7 +3,7 @@
 
 ## A dispatcher cannot duplicate callback addresses or adoption authority.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <BlockDownloadLoop>", "build_name": "application-download-loop-copy"}
-import ../../../src/quic/block_download_loop
+import "../../../src/quic/block/download/loop" as block_download_loop
 var original = default(BlockDownloadLoop)
 var duplicate = original
 discard original.stage

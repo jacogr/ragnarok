@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "contracts", "expected": "not reason == None"}
 
-import ../../../src/state/safrole_authentication
+import ../../../src/state/safrole/authentication as safrole_authentication
 discard safroleAuthFailure(SafroleAuthError.None)

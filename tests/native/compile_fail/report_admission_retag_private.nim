@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/report_admission
+import ../../../src/state/report/admission as report_admission
 let value = default(ReportAdmissionResult[AdmittedReports])
 discard value.status # Private storage must be rejected before lowering.

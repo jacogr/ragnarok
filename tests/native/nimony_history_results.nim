@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_history
+include ../../src/codec/state/history
 let useDefault = paramStr(2) == "default"
 let policy = HistoryConfig(cores: CoreCount(2), blocks: ElementLimit(8), perBlock: ElementLimit(2),
     totalPackages: ElementLimit(16), peaks: ElementLimit(128), maxBytes: ByteLimit(10000))

@@ -5,13 +5,20 @@
 ## Reuse the same genuine prepared/completed types through bounded repeated report-only accseq entries.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_reentry, accumulation_reentry_execution,
-  accumulation_reentry_invocation, accumulation_continuation_execution,
-  accumulation_continuation_inputs,
-  accumulation_execution, accumulation_inputs, accumulation_operands, accumulation_continuation,
-  accumulation_service, accumulation_invocation, accumulation_dispatch, accumulation_skip,
-  accumulation_batch, store]
-import ../../../src/codec/[bounded, report_owned, work_digest, state_trie]
+import ../../../src/state/accumulation/reentry as accumulation_reentry
+import ../../../src/state/accumulation/reentry/[execution as accumulation_reentry_execution,
+    invocation as accumulation_reentry_invocation]
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    inputs as accumulation_inputs, operands as accumulation_operands,
+    continuation as accumulation_continuation, service as accumulation_service,
+    invocation as accumulation_invocation, dispatch as accumulation_dispatch,
+    skip as accumulation_skip, batch as accumulation_batch]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/trie as state_trie
 import ../../support/[accumulation_reentry_context, accumulation_continuation_execution_context,
   accumulation_execution_context, accumulation_transfer_reentry, arc_evidence]
 

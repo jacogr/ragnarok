@@ -4,7 +4,8 @@
 
 ## Refuse access or substitution across the admitted continuation planning boundary.
 
-import ../../../src/state/[accumulation_continuation, accumulation_round]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    round as accumulation_round]
 var round: BlockAccumulationRound
 var limits: AccumulationContinuationLimits
 discard planAccumulationContinuation(round, limits)

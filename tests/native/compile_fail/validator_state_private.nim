@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/validator_state
+import ../../../src/state/validator/state as validator_state
 var hidden = default(ValidatorStateResult)
 discard hidden.completed

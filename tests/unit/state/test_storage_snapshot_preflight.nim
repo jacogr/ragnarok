@@ -4,8 +4,9 @@
 ## Declared complete-map snapshot limits refuse before outer hashing, with genuine integrity controls.
 import std/[assertions, syncio]
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_repository, node_records, snapshot_codec,
-  database_identity]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[snapshot_codec, database_identity]
 import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual primitive counters without substituting hash results.

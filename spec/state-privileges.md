@@ -8,7 +8,7 @@ compiler or toolchain revision changes.
 
 ## Exact schema
 
-`src/codec/state_privileges.nim` supplies `privilegeStateEntry(source, config)` for C(12) and
+`src/codec/state/privileges.nim` supplies `privilegeStateEntry(source, config)` for C(12) and
 `decodePrivilegeState(input, config)` for one complete component prefix:
 
 ```text

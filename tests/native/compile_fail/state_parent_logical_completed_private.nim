@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Complete selected logical/source authority and tagged payloads remain private.
-import ../../../src/state/parent_logical
+import ../../../src/state/parent/logical as parent_logical
 var owner = default(ParentLogicalResult[SelectedLogicalParent])
 discard owner.completed

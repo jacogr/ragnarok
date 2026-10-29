@@ -5,11 +5,16 @@
 ## Atomic state application checks exact-parent authority, private failure rollback and one-pass composition.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie]
-import ../../../src/state/[accumulation_state, accumulation_finalization, accumulation_completion,
-  accumulation_consensus, accumulation_authorization, accumulation_preimages, accumulation_activity,
-  accumulation_validators, accumulation_times, accumulation_statistics, accumulation_history,
-  accumulation_ready, accumulation_recent, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/accumulation/[state as accumulation_state,
+    finalization as accumulation_finalization, completion as accumulation_completion,
+    consensus as accumulation_consensus, authorization as accumulation_authorization,
+    preimages as accumulation_preimages, activity as accumulation_activity,
+    validators as accumulation_validators, times as accumulation_times,
+    statistics as accumulation_statistics, history as accumulation_history,
+    ready as accumulation_ready, recent as accumulation_recent]
+import ../../../src/state/store
 import ../../support/[accumulation_activity_context, accumulation_completion_context,
   report_context, arc_evidence]
 

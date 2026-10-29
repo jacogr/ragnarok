@@ -4,12 +4,15 @@
 
 ## Genuine mixed providers prove exact canonical coverage, original canceled gas and distinct immutable proof domains.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_coverage, accumulation_annulment, accumulation_outcome,
-  accumulation_dispatch, accumulation_inputs, accumulation_service, accumulation_skip,
-  accumulation_absent, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_privileges,
-  state_layout,
-  c2_records]
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment, outcome as accumulation_outcome,
+    dispatch as accumulation_dispatch, inputs as accumulation_inputs,
+    service as accumulation_service, skip as accumulation_skip, absent as accumulation_absent]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    layout as state_layout]
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,

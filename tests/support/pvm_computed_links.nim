@@ -4,11 +4,17 @@
 ## Genuine singleton exporters and importing packages for computational lookup correspondence.
 
 import std/assertions
-import ../../src/codec/[bounded, work_package, work_report]
+import ../../src/codec/bounded
+import ../../src/codec/work/[package as work_package, report as work_report]
 import ../../src/pvm/host_fetch
-import ../../src/state/[computed_report, computed_guarantee, availability_specifier, export_erasure,
-  bundle_erasure, erasure_layout, erasure_words, auditable_bundle, input_refinement,
-  extrinsic_inputs, import_inputs, import_justification]
+import ../../src/state/computed/[report as computed_report, guarantee as computed_guarantee]
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/[auditable_bundle, input_refinement, extrinsic_inputs]
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
 import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome,
   pvm_extrinsic_inputs, pvm_import_inputs, pvm_import_justification, pvm_export_erasure,
   pvm_computed_report, pvm_export_erasure_vectors, pvm_export_vectors]

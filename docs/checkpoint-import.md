@@ -92,9 +92,9 @@ keep the one-head/unfinalized contract described here.
 
 ## Component APIs
 
-[`loadCheckpointTrust`](../src/app/checkpoint_trust.nim) captures independent bounded
+[`loadCheckpointTrust`](../src/app/checkpoint/trust.nim) captures independent bounded
 identity/header files in one private immutable owner.
-[`loadTrustedCheckpoint`](../src/app/checkpoint_trust.nim) restores the selected
+[`loadTrustedCheckpoint`](../src/app/checkpoint/trust.nim) restores the selected
 complete map under explicit `StateStoreLimits` and byte policy, then checks its
 sealed-header binding. [`Services.startRecovered`](../src/app/services.nim)
 installs only a successful opaque recovery result and compares the full chain

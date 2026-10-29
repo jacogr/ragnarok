@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_transition
+import ../../../src/state/computed/transition as computed_transition
 var candidate: TransitionBoundComputedReport
 discard candidate.data

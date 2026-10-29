@@ -4,8 +4,11 @@
 ## Exact storage framing, malformed/overflow refusals and independent complete node hashes.
 
 import std/[assertions, syncio]
-import ../../../src/storage/[node_records, record_codec, full_state_trie]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 proc limits(): RecordLimits =
   ## Bounded complete maps and independently bounded physical batches.

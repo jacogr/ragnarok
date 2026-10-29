@@ -5,9 +5,14 @@
 ## Exact computed report successors preserve all posterior chapters and publish only to their original parent handles.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_publication, computed_admission, report_admission,
-  report_assignments, block_transition, block_admission, store]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/state/computed/[publication as computed_publication,
+    admission as computed_admission]
+import ../../../src/state/report/[admission as report_admission, assignments as report_assignments]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/[pvm_computed_publication, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

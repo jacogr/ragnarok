@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "operation"}
 
 ## Caller mutation cannot change payload selection or native borrowed publication authority.
-import ../../../src/app/disk_worker
+import ../../../src/app/disk/worker as disk_worker
 let worker = default(DiskPublicationWorker)
 discard worker.operation

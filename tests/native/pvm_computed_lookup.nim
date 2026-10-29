@@ -4,7 +4,7 @@
 ## Strict optimized lookup results include genuine original recent/state/admission and independent sealed-chain controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_lookup, computed_recent]
+import ../../src/state/computed/[lookup as computed_lookup, recent as computed_recent]
 import ../../src/codec/[bounded, header]
 import ../support/[pvm_computed_lookup, pvm_computed_lookup_vectors]
 

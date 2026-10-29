@@ -4,9 +4,10 @@
 ## Independently authenticated chapter/time reads preserve missing, absent, malformed and bounded outcomes.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_plan, proof_view]
-import ../../../src/codec/[bounded, assurances, state_layout, state_safrole, state_composition,
-    state_trie, state_consensus]
+import ../../../src/state/proof/[global as proof_global, plan as proof_plan, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[layout as state_layout, safrole as state_safrole,
+    composition as state_composition, trie as state_trie, consensus as state_consensus]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained backend observer before checking hash-free typed reads.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

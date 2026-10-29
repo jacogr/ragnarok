@@ -4,8 +4,9 @@
 
 ## A service identifier cannot select a validator activity row.
 
-import ../../../src/state/validator_projection
-import ../../../src/codec/[state_statistics, bounded]
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/codec/state/statistics as state_statistics
+import ../../../src/codec/bounded
 var owner: ValidatorActivityProjection
 var service: ServiceIndex
 discard projectedValidatorAt(owner, StatisticsEpoch.Current, service)

@@ -5,8 +5,13 @@
 # @@Verification={"arc":"storage_light_retained_journal_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[arc_evidence, storage_io, storage_crash, storage_light_root, storage_light_journal]
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, light_journal_cache,
-  light_journal_replay, light_delta, managed_io, managed_manifest, file_errors]
+import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../../src/storage/state_proof
+import ../../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation/publication observations distinguish verified proof work from durable IO.

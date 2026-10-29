@@ -3,7 +3,8 @@
 
 ## Explicit report/admission policies select one economic profile without manufacturing prepared owners.
 import ./[account_audit_plan_context, service_directory_context]
-import ../../src/state/[account_review_plan, supervision_table, economics_table]
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/state/[supervision_table, economics_table]
 import ../../src/codec/bounded
 const reviewPlanTestLimits* = AccountReviewPlanLimits(audit: accountAuditTestLimits,
   directory: directoryTestLimits,

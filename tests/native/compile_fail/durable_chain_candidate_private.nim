@@ -3,6 +3,6 @@
 
 ## A caller cannot replace the candidate carried by a prepared publication certificate.
 # @@Verification={"group":"privacy","expected":"state"}
-import ../../../src/state/accumulation_publication
+import ../../../src/state/accumulation/publication as accumulation_publication
 var prepared = default(PreparedChainUpdate)
 discard prepared.state

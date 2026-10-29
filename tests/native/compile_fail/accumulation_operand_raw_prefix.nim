@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: AccumulationReportPrefix but got: uint64", "early": ["prepareAccumulationOperands(", "[2] expected: AccumulationReportPrefix but got: uint64"]}
 
-import ../../../src/state/[accumulation_operands, accumulation_queue]
+import ../../../src/state/accumulation/[operands as accumulation_operands,
+    queue as accumulation_queue]
 import ../../../src/codec/composite
 discard prepareAccumulationOperands(default(AccumulationQueuePlan), 0'u64, default(AccumulationOperandConfig))

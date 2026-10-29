@@ -6,8 +6,9 @@
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[accumulation_current_update, accumulation_current_chain,
-  accumulation_current_consensus, store]
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    chain as accumulation_current_chain, consensus as accumulation_current_consensus]
+import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, report_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_profile
+import ../../../src/state/computed/profile as computed_profile
 var candidate: ComputedProfileResult[ConfiguredComputedReport]
 discard candidate.completed

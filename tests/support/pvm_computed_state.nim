@@ -4,11 +4,20 @@
 ## Genuine computed reports execute from the exact complete parent map later admitted with sealed block commitments.
 
 import std/assertions
-import ../../src/state/[store, block_admission, computed_links, computed_report, computed_guarantee,
-  availability_specifier, export_erasure, bundle_erasure, erasure_layout, erasure_words,
-  auditable_bundle, input_refinement]
-import ../../src/codec/[bounded, state_trie, state_layout, state_safrole, header, block_codec,
-  composite, work_report, assurances, tickets]
+import ../../src/state/store
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/computed/[links as computed_links, report as computed_report,
+    guarantee as computed_guarantee]
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/[auditable_bundle, input_refinement]
+import ../../src/codec/bounded
+import ../../src/codec/state/[trie as state_trie, layout as state_layout, safrole as state_safrole]
+import ../../src/codec/[header, block_codec, composite]
+import ../../src/codec/work/report as work_report
+import ../../src/codec/[assurances, tickets]
 import ../../src/chain/parameters
 import ../../src/crypto/[primitives, extrinsic_commitment]
 import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome, pvm_computed_report,

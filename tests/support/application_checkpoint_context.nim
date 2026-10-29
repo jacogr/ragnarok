@@ -6,7 +6,8 @@
 import std/[assertions, envvars, syncio]
 import ../../src/app/chain
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/codec/[header, bounded, state_layout, state_trie]
+import ../../src/codec/[header, bounded]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../src/state/store
 
 type CheckpointFixtureVariant* {.pure.} = enum ## Each independent mismatch changes exactly one persistence-relevant fact.

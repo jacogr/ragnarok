@@ -4,7 +4,10 @@
 ## Strict successor admission/queue result and retained-view contracts with genuine assurance-fed priority as a positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[assured_queue, computed_assurances, accumulation_queue, report_admission]
+import ../../src/state/assured/queue as assured_queue
+import ../../src/state/computed/assurances as computed_assurances
+import ../../src/state/accumulation/queue as accumulation_queue
+import ../../src/state/report/admission as report_admission
 import ../../src/codec/[bounded, assurances]
 import ../support/pvm_assured_queue
 

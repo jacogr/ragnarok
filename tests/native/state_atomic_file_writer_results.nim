@@ -5,7 +5,8 @@
 
 import std/[cmdline, assertions]
 import std/posix/posix
-import ../../src/lib/[atomic_file_writer, atomic_file]
+import ../../src/lib/atomic/file/writer as atomic_file_writer
+import ../../src/lib/atomic/file as atomic_file
 import ../../src/codec/bounded
 
 proc forgotten() =

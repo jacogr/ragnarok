@@ -4,7 +4,7 @@ One joined checkpoint shutdown journal and optional restart, with a serialized h
 receipt/expected 0 absent, 1 Cancelled, 2 Completed, 3 Interrupted; retirement is independent.
 expected/expectedRet are history monitors cleared only by explicit acknowledgement.
 Hypothesis: repeated close, restart or a retirement-only error discards unacknowledged evidence.
-Source: src/app/checkpoint_session.nim close/start/shutdown/takeShutdown.
+Source: src/app/checkpoint/session.nim close/start/shutdown/takeShutdown.
 Worker close outcomes are abstract API inputs; this model does not simulate filesystem IO.#
   (variables :active.0. :pending.0. :receipt.0. :retirement.0.
               :expected.0. :expectedRet.0. :used.0.)

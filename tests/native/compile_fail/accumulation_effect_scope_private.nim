@@ -4,5 +4,5 @@
 ## Mutation-scope provenance must remain private; callers cannot forge self-metadata eligibility.
 # @@Verification={"group": "privacy", "expected": "accountScope"}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 discard default(AccumulationEffectContext).accountScope

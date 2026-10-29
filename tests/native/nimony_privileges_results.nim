@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_privileges
+include ../../src/codec/state/privileges
 let useDefault = paramStr(2) == "default"
 let policy = PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(2), maxBytes: ByteLimit(100))
 var invalid = policy

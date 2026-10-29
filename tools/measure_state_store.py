@@ -84,7 +84,7 @@ def measure_reference(ref, checks, compiler, source, library):
     commit = subprocess.check_output(['git', 'rev-parse', '--verify', '--end-of-options',
                                       ref+'^{commit}'], cwd=ROOT, text=True).strip()
     checked = ['spec/toolchain.json', 'spec/crypto-pins.json', 'native/crypto', 'tests/native/crypto_observer.c',
-               'src/crypto', 'src/codec/state_trie.nim', 'src/codec/state_layout.nim']
+               'src/crypto', 'src/codec/state/trie.nim', 'src/codec/state/layout.nim']
     changes = subprocess.check_output(['git', 'diff', '--name-only', commit, '--', *checked], cwd=ROOT, text=True)
     if changes.strip():
         # The same current native library/compiler cannot stand in for a changed baseline dependency.

@@ -4,13 +4,15 @@
 ## Real current-command ancestor acquisition preserves exact lineage, bounded deadlines and every durable state entry.
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
-import ../../../src/app/[current_download_command, current_download_policy,
-    options, services]
-import ../../../src/quic/[current_block_download_loop, current_block_download_stream]
+import ../../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import ../../../src/app/[options, services]
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
-import ../../../src/state/accumulation_current_consensus
-import ../../../src/storage/managed_manifest
+import ../../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[accumulation_current_chain_context,
   current_application_context,
   current_download_command_context, current_services_disk_samples,

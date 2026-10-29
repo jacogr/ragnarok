@@ -9,8 +9,9 @@ import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/rpc/server
-import ../../../src/state/[accumulation_current_update, accumulation_current_consensus,
-  accumulation_current_chain, store]
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus, chain as accumulation_current_chain]
+import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, rpc_socket, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

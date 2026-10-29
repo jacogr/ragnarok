@@ -8,7 +8,9 @@
 
 import std/[cmdline, syncio]
 import ../../src/state/guarantors
-import ../../src/codec/[assurances, state_safrole, bounded]
+import ../../src/codec/assurances
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/bounded
 let outcome = if paramStr(1) == "default": default(GuarantorResult[GuarantorPermutation]) else:
   shuffleValidatorIndices(ValidatorCount(6), default(StateEntropyWord), ElementLimit(0))
 discard outcome.value # Both supported selectors must fail the checked extraction contract.

@@ -5,7 +5,8 @@
 import std/[assertions, syncio, strutils, tempfiles, paths, files]
 import ../../../src/pvm/[artifact, program, machine, step, gas]
 import ../../../src/codec/natural
-import ../../../src/app/[options, pvm_command, cli_help]
+import ../../../src/app/[options, pvm_command]
+import ../../../src/app/cli/help as cli_help
 
 proc natural(bytes: var seq[byte], value: uint64) =
   ## Construct fixture lengths using the independently maintained canonical prefix codec.

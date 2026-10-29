@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/[state_safrole, state_trie]
+import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
 let value = default(ValidatorStateSnapshot)
 discard value.data

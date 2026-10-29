@@ -5,8 +5,11 @@
 
 # @@Verification={"group": "nominal","expected": "openArray","early": ["prepareComputedLinks(","[2] expected: openArray[ComputedWorkReport] but got: seq[SegmentLookup]"]}
 
-import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed/[links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/pvm/host_fetch
 discard prepareComputedLinks(default(ComputedGuaranteeTranscript), default(seq[SegmentLookup]),
     ElementLimit(1))

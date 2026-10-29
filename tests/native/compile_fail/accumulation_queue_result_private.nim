@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/accumulation_queue
+import ../../../src/state/accumulation/queue as accumulation_queue
 let owner = default(AccumulationQueueResult[AccumulationQueuePlan])
 discard owner.completed # Private storage must fail semantic compilation.

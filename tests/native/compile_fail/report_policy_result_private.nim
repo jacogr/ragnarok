@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/report_policy
+import ../../../src/state/report/policy as report_policy
 let owner = default(ReportPolicyResult[PolicyCheckedReports])
 discard owner.completed # Must fail before lowering.

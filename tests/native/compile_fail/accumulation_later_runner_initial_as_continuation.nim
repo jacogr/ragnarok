@@ -4,7 +4,8 @@
 
 ## Each public runner requires its genuine prepared source family.
 
-import ../../../src/state/[accumulation_later_runner, accumulation_runner, accumulation_round]
+import ../../../src/state/accumulation/[later_runner as accumulation_later_runner,
+    runner as accumulation_runner, round as accumulation_round]
 import ../../../src/chain/parameters
 var source: BlockAccumulationRound
 discard runAccumulationContinuation(source, default(Parameters), default(AccumulationRunnerLimits))

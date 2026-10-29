@@ -7,7 +7,7 @@
 ## each path must fail at its selected-success contract rather than expose a default value.
 
 import std/cmdline
-import ../../src/state/[accumulation_operands, accumulation_queue]
+import ../../src/state/accumulation/[operands as accumulation_operands, queue as accumulation_queue]
 # Runtime selection prevents default extraction from becoming a compile-time-only rejection.
 let outcome = if paramStr(1) == "refused":
   prepareAccumulationOperands(default(AccumulationQueuePlan), AccumulationReportPrefix(0), default(AccumulationOperandConfig))

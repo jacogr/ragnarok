@@ -4,8 +4,9 @@
 
 ## Reject substitution of a different semantic hash or E4 domain at the forget mutation boundary.
 
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[state_accounts, state_service_values, state_requests]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests]
 import ../../../src/chain/parameters
 discard recordAccumulationForget(default(AccumulationEffects), default(ServicePreimageHash),
     RequestSlot(3), default(Parameters))

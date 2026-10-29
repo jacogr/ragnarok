@@ -6,7 +6,8 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
 import ../../../src/state/[footprint_audit, inventory, manifest, store]
-import ../../../src/codec/[bounded, state_accounts]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force hash refusal to prove this audit consumes only already captured facts.

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Callers cannot forge complete lookup provenance or mutate directory storage.
-import ../../../src/state/service_directory
+import ../../../src/state/service/directory as service_directory
 var value = default(ServiceDirectoryResult[StateServiceDirectory])
 discard value.status

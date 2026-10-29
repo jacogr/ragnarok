@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_outputs
+import ../../../src/codec/state/outputs as state_outputs
 var owner = default(OutputLogSnapshot)
 owner.data = nil

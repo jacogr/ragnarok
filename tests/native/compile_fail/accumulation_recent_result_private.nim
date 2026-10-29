@@ -4,6 +4,6 @@
 
 ## Reject mutable construction or payload extraction across private recent-history ownership.
 
-import ../../../src/state/accumulation_recent
+import ../../../src/state/accumulation/recent as accumulation_recent
 var outcome: AccumulationRecentResult[PreparedAccumulationRecent]
 discard outcome.completed

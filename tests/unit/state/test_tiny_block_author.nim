@@ -3,10 +3,12 @@
 
 ## Six distinct native signing roles cross a Tiny epoch through ordinary candidate validation.
 import std/[assertions, syncio]
-import ../../../src/app/[block_author, tiny_genesis, chain, candidate]
+import "../../../src/app/block/author" as block_author
+import ../../../src/app/[tiny_genesis, chain, candidate]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, block_codec]
-import ../../../src/state/[store, accumulation_current_update]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/current_consecutive_context
 

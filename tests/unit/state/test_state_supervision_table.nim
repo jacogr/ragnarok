@@ -5,8 +5,12 @@
 # @@Verification={"arc": "state_supervision_table_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_directory_context, arc_evidence]
-import ../../../src/state/[supervision_table, service_supervision, service_directory, inventory]
-import ../../../src/codec/[bounded, state_accounts, state_composition]
+import ../../../src/state/supervision_table
+import ../../../src/state/service/[supervision as service_supervision,
+    directory as service_directory]
+import ../../../src/state/inventory
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing after complete directory fixture construction.

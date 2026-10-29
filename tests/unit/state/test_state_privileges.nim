@@ -7,7 +7,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_privileges, bounded]
+import ../../../src/codec/state/privileges as state_privileges
+import ../../../src/codec/bounded
 
 ## A snapshot copied out of local scope retains independent fixed role/pair values.
 proc captured(config: PrivilegeConfig): PrivilegeSnapshot =

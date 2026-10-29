@@ -4,6 +4,7 @@
 
 ## Refuse access or substitution across the admitted output projection boundary.
 
-import ../../../src/state/[accumulation_outputs, accumulation_inputs]
+import ../../../src/state/accumulation/[outputs as accumulation_outputs,
+    inputs as accumulation_inputs]
 var plan: PreparedAccumulationOutputs
 discard outputAt(plan, InvocationServiceIndex(0))

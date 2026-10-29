@@ -3,9 +3,9 @@
 # @@Verification={"group": "nominal", "expected": "expected: RepositoryGeneration but got: Gas", "early": ["disk.(confirmsCurrentDiskPublication,", "[3] expected: RepositoryGeneration but got: Gas"]}
 
 ## Gas allowances cannot substitute a confirmed native disk generation.
-import ../../../src/app/disk_chain
+import ../../../src/app/disk/chain as disk_chain
 import ../../../src/state/disk_store
-import ../../../src/codec/work_digest
+import ../../../src/codec/work/digest as work_digest
 var disk = default(DiskStateStore)
 let publication = default(PreparedCurrentDiskPublication)
 discard disk.confirmsCurrentDiskPublication(publication, Gas(1))

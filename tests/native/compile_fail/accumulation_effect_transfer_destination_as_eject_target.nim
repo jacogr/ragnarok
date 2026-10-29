@@ -4,8 +4,8 @@
 
 ## Reject a transfer destination reused as an eject target without an explicit domain conversion.
 
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/state_service_values
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/state/service_values as state_service_values
 import ../../../src/chain/parameters
 discard recordAccumulationEject(default(AccumulationEffects), AccumulationTransferDestination(99),
   default(Parameters))

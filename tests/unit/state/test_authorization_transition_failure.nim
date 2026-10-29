@@ -11,7 +11,7 @@
 import std/[assertions, syncio]
 import ../../support/[authorization_transition_fixture, arc_evidence]
 import ../../../src/state/[authorization, store]
-import ../../../src/codec/[state_trie, state_layout]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 
 ## Reset primitive counters or refuse the first hash; the production profile contains no observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

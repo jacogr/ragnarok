@@ -4,9 +4,13 @@
 
 ## Real current statistics authorize exact final-present metadata timestamps, never account resurrection.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_layout]
-import ../../../src/state/[accumulation_current_accounts, accumulation_accounts,
-  accumulation_current_statistics, accumulation_current_driver, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout]
+import ../../../src/state/accumulation/current/accounts as accumulation_current_accounts
+import ../../../src/state/accumulation/accounts as accumulation_accounts
+import ../../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver]
+import ../../../src/state/store
 import ../../support/[accumulation_current_statistics_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

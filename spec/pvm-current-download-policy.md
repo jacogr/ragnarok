@@ -5,7 +5,7 @@ configuration changes no protocol interpretation, dependency pins or wire/storag
 
 Current policy documents begin with the exact header `ragnarok-current-download-policy-v1` and
 supply all 389 unique `name=canonical-unsigned-decimal` rows in the explicit private
-`current_download_policy_fields.nim` schema. It covers the scalar scheduler, input/ancestor ceilings,
+`src/app/current/download/policy/fields.nim` schema. It covers the scalar scheduler, input/ancestor ceilings,
 current candidate reporting/queue/round, initial execution, continuation planning/execution, every
 current composition stage, sealed-header capture and callback/total deadlines. Discovery permission
 is an explicit boolean encoded only as zero or one. It is not inferred from a legacy document.

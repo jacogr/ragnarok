@@ -4,11 +4,14 @@
 ## Original multi-item package/state fixtures exercise ordered report rules through actual guest execution.
 
 import std/assertions
-import ../../src/state/[refinement_report, refinement_bootstrap, refinement_outcome,
-    refinement_dispatch, store]
+import ../../src/state/refinement/[report as refinement_report, bootstrap as refinement_bootstrap,
+    outcome as refinement_outcome, dispatch as refinement_dispatch]
+import ../../src/state/store
 import ../../src/pvm/[machine, program, initialize, host_fetch, refinement_exports]
-import ../../src/codec/[bounded, composite, work_package, work_digest, work_report,
-  state_accounts, state_service_values, state_requests, state_trie]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, digest as work_digest, report as work_report]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests, trie as state_trie]
 import ../../src/chain/parameters
 import ../../src/crypto/primitives
 import ./pvm_refinement_outcome

@@ -4,14 +4,25 @@
 ## Real TLS discovery and complete-state current admission catch up beyond finite command limits.
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../../src/app/[current_download_command, current_download_policy]
-import ../../../src/app/[block_author, tiny_genesis, chain, candidate, services, options,
-    download_schedule, current_block_input, current_download_command, current_download_policy]
-import ../../../src/quic/[current_sync, current_block_download_loop, current_block_download_peers,
-    current_block_download_stream, announcements]
-import ../../../src/codec/[bounded, header, block_codec, state_trie, assurances]
+import ../../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import "../../../src/app/block/author" as block_author
+import ../../../src/app/[tiny_genesis, chain, candidate, services, options]
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import ../../../src/quic/current/sync as current_sync
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../../src/quic/announcements
+import ../../../src/codec/[bounded, header, block_codec]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/assurances
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, accumulation_current_update]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/[current_consecutive_context, sync_transport]
 

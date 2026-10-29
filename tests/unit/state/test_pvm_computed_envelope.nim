@@ -6,10 +6,14 @@
 ## Exact standalone wire, independent key order, reporter identity deduplication and immutable owner lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_envelope, computed_credentials, computed_guarantors,
-  computed_roster, computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, computed_guarantee, computed_report, store]
-import ../../../src/codec/[bounded, assurances, guarantees, report_owned, owned, state_safrole]
+import ../../../src/state/computed/[envelope as computed_envelope,
+    credentials as computed_credentials, guarantors as computed_guarantors,
+    roster as computed_roster, transition as computed_transition, profile as computed_profile,
+    lookup as computed_lookup, recent as computed_recent, state as computed_state,
+    links as computed_links, guarantee as computed_guarantee, report as computed_report]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, assurances, guarantees, report_owned, owned]
+import ../../../src/codec/state/safrole as state_safrole
 import ../../support/[pvm_computed_envelope, pvm_computed_credentials, report_context, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

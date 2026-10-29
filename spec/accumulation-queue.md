@@ -8,7 +8,7 @@ this block's gas budget, expire/publish posterior queues or update accumulated h
 
 ## Inputs, binding and ownership
 
-`src/state/accumulation_queue.nim` provides two boundaries:
+`src/state/accumulation/queue.nim` provides two boundaries:
 
 - `planAccumulationQueues` consumes complete serialized parent C(14)/C(15), immutable available
   report owners and a candidate header timeslot. This is a pure projection, not a block certificate.

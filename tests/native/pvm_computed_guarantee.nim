@@ -4,7 +4,7 @@
 ## Optimized guarded transcript results include a genuine independent complete-wire/message control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_report, computed_guarantee]
+import ../../src/state/computed/[report as computed_report, guarantee as computed_guarantee]
 import ../../src/codec/bounded
 import ../../src/crypto/guarantee
 import ../support/[pvm_computed_report, pvm_computed_report_vectors, pvm_computed_guarantee]

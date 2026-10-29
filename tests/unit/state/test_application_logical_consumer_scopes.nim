@@ -6,11 +6,20 @@ import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context,
     current_logical_review_context,
     current_logical_proof_context]
-import ../../../src/app/[logical_checkpoint, logical_review, logical_proof, proof_query]
-import ../../../src/state/[current_logical, current_state, current_globals, current_profile,
-    current_checkpoint, current_review, account_review, checkpoint, proof_plan, planned_proof,
-    proof_view, proof_global, store]
-import ../../../src/codec/[bounded, state_trie, state_composition]
+import ../../../src/app/logical/[checkpoint as logical_checkpoint, review as logical_review,
+    proof as logical_proof]
+import ../../../src/app/proof/query as proof_query
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile, checkpoint as current_checkpoint,
+    review as current_review]
+import ../../../src/state/account/review as account_review
+import ../../../src/state/checkpoint
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[view as proof_view, global as proof_global]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
 import ../../../src/chain/genesis
 type DetachedConsumers = object ## Only independent bytes, semantic keys, fixed profile and explicitly selected posterior commitment cross the final scope.
   proof, checkpoint: seq[byte]

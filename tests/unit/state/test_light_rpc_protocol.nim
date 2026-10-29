@@ -5,9 +5,11 @@
 # @@Verification={"arc":"light_rpc_protocol_arc_release"}
 import std/[assertions, syncio, base64, strutils]
 import ../../support/[application_checkpoint_context, arc_evidence]
-import ../../../src/app/[chain, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/identity as checkpoint_identity
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, header, state_trie]
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/trie as state_trie
 import ../../../src/rpc/[protocol, proof_requests, light_source]
 proc source(): RpcLightHead {.raises.} =
   ## Complete fixture context is transient test input; the resulting RPC owner retains only copied metadata.

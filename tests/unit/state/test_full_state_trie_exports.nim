@@ -5,8 +5,11 @@
 # @@Verification={"arc": "full_state_trie_exports_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[full_state_trie, node_records, node_repository, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/record_codec
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Admitted immutable graph export needs no new hash, including typed preflight refusals.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

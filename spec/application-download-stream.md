@@ -2,7 +2,7 @@
 
 ## Scope and authority
 
-Add one reusable `quic/block_download_stream` controller above the existing application
+Add one reusable `quic/block/download/stream` controller above the existing application
 download owner. Preserve JAMNP-S revision `439c45aad135dc654b3de6f56d7d694fd02b7aa8`,
 Streams, Messages, Notation and CE 128; this layer changes no wire representation.
 GP 0.8.0 and vector pins remain unchanged. The development proof-peer commands keep

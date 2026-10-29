@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/[state_safrole, state_trie]
+import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
 var value = default(StateComponentResult[int])
 value.value = 0

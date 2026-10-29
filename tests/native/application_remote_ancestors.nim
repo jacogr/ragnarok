@@ -4,11 +4,15 @@
 ## Independent TLS requests and complete durable-map witness for the actual executable's remote ancestry command.
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../src/app/[options, services, chain, candidate, download_policy, download_schedule, block_input]
-import ../../src/quic/[block_download_loop, block_download_stream]
+import ../../src/app/[options, services, chain, candidate]
+import ../../src/app/download/[policy as download_policy, schedule as download_schedule]
+import "../../src/app/block/input" as block_input
+import "../../src/quic/block/download/loop" as block_download_loop
+import "../../src/quic/block/download/stream" as block_download_stream
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header, block_codec, report_owned]
-import ../../src/state/[store, accumulation_finalization]
+import ../../src/state/store
+import ../../src/state/accumulation/finalization as accumulation_finalization
 import ../support/[application_candidate_context, accumulation_completion_context, block_download_transport]
 import ../support/application_download_chain
 import ../support/report_admission_context as report_context

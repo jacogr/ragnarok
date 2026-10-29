@@ -5,9 +5,12 @@
 ## Literal core/service tuples, distinct report roles, checked sums and independent immutable ARC ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/[core_service_activity, preimages]
-import ../../../src/codec/[bounded, assurances, report_owned, owned, work_report, work_digest,
-  composite, state_statistics]
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/preimages
+import ../../../src/codec/[bounded, assurances, report_owned, owned]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/state/statistics as state_statistics
 import ../../support/arc_evidence
 
 # The entire pure workload runs with both maintained hash backends disabled.

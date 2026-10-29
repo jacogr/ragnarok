@@ -4,7 +4,9 @@
 ## Strict default/refused result, selected failure and receiver-phase contracts preserve success-only extraction.
 
 import std/[cmdline, syncio]
-import ../../src/app/[block_download, block_input, chain, candidate]
+import "../../src/app/block/download" as block_download
+import "../../src/app/block/input" as block_input
+import ../../src/app/[chain, candidate]
 import ../../src/codec/[bounded, report_owned]
 import ../support/application_candidate_context
 

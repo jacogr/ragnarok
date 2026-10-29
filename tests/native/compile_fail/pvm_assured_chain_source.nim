@@ -5,7 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "ComposedAssuredState", "early": ["advanceAssuredChain(", "[3] expected: ComposedAssuredState but got: PreparedAccumulationConsensus"]}
 
-import ../../../src/state/[assured_chain, accumulation_consensus, store]
+import ../../../src/state/assured/chain as assured_chain
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/store
 import ../../../src/chain/provider
 var state = default(StateStore)
 var view = default(ChainView)

@@ -6,7 +6,7 @@ import std/[assertions, syncio, base64]
 import ../../../src/mcp/protocol
 import ../../../src/rpc/protocol as rpc
 import ../../../src/chain/[parameters, genesis, provider]
-import ../../../src/lib/json_writer
+import ../../../src/lib/json/writer as json_writer
 import ../../support/rpc_socket as sockets
 import ../../support/mcp_context
 include ../../../src/mcp/server

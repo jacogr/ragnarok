@@ -7,7 +7,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/[safrole_transition, store]
+import ../../src/state/safrole/transition as safrole_transition
+import ../../src/state/store
 import ../../src/codec/header
 var state = default(StateStore)
 let outcome = if paramStr(1) == "default": default(SafroleTransitionResult) else:

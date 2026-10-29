@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/report_anchors
+import ../../../src/state/report/anchors as report_anchors
 let owner = default(AnchoredReports)
 discard owner.data # Must fail before lowering.

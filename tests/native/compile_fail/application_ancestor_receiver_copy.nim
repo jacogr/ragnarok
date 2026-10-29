@@ -4,7 +4,7 @@
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <AncestorReceiver>", "build_name": "application-ancestor-receiver-copy"}
 
 ## Duplicating a live receiver would duplicate mutable response storage and cancellation authority.
-import ../../../src/app/ancestor_receiver
+import ../../../src/app/ancestor/receiver as ancestor_receiver
 var original = default(AncestorReceiver)
 var duplicate = original
 discard original.stage

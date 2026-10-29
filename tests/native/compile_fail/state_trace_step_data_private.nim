@@ -3,6 +3,6 @@
 
 ## Published trace ownership and successful prefixes remain private behind guarded extraction.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/state/trace_step
+import ../../../src/state/trace/step as trace_step
 let source = default(TraceStep)
 discard source.data

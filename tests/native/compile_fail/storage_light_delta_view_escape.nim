@@ -3,8 +3,10 @@
 
 ## Borrowed delta bytes may neither mutate immutable authority nor outlive their local owner.
 # @@Verification={"group": "ownership_compile", "build_name": "storage-light-delta-view-escape", "expected": "cannot borrow from encodedBytes(local)"}
-import ../../../src/storage/[light_delta, light_snapshot, database_identity]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/light/[delta as light_delta, snapshot as light_snapshot]
+import ../../../src/storage/database_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 let before = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [],
     LightSnapshotLimits(bytes: ByteLimit(128))).value
 let bounds = LightDeltaLimits(bytes: ByteLimit(208))

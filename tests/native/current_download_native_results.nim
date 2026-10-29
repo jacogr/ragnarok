@@ -3,7 +3,8 @@
 
 ## Default current native results cannot expose successful payloads or unrelated nested failure alternatives.
 import std/cmdline
-import ../../src/quic/[current_block_download_session, current_block_download_peers]
+import "../../src/quic/current/block/download/session" as current_block_download_session
+import "../../src/quic/current/block/download/peers" as current_block_download_peers
 let outcome = default(CurrentDownloadSessionResult[uint64])
 let reason = outcome.failure
 case paramStr(1)

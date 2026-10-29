@@ -7,6 +7,7 @@
 # @@Verification={"group": "nominal", "expected": "HeaderSlot", "early": ["integratePreimages(", "[3] expected: HeaderSlot but got: RequestSlot"]}
 
 import ../../../src/state/[preimages, store]
-import ../../../src/codec/[composite, state_requests]
+import ../../../src/codec/composite
+import ../../../src/codec/state/requests as state_requests
 var state = default(StateStore)
 discard integratePreimages(state, default(AdmittedPreimages), RequestSlot(0))

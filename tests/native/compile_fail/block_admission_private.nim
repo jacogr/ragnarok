@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/block_admission
+import "../../../src/state/block/admission" as block_admission
 import ../../../src/codec/header
 var hidden = default(BlockAdmissionResult)
 discard hidden.completed

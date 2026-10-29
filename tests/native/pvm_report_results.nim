@@ -4,7 +4,8 @@
 ## Optimized guards reject missing report owners and wrong-stage details after genuine positive controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[refinement_report, refinement_bootstrap, refinement_outcome]
+import ../../src/state/refinement/[report as refinement_report, bootstrap as refinement_bootstrap,
+    outcome as refinement_outcome]
 import ../../src/codec/bounded
 import ../../src/pvm/host_fetch
 import ../support/[pvm_report_results, pvm_refinement_outcome]

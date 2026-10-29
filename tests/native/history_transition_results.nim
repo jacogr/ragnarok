@@ -9,7 +9,7 @@
 import std/[assertions, cmdline, syncio]
 import ../support/history_transition_fixture
 import ../../src/state/[history, store]
-import ../../src/codec/state_trie
+import ../../src/codec/state/trie as state_trie
 
 case paramStr(1)
 of "root":

@@ -6,10 +6,15 @@
 ## Includes wide gas/target/pointer witnesses, normalized provision ownership, local refusals and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_dispatch, accumulation_machine, accumulation_outcome,
-  accumulation_effects, accumulation_context, accumulation_invocation, accumulation_service, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_requests, state_service_values,
-  state_layout, state_trie, c2_records]
+import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    machine as accumulation_machine, outcome as accumulation_outcome,
+    effects as accumulation_effects, context as accumulation_context,
+    invocation as accumulation_invocation, service as accumulation_service]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    service_values as state_service_values, layout as state_layout, trie as state_trie]
+import ../../../src/codec/c2_records
 import ../../../src/pvm/[machine, program, gas, step, host_fetch]
 import ../../../src/crypto/primitives
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]

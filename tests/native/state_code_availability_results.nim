@@ -5,8 +5,10 @@
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[state_inventory_context, arc_evidence]
 import ../../src/state/[code_availability, inventory]
-import ../../src/codec/[bounded, state_accounts, state_composition, state_requests]
-include composition_fixture
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests]
+include ./composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive counters and force real content backend failures after source capture.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

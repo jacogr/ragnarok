@@ -5,8 +5,11 @@
 # @@Verification={"arc": "state_supplied_services_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, supplied_logical_context, supplied_services_context, arc_evidence]
-import ../../../src/state/[supplied_services, supplied_logical_inventory, inventory, manifest]
-import ../../../src/codec/[bounded, state_composition, state_requests]
+import ../../../src/state/supplied/[services as supplied_services,
+    logical_inventory as supplied_logical_inventory]
+import ../../../src/state/[inventory, manifest]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[composition as state_composition, requests as state_requests]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reconstruction must succeed with the hash backend disabled after complete capture.

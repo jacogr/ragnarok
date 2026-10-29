@@ -3,8 +3,9 @@
 # @@Verification={"group":"privacy","expected":"partitionReason"}
 
 ## Pending ownership, selected reasons and nominal budget/ordinal units remain private or distinct.
-import ../../../src/state/[accumulation_pending_transfers, accumulation_transfers]
-import ../../../src/codec/state_accounts
+import ../../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
+    transfers as accumulation_transfers]
+import ../../../src/codec/state/accounts as state_accounts
 
 let candidate = prepareInitialPendingTransfers(default(PreparedAccumulationTransfers), Gas(0),
     default(PendingTransferLimits))

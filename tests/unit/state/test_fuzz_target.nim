@@ -5,11 +5,23 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
 import ../../support/[fuzz_fork_context, fuzz_full_replay_context]
-import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate, fuzz_policy, current_download_policy]
-import ../../../src/codec/[bounded, header, report_owned, block_codec, tickets, work_digest]
-import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission,
-  accumulation_queue, report_anchors, guarantors,
-  accumulation_round, accumulation_current_completion, accumulation_current_update, accumulation_current_chain]
+import ../../../src/app/chain
+import ../../../src/app/fuzz/[target as fuzz_target, backend as fuzz_backend,
+    rejection as fuzz_rejection]
+import ../../../src/app/candidate
+import ../../../src/app/fuzz/policy as fuzz_policy
+import ../../../src/app/current/download/policy as current_download_policy
+import ../../../src/codec/[bounded, header, report_owned, block_codec, tickets]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/state/store
+import ../../../src/state/fuzz/[protocol as fuzz_protocol, ancestry as fuzz_ancestry]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/queue as accumulation_queue
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/guarantors
+import ../../../src/state/accumulation/round as accumulation_round
+import ../../../src/state/accumulation/current/[completion as accumulation_current_completion,
+    update as accumulation_current_update, chain as accumulation_current_chain]
 import ../../../src/chain/[provider, genesis, parameters, presets]
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.

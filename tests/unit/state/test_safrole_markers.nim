@@ -10,8 +10,9 @@
 # @@Verification={"arc": "safrole_markers_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/safrole_markers
-import ../../../src/codec/[state_safrole, state_consensus, header, bounded]
+import ../../../src/state/safrole/markers as safrole_markers
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
+import ../../../src/codec/[header, bounded]
 import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Parse a whole trusted unsigned decimal fixture field before narrowing.

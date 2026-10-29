@@ -9,8 +9,10 @@
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/validator_rotation_fixture
-import ../../../src/state/[validator_state, store]
-import ../../../src/codec/[state_consensus, state_trie, state_layout]
+import ../../../src/state/validator/state as validator_state
+import ../../../src/state/store
+import ../../../src/codec/state/[consensus as state_consensus, trie as state_trie,
+    layout as state_layout]
 
 ## Refuse only test-library hashes; production ABI and protocol behavior remain unchanged.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

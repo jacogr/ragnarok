@@ -4,6 +4,6 @@
 
 ## Complete activity ownership and result alternatives remain private.
 
-import ../../../src/state/accumulation_activity
+import ../../../src/state/accumulation/activity as accumulation_activity
 var outcome: AccumulationActivityResult[int]
 outcome.status = AccumulationActivityError.None

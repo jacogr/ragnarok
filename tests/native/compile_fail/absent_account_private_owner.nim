@@ -3,6 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Absence ownership and result storage stay private.
-import ../../../src/state/[accumulation_absent, accumulation_inputs, store]
+import ../../../src/state/accumulation/[absent as accumulation_absent,
+    inputs as accumulation_inputs]
+import ../../../src/state/store
 import ../../../src/codec/header
 discard default(AbsentAccumulation).data

@@ -5,9 +5,14 @@
 # @@Verification={"arc": "state_account_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_checkpoint_context, arc_evidence]
-import ../../../src/state/[account_checkpoint, validated_checkpoint, checkpoint, store, manifest,
-  inventory, account_invariants, footprint_audit, preimage_linkage, preimage_content]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_requests, state_composition]
+import ../../../src/state/account/checkpoint as account_checkpoint
+import ../../../src/state/[validated_checkpoint, checkpoint, store, manifest, inventory]
+import ../../../src/state/account/invariants as account_invariants
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[linkage as preimage_linkage, content as preimage_content]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
+    requests as state_requests, composition as state_composition]
 include ../../native/composition_fixture
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Retire the entire restored graph and every joined certificate inside one activation.

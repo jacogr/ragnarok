@@ -6,10 +6,18 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
     current_logical_review_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_logical, current_state, current_review,
-    current_globals, current_profile, accumulation_current_update, supplied_logical_inventory,
-    inventory, manifest, store, account_review_plan, account_review, account_audit_plan,
-    account_audit, account_invariants, preimage_content, economic_profile, economics_table]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    review as current_review, globals as current_globals, profile as current_profile]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/account/review as account_review
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/preimage/content as preimage_content
+import ../../../src/state/[economic_profile, economics_table]
 import ../../../src/chain/[parameters, provider]
 import ../../../src/codec/[bounded, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

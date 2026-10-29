@@ -5,10 +5,14 @@
 ## Genuine upgrade executions publish only selected self metadata across common-source service views.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_dispatch, accumulation_effects,
-  accumulation_context, accumulation_outcome, accumulation_provisions, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_service_values,
-  state_layout, state_trie, state_requests]
+import ../../../src/state/accumulation/[batch as accumulation_batch,
+    dispatch as accumulation_dispatch, effects as accumulation_effects,
+    context as accumulation_context, outcome as accumulation_outcome,
+    provisions as accumulation_provisions]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, trie as state_trie, requests as state_requests]
 import ../../../src/pvm/machine
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,

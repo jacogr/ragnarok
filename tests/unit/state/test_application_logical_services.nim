@@ -8,14 +8,29 @@ import ../../support/[current_repeated_logical_context, collected_logical_contex
     collected_logical_services_context, accumulation_current_candidate_context,
     application_download_chain,
     current_logical_proof_context]
-import ../../../src/app/[services, current_logical, preparation_worker, current_block_input,
-    current_handoff, candidate, proof_worker, proof_query]
-import ../../../src/state/[current_logical, current_state, current_globals, current_profile,
-    parent_logical, accumulation_current_update, accumulation_round, accumulation_queue,
-    report_admission,
-    block_transition, block_admission, store, proof_plan, planned_proof, proof_view, proof_global, trie_proof]
+import ../../../src/app/services
+import ../../../src/app/current/logical as current_logical
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/candidate
+import ../../../src/app/proof/[worker as proof_worker, query as proof_query]
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/parent/logical as parent_logical
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[view as proof_view, global as proof_global]
+import ../../../src/state/trie_proof
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_layout]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/layout as state_layout
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound scalar-only polling of the actual managed proof worker.
 proc main() {.raises.} =

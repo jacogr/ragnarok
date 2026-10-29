@@ -5,10 +5,15 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_execution_context, accumulation_execution_context,
     parent_profile_context, parent_globals_context, supplied_logical_context, state_inventory_context]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_profile,
-    current_globals, current_state, current_logical, accumulation_current_update,
-    supplied_logical_inventory, inventory]
-import ../../../src/codec/[bounded, report_owned, state_accounts]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state, logical as current_logical]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/inventory
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/accounts as state_accounts
 proc main() {.raises.} =
   ## No account metadata override, synthetic current update or duplicate C255/code preimage is used.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

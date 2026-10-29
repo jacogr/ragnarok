@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Role certificates keep retained owner and tagged storage private.
-import ../../../src/state/[accumulation_global_roles, accumulation_annulment]
+import ../../../src/state/accumulation/global/roles as accumulation_global_roles
+import ../../../src/state/accumulation/annulment as accumulation_annulment
 let refused = prepareAccumulationGlobalRoles(default(PreparedAccumulationAnnulment), default(
     AccumulationGlobalRoleLimits))
 discard refused.status

@@ -19,7 +19,7 @@ preserving private immutable ownership, canonical formats and complete graph aut
 | Disk authority | Valid outer checksums/bindings cannot hide corrupt inner records; strict and exact-prefix recovery preserve selected bytes and retire failed-open locks |
 | Measurements | Reversed paired native orders, both producer directions, exact selected bytes/maps/releases, strict read-only evidence validation and separate scoped Linux resident-pressure outcomes |
 
-All runtime changes are confined to `record_codec.nim` and `node_repository.nim`. Compiler/provider
+All runtime changes are confined to `record_codec.nim` and `src/storage/node/repository.nim`. Compiler/provider
 pins, checked ARC/Clang LTO, physical on-disk formats and default Perf Storage/Growth work are
 unchanged. Optional paired targets reuse explicitly selected frozen local builds. They add no
 routine CI matrix or timing samples. Local focused tests and exact-head scoped Linux evidence

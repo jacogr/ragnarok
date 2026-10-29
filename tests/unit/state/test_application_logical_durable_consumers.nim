@@ -11,17 +11,39 @@ import ../../support/[collected_native_context, collected_logical_context,
     accumulation_execution_context,
     accumulation_current_candidate_context, application_download_chain, managed_storage_samples,
     current_logical_proof_context, current_logical_review_context]
-import ../../../src/app/[services, current_logical, collected_supplied_plan,
-    collected_supplied_state, logical_checkpoint, logical_proof, logical_review, proof_query,
-    proof_worker, disk_worker,
-    preparation_worker, current_block_input, current_handoff, candidate]
-import ../../../src/state/[current_logical, current_state, current_checkpoint, current_review,
-    account_review, account_review_plan, inventory, current_globals, current_profile,
-    accumulation_current_update, accumulation_round, accumulation_queue, report_admission,
-    block_transition, block_admission, store, proof_plan, planned_proof, proof_view, checkpoint]
+import ../../../src/app/services
+import ../../../src/app/current/logical as current_logical
+import ../../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../../src/app/logical/[checkpoint as logical_checkpoint, proof as logical_proof,
+    review as logical_review]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
+import ../../../src/app/disk/worker as disk_worker
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/candidate
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    checkpoint as current_checkpoint, review as current_review]
+import ../../../src/state/account/review as account_review
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/inventory
+import ../../../src/state/current/[globals as current_globals, profile as current_profile]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/checkpoint
 import ../../../src/chain/genesis
-import ../../../src/storage/managed_manifest
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_trie]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    trie as state_trie]
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar native scheduling never retains, drops or reads a leased canonical owner.
 proc waitDisk(owner: var Services) =

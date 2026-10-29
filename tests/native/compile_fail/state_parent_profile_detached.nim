@@ -4,5 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "ChainView", "early": ["captureParentProfile(", "[1] expected: ChainView but got: StateStoreSnapshot"]}
 
 ## A detached map cannot replace original selected history and finality.
-import ../../../src/state/[parent_profile, store]
+import ../../../src/state/parent/profile as parent_profile
+import ../../../src/state/store
 discard captureParentProfile(default(StateStoreSnapshot), ParentProfileLimits())

@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "GenesisResult", "early": ["bindComputedProfile(", "[2] expected: GenesisResult but got: Parameters"]}
 
-import ../../../src/state/[computed_profile, computed_lookup, computed_recent]
+import ../../../src/state/computed/[profile as computed_profile, lookup as computed_lookup,
+    recent as computed_recent]
 import ../../../src/chain/[genesis, parameters]
 discard bindComputedProfile(default(LookupAnchoredComputedReport), default(Parameters))

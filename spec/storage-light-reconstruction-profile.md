@@ -129,7 +129,7 @@ that each retained final successor survives owner close before leaving its own r
 
 The final interleaved ownership comparison used the frozen bulk-copy and scoped-replay
 binaries with three warmups and ten measured rounds per mode/size/binary (156 fresh consumers,
-`build/storage-db5-lifetime-ab/`). Only `light_journal_cache.nim` differs among measured source
+`build/storage-db5-lifetime-ab/`). Only `src/storage/light/journal/cache.nim` differs among measured source
 inputs; native objects and provider/compiler pins match. It confirmed:
 
 | Value bytes | Mode | Peak RSS MiB before → scoped | Reopen ms before → scoped |

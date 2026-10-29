@@ -4,9 +4,12 @@
 ## Authored authorizer code, complete historical source maps and canonical packages for Psi_I witnesses.
 
 import std/assertions
-import ../../src/state/[authorization_invocation, store]
-import ../../src/codec/[bounded, natural, composite, work_package, work_report, work_digest,
-  state_accounts, state_service_values, state_requests, state_trie]
+import ../../src/state/authorization/invocation as authorization_invocation
+import ../../src/state/store
+import ../../src/codec/[bounded, natural, composite]
+import ../../src/codec/work/[package as work_package, report as work_report, digest as work_digest]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests, trie as state_trie]
 import ../../src/pvm/[machine, program, initialize, gas, step, host_fetch, output]
 import ../../src/chain/parameters
 import ../../src/crypto/primitives

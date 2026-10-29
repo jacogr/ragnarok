@@ -73,7 +73,7 @@ class NetworkPreset(unittest.TestCase):
 
     def test_policy_binds_consensus_and_lookup_horizon(self):
         """Host policy must not accidentally retain Full consensus constants or the fixture's16-header retention."""
-        text = (ROOT/'src/app/fuzz_policy.nim').read_text().split('"""',2)[1]
+        text = (ROOT/'src/app/fuzz/policy.nim').read_text().split('"""',2)[1]
         replacements = dict(cores=85,validators=255,epoch=60,tickets=4,tail=50,rotation=5,lookup=600,
             blockGas=875000000,reportGas=10000000,queueHashes=6800,historyPackages=680,
             projectionRows=510,comparisons=65025,ancestors=601)
@@ -131,7 +131,7 @@ class NetworkReadiness(unittest.TestCase):
         """Policy, parameters and entry point must be attributed just like the executable sources."""
         from runtime_provenance import runtime_sources
         paths = {str(path.relative_to(ROOT)) for path in runtime_sources()}
-        for name in ('src/app/fuzz_policy.nim','src/app/fuzz_target.nim'):
+        for name in ('src/app/fuzz/policy.nim','src/app/fuzz/target.nim'):
             self.assertIn(name,paths)
 
     def test_matrix_keeps_target_and_testnet_separate(self):

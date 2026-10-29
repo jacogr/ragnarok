@@ -8,7 +8,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../src/codec/[c2_records, bounded, composite]
+import ../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../src/codec/assurances
 let useDefault = paramStr(2) == "default"
 let policy = OperandLimits(outputBytes: ByteLimit(1024), authBytes: ByteLimit(1024),
     totalBlobBytes: ByteLimit(1024), maxBytes: ByteLimit(4096))

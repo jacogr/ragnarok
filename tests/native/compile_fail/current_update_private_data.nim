@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## The retained immutable candidate graph is private.
-import ../../../src/state/accumulation_current_update
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 let owner = default(PreparedCurrentChainUpdate)
 discard owner.data

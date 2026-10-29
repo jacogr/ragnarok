@@ -4,10 +4,14 @@
 
 ## Bounded current driving proves actual termination, exact history capacity and root/manual state parity without exposing successful prefixes on refusal.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_trie]
-import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round,
-  accumulation_coverage, store]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence, round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round,
+    coverage as accumulation_coverage]
+import ../../../src/state/store
 import ../../support/[accumulation_current_round_context, accumulation_current_sequence_context,
     accumulation_current_driver_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

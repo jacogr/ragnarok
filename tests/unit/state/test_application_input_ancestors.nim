@@ -3,11 +3,14 @@
 
 ## Generation-safe input suspension releases raw bytes and resumes the exact prepared signed candidate after context acquisition.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/[block_input, candidate, chain]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, chain]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
-import ../../../src/state/[report_anchors, accumulation_finalization, accumulation_completion,
-    accumulation_chain, store]
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion, chain as accumulation_chain]
+import ../../../src/state/store
 import ../../support/[application_candidate_context, accumulation_completion_context]
 import ../../support/report_admission_context as report_context
 

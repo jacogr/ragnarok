@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/ticket_admission
+import ../../../src/state/ticket/admission as ticket_admission
 let hidden = default(TicketAdmissionResult)
 discard hidden.completed

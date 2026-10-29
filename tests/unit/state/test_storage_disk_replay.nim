@@ -8,9 +8,14 @@
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import std/posix/posix
-import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository,
-  file_repository, database_identity, revision_retention, durability]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/[database_identity, revision_retention, durability]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 type
   ## Trusted published bytes and commitments, independently checked before fixture preparation.

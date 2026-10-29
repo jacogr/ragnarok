@@ -4,7 +4,8 @@
 ## Current capsule payload guards retain an actually prepared current producer as positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_checkpoint, accumulation_current_update]
+import ../../src/state/current/checkpoint as current_checkpoint
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/[bounded, report_owned]
 proc extract(outcome: CurrentCheckpointResult[CurrentUpdateCheckpoint]) {.noinline.} =
   ## Default/source/encoding failure grants no retained capsule.

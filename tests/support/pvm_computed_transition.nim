@@ -5,13 +5,25 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_profile, computed_lookup, computed_recent, computed_state,
-  computed_links, computed_guarantee, computed_report, block_admission, block_transition,
-  store, input_refinement, availability_specifier, export_erasure, bundle_erasure,
-  erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
+import ../../src/state/computed/[profile as computed_profile, lookup as computed_lookup,
+    recent as computed_recent, state as computed_state, links as computed_links,
+    guarantee as computed_guarantee, report as computed_report]
+import "../../src/state/block/admission" as block_admission
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/[store, input_refinement]
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/[auditable_bundle, extrinsic_inputs]
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
 import ../../src/chain/[genesis, parameters]
-import ../../src/codec/[bounded, header, block_codec, work_package, work_report, composite,
-  report_owned, state_layout, state_trie, state_workqueues]
+import ../../src/codec/[bounded, header, block_codec]
+import ../../src/codec/work/[package as work_package, report as work_report]
+import ../../src/codec/[composite, report_owned]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    workqueues as state_workqueues]
 import ../../src/crypto/primitives
 import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome, pvm_computed_report,
   pvm_export_erasure, pvm_extrinsic_inputs, pvm_import_inputs, pvm_computed_lookup,

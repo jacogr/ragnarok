@@ -4,7 +4,8 @@
 ## Strict optimized guarantor planning/query guards with genuine epoch-crossing success controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_guarantors, computed_roster, guarantors]
+import ../../src/state/computed/[guarantors as computed_guarantors, roster as computed_roster]
+import ../../src/state/guarantors
 import ../../src/codec/[guarantees, bounded]
 import ../support/pvm_computed_guarantors
 

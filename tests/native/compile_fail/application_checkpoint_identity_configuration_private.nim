@@ -3,6 +3,6 @@
 
 ## Private captured facts cannot be retagged or replaced by callers.
 # @@Verification={"group": "privacy", "expected": "configuration"}
-import ../../../src/app/checkpoint_identity
+import ../../../src/app/checkpoint/identity as checkpoint_identity
 let identity = default(ApplicationCheckpointIdentity)
 discard identity.configuration

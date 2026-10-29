@@ -4,7 +4,8 @@
 ## Strict computed-assurance result and report-view guards retain a real authenticated successor as their positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_assurances, computed_chain, block_transition]
+import ../../src/state/computed/[assurances as computed_assurances, chain as computed_chain]
+import "../../src/state/block/transition" as block_transition
 import ../../src/codec/[bounded, assurances]
 import ../support/pvm_computed_assurances
 

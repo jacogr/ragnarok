@@ -4,7 +4,8 @@
 ## Default/refused combined activity cannot expose sources, preimage admission, encoded rows, snapshots or unselected failure causes.
 
 import std/cmdline
-import ../../src/state/[accumulation_activity, accumulation_validators]
+import ../../src/state/accumulation/[activity as accumulation_activity,
+    validators as accumulation_validators]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationActivity)

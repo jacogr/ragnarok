@@ -4,14 +4,24 @@
 ## Actual current network downloads cross retry, managed execution, durable/RPC adoption, deadlines and proof exclusion in separate turns.
 import std/[assertions, envvars, syncio, monotimes, times, base64, strutils]
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_input, current_handoff, candidate,
-  download_schedule, preparation_worker, proof_query, proof_worker, chain]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers,
-  current_block_download_stream]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/candidate
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/preparation_worker
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
+import ../../../src/app/chain
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned, state_trie]
-import ../../../src/state/[store, accumulation_current_consensus, proof_plan]
-import ../../../src/storage/managed_manifest
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
   accumulation_current_chain_context, accumulation_current_candidate_context,

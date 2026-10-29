@@ -8,7 +8,7 @@ import ../../support/managed_storage_samples
 import ../../../src/app/[services, options]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 proc configured(path, layout, source: string): Options =
   ## Source selection is an explicit local migration intention, independent of normal restart and external import.
   var arguments = @["server", "--with-state", "--chain", getEnv("RAGNAROK_APPLICATION_CHECKPOINT"),

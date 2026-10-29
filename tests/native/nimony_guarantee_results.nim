@@ -7,7 +7,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/codec/[guarantees, bounded, assurances, work_report]
+import ../../src/codec/[guarantees, bounded, assurances]
+import ../../src/codec/work/report as work_report
 
 let useDefault = paramStr(2) == "default"
 let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),

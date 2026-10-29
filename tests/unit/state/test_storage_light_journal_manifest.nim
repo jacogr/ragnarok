@@ -5,9 +5,14 @@
 # @@Verification={"arc":"storage_light_journal_manifest_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_journal_manifest, light_snapshot, light_delta,
-  light_state_cache, state_proof, database_identity, managed_manifest, node_repository]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/light/journal/manifest as light_journal_manifest
+import ../../../src/storage/light/[snapshot as light_snapshot, delta as light_delta,
+    state_cache as light_state_cache]
+import ../../../src/storage/[state_proof, database_identity]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal and no-provider preflight cases use the maintained observer.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

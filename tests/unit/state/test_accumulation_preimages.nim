@@ -5,10 +5,13 @@
 ## Signed lookup integration freezes exact request/value bytes, complete-map roots and inherited source ownership.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_preimages, accumulation_activity, accumulation_validators,
-  core_service_activity, preimages, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, state_layout, state_trie,
-  state_accounts, state_service_values]
+import ../../../src/state/accumulation/[preimages as accumulation_preimages,
+    activity as accumulation_activity, validators as accumulation_validators]
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/[preimages, store]
+import ../../../src/codec/[bounded, composite, header, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, service_values as state_service_values]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_activity_context, accumulation_provision_integration,
   report_context, arc_evidence]

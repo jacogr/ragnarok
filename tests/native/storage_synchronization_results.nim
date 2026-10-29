@@ -5,7 +5,9 @@
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../support/storage_samples
-import ../../src/storage/[node_repository, file_repository, database_identity, durability]
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/[database_identity, durability]
 import ../../src/codec/bounded
 proc main() =
   ## Select runtime origins without exposing or fabricating a successful durability receipt.

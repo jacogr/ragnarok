@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_consensus
+include ../../src/codec/state/consensus
 let useDefault = paramStr(2) == "default"
 let policy = SafroleStateConfig(validators: ValidatorStateConfig(cores: CoreCount(2),
     validators: ElementLimit(6), maxBytes: ByteLimit(2017)), epochSlots: EpochSlots(2),

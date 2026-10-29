@@ -5,9 +5,11 @@
 ## Real package-bound guests verify Psi_R result selection, gas normalization, output policy and immutable final owners.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_outcome, refinement_bootstrap, refinement_dispatch]
+import ../../../src/state/refinement/[outcome as refinement_outcome,
+    bootstrap as refinement_bootstrap, dispatch as refinement_dispatch]
 import ../../../src/pvm/[machine, step, gas, host_fetch, refinement_exports, output]
-import ../../../src/codec/[bounded, composite, work_digest]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/digest as work_digest
 import ../../support/[pvm_refinement_outcome, arc_evidence]
 
 proc run(bootstrap: PreparedRefinementBootstrap, limits = refinementLimits()):

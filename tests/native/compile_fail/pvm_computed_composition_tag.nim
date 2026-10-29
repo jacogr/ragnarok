@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_composition
+import ../../../src/state/computed/composition as computed_composition
 var candidate: ComputedCompositionResult[ComposedComputedState]
 discard candidate.status

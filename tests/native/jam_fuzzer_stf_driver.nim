@@ -6,10 +6,13 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, accumulation_current_chain_context,
     current_consecutive_context,
     current_namespace_context]
-import ../../src/app/[fuzz_backend, candidate]
+import ../../src/app/fuzz/backend as fuzz_backend
+import ../../src/app/candidate
 import ../../src/chain/genesis
-import ../../src/codec/[bounded, header, report_owned, block_codec, state_trie]
-import ../../src/state/[fuzz_protocol, store, checkpoint]
+import ../../src/codec/[bounded, header, report_owned, block_codec]
+import ../../src/codec/state/trie as state_trie
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/[store, checkpoint]
 proc hex(bytes: openArray[byte]): string =
   ## Preserve every wire octet for complete deterministic comparison.
   result = ""

@@ -4,7 +4,8 @@
 ## Independent RPC and TLS processes observe each real canonical adoption while a later response remains explicitly gated.
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
-import ../../../src/app/[download_command, download_policy, options]
+import ../../../src/app/download/[command as download_command, policy as download_policy]
+import ../../../src/app/options
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]

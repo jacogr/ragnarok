@@ -3,9 +3,14 @@
 
 ## Separate bounded fixture producers from fresh light-file reopen consumers and exact ARC/hash witnesses.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_file_cache, light_snapshot, light_state_cache, full_state_trie,
-  state_proof, database_identity, file_errors, durability]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light/[file_cache as light_file_cache, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/[state_proof, database_identity]
+import ../../src/storage/file/errors as file_errors
+import ../../src/storage/durability
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## A clean observer counts only actual reopen proof/checksum attempts, excluding fixture production.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

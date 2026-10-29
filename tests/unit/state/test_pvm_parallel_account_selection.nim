@@ -4,9 +4,13 @@
 
 ## Genuine annulment certificates bind M's logical account to the exact selected prior/invoker/supervisor snapshot.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_account_selection, accumulation_annulment,
-  accumulation_outcome, accumulation_effects, accumulation_inputs, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/[annulment as accumulation_annulment,
+    outcome as accumulation_outcome, effects as accumulation_effects, inputs as accumulation_inputs]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
 
 # Source selection performs no state hashes and publishes no replacement state store.

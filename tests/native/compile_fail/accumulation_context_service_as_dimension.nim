@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "AccumulationDimension", "early": ["initialContext(", "[2] expected: AccumulationDimension but got: ServiceIndex"]}
 
-import ../../../src/state/accumulation_context
+import ../../../src/state/accumulation/context as accumulation_context
 import ../../../src/codec/composite
 discard initialContext(default(PreparedAccumulationContexts), ServiceIndex(0))

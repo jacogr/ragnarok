@@ -4,8 +4,10 @@
 ## Authenticated recent blocks/optional peaks retain exact framing and resource/absence distinctions.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_history, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[history as state_history, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = HistoryConfig(cores: CoreCount(2), blocks: ElementLimit(8), perBlock: ElementLimit(2),
   totalPackages: ElementLimit(4), peaks: ElementLimit(8), maxBytes: ByteLimit(4096))
 let source = HistoryState(blocks: @[HistoryBlock(slot: HistorySlot(19), packages: @[])],

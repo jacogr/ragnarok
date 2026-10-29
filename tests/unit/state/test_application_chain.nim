@@ -10,12 +10,18 @@ import std/posix/posix
 import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/rpc/[server, protocol]
-import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
-import ../../../src/state/[store, accumulation_chain, accumulation_state, accumulation_completion,
-  accumulation_finalization, accumulation_times, accumulation_statistics, accumulation_validators,
-  accumulation_activity, accumulation_consensus, report_admission, block_transition,
-  block_admission,
-  accumulation_publication]
+import ../../../src/codec/[header, bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[chain as accumulation_chain, state as accumulation_state,
+    completion as accumulation_completion, finalization as accumulation_finalization,
+    times as accumulation_times, statistics as accumulation_statistics,
+    validators as accumulation_validators, activity as accumulation_activity,
+    consensus as accumulation_consensus]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/accumulation/publication as accumulation_publication
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
 
 # Primitive refusal begins after genuine signed source and retained view construction.

@@ -3,7 +3,7 @@
 
 ## Runtime guards retain actual complete empty-response and framing-failure positive controls.
 import std/[assertions, cmdline]
-import ../../src/app/[ancestor_response, ancestor_receiver]
+import ../../src/app/ancestor/[response as ancestor_response, receiver as ancestor_receiver]
 import ../../src/codec/[bounded, header, block_codec]
 
 proc extract(outcome: AncestorReceiveResult[AncestorReceiveId]) =

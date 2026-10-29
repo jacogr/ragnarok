@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal","expected": "got: ReportHash[4] but wanted: ReportHash[7]"}
 
-import ../../../src/codec/work_report
+import ../../../src/codec/work/report as work_report
 let wrong = ReportHeader(lookupStateRoot: StateRoot())
 discard wrong

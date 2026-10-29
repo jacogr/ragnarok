@@ -5,11 +5,19 @@
 import std/[assertions, strutils, parseutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, header, block_codec, report_owned, state_layout, state_safrole,
-  state_consensus, state_disputes, disputes, tickets, state_composition]
-import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
-  current_globals, current_state, global_snapshot, block_transition, safrole_transition,
-  safrole_markers, ticket_admission]
+import ../../src/codec/[bounded, header, block_codec, report_owned]
+import ../../src/codec/state/[layout as state_layout, safrole as state_safrole,
+    consensus as state_consensus, disputes as state_disputes]
+import ../../src/codec/[disputes, tickets]
+import ../../src/codec/state/composition as state_composition
+import ../../src/state/[store, checkpoint]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/safrole/[transition as safrole_transition, markers as safrole_markers]
+import ../../src/state/ticket/admission as ticket_admission
 import ../../src/crypto/[primitives, extrinsic_commitment]
 import ../../src/bandersnatch/bandersnatch
 import ./[accumulation_current_chain_context, current_consecutive_context,

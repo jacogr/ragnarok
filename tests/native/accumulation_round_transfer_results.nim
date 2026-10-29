@@ -4,8 +4,9 @@
 ## Default and refused completed-round transfer plans never expose source provenance, copied gas or a collection.
 
 import std/cmdline
-import ../../src/state/[accumulation_round_transfers, accumulation_execution,
-    accumulation_transfers]
+import ../../src/state/accumulation/round/transfers as accumulation_round_transfers
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    transfers as accumulation_transfers]
 let argument = paramStr(1)
 let owner = default(PreparedRoundAccumulationTransfers)
 let result = if argument == "default": default(AccumulationRoundTransferResult[PreparedRoundAccumulationTransfers])

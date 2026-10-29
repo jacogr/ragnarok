@@ -4,8 +4,10 @@
 
 ## Reject replacement of nominal continuation invocation provenance.
 
-import ../../../src/state/[accumulation_continuation_invocation, accumulation_continuation,
-    accumulation_inputs, accumulation_service, accumulation_invocation]
+import ../../../src/state/accumulation/continuation/invocation as accumulation_continuation_invocation
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation]
 var plan: PreparedAccumulationContinuation
 discard prepareContinuationAccumulationInvocation(plan, InvocationServiceIndex(0),
   default(AccumulationServiceConfig), ServiceProbeLimit(1))

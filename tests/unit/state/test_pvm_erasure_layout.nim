@@ -5,8 +5,10 @@
 ## Exhaustive validator geometry, systematic contiguous bytes and immutable executed-source ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/[erasure_layout, auditable_bundle]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure/layout as erasure_layout
+import ../../../src/state/auditable_bundle
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

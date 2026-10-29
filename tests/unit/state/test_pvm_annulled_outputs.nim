@@ -4,9 +4,13 @@
 
 ## Genuine selected yield presence survives zero hashes, cancellation, pair ordering and exact canonical wire limits.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulled_outputs, accumulation_annulment,
-  accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, state_accounts, state_outputs, state_layout, state_trie]
+import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
+    annulment as accumulation_annulment, outcome as accumulation_outcome,
+    effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, outputs as state_outputs,
+    layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
 
 # Selection and C(16)-format encoding do not compute or publish state roots.

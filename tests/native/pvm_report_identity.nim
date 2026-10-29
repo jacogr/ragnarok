@@ -4,8 +4,9 @@
 ## Strict optimized guards pair genuine successes with failed/default result and owner misuse.
 
 import std/[assertions, cmdline]
-import ../../src/state/[report_identity, authorized_refinement]
-import ../../src/codec/work_package
+import ../../src/state/report/identity as report_identity
+import ../../src/state/authorized_refinement
+import ../../src/codec/work/package as work_package
 import ../support/pvm_report_identity
 
 proc check(outcome: ReportIdentityResult[ReportIdentity], reason: ReportIdentityError) =

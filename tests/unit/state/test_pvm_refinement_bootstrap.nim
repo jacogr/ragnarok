@@ -5,12 +5,17 @@
 ## Literal code/package hashes and argument bytes verify historical code binding and entry-zero bootstrap.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_bootstrap, refinement_dispatch, store]
+import ../../../src/state/refinement/[bootstrap as refinement_bootstrap,
+    dispatch as refinement_dispatch]
+import ../../../src/state/store
 import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch, refinement_exports, output]
 import ../../../src/chain/parameters
 import ../../../src/crypto/primitives
-import ../../../src/codec/[bounded, composite, natural, work_package, work_report, work_digest,
-  state_accounts, state_layout, state_service_values, state_requests, state_trie]
+import ../../../src/codec/[bounded, composite, natural]
+import ../../../src/codec/work/[package as work_package, report as work_report,
+    digest as work_digest]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests, trie as state_trie]
 import ../../support/arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

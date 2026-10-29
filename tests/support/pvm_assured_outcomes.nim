@@ -4,9 +4,14 @@
 ## Independently authored original guest modes reach real assured queues and retain canonical predecessor handles.
 
 import std/assertions
-import ../../src/state/[computed_chain, computed_state_publication, computed_composition,
-  computed_finalization, computed_execution, computed_assurances, assured_queue,
-  accumulation_execution, store]
+import ../../src/state/computed/chain as computed_chain
+import ../../src/state/computed/state/publication as computed_state_publication
+import ../../src/state/computed/[composition as computed_composition,
+    finalization as computed_finalization, execution as computed_execution,
+    assurances as computed_assurances]
+import ../../src/state/assured/queue as assured_queue
+import ../../src/state/accumulation/execution as accumulation_execution
+import ../../src/state/store
 import ../../src/chain/[genesis, provider]
 import ./[pvm_computed_storage_program, pvm_computed_chain, pvm_computed_state_publication,
   pvm_computed_assurances, pvm_assured_queue]

@@ -6,8 +6,8 @@
 ## Joined outcomes survive repeated close and block restart until explicit receipt acknowledgement.
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[checkpoint_session, checkpoint_worker, checkpoint_file,
-    checkpoint_transfer, checkpoint_identity]
+import ../../../src/app/checkpoint/[session as checkpoint_session, worker as checkpoint_worker,
+    file as checkpoint_file, transfer as checkpoint_transfer, identity as checkpoint_identity]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-session"

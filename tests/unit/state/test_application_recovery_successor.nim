@@ -4,10 +4,13 @@
 ## Restored maps require fresh source-bound execution; root-equal old certificates never regain adoption authority.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[services, chain, candidate, handoff, checkpoint_identity]
+import ../../../src/app/[services, chain, candidate, handoff]
+import ../../../src/app/checkpoint/identity as checkpoint_identity
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, bounded, state_layout]
-import ../../../src/state/[store, accumulation_chain]
+import ../../../src/codec/[report_owned, bounded]
+import ../../../src/codec/state/layout as state_layout
+import ../../../src/state/store
+import ../../../src/state/accumulation/chain as accumulation_chain
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution

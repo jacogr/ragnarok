@@ -5,8 +5,12 @@
 ## Dynamic origins distinguish initialized refusals from absent/default owners; no failed case may expose payload.
 
 import std/cmdline
-import ../../src/state/[accumulation_effects, accumulation_context, preimages, store]
-import ../../src/codec/[bounded, composite, state_requests, state_service_values, state_trie]
+import ../../src/state/accumulation/[effects as accumulation_effects,
+    context as accumulation_context]
+import ../../src/state/[preimages, store]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/[requests as state_requests, service_values as state_service_values,
+    trie as state_trie]
 import ../../src/crypto/primitives
 import ../support/accumulation_effect_context
 

@@ -5,8 +5,10 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, account_review_plan_context, economic_profile_context]
 import ../../src/chain/parameters
-import ../../src/state/[account_review_plan, account_review, inventory, economic_profile]
-include composition_fixture
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/state/account/review as account_review
+import ../../src/state/[inventory, economic_profile]
+include ./composition_fixture
 proc extract(outcome: AccountReviewPlanResult[StateAccountReviewPlan]): StateAccountReviewPlan {.noinline.} =
   ## No failed/default preparation result grants a plan.
   outcome.value

@@ -3,8 +3,10 @@
 
 ## Dynamic codec payload guards retain default/failed reasons and genuine valid controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[record_codec, node_records]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/record_codec
+import ../../src/storage/node/records as node_records
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 proc main() =
   ## Dynamic selection prevents constant folding from replacing native precondition evidence.

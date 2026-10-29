@@ -4,8 +4,11 @@
 ## Checkpoint serialization/restoration preserves all fourteen independently pinned published complete maps.
 
 import std/[assertions, syncio]
-import ../../../src/state/[checkpoint, checkpoint_transfer, store]
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/state/checkpoint
+import ../../../src/state/checkpoint/transfer as checkpoint_transfer
+import ../../../src/state/store
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 import ../../support/published_state
 
 proc replay(expected: Mapping) =

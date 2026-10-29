@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_availability
+import ../../../src/codec/state/availability as state_availability
 let owner = AvailabilitySnapshot(data: nil)
 discard owner

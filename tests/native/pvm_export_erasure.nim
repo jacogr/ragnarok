@@ -4,7 +4,9 @@
 ## Optimized export/page result guards include genuine source-derived completed parity controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[export_erasure, bundle_erasure, erasure_words]
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/words as erasure_words
 import ../support/pvm_export_erasure
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

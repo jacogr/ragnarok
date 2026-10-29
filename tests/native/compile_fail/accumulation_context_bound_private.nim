@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/accumulation_context
+import ../../../src/state/accumulation/context as accumulation_context
 let owner = default(BlockAccumulationContexts)
 discard owner.data # Private storage cannot be used as a public constructor.

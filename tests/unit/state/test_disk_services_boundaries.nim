@@ -5,10 +5,15 @@
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context]
-import ../../../src/app/[services, options, disk_chain, handoff, block_input, preparation_worker, chain]
+import ../../../src/app/[services, options]
+import ../../../src/app/disk/chain as disk_chain
+import ../../../src/app/handoff
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[preparation_worker, chain]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, disk_store, accumulation_finalization]
-import ../../../src/storage/file_repository
+import ../../../src/state/[store, disk_store]
+import ../../../src/state/accumulation/finalization as accumulation_finalization
+import ../../../src/storage/file/repository as file_repository
 import ../../../src/codec/report_owned
 type
   ResourceLimit {.importc: "struct rlimit", header: "<sys/resource.h>", bycopy.} = object

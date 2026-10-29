@@ -5,10 +5,14 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition, computed_profile, computed_lookup, computed_recent,
-  computed_state, computed_links, block_transition, block_admission, store]
+import ../../src/state/computed/[batch as computed_batch, envelope as computed_envelope,
+    credentials as computed_credentials, guarantors as computed_guarantors,
+    roster as computed_roster, transition as computed_transition, profile as computed_profile,
+    lookup as computed_lookup, recent as computed_recent, state as computed_state,
+    links as computed_links]
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
 import ../../src/chain/genesis
 import ../../src/codec/[bounded, header, block_codec, guarantees, assurances]
 import ../../src/crypto/extrinsic_commitment

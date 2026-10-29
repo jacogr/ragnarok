@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "limits"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/supplied_services
+import ../../../src/state/supplied/services as supplied_services
 let source = default(SuppliedServicesPlan)
 discard source.limits

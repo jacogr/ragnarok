@@ -3,8 +3,9 @@
 
 ## Public trie-owner measurements preserve independently checked roots, copied paths and retained singleton values.
 import std/[assertions, envvars, syncio]
-import ../../../src/storage/full_state_trie
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 type
   Fixture = object ## Construction retires every source map and independent reference scratch before measurement.

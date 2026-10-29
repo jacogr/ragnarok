@@ -4,6 +4,6 @@
 
 ## A published successor cannot be fabricated or rebound to a foreign mutable map.
 
-import ../../../src/state/block_activity
+import "../../../src/state/block/activity" as block_activity
 var owner: PublishedBlockActivity
 discard owner.data

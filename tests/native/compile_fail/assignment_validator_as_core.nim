@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "GuarantorIndex"}
 
-import ../../../src/codec/[state_availability, guarantees]
+import ../../../src/codec/state/availability as state_availability
+import ../../../src/codec/guarantees
 var owner: AvailabilitySnapshot
 var index: GuarantorIndex
 let value = availabilityAt(owner, index)

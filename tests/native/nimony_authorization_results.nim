@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_authorization
+include ../../src/codec/state/authorization
 let useDefault = paramStr(2) == "default"
 let policy = AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
     maxBytes: ByteLimit(5120))

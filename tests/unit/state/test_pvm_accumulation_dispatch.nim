@@ -7,10 +7,15 @@
 # @@Verification={"arc": "pvm_accumulation_dispatch_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context, accumulation_effects]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    dispatch as accumulation_dispatch, context as accumulation_context,
+    effects as accumulation_effects]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, c2_records, state_outputs, assurances, composite,
-  state_authorization, state_safrole, state_privileges, state_layout, state_trie]
+import ../../../src/codec/[bounded, c2_records]
+import ../../../src/codec/state/outputs as state_outputs
+import ../../../src/codec/[assurances, composite]
+import ../../../src/codec/state/[authorization as state_authorization, safrole as state_safrole,
+    privileges as state_privileges, layout as state_layout, trie as state_trie]
 import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 

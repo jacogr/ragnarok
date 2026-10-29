@@ -5,8 +5,11 @@
 ## Command-line modes must terminate at the selected-success/variant guard, never expose defaults.
 
 import std/cmdline
-import ../../src/state/[accumulation_inputs, accumulation_operands, accumulation_queue]
-import ../../src/codec/[bounded, c2_records, state_workqueues, header]
+import ../../src/state/accumulation/[inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../src/codec/[bounded, c2_records]
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/codec/header
 
 ## Construct an actual copied transfer input solely for the wrong-operand variant probe.
 proc transferInput(): InvocationInput =

@@ -7,10 +7,12 @@
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/file_size_ceiling
-import ../../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint_worker,
-    checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/state/checkpoint/[bank as checkpoint_bank, head as checkpoint_head,
+    transfer as checkpoint_transfer, worker as checkpoint_worker]
+import ../../../src/state/[checkpoint, store]
+import ../../../src/lib/atomic/file as atomic_file
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 
 

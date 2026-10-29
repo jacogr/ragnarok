@@ -3,7 +3,8 @@
 
 ## Default/refused current finalization exposes neither a map prefix nor inactive child reasons.
 import std/cmdline
-import ../../src/state/[accumulation_current_finalization, accumulation_current_accounts]
+import ../../src/state/accumulation/current/[finalization as accumulation_current_finalization,
+    accounts as accumulation_current_accounts]
 let owner = default(CurrentAccumulationFinalizationResult[PreparedCurrentAccumulationFinalization])
 let finalized = default(PreparedCurrentAccumulationFinalization)
 let refused = prepareCurrentAccumulationFinalization(default(PreparedCurrentAccumulationAccounts),

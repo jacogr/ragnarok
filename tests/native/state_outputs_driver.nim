@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_outputs, state_trie, bounded]
+import ../../src/codec/state/[outputs as state_outputs, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve empty input without adding an encoded zero to hostile wire cases.
 proc unhex(text: string): seq[byte] =

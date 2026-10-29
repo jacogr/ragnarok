@@ -6,7 +6,8 @@
 
 import ./genesis
 import ../state/store
-import ../codec/[state_layout, state_history, bounded]
+import ../codec/state/[layout as state_layout, history as state_history]
+import ../codec/bounded
 export HistorySuperPeak
 
 type

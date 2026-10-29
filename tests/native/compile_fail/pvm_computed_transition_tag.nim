@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_transition
+import ../../../src/state/computed/transition as computed_transition
 var candidate: ComputedTransitionResult[TransitionBoundComputedReport]
 discard candidate.status

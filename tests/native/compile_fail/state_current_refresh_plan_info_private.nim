@@ -3,6 +3,6 @@
 
 ## Actual sources, frozen quotas and selected result authority stay private.
 # @@Verification={"group":"privacy","expected":"info"}
-import ../../../src/state/current_refresh_plan
+import ../../../src/state/current/refresh/plan as current_refresh_plan
 var owner: CurrentRefreshPlan
 discard owner.info

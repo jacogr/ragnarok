@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ServiceIndex but wanted: InvocationServiceIndex"}
 
-import ../../../src/state/accumulation_inputs
+import ../../../src/state/accumulation/inputs as accumulation_inputs
 import ../../../src/codec/composite
 
 ## Test-only holder isolates nominal assignment from procedure-overload diagnostics.

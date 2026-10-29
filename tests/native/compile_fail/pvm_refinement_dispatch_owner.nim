@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/refinement_dispatch
+import ../../../src/state/refinement/dispatch as refinement_dispatch
 var owner: PreparedRefinementExecution
 discard owner.data

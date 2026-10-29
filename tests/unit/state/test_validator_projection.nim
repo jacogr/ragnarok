@@ -5,8 +5,9 @@
 ## Independent literal epoch/counter witnesses, refusal boundaries and immutable ARC ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/validator_projection
-import ../../../src/codec/[bounded, header, assurances, state_safrole, state_statistics]
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/codec/[bounded, header, assurances]
+import ../../../src/codec/state/[safrole as state_safrole, statistics as state_statistics]
 import ../../support/arc_evidence
 
 # Observer refusal proves that projection never calls the hashing backend.

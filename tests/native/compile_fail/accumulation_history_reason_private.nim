@@ -4,6 +4,6 @@
 
 ## Reject raw construction or retagging across authenticated accumulated-history ownership.
 
-import ../../../src/state/accumulation_history
+import ../../../src/state/accumulation/history as accumulation_history
 var outcome: AccumulationHistoryResult[PreparedAccumulationHistory]
 outcome.status = AccumulationHistoryError.None

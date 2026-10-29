@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ServiceIndex", "early": ["recordAccumulationProvision(", "[2] expected: ServiceIndex but got: AccumulationProvisionIndex"]}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 discard recordAccumulationProvision(default(AccumulationEffects), AccumulationProvisionIndex(0), [],
     default(AccumulationProvisionLimits))

@@ -8,7 +8,9 @@
 ## Exposes verifyGuaranteeCredentials and immutable verified-guarantee/reporter/context access
 ## with typed structure/assignment failures.
 
-import ../codec/[guarantees, assurances, bounded, state_safrole, disputes, report_owned, owned, natural]
+import ../codec/[guarantees, assurances, bounded]
+import ../codec/state/safrole as state_safrole
+import ../codec/[disputes, report_owned, owned, natural]
 import ../crypto/[primitives, guarantee]
 import ./guarantors
 

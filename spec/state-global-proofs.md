@@ -7,7 +7,7 @@ Public RPC methods/schema remain the RPC owner's boundary.
 
 ## Generic query plans
 
-`state/proof_plan` owns a root-free immutable `StateProofPlan`. Explicit caller count/native
+`state/proof/plan` owns a root-free immutable `StateProofPlan`. Explicit caller count/native
 extent checks precede copying and sorting; duplicate capture keys refuse. Explicit union counts
 exact unique output before allocation and coalesces only equal fixed identities. Sorted ordinal
 and iterator access expose fixed copied keys. Default plans are invalid; explicitly captured empty
@@ -34,7 +34,7 @@ independence and service error compatibility; existing selector/union consumers 
 
 ## Planned verification and transport
 
-`state/planned_proof` authenticates the exact sorted global/service query set under independent
+`state/planned/proof` authenticates the exact sorted global/service query set under independent
 caller root authority and reuses RPV1 encoding. The shared proof-view decoder has an explicit
 expected-plan overload: count and each fixed key must match before witness copying/hashing.
 The original unplanned overload retains its existing behavior through the same implementation.

@@ -4,9 +4,10 @@
 ## Strict supplied-key guards use complete independent chapters and real manifest capture as positive control.
 import std/[assertions, cmdline]
 import ../support/[state_inventory_context, supplied_logical_context]
-import ../../src/state/[supplied_logical_inventory, manifest, inventory]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/state/[manifest, inventory]
 import ../../src/codec/bounded
-include composition_fixture
+include ./composition_fixture
 proc extract(outcome: SuppliedLogicalResult[SuppliedLogicalInventory]) {.noinline.} =
   ## Failed/default capture exposes no key owner.
   discard outcome.value

@@ -8,8 +8,11 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/state/[availability, block_transition, store]
-import ../../src/codec/[state_availability, state_safrole, assurances]
+import ../../src/state/availability
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/store
+import ../../src/codec/state/[availability as state_availability, safrole as state_safrole]
+import ../../src/codec/assurances
 import ../../src/crypto/assurance_context
 var state = default(StateStore)
 case paramStr(1)

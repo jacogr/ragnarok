@@ -6,27 +6,42 @@ import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
 import ../../src/state/logical_continuation
 import ../../src/state/storage_logical_continuation
-import ../../src/app/logical_source_export
-import ../../src/app/logical_code_proof
-import ../../src/app/paged_logical_proof
+import ../../src/app/logical/source_export as logical_source_export
+import ../../src/app/logical/code/proof as logical_code_proof
+import ../../src/app/paged/logical_proof as paged_logical_proof
 import ../../src/app/full_logical_proof
 import ../../src/state/code_availability
-import ../../src/app/logical_code
+import ../../src/app/logical/code as logical_code
 import ../../src/state/store
-import ../../src/app/logical_checkpoint_import
-import ../../src/app/logical_export
-import ../../src/app/logical_service_proof
-import ../../src/app/current_logical
-import ../../src/state/supplied_services
+import "../../src/app/logical/checkpoint/import" as logical_checkpoint_import
+import "../../src/app/logical/export" as logical_export
+import ../../src/app/logical/service_proof as logical_service_proof
+import ../../src/app/current/logical as current_logical
+import ../../src/state/supplied/services as supplied_services
 import ../../src/app/frozen_supplied
-import ../../src/app/[logical_seed, collected_supplied_plan, collected_supplied_state,
-    logical_checkpoint, logical_review]
-import ../../src/state/account_review_plan
-import ../../src/app/[services, current_logical, preparation_worker, current_block_input,
-    proof_worker, current_handoff, disk_worker]
-import ../../src/state/[parent_logical, current_logical, proof_plan, accumulation_current_update,
-    accumulation_round, accumulation_queue, report_admission, block_transition, block_admission]
-import ../../src/codec/[bounded, report_owned, state_layout, composite]
+import ../../src/app/logical/seed as logical_seed
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/app/logical/[checkpoint as logical_checkpoint, review as logical_review]
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/app/services
+import ../../src/app/current/logical as current_logical
+import ../../src/app/preparation_worker
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/proof/worker as proof_worker
+import ../../src/app/current/handoff as current_handoff
+import ../../src/app/disk/worker as disk_worker
+import ../../src/state/parent/logical as parent_logical
+import ../../src/state/current/logical as current_logical
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/layout as state_layout
+import ../../src/codec/composite
 import ../../src/chain/[provider, genesis]
 import ../support/[current_repeated_logical_context, collected_logical_context,
     collected_logical_services_context, accumulation_current_candidate_context, current_logical_proof_context]

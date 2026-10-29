@@ -4,7 +4,8 @@
 
 ## Refuse access or domain substitution across continuation input/state preparation.
 
-import ../../../src/state/[accumulation_operands, accumulation_queue]
+import ../../../src/state/accumulation/[operands as accumulation_operands,
+    queue as accumulation_queue]
 var queue: AccumulationQueuePlan
 var config: AccumulationOperandConfig
 discard prepareAccumulationOperandRange(queue, AccumulationReportPrefix(0),

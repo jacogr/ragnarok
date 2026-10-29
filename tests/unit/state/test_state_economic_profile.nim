@@ -6,7 +6,7 @@ import std/[assertions, syncio]
 import ../../support/economic_profile_context
 import ../../../src/chain/parameters
 import ../../../src/state/economic_profile
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 var wire = economicTestWire()
 let selectedParameters = decodeParameters(wire).value
 let result = captureEconomicProfile(selectedParameters)

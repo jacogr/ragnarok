@@ -5,7 +5,9 @@
 
 ## Raw state maps cannot stand in for the finalized execution authority.
 
-import ../../../src/state/[accumulation_chain, accumulation_completion, store]
+import ../../../src/state/accumulation/[chain as accumulation_chain,
+    completion as accumulation_completion]
+import ../../../src/state/store
 import ../../../src/chain/provider
 var state = default(StateStore)
 var view = default(ChainView)

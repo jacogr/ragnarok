@@ -4,6 +4,7 @@
 
 ## Later runner tags, successes and reason storage remain private.
 
-import ../../../src/state/[accumulation_later_runner, accumulation_reentry]
+import ../../../src/state/accumulation/[later_runner as accumulation_later_runner,
+    reentry as accumulation_reentry]
 var outcome: AccumulationLaterRunnerResult[CompletedAccumulationReentry]
 discard outcome.refusal

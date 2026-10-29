@@ -6,10 +6,14 @@
 ## Exact posterior assignments, two rotation freshness bounds, cumulative exclusions and complete failure release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_guarantors, computed_roster, computed_transition,
-  computed_profile,
-  block_transition, block_admission, guarantors, store]
-import ../../../src/codec/[bounded, assurances, guarantees, header, state_safrole, state_layout, state_disputes]
+import ../../../src/state/computed/[guarantors as computed_guarantors, roster as computed_roster,
+    transition as computed_transition, profile as computed_profile]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/[guarantors, store]
+import ../../../src/codec/[bounded, assurances, guarantees, header]
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout,
+    disputes as state_disputes]
 import ../../support/[pvm_computed_guarantors, pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

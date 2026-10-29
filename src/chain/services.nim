@@ -8,7 +8,9 @@
 
 import ./genesis
 import ../state/store
-import ../codec/[state_layout, state_accounts, state_service_values, state_requests, bounded]
+import ../codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
+import ../codec/bounded
 import ../crypto/primitives
 export ServiceIndex, ServicePreimageHash, StateValue, byteLength, bytes, ByteLimit
 

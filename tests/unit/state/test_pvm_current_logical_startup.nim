@@ -12,16 +12,25 @@ import ../../support/[current_logical_cli_context, current_namespace_policy_cont
     current_download_command_context, block_download_transport]
 import ../../support/pvm_accumulation_program
 import ../../../src/pvm/machine
-import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
-    current_download_command, options, services, chain]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts,
-    composite, state_service_values]
+import ../../../src/app/current/logical/[startup as current_logical_startup,
+    download as current_logical_download]
+import ../../../src/app/current/download/[policy as current_download_policy,
+    command as current_download_command]
+import ../../../src/app/[options, services, chain]
+import ../../../src/codec/[bounded, block_codec, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+import ../../../src/codec/composite
+import ../../../src/codec/state/service_values as state_service_values
 import ../../../src/chain/[provider, genesis]
 import ../../support/accumulation_current_candidate_context
-import ../../../src/state/service_identity_history
-import ../../../src/state/[accumulation_effects, store, parent_logical, accumulation_current_update,
-    block_admission, report_admission]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/service/identity_history as service_identity_history
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/state/store
+import ../../../src/state/parent/logical as parent_logical
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/storage/managed/manifest as managed_manifest
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Canonical lexical failures must perform no primitive work.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

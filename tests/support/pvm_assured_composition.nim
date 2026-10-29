@@ -4,7 +4,7 @@
 ## Actual assured PVM completion with bounded stopped-history and whole successor composition policies.
 
 import ../../src/codec/bounded
-import ../../src/state/[assured_execution, assured_composition]
+import ../../src/state/assured/[execution as assured_execution, composition as assured_composition]
 import ./[pvm_assured_execution, pvm_computed_finalization, pvm_computed_composition]
 
 proc assuredCompositionFixture*(votes = 7): ExecutedAssuredAccumulation =

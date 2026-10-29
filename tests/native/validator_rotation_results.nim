@@ -8,7 +8,7 @@
 
 import std/[assertions, cmdline, syncio]
 import ../../src/state/validators
-import ../../src/codec/state_safrole
+import ../../src/codec/state/safrole as state_safrole
 from ../../src/codec/header import EpochSlots
 
 let outcome = if paramStr(1) == "default": default(ValidatorRotationResult) else:

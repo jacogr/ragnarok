@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Private state and authority cannot be inspected or forged by consumers.
-import ../../../src/app/proof_query
+import ../../../src/app/proof/query as proof_query
 let private = default(ProofQuery)
 discard private.data

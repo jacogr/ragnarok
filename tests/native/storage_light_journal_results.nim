@@ -4,9 +4,16 @@
 ## Dynamic light-journal result and retirement guards require successful native builds and genuine positive controls.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/storage/[light_journal_cache, light_snapshot, light_state_cache, database_identity,
-  file_errors, durability, light_journal_replay, light_delta, managed_io, managed_manifest]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/light/journal/cache as light_journal_cache
+import ../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../src/storage/database_identity
+import ../../src/storage/file/errors as file_errors
+import ../../src/storage/durability
+import ../../src/storage/light/journal/replay as light_journal_replay
+import ../../src/storage/light/delta as light_delta
+import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Match the supported SDK pid_t ABI without assuming an unported stdlib export.
 proc main() {.raises.} =

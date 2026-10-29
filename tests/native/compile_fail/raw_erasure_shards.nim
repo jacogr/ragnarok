@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint16 but wanted: ErasureShards"}
 
-import ../../../src/codec/work_report
+import ../../../src/codec/work/report as work_report
 let wrong = ReportHeader(erasureShards: 6'u16)
 discard wrong

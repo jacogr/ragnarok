@@ -4,6 +4,6 @@
 
 ## Atomic state application keeps result discriminators and retained alternatives private.
 
-import ../../../src/state/accumulation_state
+import ../../../src/state/accumulation/state as accumulation_state
 var outcome: AccumulationStateResult
 discard outcome.status

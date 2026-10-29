@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_service_values
+include ../../src/codec/state/service_values
 # Native fault injection is linked only in this isolated test adapter, never production binaries.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 fail(0)

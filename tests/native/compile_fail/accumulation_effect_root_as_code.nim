@@ -4,6 +4,6 @@
 
 ## Reject a state commitment substituted for an offered service-code identity.
 
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[state_trie, state_accounts]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts]
 discard recordAccumulationUpgrade(default(AccumulationEffects), default(StateRoot), Gas(0), Gas(0))

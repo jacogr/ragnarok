@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_service_values
+import ../../../src/codec/state/service_values as state_service_values
 discard ServiceValueResult[int](status: ServiceValueError.None, completed: 0)

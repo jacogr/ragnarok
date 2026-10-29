@@ -8,8 +8,9 @@
 ## interface.
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/ticket_admission
-import ../../../src/codec/[state_safrole, state_consensus, tickets, bounded, assurances]
+import ../../../src/state/ticket/admission as ticket_admission
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
+import ../../../src/codec/[tickets, bounded, assurances]
 import ../../support/validator_rotation_fixture
 
 ## Refuse setup (bit 2) or verification (bit 8) through the test-only native observer.

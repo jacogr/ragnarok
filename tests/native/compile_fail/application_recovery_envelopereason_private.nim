@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "envelopeReason"}
 
 ## Nested failure reasons cannot be forged into a successful canonical owner.
-import ../../../src/app/checkpoint_recovery
+import ../../../src/app/checkpoint/recovery as checkpoint_recovery
 let outcome = default(ApplicationRecoveryResult)
 discard outcome.envelopeReason

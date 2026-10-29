@@ -7,13 +7,22 @@ import ../support/[collected_native_context, collected_logical_context,
     current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context, accumulation_execution_context,
     accumulation_current_candidate_context, pvm_accumulation_program, arc_evidence]
-import ../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../src/state/[request_identity_history, accumulation_current_update,
-    accumulation_effects, accumulation_annulment, accumulation_current_driver,
-    accumulation_current_sequence, accumulation_coverage, accumulation_outcome,
-    accumulation_round, accumulation_queue, report_admission, block_transition,
-    block_admission, store]
-import ../../src/codec/[bounded, state_layout, state_requests]
+import ../../src/app/[chain, candidate, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/state/request_identity_history
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[effects as accumulation_effects,
+    annulment as accumulation_annulment]
+import ../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence]
+import ../../src/state/accumulation/[coverage as accumulation_coverage,
+    outcome as accumulation_outcome, round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, requests as state_requests]
 import ../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Pure selected history capture must remain available without cryptographic work.

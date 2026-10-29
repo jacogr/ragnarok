@@ -5,9 +5,12 @@
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[accumulation_execution_context, accumulation_current_round_context,
     accumulation_current_driver_context, pvm_accumulation_program, arc_evidence]
-import ../../src/state/[accumulation_storage_history, accumulation_effects,
-    accumulation_annulment, accumulation_coverage, accumulation_current_sequence,
-    accumulation_current_driver, accumulation_outcome]
+import ../../src/state/accumulation/[storage_history as accumulation_storage_history,
+    effects as accumulation_effects, annulment as accumulation_annulment,
+    coverage as accumulation_coverage]
+import ../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
+    driver as accumulation_current_driver]
+import ../../src/state/accumulation/outcome as accumulation_outcome
 import ../../src/codec/[bounded, composite, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Pure selected history capture must remain usable while cryptographic backends refuse.

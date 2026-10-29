@@ -5,14 +5,20 @@
 ## Actual later-round CPU outcomes and certified skips retain complete coverage and canonical actual gas.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_continuation_execution, accumulation_continuation_inputs,
-  accumulation_continuation, accumulation_continuation_invocation, accumulation_execution,
-  accumulation_round, accumulation_inputs, accumulation_batch, accumulation_dispatch,
-  accumulation_skip, accumulation_outcome, accumulation_provisions,
-  accumulation_terminal_provisions,
-  accumulation_service, accumulation_invocation, store]
-import ../../../src/codec/[bounded, report_owned, header, state_trie, work_digest, state_safrole,
-  state_layout]
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/continuation as accumulation_continuation
+import ../../../src/state/accumulation/continuation/invocation as accumulation_continuation_invocation
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, inputs as accumulation_inputs, batch as accumulation_batch,
+    dispatch as accumulation_dispatch, skip as accumulation_skip, outcome as accumulation_outcome,
+    provisions as accumulation_provisions, terminal_provisions as accumulation_terminal_provisions,
+    service as accumulation_service, invocation as accumulation_invocation]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned, header]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout]
 import ../../support/[accumulation_continuation_execution_context, accumulation_execution_context,
   report_context, pvm_accumulation_provision, arc_evidence]
 

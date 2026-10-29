@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_publication
+import ../../../src/state/computed/publication as computed_publication
 var candidate: ComputedPublicationResult[ComputedReportSuccessor]
 discard candidate.status

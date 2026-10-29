@@ -3,6 +3,8 @@
 
 ## Detached compact inventory cannot substitute original full selected-view provenance.
 # @@Verification={"group":"nominal","expected":"SelectedLogicalParent","early":["preserveCurrentIdentities(","[1] expected: SelectedLogicalParent but got: SuppliedLogicalInventory"]}
-import ../../../src/state/[current_identities, supplied_logical_inventory, accumulation_current_update]
+import ../../../src/state/current/identities as current_identities
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 discard preserveCurrentIdentities(default(SuppliedLogicalInventory), default(
     PreparedCurrentChainUpdate), CurrentIdentityLimits())

@@ -5,7 +5,8 @@
 ## This storage envelope is not a JAM wire encoding and never accepts partial light state.
 
 import ./store
-import ../codec/[state_trie, state_layout, bounded]
+import ../codec/state/[trie as state_trie, layout as state_layout]
+import ../codec/bounded
 
 const
   CheckpointMagic = "RAGNAROK-FULL-V1\n"

@@ -4,6 +4,6 @@
 
 ## Reject raw timestamp ownership or unchecked result access.
 
-import ../../../src/state/accumulation_times
+import ../../../src/state/accumulation/times as accumulation_times
 var outcome: AccumulationTimesResult[PreparedAccumulationTimes]
 discard outcome.completed

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/report_anchors
+import ../../../src/state/report/anchors as report_anchors
 let owner = default(ReportAnchorResult[AnchoredReports])
 discard owner.status # Must fail before lowering.

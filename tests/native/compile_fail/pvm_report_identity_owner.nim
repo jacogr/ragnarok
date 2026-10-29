@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/report_identity
+import ../../../src/state/report/identity as report_identity
 var owner: ReportIdentity
 discard owner.data

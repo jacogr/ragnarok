@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
-include ../../../src/codec/state_workqueues
+include ../../../src/codec/state/workqueues
 var fixture: seq[byte] = @[]
 # Fixture bytes come from the independent Python report equations and must be available before testing.
 try:

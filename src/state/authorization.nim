@@ -8,7 +8,9 @@
 ## Exposes advanceAuthorization for immutable planning and advanceAuthorizationState for atomic
 ## full-state publication.
 
-import ../codec/[state_authorization, state_layout, state_trie, bounded]
+import ../codec/state/[authorization as state_authorization, layout as state_layout,
+    trie as state_trie]
+import ../codec/bounded
 import ./store
 
 type

@@ -5,8 +5,8 @@
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
 import ../../src/state/[inventory, manifest]
-import ../../src/codec/state_service_values
-include composition_fixture
+import ../../src/codec/state/service_values as state_service_values
+include ./composition_fixture
 proc extract(outcome: StateInventoryResult[StateInventory]): StateInventory {.noinline.} =
   ## Preserve actual linked success assertions for default and refused owners.
   outcome.value

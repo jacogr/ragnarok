@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Current ready proof representation stays private.
-import ../../../src/state/[accumulation_current_ready, accumulation_ready,
-    accumulation_current_finalization]
+import ../../../src/state/accumulation/current/ready as accumulation_current_ready
+import ../../../src/state/accumulation/ready as accumulation_ready
+import ../../../src/state/accumulation/current/finalization as accumulation_current_finalization
 let refused = prepareCurrentAccumulationReady(default(PreparedCurrentAccumulationFinalization),
     default(AccumulationReadyConfig))
 discard default(PreparedCurrentAccumulationReady).data

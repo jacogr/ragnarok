@@ -3,7 +3,8 @@
 
 ## Trust extraction guards have genuine captured-input and actual decoder-error controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[chain, checkpoint_identity, checkpoint_trust]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header]
 import ../support/application_checkpoint_context

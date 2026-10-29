@@ -10,11 +10,17 @@
 # @@Verification={"arc": "block_admission_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[block_admission, safrole_transition, safrole_authentication, store,
-    block_transition, disputes, availability]
-import ../../../src/codec/[block_codec, header, bounded, composite, tickets, state_safrole,
-  state_consensus,
-  state_disputes, state_trie, state_layout, guarantees, state_availability]
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/safrole/[transition as safrole_transition,
+    authentication as safrole_authentication]
+import ../../../src/state/store
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/[disputes, availability]
+import ../../../src/codec/[block_codec, header, bounded, composite, tickets]
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    disputes as state_disputes, trie as state_trie, layout as state_layout]
+import ../../../src/codec/guarantees
+import ../../../src/codec/state/availability as state_availability
 import ../../../src/crypto/[primitives, extrinsic_commitment]
 from ../../../src/codec/disputes import Disputes, DisputeHash, Culprit, DisputeSignature,
     DisputeConfig, DisputeError, encodeDisputes

@@ -1,6 +1,6 @@
 # Report package context
 
-`src/state/report_packages.nim` adds bounded read-only package relations and a state-backed
+`src/state/report/packages.nim` adds bounded read-only package relations and a state-backed
 `PackageCheckedReports` owner after policy/recent-anchor validation. It does not establish lookup
 ancestry, core vacancy, full report admission or C(10) publication.
 

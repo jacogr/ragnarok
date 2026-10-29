@@ -4,14 +4,18 @@
 ## Independent RPC and TLS processes observe confirmed current adoption before a later gated refusal.
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
-import ../../../src/app/[current_download_command, current_download_policy,
-    options, services]
+import ../../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import ../../../src/app/[options, services]
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
 import ../../../src/crypto/primitives
-import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[accumulation_current_chain_context,
   current_download_command_context,
   current_application_context, current_services_disk_samples,

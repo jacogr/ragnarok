@@ -1,6 +1,6 @@
 # Source-bound preimage request linkage
 
-Scope: `src/state/preimage_linkage.nim` implements the second conjunct of
+Scope: `src/state/preimage/linkage.nim` implements the second conjunct of
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `text/accounts.tex`,
 eq:preimageconstraints. Every present preimage must have a request dictionary key
 with its declared hash and exact actual byte length. Hash content is independent.

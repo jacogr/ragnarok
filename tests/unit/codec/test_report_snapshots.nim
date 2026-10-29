@@ -10,7 +10,9 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/codec/[bounded, composite, work_digest, work_report, report_owned, owned]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../../src/codec/[report_owned, owned]
 
 # Construct a bounded report with ordered dependencies, authorization and successful/error digests.
 proc capture(marker: byte): OwnedReport =

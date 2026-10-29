@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "owner"}
 
 ## Private state and authority cannot be inspected or forged by consumers.
-import ../../../src/app/proof_worker
+import ../../../src/app/proof/worker as proof_worker
 let private = default(ProofWorkerTicket)
 discard private.owner

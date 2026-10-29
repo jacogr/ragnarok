@@ -5,9 +5,15 @@
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/managed_storage_samples
-import ../../src/storage/[full_state_trie, node_repository, node_records, record_codec,
-  file_repository, managed_repository, database_identity, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/record_codec
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/managed/repository as managed_repository
+import ../../src/storage/database_identity
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc key(index: int, deep: bool): StateKey =
   ## Authored leading/trailing two-byte identities distinguish short and very deep common key prefixes.

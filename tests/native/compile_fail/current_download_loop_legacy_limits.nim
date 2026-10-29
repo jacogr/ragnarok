@@ -3,8 +3,10 @@
 
 ## Legacy resource and completion policies cannot configure current-only download dispatch.
 # @@Verification={"group": "nominal", "expected": "expected: CurrentDownloadLoopLimits but got: DownloadLoopLimits", "early": ["configure", "[5] expected: CurrentDownloadLoopLimits but got: DownloadLoopLimits"]}
-import ../../../src/quic/[current_block_download_loop, block_download_loop]
-import ../../../src/app/[services, download_schedule]
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/block/download/loop" as block_download_loop
+import ../../../src/app/services
+import ../../../src/app/download/schedule as download_schedule
 import ../../../src/codec/header
 var dispatcher = default(CurrentDownloadLoop)
 var owner = default(Services)

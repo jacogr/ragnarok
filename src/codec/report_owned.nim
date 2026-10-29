@@ -7,7 +7,9 @@
 ## Exposes decodeOwnedReport, report metadata/child access, bounded blob copies and re-encoding
 ## from retained report snapshots.
 
-import ./[composite, work_digest, work_report, owned]
+import ./composite
+import ./work/[digest as work_digest, report as work_report]
+import ./owned
 
 type
   # Private acyclic storage binds all successful payload descriptors to their original validated snapshot.

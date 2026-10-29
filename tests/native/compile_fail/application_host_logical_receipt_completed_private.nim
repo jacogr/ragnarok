@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Host logical authority and backing storage remain private and cannot be retagged or substituted.
-import ../../../src/app/collected_update
+import ../../../src/app/collected/update as collected_update
 let source = default(CollectedUpdateResult)
 discard source.completed

@@ -3,7 +3,7 @@
 
 ## Managed worker and acknowledgement ownership rejects actual implicit ARC duplication.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <ApplicationCheckpointSession>", "build_name": "application-checkpoint-session-copy"}
-import ../../../src/app/checkpoint_session
+import ../../../src/app/checkpoint/session as checkpoint_session
 var original = default(ApplicationCheckpointSession)
 var duplicate = original
 original.close()

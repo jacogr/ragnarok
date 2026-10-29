@@ -5,11 +5,18 @@
 ## Actual computed reports remain pending; only authenticated historical ready reports enter accumulation priority.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_publication, computed_admission, computed_inclusion,
-  computed_batch, computed_envelope, report_admission, report_assignments, accumulation_queue,
-  block_transition, block_admission, store]
-import ../../../src/codec/[bounded, assurances, header, state_workqueues, state_layout,
-  state_availability, report_owned, owned]
+import ../../../src/state/computed/[publication as computed_publication,
+    admission as computed_admission, inclusion as computed_inclusion, batch as computed_batch,
+    envelope as computed_envelope]
+import ../../../src/state/report/[admission as report_admission, assignments as report_assignments]
+import ../../../src/state/accumulation/queue as accumulation_queue
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, assurances, header]
+import ../../../src/codec/state/[workqueues as state_workqueues, layout as state_layout,
+    availability as state_availability]
+import ../../../src/codec/[report_owned, owned]
 import ../../support/[pvm_computed_publication, pvm_computed_admission, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

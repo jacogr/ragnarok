@@ -4,7 +4,8 @@
 ## Failed/default driver results and default terminal owners enforce selected extraction in optimized builds.
 
 import std/cmdline
-import ../../src/state/[accumulation_driver, accumulation_execution]
+import ../../src/state/accumulation/[driver as accumulation_driver,
+    execution as accumulation_execution]
 import ../../src/chain/parameters
 
 let argument = paramStr(1)

@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "InvocationServiceIndex", "early": ["prepareBlockAccumulationService(", "[2] expected: InvocationServiceIndex but got: ServiceIndex"]}
 
-import ../../../src/state/[accumulation_service, accumulation_round, accumulation_inputs]
+import ../../../src/state/accumulation/[service as accumulation_service,
+    round as accumulation_round, inputs as accumulation_inputs]
 import ../../../src/codec/[bounded, composite]
 discard prepareBlockAccumulationService(default(BlockAccumulationRound), ServiceIndex(0), default(AccumulationServiceConfig))

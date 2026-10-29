@@ -4,9 +4,13 @@
 ## Frozen export admits exact whole-output resources, survives source retirement and preserves original complete matching after caller mutation.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
-import ../../src/app/[logical_export, collected_supplied_state]
-import ../../src/state/[current_logical, supplied_services, supplied_logical_inventory]
-import ../../src/codec/[bounded, state_composition]
+import "../../src/app/logical/export" as logical_export
+import ../../src/app/collected/supplied/state as collected_supplied_state
+import ../../src/state/current/logical as current_logical
+import ../../src/state/supplied/[services as supplied_services,
+    logical_inventory as supplied_logical_inventory]
+import ../../src/codec/bounded
+import ../../src/codec/state/composition as state_composition
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Projection must remain hash-free after complete logical qualification has finished.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

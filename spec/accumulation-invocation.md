@@ -30,7 +30,7 @@ must protect nominal positions, private result/owner storage and selected-succes
 
 ## Implementation and failure contract
 
-`src/state/accumulation_invocation.nim` exposes compact argument construction, deterministic initial
+`src/state/accumulation/invocation.nim` exposes compact argument construction, deterministic initial
 ID derivation, bounded public-ID probing and immutable pure/block-bound bootstrap handles. The
 pure adapter accepts a ready `PreparedAccumulationService` and explicit posterior entropy. The
 block adapter retrieves C(6) from that service's genuine completed block stage, requires its exact

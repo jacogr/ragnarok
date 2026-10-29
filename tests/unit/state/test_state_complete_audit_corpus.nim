@@ -4,10 +4,14 @@
 ## Independently rooted complete sources qualify exact audit budgets, no-hash refusal and targeted predicate execution.
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context]
-import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint,
-  inventory, account_audit_plan, account_audit, account_invariants, footprint_audit,
-  preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie, state_composition]
+import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint, inventory]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[consensus as state_consensus, layout as state_layout,
+    trie as state_trie, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observed hash work and optionally force backend refusal after source capture.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

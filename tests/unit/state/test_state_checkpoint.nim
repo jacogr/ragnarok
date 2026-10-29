@@ -7,7 +7,8 @@
 
 import std/[assertions, syncio]
 import ../../../src/state/[checkpoint, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 proc key(number: byte): StateKey =

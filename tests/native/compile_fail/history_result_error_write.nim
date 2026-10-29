@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[state_history, state_trie]
+import ../../../src/codec/state/[history as state_history, trie as state_trie]
 var value = default(HistoryResult[HistoryInfo])
 value.error = HistoryError.None

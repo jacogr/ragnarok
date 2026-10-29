@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 var value = default(CompositeWrite)
 value.error = CompositeError.None

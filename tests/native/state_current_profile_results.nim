@@ -4,8 +4,10 @@
 ## Strict current-profile payload/reason guards retain a genuinely prepared current child as positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_profile, accumulation_current_update]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import ../../src/state/current/profile as current_profile
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/composition as state_composition
 proc extract(outcome: CurrentProfileResult[DerivedCurrentProfile]) {.noinline.} =
   ## Default/refused projection grants no source-bound profile.
   discard outcome.value

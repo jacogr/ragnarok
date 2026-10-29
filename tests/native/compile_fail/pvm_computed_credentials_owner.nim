@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_credentials
+import ../../../src/state/computed/credentials as computed_credentials
 var candidate: CredentialedComputedReport
 discard candidate.data

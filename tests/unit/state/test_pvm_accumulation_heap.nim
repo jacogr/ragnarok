@@ -5,12 +5,15 @@
 ## Actual heap calls preserve immutable CPUs and adopted gas/address rules under bounded allocation.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context,
-  accumulation_effects, accumulation_outcome, accumulation_invocation, accumulation_service,
-  accumulation_inputs,
-  accumulation_batch, store]
-import ../../../src/codec/[bounded, composite, header, c2_records, state_safrole, state_accounts,
-    state_layout, state_trie]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    dispatch as accumulation_dispatch, context as accumulation_context,
+    effects as accumulation_effects, outcome as accumulation_outcome,
+    invocation as accumulation_invocation, service as accumulation_service,
+    inputs as accumulation_inputs, batch as accumulation_batch]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header, c2_records]
+import ../../../src/codec/state/[safrole as state_safrole, accounts as state_accounts,
+    layout as state_layout, trie as state_trie]
 import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
   accumulation_batch_context, accumulation_provision_integration, arc_evidence]

@@ -307,7 +307,7 @@ trailing commas, permissive escapes/numbers). The event adapter enforces string 
 a single root and resource limits before retaining each event. Decoded strings are checked
 for valid UTF-8, and stdlib error state is checked even when it emits a string event.
 
-Output uses [`src/lib/json_writer.nim`](../src/lib/json_writer.nim) to build typed values,
+Output uses [`src/lib/json/writer.nim`](../src/lib/json/writer.nim) to build typed values,
 ordered objects and arrays. String escaping and punctuation belong to that module; integer
 serialization keeps the original
 signed/unsigned width. `trustedJson` embeds only parser-validated IDs or complete internally

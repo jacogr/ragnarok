@@ -6,9 +6,14 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[arc_evidence, storage_io, storage_light_journal]
-import ../../../src/storage/[light_journal_cache, light_journal_manifest, light_delta,
-  light_snapshot, light_journal_replay, database_identity, managed_io, managed_manifest,
-  file_errors, durability]
+import ../../../src/storage/light/journal/[cache as light_journal_cache,
+    manifest as light_journal_manifest]
+import ../../../src/storage/light/[delta as light_delta, snapshot as light_snapshot]
+import ../../../src/storage/light/journal/replay as light_journal_replay
+import ../../../src/storage/database_identity
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/durability
 import ../../../src/codec/bounded
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Opaque compaction publication performs no provider work after private preparation.

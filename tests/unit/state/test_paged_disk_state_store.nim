@@ -5,18 +5,26 @@
 # @@Verification={"arc":"paged_disk_state_store_arc_release"}
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/disk_worker
+import ../../../src/app/disk/worker as disk_worker
 import ../../support/storage_crash
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture,
   disk_history_context]
-import ../../../src/state/[store, paged_state, disk_store]
-import ../../../src/app/[chain, disk_history]
+import ../../../src/state/store
+import ../../../src/state/paged/state as paged_state
+import ../../../src/state/disk_store
+import ../../../src/app/chain
+import ../../../src/app/disk/history as disk_history
 import ../../../src/chain/[genesis, provider]
-import ../../../src/storage/[full_paged_codec, full_paged_store, full_paged_stream,
-  full_paged_build, paged_io,
-  node_records, node_repository, paged_codec, managed_manifest, file_errors, durability,
-  database_identity]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, store as full_paged_store,
+    stream as full_paged_stream, build as full_paged_build]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/paged/codec as paged_codec
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/[durability, database_identity]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 func statePolicy(): StateStoreLimits =
   ## Full-map limits remain separate from native context, export and physical working policies.
   StateStoreLimits(trie: policy().trie, writes: ElementLimit(10), writeValueBytes: ByteLimit(10000))

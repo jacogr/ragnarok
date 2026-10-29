@@ -3,7 +3,7 @@
 
 ## The current receiver independently rejects duplication of its mutable input and worker borrow.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CurrentBlockDownload>", "build_name": "current-block-download-copy"}
-import ../../../src/app/current_block_download
+import "../../../src/app/current/block/download" as current_block_download
 var original = default(CurrentBlockDownload)
 var duplicate = original
 discard original.cancel(default(CurrentBlockDownloadId))

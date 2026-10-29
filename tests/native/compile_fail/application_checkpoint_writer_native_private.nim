@@ -3,6 +3,6 @@
 
 ## The native child, destination path and lock descriptor cannot escape the composite boundary.
 # @@Verification={"group": "privacy", "expected": "native"}
-import ../../../src/app/checkpoint_writer
+import ../../../src/app/checkpoint/writer as checkpoint_writer
 let writer = default(ApplicationCheckpointWriter)
 discard writer.native

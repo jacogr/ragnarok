@@ -7,7 +7,9 @@ import ./[current_namespace_transition_context, current_namespace_execution_cont
     current_namespace_context, current_namespace_refresh_context, accumulation_execution_context,
     accumulation_current_candidate_context, application_download_chain]
 import ../../src/codec/[bounded, report_owned]
-import ../../src/state/[current_logical_refresh, current_logical, accumulation_current_update]
+import ../../src/state/current/logical/refresh as current_logical_refresh
+import ../../src/state/current/logical as current_logical
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/app/[chain, candidate]
 type CurrentRepeatedLogicalFixture* = object ## Public test descriptors hold only genuinely produced immutable opaque owners.
   first*: CurrentNamespaceTransition

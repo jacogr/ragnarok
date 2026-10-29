@@ -5,9 +5,10 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, service_deposit_context, economic_profile_context]
 import ../../src/chain/parameters
-import ../../src/state/[economics_table, economic_profile, footprint_audit, service_directory]
+import ../../src/state/[economics_table, economic_profile, footprint_audit]
+import ../../src/state/service/directory as service_directory
 import ../../src/codec/bounded
-include composition_fixture
+include ./composition_fixture
 proc extract(outcome: EconomicsTableResult[StateEconomicsTable]): StateEconomicsTable {.noinline.} =
   ## No default or failed report grants completed source-bearing observations.
   outcome.value

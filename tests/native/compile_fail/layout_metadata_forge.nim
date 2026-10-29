@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "nodeKind"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 discard StateNodeInfo(nodeKind: StateNodeKind.HashedLeaf)

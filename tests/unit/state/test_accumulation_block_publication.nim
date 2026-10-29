@@ -5,13 +5,20 @@
 ## Exact-parent publication adopts prepared complete snapshots without rehashing, replay or losing inherited policy/history.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_block_publication, accumulation_consensus,
-  accumulation_authorization,
-  accumulation_preimages, accumulation_activity, accumulation_validators, accumulation_times,
-  accumulation_statistics, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
-  core_service_activity, preimages, authorization, store]
-import ../../../src/codec/[bounded, composite, report_owned, state_layout, state_trie]
+import "../../../src/state/accumulation/block/publication" as accumulation_block_publication
+import ../../../src/state/accumulation/[consensus as accumulation_consensus,
+    authorization as accumulation_authorization, preimages as accumulation_preimages,
+    activity as accumulation_activity, validators as accumulation_validators,
+    times as accumulation_times, statistics as accumulation_statistics,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/[preimages, authorization, store]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_activity_context, report_context, arc_evidence]
 
 # Prepare genuine candidates first; publication must remain successful even while every Blake2b call would refuse.

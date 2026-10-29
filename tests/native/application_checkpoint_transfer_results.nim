@@ -3,7 +3,8 @@
 
 ## Opaque access helpers exercise the same runtime contracts on invalid and genuine prepared owners.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[chain, checkpoint_identity, checkpoint_transfer]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[identity as checkpoint_identity, transfer as checkpoint_transfer]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_context
 proc inspectLength(prepared: PreparedApplicationCheckpoint) =

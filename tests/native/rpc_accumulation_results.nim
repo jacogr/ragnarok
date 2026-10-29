@@ -5,7 +5,9 @@
 
 import std/cmdline
 import ../../src/rpc/server
-import ../../src/state/[store, accumulation_finalization, accumulation_completion]
+import ../../src/state/store
+import ../../src/state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion]
 
 let argument = paramStr(1)
 var owner = default(Server)

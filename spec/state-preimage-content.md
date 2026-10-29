@@ -1,6 +1,6 @@
 # Source-bound preimage content checks
 
-Scope: `src/state/preimage_content.nim` implements only the first conjunct of
+Scope: `src/state/preimage/content.nim` implements only the first conjunct of
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `text/accounts.tex`,
 eq:preimageconstraints: every present preimage's raw bytes hash to its declared
 Blake2b-256 identity. Request membership is a separate invariant.

@@ -9,6 +9,6 @@
 # @@Verification={"group": "nominal", "expected": "AuthorizationCoreIndex", "early": ["advanceAuthorization(", "[4] expected: AuthorizationSlot but got: AuthorizationCoreIndex"]}
 
 import ../../../src/state/authorization
-import ../../../src/codec/state_authorization
+import ../../../src/codec/state/authorization as state_authorization
 let owner = default(AuthorizationSnapshot)
 discard advanceAuthorization(owner, owner, [], AuthorizationCoreIndex(0), default(AuthorizationConfig))

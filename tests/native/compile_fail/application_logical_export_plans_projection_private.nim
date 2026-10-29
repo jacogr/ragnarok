@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "projection"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/logical_export
+import "../../../src/app/logical/export" as logical_export
 let source = default(LogicalExportPlan)
 discard source.projection

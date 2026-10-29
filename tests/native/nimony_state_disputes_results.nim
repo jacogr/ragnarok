@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_disputes
+include ../../src/codec/state/disputes
 let useDefault = paramStr(2) == "default"
 let policy = DisputeStateConfig(perSet: ElementLimit(3), totalItems: ElementLimit(8),
     maxBytes: ByteLimit(300))

@@ -6,9 +6,13 @@ import std/assertions
 import ../../src/app/candidate
 import ../../src/chain/parameters
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, state_safrole, composite, assurances, state_layout,
-  state_consensus,
-  state_authorization, state_availability, state_statistics, state_privileges, state_disputes, report_owned]
+import ../../src/codec/bounded
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/[composite, assurances]
+import ../../src/codec/state/[layout as state_layout, consensus as state_consensus,
+    authorization as state_authorization, availability as state_availability,
+    statistics as state_statistics, privileges as state_privileges, disputes as state_disputes]
+import ../../src/codec/report_owned
 import ../../src/state/store
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch

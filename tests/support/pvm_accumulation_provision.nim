@@ -5,9 +5,14 @@
 ## Exposes literal full-width register calls, requested source maps and bounded dispatcher invocation.
 
 import std/assertions
-import ../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_context, accumulation_effects]
-import ../../src/codec/[bounded, assurances, composite, state_accounts, state_requests,
-  state_service_values, state_authorization, state_safrole, state_privileges, state_layout, state_trie]
+import ../../src/state/accumulation/[machine as accumulation_machine,
+    dispatch as accumulation_dispatch, context as accumulation_context,
+    effects as accumulation_effects]
+import ../../src/codec/[bounded, assurances, composite]
+import ../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    service_values as state_service_values, authorization as state_authorization,
+    safrole as state_safrole, privileges as state_privileges, layout as state_layout,
+    trie as state_trie]
 import ../../src/crypto/primitives
 import ../../src/pvm/[initialize, machine, program, host_fetch, step, gas]
 import ./pvm_accumulation_context

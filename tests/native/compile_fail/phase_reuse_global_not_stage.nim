@@ -3,5 +3,7 @@
 # @@Verification={"group": "nominal", "expected": "expected: PreparedAccumulationGlobalStage but got: PreparedAccumulationGlobalPhase", "early": ["globalStageSnapshot(", "[1] expected: PreparedAccumulationGlobalStage but got: PreparedAccumulationGlobalPhase"]}
 
 ## Pure selected state cannot replace authenticated initial-stage ownership.
-import ../../../src/state/[accumulation_global_stage, accumulation_global_phase, accumulation_provisions]
+import ../../../src/state/accumulation/global/[stage as accumulation_global_stage,
+    phase as accumulation_global_phase]
+import ../../../src/state/accumulation/provisions as accumulation_provisions
 discard globalStageSnapshot(default(PreparedAccumulationGlobalPhase))

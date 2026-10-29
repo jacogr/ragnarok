@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "plan"}
 
 ## Callers cannot forge a semantic service selector from arbitrary generic requested keys.
-import ../../../src/state/proof_service
+import ../../../src/state/proof/service as proof_service
 let private = default(ServiceProofPlan)
 discard private.plan

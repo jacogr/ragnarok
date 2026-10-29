@@ -3,7 +3,7 @@
 
 ## A default current slot has neither a queued update nor an acknowledged successful child.
 import std/cmdline
-import ../../src/app/current_handoff
+import ../../src/app/current/handoff as current_handoff
 var handoff = default(CurrentAccumulationHandoff)
 let outcome = default(CurrentHandoffResult)
 case paramStr(1)

@@ -5,5 +5,5 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedBatchIndex", "early": ["computedBatchSourceAt(", "[2] expected: ComputedBatchIndex but got: ComputedReporterIndex"]}
 
-import ../../../src/state/[computed_batch, computed_envelope]
+import ../../../src/state/computed/[batch as computed_batch, envelope as computed_envelope]
 discard computedBatchSourceAt(default(ComputedGuaranteeBatch), ComputedReporterIndex(0))

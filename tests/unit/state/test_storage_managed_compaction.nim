@@ -4,9 +4,13 @@
 ## Atomic managed reclamation retains explicit complete roots and old readers without changing state generation.
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[managed_repository, managed_manifest, node_repository,
-  node_records, full_state_trie, database_identity, file_errors]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc main() {.raises.} =
   ## Drop one historical root, preserve another and continue publishing against the new physical owner.
   let limits = managedStorageLimits()

@@ -10,7 +10,7 @@
 
 import std/envvars
 import ../../support/arc_evidence
-include ../../../src/codec/state_composition
+include ../../../src/codec/state/composition
 include ../../native/composition_fixture
 let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))

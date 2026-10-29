@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/refinement_lookup
+import ../../../src/state/refinement/lookup as refinement_lookup
 var owner: HistoricalLookupContext
 discard owner.data

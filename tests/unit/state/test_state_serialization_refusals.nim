@@ -4,8 +4,9 @@
 ## Independently recommitted maps isolate precise typed chapter refusals from checkpoint/root failures.
 import std/[assertions, envvars, strutils, syncio, parseutils]
 import ../../../src/state/[checkpoint, store, global_snapshot, manifest, validated_checkpoint]
-import ../../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-    state_composition]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[consensus as state_consensus, layout as state_layout,
+    trie as state_trie, composition as state_composition]
 const
   profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))

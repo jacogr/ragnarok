@@ -7,8 +7,10 @@ import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_identity_context,
     accumulation_current_candidate_context, accumulation_current_chain_context,
     application_download_chain, arc_evidence]
-import ../../../src/state/[current_identities, current_logical, current_state, current_globals,
-    current_profile, accumulation_current_update, store]
+import ../../../src/state/current/[identities as current_identities, logical as current_logical,
+    state as current_state, globals as current_globals, profile as current_profile]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/chain/[provider, genesis, parameters]
 import ../../../src/app/[chain, candidate]
 import ../../../src/codec/[bounded, report_owned]

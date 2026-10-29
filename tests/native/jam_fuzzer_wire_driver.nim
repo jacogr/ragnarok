@@ -4,8 +4,10 @@
 ## Inspect pinned upstream session messages through the native owned protocol, never through an STF substitute.
 import std/[assertions, cmdline, parseutils, strutils, syncio]
 import ../support/fuzz_protocol_context
-import ../../src/state/[fuzz_protocol, store, checkpoint]
-import ../../src/codec/[bounded, header, block_codec, state_trie]
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/[store, checkpoint]
+import ../../src/codec/[bounded, header, block_codec]
+import ../../src/codec/state/trie as state_trie
 proc hex(input: openArray[byte]): string =
   ## Output copied bytes in one exact lowercase representation.
   const digits = "0123456789abcdef"

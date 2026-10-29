@@ -3,7 +3,9 @@
 
 ## Default/refused current publication cannot expose an adopted map or inactive store cause.
 import std/cmdline
-import ../../src/state/[accumulation_current_publication, accumulation_current_consensus, store]
+import ../../src/state/accumulation/current/[publication as accumulation_current_publication,
+    consensus as accumulation_current_consensus]
+import ../../src/state/store
 let owner = default(CurrentAccumulationPublicationResult)
 var state = default(StateStore)
 let refused = publishCurrentAccumulationState(state, default(PreparedCurrentAccumulationConsensus))

@@ -6,10 +6,14 @@
 ## Actual assured successor publication installs both handles together or preserves both through every selected refusal.
 
 import std/[assertions, syncio]
-import ../../../src/state/[assured_chain, assured_composition, accumulation_consensus,
-  accumulation_finalization, store]
+import ../../../src/state/assured/[chain as assured_chain, composition as assured_composition]
+import ../../../src/state/accumulation/[consensus as accumulation_consensus,
+    finalization as accumulation_finalization]
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_accounts, state_service_values]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, service_values as state_service_values]
 import ../../support/[pvm_assured_chain, pvm_computed_chain, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

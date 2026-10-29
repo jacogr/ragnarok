@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "supervisionReason"}
 
 ## Caller cannot forge restored review authority or mutate failed stage alternatives.
-import ../../../src/state/account_review_checkpoint
+import ../../../src/state/account/review/checkpoint as account_review_checkpoint
 var value = default(AccountReviewCheckpointResult)
 discard value.supervisionReason

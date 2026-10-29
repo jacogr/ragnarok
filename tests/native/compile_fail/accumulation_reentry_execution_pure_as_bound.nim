@@ -4,6 +4,7 @@
 
 ## Reject substitution of nominal reentry bootstrap/completion provenance.
 
-import ../../../src/state/[accumulation_reentry_invocation, accumulation_invocation]
+import ../../../src/state/accumulation/reentry/invocation as accumulation_reentry_invocation
+import ../../../src/state/accumulation/invocation as accumulation_invocation
 var pure: PreparedAccumulationInvocation
 discard bootstrapReentry(pure)

@@ -4,7 +4,8 @@
 ## Local proof serialization is bounded and exact, with root/key trust deliberately supplied separately.
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Verify exact framing, detached output and both individual and outer byte limits.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(100))

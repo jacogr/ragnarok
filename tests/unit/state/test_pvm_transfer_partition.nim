@@ -4,8 +4,12 @@
 
 ## Exact stable partition agrees with independent finite paper predicates across every small supervision graph.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_transfer_partition, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie, c2_records]
+import ../../../src/state/accumulation/transfer_partition as accumulation_transfer_partition
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/c2_records
 import ../../support/arc_evidence
 
 # Partitioning only reads canonical metadata; it must perform no native hash work.

@@ -5,8 +5,11 @@
 # @@Verification={"arc": "storage_admission_ownership_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[admission_samples, arc_evidence]
-import ../../../src/storage/[node_records, record_codec, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 type
   LeafWitness = object ## Fixed expected identity/value never borrows the mutable source image.
     digest: StateNodeHash

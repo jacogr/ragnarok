@@ -7,7 +7,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/state/[report_packages, report_anchors]
+import ../../src/state/report/[packages as report_packages, anchors as report_anchors]
 let outcome = if paramStr(1) == "error":
   checkReportPackages(default(RecentAnchoredReports), default(ReportPackageConfig))
 else:

@@ -3,7 +3,7 @@
 
 ## Default completion results cannot expose success or a fabricated failed child alternative.
 import std/cmdline
-import ../../src/state/accumulation_current_completion
+import ../../src/state/accumulation/current/completion as accumulation_current_completion
 let outcome = default(CurrentAccumulationCompletionResult)
 case paramStr(1)
 of "value": discard outcome.value # A default result has no complete owner.

@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 let owner = default(AccumulationEffectResult[AccumulationEffects])
 discard owner.completed

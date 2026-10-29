@@ -4,7 +4,7 @@ One Advance request and at most one explicit retry; serialized host, one native 
 phase 0 Staged, 1 dispatched, 2 Done, 3 collected; outcome 0 absent, 1 success, 2 StaleHead, 3 uncertain.
 Generation 1 is retained by the old caller; 2 is the fresh retry authority. No wrap is modeled.
 Hypothesis: uncertain/successful IO retries implicitly, or an old ticket retires a retried request.
-Source: src/state/checkpoint_worker.nim begin/peek/retry/matches/collect.
+Source: src/state/checkpoint/worker.nim begin/peek/retry/matches/collect.
 Native execution returns one abstract actual outcome; successful retry still requires explicit begin.#
   (variables :phase.0. :outcome.0. :generation.0. :retried.0. :err.0.)
   (assign Mut.0. 0)

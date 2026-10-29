@@ -5,7 +5,8 @@
 
 import std/[cmdline, assertions]
 import ../../src/state/[checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 let mode = paramStr(1)
 if mode == "root-refused":

@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "update"}
 
 ## Producers cannot substitute arbitrary queued owners by writing handoff fields.
-import ../../../src/app/current_handoff
+import ../../../src/app/current/handoff as current_handoff
 let handoff = default(CurrentAccumulationHandoff)
 discard handoff.update

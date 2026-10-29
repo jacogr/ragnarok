@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Callers cannot forge source-bound selected authority or mutate private results.
-import ../../../src/state/service_supervision
+import ../../../src/state/service/supervision as service_supervision
 var value = default(ServiceSupervisionResult[ServiceSupervision])
 discard value.status

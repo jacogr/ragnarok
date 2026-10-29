@@ -4,7 +4,7 @@
 
 ## Only genuine initial completion can authorize this driver.
 
-import ../../../src/state/[accumulation_driver, accumulation_round]
+import ../../../src/state/accumulation/[driver as accumulation_driver, round as accumulation_round]
 import ../../../src/chain/parameters
 var source: BlockAccumulationRound
 discard driveAccumulation(source, default(Parameters), default(AccumulationDriverLimits))

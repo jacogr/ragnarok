@@ -3,6 +3,6 @@
 
 ## Logical success extraction cannot bypass its guarded immutable result accessor.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/app/current_logical_download
+import ../../../src/app/current/logical/download as current_logical_download
 var owner = default(CurrentLogicalDownloadResult)
 discard owner.completed

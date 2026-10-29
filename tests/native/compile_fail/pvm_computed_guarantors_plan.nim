@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "RosterEligibleComputedReport", "early": ["prepareComputedGuarantors(", "[1] expected: RosterEligibleComputedReport but got: GuarantorPlan"]}
 
-import ../../../src/state/[computed_guarantors, computed_roster, computed_transition, guarantors, store]
+import ../../../src/state/computed/[guarantors as computed_guarantors, roster as computed_roster,
+    transition as computed_transition]
+import ../../../src/state/[guarantors, store]
 discard prepareComputedGuarantors(default(GuarantorPlan), ComputedGuarantorLimits())

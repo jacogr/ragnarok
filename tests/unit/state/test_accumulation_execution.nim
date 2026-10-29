@@ -5,10 +5,15 @@
 ## Real admitted initial rounds retain complete batches and canonical actual gas observations.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_execution, accumulation_round, accumulation_inputs,
-  accumulation_batch, accumulation_dispatch, accumulation_skip, accumulation_outcome,
-  accumulation_provisions, accumulation_terminal_provisions, store]
-import ../../../src/codec/[bounded, report_owned, header, state_trie, work_digest, state_layout]
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, inputs as accumulation_inputs, batch as accumulation_batch,
+    dispatch as accumulation_dispatch, skip as accumulation_skip, outcome as accumulation_outcome,
+    provisions as accumulation_provisions, terminal_provisions as accumulation_terminal_provisions]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned, header]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/layout as state_layout
 import ../../support/[accumulation_execution_context, report_context, arc_evidence]
 
 # Prove gas collection, retained queries and empty state publication do not perform new hashes.

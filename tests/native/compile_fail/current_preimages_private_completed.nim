@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Current fulfilled-preimage proof representation stays private.
-import ../../../src/state/[accumulation_current_preimages, accumulation_preimages,
-    accumulation_current_activity]
+import ../../../src/state/accumulation/current/preimages as accumulation_current_preimages
+import ../../../src/state/accumulation/preimages as accumulation_preimages
+import ../../../src/state/accumulation/current/activity as accumulation_current_activity
 let refused = prepareCurrentAccumulationPreimages(default(PreparedCurrentAccumulationActivity),
     default(AccumulationPreimageLimits))
 discard refused.completed

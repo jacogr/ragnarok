@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Current output proof representation stays private.
-import ../../../src/state/[accumulation_current_outputs, accumulation_current_driver]
+import ../../../src/state/accumulation/current/[outputs as accumulation_current_outputs,
+    driver as accumulation_current_driver]
 let refused = prepareCurrentAccumulationOutputs(default(CompletedCurrentAccumulationSequence),
     default(CurrentAccumulationOutputLimits))
 discard default(PreparedCurrentAccumulationOutputs).data

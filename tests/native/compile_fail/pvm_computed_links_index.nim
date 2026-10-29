@@ -5,7 +5,10 @@
 
 # @@Verification={"group": "nominal", "expected": "ReportLookupIndex", "early": ["computedLinkWitness(", "[2] expected: ReportLookupIndex but got: FetchItemIndex"]}
 
-import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed/[links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/pvm/host_fetch
 discard computedLinkWitness(default(ComputedReportLinks), FetchItemIndex(0))

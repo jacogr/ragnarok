@@ -4,7 +4,8 @@
 ## Dynamic result/count misuse requires optimized guards alongside genuine public controls.
 import std/[assertions, cmdline, syncio]
 import ../support/storage_samples
-import ../../src/storage/[revision_retention, node_repository]
+import ../../src/storage/revision_retention
+import ../../src/storage/node/repository as node_repository
 import ../../src/codec/bounded
 proc main() =
   ## Select dynamic valid/default/refused accesses so constant folding cannot replace contracts.

@@ -2,9 +2,9 @@
  SPDX-License-Identifier: MIT OR Apache-2.0
 
  Hypothesis: publication races reader admission and reclamation can remove the reader's captured epoch.
- Source: src/storage/paged_store.nim openPagedReader (CURRENT/pin/CURRENT admission), publish, reclaim;
- src/storage/paged_io.nim openEpoch (flock SH/EX nonblocking), removePinned (unlink under EX).
- Full mapping: src/storage/full_paged_store.nim openFullPagedReader (same CURRENT/SH/CURRENT gate),
+ Source: src/storage/paged/store.nim openPagedReader (CURRENT/pin/CURRENT admission), publish, reclaim;
+ src/storage/paged/io.nim openEpoch (flock SH/EX nonblocking), removePinned (unlink under EX).
+ Full mapping: src/storage/full/paged/store.nim openFullPagedReader (same CURRENT/SH/CURRENT gate),
  publish (same guarded rename), reclaim (same captured EX/current-check/unlink gate).
  Full graph verification occurs while SH/EX remains held and does not add a release window.
  Atomicity: CURRENT read, independent flock acquisition, atomic rename, unlink, and close are separate steps.

@@ -5,7 +5,9 @@
 ## Current composed ownership is required before joint state/view installation.
 import ../../../src/chain/provider
 import ../../../src/codec/bounded
-import ../../../src/state/[accumulation_current_chain, accumulation_consensus, store]
+import ../../../src/state/accumulation/current/chain as accumulation_current_chain
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/store
 var state = default(StateStore)
 var view = default(ChainView)
 discard applyCurrentAccumulationChain(state, view, default(PreparedAccumulationConsensus),

@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: LookupSlot but wanted: GuaranteeSlot"}
 
-import ../../../src/codec/[guarantees, work_report]
+import ../../../src/codec/guarantees
+import ../../../src/codec/work/report as work_report
 let wrong = Guarantee(slot: LookupSlot(1))
 discard wrong

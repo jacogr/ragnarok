@@ -4,7 +4,9 @@
 ## Refused continuation input/state preparations expose no candidate owners or unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_continuation_inputs, accumulation_continuation, accumulation_operands]
+import ../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../src/state/accumulation/[continuation as accumulation_continuation,
+    operands as accumulation_operands]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationContinuationInputs)

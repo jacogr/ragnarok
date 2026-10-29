@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: PrivilegeGas but wanted: ServiceIndex"}
 
-import ../../../src/codec/state_privileges
+import ../../../src/codec/state/privileges as state_privileges
 let state = PrivilegeState(manager: PrivilegeGas(1))
 discard state

@@ -5,17 +5,24 @@
 ## Real computed state composition preserves pending guarantees and authenticated prefix while consuming historical work once.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_composition, computed_finalization, computed_execution,
-  computed_round, computed_publication, computed_admission, report_admission, report_assignments,
-  accumulation_completion, accumulation_consensus, accumulation_finalization,
-  accumulation_execution,
-  accumulation_history, accumulation_ready, accumulation_recent, accumulation_times,
-  accumulation_round, accumulation_queue,
-  accumulation_validators, accumulation_activity, accumulation_preimages,
-  accumulation_authorization,
-  block_transition, block_admission, store]
-import ../../../src/codec/[bounded, state_layout, state_workqueues, state_statistics, assurances,
-    report_owned, owned]
+import ../../../src/state/computed/[composition as computed_composition,
+    finalization as computed_finalization, execution as computed_execution, round as computed_round,
+    publication as computed_publication, admission as computed_admission]
+import ../../../src/state/report/[admission as report_admission, assignments as report_assignments]
+import ../../../src/state/accumulation/[completion as accumulation_completion,
+    consensus as accumulation_consensus, finalization as accumulation_finalization,
+    execution as accumulation_execution, history as accumulation_history,
+    ready as accumulation_ready, recent as accumulation_recent, times as accumulation_times,
+    round as accumulation_round, queue as accumulation_queue, validators as accumulation_validators,
+    activity as accumulation_activity, preimages as accumulation_preimages,
+    authorization as accumulation_authorization]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, workqueues as state_workqueues,
+    statistics as state_statistics]
+import ../../../src/codec/[assurances, report_owned, owned]
 import ../../support/[pvm_computed_composition, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

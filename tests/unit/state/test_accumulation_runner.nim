@@ -6,12 +6,16 @@
 
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, report_owned, assurances, state_safrole, state_trie]
+import ../../../src/codec/[bounded, composite, report_owned, assurances]
+import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
 import ../../../src/pvm/[initialize, machine, step, gas]
-import ../../../src/state/[accumulation_runner, accumulation_execution, accumulation_round,
-  accumulation_inputs, accumulation_batch, accumulation_dispatch, accumulation_invocation,
-  accumulation_service, accumulation_context, accumulation_machine, accumulation_skip,
-  accumulation_effects, accumulation_provisions, store]
+import ../../../src/state/accumulation/[runner as accumulation_runner,
+    execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
+    batch as accumulation_batch, dispatch as accumulation_dispatch,
+    invocation as accumulation_invocation, service as accumulation_service,
+    context as accumulation_context, machine as accumulation_machine, skip as accumulation_skip,
+    effects as accumulation_effects, provisions as accumulation_provisions]
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_batch_context, accumulation_provision_integration, pvm_accumulation_provision, arc_evidence]
 

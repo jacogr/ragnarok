@@ -212,7 +212,7 @@ policy. Every later enqueue still consumes only the original genuine prepared su
 
 ## Production download adapter admission
 
-`app/current_logical_download.nim` binds an explicit `SelectedLogicalParent` or previously
+`app/current/logical/download.nim` binds an explicit `SelectedLogicalParent` or previously
 completed `CurrentLogicalState` to copied, independent identity, request-key, reconstruction and
 full logical-refresh budgets. `CurrentBlockDownload.begin` accepts this optional policy before
 byte reception or worker submission. No map scan invents missing declarations, and no received
@@ -334,7 +334,7 @@ and 4,096 bytes per raw key, in addition to explicit source policy ceilings.
 
 The separate logical policy starts with `ragnarok-current-logical-policy-v1` and requires every
 reviewed unsigned scalar in
-[`current_logical_policy_fields.nim`](../src/app/current_logical_policy_fields.nim), as emitted by
+[`src/app/current/logical/policy_fields.nim`](../src/app/current/logical/policy_fields.nim), as emitted by
 `encodeCurrentLogicalPolicy`. Missing, unknown, duplicate, noncanonical and overflowing fields
 refuse atomically. There are no inferred resource defaults; zero permits zero work. Projection
 services/facts/per-value/retained-byte limits, full parent profile/global limits, complete logical

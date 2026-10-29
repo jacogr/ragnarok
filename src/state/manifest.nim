@@ -3,7 +3,8 @@
 
 ## Match a complete serialized map to validated globals and explicit service serialization inputs.
 ## Exact byte coverage is distinct from valid-state consistency, STF execution and root trust.
-import ../codec/[bounded, state_layout, state_trie, state_composition]
+import ../codec/bounded
+import ../codec/state/[layout as state_layout, trie as state_trie, composition as state_composition]
 import ./[global_snapshot, store]
 
 type

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_privileges, state_trie]
+import ../../../src/codec/state/[privileges as state_privileges, trie as state_trie]
 let value = default(PrivilegeResult[uint64])
 discard value.completed

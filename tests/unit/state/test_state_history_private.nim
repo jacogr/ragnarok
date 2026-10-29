@@ -11,7 +11,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/codec/state_history
+include ../../../src/codec/state/history
 
 ## Explicit tiny-profile resource ceilings retain all history, dictionary and optional framing.
 proc policy(): HistoryConfig =

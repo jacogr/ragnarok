@@ -5,16 +5,27 @@
 ## Current report-only and held-transfer-only entries use frozen parameters/frame and consume gas without restoring old queued reservations.
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, report_owned, header, assurances, state_safrole, state_layout]
+import ../../../src/codec/[bounded, composite, report_owned, header, assurances]
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout]
 import ../../../src/pvm/step
-import ../../../src/state/[accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, accumulation_coverage, accumulation_annulment,
-  accumulation_outcome,
-  accumulation_effects, accumulation_context, accumulation_invocation, accumulation_guest_runner,
-  accumulation_account_phase, accumulation_provision_phase, accumulation_global_phase,
-  accumulation_annulled_outputs, accumulation_transfers, accumulation_pending_transfers,
-  accumulation_inputs, accumulation_dispatch, store]
+import ../../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment, outcome as accumulation_outcome,
+    effects as accumulation_effects, context as accumulation_context,
+    invocation as accumulation_invocation, guest_runner as accumulation_guest_runner]
+import ../../../src/state/accumulation/account/phase as accumulation_account_phase
+import ../../../src/state/accumulation/provision/phase as accumulation_provision_phase
+import ../../../src/state/accumulation/global/phase as accumulation_global_phase
+import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
+    transfers as accumulation_transfers, pending_transfers as accumulation_pending_transfers,
+    inputs as accumulation_inputs, dispatch as accumulation_dispatch]
+import ../../../src/state/store
 import ../../support/[accumulation_current_round_context, accumulation_current_sequence_context, arc_evidence]
 proc policy(): CurrentContinuationExecutionLimits =
   ## Three facts include the initial entry, report-only execution and eventual held-transfer delivery.

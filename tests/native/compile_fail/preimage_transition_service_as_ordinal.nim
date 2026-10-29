@@ -7,5 +7,6 @@
 # @@Verification={"group": "nominal", "expected": "ProvisionIndex", "early": ["provisionAt(", "[2] expected: ProvisionIndex but got: ServiceIndex"]}
 
 import ../../../src/state/[preimages, store]
-import ../../../src/codec/[composite, state_requests]
+import ../../../src/codec/composite
+import ../../../src/codec/state/requests as state_requests
 discard provisionAt(default(AdmittedPreimages), ServiceIndex(0))

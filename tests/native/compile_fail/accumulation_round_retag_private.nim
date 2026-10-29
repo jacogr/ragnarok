@@ -6,7 +6,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/accumulation_round
+import ../../../src/state/accumulation/round as accumulation_round
 import ../../../src/codec/bounded
 let owner = default(AccumulationRoundResult[InitialAccumulationRound])
 discard owner.status # Private storage cannot be forged or modified.

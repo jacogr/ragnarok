@@ -19,9 +19,9 @@ class StorageBenchmarkComparisonTests(unittest.TestCase):
     """Comparison consumes fully validated raw reports, not their stored Markdown or asserted medians."""
 
     def test_matching_reports_and_explicit_production_difference(self):
-        a=report_fixture();b=copy.deepcopy(a);a['sources']['src/storage/node_repository.nim']='1'*64
-        b['sources']['src/storage/node_repository.nim']='2'*64;b['head']='b'*40
-        text=compare_reports(a,b,['src/storage/node_repository.nim'])
+        a=report_fixture();b=copy.deepcopy(a);a['sources']['src/storage/node/repository.nim']='1'*64
+        b['sources']['src/storage/node/repository.nim']='2'*64;b['head']='b'*40
+        text=compare_reports(a,b,['src/storage/node/repository.nim'])
         self.assertIn('1.000×',text)
         self.assertIn('identical',text)
         with self.assertRaisesRegex(ValueError,'unapproved source'):

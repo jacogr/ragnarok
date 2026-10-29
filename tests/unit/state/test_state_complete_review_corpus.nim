@@ -5,11 +5,17 @@
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context, economic_profile_context]
 import ../../../src/chain/parameters
-import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint, inventory,
-  account_audit_plan, account_review_plan, account_review, footprint_audit, preimage_content,
-  preimage_linkage, economic_profile, economics_table, supervision_table, service_directory,
-  service_deposit, account_deposit]
-import ../../../src/codec/[bounded, state_trie, state_composition]
+import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint, inventory]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/account/review as account_review
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/state/[economic_profile, economics_table, supervision_table]
+import ../../../src/state/service/[directory as service_directory, deposit as service_deposit]
+import ../../../src/state/account/deposit as account_deposit
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation is tested while content hashing is unavailable.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

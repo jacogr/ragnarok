@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## No caller can forge or replace retained source history, report range or transfer classification.
-import ../../../src/state/accumulation_current_sequence
+import ../../../src/state/accumulation/current/sequence as accumulation_current_sequence
 let owner = default(PreparedCurrentContinuation)
 discard owner.data

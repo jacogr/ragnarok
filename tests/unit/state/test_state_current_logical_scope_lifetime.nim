@@ -6,9 +6,15 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
     supplied_services_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_refresh_plan, current_request_keys,
-    current_identities, current_logical, current_state, current_globals, current_profile,
-    supplied_logical_inventory, supplied_services, inventory, manifest, store, accumulation_current_update]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/[request_keys as current_request_keys,
+    identities as current_identities, logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
 proc planOnly(base: OwnedReport, completed: bool): CurrentLogicalRefreshPlan =
   ## All genuine signatures, original fixtures, full prior results and temporary stage records are local; only the frozen plan may escape.

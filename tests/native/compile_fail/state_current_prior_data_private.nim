@@ -3,6 +3,6 @@
 
 ## Current update original/candidate graphs stay private after adding read-only observations.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/state/accumulation_current_update
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 var value: PreparedCurrentChainUpdate
 discard value.data

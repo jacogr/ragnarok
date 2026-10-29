@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit bounded predicate policies support join and consumer tests without manufacturing certificates.
-import ../../src/state/[footprint_audit, preimage_content, preimage_linkage]
+import ../../src/state/footprint_audit
+import ../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../src/codec/bounded
 const
   invariantFootprintLimits* = FootprintAuditLimits(services: ElementLimit(2), checks: ElementLimit(4))

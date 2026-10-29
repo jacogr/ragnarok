@@ -5,9 +5,13 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_inclusion, computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors, computed_roster, computed_transition, computed_profile, report_admission,
-  report_policy, report_anchors, guarantors]
+import ../../src/state/computed/[inclusion as computed_inclusion, batch as computed_batch,
+    envelope as computed_envelope, credentials as computed_credentials,
+    guarantors as computed_guarantors, roster as computed_roster, transition as computed_transition,
+    profile as computed_profile]
+import ../../src/state/report/[admission as report_admission, policy as report_policy,
+    anchors as report_anchors]
+import ../../src/state/guarantors
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, assurances, report_owned, owned]
 import ./[pvm_computed_inclusion, report_admission_context]

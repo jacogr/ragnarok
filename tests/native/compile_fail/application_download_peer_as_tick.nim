@@ -3,6 +3,6 @@
 
 ## Session identity is not a monotonic clock observation.
 # @@Verification={"group": "nominal", "expected": "DownloadScheduleTick", "early": ["select", "[2] expected: DownloadScheduleTick but got: DownloadPeerId"]}
-import ../../../src/app/download_schedule
+import ../../../src/app/download/schedule as download_schedule
 var schedule = default(DownloadSchedule)
 discard schedule.select(DownloadPeerId(1))

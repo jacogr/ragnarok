@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_authorization
+import ../../../src/codec/state/authorization as state_authorization
 let owner = AuthorizationSnapshot(data: nil)
 discard owner

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/sealer_schedule
+import ../../../src/state/sealer/schedule as sealer_schedule
 var hidden = default(SealerScheduleResult)
 discard hidden.completed

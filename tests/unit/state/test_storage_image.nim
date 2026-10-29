@@ -5,8 +5,10 @@
 # @@Verification={"arc": "storage_image_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[full_state_trie, node_records, node_repository]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc cycle() =
   ## Export selected first/last roots, admit their exact union and continue ordinary delta publication.
   var limits = storageLimits()

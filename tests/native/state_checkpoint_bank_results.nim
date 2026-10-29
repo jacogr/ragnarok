@@ -5,9 +5,12 @@
 
 import std/[assertions, cmdline]
 import std/posix/posix
-import ../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_file, store]
-import ../../src/lib/atomic_file
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/checkpoint/[bank as checkpoint_bank, head as checkpoint_head,
+    file as checkpoint_file]
+import ../../src/state/store
+import ../../src/lib/atomic/file as atomic_file
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 proc policy(): StateStoreLimits =
   ## Empty maps need no value/node budget and no unrelated protocol state.

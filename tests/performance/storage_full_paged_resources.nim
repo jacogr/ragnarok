@@ -4,10 +4,17 @@
 ## Independent complete fixtures are prepared outside pressure; fresh bounded writers/readers retain no resident graph or index.
 import std/[algorithm, assertions, cmdline, syncio]
 import ../support/[storage_io, storage_allocations, full_paged_reference]
-import ../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build, full_paged_store,
-  full_state_trie, node_records, paged_codec, paged_io, managed_manifest, node_repository,
-  database_identity, file_errors]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build, store as full_paged_store]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/records as node_records
+import ../../src/storage/paged/[codec as paged_codec, io as paged_io]
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/database_identity
+import ../../src/storage/file/errors as file_errors
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 const ValueBytes = 1048576 ## Identical per-value policy for shallow small/large and maximum-depth cases.
 proc descriptors(): cint {.importc: "ragnarok_paged_descriptors",
     header: "storage_paged_resources.h".}

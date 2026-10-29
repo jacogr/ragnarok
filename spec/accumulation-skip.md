@@ -29,7 +29,7 @@ and failed result contracts, private/nominal compiler guards and repeated ARC re
 
 ## Implementation and failure contract
 
-`src/state/accumulation_skip.nim` exposes `finishUninvokedAccumulation` for a successful
+`src/state/accumulation/skip.nim` exposes `finishUninvokedAccumulation` for a successful
 `PreparedAccumulationService`, and `finishBlockUninvokedAccumulation` for its genuine bound
 counterpart. An exhaustive code-status selection completes only Missing, Malformed and Oversized.
 Ready returns the typed `ExecutionRequired` refusal, including a valid empty program blob and code

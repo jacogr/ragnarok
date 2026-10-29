@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "nominal","expected": "got: ReportHash[0] but wanted: PayloadHash"}
 
-import ../../../src/codec/[c2_records, work_report]
+import ../../../src/codec/c2_records
+import ../../../src/codec/work/report as work_report
 let value = AccumulationOperand(payloadHash: PackageHash())
 discard value

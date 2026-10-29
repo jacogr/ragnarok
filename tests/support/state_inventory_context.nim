@@ -3,8 +3,10 @@
 
 ## Independently encoded complete chapter/service fixtures support compact provenance and consistency consumers.
 import ../../src/state/[manifest, global_snapshot, store, inventory]
-import ../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-  state_accounts, state_service_values, state_requests, state_composition]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/state/[consensus as state_consensus, layout as state_layout,
+    trie as state_trie, accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests, composition as state_composition]
 const
   inventoryProfile* = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
     previous: ValidatorCount(6), epochSlots: EpochSlots(2))

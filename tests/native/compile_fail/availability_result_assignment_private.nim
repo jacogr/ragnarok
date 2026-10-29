@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_availability, state_trie]
+import ../../../src/codec/state/[availability as state_availability, trie as state_trie]
 let value = default(AvailabilityResult[AvailabilityAssignment])
 discard value.completed

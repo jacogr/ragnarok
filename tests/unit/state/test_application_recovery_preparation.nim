@@ -4,11 +4,14 @@
 ## Restored canonical maps cross real managed native execution leases without early publication or alias retirement.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[services, chain, block_input, preparation_worker, handoff]
+import ../../../src/app/[services, chain]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[preparation_worker, handoff]
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
-import ../../../src/state/[store, accumulation_finalization]
+import ../../../src/state/store
+import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution

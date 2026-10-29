@@ -4,10 +4,13 @@
 ## Local head context preserves exact state ownership and rejects mismatched chain/profile/header/revision facts.
 import std/[assertions, syncio]
 import ../../support/application_checkpoint_context
-import ../../../src/app/[chain, checkpoint_identity, disk_head]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/identity as checkpoint_identity
+import ../../../src/app/disk/head as disk_head
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/state/store
-import ../../../src/storage/[database_identity, node_repository]
+import ../../../src/storage/database_identity
+import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/[bounded, header]
 proc main() {.raises.} =
   ## The contextual journal supplies local authority; every application fact still has to match exactly.

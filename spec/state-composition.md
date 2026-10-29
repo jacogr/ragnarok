@@ -11,7 +11,7 @@ there is no pending namespace upgrade.
 
 ## Chapter capture and ownership
 
-`src/codec/state_composition.nim` provides `captureStateChapter(chapter, bytes, profile, policy)` and
+`src/codec/state/composition.nim` provides `captureStateChapter(chapter, bytes, profile, policy)` and
 `composeState(chapters, services, limits, maxStorageKeyBytes)`.
 
 `StateChapterId` names all sixteen required slots. Capturing dispatches to the existing typed

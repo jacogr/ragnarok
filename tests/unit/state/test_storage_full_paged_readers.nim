@@ -5,9 +5,14 @@
 # @@Verification={"arc":"storage_full_paged_readers_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  file_errors, managed_manifest, node_records]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    store as full_paged_store]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/records as node_records
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc text(bytes: openArray[byte]): string =
   ## Test-only conversion writes complete independent oracle files, not production memory materialization.
   result = newString(bytes.len)

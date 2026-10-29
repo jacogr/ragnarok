@@ -5,7 +5,7 @@ The published TraceStep schema remains pinned at vectors
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and the independently configured
 actual application chain.
 
-`state/trace_file` adds strict offline file input/output around existing trace
+`state/trace/file` adds strict offline file input/output around existing trace
 ownership. Reads use the existing bounded regular-file helper, which detects excess
 input with one additional byte and closes the actual descriptor before returning.
 Only complete EOF followed by complete three-field decoding and exact consumption

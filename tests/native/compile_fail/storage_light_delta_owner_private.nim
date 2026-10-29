@@ -3,6 +3,6 @@
 
 ## Only selected guarded delta accessors expose authenticated frame authority.
 # @@Verification={"group": "privacy", "expected": "owner"}
-import ../../../src/storage/light_delta
+import ../../../src/storage/light/delta as light_delta
 let hidden = default(PreparedLightDelta)
 discard hidden.owner

@@ -7,10 +7,12 @@
 
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/state/[checkpoint_worker, checkpoint_bank, checkpoint_transfer, checkpoint_head,
-    checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/state/checkpoint/[worker as checkpoint_worker, bank as checkpoint_bank,
+    transfer as checkpoint_transfer, head as checkpoint_head]
+import ../../../src/state/[checkpoint, store]
+import ../../../src/lib/atomic/file as atomic_file
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-worker-verify"

@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ServiceIndex but wanted: AuthorizerHost"}
 
-import ../../../src/codec/[work_package, composite]
+import ../../../src/codec/work/package as work_package
+import ../../../src/codec/composite
 
 var value: WorkPackage
 value.host = ServiceIndex(1)

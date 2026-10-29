@@ -4,6 +4,6 @@
 
 ## Reject private continuation completion payload access.
 
-import ../../../src/state/accumulation_continuation_execution
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
 var result: AccumulationContinuationExecutionResult[int]
 discard result.completed

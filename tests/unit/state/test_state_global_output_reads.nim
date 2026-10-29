@@ -4,8 +4,10 @@
 ## Output log reads preserve sequence order and repeated service identities rather than inventing a dictionary.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_outputs, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, outputs as state_outputs,
+    layout as state_layout, safrole as state_safrole, trie as state_trie]
 let config = OutputLogConfig(items: ElementLimit(3), maxBytes: ByteLimit(1024))
 var marker = default(array[32, byte])
 marker[0] = 17

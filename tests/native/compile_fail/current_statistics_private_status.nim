@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Current statistics result storage stays private.
-import ../../../src/state/[accumulation_current_statistics, accumulation_current_driver]
+import ../../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver]
 let refused = prepareCurrentAccumulationStatistics(default(CompletedCurrentAccumulationSequence),
     default(CurrentAccumulationStatisticsLimits))
 discard refused.status

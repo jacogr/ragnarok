@@ -4,11 +4,18 @@
 ## Independent chapter fixtures and complete authenticated source facts test atomic typed proof restoration, root/schema/declaration separation and isolated retained-owner release.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[state_inventory_context, supplied_logical_context, arc_evidence]
-import ../../src/state/[supplied_proof_import, proof_state_import, proof_view, trie_proof,
-    snapshot_proof, proof_plan, planned_proof, store, global_snapshot, manifest,
-        supplied_logical_inventory, inventory]
-import ../../src/codec/[bounded, state_layout, state_composition, state_trie]
-include composition_fixture
+import ../../src/state/supplied/proof_import as supplied_proof_import
+import ../../src/state/proof/[state_import as proof_state_import, view as proof_view]
+import ../../src/state/[trie_proof, snapshot_proof]
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/[store, global_snapshot, manifest]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/state/inventory
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, composition as state_composition,
+    trie as state_trie]
+include ./composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine complete-root reconstruction cannot succeed through a refusing backend.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

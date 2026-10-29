@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "encodingReason"}
 
 ## Captured wire, source storage and result alternatives remain private.
-import ../../../src/state/current_checkpoint
+import ../../../src/state/current/checkpoint as current_checkpoint
 var value = default(CurrentCheckpointResult[CurrentUpdateCheckpoint])
 discard value.encodingReason

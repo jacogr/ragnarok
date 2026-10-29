@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/safrole_transition
+import ../../../src/state/safrole/transition as safrole_transition
 var hidden = default(SafroleTransitionResult)
 discard hidden.completed

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "reason"}
 
-import ../../../src/state/refinement_dispatch
+import ../../../src/state/refinement/dispatch as refinement_dispatch
 var owner: RefinementDispatchResult[RefinementOutcome]
 discard owner.reason

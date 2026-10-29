@@ -6,11 +6,14 @@
 ## Authored complete-map roots, source substitution, stale plans and both private-phase refusals retain strict contracts.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_inputs, accumulation_service,
-  accumulation_dispatch, accumulation_outcome, accumulation_provisions,
-  accumulation_terminal_provisions, accumulation_effects, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_service_values,
-  state_layout, state_trie]
+import ../../../src/state/accumulation/[batch as accumulation_batch, inputs as accumulation_inputs,
+    service as accumulation_service, dispatch as accumulation_dispatch,
+    outcome as accumulation_outcome, provisions as accumulation_provisions,
+    terminal_provisions as accumulation_terminal_provisions, effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
   pvm_accumulation_provision, arc_evidence]

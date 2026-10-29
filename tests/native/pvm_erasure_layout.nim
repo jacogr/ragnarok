@@ -4,8 +4,10 @@
 ## Checked optimized erasure result guards with a genuine completed layout control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[erasure_layout, auditable_bundle]
-import ../../src/codec/[bounded, work_report]
+import ../../src/state/erasure/layout as erasure_layout
+import ../../src/state/auditable_bundle
+import ../../src/codec/bounded
+import ../../src/codec/work/report as work_report
 import ../support/[pvm_auditable_bundle, pvm_bundle_vectors]
 
 proc check[T](outcome: ErasureLayoutResult[T], reason: ErasureLayoutError) =

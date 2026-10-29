@@ -9,6 +9,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/history
-import ../../../src/codec/state_trie
+import ../../../src/codec/state/trie as state_trie
 let hidden = default(HistoryTransitionResult[StateEntry])
 discard hidden.completed

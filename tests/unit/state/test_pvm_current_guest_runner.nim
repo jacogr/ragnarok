@@ -4,16 +4,24 @@
 
 ## Actual current guests connect creation, skipped credit and absent identity to complete provider and selected-state proofs.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_guest_runner, accumulation_effects, accumulation_coverage,
-  accumulation_annulment,
-  accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes,
-  accumulation_annulled_outputs, accumulation_global_roles, accumulation_inputs,
-  accumulation_service,
-  accumulation_invocation, accumulation_context, accumulation_machine, accumulation_dispatch,
-  accumulation_outcome, accumulation_skip, accumulation_absent, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_privileges,
-  state_outputs,
-  state_safrole, state_layout, c2_records]
+import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    effects as accumulation_effects, coverage as accumulation_coverage,
+    annulment as accumulation_annulment]
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    selected_writes as accumulation_selected_writes,
+    annulled_outputs as accumulation_annulled_outputs]
+import ../../../src/state/accumulation/global/roles as accumulation_global_roles
+import ../../../src/state/accumulation/[inputs as accumulation_inputs,
+    service as accumulation_service, invocation as accumulation_invocation,
+    context as accumulation_context, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome, skip as accumulation_skip,
+    absent as accumulation_absent]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    outputs as state_outputs, safrole as state_safrole, layout as state_layout]
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 import ../../../src/pvm/[initialize, program, machine, step, gas, host_fetch]
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,

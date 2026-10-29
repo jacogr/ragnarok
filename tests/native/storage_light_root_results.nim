@@ -4,9 +4,15 @@
 ## Dynamic default/refused root-advance outcomes and private plans have independent successful storage controls.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/storage/[light_journal_cache, light_journal_replay, light_delta, light_snapshot,
-  light_state_cache, database_identity, managed_manifest, file_errors]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../src/storage/database_identity
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/storage/file/errors as file_errors
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each positive control owns only one process-specific known fixture namespace.
 proc main() {.raises.} =

@@ -3,8 +3,10 @@
 
 ## Explicit restoration/capture/report limits avoid unsupported nested-constant field folding.
 import ./[state_inventory_context, account_review_plan_context]
-import ../../src/state/[planned_review_checkpoint, validated_checkpoint, store, global_snapshot]
-import ../../src/codec/[bounded, state_composition]
+import ../../src/state/planned/review_checkpoint as planned_review_checkpoint
+import ../../src/state/[validated_checkpoint, store, global_snapshot]
+import ../../src/codec/bounded
+import ../../src/codec/state/composition as state_composition
 const plannedReviewCheckpointTestLimits* = PlannedReviewCheckpointLimits(
   serialization: StateCheckpointLimits(checkpointBytes: ByteLimit(524288),
     store: StateStoreLimits(trie: inventoryMapLimits, writes: ElementLimit(64),

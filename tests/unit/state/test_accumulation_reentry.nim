@@ -5,12 +5,19 @@
 ## Genuine later-round gas releases only the next original-queue range; its actual batch supplies the full successor.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_reentry, accumulation_continuation_execution,
-  accumulation_continuation_inputs, accumulation_continuation, accumulation_execution,
-  accumulation_round, accumulation_queue, accumulation_operands, accumulation_inputs,
-  accumulation_batch, accumulation_provisions, accumulation_service, store]
-import ../../../src/codec/[bounded, composite, report_owned, work_report, work_digest,
-  state_workqueues, state_layout, state_service_values, state_trie, c2_records]
+import ../../../src/state/accumulation/reentry as accumulation_reentry
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    operands as accumulation_operands, inputs as accumulation_inputs, batch as accumulation_batch,
+    provisions as accumulation_provisions, service as accumulation_service]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../../src/codec/state/[workqueues as state_workqueues, layout as state_layout,
+    service_values as state_service_values, trie as state_trie]
+import ../../../src/codec/c2_records
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_continuation_execution_context, accumulation_execution_context,
   accumulation_batch_context, pvm_accumulation_provision, report_context, arc_evidence]

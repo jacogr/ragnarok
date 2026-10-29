@@ -5,16 +5,28 @@
 ## Current signed terminal observations preserve every literal validator counter, epoch/reporter rule and failure boundary.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_validators, accumulation_validators,
-  validator_projection, accumulation_current_recent, accumulation_recent,
-  accumulation_current_ready, accumulation_ready, accumulation_current_finalization,
-  accumulation_current_accounts, accumulation_current_statistics, accumulation_current_driver,
-  accumulation_current_sequence, accumulation_current_round, accumulation_block_guests,
-  accumulation_round, accumulation_queue, report_admission, guarantee_credentials,
-  block_transition, block_admission, store]
-import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec,
-  state_safrole, state_accounts, state_statistics, state_outputs, state_workqueues, state_history,
-  state_layout, state_trie]
+import ../../../src/state/accumulation/current/validators as accumulation_current_validators
+import ../../../src/state/accumulation/validators as accumulation_validators
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/state/accumulation/current/recent as accumulation_current_recent
+import ../../../src/state/accumulation/recent as accumulation_recent
+import ../../../src/state/accumulation/current/ready as accumulation_current_ready
+import ../../../src/state/accumulation/ready as accumulation_ready
+import ../../../src/state/accumulation/current/[finalization as accumulation_current_finalization,
+    accounts as accumulation_current_accounts, statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver, sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec]
+import ../../../src/codec/state/[safrole as state_safrole, accounts as state_accounts,
+    statistics as state_statistics, outputs as state_outputs, workqueues as state_workqueues,
+    history as state_history, layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_execution_context, accumulation_current_round_context,
   accumulation_current_driver_context, accumulation_current_finalization_context,
   report_context, arc_evidence]

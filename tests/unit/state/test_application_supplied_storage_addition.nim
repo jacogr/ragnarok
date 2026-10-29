@@ -8,10 +8,17 @@ import ../../support/[collected_native_context, collected_mutation_context,
     current_namespace_execution_context,
     accumulation_execution_context,
     current_identity_context, supplied_services_context]
-import ../../../src/app/[collected_supplied_state, preparation_worker, current_block_input]
-import ../../../src/state/[current_identities, current_logical, supplied_logical_inventory,
-    supplied_services, accumulation_current_update, store]
-import ../../../src/codec/[bounded, state_layout, state_accounts, state_composition, state_service_values]
+import ../../../src/app/collected/supplied/state as collected_supplied_state
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/state/current/[identities as current_identities, logical as current_logical]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    composition as state_composition, service_values as state_service_values]
 proc main() {.raises.} =
   ## Service99 is funded before signatures; its real host write creates raw key7 while every untouched raw identity remains explicitly supplied.
   let value = @[91'u8, 92, 93]

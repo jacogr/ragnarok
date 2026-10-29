@@ -6,10 +6,15 @@ import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[current_repeated_logical_context, collected_logical_services_context,
     parent_profile_context, parent_globals_context, supplied_logical_context]
-import ../../../src/app/[services, logical_seed, chain]
-import ../../../src/state/[parent_logical, parent_globals, parent_profile,
-    supplied_logical_inventory, inventory, manifest, store, global_snapshot]
-import ../../../src/codec/[report_owned, bounded, state_composition]
+import ../../../src/app/services
+import ../../../src/app/logical/seed as logical_seed
+import ../../../src/app/chain
+import ../../../src/state/parent/[logical as parent_logical, globals as parent_globals,
+    profile as parent_profile]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store, global_snapshot]
+import ../../../src/codec/[report_owned, bounded]
+import ../../../src/codec/state/composition as state_composition
 proc main() {.raises.} =
   ## The complete signed source is reparsed by Services before the new host API captures its own seed.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

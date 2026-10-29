@@ -7,11 +7,17 @@ import ../support/[collected_native_context, collected_logical_context,
     current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context,
     accumulation_execution_context, accumulation_current_candidate_context, arc_evidence]
-import ../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../src/state/[accumulation_current_update, accumulation_storage_history,
-    accumulation_effects, accumulation_round, accumulation_queue, report_admission,
-    block_transition, block_admission, store]
-import ../../src/codec/[bounded, state_layout]
+import ../../src/app/[chain, candidate, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[storage_history as accumulation_storage_history,
+    effects as accumulation_effects, round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/layout as state_layout
 import ../../src/chain/[provider, genesis]
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"

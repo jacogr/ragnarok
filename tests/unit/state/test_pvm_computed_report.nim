@@ -5,10 +5,17 @@
 ## Complete independent report wire, exact policy and original context/trace/digest provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_report, availability_specifier, export_erasure, bundle_erasure,
-  erasure_layout, auditable_bundle, input_refinement, report_identity, authorized_refinement,
-  authorization_invocation]
-import ../../../src/codec/[bounded, composite, work_report]
+import ../../../src/state/computed/report as computed_report
+import ../../../src/state/availability/specifier as availability_specifier
+import "../../../src/state/export/erasure" as export_erasure
+import ../../../src/state/bundle_erasure
+import ../../../src/state/erasure/layout as erasure_layout
+import ../../../src/state/[auditable_bundle, input_refinement]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/state/authorized_refinement
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/report as work_report
 import ../../../src/chain/parameters
 import ../../../src/crypto/primitives
 import ../../support/[pvm_computed_report, pvm_computed_report_vectors, arc_evidence]

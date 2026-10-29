@@ -6,10 +6,12 @@
 ## Genuine computed publication and direct-child capture advance both live handles or preserve both on every selected refusal.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_chain, computed_composition, computed_state_publication,
-    accumulation_consensus, store]
+import ../../../src/state/computed/[chain as computed_chain, composition as computed_composition]
+import ../../../src/state/computed/state/publication as computed_state_publication
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/[pvm_computed_chain, pvm_computed_state_publication, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

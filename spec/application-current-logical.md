@@ -3,7 +3,7 @@
 Scope: host-side consumption of the existing authenticated current candidate producer under the
 pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. No protocol semantics or pins change.
 
-`app/current_logical.refreshCollectedLogical` accepts an opaque preparation completion, the actual
+`app/current/logical.refreshCollectedLogical` accepts an opaque preparation completion, the actual
 application chain and either its configured selected logical seed or a completed current logical
 predecessor. Defaults, cancellation and legacy completions refuse before current extraction. Actual
 receiver failures retain their typed payload, including ancestor demand. Successful receipts must

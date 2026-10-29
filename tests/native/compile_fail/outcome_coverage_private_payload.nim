@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Complete provider ownership and result storage stay private.
-import ../../../src/state/[accumulation_coverage, accumulation_annulment]
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment]
 import ../../../src/codec/header
 let refused = prepareAccumulationCoverage(default(PreparedAccumulationAnnulment), [], [],
     HeaderSlot(0), default(AccumulationCoverageLimits))

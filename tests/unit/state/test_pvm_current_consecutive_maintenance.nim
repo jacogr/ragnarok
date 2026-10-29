@@ -4,11 +4,13 @@
 ## Three genuine adoptions traverse automatic managed maintenance while preserving exact history and a later refusal prefix.
 import std/[assertions, syncio, envvars, monotimes]
 import std/posix/posix
-import ../../../src/app/[current_download_command, services]
+import ../../../src/app/current/download/command as current_download_command
+import ../../../src/app/services
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/codec/[report_owned, bounded]
 import ../../../src/crypto/primitives
-import ../../../src/storage/[managed_manifest, database_identity]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/database_identity
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
   current_sequence_command_context, current_services_disk_samples, managed_storage_samples,

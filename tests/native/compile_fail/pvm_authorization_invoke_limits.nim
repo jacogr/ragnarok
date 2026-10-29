@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: MemoryByteLimit but wanted: OutputByteLimit"}
 
-import ../../../src/state/authorization_invocation
+import ../../../src/state/authorization/invocation as authorization_invocation
 import ../../../src/pvm/machine
 discard AuthorizationInvocationLimits(output: MemoryByteLimit(1))

@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "AccumulationProvisionIndex", "early": ["effectProvisionAt(", "[2] expected: AccumulationProvisionIndex but got: ServiceIndex"]}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 discard effectProvisionAt(default(AccumulationEffectContext), ServiceIndex(42))

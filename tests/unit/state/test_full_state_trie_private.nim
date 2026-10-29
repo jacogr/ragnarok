@@ -7,7 +7,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/storage/full_state_trie
+include ../../../src/storage/full/state_trie
 
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observation and optionally refuse every hash.

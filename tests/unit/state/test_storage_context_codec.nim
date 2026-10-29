@@ -3,7 +3,9 @@
 
 ## Context and node changes share one exact frame; legacy and contextual schemas never cross-decode.
 import std/[assertions, syncio]
-import ../../../src/storage/[journal_codec, record_codec, node_records, node_repository, database_identity]
+import ../../../src/storage/[journal_codec, record_codec]
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 proc run() =
   ## Frozen Python struct/hashlib checksum independently witnesses generation, context and record binding.

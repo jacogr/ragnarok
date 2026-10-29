@@ -4,8 +4,11 @@
 ## Authored dual-entry storage guests and pre-execution gas rebinding for genuine computed-chain witnesses.
 
 import std/assertions
-import ../../src/state/[extrinsic_inputs, import_inputs, import_justification]
-import ../../src/codec/[bounded, composite, work_package, work_digest]
+import ../../src/state/extrinsic_inputs
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, digest as work_digest]
 import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pvm_import_inputs]
 
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.

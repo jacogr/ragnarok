@@ -4,8 +4,10 @@
 ## Strict original-source initial-round payload and exact child-reason probes with real signed controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_round, computed_publication, accumulation_round, accumulation_queue]
-import ../../src/codec/[bounded, work_digest]
+import ../../src/state/computed/[round as computed_round, publication as computed_publication]
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/codec/bounded
+import ../../src/codec/work/digest as work_digest
 import ../support/pvm_computed_round
 
 proc expect[T](outcome: ComputedRoundResult[T], reason: ComputedRoundError) =

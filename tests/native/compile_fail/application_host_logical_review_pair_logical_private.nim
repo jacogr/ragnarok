@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "logical"}
 
 ## Host logical authority and backing storage remain private and cannot be retagged or substituted.
-import ../../../src/app/logical_review
+import ../../../src/app/logical/review as logical_review
 let source = default(ReviewedLogicalState)
 discard source.logical

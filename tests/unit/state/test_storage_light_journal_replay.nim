@@ -5,9 +5,14 @@
 # @@Verification={"arc":"storage_light_journal_replay_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_journal_replay, light_journal_manifest, light_delta,
-  light_snapshot, light_state_cache, state_proof, database_identity, managed_manifest]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/journal/[replay as light_journal_replay,
+    manifest as light_journal_manifest]
+import ../../../src/storage/light/[delta as light_delta, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../../src/storage/[state_proof, database_identity]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## The provider observer isolates verification refusal and preflight work.

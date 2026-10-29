@@ -4,9 +4,12 @@
 
 ## Refuse substituting a projection for bound history or a full map for a ready ring.
 
-import ../../../src/state/[accumulation_ready, store]
-import ../../../src/codec/[state_workqueues, header]
-import ../../../src/codec/[state_workqueues, header]
+import ../../../src/state/accumulation/ready as accumulation_ready
+import ../../../src/state/store
+import ../../../src/codec/state/workqueues as state_workqueues
+import ../../../src/codec/header
+import ../../../src/codec/state/workqueues as state_workqueues
+import ../../../src/codec/header
 var state: StateStoreSnapshot
 var config: AccumulationReadyConfig
 discard projectAccumulationReady(state, default(AccumulatedSnapshot), [], [], HeaderSlot(0),

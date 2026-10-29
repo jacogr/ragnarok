@@ -3,7 +3,8 @@
 # @@Verification={"group":"nominal","expected":"ServiceIndex","early":["recordAccumulationSupervisor(","[2] expected: ServiceIndex but got: AccountSlot"]}
 
 ## An account creation slot cannot substitute the target service identity for reassignment.
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[composite, state_accounts]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/composite
+import ../../../src/codec/state/accounts as state_accounts
 
 discard recordAccumulationSupervisor(default(AccumulationEffects), AccountSlot(1), ServiceIndex(42))

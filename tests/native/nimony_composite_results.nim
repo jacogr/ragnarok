@@ -7,7 +7,8 @@
 ## Provides a command-line-selected runtime misuse probe; the failure harness checks its
 ## rejection diagnostic and exit status.
 
-import ../../src/codec/[composite, bounded, work_digest]
+import ../../src/codec/[composite, bounded]
+import ../../src/codec/work/digest as work_digest
 import std/[cmdline, syncio]
 
 # Select the six real payload-free work tags without accepting an accidental fixture spelling.

@@ -4,9 +4,13 @@
 ## Literal ready-ring framing tests the canonical projection, dependency edits and elapsed-slot expiry.
 
 import std/assertions
-import ../../src/state/[accumulation_ready, store]
-import ../../src/codec/[bounded, composite, owned, report_owned, work_report, header, state_safrole,
-  state_workqueues, state_layout, state_trie]
+import ../../src/state/accumulation/ready as accumulation_ready
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, owned, report_owned]
+import ../../src/codec/work/report as work_report
+import ../../src/codec/header
+import ../../src/codec/state/[safrole as state_safrole, workqueues as state_workqueues,
+    layout as state_layout, trie as state_trie]
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

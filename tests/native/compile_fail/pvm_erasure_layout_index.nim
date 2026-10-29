@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "OriginalShardIndex", "early": ["originalChunk(", "[2] expected: OriginalShardIndex but got: ErasureShards"]}
 
-import ../../../src/state/[erasure_layout, auditable_bundle, input_refinement]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure/layout as erasure_layout
+import ../../../src/state/[auditable_bundle, input_refinement]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 discard originalChunk(default(ErasureLayout), ErasureShards(0))

@@ -3,7 +3,7 @@
 
 ## The current native composite independently rejects duplicated callback and lease ownership.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CurrentDownloadPeers>", "build_name": "current-download-native-peers-copy"}
-import ../../../src/quic/current_block_download_peers
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
 var original = default(CurrentDownloadPeers)
 var duplicate = original
 discard original.count

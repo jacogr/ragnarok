@@ -4,7 +4,8 @@
 
 ## Refuse substituting a projection for finalization or a full map for an accumulated ring.
 
-import ../../../src/state/[accumulation_history, store]
+import ../../../src/state/accumulation/history as accumulation_history
+import ../../../src/state/store
 var state: StateStoreSnapshot
 var config: AccumulationHistoryConfig
 discard projectAccumulationHistory(state, [], config)

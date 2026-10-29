@@ -4,8 +4,11 @@
 
 ## Terminal output union preserves full pair identity across real current entries and excludes original annulled yields.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_outputs]
-import ../../../src/state/[accumulation_current_outputs, accumulation_current_driver, history]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/outputs as state_outputs
+import ../../../src/state/accumulation/current/[outputs as accumulation_current_outputs,
+    driver as accumulation_current_driver]
+import ../../../src/state/history
 import ../../support/[accumulation_current_outputs_context, accumulation_current_statistics_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

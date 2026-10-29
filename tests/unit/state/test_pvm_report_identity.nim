@@ -5,9 +5,12 @@
 ## Source-derived hashes, exact dictionary keys, byte policies, immutable copies and owner lifetimes.
 
 import std/[assertions, syncio]
-import ../../../src/state/[report_identity, authorized_refinement, authorization_invocation,
-  refinement_report, refinement_digest]
-import ../../../src/codec/[bounded, composite, work_package, work_report]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/state/authorized_refinement
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/state/refinement/[report as refinement_report, digest as refinement_digest]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 import ../../../src/crypto/primitives
 import ../../support/[pvm_report_identity, arc_evidence]
 

@@ -4,8 +4,10 @@
 ## Authenticated judgment/offender sets retain canonical ordering and separate result domains.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_disputes, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[disputes as state_disputes, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = DisputeStateConfig(perSet: ElementLimit(3), totalItems: ElementLimit(8),
     maxBytes: ByteLimit(1024))
 var a = default(array[32, byte])

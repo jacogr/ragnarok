@@ -4,7 +4,8 @@
 ## Authenticate complete ordered extrinsic tables against their original owned package manifest.
 ## Immutable package-bound bytes certify commitments, not availability, state freshness or execution.
 
-import ../codec/[bounded, work_package]
+import ../codec/bounded
+import ../codec/work/package as work_package
 import ../crypto/primitives
 import ../pvm/host_fetch
 

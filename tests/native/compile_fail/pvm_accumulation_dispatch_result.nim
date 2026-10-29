@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/accumulation_dispatch
+import ../../../src/state/accumulation/dispatch as accumulation_dispatch
 var outcome: AccumulationDispatchResult
 discard outcome.completed

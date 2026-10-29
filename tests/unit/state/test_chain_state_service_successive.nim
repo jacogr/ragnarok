@@ -4,8 +4,11 @@
 ## End-to-end service transport uses genuine successive executed posterior heads rather than header parent roots.
 import std/[assertions, syncio, envvars]
 import ../../../src/chain/[genesis, state_proof]
-import ../../../src/codec/[report_owned, header, bounded, state_layout, state_trie, state_accounts]
-import ../../../src/state/[store, trie_proof, proof_view, proof_service]
+import ../../../src/codec/[report_owned, header, bounded]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts]
+import ../../../src/state/[store, trie_proof]
+import ../../../src/state/proof/[view as proof_view, service as proof_service]
 import ../../support/[application_candidate_context, application_download_chain]
 proc main() {.raises.} =
   ## Every child is signed and executed from its actual predecessor by the maintained independent fixture.

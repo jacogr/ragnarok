@@ -3,6 +3,6 @@
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: ElementLimit"}
 
 ## Guest work counts cannot alias payload bytes or protocol gas.
-import ../../../src/state/accumulation_guest_runner
+import ../../../src/state/accumulation/guest_runner as accumulation_guest_runner
 import ../../../src/codec/[bounded, composite]
 discard AccumulationGuestLimits(services: ByteLimit(1))

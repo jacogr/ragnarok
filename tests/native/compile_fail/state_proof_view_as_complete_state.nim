@@ -3,6 +3,7 @@
 
 ## Partial verified evidence cannot become a complete-map state snapshot for transitions.
 # @@Verification={"group": "nominal", "expected": "StateStoreSnapshot", "early": ["forkStateStore(", "[1] expected: StateStoreSnapshot but got: ProofView"]}
-import ../../../src/state/[proof_view, store]
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/store
 let partial = default(ProofView)
 discard forkStateStore(partial)

@@ -7,11 +7,17 @@ import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_checkpoint_context,
     economic_profile_context, arc_evidence]
 import ../../../src/chain/parameters
-import ../../../src/state/[account_review_checkpoint, account_review, planned_account_checkpoint,
-  validated_checkpoint, checkpoint,
-  store, manifest, inventory, economic_profile, service_directory, footprint_audit,
-  supervision_table, economics_table, service_deposit, account_deposit]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_composition]
+import ../../../src/state/account/review/checkpoint as account_review_checkpoint
+import ../../../src/state/account/review as account_review
+import ../../../src/state/planned/account_checkpoint as planned_account_checkpoint
+import ../../../src/state/[validated_checkpoint, checkpoint, store, manifest, inventory, economic_profile]
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/[footprint_audit, supervision_table, economics_table]
+import ../../../src/state/service/deposit as service_deposit
+import ../../../src/state/account/deposit as account_deposit
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
+    composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and optionally reject all hashes.

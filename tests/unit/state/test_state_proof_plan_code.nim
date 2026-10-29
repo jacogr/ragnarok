@@ -4,8 +4,10 @@
 ## Code dependency discovery uses authenticated metadata while retaining root-independent query semantics.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values, state_requests]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests]
 proc main() =
   ## Account-only evidence can discover a next-round code plan without pretending to include its blob.
   let service = ServiceIndex(7)

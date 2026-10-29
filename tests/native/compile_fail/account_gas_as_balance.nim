@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: Gas but wanted: AccountBalance"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 let metadata = ServiceMetadata(balance: Gas(1))
 discard metadata

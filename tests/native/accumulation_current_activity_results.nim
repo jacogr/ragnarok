@@ -3,8 +3,9 @@
 
 ## Default/refused current C13 exposes neither partial activity nor inactive child causes.
 import std/cmdline
-import ../../src/state/[accumulation_current_activity, accumulation_activity,
-    accumulation_current_validators]
+import ../../src/state/accumulation/current/activity as accumulation_current_activity
+import ../../src/state/accumulation/activity as accumulation_activity
+import ../../src/state/accumulation/current/validators as accumulation_current_validators
 let owner = default(CurrentAccumulationActivityResult[PreparedCurrentAccumulationActivity])
 let activity = default(PreparedCurrentAccumulationActivity)
 let refused = prepareCurrentAccumulationActivity(default(PreparedCurrentAccumulationValidators),

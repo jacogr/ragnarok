@@ -8,7 +8,7 @@
 import std/[strutils, monotimes]
 import std/posix/posix
 import ./file_status
-import ../lib/json_writer
+import ../lib/json/writer as json_writer
 
 type
   VolumeInfo {.importc: "struct statvfs", header: "<sys/statvfs.h>", bycopy.} = object
