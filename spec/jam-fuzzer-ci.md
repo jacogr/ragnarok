@@ -2,7 +2,7 @@
 
 The opt-in `Fuzz / JAM` matrix entry runs
 `make check-jam-fuzzer-interface`. It validates the native implementation of the
-pinned davxy/jam-conformance fuzz-v1 interface at
+pinned jam-conformance/jam-fuzzing fuzz-v1 interface at
 `acd4b2da310ff25226c4d41b918712578483fd2c` against GP
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Pins and upstream fixtures are unchanged.
 

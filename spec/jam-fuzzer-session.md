@@ -1,6 +1,6 @@
 # JAM fuzzer-v1 session boundary
 
-Authority is the pinned davxy/jam-conformance revision
+Authority is the pinned jam-conformance/jam-fuzzing revision
 acd4b2da310ff25226c4d41b918712578483fd2c, fuzz-proto/README.md connection,
 message response, error and session-lifetime rules, and fuzz-v1.asn feature bits.
 The existing current Gray Paper pin and Tiny structural profile remain unchanged.

@@ -1,5 +1,5 @@
 {
-  "repository": "https://github.com/davxy/jam-conformance.git",
+  "repository": "https://github.com/jam-conformance/jam-fuzzing.git",
   "path": "vendor/jam-conformance",
   "commit": "acd4b2da310ff25226c4d41b918712578483fd2c",
   "selected_from": "main",

@@ -62,7 +62,7 @@ that report core against the current population/3, signatures and all report-con
 
 ## Evidence
 
-The eight unchanged `shuffle/shuffle_tests.json` vectors at davxy/jam-test-vectors commit
+The eight unchanged `shuffle/shuffle_tests.json` vectors at jam-conformance/jam-test-vectors commit
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` cover lengths 0, 8, 16, 20, 50, 100, 200 and 341.
 Python verifies the raw blob hash and transports supplied inputs/expected ordinals; the native
 Hastur suite performs every algorithm assertion. There is no Python production implementation or

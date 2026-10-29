@@ -51,9 +51,9 @@ certification of every current JAM state or every protocol rule.
 | Authored profile matrix | Eight complete states across tiny/full and resized current/previous rosters; both Safrole schedules; nonempty contents in all sixteen chapters. Exact-byte and typed-restoration checks pass on checked macOS ARM64 and Linux amd64 under emulation. See [profile qualification](state-serialization-profiles.md). |
 | Cryptographic/STF evidence | Qualified Draft 35 Thin primitives and authored complete current STF cases have separate contracts. Neither a correct root nor codec success proves valid cross-chapter state, whole-block parity, finality or root authority. |
 
-The pinned upstream [ServiceInfo schema](https://github.com/davxy/jam-test-vectors/blob/23061ae1f9b51171c01387e7dde0f15794c98e24/lib/jam-types.asn)
+The pinned upstream [ServiceInfo schema](https://github.com/jam-conformance/jam-test-vectors/blob/23061ae1f9b51171c01387e7dde0f15794c98e24/lib/jam-types.asn)
 still lists the release account fields without supervisor identity/incarnation or
-protected balance. Its [trace guide](https://github.com/davxy/jam-test-vectors/blob/23061ae1f9b51171c01387e7dde0f15794c98e24/traces/README.md)
+protected balance. Its [trace guide](https://github.com/jam-conformance/jam-test-vectors/blob/23061ae1f9b51171c01387e7dde0f15794c98e24/traces/README.md)
 also limits supplied traces to tiny configuration. A gp-next label alone therefore
 cannot establish coverage of the current supervisor metadata or full configuration.
 

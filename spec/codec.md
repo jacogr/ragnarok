@@ -12,7 +12,7 @@ The release-vector references below are historical fixture provenance, not curre
   C.1.1 (Trivial Encodings, general natural-number definition),
   C.1.3 (Discriminator Encoding), C.1.7 (Fixed-length Integer Encoding),
   and C.2 (Block Serialization, ticket/preimage extrinsics).
-- [Official vectors](https://github.com/davxy/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a/codec),
+- [Official vectors](https://github.com/jam-conformance/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a/codec),
   commit `d3c089c9a1d5352ad353626d7a2db8589f137b2a`, release v0.8.0.
 - Machine-readable revisions, compiler versions and fixture SHA-256 digests:
   [pins.json](pins.json).

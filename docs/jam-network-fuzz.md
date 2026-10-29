@@ -1,7 +1,7 @@
 # JAM network fuzz target
 
 The experimental `fuzz` preset follows
-[davxy/jam-conformance issue215](https://github.com/davxy/jam-conformance/issues/215):
+[jam-conformance/jam-fuzzing issue215](https://github.com/jam-conformance/jam-fuzzing/issues/215):
 85 cores,60-slot epochs,255 initial validators, and variable populations down to six.
 All nine overrides are explicit; every other Appendix B value remains Full. This
 imports blocks over the fuzz-v1 Unix socket. Use [Tiny devnet](tiny-devnet.md) for

@@ -1,13 +1,16 @@
 # Pinned JAM conformance tooling
 
 The maintainer selected the latest main revision of
-[davxy/jam-conformance](https://github.com/davxy/jam-conformance) on2026-10-25:
+[jam-conformance/jam-fuzzing](https://github.com/jam-conformance/jam-fuzzing) on2026-10-25:
 acd4b2da310ff25226c4d41b918712578483fd2c. The recorded gitlink and
 jam-conformance-pins.json bind that immutable revision, the fuzzer-v1 schema,
 protocol documentation, minifuzz self-test and CLI workflow/target management
 scripts. Selected upstream file SHA-256 identities are checked by Python discovery.
 
-This is the actively maintained upstream, rather than the older w3f mirror.
+The canonical repository is now `jam-conformance/jam-fuzzing` (formerly
+`davxy/jam-conformance`). The URL migration preserves the selected commit, source hashes
+and local `vendor/jam-conformance` path. This is the actively maintained upstream,
+rather than the older w3f mirror.
 The selected workflow supports a prebuilt polkajam-fuzz through
 POLKAJAM_FUZZ_BIN; access to its source workspace is not a prerequisite.
 The live campaign engine is nevertheless a separate artifact and is not included

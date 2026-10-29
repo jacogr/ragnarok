@@ -62,7 +62,7 @@ New nominal types distinguish the two slot roles and the two state-root roles.
 
 ## Fixture provenance
 
-The vector source is now [davxy/jam-test-vectors v0.8.0](https://github.com/davxy/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a),
+The vector source is now [jam-conformance/jam-test-vectors v0.8.0](https://github.com/jam-conformance/jam-test-vectors/tree/d3c089c9a1d5352ad353626d7a2db8589f137b2a),
 commit `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. The W3F repository still has the older snapshot;
 we pin the active maintainer's published release explicitly. No inference is made about why the
 repositories have not been synchronized.
@@ -80,7 +80,7 @@ Reduced Safrole fixture inputs are regenerated from the exact published tiny/ful
 source/reduced hashes are both retained. Their updated tickets verify with the historical backend,
 which demonstrates compatibility with those published cases, not resolution of the draft text.
 
-The release [changelog](https://github.com/davxy/jam-test-vectors/blob/d3c089c9a1d5352ad353626d7a2db8589f137b2a/CHANGELOG.md)
+The release [changelog](https://github.com/jam-conformance/jam-test-vectors/blob/d3c089c9a1d5352ad353626d7a2db8589f137b2a/CHANGELOG.md)
 explicitly records deviations involving `grow_heap`, `bless` and conditional-move gas costs.
 Those PVM/accumulation features are not implemented here. They must not silently become normative
 rules when those subsystems are implemented. The changelog itself is content-hash pinned.

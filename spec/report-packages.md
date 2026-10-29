@@ -48,7 +48,7 @@ writes, ancestry shortcuts or partial-light-state assumptions occur in this stag
 
 ## Evidence and reproduction
 
-Thirty-two unchanged tiny/full report STF JSON inputs at davxy/jam-test-vectors
+Thirty-two unchanged tiny/full report STF JSON inputs at jam-conformance/jam-test-vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` are pinned by raw blob SHA256 in `spec/pins.json`.
 Twenty relation projections accept; ten refuse on duplicate, missing prerequisite or invalid lookup
 pair; two oversized dependency unions stop at the existing combined-eight-entry codec boundary.

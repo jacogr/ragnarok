@@ -15,13 +15,13 @@
 	url = https://github.com/gavofyork/graypaper.git
 [submodule "vendor/jamtestvectors"]
 	path = vendor/jamtestvectors
-	url = https://github.com/davxy/jam-test-vectors.git
+	url = https://github.com/jam-conformance/jam-test-vectors.git
 [submodule "vendor/wycheproof"]
 	path = vendor/wycheproof
 	url = https://github.com/C2SP/wycheproof.git
 [submodule "vendor/jam-conformance"]
 	path = vendor/jam-conformance
-	url = https://github.com/davxy/jam-conformance.git
+	url = https://github.com/jam-conformance/jam-fuzzing.git
 [submodule "vendor/jam-np"]
 	path = vendor/jam-np
 	url = https://github.com/zdave-parity/jam-np.git

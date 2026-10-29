@@ -44,7 +44,7 @@ before a future coordinator publishes the candidate. No light-node partial-map c
 
 ## Evidence and reproduction
 
-Ten unchanged tiny/full report STF projections at davxy/jam-test-vectors
+Ten unchanged tiny/full report STF projections at jam-conformance/jam-test-vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` cover current/previous rotations, multiple reports,
 retained existing assignments and occupied cores. Every original credential batch passes the real
 verifier. Eight proposed C(10) serializations equal the published post-state bytes exactly, including

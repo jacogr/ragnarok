@@ -718,7 +718,7 @@ to stop current-schema authored STF work. See [the consumer evidence](bandersnat
 
 ## FUZZ-ANCESTRY-001: initial membership lacks GP lookup-root evidence
 
-The pinned davxy/jam-conformance fuzz-v1 schema at
+The pinned jam-conformance/jam-fuzzing fuzz-v1 schema at
 `acd4b2da310ff25226c4d41b918712578483fd2c` supplies initial ancestry as
 (slot, header hash) records. GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
 reporting_assurance.tex also requires an actual newer child header whose parent
@@ -737,7 +737,7 @@ campaign validation remains pending engine availability.
 
 GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `text/pvm_invocations.tex`
 lines60–62, defines D=L+4800. The experimental
-[davxy/jam-conformance issue215](https://github.com/davxy/jam-conformance/issues/215)
+[jam-conformance/jam-fuzzing issue215](https://github.com/jam-conformance/jam-fuzzing/issues/215)
 preset specifies D900 and L600, which would otherwise yield5400.
 
 Maintainer decision: use explicit D900 for Fuzz; preserve existing Tiny/Full/custom

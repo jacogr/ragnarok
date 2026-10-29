@@ -47,7 +47,7 @@ slot chronology; or implement a complete block executor. These remain separate s
 
 ## Reproducible evidence
 
-`davxy/jam-test-vectors` revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`
+`jam-conformance/jam-test-vectors` revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`
 provides all six `stf/authorizations/{tiny,full}/progress_authorizations-{1,2,3}.json` cases.
 Their exact Git blobs and SHA-256 values, plus the published ASN schema and family README, are
 pinned in `pins.json`. The fixture helper validates provenance and serializes supplied state;

@@ -3,7 +3,7 @@
 Normative target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T and its following numeric-width note; C.1 dictionary/count serialization;
 `text/accounts.tex` service IDs; `text/definitions.tex` gas; `text/statistics.tex` activity domains.
-Published reference: `davxy/jam-test-vectors` v0.8.0
+Published reference: `jam-conformance/jam-test-vectors` v0.8.0
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Exact consumed blob hashes, including reference
 schemas and inspected conversion declarations, are in [pins.json](pins.json). Upstream sources
 were read as data, never installed, imported or executed. No dependency revision advances.

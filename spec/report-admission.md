@@ -68,7 +68,7 @@ alternating complete success/later-policy refusal workload requires identical li
 Ten unchanged pinned tiny fallback/Safrole trace blocks also pass through the complete composition.
 These traces contain **empty guarantee batches**; they are not external nonempty-report or full
 reports-STF evidence. Their existing source/hash inventory and raw full-map fixture transport are
-reused at davxy/jam-test-vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
+reused at jam-conformance/jam-test-vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
 The authored nonempty blocks are composition regressions, not additional upstream vectors.
 
 Four compiler privacy probes protect the admission result/owner and retained coordinator profile.

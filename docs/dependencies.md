@@ -15,7 +15,8 @@ python3 tools/setup_submodules.py
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
 | `vendor/graypaper` | Pinned Gray Paper specification |
 | `vendor/jam-np` | JAMNP-S networking specification |
-| `vendor/jamtestvectors` | Published davxy/jam-test-vectors v0.8.0 codec and Safrole fixtures |
+| `vendor/jamtestvectors` | Pinned `jam-conformance/jam-test-vectors` gp-next codec, STF and trace fixtures |
+| `vendor/jam-conformance` | Pinned `jam-conformance/jam-fuzzing` protocol and campaign tooling |
 | `vendor/wycheproof` | Independent adversarial Ed25519 corpus and license |
 
 Setup checks recorded gitlinks and refuses local upstream edits or unexpected revisions. It does

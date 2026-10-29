@@ -5,7 +5,7 @@
 Target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 Appendix C in `text/serialization.tex` and state mapping/commitment equations in
 `text/merklization.tex`. Exact source digests remain in [pins.json](pins.json).
-Original `davxy/jam-test-vectors` gp-next observations remain pinned at
+Original `jam-conformance/jam-test-vectors` gp-next observations remain pinned at
 `23061ae1f9b51171c01387e7dde0f15794c98e24`.
 
 On 2026-10-25 the maintainer selected **independent derivation and verification

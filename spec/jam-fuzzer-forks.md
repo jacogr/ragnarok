@@ -1,6 +1,6 @@
 # Fuzzer depth-one sibling execution
 
-The pinned davxy/jam-conformance acd4b2da310ff25226c4d41b918712578483fd2c
+The pinned jam-conformance/jam-fuzzing acd4b2da310ff25226c4d41b918712578483fd2c
 fuzz-proto/README.md Forking workflow sends valid/invalid mutations sharing one
 parent, then the original block, then extends that original. Mutants are never
 parents of subsequent blocks in the documented campaign. GP admission/execution

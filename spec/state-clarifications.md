@@ -24,13 +24,13 @@ Reviewed **2026-10-17**, after testing/setup PR #2 merged. Production remains pi
 revisions above. Gray Paper main was reviewed at
 [`e537514`](https://github.com/gavofyork/graypaper/commit/e5375148597a45a99d31c9aa6bce6c7bf3a48998);
 vector tip at
-[`39d0e35`](https://github.com/davxy/jam-test-vectors/commit/39d0e35933305530fa1fe646bdedf221769398f1).
+[`39d0e35`](https://github.com/jam-conformance/jam-test-vectors/commit/39d0e35933305530fa1fe646bdedf221769398f1).
 These are review snapshots, not new dependency pins.
 
 | Item | Upstream evidence and status | Ragnarök disposition |
 | --- | --- | --- |
 | Request lengths overlapping storage/preimage markers | [Gray Paper #542](https://github.com/gavofyork/graypaper/pull/542), **merged**, commit [07aee1e](https://github.com/gavofyork/graypaper/commit/07aee1ef23b63f93d0e2f29e53560cbc7c8c767c), restricts request lengths to `l < 2^32 - 2` and updates the relevant host calls. | Our overlap finding is corroborated and the normative fix exists upstream. **Await a compatible pinned upgrade**, rather than further investigation of the same ambiguity. |
-| C12 service/gas widths, C13 service keys and compact core/service statistics | [Gray Paper #564](https://github.com/gavofyork/graypaper/pull/564), **open**, explicitly writes C12 E4/E8 pairs and C13 E4 service keys and removes the blanket fixed-width note. [Vector issue #56](https://github.com/davxy/jam-test-vectors/issues/56), **open**, discusses dictionary keys; its [maintainer reply](https://github.com/davxy/jam-test-vectors/issues/56#issuecomment-2900104069) confirms compact service-statistics fields. | Supports our published-byte reconstruction and accepted compact gas policy. The proposal is not a merged normative correction. Keep one vector-compatible representation, **no fallback**. |
+| C12 service/gas widths, C13 service keys and compact core/service statistics | [Gray Paper #564](https://github.com/gavofyork/graypaper/pull/564), **open**, explicitly writes C12 E4/E8 pairs and C13 E4 service keys and removes the blanket fixed-width note. [Vector issue #56](https://github.com/jam-conformance/jam-test-vectors/issues/56), **open**, discusses dictionary keys; its [maintainer reply](https://github.com/jam-conformance/jam-test-vectors/issues/56#issuecomment-2900104069) confirms compact service-statistics fields. | Supports our published-byte reconstruction and accepted compact gas policy. The proposal is not a merged normative correction. Keep one vector-compatible representation, **no fallback**. |
 | Non-minimal natural encodings | [Gray Paper #551](https://github.com/gavofyork/graypaper/pull/551), **closed without merge**. The [maintainer clarification](https://github.com/gavofyork/graypaper/pull/551#issuecomment-5337499611) explains that inputs outside the encoder's range are outside the inverse decoder's domain. | Supports our existing strict rejection; no permissive decoder path or new specification gate. |
 | Work-report field order | [Gray Paper #537](https://github.com/gavofyork/graypaper/pull/537), **merged**, commit [8ab3542](https://github.com/gavofyork/graypaper/commit/8ab35421ccd8d1723a6c4686e24cfb3db91bff07), aligns definitions/prose with the existing Appendix C wire order. | Corroborates following serialized bytes/Appendix C instead of the inconsistent tuple prose; no wire migration for this correction. |
 
@@ -52,7 +52,7 @@ test while targeting 0.8.0. At the next compatible release (previously anticipat
 3. Check any adopted validator-statistics format change separately, with exact binary captures.
 
 Do **not** advance both repositories merely because each has a current tip. The reviewed vector
-[changelog](https://github.com/davxy/jam-test-vectors/blob/39d0e35933305530fa1fe646bdedf221769398f1/CHANGELOG.md)
+[changelog](https://github.com/jam-conformance/jam-test-vectors/blob/39d0e35933305530fa1fe646bdedf221769398f1/CHANGELOG.md)
 still distinguishes the 0.8.0 service rules from merged Gray Paper
 [#539](https://github.com/gavofyork/graypaper/pull/539), while listing selected deviations for
 unmerged proposals, including

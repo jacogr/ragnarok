@@ -5,7 +5,7 @@ Language selection is complete; the foundation is not a production validator or 
 
 ## Authority and scope
 
-Use the pinned Gray Paper, recorded `davxy/jam-test-vectors`, then pinned JAMNP-S. Other clients
+Use the pinned Gray Paper, recorded `jam-conformance/jam-test-vectors`, then pinned JAMNP-S. Other clients
 are cross-checks. The Gray Paper remains the primary PVM specification; implement independently
 and use pinned PolkaVM to check fixture compatibility. Document each discrepancy or ambiguity
 in `spec/graypaper-discrepancies.md`, with exact evidence and focused fixtures. Previously approved
