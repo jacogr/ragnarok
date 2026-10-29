@@ -101,6 +101,8 @@ type
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
     sealedInfo: FlatSealedInfo # Cold construction policy; eager handlers never discover code during execution.
     sealedPrices: seq[FlatSealedPrice] # One containing-block price per source block; external pricing stays invocation-selected.
+    when defined(pvmSourceSealingReceipt):
+      sealedEntryKinds: seq[uint8] # CI-only immutable per-source classifications, never a production owner/API expansion.
     pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
     pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
@@ -2124,12 +2126,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
-  proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
-    ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
+  proc flatArmCompileReadSpan[Publish: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
+    ## Share exact bounded read-span emission/size policy; source-only classification never publishes or mutates code records.
     flatCompilationPass(f)
     let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
+    when Publish:
+      assert jit != nil
+      if jit == nil: return offset
     var ending = offset
     var count = 0'u32
     var reads = 0'u32
@@ -2183,18 +2186,20 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
     var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
-    if not publishArmEntry(jit, offset, ending, count, words): return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
+    when Publish:
+      if not publishArmEntry(jit, offset, ending, count, words): return offset
+      if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+      f.armOriginal[int(offset)] = f.handlers[int(offset)]
+      f.handlers[int(offset)] = flatArmMemory
     ending
 
-  proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## Admit a first selected-width indirect read with at least three pure suffix operations, preserving every source coordinate.
+  proc flatArmCompileMemory[Publish: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
+    ## One shared read/span/fallback policy serves real publication and bounded source-only eligibility.
     flatCompilationPass(f)
     let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
+    when Publish:
+      assert jit != nil
+      if jit == nil: return offset
     var native = default(ArmBlock)
     var ending = offset+1
     var count = 1'u32
@@ -2209,33 +2214,40 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode in
         124'u8..130'u8:
       # Only an encountered second admitted read can justify the transactional span builder.
-      let combined = flatArmCompileReadSpan(f, offset)
+      let combined = flatArmCompileReadSpan[Publish](f, offset)
       if combined != offset: return combined
     if count < 4:
-      refuseArmEntry(jit, offset)
+      when Publish: refuseArmEntry(jit, offset)
       return offset
     let args = f.arguments[int(offset)]
     let readOpcode = int(f.plan.facts[int(f.sites[int(offset)])].opcode)
     assert readOpcode >= 124 and readOpcode <= 130 # The caller admitted a sealed load; keep its conversion proof local.
     var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending,
       range[124..130](readOpcode))
-    if not publishArmEntry(jit, offset, ending, count, words): return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
+    when Publish:
+      if not publishArmEntry(jit, offset, ending, count, words): return offset
+      if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+      f.armOriginal[int(offset)] = f.handlers[int(offset)]
+      f.handlers[int(offset)] = flatArmMemory
+    else:
+      # The same per-fragment size refusal applies even when no executable arena/map is consulted.
+      if words.len == 0 or words.len >= 1024: return offset
     ending
 
-  proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
-    ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
+  proc flatArmCompile[Publish: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
+    ## Exact shared bounded emission may classify source without publication; neither path is a hot dispatch probe.
     flatCompilationPass(f)
-    if f.armJit == nil: f.armJit = newArmJit()
+    if f.sealedInfo.sealed: return offset
+    when Publish:
+      if f.armJit == nil: f.armJit = newArmJit()
     let jit = f.armJit
-    if jit == nil: return offset
-    let entry = armEntry(jit, offset, uint32(f.handlers.len))
-    if entry != 0: return offset
+    when Publish:
+      if jit == nil: return offset
+      let entry = armEntry(jit, offset, uint32(f.handlers.len))
+      if entry != 0: return offset
     if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
     if f.plan.facts[int(f.sites[int(offset)])].opcode in
-        124'u8..130'u8: return flatArmCompileMemory(f, offset)
+        124'u8..130'u8: return flatArmCompileMemory[Publish](f, offset)
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32
@@ -2252,15 +2264,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
-      refuseArmEntry(jit, offset)
+      when Publish: refuseArmEntry(jit, offset)
       return offset
     var words = armInstructions(native)
-    let published = publishArmEntry(jit, offset, ending, count, words)
-    if not published: return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
-        170'u8..175'u8}: flatArmPending else: flatArmExecute
+    when Publish:
+      let published = publishArmEntry(jit, offset, ending, count, words)
+      if not published: return offset
+      if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+      f.armOriginal[int(offset)] = f.handlers[int(offset)]
+      f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
+          170'u8..175'u8}: flatArmPending else: flatArmExecute
+    else:
+      if words.len == 0 or words.len >= 1024: return offset
     ending
 
   proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
@@ -2270,7 +2285,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let before = armClock()
     var offset = origin
     while int(offset) < f.handlers.len:
-      let ending = flatArmCompile(f, offset)
+      let ending = flatArmCompile[true](f, offset)
       offset = if ending > offset: ending else: offset+1
     let jit = f.armJit
     if jit != nil: jit.compilationNs+=armClock()-before
@@ -2464,6 +2479,7 @@ proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
   replacement.preparationUsed = f.preparationUsed
   replacement.sealedInfo = f.sealedInfo
   replacement.sealedPrices = move(f.sealedPrices)
+  when defined(pvmSourceSealingReceipt): replacement.sealedEntryKinds = move(f.sealedEntryKinds)
   replacement.pricingPlan = f.pricingPlan
   replacement.pricingMemo = f.pricingMemo
   replacement.pricingKind = f.pricingKind
@@ -2620,6 +2636,8 @@ type FlatStream* = object
   sealedPlan: nil FlatPlan # All-fallback eager streams are exact-plan capabilities too.
   sealedInfo: FlatSealedInfo
   sealedPrices: seq[FlatSealedPrice]
+  when defined(pvmSourceSealingReceipt):
+    sealedEntryKinds: seq[uint8]
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     armPlan: nil FlatPlan  # Exact immutable source/emission owner; offsets alone never authorize code reuse.
     armOriginal: seq[nil FlatHandler]
@@ -2640,6 +2658,7 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     preparation: f.preparationUsed)
   result.sealedInfo = f.sealedInfo
   result.sealedPrices = move(f.sealedPrices)
+  when defined(pvmSourceSealingReceipt): result.sealedEntryKinds = move(f.sealedEntryKinds)
   if f.sealedInfo.sealed: result.sealedPlan = f.plan
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
@@ -2679,6 +2698,7 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.preparationUsed = stream.preparation
   f.sealedInfo = stream.sealedInfo
   f.sealedPrices = move(stream.sealedPrices)
+  when defined(pvmSourceSealingReceipt): f.sealedEntryKinds = move(stream.sealedEntryKinds)
   stream.sealedPlan = nil
   stream.sealedInfo = default(FlatSealedInfo)
 
@@ -2686,35 +2706,40 @@ func streamSealedInfo*(stream: FlatStream): FlatSealedInfo =
   ## Return only copied frozen source-entry counts, with no mutable owner or executable addresses.
   stream.sealedInfo
 
+when defined(pvmSourceSealingReceipt):
+  func streamSealedEntry*(stream: FlatStream, pc: CodeAddress): uint8 =
+    ## CI-only copied source classification: checked0/native1/capacity2; absent/unsealed/invalid PCs return3.
+    let plan = stream.sealedPlan
+    if not stream.sealedInfo.sealed or plan == nil: return 3'u8
+    if uint64(pc) >= uint64(plan.factAt.len): return 3'u8
+    let index = plan.factAt[int(uint64(pc))]
+    if index < 0 or index >= stream.sealedEntryKinds.len: return 3'u8
+    stream.sealedEntryKinds[index]
+
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
-  func flatNativeCandidate(f: FlatFrame, body: uint32): bool =
+  proc flatNativeCandidate(f: var FlatFrame, body: uint32): bool =
     ## An absent coordinate map alone cannot classify unsupported source as native-capacity deferred.
-    var ending = body
-    var count = 0'u32
-    var memory = false
-    while int(ending) < f.sites.len and count < 64:
-      # This bounded diagnostic checks source eligibility only; it never emits code or infers observed edges.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough: break
-      when defined(pvmX86Jit):
-        if not supportedX86Opcode(fact.opcode): break
-      else:
-        if fact.opcode in 124'u8..130'u8:
-          if count != 0 and not memory: break
-          memory = true
-        elif not supportedArmOpcode(fact.opcode): break
-      inc ending
-      inc count
-    if count >= 4: return true
-    if count == 0 or memory or int(ending) >= f.sites.len: return false
-    let terminal = f.plan.facts[int(f.sites[int(ending)])].opcode
-    if terminal notin {81'u8..90'u8, 170'u8..175'u8}: return false
     when defined(pvmX86Jit):
+      var ending = body
+      var count = 0'u32
+      while int(ending) < f.sites.len and count < 64:
+        # The pure x86 floor has no variable-size guarded-read lowering; fixed bounds retain its original span policy.
+        if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+        let fact = f.plan.facts[int(f.sites[int(ending)])]
+        if fact.ending or not fact.fallthrough: break
+        if not supportedX86Opcode(fact.opcode): break
+        inc ending
+        inc count
+      if count >= 4: return true
+      if count == 0 or int(ending) >= f.sites.len: return false
+      let terminal = f.plan.facts[int(f.sites[int(ending)])].opcode
+      if terminal notin {81'u8..90'u8, 170'u8..175'u8}: return false
       # Only an ordinary complete header authorizes the existing short x86 conditional prefix policy.
       body > 0 and f.handlers[int(body-1)] == flatCharge and
         f.sites[int(ending)]+1 == f.sites[int(body-1)]+f.arguments[int(body-1)].y
-    else: true
+    else:
+      # Use the real bounded builder, including read-span size refusal and first-read fallback, without any publication/map mutation.
+      flatArmCompile[false](f, body) != body
 
 proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
   ## Transactionally prepare source-only shared bodies and all genuine entry PCs; no guest state or second limits authority.
@@ -2762,6 +2787,10 @@ proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
         return FlatResult[FlatStream](status: frame.preparationFailure)
       index+=int(plan.facts[index].sourceCount)
     var info = FlatSealedInfo(candidates: uint64(plan.facts.len))
+    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+      let classificationBefore = armClock()
+    when defined(pvmSourceSealingReceipt):
+      frame.sealedEntryKinds = newSeq[uint8](plan.facts.len)
     for index in 0..<plan.facts.len:
       # Classify all source entries against unchanged original headers before any eager header replacement.
       let fact = plan.facts[index]
@@ -2777,10 +2806,14 @@ proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
       if kind == 3:
         # Missing finite map capacity defers only otherwise eligible native source entries.
         kind = if flatNativeCandidate(frame, body): 2'u8 else: 0'u8
+      when defined(pvmSourceSealingReceipt): frame.sealedEntryKinds[index] = kind
       case kind
       of 1: inc info.nativeEntries
       of 2: inc info.capacityDeferred
       else: inc info.checkedEntries
+    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+      # Real no-publication admission work remains part of native preparation CPU, never live execution.
+      jit.compilationNs+=armClock()-classificationBefore
     for index in 0..<plan.facts.len:
       # Snapshot each shared-body coordinate before replacing this PC's map with its private charge entry.
       let fact = plan.facts[index]

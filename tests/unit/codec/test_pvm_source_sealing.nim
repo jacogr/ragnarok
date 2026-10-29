@@ -39,13 +39,19 @@ proc plan(source: Program, limits: FlatLimits = defaultFlatLimits(),
   assert admitted.error == FlatError.None, "source sealing line 39: admitted.error == FlatError.None"
   takeValue(admitted)
 
-proc same(left, right: FlatFrame) =
+proc same(left, right: FlatFrame, context: string = "") =
   ## Compare full CPU, paid state, attempt balance, source/exit metadata and immutable source observations.
-  assert left.reason == right.reason and left.exit == right.exit, "source sealing line 44: left.reason == right.reason and left.exit == right.exit"
-  assert left.info.pc == right.info.pc and left.info.gas == right.info.gas, "source sealing line 45: left.info.pc == right.info.pc and left.info.gas == right.info.gas"
+  assert left.reason == right.reason and left.exit == right.exit,
+    context & " error/exit actual=" & $left.reason & "/" & $left.exit &
+    " expected=" & $right.reason & "/" & $right.exit
+  assert left.info.pc == right.info.pc and left.info.gas == right.info.gas,
+    context & " pc/gas actual=" & $uint64(left.info.pc) & "/" & $uint64(left.info.gas) &
+    " expected=" & $uint64(right.info.pc) & "/" & $uint64(right.info.gas)
   assert left.info.gasDeficit == right.info.gasDeficit, "source sealing line 46: left.info.gasDeficit == right.info.gasDeficit"
-  assert left.info.blockCharged == right.info.blockCharged, "source sealing line 47: left.info.blockCharged == right.info.blockCharged"
-  assert left.info.registers == right.info.registers and left.remaining == right.remaining, "source sealing line 48: left.info.registers == right.info.registers and left.remaining == right.remaining"
+  assert left.info.blockCharged == right.info.blockCharged, context & " prepaid state differs"
+  assert left.info.registers == right.info.registers and left.remaining == right.remaining,
+    context & " registers/source-attempt balance differs; actual remaining=" & $left.remaining &
+    " expected=" & $right.remaining
   assert left.faultPage == right.faultPage and left.hostCall == right.hostCall, "source sealing line 49: left.faultPage == right.faultPage and left.hostCall == right.hostCall"
   checkFlatSource(left)
   checkFlatSource(right)
@@ -88,7 +94,8 @@ proc entries(parts: openArray[seq[byte]], images: openArray[PageImage] = [],
           restoreFlatStream(actual, stream)
           runFlat(actual, uint64(attempts))
           runFlat(expected, uint64(attempts))
-          same(actual, expected)
+          same(actual, expected, "entry pc=" & $pc & " opcode=" & $part[0] &
+            " prefix=" & $attempts & " paid=" & $paid & " gas=" & $gas)
           let a = flatMemorySnapshot(actual)
           let b = flatMemorySnapshot(expected)
           for image in images:
@@ -98,6 +105,21 @@ proc entries(parts: openArray[seq[byte]], images: openArray[PageImage] = [],
           stream = takeFlatStream(actual)
           frozen(stream, info, nodes, work, statistics)
     pc+=uint64(part.len)
+
+when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmSourceSealingReceipt):
+  proc narrowReadClass(prefix, reads: int): uint8 =
+    ## Compare a specific source entry before/after native coordinate saturation through the shared real builder.
+    var parts: seq[seq[byte]] = @[]
+    for index in 0..<prefix: parts.add(@[0'u8])
+    for index in 0..<reads: parts.add(@[124'u8, 16])
+    parts.add(@[0'u8])
+    var admitted = prepareFlatStream(plan(owner(parts)))
+    assert admitted.error == FlatError.None, "ARM narrow-read classification construction"
+    var stream = takeValue(admitted)
+    let snapshot = streamSealedInfo(stream)
+    assert snapshot.candidates == snapshot.nativeEntries+snapshot.checkedEntries+snapshot.capacityDeferred,
+      "ARM narrow-read source-entry partition"
+    streamSealedEntry(stream, CodeAddress(uint64(prefix)))
 
 let pure = owner([@[100'u8, 16, 1], @[100'u8, 16, 2], @[100'u8, 16, 3],
   @[100'u8, 16, 4], @[0'u8]])
@@ -156,6 +178,9 @@ else:
     runFlat(frame, 100)
     reusable = takeFlatStream(frame)
     frozen(reusable, frozenInfo, frozenNodes, frozenWork, frozenNative)
+    when defined(pvmSourceSealingReceipt):
+      assert streamSealedEntry(reusable, CodeAddress(0)) == 1,
+        "copied per-source classification survives repeated leases and mapping replacement"
   let live = streamNativeStatistics(reusable)
   assert live[1] > frozenNative[1] and live[2] > frozenNative[2], "source sealing line 158: live[1] > frozenNative[1] and live[2] > frozenNative[2]"
 
@@ -324,6 +349,19 @@ else:
   var mappedStream = takeValue(mappedResult)
   assert streamSealedInfo(mappedStream).capacityDeferred == 1, "source sealing line 323: streamSealedInfo(mappedStream).capacityDeferred == 1"
   assert streamSealedInfo(mappedStream).checkedEntries == 132004, "source sealing line 324: streamSealedInfo(mappedStream).checkedEntries == 132004"
+
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmSourceSealingReceipt):
+    # Review P2: long narrow-read spans exceed the real emitter's size bound even though their opcode/count floor passes.
+    for reads in [33, 64]:
+      let ordinary = narrowReadClass(0, reads)
+      let saturated = narrowReadClass(132000, reads)
+      assert ordinary == 0 and saturated == 0,
+        "ARM oversized narrow-read policy: reads=" & $reads & " ordinary=" & $ordinary &
+        " over-map=" & $saturated
+    let acceptedOrdinary = narrowReadClass(0, 32)
+    let acceptedOverMap = narrowReadClass(132000, 32)
+    assert acceptedOrdinary == 1 and acceptedOverMap == 2,
+      "ARM accepted narrow-read neighbor: ordinary=" & $acceptedOrdinary & " over-map=" & $acceptedOverMap
 
   # Construction cannot query an external memo; only attempted unpaid entries can add its containing price.
   let priced = owner([@[0'u8], @[100'u8, 16, 1], @[100'u8, 16, 2], @[0'u8]])

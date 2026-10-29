@@ -46,6 +46,14 @@ def qualify(checks, compiler, rows=None):
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
         if name.startswith('source-sealing') and run['output'] != 'PVM_SOURCE_SEALING_OK\n':
             raise ValueError('Missing complete source-only sealing witness')
+        if name == 'source-sealing':
+            # Independent processes reuse exactly this checked image; every assertion retains deterministic case diagnostics.
+            run['replays'] = []
+            for repeat in range(1, 3):
+                replay = checks.command([binary], name+'-repeat-'+str(repeat)+'-run', timeout=900)
+                if replay['exit_code'] or replay['output'] != 'PVM_SOURCE_SEALING_OK\n':
+                    raise RuntimeError('Source sealing replay failed: '+replay['output'][-3000:])
+                run['replays'].append(replay)
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
                 'X86_PREFIX_CASES,2984\n' not in run['output'] or
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or

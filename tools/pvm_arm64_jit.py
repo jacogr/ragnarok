@@ -88,6 +88,14 @@ def qualify(checks, compiler, *, native=True):
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
         if name.startswith('source-sealing') and checked['output'] != 'PVM_SOURCE_SEALING_OK\n':
             raise ValueError('Missing complete source-only sealing witness')
+        if name == 'source-sealing':
+            # Replay the identical image in fresh processes to expose the original unlocated assertion with case diagnostics.
+            checked['replays'] = []
+            for repeat in range(1, 3):
+                replay = checks.command([binary], name+'-repeat-'+str(repeat)+'-run')
+                if replay['exit_code'] or replay['output'] != 'PVM_SOURCE_SEALING_OK\n':
+                    raise RuntimeError('Source sealing replay failed: '+replay['output'][-3000:])
+                checked['replays'].append(replay)
         if name.startswith('witness'):
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
                 expected = count if native and name == 'witness' else 0

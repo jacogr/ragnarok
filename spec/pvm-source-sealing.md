@@ -95,6 +95,11 @@ their guard. It freezes with the test snapshot across execution and mapping repa
 builds omit this instrumentation and its field. Thus a coarse zero compilation-clock delta alone
 cannot satisfy the no-later-compilation witness.
 
+The same CI define retains private per-source classification bytes and exposes a copied test-only
+lookup. It verifies a specific entry before/after native map saturation without rescanning or
+constructing anything after sealing. Repeated leases and host mapping replacement retain this
+observation; ordinary production owners contain neither the table nor its lookup API.
+
 ## Copied diagnostics and counting units
 
 `streamSealedInfo(stream)` returns copied `FlatSealedInfo` with a sealed flag and these source-entry
@@ -108,8 +113,13 @@ PC counts:
 | capacityDeferred | Otherwise eligible entry refused by finite native coordinate, publication or byte capacity. |
 
 The three outcomes are mutually exclusive and sum to candidates. A missing native coordinate map
-alone is insufficient evidence of eligible native source: a bounded source eligibility check
-distinguishes unsupported/short/all-noop entries from map-capacity deferral. Explicit byte/slot
+alone is insufficient evidence of eligible native source. ARM uses a static no-publication
+specialization of the same arithmetic/read/span compiler, including emitted-word size and original
+short-prefix fallback; it never substitutes an opcode/count heuristic for the real read admission
+policy. The specialization allocates only bounded transient words and neither consults/mutates a
+native entry map nor creates/publishes an arena. The pure x86 bounded floor retains its existing
+span/header policy. These checks distinguish unsupported/short/all-noop entries from map-capacity
+deferral. Explicit byte/slot
 refusals use an existing non-executable entry marker with a cold diagnostic sentinel. It never
 becomes a callable code offset or replaces an already published native entry.
 
