@@ -26,6 +26,19 @@ name: CI
         default: ""
         required: false
 
+      pvm_profile_sieve_limit:
+        description: Bounded sieve workload for scoped native profiles
+        type: choice
+        options: ["100000", "10000000"]
+        default: "100000"
+        required: false
+
+      pvm_profile_both_orders:
+        description: Profile baseline/current and current/baseline process orders
+        type: boolean
+        default: false
+        required: false
+
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
         required: false
@@ -713,6 +726,8 @@ jobs:
       PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
       PVM_JIT_PROCESS_REPLAYS: ${{ (inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-replay') && '1' || '0' }}
+      PVM_PROFILE_SIEVE_LIMIT: ${{ inputs.pvm_profile_sieve_limit || '100000' }}
+      PVM_PROFILE_BOTH_ORDERS: ${{ inputs.pvm_profile_both_orders && '1' || '0' }}
     steps:
       - *checkout
       - *python

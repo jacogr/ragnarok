@@ -8,7 +8,7 @@ from unittest.mock import patch
 from pvm_jit_platform import native_defines
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
-from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs, profile_plan, run as profile_run
+from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs, profile_plan, frame_abi, run as profile_run
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -155,6 +155,29 @@ class X86ProfileScopeTests(unittest.TestCase):
         self.assertEqual(paired['roles'],('baseline','jit'))
         self.assertEqual(paired['cases'],profile_plan('x86_64')['cases'])
         self.assertIn('tools/pvm_x86_jit_profile.py --paired-baseline',make)
+
+    def test_explicit_long_profile_preserves_minimal_and_default_plan(self):
+        """Long-sieve selection binds the real ten-million fixture without changing ordinary profiling plans."""
+        plan=profile_plan('arm64',include_minimal=True,sieve_limit=10000000)
+        self.assertEqual(plan['cases'],(('sieve',10000000),('minimal',100000),('init',0),('tick',0)))
+        self.assertEqual(profile_plan('arm64')['cases'][0],('sieve',100000))
+        environment=profile_environment('sieve',10000000,'baseline','arm64')
+        self.assertIn('/sieve/10000000/input-10000000.bin',environment['RAGNAROK_PVM_SIEVE_INPUT'])
+        for value in (True,False,0,-1,1000000,'10000000',None):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'sieve limit'):
+                profile_plan('arm64',sieve_limit=value)
+
+    def test_frame_abi_is_copied_bounded_and_removed_before_guest_parsing(self):
+        """ABI observations expose only checked offsets; every guest receipt remains byte-for-byte intact."""
+        receipt='PROFILE_FRAME_ABI,1024,8,16,128,512\n'
+        abi,output=frame_abi(receipt+'guest\n')
+        self.assertEqual(abi,dict(frame_bytes=1024,info=8,registers=16,gas=128,remaining=512))
+        self.assertEqual(output,'guest\n')
+        for value in ('',receipt+receipt,receipt.replace(',8,',',08,'),
+                      receipt.replace(',512',',1024'),receipt.replace(',512',',511'),
+                      receipt.replace('1024','16392'),receipt.replace(',8,16',',24,16'),
+                      receipt.replace('1024','-1'),receipt.replace('1024','１０２４')):
+            with self.subTest(value=value),self.assertRaises(ValueError): frame_abi(value)
 
     def test_native_activity_cannot_turn_into_fallback(self):
         """Identical source/output alone cannot certify that an instrumented JIT actually executed native code."""
