@@ -376,3 +376,10 @@ required small-call mode guard. In the fold child, minimal has zero native fragm
 identical92,997,007 Ir and38/38 selected hot instruction sequences. Addresses differ;
 no hardware cause is established. This warrants a dedicated placement-sensitivity
 study and broader useful x86 native coverage, not more blind changes in this run.
+
+The first post-restoration x86 qualification in40807137198 stopped because the
+retained checked-source policy witness was missing explicit `gas_plan`/`gas_memo`
+imports after its old header was restored. Add those imports; keep all3,546 source
+and six root controls, runtime checks and deadlines. Originating compiler logs are
+retained in `build/pvm-jit-retained/first/pvm-comparison-x86_64-1`. This build failure
+is not an x86 correctness/timing receipt.
