@@ -155,6 +155,23 @@ def startup_defaults(context):
 
 
 @PLAN.workload(group='testnet', requires=('prepare_peer',))
+def testnet_tiny_author_readiness(context):
+    """A cold eligible validator must import actual peer state before signing; all final maps are independent checks."""
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        from tiny_devnet_checks import authoring
+        try:
+            import time
+            observed = authoring(binary, context.checks.folder/('tiny-author-readiness-'+str(time.time_ns())))
+        except (AssertionError, OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError) as error:
+            # Real author ordering, peer catch-up, map disagreement or process cleanup failures cannot become success.
+            observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+    announce('Cold Tiny author waits for canonical catch-up', observed['passed'])
+    return observed
+
+
+@PLAN.workload(group='testnet', requires=('prepare_peer',))
 def testnet_tiny_devnet(context):
     """Fourteen blocks on six native validators must cross an epoch and recover a stopped node with independent maps."""
     compiled, binary = context.peer

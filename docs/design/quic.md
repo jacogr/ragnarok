@@ -42,3 +42,9 @@ spent retry plans are explicitly renewed after delay. Only consumed canonical in
 live target evidence establish the copied full readiness observation. Rolling ancestor retention
 is bounded independently of the lifetime import count. See [node sync](../../spec/node-sync.md)
 for the command, trust and participation boundaries.
+
+`sync_targets.nim` is the shared scalar source/canonical-evidence boundary for normal import and
+Tiny authoring. It retains no canonical graph or producer-supplied success bit. Tiny settles
+pending input and evaluates fresh evidence at the actual signing call. Its server shares the
+bounded UP0 route with CE128 kind dispatch and publishes detached bytes only after durable
+admission; native callbacks perform no header hashing or full-state execution.

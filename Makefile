@@ -560,7 +560,7 @@ compare-pvm-doom: check-pvm-doom
 	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)
 
 # Six real Tiny validators author and consume blocks with the pinned six-second slot clock.
-.PHONY: devnet check-devnet check-devnet-smoke
+.PHONY: devnet check-devnet check-devnet-smoke check-devnet-authoring
 devnet: build
 	$(PYTHON) tools/tiny_devnet.py
 
@@ -571,6 +571,10 @@ check-devnet: build
 # CI-sized live smoke retains ordinary GP slots and the independent whole-map verifier.
 check-devnet-smoke: build
 	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --smoke
+
+# A cold eligible validator must catch up before signing, with independent complete-map checks.
+check-devnet-authoring: build
+	PYTHONPATH=tools:tests $(PYTHON) tests/tiny_devnet_checks.py --late-join
 
 # Bounded native-host qualification shares the maintained positive, refusal and lifetime gates.
 .PHONY: check-pvm-native

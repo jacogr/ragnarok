@@ -5,7 +5,8 @@
 ## polling. Callbacks only frame/copy bytes; block execution and catalog publication stay outside.
 
 import std/assertions
-import ./[transport, protocol]
+import ./[transport, protocol, announcements, announcement_stream]
+import ../codec/header
 
 const MaxBlock = 65536 ## Empty Tiny blocks and variable epoch markers fit this explicit local ceiling.
 
@@ -19,6 +20,8 @@ type
     received, offset: int
     bytes: seq[byte]
     writing: bool
+    announcement: AnnouncementRoute
+    sentVersion: uint64
   DevnetNetwork* = object ## Exclusive stable callback owner; explicit close retires both engines before destruction.
     incoming, outgoing: Transport
     peers: array[6, array[32, byte]]
@@ -30,6 +33,11 @@ type
     response: seq[byte]
     sent: int
     active, dialed, opened, complete, failed: bool
+    discovery: bool
+    announcementLimits: AnnouncementLimits
+    localHandshake: AnnouncementHandshake
+    announcementBody: seq[byte]
+    announcementVersion: uint64
 
 proc `=copy`*(destination: var DevnetNetwork, source: DevnetNetwork) {.error:
     "DevnetNetwork owns stable native callback addresses".}
@@ -53,10 +61,17 @@ proc `=wasMoved`*(owner: var DevnetNetwork) {.nodestroy, inline.} =
   `=wasMoved`(owner.opened)
   `=wasMoved`(owner.complete)
   `=wasMoved`(owner.failed)
+  `=wasMoved`(owner.discovery)
+  `=wasMoved`(owner.announcementLimits)
+  `=wasMoved`(owner.localHandshake)
+  `=wasMoved`(owner.announcementBody)
+  `=wasMoved`(owner.announcementVersion)
 
 proc `=destroy`*(owner: DevnetNetwork) =
   ## Teardown remains explicit while callbacks can still borrow this exact owner address.
   assert not owner.active, "DevnetNetwork requires close before destruction"
+  assert owner.catalog.len == 0 and owner.announcementBody.len == 0
+  assert owner.localHandshake.leaves.len == 0 # Explicit close releases managed routing/publication storage as well as native engines.
 
 proc serverVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## A server accepts only the six configured identities, with ordinary JAMNP certificate/SAN checks.
@@ -88,8 +103,38 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     wantRead(stream, 1)
     return
   if found < 0: return # Already retired/rejected streams cannot access another slot.
+  let response = addr owner.responses[found]
+  if response.announcement.handle == stream:
+    discard response.announcement.event(stream, event)
+    if event == 3: response[] = Response() # Final native retirement precedes release of every UP0 byte owner.
+    return
   case event
   of 1:
+    if response.received == 0:
+      var kind = 0'u8
+      let count = streamRead(stream, addr kind, 1)
+      if count == -2: return
+      if count != 1:
+        streamAbort(stream)
+        return # FIN/errors before the stream kind cannot select a responder.
+      if kind == 0:
+        if not owner.discovery:
+          streamAbort(stream)
+          return
+        let bound = response.announcement.bindStream(stream, false, owner.localHandshake,
+          owner.announcementLimits)
+        if bound != AnnouncementError.None:
+          streamAbort(stream)
+          return
+        discard response.announcement.acceptKind(kind)
+        response.sentVersion = owner.announcementVersion
+        return # Only this one kind byte was consumed; subsequent callbacks copy bounded UP0 frames.
+      if kind != 128:
+        streamAbort(stream)
+        return # This development responder supports only explicit UP0 and ascending one-child CE128.
+      response.request[0] = kind
+      response.received = 1
+      return
     var buffer = default(array[64, byte])
     let count = streamRead(stream, addr buffer[0], csize_t(buffer.len))
     if count == -2: return # Would-block retains the current incomplete request.
@@ -113,6 +158,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       readDone(stream)
       wantRead(stream, 0)
       var parent = default(array[32, byte])
+      owner.responses[found].bytes = newSeq[byte](4) # E4 zero is the exact empty block-sequence frame.
       for index in 0..<32: parent[index] = request[index+5]
       for index in 0..<owner.catalog.len:
         if owner.catalog[index].parent == parent:
@@ -209,6 +255,13 @@ proc close*(owner: var DevnetNetwork) =
   ## Retire both endpoint engines before callback metadata and catalog storage leave scope.
   owner.closeRequest()
   closeTransport(owner.incoming)
+  owner.responses = default(array[16, Response]) # Native close retired all borrowed stream handles first.
+  owner.catalog = @[]
+  owner.response = @[]
+  owner.localHandshake = default(AnnouncementHandshake)
+  owner.announcementBody = @[]
+  owner.announcementVersion = 0
+  owner.discovery = false
   owner.active = false
 proc open*(owner: var DevnetNetwork, port: uint16, cert, key, alpn: string,
     peers: array[6, array[32, byte]]): bool =
@@ -252,6 +305,13 @@ proc request*(owner: var DevnetNetwork, port: uint16, expected: array[32, byte],
 proc poll*(owner: var DevnetNetwork): bool =
   ## Both engines progress with nonblocking bounded work; no consensus execution occurs in callbacks.
   if not pollTransport(owner.incoming, 0): return false
+  if owner.discovery:
+    for index in 0..<owner.responses.len:
+      let response = addr owner.responses[index]
+      response.announcement.process() # Decoding and header hashing run only after every native callback returned.
+      if response.sentVersion != owner.announcementVersion and response.announcement.active:
+        if response.announcement.announce(owner.announcementBody) == AnnouncementError.None:
+          response.sentVersion = owner.announcementVersion # Busy output retains the newest detached publication for a later bounded turn.
   if owner.dialed:
     if not pollTransport(owner.outgoing, 1): owner.failed = true
     if not owner.opened and transportStatus(owner.outgoing) == 1:
@@ -265,11 +325,40 @@ proc take*(owner: var DevnetNetwork, bytes: var seq[byte]): bool =
   ## Copy a single exact framed block or an empty response; refusal never returns a partial payload.
   bytes = @[]
   if not owner.complete or owner.failed or owner.sent != 42: return false
-  if owner.response.len == 0: return true # CE128 permits an empty sequence of blocks.
   if owner.response.len < 4: return false
   var count = 0'u64
   for index in 0..<4: count = count or (uint64(owner.response[index]) shl (8*index))
-  if count == 0 or count > uint64(MaxBlock) or count != uint64(owner.response.len-4): return false
+  if count > uint64(MaxBlock) or count != uint64(owner.response.len-4): return false
   bytes = newSeq[byte](int(count))
   for index in 0..<bytes.len: bytes[index] = owner.response[index+4]
   true
+
+proc enableAnnouncements*(owner: var DevnetNetwork, local: AnnouncementHandshake,
+    limits: AnnouncementLimits): AnnouncementError =
+  ## Configure copied local evidence before the listener can accept a persistent UP0 stream.
+  if owner.active or owner.discovery: return AnnouncementError.Busy
+  let encoded = encodeHandshake(local, limits)
+  if encoded.error != AnnouncementError.None: return encoded.error
+  owner.localHandshake.finalized = local.finalized
+  owner.localHandshake.leaves = @[]
+  for leaf in local.leaves: owner.localHandshake.leaves.add(leaf)
+  owner.announcementLimits = limits
+  owner.discovery = true
+  AnnouncementError.None
+proc publishAnnouncement*(owner: var DevnetNetwork, header: OwnedHeader,
+    finalized: AnnouncedBlock): AnnouncementError =
+  ## Host-only publication follows actual durable admission; retain bytes/scalars rather than canonical aliases.
+  if not owner.discovery: return AnnouncementError.Uninitialized
+  if owner.announcementVersion == high(uint64): return AnnouncementError.LimitExceeded
+  let encoded = encodeAnnouncement(header, finalized, owner.announcementLimits)
+  if encoded.error != AnnouncementError.None: return encoded.error
+  let decoded = decodeAnnouncement(encoded.value, owner.announcementLimits)
+  if decoded.error != AnnouncementError.None: return decoded.error
+  owner.localHandshake = AnnouncementHandshake(finalized: finalized, leaves: @[decoded.value.head])
+  owner.announcementBody = encoded.value
+  inc owner.announcementVersion
+  AnnouncementError.None
+
+proc localPort*(owner: DevnetNetwork): uint16 =
+  ## Report the actual bound listener for bounded host/test integration, including ephemeral port selection.
+  if owner.active: owner.incoming.localPort else: 0'u16

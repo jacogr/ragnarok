@@ -9,13 +9,13 @@ import ./node_logging
 
 import std/[os, strutils, times, monotimes, syncio]
 import ../pvm/backend
-import ./[chain, candidate, block_author, tiny_genesis, current_download_policy]
+import ./[chain, candidate, block_author, tiny_genesis, current_download_policy, download_schedule]
 import ../chain/[genesis, provider, parameters]
 import ../codec/[bounded, header, block_codec]
 import ../state/[store, checkpoint, accumulation_current_update, block_transition, safrole_transition]
 import ../bandersnatch/bandersnatch
 import ../crypto/[primitives, validator_keys]
-import ../quic/[devnet, protocol]
+import ../quic/[devnet, protocol, announcements, current_block_download_peers, sync_targets]
 import ../lib/atomic_file
 
 proc number(text: string, maximum: uint64, output: var uint64): bool =
@@ -52,6 +52,27 @@ proc diagnostic(outcome: CurrentCandidateResult): string =
         result.add("/" & $prefix.blockFailure.safroleError.error)
   elif outcome.error == CurrentCandidateError.CompletionFailure:
     result.add("/" & $outcome.completionFailure.error) # Completion refusal is distinct from a malformed seal.
+
+proc announced(head: BlockSnapshot): AnnouncedBlock =
+  ## Convert actual installed header identity into detached announcement metadata, never finality authority.
+  AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.blockHash)),
+    slot: HeaderSlot(head.slot))
+proc sampleTargets(targets: var SyncTargets, peers: CurrentDownloadPeers,
+    identities: seq[DownloadPeerId], view: ChainView, now: uint64,
+    pending: bool): SyncTargetProgress =
+  ## Every participation decision samples all configured native sources at the current monotonic turn.
+  if not targets.beginTurn(now): return targets.progress
+  for identity in identities:
+    if not targets.observePeer(identity, peers.incarnation(identity), peers.announcements(identity)):
+      return default(SyncTargetProgress) # A missing/duplicate observation never preserves old readiness.
+  if pending: targets.pending() else: targets.evaluate(view)
+proc publishHead(network: var DevnetNetwork, peers: var CurrentDownloadPeers,
+    view: ChainView, anchor: AnnouncedBlock): bool =
+  ## Actual durable admission precedes both detached server and client-side head publication.
+  let head = view.bestBlock
+  if head.error != GenesisError.None: return false
+  if network.publishAnnouncement(head.value.header, anchor) != AnnouncementError.None: return false
+  peers.publishAnnouncement(head.value.header, anchor) == AnnouncementError.None
 
 proc admit(chain: var ApplicationChain, raw: seq[byte], limits: CurrentCandidateLimits,
     journal: var seq[byte], path: string, durable: bool, logging: LogWriter): bool =
@@ -126,6 +147,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   let initial = initApplicationChain(text(genesisInput.value), storeLimits)
   if initial.error != ApplicationChainError.None: return 2
   var chain = initial.value
+  let anchor = announced(chain.chainView.bestBlock.value) # Preserve configured genesis before journal replay advances the unfinalized best head.
   let parameters = chain.chainView.bestBlock.value.chainParameters
   if parameters.get(coreCount) != 2 or parameters.get(epochPeriod) != 12 or
       parameters.get(slotPeriodSec) != 6 or parameters.get(epochTailStart) != 10:
@@ -164,6 +186,24 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       inc records
   if not observation(chain, folder, int(index), "replay"): return 2
   if chain.chainView.bestBlock.value.slot > uint32(stop): return 2
+  let local = announced(chain.chainView.bestBlock.value)
+  let leaves = if local == anchor: newSeq[AnnouncedBlock](0) else: @[local]
+  let handshake = AnnouncementHandshake(finalized: anchor, leaves: leaves)
+  let announcementLimits = AnnouncementLimits(leaves: ElementLimit(64), bytes: ByteLimit(1048576),
+    header: limits.reporting.reports.ancestors.header)
+  if network.enableAnnouncements(handshake, announcementLimits) != AnnouncementError.None: return 2
+  var discovery = default(CurrentDownloadPeers)
+  defer: discovery.close() # Persistent source callbacks retire before the scalar observer or node stack leaves scope.
+  if discovery.configure(ElementLimit(5)) != CurrentDownloadPeerError.None: return 2
+  if discovery.enableAnnouncements(handshake, announcementLimits) !=
+      CurrentDownloadPeerError.None: return 2
+  var identities: seq[DownloadPeerId] = @[]
+  for ordinal in 0..<6:
+    if ordinal != int(index): identities.add(DownloadPeerId(uint64(ordinal + 1)))
+  var targets = default(SyncTargets)
+  if not targets.configure(chain.chainView, identities, 30000, 0): return 2
+  var openedAt = default(array[6, uint64])
+  let monotonicStart = getMonoTime()
   if not network.open(uint16(base+index), certificate, keyFile, alpn, peers):
     stderr.writeLine("DEVNET_START_FAILED transport")
     return 2
@@ -171,6 +211,12 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   log(logging, LogTarget.Startup, LogLevel.Info, "Role: development AUTHORITY; validator=" & $index)
   log(logging, LogTarget.Storage, LogLevel.Info, "Block journal: " & journalPath)
   log(logging, LogTarget.Network, LogLevel.Info, "Development QUIC listener: [::1]:" & $(base+index))
+  for identity in identities:
+    let ordinal = int(uint64(identity) - 1) # Configured IDs1..6 preserve the fixed authenticated validator mapping.
+    if discovery.openPeer(identity, CurrentDownloadPeerKey(peers[ordinal]),
+        uint16(base + uint64(ordinal)), certificate, keyFile, alpn) !=
+            CurrentDownloadPeerError.None:
+      return 2
   stdout.writeLine("DEVNET_READY node=" & $index)
   flushFile(stdout)
   let deadline = start+stop*6000+15000
@@ -181,25 +227,6 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
   var nextDial = getMonoTime()
   while nowMs() < deadline and not fileExists(arguments[2]/"STOP"):
     if not network.poll(): return 2
-    let now = nowMs()
-    let head = chain.chainView.bestBlock.value
-    let slot = if now < start: 0'u64 else: min(stop, (now-start) div 6000+1)
-    if slot > uint64(head.slot) and uint32(slot) != attemptedSlot:
-      attemptedSlot = uint32(slot)
-      let authored = authorEmptyBlock(head, HeaderSlot(uint32(slot)), secret.value,
-        limits.reporting.admission.frame, limits.reporting.safrole)
-      if authored.error == BlockAuthorError.None:
-        log(logging, LogTarget.Application, LogLevel.Info, "Authored development block at slot " & $slot)
-        var raw = newSeq[byte](65536)
-        let encoded = encodeOwnedBlock(authored.value, raw)
-        if encoded.error != block_codec.FrameError.None: return 2
-        raw.setLen(encoded.value)
-        if not admit(chain, raw, limits, journal, journalPath, true, logging) or
-            not network.publish(array[32, byte](head.blockHash), raw) or
-            not observation(chain, folder, int(index), "local"): return 2
-      elif authored.error != BlockAuthorError.NotEligible:
-        stderr.writeLine("DEVNET_AUTHOR_FAILED " & $authored.error)
-        return 2 # Unsupported schedules and actual failures never become silently skipped successes.
     if pending and (network.finished or (getMonoTime()-dialedAt).inMilliseconds >= 800):
       var raw: seq[byte] = @[]
       let received = network.take(raw)
@@ -212,6 +239,8 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
           for octet in 0..<32: parent[octet] = raw[octet]
         if parent == array[32, byte](current.blockHash):
           if admit(chain, raw, limits, journal, journalPath, true, logging):
+            if not targets.recordInstalled(chain.chainView): return 2
+            if not publishHead(network, discovery, chain.chainView, anchor): return 2
             if not network.publish(parent, raw) or not observation(chain, folder, int(index),
                 "peer"): return 2
             attemptedSlot = 0 # A changed parent can make this process eligible later in the same wall-clock slot.
@@ -221,6 +250,41 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       peer = (peer+1) mod 6
       if peer == int(index): peer = (peer+1) mod 6
       nextDial = getMonoTime()+initDuration(milliseconds = 50) # Peer rotation remains local policy and changes no GP admission rule.
+    discard discovery.poll() # Complete source messages are processed after native callbacks, immediately before participation.
+    let elapsed = (getMonoTime() - monotonicStart).inMilliseconds
+    if elapsed < 0: return 2
+    let monotonic = uint64(elapsed)
+    let readiness = targets.sampleTargets(discovery, identities, chain.chainView, monotonic, pending)
+    if readiness.stage in [CurrentSyncStage.Uninitialized, CurrentSyncStage.Failed]: return 2
+    for identity in identities:
+      let ordinal = int(uint64(identity) - 1)
+      if not targets.fresh(identity) and monotonic - openedAt[ordinal] >= 5000:
+        discard discovery.retire(identity)
+        openedAt[ordinal] = monotonic
+        discard discovery.openPeer(identity, CurrentDownloadPeerKey(peers[ordinal]),
+          uint16(base + uint64(ordinal)), certificate, keyFile,
+              alpn) # Failed sources remain unavailable until an actual replacement handshake.
+    let now = nowMs()
+    let head = chain.chainView.bestBlock.value
+    let slot = if now < start: 0'u64 else: min(stop, (now-start) div 6000+1)
+    if not pending and readiness.fullReady and slot > uint64(head.slot) and uint32(slot) != attemptedSlot:
+      attemptedSlot = uint32(slot)
+      let authored = authorEmptyBlock(head, HeaderSlot(uint32(slot)), secret.value,
+        limits.reporting.admission.frame, limits.reporting.safrole)
+      if authored.error == BlockAuthorError.None:
+        log(logging, LogTarget.Application, LogLevel.Info, "Authored development block at slot " & $slot)
+        var raw = newSeq[byte](65536)
+        let encoded = encodeOwnedBlock(authored.value, raw)
+        if encoded.error != block_codec.FrameError.None: return 2
+        raw.setLen(encoded.value)
+        if not admit(chain, raw, limits, journal, journalPath, true, logging): return 2
+        if not targets.recordInstalled(chain.chainView): return 2
+        if not publishHead(network, discovery, chain.chainView, anchor): return 2
+        if not network.publish(array[32, byte](head.blockHash), raw) or
+            not observation(chain, folder, int(index), "local"): return 2
+      elif authored.error != BlockAuthorError.NotEligible:
+        stderr.writeLine("DEVNET_AUTHOR_FAILED " & $authored.error)
+        return 2 # Unsupported schedules and actual failures never become silently skipped successes.
     if not pending and getMonoTime() >= nextDial:
       let parent = array[32, byte](chain.chainView.bestBlock.value.blockHash)
       pending = network.request(uint16(base+uint64(peer)), peers[peer], parent, certificate,

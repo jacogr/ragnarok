@@ -79,6 +79,15 @@ proc refuse(route: var AnnouncementRoute) =
   ## Reset only this persistent stream; the parent keeps any unrelated CE request alive.
   route.revoke()
   if route.stream != NativeStream(nil): streamAbort(route.stream)
+proc acceptKind*(route: var AnnouncementRoute, kind: byte): AnnouncementError =
+  ## A multiplexing acceptor may consume the one stream-kind byte before binding this UP0 route.
+  if route.stream == NativeStream(nil): return AnnouncementError.InvalidStream
+  if not route.kindNeeded: return AnnouncementError.Busy
+  if kind != 0:
+    route.refuse()
+    return AnnouncementError.InvalidStream # An already consumed foreign kind cannot enter UP0 framing.
+  route.kindNeeded = false
+  AnnouncementError.None
 proc acceptMessage(route: var AnnouncementRoute): bool =
   ## Commit one whole decoded message atomically; invalid claims retain no partial target set.
   let message = route.reader.message
@@ -126,10 +135,7 @@ proc event*(route: var AnnouncementRoute, stream: NativeStream, event: cint): bo
       route.refuse() # Persistent-stream FIN is not successful catch-up or an empty message.
       return true
     if route.kindNeeded:
-      if buffer[0] != 0:
-        route.refuse()
-        return true
-      route.kindNeeded = false
+      if route.acceptKind(buffer[0]) != AnnouncementError.None: return true
     else:
       if route.reader.feed(buffer.toOpenArray(0, int(count) - 1)) != AnnouncementError.None:
         route.refuse()
