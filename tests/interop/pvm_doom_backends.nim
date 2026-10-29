@@ -83,7 +83,12 @@ for index in 1..paramCount(): arguments.add(paramStr(index))
 var selected = default(Options)
 var diagnostic = ""
 assert parseOptions(arguments, selected, diagnostic), diagnostic
-assert selected.pvmBackend in [PvmBackend.Jit, PvmBackend.PolkaInterpreted], "unsupported DOOM comparison backend"
+let requestedCohort = getEnv("PVM_DOOM_BACKENDS")
+assert requestedCohort in ["", "polkavm-interpreted,interpreted"], "unsupported DOOM comparison cohort"
+let interpretedCohort = requestedCohort == "polkavm-interpreted,interpreted"
+assert selected.pvmBackend in [PvmBackend.Jit, PvmBackend.PolkaInterpreted] or
+    (interpretedCohort and selected.pvmBackend == PvmBackend.Interpreted),
+        "unsupported DOOM comparison backend"
 let requestedCalls = getEnv("RAGNAROK_DOOM_BACKEND_CALLS")
 assert requestedCalls in ["1", "2"]
 let callCount = if requestedCalls == "1": 1 else: 2
@@ -218,6 +223,11 @@ for call in 0..<callCount:
   if call == 0: assert eventBytes == events, "DOOM upstream ordered events mismatch"
   let policy = preparedInfo(prepared).value
   assert policy.backend == selected.pvmBackend
+  if selected.pvmBackend == PvmBackend.Interpreted:
+    # The same native-enabled image must honor the explicit opt-out on every continuing call.
+    assert interpretedCohort and done.value.backend == PvmBackend.Interpreted
+    assert policy.jitBuilt and policy.jitPlatformSupported
+    assert policy.nativeFragments == 0 and policy.nativeCalls == 0 and policy.nativeOperations == 0
   echo "DOOM_CALL,", call, ",", selected.pvmBackend, ",", done.value.backend, ",", uint64(cpu.gas),
     ",", policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations,
     ",", int(policy.jitBuilt), ",", int(policy.jitPlatformSupported)

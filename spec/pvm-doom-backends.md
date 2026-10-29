@@ -59,3 +59,29 @@ code, export PC and named import mapping must match the independent warmed
 snapshot before execution. The snapshot supplies continuing memory, never an
 alternative program owner. The focused remote Make target runs the artifact,
 CLI and shared option native suites before the gameplay comparison.
+
+## Explicit interpreted cohort
+
+`PVM_DOOM_BACKENDS=polkavm-interpreted,interpreted make check-pvm-doom-backends` selects
+PolkaVM interpreted and the forced independent interpreter in this same correctness-only runner.
+The selector accepts exactly that ordered pair; omission retains the default PolkaVM
+interpreted/JIT cohort, existing `doom-shared-backends-v1` output/schema and control behavior.
+The opt-in report uses `doom-shared-interpreted-v1` and records both selected backends.
+
+Both real CLI-selected processes use the same native-enabled linked image and pinned input.
+Every forced-interpreter call must report actual `interpreted`, native support built for its
+Linux CPU, and zero native publications, calls and operations. Full state/gas, page permissions,
+source snapshots, ordered hosts/events, per-frame hashes and the first-call independent oracle
+and golden remain checked. The second call uses the first result's memory. A restored timing
+tick does not supply this continuing evidence, and this runner collects no speed measurements.
+
+The Nim driver admits `interpreted` only with the explicit selector in that process's environment.
+The wrong-backend negative control clears only that selector in its own child, so its existing
+interpreted request still fails with the original diagnostic. Assertion and absent-bridge
+controls remain active. Pixel mutation/omission/reordering controls use the selected candidate's
+actual output. Invalid selectors, substituted engines, any native activity or incomplete
+continuing receipts fail; a one-call sizing pilot remains `pilot-passed` only.
+
+This support is based independently on master and requires no eager compilation API, shared
+source-sealing prerequisite, native runtime change or compiled reference. Native execution stays
+CI-only on Linux ARM64 and x86-64. Inert/source checks alone do not qualify the new cohort.

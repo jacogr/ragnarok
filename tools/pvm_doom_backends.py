@@ -21,6 +21,16 @@ from setup_nimony import installed
 BUILD = ROOT/'build/tests/pvm-doom-backends'
 DRIVER = ROOT/'tests/interop/pvm_doom_backends.nim'
 BACKENDS = ('polkavm-interpreted', 'jit')
+INTERPRETED_BACKENDS = ('polkavm-interpreted', 'interpreted')
+
+
+def backend_cohort(requested):
+    """Keep the maintained default; only the exact explicit two-interpreter cohort selects forced interpretation."""
+    if requested == '':
+        return BACKENDS
+    if requested == ','.join(INTERPRETED_BACKENDS):
+        return INTERPRETED_BACKENDS
+    raise ValueError('invalid DOOM backend cohort')
 
 
 class Mismatch(ValueError):
@@ -65,6 +75,8 @@ def compare(left, right, calls):
 
 def observation(output, folder, selected, count, pages, architecture):
     """Only complete native processes with honest requested/actual engine receipts supply comparison inputs."""
+    if selected not in (*BACKENDS, 'interpreted'):
+        raise ValueError('unsupported DOOM comparison backend')
     lines = output.splitlines()
     if len(lines) != count+1 or lines[-1] != f'DOOM_SEQUENCE_OK,{selected},{count}':
         raise ValueError('incomplete DOOM backend process')
@@ -83,6 +95,11 @@ def observation(output, folder, selected, count, pages, architecture):
         if selected == 'polkavm-interpreted':
             if actual != selected or any((fragments, native_calls, operations)):
                 raise ValueError('foreign engine substituted or published native activity')
+        elif selected == 'interpreted':
+            if actual != selected or any((fragments, native_calls, operations)):
+                raise ValueError('forced interpreter substituted or published native activity')
+            if architecture not in ('arm64', 'x86_64') or not (built and supported):
+                raise ValueError('missing native-enabled forced-interpreter control')
         elif architecture in ('arm64', 'x86_64'):
             if actual != 'jit' or not (built and supported and fragments and native_calls and operations):
                 raise ValueError('missing positive '+architecture+' JIT execution')
@@ -137,6 +154,7 @@ def run():
     if requested not in ('1', '2'):
         raise ValueError('DOOM backend calls must be the explicit one-call pilot or two-call sequence')
     count = int(requested)
+    backends = BACKENDS
     BUILD.mkdir(parents=True, exist_ok=True)
     report = dict(status='incomplete', protocol='doom-shared-backends-v1', calls=count,
                   warmup_ticks=1320, builds=[], runs=[], controls=[])
@@ -148,7 +166,9 @@ def run():
         lines = [f"DOOM shared-backend check: {report['status']}", '',
             f"Native architecture: {report.get('host', {}).get('architecture', 'unqualified')}; continuing calls: {count}.",
             'Same pinned frame-1320 snapshot restored once; no host clock, RNG, audio or key input varies.',
-            'x86 requested jit uses interpreted fallback; positive native JIT is required only on ARM64.', '']
+            ('Forced interpretation requires native-enabled builds and zero native publications/calls/operations.'
+             if backends == INTERPRETED_BACKENDS else
+             'x86 requested jit uses interpreted fallback; positive native JIT is required only on ARM64.'), '']
         for row in report['runs']:
             observed = row.get('observed')
             if observed:
@@ -180,6 +200,10 @@ def run():
 
     save()
     try:
+        # Invalid selections must replace prior green evidence before any dependency, build or guest work.
+        backends = backend_cohort(os.environ.get('PVM_DOOM_BACKENDS', ''))
+        if backends == INTERPRETED_BACKENDS:
+            report.update(protocol='doom-shared-interpreted-v1', backends=list(backends))
         report['host'] = host_identity()
         report['revision'] = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
         report['toolchain'] = json.loads((ROOT/'spec/toolchain.json').read_text())
@@ -218,7 +242,7 @@ def run():
             RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'),
             RAGNAROK_DOOM_BACKEND_CALLS=str(count), RAGNAROK_DOOM_BACKEND_ASSERT='0')
         artifact_args = ['--pvm-code', str(DOOM/'doom.polkavm'), '--pvm-entry', 'ext_tick']
-        for selected in BACKENDS:
+        for selected in backends:
             # One process per real CLI selection owns its initial restore and all continuing guest state.
             folder = BUILD/selected
             folder.mkdir(exist_ok=True)
@@ -229,12 +253,12 @@ def run():
             observed[selected] = item
             report['runs'].append(dict(backend=selected, run=row, observed=item))
             save()
-        reference, candidate = (observed[name] for name in BACKENDS)
+        reference, candidate = (observed[name] for name in backends)
         compare(reference, candidate, count)
         if reference['frames'][0]['rgba_sha256'] != admission['golden_rgba_sha256']:
             raise Mismatch('frame 0: pinned upstream RGBA golden mismatch')
         # Rehash changed bytes from the actual candidate framebuffer; never mutate an expected/golden hash.
-        data = bytearray((BUILD/'jit/call-0.events').read_bytes())
+        data = bytearray((BUILD/backends[1]/'call-0.events').read_bytes())
         at = 0
         while data[at] != 1:
             at += 5+int.from_bytes(data[at+1:at+5], 'little')
@@ -244,7 +268,7 @@ def run():
         report['controls'] += negative_frames(reference, candidate, count, changed)
         for name, args, env, needle in (
             ('assertions', [binary,*artifact_args,'--pvm-backend','jit'], dict(common, RAGNAROK_DOOM_BACKEND_ASSERT='1'), 'DOOM backend assertion control'),
-            ('wrong-backend', [binary,*artifact_args,'--pvm-backend','interpreted'], common, 'unsupported DOOM comparison backend')):
+            ('wrong-backend', [binary,*artifact_args,'--pvm-backend','interpreted'], dict(common, PVM_DOOM_BACKENDS=''), 'unsupported DOOM comparison backend')):
             row = command(args, name, env, required=False)
             if row['exit_code'] == 0 or needle not in row['output']:
                 raise ValueError('missing intended process refusal: '+name)
