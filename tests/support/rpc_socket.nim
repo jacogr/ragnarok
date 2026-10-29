@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared real loopback WebSocket controls retain bounded polling and explicit native descriptor ownership.
-import std/[assertions, strutils, nativesocket]
+import std/[assertions, strutils, nativesocket, monotimes, times]
 import std/posix/posix
 import ../../src/rpc/server
 
@@ -65,10 +65,12 @@ proc sendText*(peer: cint, text: string, masked = true) =
   assert sendBytes(peer, packet.toCString(), csize_t(packet.len), 0) == packet.len
 
 proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = false,
-    description = "", attempts = 200): string =
-  ## Independently decode a complete bounded server frame; retain coalesced suffixes across dispatcher turns.
-  assert attempts > 0 and attempts <= 10000 # Test-owned waits remain finite; default callers keep the original short budget.
-  for attempt in 0..<attempts:
+    description = "server frame", timeoutMs = 2000): string =
+  ## Decode one complete frame within a fixed monotonic deadline, allowing independent processes to run.
+  ## Complete packets return immediately; partial reads never renew the deadline or consume an iteration budget.
+  assert timeoutMs > 0 and timeoutMs <= 10000 # Test waits remain finite, independently of peer progress.
+  let started = getMonoTime()
+  while true:
     if upgrade:
       let ending = pending.find("\r\n\r\n")
       if ending >= 0:
@@ -89,6 +91,10 @@ proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = fal
         result = pending.substr(offset, offset + size - 1)
         pending = pending.substr(offset + size)
         return # One decoded payload never consumes the next notification.
+    let elapsed = (getMonoTime() - started).inMilliseconds
+    assert elapsed >= 0, "RPC packet clock regressed: " & description
+    if elapsed >= timeoutMs:
+      break # One absolute deadline also bounds fragmented or trickling packets.
     rpc.tick(0)
     var buffer = default(array[8192, char])
     let count = receive(peer, addr buffer[0], csize_t(buffer.len), 0)
@@ -98,7 +104,7 @@ proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = fal
     else:
       assert count < 0 # Unexpected EOF is a test failure, never an empty successful frame.
       discard pauseMicros(1000) # Bound local transport scheduling without an unbounded blocking receive.
-  assert false, "RPC packet did not arrive: " & description
+  assert false, "RPC packet did not arrive within " & $timeoutMs & " ms: " & description
   ""
 
 proc reservation*(): tuple[fd: cint, port: uint16] =
@@ -121,4 +127,5 @@ proc assertPortReleased*(port: uint16) =
 proc upgrade*(rpc: var Server, peer: cint, pending: var string) =
   ## Exercise the real HTTP upgrade before sending masked JSON-RPC requests.
   sendText(peer, "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", false)
-  assert "101 Switching Protocols" in readPacket(rpc, peer, pending, true)
+  assert "101 Switching Protocols" in readPacket(rpc, peer, pending, true,
+      description = "WebSocket upgrade")

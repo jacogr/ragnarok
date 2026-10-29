@@ -30,7 +30,7 @@ proc waitFile(path: string) =
 proc request(rpc: var Server, peer: cint, pending: var string, text: string): string =
   ## Default local Server ticks do no IO; the real parent command pumps the remote listener independently.
   sendText(peer, text)
-  readPacket(rpc, peer, pending)
+  readPacket(rpc, peer, pending, description = text)
 
 proc observeRpc(context: DownloadChainFixture, port: uint16) {.raises.} =
   ## Subscribe before releasing the first child, then read/query the complete retained prefix before releasing a final empty reply.
@@ -44,7 +44,8 @@ proc observeRpc(context: DownloadChainFixture, port: uint16) {.raises.} =
     """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":1}""")
   assert "\"result\":1" in subscribed
   for index in 0..3:
-    let notification = readPacket(rpc, peer, pending)
+    let notification = readPacket(rpc, peer, pending,
+        description = "best-block notification " & $index)
     assert base64.encode(array[32, byte](context.heads[index].blockHash)) in notification
     assert "\"slot\":" & $uint32(context.heads[index].slot) in notification
     if index == 0: writeFile(ReadyPath, "ready") # Only an actual initial notification releases response one.
