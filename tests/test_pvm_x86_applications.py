@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Host and build-policy tests for the shared exact-state native application cohort; never execute a compiler."""
 import unittest
+import json
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from pvm_jit_platform import native_defines
 from pathlib import Path
 from pvm_arm64_jit_applications import application_host, application_defines
-from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs, profile_plan
+from pvm_x86_jit_profile import selected_symbol, profile_environment, matching_native_activity, exclusive_costs, profile_plan, run as profile_run
 
 
 class NativeApplicationPolicyTests(unittest.TestCase):
@@ -75,11 +78,54 @@ class X86ProfileScopeTests(unittest.TestCase):
         expanded=profile_plan('arm64',include_minimal=True)
         self.assertEqual(expanded['cases'],(('sieve',100000),('minimal',100000),('init',0),('tick',0)))
         self.assertEqual(expanded['roles'],original['roles'])
-        self.assertEqual(profile_plan('x86_64',include_minimal=True)['cases'],profile_plan('x86_64')['cases'])
+        self.assertEqual(profile_plan('x86_64')['cases'],(('sieve',100000),('pinky',1),('tick',0)))
         environment=profile_environment('minimal',100000,'jit','arm64')
         self.assertEqual(environment['RAGNAROK_PVM_GUEST'],'minimal')
         self.assertIn('pvm-arm64-applications/inputs/minimal/100000',environment['RAGNAROK_PVM_SIEVE_INPUT'])
         self.assertEqual(environment['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+
+    def test_x86_initialization_is_an_explicit_additional_scope(self):
+        """A coverage investigation adds initialization without removing any original policy/workload or checked call."""
+        original=profile_plan('x86_64',paired_baseline=True)
+        expanded=profile_plan('x86_64',paired_baseline=True,include_init=True)
+        self.assertEqual(expanded['roles'],original['roles'])
+        self.assertEqual(expanded['cases'],(('sieve',100000),('pinky',1),('init',0),('tick',0)))
+        self.assertEqual([case for case in expanded['cases'] if case[0]!='init'],list(original['cases']))
+        for role in expanded['roles']:
+            env=profile_environment('init',0,role)
+            self.assertEqual(env['RAGNAROK_PVM_DOOM_PHASE'],'init')
+            self.assertEqual(env['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+            self.assertEqual(env['RAGNAROK_PVM_LOCAL_ONECALL'],'0')
+        self.assertEqual(profile_plan('arm64',include_init=True)['cases'],
+                         profile_plan('arm64')['cases'])
+        make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
+        self.assertIn('tools/pvm_x86_jit_profile.py --paired-baseline --include-init',make)
+
+    def test_x86_minimal_adds_scope_without_replacing_original_cases(self):
+        """A repeated minimal regression needs its own calibrated full invocation, with the ordinary kernel image and thirteen calls."""
+        original=profile_plan('x86_64',paired_baseline=True,include_init=True)
+        expanded=profile_plan('x86_64',paired_baseline=True,include_init=True,include_minimal=True)
+        self.assertEqual(expanded['roles'],original['roles'])
+        self.assertEqual(expanded['cases'],(('sieve',100000),('minimal',100000),('pinky',1),('init',0),('tick',0)))
+        self.assertEqual(tuple(c for c in expanded['cases'] if c[0]!='minimal'),original['cases'])
+        env=profile_environment('minimal',100000,'jit')
+        self.assertEqual(env['RAGNAROK_PVM_GUEST'],'minimal')
+        self.assertEqual(env['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+        self.assertIn('pvm-x86-applications/inputs/minimal/100000',env['RAGNAROK_PVM_SIEVE_INPUT'])
+
+    def test_expanded_profile_runner_retains_ci_refusal_and_plan(self):
+        """Wire the optional runner argument through to a durable complete plan without ever invoking native work locally."""
+        with TemporaryDirectory() as folder, patch('pvm_x86_jit_profile.BUILD',Path(folder)), \
+                patch.dict('os.environ',{'GITHUB_ACTIONS':'false'}):
+            with self.assertRaisesRegex(RuntimeError,'CI-only'):
+                profile_run('x86_64',False,True,True)
+            report=json.loads((Path(folder)/'results.json').read_text())
+            self.assertEqual(report['status'],'failed')
+            self.assertEqual(report['profiles'],[])
+            self.assertEqual(report['profile_roles'],['baseline','jit'])
+            self.assertEqual(report['profile_cases'],[dict(case=case,limit=limit) for case,limit in
+                (('sieve',100000),('pinky',1),('init',0),('tick',0))])
+
 
     def test_arm_profiles_compare_exact_parent_and_current(self):
         """The ARM diagnostic binds its own sealed cohort and both genuine DOOM phases, never x86 inputs."""

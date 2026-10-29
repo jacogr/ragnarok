@@ -68,11 +68,11 @@ def matching_native_activity(measured, profiled):
         raise ValueError('Profile changed native execution or code working set')
 
 
-def profile_plan(architecture, paired_baseline=False, include_minimal=False):
+def profile_plan(architecture, paired_baseline=False, include_init=False, include_minimal=False):
     """Select a bounded native cohort and roles; an ARM diagnostic compares the supplied parent with current JIT."""
     if architecture == 'x86_64':
         return dict(folder=BUILD, cohort=COHORT, roles=('baseline','jit') if paired_baseline else ('interpreter','jit'),
-                    cases=(('sieve',100000),('pinky',1),('tick',0)))
+                    cases=(('sieve',100000),*((('minimal',100000),) if include_minimal else ()),('pinky',1),*((('init',0),) if include_init else ()),('tick',0)))
     if architecture == 'arm64':
         return dict(folder=ROOT/'build/tests/pvm-arm64-profiles',
                     cohort=ROOT/'build/tests/pvm-arm64-applications', roles=('baseline','jit'),
@@ -132,9 +132,9 @@ def diagnostic_image(checks, cohort, role, case, report):
     return saved
 
 
-def run(architecture="x86_64", calibration_only=False, paired_baseline=False, include_minimal=False):
+def run(architecture="x86_64", calibration_only=False, paired_baseline=False, include_init=False, include_minimal=False):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
-    plan = profile_plan(architecture, paired_baseline, include_minimal)
+    plan = profile_plan(architecture, paired_baseline, include_init, include_minimal)
     folder, cohort_folder = plan["folder"], plan["cohort"]
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder/'results.json'
@@ -187,6 +187,13 @@ def run(architecture="x86_64", calibration_only=False, paired_baseline=False, in
                 binary = (diagnostic_image(checks,cohort,role,case,report) if architecture=='arm64'
                           else Path(row['run']['command'][0]))
                 image_hash=hashlib.sha256(binary.read_bytes()).hexdigest()
+                if architecture == 'x86_64':
+                    # Preserve the already measured normal ELF for static code inspection; profile the unchanged original pathname.
+                    family = 'doom' if case in ('init', 'tick') else 'kernel'
+                    sealed = folder/(role+'-'+family+'-sealed')
+                    if not sealed.exists(): shutil.copyfile(binary, sealed)
+                    if hashlib.sha256(sealed.read_bytes()).hexdigest() != image_hash:
+                        raise ValueError('Retained normal profile image differs from its measured seal')
                 symbols = checks.command(['nm', '--defined-only', binary], case+'-'+role+'-symbols')
                 if symbols['exit_code']:
                     raise RuntimeError('Cannot inspect public invocation image')
@@ -245,6 +252,8 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', choices=('x86_64','arm64'), default='x86_64')
     parser.add_argument('--calibrate-only',action='store_true')
     parser.add_argument('--paired-baseline',action='store_true')
-    parser.add_argument('--include-minimal',action='store_true',help='Include the ARM minimal workload in the paired diagnostic')
+    parser.add_argument('--include-init',action='store_true')
+    parser.add_argument('--include-minimal',action='store_true',help='Include the native minimal workload in the paired diagnostic')
+
     options=parser.parse_args()
-    run(options.architecture,options.calibrate_only,options.paired_baseline,include_minimal=options.include_minimal)
+    run(options.architecture,options.calibrate_only,options.paired_baseline,options.include_init,include_minimal=options.include_minimal)

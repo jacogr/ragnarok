@@ -49,6 +49,9 @@ def qualify(checks, compiler, rows=None):
                 'X86_REGION_PREFIX_CASES,1440\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         if name.startswith('x86-'):
+            # Deferred triples still retain complete original-source and same-owner/root/policy boundary checks.
+            if 'X86_CHECKED_THREE_SOURCE_CASES,3546\n' not in run['output'] or 'X86_EXISTING_ROOT_SOURCE_CASES,6\n' not in run['output']:
+                raise ValueError('Missing checked triple source/root controls')
             # The new context oracle must execute on native storage; refused builds retain the existing full fallback matrix.
             expected = 0 if refused else 1440
             if 'X86_RESIDENT_CONTEXT_CASES,'+str(expected)+'\n' not in run['output']:
