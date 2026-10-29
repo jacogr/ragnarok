@@ -4,6 +4,7 @@
 ## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
 import std/assertions
 import ../[program, machine]
+import ./source_seal
 
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}
 proc createArenaNative(): nil pointer {.cdecl, importc: "pvm_arm64_arena_create",
@@ -50,6 +51,7 @@ type
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
     unavailable: bool
+    sourceSeal*: SourceSeal # Cold source-only metadata moves and dies with this existing exclusive code owner.
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
 proc `=dup`(source: ArenaOwner): ArenaOwner {.error.}

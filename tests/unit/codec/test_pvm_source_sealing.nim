@@ -5,6 +5,7 @@ import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
 import ../../../src/pvm/internal/handler_stream
+import ../../../src/pvm/internal/source_seal
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Fixture framing uses an independent public codec, never production assembler state.
@@ -73,6 +74,55 @@ proc frozen(stream: FlatStream, before: FlatSealedInfo, nodes, work: uint64,
       assert after[index] == native[index], "frozen native counter index=" & $index &
         " actual=" & $after[index] & " expected=" & $native[index]
 
+proc originalLayout(source: Program) =
+  ## Target-native witnesses preserve the original frame/stream size and the actual live CPU coordinates.
+  var frame = newFlatFrame(plan(source), [], MachineInfo(gas: MachineGas(100)))
+  let base = cast[uint64](addr frame)
+  assert cast[uint64](addr frame.info)-base == 8,
+    "info offset expected=8 actual=" & $(cast[uint64](addr frame.info)-base)
+  assert cast[uint64](addr frame.info.registers)-base == 40,
+    "register offset expected=40 actual=" & $(cast[uint64](addr frame.info.registers)-base)
+  assert cast[uint64](addr frame.info.gas)-base == 16,
+    "gas offset expected=16 actual=" & $(cast[uint64](addr frame.info.gas)-base)
+  assert cast[uint64](addr frame.remaining)-base == 336,
+    "attempt offset expected=336 actual=" & $(cast[uint64](addr frame.remaining)-base)
+  when defined(pvmX86Jit):
+    # The original x86 tail lacks ARM's72-byte memory descriptors; verify the actual target layout in CI.
+    assert sizeof(FlatFrame) == 2576, "x86 frame expected=2576 actual=" & $sizeof(FlatFrame)
+    assert sizeof(FlatStream) == 112, "x86 stream expected=112 actual=" & $sizeof(FlatStream)
+  elif defined(pvmArm64Jit):
+    # Baseline8d's native ABI-only receipt independently measured this frame size and these coordinates.
+    assert sizeof(FlatFrame) == 2648, "ARM frame expected=2648 actual=" & $sizeof(FlatFrame)
+    assert sizeof(FlatStream) == 112, "ARM stream expected=112 actual=" & $sizeof(FlatStream)
+  when defined(pvmSourceSealingReceipt):
+    # The existing native owner's inline growth includes both the test-only counter and classification sequence.
+    assert sizeof(SourceSeal) == 80, "receipt cold state expected=80 actual=" & $sizeof(SourceSeal)
+  else:
+    assert sizeof(SourceSeal) == 56, "production cold state expected=56 actual=" & $sizeof(SourceSeal)
+
+when defined(pvmX86Jit) or defined(pvmArm64Jit):
+  proc ownerTransferCycle(source: FlatPlan) =
+    ## Moved-from streams lose observations; overwrite and final drop retire both cold tables with the native arena.
+    var prepared = prepareFlatStream(source)
+    assert prepared.error == FlatError.None, "owner transfer construction"
+    var first = takeValue(prepared)
+    let info = streamSealedInfo(first)
+    let nodes = streamNodes(first)
+    let work = streamPreparation(first)
+    let native = streamNativeStatistics(first)
+    var transferred = move(first)
+    assert not streamSealedInfo(first).sealed and streamNodes(first) == 0, "moved-from stream"
+    var frame = newFlatFrame(source, [], MachineInfo(gas: MachineGas(10000)))
+    restoreFlatStream(frame, transferred)
+    assert not streamSealedInfo(transferred).sealed, "leased stream has no source-seal owner"
+    runFlat(frame, 0)
+    transferred = takeFlatStream(frame)
+    frozen(transferred, info, nodes, work, native)
+    var replacement = prepareFlatStream(source)
+    assert replacement.error == FlatError.None, "replacement construction"
+    transferred = takeValue(replacement)
+    assert streamSealedInfo(transferred).sealed, "replacement retains its own cold tables"
+
 proc entries(parts: openArray[seq[byte]], images: openArray[PageImage] = [],
     registers: RegisterFile = default(RegisterFile), jumps: openArray[uint32] = []) =
   ## Every genuine PC, paid flag, gas edge and partial source prefix shares the same sealed bodies.
@@ -131,6 +181,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmSourceSealin
 
 let pure = owner([@[100'u8, 16, 1], @[100'u8, 16, 2], @[100'u8, 16, 3],
   @[100'u8, 16, 4], @[0'u8]])
+originalLayout(pure)
+block nilObservation:
+  # Repeated empty observations cannot create a native cache or price/classification storage.
+  let empty = default(FlatStream)
+  let before = getOccupiedMem()
+  for repeat in 0..<16: assert not streamSealedInfo(empty).sealed, "empty source-seal observation"
+  assert getOccupiedMem() == before, "empty observations allocate nothing"
 var defaulted = default(FlatResult[FlatStream])
 assert defaulted.error == FlatError.Uninitialized, "source sealing line 105: defaulted.error == FlatError.Uninitialized"
 var disabled = prepareFlatStream(plan(pure, native = false))
@@ -150,6 +207,12 @@ elif defined(pvmX86JitRefuse) or defined(pvmArm64JitRefuse):
   let fallback = owner([@[0'u8]])
   var refused = prepareFlatStream(plan(fallback))
   assert refused.error == FlatError.NativeStorageUnavailable, "source sealing line 122: refused.error == FlatError.NativeStorageUnavailable"
+  let before = getOccupiedMem()
+  for repeat in 0..<64:
+    # Failed admission must release the partial native owner before the next attempt.
+    var failed = prepareFlatStream(plan(fallback))
+    assert failed.error == FlatError.NativeStorageUnavailable, "repeated storage refusal"
+  assert getOccupiedMem() == before, "refused owners release all managed storage"
 else:
   assert unavailable.error == FlatError.None, "source sealing line 124: unavailable.error == FlatError.None"
   var reusable = takeValue(unavailable)
@@ -161,6 +224,15 @@ else:
   when defined(pvmSourceSealingReceipt): assert originalInfo.compilationPasses > 0, "source sealing line 131: originalInfo.compilationPasses > 0"
   assert originalNative[1] == 0 and originalNative[2] == 0,
       "source sealing line 132: originalNative[1] == 0 and originalNative[2] == 0" # Construction never executes guest/native operations.
+  block transferRelease:
+    # Both positive-native and zero-native owners must drop their managed price/class tables after every cycle.
+    let nativePlan = plan(pure)
+    let checkedPlan = plan(owner([@[0'u8]]))
+    let before = getOccupiedMem()
+    for repeat in 0..<64:
+      ownerTransferCycle(nativePlan)
+      ownerTransferCycle(checkedPlan)
+    assert getOccupiedMem() == before, "moved/replaced source-seal tables release without leaks"
   let sourcePlan = plan(pure)
   var wrong = newFlatFrame(sourcePlan, [], MachineInfo(gas: MachineGas(10000)))
   restoreFlatStream(wrong, reusable)

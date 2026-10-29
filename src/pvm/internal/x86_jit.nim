@@ -4,6 +4,7 @@
 ## The SysV leaf borrows one register array in RDI, touches only caller-saved registers and retains no input pointer.
 import std/assertions
 import ../[program, machine]
+import ./source_seal
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
 proc createNative(): nil pointer {.cdecl, importc: "pvm_x86_arena_create", header: "x86_memory.h".}
@@ -40,6 +41,7 @@ type
     unavailable: bool
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
     branchCalls*, headerCalls*: uint64
+    sourceSeal*: SourceSeal # Same auto-managed cold state as ARM; no extra normal-JIT heap owner.
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
 proc `=dup`(source: X86Arena): X86Arena {.error.}
