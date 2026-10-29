@@ -49,6 +49,10 @@ def qualify(checks, compiler, rows=None):
                 'X86_REGION_PREFIX_CASES,1440\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         if name.startswith('x86-'):
+            for marker,count in [('X86_COMPACT_REGION_TAG_CASES',52),('X86_COMPACT_SPAN_BOUNDARY_CASES',5)]:
+                expected = 0 if refused else count
+                if marker+','+str(expected)+'\n' not in run['output']:
+                    raise ValueError('Missing compact source-proof controls: '+marker)
             # The new context oracle must execute on native storage; refused builds retain the existing full fallback matrix.
             expected = 0 if refused else 1440
             if 'X86_RESIDENT_CONTEXT_CASES,'+str(expected)+'\n' not in run['output']:

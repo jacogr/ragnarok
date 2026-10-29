@@ -480,6 +480,77 @@ for paired in [false, true]:
           inc regionCases
 stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
 
+proc checkCompactRegionTags(jit: X86Jit, blocks: array[3, X86RegionBlock],
+    active: range[1..3]): int =
+  ## Every active/inactive lane and full-width caller value must match before the compact proof can authorize execution.
+  var headers = default(array[3, uint32])
+  var spans = default(array[3, uint32])
+  var prices = default(array[3, uint64])
+  for index in 0..<active:
+    headers[index] = blocks[index].header
+    spans[index] = blocks[index].span
+    prices[index] = blocks[index].price
+  assert x86RegionMatches(jit, headers, spans, prices)
+  result = 1
+  for index in 0..<3:
+    # Inactive defaults are proof facts too; caller words must never become valid by byte truncation.
+    var wrongHeaders = headers
+    wrongHeaders[index] = wrongHeaders[index] xor 1
+    assert not x86RegionMatches(jit, wrongHeaders, spans, prices)
+    var wrongSpans = spans
+    wrongSpans[index] += 1
+    assert not x86RegionMatches(jit, headers, wrongSpans, prices)
+    wrongSpans = spans
+    wrongSpans[index] += 256
+    assert not x86RegionMatches(jit, headers, wrongSpans, prices)
+    var wrongPrices = prices
+    wrongPrices[index] = wrongPrices[index] xor (1'u64 shl 63)
+    assert not x86RegionMatches(jit, headers, spans, wrongPrices)
+    result += 4
+
+proc verifyCompactSpanBoundary(addSlots, compareSlots: RegisterSlots): array[2, int] =
+  ## The highest admitted span must preserve a partial guard and exact65-attempt accounting; out-of-range input never narrows.
+  result = default(array[2, int])
+  let jit = newX86Jit()
+  discard x86Entry(jit, 0, 32)
+  var blocks = default(array[3, X86RegionBlock])
+  var body = default(X86Block)
+  emitX86Operation(body, 149, addSlots, 1)
+  emitX86Branch(body, 172, compareSlots, 0, 8, 10)
+  blocks[0] = X86RegionBlock(header: 7, span: 65, operations: 65, price: 3,
+    yes: 8, no: 10, body: move(body))
+  assert publishX86Region(jit, blocks, 1)
+  result[1] = checkCompactRegionTags(jit, blocks, 1)
+  for quota in [64'u64, 65]:
+    # One increment models a65-source block with otherwise inert operations; an insufficient quota leaves every byte unchanged.
+    var registers = default(RegisterFile)
+    registers[1] = RegisterValue(5)
+    var expected = registers
+    var state = [100'u64, quota, 0'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
+    if quota == 64:
+      assert callX86Region(jit, registers, state) == 7
+      assert state == [100'u64, 64, 0, 0, 0, 0xfedcba9876543210'u64]
+    else:
+      expected[0] = RegisterValue(1)
+      assert callX86Region(jit, registers, state) == 8
+      assert state == [97'u64, 0, 1, 0, 0, 7]
+    assert registers == expected
+    inc result[0]
+  assert jit.operations == 65
+  for span in [1'u32, 66, 258]:
+    # The wrapped byte of258 would alias2; publication must reject its original full-width span before creating code.
+    let refused = newX86Jit()
+    discard x86Entry(refused, 0, 32)
+    var malformed = blocks
+    malformed[0].span = span
+    malformed[0].operations = span
+    assert not publishX86Region(refused, malformed, 1)
+    assert refused.fragments == 0 and refused.codeBytes == 0 and x86RegionStatus(refused) == 1
+    inc result[0]
+
+var compactRegionTagCases = 0
+var compactSpanBoundaryCases = 0
+
 # The original scalar context is an independent oracle for resident visits and endpoint publication.
 var contextCases = 0
 var tripleContextCases = 0
@@ -506,6 +577,7 @@ when not defined(pvmX86JitRefuse):
       blocks[index] = X86RegionBlock(header: header, span: 2, operations: 2,
         price: uint64(3+index*2), yes: following, no: 10, body: move(body))
     assert publishX86Region(jit, blocks, range[1..3](active))
+    compactRegionTagCases += checkCompactRegionTags(jit, blocks, range[1..3](active))
     if active == 3:
       # A cold smaller proof can be replaced once; a malformed replacement must leave its tag, code and counters intact.
       let promoted = newX86Jit()
@@ -860,3 +932,12 @@ when not defined(pvmX86JitRefuse):
     instructionRegisters(instruction(branchProgram, CodeAddress(0))),
     instructionRegisters(instruction(branchProgram, CodeAddress(3))), true)
 stdout.writeLine("X86_FULL_PROMOTION_REFUSAL_CASES," & $fullPromotionRefusals)
+
+when not defined(pvmX86JitRefuse):
+  let compactSpanCounts = verifyCompactSpanBoundary(
+    instructionRegisters(instruction(branchProgram, CodeAddress(0))),
+    instructionRegisters(instruction(branchProgram, CodeAddress(3))))
+  compactSpanBoundaryCases = compactSpanCounts[0]
+  compactRegionTagCases += compactSpanCounts[1]
+echo "X86_COMPACT_REGION_TAG_CASES,", compactRegionTagCases
+echo "X86_COMPACT_SPAN_BOUNDARY_CASES,", compactSpanBoundaryCases

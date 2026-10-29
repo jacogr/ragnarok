@@ -217,3 +217,48 @@ These simulated misses are not hardware measurements. Applications SHA256
 native `847db5fd1d71f015b3f3b72e76c702f0c423e0d9c5a25c6b16bc6f5867bdd60c`;
 profiles `6d8c5cf4ff09e82f77935df2ab1cc998c42a9117aef0eff529223b06e7750baa`.
 Ignored evidence: `build/pvm-x86-three/promotion/tests`.
+
+## Replay verdict and compact-proof correction (pending)
+
+[Run40788548505](https://github.com/jacogr/ragnarok/actions/runs/40788548505)
+measured `80c57289185c0302ec9f8c21d65e9b037ecae998` on AMD EPYC7763. Independent
+checks passed the normal70 processes/910 calls/115 controls/16 builds/eight equal
+pairs and fifteen native gates, plus all sixty replay processes/780 calls. Total:
+130 processes and1,690 complete-state checked calls. Raw logs, thirteen-call
+framing, host events and native activity agree; baseline/current kernel/DOOM images
+are byte-identical to the preceding promotion run. No new runtime was introduced.
+
+CPU milliseconds across six process medians per role/case, warm samples3..12;
+minimum/maximum are process medians, not individual call extrema.
+
+| Workload | Previous median (min..max) | Promotion median (min..max) |
+| --- | ---: | ---: |
+| DOOM initialization | 585.392 (565.286..697.398) | 328.150 (324.018..330.321) |
+| Minimal100k | 6.337 (6.327..6.422) | 6.328 (6.309..7.246) |
+| Pinky | 131.692 (128.874..132.365) | 127.891 (127.220..130.483) |
+| DOOM gameplay | 56.986 (55.641..58.747) | 59.223 (58.271..59.882) |
+| Sieve10m | 326.554 (324.350..341.543) | 328.151 (322.086..341.970) |
+
+Initialization's43.9%gain repeats, but gameplay's3.9%regression also repeats and
+must be addressed before a final keep verdict. Native gameplay work/code footprint
+is unchanged, so simulated counts do not establish the cause. The88-byte proof
+record enlarges the hot owner and changes entries/counter offsets; that is a
+bounded representation issue to test, not a proven hardware explanation.
+
+The correction retains the checked publication invariant operations==span, stores
+each already bounded2..65 span in one byte, and derives logical operation counters
+from the existing validated attempt product. Headers/code/count stay32-bit, prices
+and visit counters stay64-bit. The private proof is64 bytes, smaller than the old
+72-byte two-block record. All active/inactive header/span/price matches remain,
+including full-width caller arguments and high-bit price mismatches. No source,
+gas/quota, ABI, capacity or native instruction stream changes. A local cold assert
+precedes narrowing; invalid input still refuses before publication. Add exact tag
+mismatch and65-span/invalid-span controls. Compare the whole corrected model to
+the accepted pre-trial parent with all seven workloads and eight profiles; retain
+only useful benefit without material regressions. The paired-shift child remains
+an independent arithmetic trial and is not included in this correction's receipt.
+
+Replay applications SHA256
+`c7e5731c804e8fafc13c50659aac6a5e28264b1ef6c217457214728337fbf712`;
+native `6dd1fe8e62ad5d6bbd71718f4d4366826a9cf3e0d227d6be90e752175f64ea54`.
+Ignored evidence: `build/pvm-x86-three/replay/tests`.

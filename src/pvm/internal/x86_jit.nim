@@ -25,12 +25,12 @@ type
     conditional: bool
     probes: uint8 # A cold header gets at most eight discovery visits; exhausted probes restore the hot worker.
   X86RegionCache = object ## One bounded exact-source region, with no mutable invocation address.
+    headers: array[3, uint32]
+    spans: array[3, uint8] # Publication proves2..65; unused lanes stay zero and caller spans are never truncated.
     status: uint8
-    count: uint32
-    code: uint32
-    headers, spans, operations: array[3, uint32]
     prices: array[3, uint64]
     calls, blocks: uint64
+    count, code: uint32   # Checked operations==span makes a second operation-count array redundant.
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
@@ -53,7 +53,7 @@ proc `=destroy`(owner: X86Arena) =
 
 proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
-  assert sizeof(X86RegionCache) == 88 # One direct source cache gains sixteen bytes for the third bounded proof.
+  assert sizeof(X86RegionCache) == 64 # Full-width source identity/prices and checked byte spans fit one compact proof record.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 func supportedX86Opcode*(opcode: byte): bool =
@@ -275,8 +275,11 @@ func x86RegionHeader*(jit: X86Jit, index: range[0..2]): uint32 =
 func x86RegionMatches*(jit: X86Jit, headers, spans: array[3, uint32],
     prices: array[3, uint64]): bool =
   ## Every fresh invocation must match the captured charge context, including inactive zero slots.
-  jit.region.status == 2 and jit.region.headers == headers and jit.region.spans == spans and
-      jit.region.prices == prices
+  if jit.region.status != 2 or jit.region.headers != headers: return false
+  for index in 0..<3:
+    # Widen only the validated stored byte; a foreign full32 span must never alias by truncation, including inactive lanes.
+    if uint32(jit.region.spans[index]) != spans[index]: return false
+  jit.region.prices == prices
 
 proc regionWord(fragment: var X86Block, value: uint32) =
   ## Emit a complete little-endian rel32/immediate without native host-endian assumptions.
@@ -375,9 +378,10 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
   jit.region.code = uint32(published)
   for index in 0..<count:
     jit.region.headers[index] = blocks[index].header
-    jit.region.spans[index] = blocks[index].span
+    let span = blocks[index].span
+    assert span >= 2 and span <= 65 # Reestablish the earlier readonly publication proof locally before checked narrowing.
+    jit.region.spans[index] = uint8(span)
     jit.region.prices[index] = blocks[index].price
-    jit.region.operations[index] = blocks[index].operations
   jit.region.count = uint32(count)
   jit.region.status = 2
   inc jit.fragments
@@ -417,7 +421,7 @@ proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[6
     let attempts = count*span
     assert accounted <= consumed and attempts <= consumed-accounted
     accounted += attempts
-    jit.operations += count*uint64(jit.region.operations[index])
+    jit.operations += attempts # Publication proved logical operations equal span; the checked product is already exact.
     jit.region.blocks += count
   assert accounted == consumed
   inc jit.calls
