@@ -2071,7 +2071,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
-    ## Combine only multiple unsigned word reads and pure arithmetic within one already-reserved source block.
+    ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return offset
@@ -2084,12 +2084,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var first = high(uint32)
     var last = 0'u32
     while int(ending) < f.sites.len and count < 64:
-      # Headers, stores, narrower reads, branches, hosts and every observable exit end the speculative prefix.
+      # Headers, stores, branches, hosts and every observable exit end the speculative prefix.
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough: break
-      if fact.opcode == 130:
+      if fact.opcode in 124'u8..130'u8:
         let displacement = uint32(fact.args.x and 0xffffffff'u64)
+        if fact.opcode != 130: window = false # Narrow/signed reads retain their own individual guards, never the scaled word window.
         if fact.args.slots.bIndex != base or (written and (1'u32 shl int(base))) != 0:
           window = false # Derived or overwritten address bases retain the accepted individual guards.
         if displacement < first: first = displacement
@@ -2115,10 +2116,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     for current in offset..<ending:
       # Only a proved stable base uses the shared window; all other mixed spans preserve their original lowering.
       let fact = f.plan.facts[int(f.sites[int(current)])]
-      if fact.opcode == 130:
+      if fact.opcode in 124'u8..130'u8:
         let displacement = uint32(fact.args.x and 0xffffffff'u64)
         if window: emitArmWindowRead(native, fact.args.slots.aIndex, displacement-first)
-        else: emitArmRead(native, fact.args.slots, displacement)
+        else: emitArmRead(native, fact.args.slots, displacement, range[124..130](fact.opcode))
       else:
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
     var words = armReadInstructions(native, ending)
@@ -2130,7 +2131,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     ending
 
   proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## Admit only a first unsigned indirect word load with at least three pure suffix operations, preserving every source coordinate.
+    ## Admit a first selected-width indirect read with at least three pure suffix operations, preserving every source coordinate.
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return offset
@@ -2145,15 +2146,17 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
       inc ending
       inc count
-    if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode == 130:
-      # Only an encountered second word read can justify the transactional span builder.
+    if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode in
+        124'u8..130'u8:
+      # Only an encountered second admitted read can justify the transactional span builder.
       let combined = flatArmCompileReadSpan(f, offset)
       if combined != offset: return combined
     if count < 4:
       refuseArmEntry(jit, offset)
       return offset
     let args = f.arguments[int(offset)]
-    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending)
+    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending,
+      range[124..130](f.plan.facts[int(f.sites[int(offset)])].opcode))
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
@@ -2168,7 +2171,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
     if entry != 0: return offset
     if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
-    if f.plan.facts[int(f.sites[int(offset)])].opcode == 130: return flatArmCompileMemory(f, offset)
+    if f.plan.facts[int(f.sites[int(offset)])].opcode in
+        124'u8..130'u8: return flatArmCompileMemory(f, offset)
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32

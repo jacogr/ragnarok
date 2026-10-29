@@ -88,6 +88,9 @@ def qualify(checks, compiler, *, native=True):
                 expected = count if native and name == 'witness' else 0
                 if marker+','+str(expected)+'\n' not in checked['output']:
                     raise ValueError('Missing paired-shift controls: '+marker)
+            width_expected = 24843 if native and name == 'witness' else 0
+            if (native or name == 'witness-refused') and 'ARM_LOAD_WIDTH_LITERAL_CASES,'+str(width_expected)+'\n' not in checked['output']:
+                raise ValueError('Missing signed/unsigned guarded-load width literals')
             # Rejected native stores leave meaningful checked-store/native-arithmetic and complete snapshot fallback coverage.
             if 'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n' not in checked['output']:
                 raise ValueError('Missing complete checked-store source/gas/host controls')
