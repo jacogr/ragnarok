@@ -15,9 +15,11 @@ type
     General, PVM, Network, Ui, Rpc, Mcp, Management, Telemetry, State, Storage, Recovery, Download,
       Trace, Devnet, Fuzz
   OptionDefault* {.pure.} = enum ## A default references its single typed definition instead of duplicating display strings.
-    Required, None, Disabled, Embedded, RpcPort, McpPort, UiPort, Timeout, PeerMode, Mode, Storage,
+    Required, None, Disabled, Embedded, ChainFile, RpcPort, McpPort, UiPort, Timeout, PeerMode,
+      Mode, Storage,
     Layout, Writes, WriteBytes, Environment, FuzzWrites, FuzzWriteBytes, CompactBytes, Blocks,
-      Logging, PvmBackend, RetainedBlocks
+      Logging, PvmBackend, DataDirectory, NetworkPort, Certificate, PrivateKey, PeerKey, Alpn,
+        Database, ManagementPath, RetainedBlocks
   OptionSpec* = object ## Immutable catalog row; an empty commands string denotes shared service controls.
     name*, value*, description*, commands*: string
     fallback*: OptionDefault
@@ -27,6 +29,8 @@ type
     name*, description*: string
 
 const
+  BoundedTimeoutDescription = "Bounded workloads default to " & $DefaultTimeoutMs & " ms."
+  TimeoutOverview = $DefaultServerTimeoutMs & "/" & $DefaultTimeoutMs
   OptionGroups* = [
     "General",
     "PVM",
@@ -45,7 +49,7 @@ const
     "Conformance testing"
   ]
   CommandSpecs* = [
-    CommandSpec(name: "server", description: "Run a bounded server workload."),
+    CommandSpec(name: "server", description: "Run a foreground listener, or select a bounded workload."),
     CommandSpec(name: "client", description: "Run a bounded client workload."),
     CommandSpec(name: "mesh", description: "Run a retained two-way peer workload."),
     CommandSpec(name: "download", description: "Download and adopt sealed children using an explicit policy."),
@@ -60,9 +64,13 @@ const
     CommandSpec(name: "serve-fuzz-preset", description: "Run conformance with explicit policy and the environment preset.")
   ]
   OptionSpecs* = [
+    OptionSpec(name: "--data-dir", value: "DIR", group: OptionGroup.General,
+      description: "Persistent identity and default database root.",
+      fallback: OptionDefault.DataDirectory),
     # General options. Keep additions in this group.
     OptionSpec(name: "--chain", value: "FILE", group: OptionGroup.General,
-      description: "Shared chain JSON for state, RPC and telemetry.", fallback: OptionDefault.None,
+      description: "Shared chain JSON for state, RPC and telemetry; used when state/telemetry is enabled.",
+      fallback: OptionDefault.ChainFile,
       commands: "",
       repeatable: false),
     OptionSpec(name: "--log-level", value: "FILTER", group: OptionGroup.General,
@@ -90,39 +98,41 @@ const
 
     # Network and TLS options. Keep additions in this group.
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
-      description: "Peer port (1..65535); required.", fallback: OptionDefault.Required,
+      description: "Peer port (1..65535).", fallback: OptionDefault.NetworkPort,
       commands: "server|client|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-local-port", value: "NUMBER", group: OptionGroup.Network,
-      description: "Local mesh listener port; required.", fallback: OptionDefault.Required,
+      description: "Local mesh listener port.", fallback: OptionDefault.NetworkPort,
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-remote-port", value: "NUMBER", group: OptionGroup.Network,
-      description: "Remote mesh peer port; required.", fallback: OptionDefault.Required,
+      description: "Remote mesh peer port.", fallback: OptionDefault.NetworkPort,
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-cert", value: "FILE", group: OptionGroup.Network,
-      description: "TLS certificate PEM; required.", fallback: OptionDefault.Required,
+      description: "TLS certificate PEM; generated and reused with the default private key.",
+      fallback: OptionDefault.Certificate,
       commands: "server|client|mesh|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-key", value: "FILE", group: OptionGroup.Network,
-      description: "TLS private key PEM; required.", fallback: OptionDefault.Required,
+      description: "TLS private key PEM; generated privately and reused across starts.",
+      fallback: OptionDefault.PrivateKey,
       commands: "server|client|mesh|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-peer-key", value: "FILE", group: OptionGroup.Network,
-      description: "Pinned peer identity file; required (server may use -).",
-      fallback: OptionDefault.Required, commands: "server|client|mesh|download|download-current",
+      description: "Pinned remote identity; required for dialers; server discovers valid identities.",
+      fallback: OptionDefault.PeerKey, commands: "server|client|mesh|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-local-key", value: "FILE", group: OptionGroup.Network,
       description: "Local mesh identity file; required.", fallback: OptionDefault.Required,
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-alpn", value: "NAME", group: OptionGroup.Network,
-      description: "Explicit JAM network protocol name; required.",
-      fallback: OptionDefault.Required, commands: "server|client|mesh|download|download-current",
+      description: "JAM network protocol name; override the isolated development domain for a real network.",
+      fallback: OptionDefault.Alpn, commands: "server|client|mesh|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-timeout-ms", value: "MILLISECONDS", group: OptionGroup.Network,
-      description: "Bounded peer deadline (1..120000; offload permits 300000).",
+      description: "Listen: 0 means unlimited. " & BoundedTimeoutDescription,
       fallback: OptionDefault.Timeout, commands: "server|client|download|download-current",
       repeatable: false),
     OptionSpec(name: "--net-mode", value: "NAME", group: OptionGroup.Network,
@@ -171,12 +181,12 @@ const
 
     # Local management options. Keep additions in this group.
     OptionSpec(name: "--with-management", value: "", group: OptionGroup.Management,
-      description: "Enable local management; requires --management-socket.",
+      description: "Enable local management; omitted socket resolves under --data-dir.",
       fallback: OptionDefault.Disabled, commands: "",
       repeatable: false),
     OptionSpec(name: "--management-socket", value: "PATH", group: OptionGroup.Management,
       description: "Absolute socket path in an owned private directory.",
-      fallback: OptionDefault.None, commands: "",
+      fallback: OptionDefault.ManagementPath, commands: "",
       repeatable: false),
 
     # Telemetry options. Keep additions in this group.
@@ -224,15 +234,17 @@ const
       description: "history only: atomically export the selected complete-state checkpoint (16 MiB cap).",
       fallback: OptionDefault.None, commands: "", repeatable: false),
     OptionSpec(name: "--state-storage", value: "memory|disk", group: OptionGroup.Storage,
-      description: "Disk requires --state-db and --with-state.", fallback: OptionDefault.Storage,
+      description: "Disk requires --with-state; omitted database paths resolve under --data-dir.",
+      fallback: OptionDefault.Storage,
       commands: "",
       repeatable: false),
     OptionSpec(name: "--state-db", value: "PATH", group: OptionGroup.Storage,
-      description: "Explicit database path for disk storage.", fallback: OptionDefault.None,
+      description: "Database path; defaults separate full/light nodes and physical layouts.",
+      fallback: OptionDefault.Database,
       commands: "",
       repeatable: false),
     OptionSpec(name: "--state-layout", value: "journal|managed|paged", group: OptionGroup.Storage,
-      description: "Disk layout; light disk requires explicit paged.",
+      description: "Disk layout; defaults to journal for full nodes, paged for light nodes.",
       fallback: OptionDefault.Layout, commands: "",
       repeatable: false),
     OptionSpec(name: "--state-paged-resume", value: "", group: OptionGroup.Storage,
@@ -397,22 +409,29 @@ func commandIndex*(name: string): int =
     if name == spec.name: return index
   -1
 
-proc defaultValue*(spec: OptionSpec): string =
+proc defaultValue*(spec: OptionSpec, topic = ""): string =
   ## Render the same typed defaults used by startup; enum spelling is normalized only for presentation.
   case spec.fallback
   of OptionDefault.Required: ""
   of OptionDefault.None: "none"
+  of OptionDefault.ChainFile: DefaultChainFile
   of OptionDefault.Environment: "environment"
   of OptionDefault.Disabled: "disabled"
   of OptionDefault.Embedded: "embedded assets"
   of OptionDefault.RpcPort: $DefaultRpcPort
   of OptionDefault.McpPort: $DefaultMcpPort
   of OptionDefault.UiPort: $DefaultUiPort
-  of OptionDefault.Timeout: $DefaultTimeoutMs
-  of OptionDefault.PeerMode: DefaultPeerMode
+  of OptionDefault.Timeout:
+    if topic == "server": $DefaultServerTimeoutMs
+    elif topic.len == 0: TimeoutOverview
+    else: $DefaultTimeoutMs
+  of OptionDefault.PeerMode:
+    if topic == "server": DefaultServerMode
+    elif topic.len == 0: "server: " & DefaultServerMode & "; client: " & DefaultPeerMode
+    else: DefaultPeerMode
   of OptionDefault.Mode: ($DefaultNodeMode).toLowerAscii
   of OptionDefault.Storage: ($DefaultStateStorage).toLowerAscii
-  of OptionDefault.Layout: ($DefaultStateLayout).toLowerAscii
+  of OptionDefault.Layout: ($DefaultStateLayout).toLowerAscii & " (full); paged (light)"
   of OptionDefault.Writes: $DefaultStateWrites
   of OptionDefault.WriteBytes: $DefaultStateWriteBytes
   of OptionDefault.FuzzWrites: $DefaultFuzzWrites
@@ -421,4 +440,17 @@ proc defaultValue*(spec: OptionSpec): string =
   of OptionDefault.Blocks: $DefaultDownloadBlocks
   of OptionDefault.Logging: $DefaultLogLevel
   of OptionDefault.PvmBackend: $DefaultPvmBackend
+  of OptionDefault.DataDirectory: DefaultDataDirectory
+  of OptionDefault.NetworkPort:
+    if spec.name == "--net-remote-port": $(DefaultNetworkPort+1) else: $DefaultNetworkPort
+  of OptionDefault.Certificate: DefaultDataDirectory & "/network/cert.pem"
+  of OptionDefault.PrivateKey: DefaultDataDirectory & "/network/key.pem"
+  of OptionDefault.PeerKey:
+    if topic == "server": "-"
+    elif topic.len == 0: "server: -; dialers: required"
+    else: ""
+  of OptionDefault.Alpn: DefaultDevelopmentAlpn
+  of OptionDefault.ManagementPath: DefaultDataDirectory & "/management/admin.sock"
+  of OptionDefault.Database: DefaultDataDirectory & "/full/state.db; light: " &
+      DefaultDataDirectory & "/light/paged"
   of OptionDefault.RetainedBlocks: $DefaultRetainedBlocks

@@ -22,7 +22,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   downloadCount, remoteAncestors, discoverAncestors: int
   logging: LogPolicy
   output: LogWriter
-  endpoint, chain, directory, managementPath: string
+  endpoint, chain, directory, managementPath, dataPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   logicalSource, logicalPolicy, namespacePolicy, observations: string
   mode: NodeMode
@@ -217,7 +217,7 @@ proc managementSocket*(options: Options): string =
   if options.parsed and options.management: options.managementPath else: ""
 
 proc uiPort*(options: Options): uint16 =
-  ## An enabled UI listener uses the validated configured port, defaulting to 8888.
+  ## An enabled UI listener uses the validated configured port, defaulting to 8418.
   if options.parsed and options.ui: options.uiNumber else: 0'u16
 
 proc telemetryEndpoint*(options: Options): string =
@@ -243,9 +243,9 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
     diagnostic: var string): bool =
   ## Internal configuration boundary: command values are already normalized; validate shared controls atomically.
   options = default(Options)
-  var candidate = Options(codeEntry: "main", codeGas: 10000000, codeSteps: 10000000,
-      logging: initLogPolicy(), rpcNumber: DefaultRpcPort, mcpNumber: DefaultMcpPort,
-          uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks,
+  var candidate = Options(dataPath: DefaultDataDirectory, codeEntry: "main", codeGas: 10000000,
+      codeSteps: 10000000, logging: initLogPolicy(), rpcNumber: DefaultRpcPort,
+          mcpNumber: DefaultMcpPort, uiNumber: DefaultUiPort, downloadCount: DefaultDownloadBlocks,
               mode: DefaultNodeMode, backend: DefaultStateStorage, pvmSelection: DefaultPvmBackend,
       layout: DefaultStateLayout,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
@@ -342,6 +342,9 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
       of "--log-level":
         if not parseLogPolicy(value, candidate.logging): return false
       of "--telemetry-endpoint": candidate.endpoint = value
+      of "--data-dir":
+        if value.find(char(0)) >= 0: return false
+        candidate.dataPath = value
       of "--chain": candidate.chain = value
       of "--management-socket":
         if value.len > 103 or value[0] != '/' or value.endsWith('/'): return false
@@ -618,3 +621,7 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options): bool 
   ## Component fixtures and internal adapters may supply normalized command values without pretending to parse process input.
   var diagnostic = ""
   parseCanonicalOptions(arguments, options, diagnostic)
+
+proc dataDirectory*(options: Options): string =
+  ## Persistent defaults are resolved once from the caller's selected root.
+  if options.parsed: options.dataPath else: ""

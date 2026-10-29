@@ -12,12 +12,14 @@ import os
 import platform
 import subprocess
 from setup_nimony import ROOT, installed, cache_directory
+from pvm_jit_platform import native_defines
 
 
 # Keep the shipped peer profile explicit; the same checks/LTO and public headers are used by verification.
 def build_command(compiler, output, crypto, bandersnatch, quic, polkavm=None):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload', '-d:pvmArm64Jit']
+             '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload']
+    flags += ['-d:'+name for name in native_defines()]
     if platform.system() == 'Linux':
         # Linux uses the same LTO linker as the canonical verification path.
         flags.append('--passL:-fuse-ld=lld')

@@ -11,7 +11,7 @@ views. It implements part of JIP-2 plus documented diagnostic/state extensions.
 | [`wire.nim`](wire.nim) | HTTP upgrade, RFC 6455 framing, UTF-8 validation and incremental frame decoding |
 | [`server.nim`](server.nim) | Optional loopback listener, bounded connections/subscriptions and explicit publication handoffs |
 
-Append `--with-rpc` to a supported proof-peer invocation to expose `ws://127.0.0.1:19800/`;
+Append `--with-rpc` to a supported proof-peer invocation to expose `ws://127.0.0.1:9418/`;
 `--rpc-port NUMBER` changes the port. RPC is disabled unless `--with-rpc` or `--with-ui` is
 specified. `ragnarok_clientInfo` exposes the same build identity as the executable's `--version`.
 `--chain PATH` supplies protocol parameters and can seed a configured genesis view when it

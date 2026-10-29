@@ -15,6 +15,7 @@ from pvm_doom_attribution import BUILD as DOOM, event_hashes, run as prepare_doo
 from pvm_guest_compare import unchanged
 from pvm_guest_inputs import digest
 from pvm_native_ci import host_identity
+from pvm_jit_platform import native_defines
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-doom-backends'
@@ -82,11 +83,11 @@ def observation(output, folder, selected, count, pages, architecture):
         if selected == 'polkavm-interpreted':
             if actual != selected or any((fragments, native_calls, operations)):
                 raise ValueError('foreign engine substituted or published native activity')
-        elif architecture == 'arm64':
+        elif architecture in ('arm64', 'x86_64'):
             if actual != 'jit' or not (built and supported and fragments and native_calls and operations):
-                raise ValueError('missing positive ARM64 JIT execution')
+                raise ValueError('missing positive '+architecture+' JIT execution')
         elif actual != 'interpreted' or supported or any((fragments, native_calls, operations)):
-            raise ValueError('unavailable x86 JIT was mislabeled as native')
+            raise ValueError('unsupported JIT was mislabeled as native')
         state, events, hosts = (folder/f'call-{call}.{suffix}' for suffix in ('state','events','hosts'))
         if state.stat().st_size != 129+pages*4101 or hosts.stat().st_size > 512*1024:
             raise ValueError('incomplete state or unbounded host trace')
@@ -204,7 +205,7 @@ def run():
         pages = int.from_bytes((DOOM/'prepared/tick.input').read_bytes()[16:20], 'little')
         if not 0 < pages <= 8192:
             raise ValueError('unbounded DOOM initial snapshot')
-        flags = ['pvmArm64Jit', 'polkavmRuntime']
+        flags = [*native_defines(), 'polkavmRuntime']
         cflags = ['-I'+str(ROOT/'native/pvm_jit'), '-I'+str(ROOT/'native/polkavm')]
         built, binary = checks.build(compiler, DRIVER, 'doom-backends', defines=flags, cflags=cflags,
                                     link_flags=[str(library), '-Wl,-rpath,'+str(library.parent)])
@@ -249,7 +250,7 @@ def run():
                 raise ValueError('missing intended process refusal: '+name)
             report['controls'].append(dict(control=name, refused=True, run=row))
         # A genuinely unlinked image must expose BackendNotBuilt instead of silently running ours.
-        built, absent = checks.build(compiler, DRIVER, 'doom-no-bridge', defines=['pvmArm64Jit'], cflags=cflags)
+        built, absent = checks.build(compiler, DRIVER, 'doom-no-bridge', defines=native_defines(), cflags=cflags)
         report['builds'].append(built)
         if built['exit_code']: raise RuntimeError(built['output'][-2000:])
         identities[absent] = digest(absent)

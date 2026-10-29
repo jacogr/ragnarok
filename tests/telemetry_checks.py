@@ -102,7 +102,7 @@ def reconnect(binary, certificates, chain, folder, ipv6=False):
             process = subprocess.Popen([str(binary), 'server', '--net-port', str(port),
                 '--net-cert', str(certificates/'a.cert.pem'), '--net-key', str(certificates/'a.key.pem'),
                 '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '15000',
-                '--with-telemetry', '--telemetry-endpoint', endpoint, '--chain', str(chain)],
+                '--with-telemetry', '--telemetry-endpoint', endpoint, '--chain', str(chain), '--net-mode', 'valid'],
                 stdout=log, stderr=subprocess.STDOUT)
             try:
                 first, _ = server.accept()
@@ -165,7 +165,7 @@ def pending_reconnect(binary, certificates, chain, folder):
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         logs = [owners.enter_context((folder/f'{role}.log').open('wb')) for role in ('server', 'client')]
         server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
-            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000'],
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'valid'],
             stdout=logs[0], stderr=subprocess.STDOUT)
         owners.callback(stop, server)
         # Establish listener readiness before consuming any of the client handshake deadline.
@@ -263,7 +263,7 @@ def peer_registration(binary, certificates, chain, folder, ipv6=False, startup_d
         endpoint = f'{host}:{server.getsockname()[1]}'
         args = [str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
                 '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'b.pub'), '--net-alpn', alpn, '--net-timeout-ms', '7000',
-                '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint]
+                '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint, '--net-mode', 'valid']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = server.accept()
@@ -412,7 +412,7 @@ def incoming_failure(binary, certificates, chain, folder):
         endpoint = f'127.0.0.1:{collector.getsockname()[1]}'
         server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
             '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '1500',
-            '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', endpoint, '--net-mode', 'valid'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             connection, _ = collector.accept()
             with connection:

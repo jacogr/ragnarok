@@ -29,3 +29,6 @@ vendor/*
 !.git/refs/**
 !.git/packed-refs
 !.git/shallow
+
+# Default runtime state includes private transport credentials.
+data/

@@ -8,7 +8,7 @@
 ## transport sessions.
 
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
-import ../lib/logging
+import ../lib/[logging, stop_signal]
 import ./transport
 import ./protocol
 import ./integration
@@ -52,7 +52,7 @@ type
     incomingPeers: IncomingPeers
     meshDial: MeshDial
     expected: seq[byte]
-    server, failed, stopping, service, mixed, integrated, mesh, recovering, overload: bool
+    server, failed, stopping, service, listening, mixed, integrated, mesh, recovering, overload: bool
     streams: array[64, StreamState]
     completed, opened, healthy, rejected, cancelled: int
     capacityRejected, peakStreams: int
@@ -97,7 +97,7 @@ proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   if exporter != nil: # Disabled runs install no observer or retained identity table entries.
     exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
 
-# Settle one stream exactly once; soak rejections preserve healthy siblings on the same connection.
+# Settle each stream once; persistent listeners isolate rejected requests from endpoint failure.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
   # Reset and close notifications may report the same terminal state more than once.
   if state.counted: return
@@ -116,8 +116,8 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
           progress "ISOLATED_HEALTHY"
           break
     if peer.attack == "soak": progress (if peer.server: "SERVER_HEALTHY" else: "HEALTHY_OK") # Expose verified outcomes.
-  elif peer.offloading:
-    # Admission, cancellation and invalid proofs reject only their own stream.
+  elif peer.listening or peer.offloading:
+    # Persistent listeners and offload admission/cancellation reject only their own stream.
     inc peer.completed
     inc peer.rejected
   elif peer.mesh and peer.recovering:
@@ -421,7 +421,7 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
   else: peer.failed = true # Undefined bridge events are explicit integration failures.
 
 # Stream-local lifecycle deadlines run on the same dispatcher thread as native transport timers.
-proc soakTick(peer: ptr Peer) {.raises: [].} =
+proc streamTick(peer: ptr Peer) {.raises: [].} =
   # Only live, unsettled streams own deadline work; close callbacks may recycle slots synchronously.
   for index in 0..<peer.streams.len:
     # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
@@ -488,27 +488,34 @@ proc runPeer*(options: Options): bool {.raises.} =
   let timeoutLimit = if options.argumentCount() == 8 and options.argument(8) ==
       "offload": MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
   # Guard host-to-native conversions before any endpoint is created.
-  if port < 1 or port > 65535 or timeout < 1 or timeout > timeoutLimit: return false
+  if port < 1 or port > 65535 or timeout < 0 or timeout > timeoutLimit: return false
   let server = options.argument(1) == "server"
   if not server and options.argument(1) != "client": return false # Never infer an unknown role.
   let mode = if options.argumentCount() == 8: options.argument(8) else: DefaultPeerMode
+  let listening = server and mode == DefaultServerMode
+  if timeout == 0 and not listening: return false
+  var signals = default(StopSignals)
+  if listening: signals.start()
+  defer: signals.close()
   # Service uses the established mixed fixture protocol; mixed clients bypass the old lifecycle harness gate.
-  if mode in ["service", "integration", "overload", "offload"] and not server: return false
+  if mode in ["listen", "service", "integration", "overload", "offload"] and
+      not server: return false
   let integrated = mode in ["integration", "integrated"]
-  let service = mode in ["service", "integration", "overload", "offload"]
+  let service = listening or mode in ["service", "integration", "overload", "offload"]
   let load = mode in ["overload", "holder", "idle", "probe", "offload", "proof", "light",
       "invalid-proof", "proof-cancel"]
   let target = if mode in ["probe", "proof", "light", "invalid-proof", "proof-cancel"]: 1 else: 8
   var attack = mode
   # Existing service/integration workloads keep their mixed failure schedules.
-  if (service and mode != "offload") or integrated or mode == "mixed":
+  if (service and not listening and mode != "offload") or integrated or mode == "mixed":
     attack = "soak"
   elif mode in ["clean", "probe", "proof", "light", "invalid-proof", "offload"]:
     attack = "valid" # These one-query fixtures use normal request bytes and FIN.
   elif mode == "holder":
     attack = "no-fin" # Saturation holders keep their read direction deliberately incomplete.
   var peer = Peer(logging: options.logWriter, server: server, service: service,
-      integrated: integrated, mixed: mode == "mixed", attack: attack, mesh: load, overload: mode ==
+      listening: listening, integrated: integrated, mixed: mode == "mixed", attack: attack,
+      mesh: load, overload: mode ==
       "overload",
       offloading: mode == "offload", light: mode == "light", badProof: mode == "invalid-proof")
   # Explicitly integrated binaries load public fixtures before registering native callbacks.
@@ -564,6 +571,10 @@ proc runPeer*(options: Options): bool {.raises.} =
         if transportStatus(peer.transport) == 1 and peerMetric(peer.transport, 0) >
             0: 1'u32 else: 0'u32)
     services.telemetry.observe(finalPeers) # One bounded best-effort send; shutdown never waits for the collector.
+  if server and listening:
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "Listening on UDP port " & $localPort(
+        peer.transport))
+    log(peer.logging, LogTarget.Network, LogLevel.Info, "TLS certificate: " & options.argument(3))
   if server:
     progress "READY" # Announce only after listener binding and native setup.
   else:
@@ -576,7 +587,7 @@ proc runPeer*(options: Options): bool {.raises.} =
   let stopFile = getEnv("RAGNAROK_SERVICE_STOP")
   let cancelFile = getEnv("RAGNAROK_OFFLOAD_CANCEL")
   # An externally gated service must have a concrete stop path before entering its bounded loop.
-  if peer.service and stopFile.len == 0: return false
+  if peer.service and not listening and stopFile.len == 0: return false
   var lastActive = -1
   var lastLive, lastCapacity = -1
   var lastLoadActive = -1
@@ -585,8 +596,8 @@ proc runPeer*(options: Options): bool {.raises.} =
   var serviceStopped = false
   var authenticated, opened = false # Neither authentication nor application admission has happened at startup.
  # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
-  while not peer.failed and (peer.service or peer.completed < target) and (getMonoTime() -
-      started).inMilliseconds < timeout:
+  while not peer.failed and not signals.stopping and (listening or peer.service or peer.completed < target):
+    if timeout > 0 and (getMonoTime() - started).inMilliseconds >= timeout: break
     # Server metrics count authenticated peers; client status also requires a live slot after a close.
     let telemetryPeers = if server: uint32(peerMetric(peer.transport, 0)) else: (if transportStatus(
         peer.transport) == 1 and peerMetric(peer.transport, 0) > 0: 1'u32 else: 0'u32)
@@ -615,7 +626,7 @@ proc runPeer*(options: Options): bool {.raises.} =
       if active == 0 and live == 0 and accepted > lastIdle:
         progress "SERVICE_IDLE ", accepted, " ", peerMetric(peer.transport, 2), " ", getOccupiedMem()
         lastIdle = accepted
-      if fileExists(stopFile):
+      if not listening and fileExists(stopFile):
         serviceStopped = peer.offloading or (active == 0 and live == 0)
         if peer.offloading: progress "OFFLOAD_SHUTDOWN_PENDING ",
             live # Explicit test shutdown also exercises pending jobs.
@@ -648,13 +659,18 @@ proc runPeer*(options: Options): bool {.raises.} =
       while (getMonoTime() - grace).inMilliseconds < 100:
         discard pollTransport(peer.transport) # Deliver reset/close while UDP and callbacks still own their buffers.
       return false # The intentional cancellation has no validated reply.
+    if peer.listening or peer.attack in ["soak", "cancel"]:
+      streamTick(addr peer) # Ordinary listeners also bound incomplete requests without fixture injection.
     if peer.attack == "soak":
-      soakTick(addr peer)
       # Late healthy requests prove continued service after malformed input, cancellation and missing FIN.
       if not server and opened and peer.opened == 5 and (getMonoTime() - started).inMilliseconds > (
           if peer.mixed: 1200 else: 650):
         for index in 0..<3: openStream(peer.transport)
     if not pollTransport(peer.transport): break # Selector/UDP failure cannot become a successful exchange.
+  if listening:
+    # Only interruption or a selected deadline is a successful foreground shutdown; native IO failure still refuses.
+    let stopped = signals.stopping or (timeout > 0 and (getMonoTime() - started).inMilliseconds >= timeout)
+    return stopped and not peer.failed
   # A final receive cycle can authenticate, finish requests and close; preserve handshake evidence without reopening work.
   if peerMetric(peer.transport, 4) > 0 and not authenticated:
     progress "AUTH_OK"
@@ -698,6 +714,24 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
 
 proc peerSelfTest*() =
   ## Deterministic malformed-input coverage remains independently testable before native transport setup.
+  # Rejection and repeated close/reset settlement preserve listener health and count one terminal result.
+  var listener = Peer(server: true, service: true, listening: true)
+  var rejected = default(StreamState)
+  finishStream(addr listener, addr rejected, false)
+  finishStream(addr listener, addr rejected, false)
+  assert not listener.failed and listener.completed == 1 and listener.rejected == 1
+  var healthy = default(StreamState)
+  finishStream(addr listener, addr healthy, true)
+  assert not listener.failed and listener.healthy == 1
+  # The one-shot matrix still fails a rejected exchange, and existing engine failures remain latched.
+  var bounded = Peer(server: true)
+  var refused = default(StreamState)
+  finishStream(addr bounded, addr refused, false)
+  assert bounded.failed
+  listener.failed = true
+  var afterFailure = default(StreamState)
+  finishStream(addr listener, addr afterFailure, false)
+  assert listener.failed
   assert checkedLength([0'u8, 0, 0, 0], 0).value == 0
   assert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.

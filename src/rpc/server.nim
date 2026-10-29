@@ -99,6 +99,7 @@ let
   SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
   CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
   SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
+  ReuseAddress {.importc: "SO_REUSEADDR", header: "<sys/socket.h>".}: cint
 when defined(macosx):
   let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint # Per-descriptor SIGPIPE suppression.
 else:
@@ -258,6 +259,10 @@ proc start*(server: var Server, port: uint16, role: string,
   if server.fd < 0:
     return false
   server.opened = true
+  var reuse = 1.cint
+  if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
+    server.close() # Failed restart policy setup must retire the newly acquired descriptor.
+    return false
   var address = default(Sockaddr_in)
   address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
   address.sin_port = networkPort(port)

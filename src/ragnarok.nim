@@ -11,7 +11,7 @@ import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
 import ./app/[options, cli_help, cli_commands, download_command, current_download_command,
-    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command]
+    trace_check_command, historical_query, fuzz_target, devnet_command, pvm_command, startup]
 import ./pvm/step
 import ./version
 import ./lib/[logging, json_writer]
@@ -84,6 +84,9 @@ proc main(): int =
       stdout.writeLine("Nimony " & CompilerVersion & " " & CompilerRevision)
       stdout.writeLine("Built " & BuildTimestamp)
       return 0
+    if not prepareStartup(options, diagnostic):
+      stderr.writeLine(diagnostic)
+      return 2
     if not logger.start(options.loggingPolicy): return 2
     options.attachLogWriter(logger.writer)
     let available = backendAvailability(options.pvmBackend)

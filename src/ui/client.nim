@@ -7,13 +7,14 @@
 
 when defined(ragnarokBrowser):
   import ./rpc
+  import ../app/cli_defaults
 
   # Browser bindings touch textContent only; backend strings never become executable HTML.
   proc text(id, value: string) {.importjs: "document.getElementById(#).textContent = #".}
   proc disabled(id: string, value: bool) {.importjs: "document.getElementById(#).disabled = #".}
   proc input(id: string): string {.importjs: "document.getElementById(#).value".}
   proc clicked(id: string, action: Action) {.importjs: "document.getElementById(#).addEventListener('click', #)".}
-  proc defaultEndpoint(): string {.importjs: "'ws://' + location.hostname + ':19800/'".}
+  proc defaultEndpoint(port: string): string {.importjs: "'ws://' + location.hostname + ':' + # + '/'".}
   proc inputValue(id, value: string) {.importjs: "document.getElementById(#).value = #".}
   proc formatted(message: string): string {.importjs: """
     ((s) => { try { return JSON.stringify(JSON.parse(s), null, 2); } catch (_) { return s; } })(#)
@@ -84,7 +85,7 @@ when defined(ragnarokBrowser):
     ## An exported browser entry keeps the host-driven JS runtime alive after module initialization.
     if initialized: return # Repeated host initialization must not attach duplicate listeners.
     initialized = true
-    inputValue("endpoint", defaultEndpoint())
+    inputValue("endpoint", defaultEndpoint($DefaultRpcPort))
     clicked("connect", connect)
     clicked("disconnect", disconnect)
     clicked("refresh", requestInfo)
