@@ -262,3 +262,74 @@ Replay applications SHA256
 `c7e5731c804e8fafc13c50659aac6a5e28264b1ef6c217457214728337fbf712`;
 native `6dd1fe8e62ad5d6bbd71718f4d4366826a9cf3e0d227d6be90e752175f64ea54`.
 Ignored evidence: `build/pvm-x86-three/replay/tests`.
+
+## Compact64-byte model verdict: reject
+
+[Run40794754598](https://github.com/jacogr/ragnarok/actions/runs/40794754598)
+measured `fb3d0b13f2c24bd3be456dab05f51bfb362953d1` against accepted
+`07895cad346b28dce99f6c268169aaa589c4c055`, AMD EPYC9V45, same pinned
+October28 compiler. All15 native gates,52 full-width active/inactive tag controls,
+5 maximum/invalid-span controls and prior matrices passed. Independent audits
+passed70 processes/910 calls/115 controls/16 fresh builds/eight equal-image pairs,
+full state/source/host events and eight cold/reused profiles/104 calls/four controls.
+No hardware counters were collected. The paired-shift child is excluded.
+
+| Workload | Previous JIT | Trial JIT | Checked interpreter | PolkaVM interpreted call | Trial/reference |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sieve100k | 1.566/1.610 | 1.620/1.657 | 1.927/1.930 | 3.567/3.648 | 0.454/0.454 |
+| Minimal100k | 3.306/3.269 | 3.282/3.313 | 3.363/3.316 | 3.638/3.633 | 0.902/0.912 |
+| Memory fill100k | 2.238/2.205 | 2.179/2.151 | 2.275/2.304 | 2.446/2.425 | 0.891/0.887 |
+| Pinky | 60.556/60.369 | 59.275/59.858 | 80.348/80.881 | 86.294/86.778 | 0.687/0.690 |
+| Sieve10m | 159.580/157.107 | 164.454/161.669 | 181.016/181.000 | 245.617/249.073 | 0.670/0.649 |
+| DOOM initialization | 268.081/267.670 | 162.300/162.996 | 346.143/276.991 | 416.980/418.010 | 0.389/0.390 |
+| DOOM gameplay | 27.628/27.646 | 29.698/29.122 | 29.391/28.818 | 31.528/32.023 | 0.942/0.909 |
+
+| Workload | Previous constructor | Trial constructor | Previous cold | Trial cold |
+| --- | ---: | ---: | ---: | ---: |
+| Sieve100k | 2.253/2.232 | 2.286/2.233 | 7.608/7.621 | 7.412/7.464 |
+| Minimal100k | 0.015/0.016 | 0.015/0.016 | 3.466/3.394 | 3.468/3.411 |
+| Memory fill100k | 0.048/0.046 | 0.054/0.054 | 6.314/7.288 | 7.493/7.286 |
+| Pinky | 0.551/0.542 | 0.554/0.545 | 64.783/64.042 | 63.620/62.561 |
+| Sieve10m | 2.483/2.365 | 2.661/2.311 | 164.430/163.159 | 169.863/166.118 |
+| DOOM initialization | 6.459/6.464 | 6.762/6.447 | 295.735/296.766 | 189.349/190.013 |
+| DOOM gameplay | 6.508/8.718 | 6.608/6.515 | 48.322/51.861 | 50.176/48.593 |
+
+Initialization improves39.5%/39.1%, but long sieve regresses3.1%/2.9% and
+gameplay7.5%/5.3%. This representation fails the retention gate despite its size
+reduction. Sieve Ir42,529,402→43,729,854 still includes extra three-lane matching
+and adapters, with identical native logical work/code bytes. Gameplay Ir changes
+only584,514,400→584,792,880 with identical native work. Neither simulated misses
+nor smaller metadata establish a hardware cause. Do not retain the64-byte model.
+
+Report SHA256 (applications, native, profiles):
+
+- `663bffc86713caa31c50d966c00285ab37ea3c3d1a957ae1d76d4fe940dc1d0f`
+- `d4a0449d566f3b308bdc478d29b15f4ed4df9a5217f3f4486092009f18d5358d`
+- `2e247c191607174ad7a7b4688a89526cb38e820e59b06f3f673fa3d8f3e5cae4`
+
+## Preserve the accepted small path: pending isolated correction
+
+Restore the accepted one/two-block two-lane matcher, source adapter, field offsets
+and five-word context; use a separate three-block source worker and six-word call.
+Both modes share the same exclusive bounded arena and one proof record. A small
+call asserts its mode before native code can access its five-word context. The full
+six-word raw witness adapts small mode to that original call; the production small
+handler calls the five-word ABI directly.
+
+The private proof remains the original72 bytes: first two headers/spans/prices,
+code/count and cumulative statistics keep their original offsets. Original scalar
+operation words retain their meaning in small mode. Only count==3 reuses these
+redundant words as low/high halves of the full third price, with third header/span
+in former padding. Publication already requires operations==span; triple operation
+counts therefore use the checked attempt product. All third values are restored
+on publication refusal with the complete POD snapshot. Third spans narrow only
+after an explicit2..65 proof; full-width caller tags are never truncated. No public
+layout, memory/pricing/ownership semantics or physical cache policy changes.
+
+Require all existing state/refusal/owner and52/5 proof controls, independent public
+both-order seven-workload comparisons and eight calibrated cold/reused profiles.
+Inspect generated small-path code and executed work against the accepted parent,
+not only record size. No timing claim before qualification. The rejected larger
+and64-byte models remain exact measured history. If this separation cannot preserve
+useful gains without material regressions, restore the runtime to the accepted
+parent and keep meaningful tests/evidence.

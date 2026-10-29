@@ -24,13 +24,15 @@ type
     code, ending, operations: uint32
     conditional: bool
     probes: uint8 # A cold header gets at most eight discovery visits; exhausted probes restore the hot worker.
-  X86RegionCache = object ## One bounded exact-source region, with no mutable invocation address.
-    headers: array[3, uint32]
-    spans: array[3, uint8] # Publication proves2..65; unused lanes stay zero and caller spans are never truncated.
+  X86RegionCache = object ## One mode-tagged72-byte proof, preserving the accepted small-region owner layout.
     status: uint8
-    prices: array[3, uint64]
+    thirdSpan: uint8    # Uses former padding; only a validated three-block publication may populate it.
+    count, code: uint32
+    headers, spans: array[2, uint32]
+    scalarWords: array[2, uint32] # Small mode retains original operation counts; triple mode stores the third price's low/high words.
+    thirdHeader: uint32 # Former alignment padding; no accepted one/two-block hot field moves.
+    prices: array[2, uint64]
     calls, blocks: uint64
-    count, code: uint32   # Checked operations==span makes a second operation-count array redundant.
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
@@ -53,7 +55,7 @@ proc `=destroy`(owner: X86Arena) =
 
 proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
-  assert sizeof(X86RegionCache) == 64 # Full-width source identity/prices and checked byte spans fit one compact proof record.
+  assert sizeof(X86RegionCache) == 72 # Original small-region fields retain their offsets; third facts reuse redundant words and padding.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 func supportedX86Opcode*(opcode: byte): bool =
@@ -267,19 +269,47 @@ func x86RegionCount*(jit: X86Jit): range[1..3] =
   assert jit.region.status == 2 and count >= 1 and count <= 3
   range[1..3](count)
 
-func x86RegionHeader*(jit: X86Jit, index: range[0..2]): uint32 =
+func x86SmallRegionCount*(jit: X86Jit): range[1..2] =
+  ## Only published proof records expose active block coordinates.
+  let count = jit.region.count
+  assert jit.region.status == 2 and count >= 1 and count <= 2
+  range[1..2](count)
+
+func x86SmallRegionHeader*(jit: X86Jit, index: range[0..1]): uint32 =
   ## The region retains exact-source headers rather than host-code addresses.
   assert jit.region.status == 2 and uint32(index) < jit.region.count
   jit.region.headers[index]
 
+func x86RegionMatches*(jit: X86Jit, headers, spans: array[2, uint32],
+    prices: array[2, uint64]): bool =
+  ## Every fresh invocation must match the captured charge context, including inactive zero slots.
+  jit.region.status == 2 and jit.region.headers == headers and jit.region.spans == spans and
+      jit.region.prices == prices
+
+func x86RegionHeader*(jit: X86Jit, index: range[0..2]): uint32 =
+  ## Only the genuine third mode uses the padding coordinate; original small accessors stay separate.
+  assert jit.region.status == 2 and uint32(index) < jit.region.count
+  if index == 2: return jit.region.thirdHeader
+  let small = int(index)
+  assert small >= 0 and small < 2
+  jit.region.headers[small]
+
+func x86ThirdPrice(jit: X86Jit): uint64 =
+  ## The third mode interprets its exact two words as a full-width price; inactive third facts are zero.
+  if jit.region.count == 3:
+    uint64(jit.region.scalarWords[0]) or (uint64(jit.region.scalarWords[1]) shl 32)
+  else: 0'u64
+
 func x86RegionMatches*(jit: X86Jit, headers, spans: array[3, uint32],
     prices: array[3, uint64]): bool =
-  ## Every fresh invocation must match the captured charge context, including inactive zero slots.
-  if jit.region.status != 2 or jit.region.headers != headers: return false
-  for index in 0..<3:
-    # Widen only the validated stored byte; a foreign full32 span must never alias by truncation, including inactive lanes.
-    if uint32(jit.region.spans[index]) != spans[index]: return false
-  jit.region.prices == prices
+  ## The complete three-lane witness keeps every active/inactive fact; ordinary execution uses its accepted two-lane overload.
+  if jit.region.status != 2: return false
+  for index in 0..<2:
+    if jit.region.headers[index] != headers[index] or jit.region.spans[index] != spans[index] or
+        jit.region.prices[index] != prices[index]: return false
+  let header = if jit.region.count == 3: jit.region.thirdHeader else: 0'u32
+  let span = if jit.region.count == 3: uint32(jit.region.thirdSpan) else: 0'u32
+  header == headers[2] and span == spans[2] and x86ThirdPrice(jit) == prices[2]
 
 proc regionWord(fragment: var X86Block, value: uint32) =
   ## Emit a complete little-endian rel32/immediate without native host-endian assumptions.
@@ -299,7 +329,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
   jit.region.status = 1
   if jit.unavailable: return false
   var code = default(X86Block)
-  # RDI is the borrowed register array, RSI the fresh six-word context; bodies touch only RAX/RCX/RDX/R8.
+  # RDI is the borrowed register array, RSI the fresh five/six-word context selected by count; bodies touch only RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
   var labels = default(array[3, int])
   var fixes: seq[X86RegionFixup] = @[]
@@ -323,7 +353,8 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
     put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea])
     regionWord(code, item.span)
     # Invocation-local visits and last completed header preserve counters and exact reservation endpoint on every exit.
-    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8), 0x48, 0xc7, 0x46, 40])
+    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8), 0x48, 0xc7, 0x46, byte(if count ==
+        3: 40 else: 32)])
     regionWord(code, item.header)
     for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
     regionEdge(code, fixes, item.yes, condition+0x40'u8, false)
@@ -376,12 +407,20 @@ proc publishX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock], count: ran
   let published = publishNative(jit.arena.handle, addr code.bytes[0], uint32(code.bytes.len))
   if published < 0: return false
   jit.region.code = uint32(published)
-  for index in 0..<count:
+  for index in 0..<min(int(count), 2):
+    # Keep the accepted first two field offsets and operation-count interpretation exactly in small mode.
     jit.region.headers[index] = blocks[index].header
-    let span = blocks[index].span
-    assert span >= 2 and span <= 65 # Reestablish the earlier readonly publication proof locally before checked narrowing.
-    jit.region.spans[index] = uint8(span)
+    jit.region.spans[index] = blocks[index].span
     jit.region.prices[index] = blocks[index].price
+    jit.region.scalarWords[index] = blocks[index].operations
+  if count == 3:
+    # Publication already proved operations==span. Only triple mode reuses those redundant words for a complete third price.
+    let span = blocks[2].span
+    assert span >= 2 and span <= 65
+    jit.region.thirdSpan = uint8(span)
+    jit.region.thirdHeader = blocks[2].header
+    jit.region.scalarWords[0] = uint32(blocks[2].price and 0xffffffff'u64)
+    jit.region.scalarWords[1] = uint32(blocks[2].price shr 32)
   jit.region.count = uint32(count)
   jit.region.status = 2
   inc jit.fragments
@@ -404,10 +443,47 @@ proc promoteX86Region*(jit: X86Jit, blocks: array[3, X86RegionBlock]): bool =
 proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
     {.cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
 
+proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5, uint64]): uint32 =
+  ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.
+  assert jit.region.status == 2 and jit.region.count >= 1 and jit.region.count <= 2 and
+      state[2] == 0 and state[3] == 0
+  let available = state[1]
+  let gas = state[0]
+  result = regionNative(jit.arena.handle, jit.region.code, addr registers, addr state)
+  assert state[1] <= available and state[0] <= gas
+  let consumed = available-state[1]
+  var accounted = 0'u64
+  for index in 0..<x86SmallRegionCount(jit):
+    let span = uint64(jit.region.spans[index])
+    let count = state[index+2]
+    assert count <= consumed div span
+    let attempts = count*span
+    assert accounted <= consumed and attempts <= consumed-accounted
+    accounted += attempts
+    jit.operations += count*uint64(jit.region.scalarWords[index])
+    jit.region.blocks += count
+  assert accounted == consumed
+  inc jit.calls
+  inc jit.branchCalls
+  inc jit.headerCalls
+  inc jit.region.calls
+
 proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[6, uint64]): uint32 =
   ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.
   assert sizeof(RegisterFile) == 104 and sizeof(state) == 48
   assert jit.region.status == 2 and state[2] == 0 and state[3] == 0 and state[4] == 0
+  if jit.region.count < 3:
+    # The full-context raw witness adapts to the accepted five-word ABI; the production small handler calls that ABI directly.
+    assert state[4] == 0
+    var small = [state[0], state[1], state[2], state[3], state[5]]
+    result = callX86Region(jit, registers, small)
+    state[0] = small[0]
+    state[1] = small[1]
+    state[2] = small[2]
+    state[3] = small[3]
+    state[5] = small[4]
+    return
+  assert jit.region.count == 3 # The six-word native payload is exclusive to the validated triple mode.
   let available = state[1]
   let gas = state[0]
   result = regionNative(jit.arena.handle, jit.region.code, addr registers, addr state)
@@ -415,7 +491,12 @@ proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[6
   let consumed = available-state[1]
   var accounted = 0'u64
   for index in 0..<x86RegionCount(jit):
-    let span = uint64(jit.region.spans[index])
+    let span = if index == 2: uint64(jit.region.thirdSpan)
+      else:
+        # The index is an active coordinate; only the explicit third lane lives outside the original array.
+        let small = int(index)
+        assert small >= 0 and small < 2
+        uint64(jit.region.spans[small])
     let count = state[index+2]
     assert count <= consumed div span
     let attempts = count*span

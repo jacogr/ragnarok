@@ -1633,6 +1633,40 @@ when defined(pvmX86Jit):
     let jit = f.x86Jit
     assert jit != nil
     if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let active = x86SmallRegionCount(jit)
+    var headers = default(array[2, uint32])
+    var spans = default(array[2, uint32])
+    var prices = default(array[2, uint64])
+    for index in 0..<active:
+      headers[index] = x86SmallRegionHeader(jit, range[0..1](index))
+      assert int(headers[index]) < f.arguments.len
+      spans[index] = f.arguments[int(headers[index])].y
+      prices[index] = f.arguments[int(headers[index])].x
+    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
+        offset != headers[0] or not x86RegionMatches(jit, headers, spans, prices):
+      return flatX86Whole(f, offset)
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, uint64(flatStop)]
+    let destination = callX86Region(jit, f.info.registers, state)
+    f.info.gas = MachineGas(state[0])
+    f.remaining = state[1]
+    f.info.blockCharged = false
+    if state[4] != uint64(flatStop):
+      # The last completed block's endpoint stays exact even when the next header returns on a quota/gas guard.
+      assert state[4] < uint64(f.arguments.len)
+      let last = uint32(state[4])
+      f.reservationEnd = f.sites[int(last)]+f.arguments[int(last)].y
+    assert int(destination) < f.handlers.len
+    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
+        oracle.StepError.InvalidPreparedProgram)
+    for index in 0..<active:
+      if destination == headers[index]: return flatX86Enter(f, destination)
+    destination
+
+  proc flatX86ThreeRegion(f: var FlatFrame, offset: uint32): uint32 =
+    ## Every call borrows fresh state; a guard reenters the original header before that block has any effects.
+    let jit = f.x86Jit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     let active = x86RegionCount(jit)
     var headers = default(array[3, uint32])
     var spans = default(array[3, uint32])
@@ -1679,7 +1713,8 @@ when defined(pvmX86Jit):
     if x86RegionStatus(jit) == 2:
       previousRoot = x86RegionHeader(jit, 0)
       if previousRoot == first:
-        destination = flatX86Region(f, first)
+        destination = if x86RegionCount(jit) == 3: flatX86ThreeRegion(f, first) else: flatX86Region(
+            f, first)
         return true
       # An earlier cold loop must not monopolize the only cache forever; promotion is bounded to one larger exact triple.
       if third == flatStop or x86RegionCount(jit) >= 3: return false
@@ -1735,8 +1770,9 @@ when defined(pvmX86Jit):
     for index in 0..<active:
       # A guard can return to any captured header; save all genuine workers before replacing only the root dispatch.
       f.x86Original[int(headers[index])] = f.handlers[int(headers[index])]
-    f.handlers[int(first)] = flatX86Region
-    destination = flatX86Region(f, first)
+    if active == 3: f.handlers[int(first)] = flatX86ThreeRegion
+    else: f.handlers[int(first)] = flatX86Region
+    destination = if x86RegionCount(jit) == 3: flatX86ThreeRegion(f, first) else: flatX86Region(f, first)
     true
 
   proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
