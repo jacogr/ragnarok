@@ -1697,3 +1697,59 @@ for secondAddress in [65535'u64, 0xffffffff'u64, 69632'u64, 69631'u64]:
         verifyControl(frame, twoStores, input, budget, [storePage])
         inc secondStoreControls
 echo "ARM_CHECKED_STORE_SECOND_EXIT_CASES,", secondStoreControls
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  proc verifyArmShiftPairs(): array[2, int] =
+    ## All coordinate/count/value literals compare the original wrapping shifts; declined patterns retain their existing builder.
+    result = default(array[2, int])
+    for destination in 0..<13:
+      for source in 0..<13:
+        let fixture = owner([@[151'u8, byte(source*16+destination), 1],
+          @[152'u8, byte(destination*17), 1], @[100'u8, byte(destination*17)], @[0'u8]])
+        let first = instructionRegisters(instruction(fixture, CodeAddress(0)))
+        let second = instructionRegisters(instruction(fixture, CodeAddress(3)))
+        let identity = instructionRegisters(instruction(fixture, CodeAddress(6)))
+        assert int(first.destinationIndex) == destination and int(first.bIndex) == source
+        for amount in 0..<64:
+          # High immediate bits differ deliberately; only their original modulo64 counts may influence the result.
+          let jit = newArmJit()
+          assert armEntry(jit, 0, 4) == 0
+          var body = default(ArmBlock)
+          assert emitArmShiftPair(body, first, second, 0x8000000000000000'u64 or uint64(amount),
+            0xffffffffffffffc0'u64 or uint64(amount))
+          emitArmOperation(body, 100, identity, 0)
+          emitArmOperation(body, 100, identity, 0)
+          var words = armInstructions(body)
+          assert publishArmEntry(jit, 0, 4, 4, words)
+          for value in [0'u64, 1, high(uint64), 0x8000000000000000'u64,
+              0x0123456789abcdef'u64, 0xfedcba9876543210'u64]:
+            var registers = default(RegisterFile)
+            for slot in 0..<13: registers[slot] = RegisterValue(0x923456789abcdef0'u64+uint64(slot))
+            registers[source] = RegisterValue(value)
+            var expected = registers
+            expected[destination] = RegisterValue((value shl amount) shr amount)
+            assert callArmEntry(jit, 0, registers) == 4
+            assert registers == expected
+            inc result[0]
+        for variant in 0..<3:
+          # Distinct destinations, an unchained source or unequal masked counts must preserve both original operations.
+          let secondDestination = if variant == 0: (destination+1) mod 13 else: destination
+          let secondSource = if variant == 1: (destination+1) mod 13 else: destination
+          let broken = owner([@[152'u8, byte(secondSource*16+secondDestination), 1], @[0'u8]])
+          let second = instructionRegisters(instruction(broken, CodeAddress(0)))
+          let secondAmount = if variant == 2: 2'u64 else: 1'u64
+          var body = default(ArmBlock)
+          emitArmOperation(body, 100, identity, 0)
+          let before = armInstructions(body)
+          assert not emitArmShiftPair(body, first, second, 1, secondAmount)
+          assert armInstructions(body) == before
+          inc result[1]
+
+var armShiftPairCases = 0
+var armShiftPairDeclines = 0
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let shiftPairCounts = verifyArmShiftPairs()
+  armShiftPairCases = shiftPairCounts[0]
+  armShiftPairDeclines = shiftPairCounts[1]
+echo "ARM_SHIFT_PAIR_LITERAL_CASES,", armShiftPairCases
+echo "ARM_SHIFT_PAIR_DECLINE_CASES,", armShiftPairDeclines

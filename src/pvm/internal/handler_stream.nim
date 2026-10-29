@@ -2022,6 +2022,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           terminal = true
           break
         if not fact.fallthrough or not supportedArmOpcode(fact.opcode): return false
+        if active == 3 and fact.opcode == 151 and current-header < 64 and
+            int(current)+1 < f.handlers.len:
+          # Only genuine adjacent source nodes within this charged block can hide an overwritten intermediate shift.
+          let next = current+1
+          let nextHeader = int(next)+1 < f.sites.len and f.sites[int(next)] == f.sites[int(next)+1]
+          if not nextHeader and f.sites[int(next)] == f.sites[int(current)]+1:
+            let following = f.plan.facts[int(f.sites[int(next)])]
+            if following.opcode == 152 and not following.ending and following.fallthrough and
+                emitArmShiftPair(native, fact.args.slots, following.args.slots, fact.args.x,
+                    following.args.x):
+              current+=2 # Source spans/operation counts still include both original instructions.
+              continue
         emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
         inc current
       if not terminal: return false
