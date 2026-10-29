@@ -52,6 +52,19 @@ proc main() =
   assert writer.close() == AtomicFileError.None
   assert writer.read(ByteLimit(0)).error == AtomicFileError.Uninitialized
   assert writer.replace([], ByteLimit(0)) == AtomicFileError.Uninitialized
+  # A live lock moves once; closing/reusing its source cannot release the transferred lock.
+  block moved_writer:
+    var destination = default(AtomicFileWriter)
+    block:
+      var owner = default(AtomicFileWriter)
+      assert owner.openAtomicFileWriter(FileName) == AtomicFileError.None
+      destination = move(owner)
+      assert not owner.opened
+      assert owner.close() == AtomicFileError.None
+      assert owner.openAtomicFileWriter(FileName) == AtomicFileError.Busy
+    assert destination.replace(bytes, ByteLimit(3)) == AtomicFileError.None
+    assert destination.read(ByteLimit(3)).value == bytes
+    assert destination.close() == AtomicFileError.None
   cycle()
   let before = getOccupiedMem()
   for iteration in 0..<1000:

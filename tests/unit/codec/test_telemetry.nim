@@ -242,3 +242,18 @@ assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion di
 blocked.close()
 discard posix.close(descriptors[1])
 echo "telemetry ok"
+
+# A transferred native socket survives moved-source close and destruction; retries stay disabled there.
+block moved_client:
+  var destination = default(Client)
+  block:
+    var source = default(Client)
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0
+    source.opened = true
+    source.enabled = true
+    destination = move(source)
+    assert not source.enabled and not source.opened
+    source.close()
+  assert fcntl(destination.fd, F_GETFL) >= 0
+  destination.close()

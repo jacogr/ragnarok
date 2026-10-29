@@ -321,13 +321,12 @@ proc requireClosed(journal: ManagedJournal) {.requires: not journal.active.} =
   ## Explicit close releases the directory lease before its parent lock may retire.
   discard
 proc `=wasMoved`*(journal: var ManagedJournal) {.nodestroy, inline.} =
-  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
-  `=wasMoved`(journal.descriptor)
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  journal.active = false
+  journal.descriptor = -1
+  journal.poisoned = false
+  journal.size = 0
   `=wasMoved`(journal.state)
-  `=wasMoved`(journal.active)
-  `=wasMoved`(journal.poisoned)
-  `=wasMoved`(journal.size)
-  `=wasMoved`(journal.limit)
 
 proc `=destroy`*(journal: ManagedJournal) =
   ## A managed append descriptor may not outlive its observable close protocol.

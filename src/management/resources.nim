@@ -49,29 +49,14 @@ proc `=copy`*(destination: var ResourceSampler, source: ResourceSampler) {.error
 proc `=dup`*(source: ResourceSampler): ResourceSampler {.error.}
   ## Implicit aggregate duplication is prohibited too.
 proc `=wasMoved`*(sampler: var ResourceSampler) {.nodestroy, inline.} =
-  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
-  `=wasMoved`(sampler.directory)
-  `=wasMoved`(sampler.directoryOpen)
-  `=wasMoved`(sampler.nextMemory)
-  `=wasMoved`(sampler.nextDatabase)
-  `=wasMoved`(sampler.sampled)
-  `=wasMoved`(sampler.memoryKnown)
-  `=wasMoved`(sampler.diskKnown)
-  `=wasMoved`(sampler.databaseKnown)
-  `=wasMoved`(sampler.databaseEnabled)
-  `=wasMoved`(sampler.resident)
-  `=wasMoved`(sampler.heapOccupied)
-  `=wasMoved`(sampler.heapReserved)
-  `=wasMoved`(sampler.total)
-  `=wasMoved`(sampler.free)
-  `=wasMoved`(sampler.available)
-  `=wasMoved`(sampler.logical)
-  `=wasMoved`(sampler.allocated)
-  `=wasMoved`(sampler.files)
-  `=wasMoved`(sampler.scanLogical)
-  `=wasMoved`(sampler.scanAllocated)
-  `=wasMoved`(sampler.scanFiles)
-  `=wasMoved`(sampler.scanCount)
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  # The native stream is opaque; its default value is the public closed sentinel on each OS.
+  sampler.directory = default(DirStream)
+  sampler.directoryOpen = false
+  sampler.databaseEnabled = false
+  sampler.memoryKnown = false
+  sampler.diskKnown = false
+  sampler.databaseKnown = false
   `=wasMoved`(sampler.filesystemPath)
   `=wasMoved`(sampler.databasePath)
   `=wasMoved`(sampler.databaseStatus)

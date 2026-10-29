@@ -137,12 +137,15 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
 # A descriptor has exactly one endpoint owner; explicit moves are allowed, copies are not.
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
 
+proc `=dup`*(source: UdpEndpoint): UdpEndpoint {.error.}
+  ## Implicit duplication cannot duplicate native retirement authority.
+
 proc `=wasMoved`*(endpoint: var UdpEndpoint) {.nodestroy, inline.} =
-  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
-  `=wasMoved`(endpoint.descriptor)
-  `=wasMoved`(endpoint.opened)
-  `=wasMoved`(endpoint.ipv6)
-  `=wasMoved`(endpoint.portValue)
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  endpoint.opened = false
+  endpoint.descriptor = -1
+  endpoint.ipv6 = false
+  endpoint.portValue = 0
   `=wasMoved`(endpoint.registration)
 
 proc `=destroy`*(endpoint: UdpEndpoint) =

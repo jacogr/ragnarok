@@ -137,6 +137,17 @@ proc main() {.raises.} =
     server.close()
     server.close()
     assert readStatus(path.toCString(), status) != 0
+  block movedPath:
+    # Source cleanup cannot unlink the destination's live bound pathname.
+    var source = default(FuzzSocket)
+    assert source.start(config)
+    var destination = move(source)
+    assert not source.opened and not source.bound
+    source.close()
+    var movedStatus = default(FileStatus)
+    assert readStatus(path.toCString(), movedStatus) == 0 and S_ISSOCK(Mode(movedStatus.st_mode))
+    destination.close()
+    assert readStatus(path.toCString(), movedStatus) != 0
   block destructorCleanup:
     var server = default(FuzzSocket)
     assert server.start(config) # ARC retirement removes the exact bound inode without an explicit close.
@@ -156,3 +167,24 @@ try:
   main() # Filesystem/IO failures are failed native tests, never ignored protocol outcomes.
 except:
   quit(2)
+
+# Listener and accepted-connection cleanup move together, including source reuse and destruction.
+block moved_socket:
+  var destination = default(FuzzSocket)
+  block:
+    var source = default(FuzzSocket)
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    source.connection = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0 and source.connection >= 0
+    source.opened = true
+    source.connected = true
+    destination = move(source)
+    assert not source.opened and not source.connected and not source.bound
+    source.close()
+    source.fd = posix.open("/dev/null", O_RDONLY)
+    assert source.fd >= 0
+    source.opened = true
+    source.close()
+  assert fcntl(destination.fd, F_GETFL) >= 0
+  assert fcntl(destination.connection, F_GETFL) >= 0
+  destination.close()

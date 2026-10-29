@@ -86,15 +86,19 @@ proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.err
 proc `=dup`*(source: ManagementServer): ManagementServer {.error.}
   ## Implicit duplication is forbidden as well as assignment copies.
 proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
-  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
-  `=wasMoved`(server.opened)
-  `=wasMoved`(server.bound)
-  `=wasMoved`(server.fd)
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  server.opened = false
+  server.bound = false
+  server.fd = -1
   `=wasMoved`(server.path)
-  `=wasMoved`(server.identity)
   `=wasMoved`(server.info)
   `=wasMoved`(server.resources)
+  # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
   `=wasMoved`(server.connections)
+  for slot in mitems(server.connections):
+    # Every accepted descriptor belongs to the destination, including streaming files.
+    slot.opened = false
+    slot.fd = -1
 
 proc `=destroy`*(server: ManagementServer) =
   ## Partial startup and normal ARC retirement close every native and dynamic owner.

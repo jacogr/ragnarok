@@ -64,13 +64,23 @@ else:
 
 # Copying a composite owner would duplicate root, socket and streaming-file ownership.
 proc `=copy`*(destination: var UiServer, source: UiServer) {.error: "UI Server owns descriptors".}
+proc `=dup`*(source: UiServer): UiServer {.error.}
+  ## Implicit duplication cannot duplicate native retirement authority.
+
 proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
-  ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
-  `=wasMoved`(server.opened)
-  `=wasMoved`(server.rootOpened)
-  `=wasMoved`(server.fd)
-  `=wasMoved`(server.root)
+  ## Transfer cleanup authority without releasing native resources or moved managed fields.
+  server.opened = false
+  server.rootOpened = false
+  server.fd = -1
+  server.root = -1
+  # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
   `=wasMoved`(server.connections)
+  for slot in mitems(server.connections):
+    # Every accepted descriptor belongs to the destination, including streaming files.
+    slot.opened = false
+    slot.fd = -1
+    slot.fileOpened = false
+    slot.file = -1
 
 proc `=destroy`*(server: UiServer) =
   ## Retire partial startup, live requests and ARC strings even when explicit close is skipped.
