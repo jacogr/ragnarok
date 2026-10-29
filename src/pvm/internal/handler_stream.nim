@@ -204,10 +204,13 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     if uint64(f.info.gas) < a.x: return flatStopExit(f, off, oracle.StepExit.OutOfGas, false)
     f.info.gas = MachineGas(uint64(f.info.gas)-a.x)
     f.info.blockCharged = true
-  let reserved = min(f.remaining, uint64(a.y))
-  f.remaining-=reserved
-  f.reservationEnd = f.sites[int(off)]+uint32(reserved)
-  if reserved < uint64(a.y):
+  if f.remaining >= uint64(a.y):
+    f.remaining-=uint64(a.y)
+    f.reservationEnd = f.sites[int(off)]+a.y
+  else:
+    let reserved = f.remaining
+    f.remaining = 0
+    f.reservationEnd = f.sites[int(off)]+uint32(reserved)
     f.barrierFact = f.reservationEnd
     # Multiple cached suffixes can represent this same source PC. Patch only the active stream,
     # whose sites are ordered; a folded no-op stops at the next real node but reports its own PC.
