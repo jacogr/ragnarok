@@ -116,8 +116,8 @@ An old peer target is satisfied only by actual observed installation or retained
 `adoptedBlocks`; `fullReady` requires fresh explicit target evidence whose hashes have been reached and
 no outstanding import. `lightReady` remains false: this host has no independent light authority.
 The observation is current as of its host tick, so callers must not reuse an old copied readiness
-value to authorize a later action. Status/RPC logging integration can consume these scalar fields
-without borrowing canonical maps. A stopped command reports its confirmed imports, never “synced”.
+value to authorize a later action. Readiness logging consumes these scalar fields without borrowing canonical maps; it is diagnostic
+only and does not authorize participation. Status/RPC integration can use the same copied interface. A stopped command reports its confirmed imports, never “synced”.
 
 The development current candidate pipeline still bounds supported execution features. Continuous
 transport is not a production finality engine, fork reconciliation algorithm or proof of global

@@ -148,6 +148,12 @@ The default `info` level prints timestamped startup identity/version/platform an
 chain, database and service endpoints, followed by network/import/rejection activity and shutdown.
 A foreground server reports peers, known local head, traffic and request counts every five seconds.
 An unknown peer tip is shown as unknown; this is never a claim that the node is caught up.
+`sync-current` reports waiting, syncing, idle relative to observed peer targets, blocked and failed
+states. It shows the copied local/peer target identities, slot lag, fresh source count and confirmed
+imports with a sampled import rate. Slot lag counts slot positions, not missing blocks.
+Tiny validators also report their freshly sampled authoring gate as open or closed; open does not
+mean the validator was elected to author. Full readiness never implies light-client readiness.
+Status repeats every five seconds; changes are limited to one per second, with an immediate first caught-up milestone and failures.
 
 `--log-level warn` keeps warnings and errors; `--log-level off` disables queued diagnostics.
 Component filters remain available, for example `--log-level info,network=warn`.

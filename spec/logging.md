@@ -113,9 +113,8 @@ Every five monotonic seconds, foreground listeners report peers, observed local 
 where available, UDP receive/send rates and accepted/rejected request counts. Worker leases
 exclude head reads: status reports busy instead of touching borrowed state. Datagram counters
 saturate and never influence admission. No peers or missing tip information remains waiting/unknown;
-it never implies caught-up, zero lag or permission to produce blocks. Continuous sync target discovery
-and participation gating are owned by the parallel state work. Follow-up logging will consume
-those readiness interfaces after both tranches land. JAM slots are
+it never implies caught-up, zero lag or permission to produce blocks. Continuous sync and Tiny participation now supply their own fresh copied readiness observations;
+the follow-up reporting below consumes these without granting authority. JAM slots are
 labelled as slots, never global block numbers. Existing stdout command/readiness contracts remain;
 fixture-only peer/idle/auth/timeout markers are suppressed for the foreground listener.
 
@@ -154,3 +153,49 @@ The focused Python regression replays the reported master failure shape (one mis
 three counted drops), rejects that same unexplained absence without its receipt, and covers bounded
 allowances, same-line grouping and malformed/duplicate/nonfinal receipts. Exact failed-run artifact
 replay is retained under `build/startup-log-repair-*`.
+
+
+## Follow-up readiness reporting
+
+The merged full-state `CurrentSyncProgress` and Tiny `SyncTargetProgress` interfaces supply
+fixed copied observations after each host turn. `app/sync_logging.nim` retains only scalar
+cadence/counter history. It does not read canonical maps, open sockets, retain peer snapshots,
+change freshness, choose forks or participate in the authoring decision.
+
+Continuous sync reports waiting/unknown, syncing, idle relative to observed peer targets,
+unresolved-target blockage, failure and stopped states. Known targets remain explicitly labelled
+as peer targets. The displayed lag is a guarded difference of target and local slots, never a
+missing-block count; same-slot conflicts may therefore show zero slot lag and still warn as blocked.
+Only confirmed installed children contribute to the import count and sampled blocks/second rate.
+Rate multiplication saturates before arithmetic; regressed diagnostic clocks do not wrap.
+
+Tiny reports its new sample before its unchanged actual signing gate, including local/target hashes
+and the open/closed gate. Open means only that the full-state evidence gate is satisfied, not author
+selection or a global finality guarantee. `light ready` remains false independently. Expired,
+disconnected, unresolved and pending-input observations never produce an idle/ready claim.
+
+The first sample is immediate. Unchanged output repeats every five monotonic seconds and stage
+changes emit at most once per second, avoiding one message per dispatcher/import turn. The first
+caught-up milestone and actual failed samples bypass that delay, so a rapid cold join still reports
+its first observed readiness before Tiny can sign. All component/level filtering precedes formatting.
+These logs describe the sample at emission and must never be reused as a participation certificate. Unknown bare `server`
+tips remain unknown: that command does not own the continuous sync host.
+
+Continuous startup names the selected protocol, pinned endpoints and local head; stopped/refused
+commands report the actual confirmed prefix after joined cleanup. Tiny listener cleanup is reported
+on early returns as well as ordinary completion. Special command lifetimes now use the same final
+shutdown summary after their owners retire.
+
+Local follow-up evidence on macOS arm64 with pinned Nimony `63fed6cb4`: checked production build
+and the extended `sync_current` native suite pass. The suite uses real TLS claims and 72 installed
+children, plus foreground SIGINT/disk restart. It checks unknown targets, sparse slot lag, a blocked
+same-slot conflicting hash, failed/stopped samples, bounded repeat cadence, the immediate first-ready
+milestone and disabled component filters. Exact record checks arrange accepted queue admission;
+process integration permits only explicitly counted diagnostic loss.
+
+The real six-validator cold eligible join converged through three slots with independent complete
+map/journal checks, and the first ready log preceded cold-node authoring. All twelve startup/service
+checks and five current-download harness tests pass. Changed Nim formatting, source inventory and
+diff checks pass. Evidence is retained in `build/readiness-logging-*`; Linux CI remains separate.
+The existing bounded logger reported one startup record loss in the live run; its counted-loss
+contract and warning are preserved rather than making node execution wait for the sink.

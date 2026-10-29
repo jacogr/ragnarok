@@ -15,6 +15,7 @@ import "../block/download" as current_block_download
 import ../../ancestor/[inputs as ancestor_inputs, response as ancestor_response]
 import ../logical/[download as current_logical_download, startup as current_logical_startup]
 import ../../logical/source_export as logical_source_export
+import ../../sync_logging
 import ../../download/schedule as download_schedule
 import ../../../codec/[bounded, header]
 import ../../../state/report/anchors as report_anchors
@@ -346,11 +347,20 @@ proc receiveContinuously(owner: var Services, options: Options, peers: seq[Downl
     if host.openPeer(peer, keys[index], ports[index], options.argument(3), options.argument(4),
         options.argument(6)) != CurrentDownloadPeerError.None:
       return CurrentDownloadCommandResult.TransportFailure # Deferred host close also retires every earlier endpoint.
+  var status = default(SyncLogState)
+  log(options.logWriter, LogTarget.Network, LogLevel.Info,
+    "Continuous sync started; pinned peers: " & $peers.len & "; protocol: " & options.argument(6))
+  log(options.logWriter, LogTarget.Storage, LogLevel.Info, "Local head: " & owner.describeHead)
+  for index, peer in peers:
+    log(options.logWriter, LogTarget.Network, LogLevel.Info,
+      "Sync peer " & $uint64(peer) & ": 127.0.0.1:" & $ports[index] & "; identity: " &
+      shortHash(array[32, byte](keys[index])))
   while not signals.stopping:
     let elapsed = (getMonoTime() - started).inMilliseconds
     if elapsed < 0: return CurrentDownloadCommandResult.DispatchFailure
     let ticked = host.tick(CurrentDownloadLoopTick(uint64(elapsed)))
     let progress = host.progress
+    status.logSyncProgress(options.logWriter, progress, uint64(elapsed))
     if progress.adoptedBlocks > uint64(high(int)): return CurrentDownloadCommandResult.DispatchFailure
     adopted = int(progress.adoptedBlocks)
     observed = ObservedDownloadHead(initialized: true,
@@ -380,6 +390,7 @@ proc receiveContinuously(owner: var Services, options: Options, peers: seq[Downl
           CurrentSyncError.None:
         return CurrentDownloadCommandResult.DispatchFailure
     elif ticked != CurrentSyncError.None:
+      log(options.logWriter, LogTarget.Startup, LogLevel.Error, "Continuous sync failed: " & $ticked)
       return CurrentDownloadCommandResult.DispatchFailure
     var requestedPause = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
@@ -564,4 +575,7 @@ proc runCurrentSync*(options: Options): CurrentDownloadCommandOutcome {.raises.}
   ## A stopped continuous command reports confirmed imports without inventing a requested total or synced result.
   var adopted = 0
   let terminal = performDownloads(options, adopted, continuous = true)
+  log(options.logWriter, LogTarget.Startup,
+    (if terminal == CurrentDownloadCommandResult.Stopped: LogLevel.Info else: LogLevel.Error),
+    "Continuous sync " & $terminal & "; imported: " & $adopted & " blocks")
   CurrentDownloadCommandOutcome(status: terminal, adopted: adopted)

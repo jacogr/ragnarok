@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS discovery and complete-state current admission catch up beyond finite command limits.
-import std/[assertions, syncio, envvars, monotimes, times, os]
+import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
     policy as current_download_policy]
+import ../../../src/app/sync_logging
+import ../../../src/lib/logging
 import "../../../src/app/block/author" as block_author
 import ../../../src/app/[tiny_genesis, chain, candidate, services, options]
 import ../../../src/app/download/schedule as download_schedule
@@ -25,6 +27,64 @@ import ../../../src/state/store
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/[current_consecutive_context, sync_transport]
+
+proc collectLog(raw: nil pointer, batch: string) {.raises: [].} =
+  ## The writer alone mutates captured bytes; the test reads them only after joined close.
+  let text = cast[ptr string](raw)
+  text[].add(batch)
+
+proc admitLog(state: var SyncLogState, logger: var Logger, progress: CurrentSyncProgress,
+    now: uint64) =
+  ## Tests retry only queue contention, restoring reporter history so admission is deterministic.
+  let before = state
+  let accepted = logger.stats.accepted
+  for attempt in 0..<1000:
+    state = before
+    state.logSyncProgress(logger.writer, progress, now)
+    if logger.stats.accepted > accepted: return
+    sleep(1)
+  assert false, "bounded sync log admission"
+
+proc checkLog(progress: CurrentSyncProgress, expected: string,
+    severity = LogLevel.Info) =
+  ## Actual host samples test guarded unknown targets, sparse slots and readiness refusal labels.
+  var text = ""
+  var logger = default(Logger)
+  assert start(logger, initLogPolicy(severity), collectLog, addr text)
+  var status = default(SyncLogState)
+  status.admitLog(logger, progress, 1000)
+  # Neither a hot dispatcher nor a regressed diagnostic clock may flood default output.
+  for turn in 0..<1000: status.logSyncProgress(logger.writer, progress, 1000)
+  status.logSyncProgress(logger.writer, progress, 999)
+  assert logger.stats.accepted == 1
+  status.admitLog(logger, progress, 6000)
+  close(logger)
+  assert logger.stats.processed == 2
+  assert expected in text, text
+  assert "light ready: true" notin text and "authoring gate: open" notin text, text
+  # Component-level warning/off filters must precede record creation.
+  text = ""
+  var policy = default(LogPolicy)
+  assert parseLogPolicy("info,startup=off", policy)
+  assert start(logger, policy, collectLog, addr text)
+  status = default(SyncLogState)
+  status.logSyncProgress(logger.writer, progress, 0)
+  close(logger)
+  assert text.len == 0 and logger.stats.accepted == 0
+
+proc checkFirstReady(unknown, ready: CurrentSyncProgress) =
+  ## A genuine rapid catch-up must report readiness before the ordinary one-second transition limit.
+  assert not unknown.fullReady and ready.fullReady
+  var text = ""
+  var logger = default(Logger)
+  assert start(logger, initLogPolicy(), collectLog, addr text)
+  var status = default(SyncLogState)
+  status.admitLog(logger, unknown, 1000)
+  status.admitLog(logger, ready, 1999)
+  status.logSyncProgress(logger.writer, ready, 2000)
+  assert logger.stats.accepted == 2
+  close(logger)
+  assert "Waiting for sync target" in text and "Idle (caught up to observed peer targets)" in text
 
 proc currentPid(): posix.Pid {.importc: "getpid", header: "<unistd.h>".}
   ## The isolated responder signals its original parent through libc's actual pid_t ABI.
@@ -114,7 +174,20 @@ proc commandRound(initial: BlockSnapshot, wires: seq[SyncWireBlock], expected: B
     getEnv("RAGNAROK_TEST_KEY"), getEnv("RAGNAROK_TEST_PEER_B"), "jamnp-s/1/00000000", "10000",
     policyPath, "--with-state", "--chain", chainPath, "--state-storage", "disk", "--state-db",
         database], options)
+  var text = ""
+  var logger = default(Logger)
+  assert start(logger, initLogPolicy(), collectLog, addr text)
+  defer: close(logger) # No writer exists in the child fork; parent Services retire before joined logging.
+  options.attachLogWriter(logger.writer)
   let outcome = runCurrentSync(options)
+  close(logger)
+  var missing = 0'u64
+  for expected in ["Continuous sync started; pinned peers: 1", "Sync peer 1: 127.0.0.1:",
+      "full state ready:", "Continuous sync Stopped; imported: " & $requested & " blocks"]:
+    if expected notin text: inc missing
+  # Integration output remains deliberately best effort; isolated reporter tests prove exact records.
+  assert missing <= logger.stats.dropped, text
+  assert "light ready: true" notin text, text
   writeFile(stopPath, "stop")
   var status = 0.cint
   assert posix.waitpid(child, status, 0) == child
@@ -246,6 +319,9 @@ proc main() {.raises.} =
   for turn in 0..<4: assert host.tick(CurrentDownloadLoopTick(0)) == CurrentSyncError.None
   assert host.progress.stage == CurrentSyncStage.Unknown and not host.progress.fullReady
   assert not host.progress.lightReady and host.progress.adoptedBlocks == 0
+  let unsynchronized = host.progress
+  checkLog(host.progress, "Waiting for sync target")
+  checkLog(host.progress, "peer target: unknown, lag: unknown")
   server.catalog = wires
   let port = server.open(claim(initial.value), @[claim(heads[67])])
   assert host.openPeer(DownloadPeerId(1), peerKey(), port, getEnv("RAGNAROK_TEST_CERT"),
@@ -253,6 +329,7 @@ proc main() {.raises.} =
   server.empty = true
   var now = 0'u64
   host.advance(server, CurrentSyncStage.CatchingUp, now)
+  checkLog(host.progress, "lag: 136 slots")
   let started = getMonoTime()
   while server.requests < 4:
     assert (getMonoTime() - started).inSeconds < 20
@@ -282,6 +359,9 @@ proc main() {.raises.} =
   # Exhaustion is renewed only after the independently controlled retry delay.
   host.advance(server, CurrentSyncStage.CaughtUp, now)
   assert host.progress.fullReady and not host.progress.lightReady
+  checkFirstReady(unsynchronized, host.progress)
+  checkLog(host.progress, "imported: 70")
+  checkLog(host.progress, "Idle (caught up to observed peer targets)")
   assert host.progress.adoptedBlocks == 70 and uint32(host.progress.localHead.slot) == 140
   assert host.progress.localHead == claim(heads[69])
   assert array[32, byte](owner.stateSnapshot.value.commitment.root) == array[32, byte](heads[
@@ -310,6 +390,8 @@ proc main() {.raises.} =
   server.announce(competing.value.owner, claim(initial.value))
   host.advance(server, CurrentSyncStage.Blocked, now)
   assert not host.progress.fullReady and host.progress.adoptedBlocks == 72
+  checkLog(host.progress, "[warn][startup] Sync blocked", LogLevel.Warn)
+  checkLog(host.progress, "lag: 0 slots", LogLevel.Warn)
   assert array[32, byte](owner.chainView.bestBlock.value.blockHash) == array[32, byte](heads[71].blockHash)
   server.disconnect()
   host.advance(server, CurrentSyncStage.Unknown, now)
@@ -321,9 +403,11 @@ proc main() {.raises.} =
   assert now > 0
   assert host.tick(CurrentDownloadLoopTick(now - 1)) == CurrentSyncError.ClockRegression
   assert not host.progress.fullReady
+  checkLog(host.progress, "[error][startup] Sync failed", LogLevel.Error)
   host.close()
   assert host.progress.stage == CurrentSyncStage.Closed and not host.progress.fullReady
   assert host.progress.liveSources == 0 and not host.progress.hasTarget
+  checkLog(host.progress, "Sync stopped")
 try:
   main()
 except:
