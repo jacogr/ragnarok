@@ -4,7 +4,7 @@
 ## Strict optimized inclusion refusals use a genuinely authenticated guarantee-bearing positive control.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_inclusion, computed_batch]
+import ../../src/state/computed/[inclusion as computed_inclusion, batch as computed_batch]
 import ../../src/codec/bounded
 import ../support/[pvm_computed_inclusion, pvm_computed_batch]
 

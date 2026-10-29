@@ -4,7 +4,7 @@
 ## Runtime extraction guards retain selected-success and genuine failed-file/header controls.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/app/ancestor_inputs
+import ../../src/app/ancestor/inputs as ancestor_inputs
 import ../../src/codec/[bounded, header]
 proc extract(outcome: AncestorInputResult) =
   ## Runtime inputs keep this a real extraction precondition check.

@@ -4,7 +4,8 @@
 
 ## Raw maps and earlier report/accumulation prefixes cannot authorize composed candidate publication.
 
-import ../../../src/state/[accumulation_block_publication, store]
+import "../../../src/state/accumulation/block/publication" as accumulation_block_publication
+import ../../../src/state/store
 var state: StateStore
 var source: StateStoreSnapshot
 discard publishAccumulationState(state, source)

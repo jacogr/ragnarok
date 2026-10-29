@@ -3,16 +3,28 @@
 
 ## Real native mutation receipts retain explicit known successor declarations and independently selected proof expectations.
 import std/assertions
-import ../../src/codec/[state_accounts, state_requests]
+import ../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 import ./pvm_accumulation_program
 import ./[collected_native_context, collected_supplied_context, collected_logical_context,
     current_namespace_transition_context, current_logical_proof_context, accumulation_current_candidate_context]
-import ../../src/app/[chain, preparation_worker, current_block_input, candidate,
-    collected_supplied_plan, collected_supplied_state, proof_query]
-import ../../src/state/[accumulation_current_update, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission, current_logical, proof_plan, planned_proof,
-    proof_view, store]
-import ../../src/codec/[bounded, state_composition, state_layout]
+import ../../src/app/[chain, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/candidate
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/app/proof/query as proof_query
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/current/logical as current_logical
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[composition as state_composition, layout as state_layout]
 import ../../src/chain/[provider, genesis]
 type CollectedMutationFixture* = object ## Test-only descriptors retain genuine native execution and caller-supplied identities, never a mutation certificate.
   origin*: CurrentNamespaceTransition

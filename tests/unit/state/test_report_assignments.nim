@@ -10,9 +10,16 @@
 # @@Verification={"arc": "report_assignments_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
-import ../../../src/state/[report_assignments, guarantee_credentials, availability]
-import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,
-  state_availability, state_layout, state_trie, report_owned, owned, work_report, composite]
+import ../../../src/state/report/assignments as report_assignments
+import ../../../src/state/[guarantee_credentials, availability]
+import ../../../src/codec/[bounded, guarantees, assurances]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[disputes, header]
+import ../../../src/codec/state/[availability as state_availability, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/[report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/composite
 import ../../../src/crypto/assurance_context
 import ../../support/[arc_evidence, report_context]
 

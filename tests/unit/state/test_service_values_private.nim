@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_service_values
+include ../../../src/codec/state/service_values
 
 ## Exact and shifted retained-storage destinations must reject before modifying any captured byte.
 proc main() =

@@ -9,7 +9,7 @@
 # @@Verification={"group": "nominal", "expected": "StateEntropyWord", "early": ["advanceEntropyTime(", "[4] expected: EntropyInput but got: StateEntropyWord"]}
 
 import ../../../src/state/entropy
-import ../../../src/codec/state_safrole
+import ../../../src/codec/state/safrole as state_safrole
 from ../../../src/codec/header import EpochSlots
 discard advanceEntropyTime(default(StateEntropy), StateTime(0), StateTime(1),
     default(StateEntropyWord), EpochSlots(12))

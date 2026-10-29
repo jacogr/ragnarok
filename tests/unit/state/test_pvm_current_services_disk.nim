@@ -4,14 +4,22 @@
 ## Real signed current preparation crosses native durable publication, exact RPC exclusion and strict complete-map reopen.
 import std/[assertions, syncio, envvars, monotimes, times, base64, strutils]
 import std/posix/posix
-import ../../../src/app/[services, options, preparation_worker, current_block_input,
-  current_handoff, candidate, handoff, chain, disk_worker, disk_chain]
+import ../../../src/app/[services, options, preparation_worker]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/[candidate, handoff, chain]
+import ../../../src/app/disk/[worker as disk_worker, chain as disk_chain]
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus,
-  block_admission, report_admission, accumulation_finalization, accumulation_completion]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion]
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   current_application_context, current_services_disk_samples, managed_storage_samples, rpc_socket]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

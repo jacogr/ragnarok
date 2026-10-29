@@ -4,7 +4,9 @@
 
 ## Each public runner requires its genuine prepared source family.
 
-import ../../../src/state/[accumulation_later_runner, accumulation_runner, accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[later_runner as accumulation_later_runner,
+    runner as accumulation_runner]
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
 import ../../../src/chain/parameters
 var source: PreparedAccumulationContinuationInputs
 discard runAccumulationReentry(source, default(Parameters), default(AccumulationRunnerLimits))

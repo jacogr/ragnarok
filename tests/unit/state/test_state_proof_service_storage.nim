@@ -4,8 +4,11 @@
 ## Storage reads require both same-root account and storage evidence, including present-empty bytes.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values]
 proc main() =
   ## Empty logical keys and values remain distinct from missing witnesses and proven absence.
   let service = ServiceIndex(7)

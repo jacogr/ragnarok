@@ -7,10 +7,17 @@
 
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie, header]
-import ../../../src/state/[store, accumulation_state, accumulation_finalization,
-  accumulation_times, accumulation_statistics, accumulation_validators, accumulation_activity,
-  accumulation_completion, report_admission, block_transition, block_admission]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/header
+import ../../../src/state/store
+import ../../../src/state/accumulation/[state as accumulation_state,
+    finalization as accumulation_finalization, times as accumulation_times,
+    statistics as accumulation_statistics, validators as accumulation_validators,
+    activity as accumulation_activity, completion as accumulation_completion]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
 
 # Resettable backend counters distinguish sealed-header hashing from unnecessary state Merklization.

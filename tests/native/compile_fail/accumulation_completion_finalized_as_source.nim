@@ -4,6 +4,7 @@
 
 ## Only the guarded genuine stopped driver alternative can authorize this composition path.
 
-import ../../../src/state/[accumulation_completion, accumulation_finalization]
+import ../../../src/state/accumulation/[completion as accumulation_completion,
+    finalization as accumulation_finalization]
 var source: PreparedFinalAccumulation
 discard prepareStoppedAccumulation(source, default(AccumulationCompletionLimits))

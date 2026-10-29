@@ -6,7 +6,8 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/[accumulation_invocation, store]
+import ../../../src/state/accumulation/invocation as accumulation_invocation
+import ../../../src/state/store
 import ../../../src/codec/[bounded, composite, header]
 let owner = default(AccumulationInvocationResult[PreparedAccumulationInvocation])
 discard owner.completed # Private success storage cannot be forged or mutated.

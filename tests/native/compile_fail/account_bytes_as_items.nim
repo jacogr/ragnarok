@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: AccountStorageBytes but wanted: AccountStorageItems"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 let metadata = ServiceMetadata(storageItems: AccountStorageBytes(1))
 discard metadata

@@ -6,11 +6,17 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
     current_logical_proof_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_logical, accumulation_current_update,
-    proof_plan, planned_proof, proof_view, proof_global, trie_proof, store]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[view as proof_view, global as proof_global]
+import ../../../src/state/[trie_proof, store]
 import ../../../src/chain/[provider, genesis]
-import ../../../src/app/proof_query
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie]
+import ../../../src/app/proof/query as proof_query
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 type Detached = object ## Only independent scalar expectation, detached transport response and semantic request survive; no logical/view/snapshot owner escapes.
   expected: StateRoot
   response: ProofResponse

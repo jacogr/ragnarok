@@ -5,7 +5,7 @@
 
 import std/[cmdline, assertions]
 import std/posix/posix
-import ../../src/lib/atomic_file
+import ../../src/lib/atomic/file as atomic_file
 import ../../src/codec/bounded
 
 proc main() =

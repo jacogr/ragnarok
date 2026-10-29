@@ -8,8 +8,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/state/[report_assignments, guarantee_credentials]
-import ../../src/codec/state_availability
+import ../../src/state/report/assignments as report_assignments
+import ../../src/state/guarantee_credentials
+import ../../src/codec/state/availability as state_availability
 if paramStr(1) == "context":
   let missing = default(VerifiedGuaranteeCredentials).verifiedGuaranteeContext
   discard missing.value # No fabricated default clock/population.

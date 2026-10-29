@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal","expected": "[1] expected: ReportHash[2] but got: ReportHash[0]"}
 
-import ../../../src/codec/[work_package, work_report]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 let wrong = rootImport(PackageHash(), ImportIndex(0))
 discard wrong

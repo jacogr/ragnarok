@@ -4,8 +4,10 @@
 ## Linked checkpoint validation must reject inactive payload/phase access and support a genuine expected-root control.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[validated_checkpoint, checkpoint, store, global_snapshot, manifest]
-import ../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie, state_composition]
-include composition_fixture
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/state/[consensus as state_consensus, layout as state_layout,
+    trie as state_trie, composition as state_composition]
+include ./composition_fixture
 proc extract(outcome: ValidatedCheckpointResult): ValidatedStateManifest {.noinline.} =
   ## Keep success extraction dynamic so a compiler rejection cannot count as a runtime guard.
   outcome.value

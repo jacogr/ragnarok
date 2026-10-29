@@ -3,8 +3,10 @@
 
 ## Encode all GP audit-bundle shards from one immutable executed-bundle layout.
 
-import ../codec/[bounded, work_report]
-import ./[auditable_bundle, erasure_layout, erasure_words]
+import ../codec/bounded
+import ../codec/work/report as work_report
+import ./auditable_bundle
+import ./erasure/[layout as erasure_layout, words as erasure_words]
 
 type
   BundleErasureError* {.pure.} = enum ## Refusals contain no encoded prefix or replacement provenance.

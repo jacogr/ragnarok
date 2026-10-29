@@ -4,9 +4,10 @@
 ## Dynamic supervision payload guards preserve genuine complete-source selection as a positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, service_directory_context]
-import ../../src/state/[service_supervision, service_directory, inventory]
-import ../../src/codec/state_accounts
-include composition_fixture
+import ../../src/state/service/[supervision as service_supervision, directory as service_directory]
+import ../../src/state/inventory
+import ../../src/codec/state/accounts as state_accounts
+include ./composition_fixture
 proc extract(outcome: ServiceSupervisionResult[ServiceSupervision]): ServiceSupervision {.noinline.} =
   ## Default or failed target queries cannot expose source-bearing authority.
   outcome.value

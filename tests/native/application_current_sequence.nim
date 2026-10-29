@@ -3,12 +3,16 @@
 
 ## Independent TLS requests and complete durable-map checks qualify the actual current command executable.
 import std/[assertions, syncio, envvars, monotimes, times, os]
-import ../../src/app/[current_download_policy, services]
-import ../../src/quic/[current_block_download_stream, current_block_download_loop]
+import ../../src/app/current/download/policy as current_download_policy
+import ../../src/app/services
+import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
 import ../../src/codec/[report_owned, bounded, block_codec]
 import ../../src/chain/[genesis, provider]
 import ../../src/crypto/primitives
-import ../../src/state/[block_admission, report_admission, accumulation_current_consensus]
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/report/admission as report_admission
+import ../../src/state/accumulation/current/consensus as accumulation_current_consensus
 import ../support/[accumulation_current_chain_context,
   current_download_command_context,
   current_application_context, current_services_disk_samples, block_download_transport,

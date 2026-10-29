@@ -3,8 +3,10 @@
 # @@Verification={"group":"nominal","expected":"AccumulationFundingMode","early":["recordAccumulationDirectTransfer(","[5] expected: AccumulationFundingMode but got: AccountBalance"]}
 
 ## Direct funding uses distinct account and mode domains.
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[composite, state_accounts, c2_records]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/composite
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 
 discard recordAccumulationDirectTransfer(default(AccumulationEffects), ServiceIndex(42),

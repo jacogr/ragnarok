@@ -4,7 +4,8 @@
 ## Actual finalized computed work with canonical original statistics and bounded maintained state-composition policies.
 
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_finalization, accumulation_completion]
+import ../../src/state/computed/finalization as computed_finalization
+import ../../src/state/accumulation/completion as accumulation_completion
 import ../../src/codec/[bounded, assurances]
 import ./[pvm_computed_finalization, accumulation_completion_context]
 

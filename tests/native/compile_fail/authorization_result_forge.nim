@@ -9,5 +9,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_authorization, state_trie]
+import ../../../src/codec/state/[authorization as state_authorization, trie as state_trie]
 discard AuthorizationResult[int](status: AuthorizationError.None)

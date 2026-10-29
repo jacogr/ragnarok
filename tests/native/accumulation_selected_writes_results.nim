@@ -3,8 +3,9 @@
 
 ## Default/refused selected physical descriptors cannot expose sources, counters or final bytes.
 import std/cmdline
-import ../../src/state/[accumulation_selected_writes, accumulation_account_selection,
-    accumulation_creation_union]
+import ../../src/state/accumulation/selected_writes as accumulation_selected_writes
+import ../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../src/state/accumulation/creation_union as accumulation_creation_union
 let argument = paramStr(1)
 let owner = default(PreparedSelectedAccountWrites)
 let refused = if argument == "default": default(SelectedAccountWriteResult[PreparedSelectedAccountWrites])

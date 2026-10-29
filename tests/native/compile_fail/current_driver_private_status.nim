@@ -3,6 +3,7 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Refused driver storage and inactive parents remain private.
-import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence]
+import ../../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence]
 let refused = finishCurrentAccumulationSequence(default(PreparedCurrentContinuation))
 discard refused.status

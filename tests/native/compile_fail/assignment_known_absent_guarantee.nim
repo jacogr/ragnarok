@@ -9,7 +9,7 @@
 # @@Verification={"group": "contracts", "expected": "assignment.isPresent"}
 
 import std/assertions
-import ../../../src/codec/state_availability
+import ../../../src/codec/state/availability as state_availability
 let assignment = absentAssignment()
 assert not assignment.present
 discard assignment.guarantee

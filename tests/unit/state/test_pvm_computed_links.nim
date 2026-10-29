@@ -6,7 +6,9 @@
 ## Genuine importer/exporter correspondence, exact ordinal binding, all-or-nothing failure and immutable lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
+import ../../../src/state/computed/[links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../../src/state/report/identity as report_identity
 import ../../../src/codec/bounded
 import ../../../src/crypto/guarantee
 import ../../support/[pvm_computed_links, pvm_computed_report, pvm_computed_report_vectors, arc_evidence]

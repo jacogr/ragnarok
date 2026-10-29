@@ -4,8 +4,11 @@
 ## Dynamic native-result/receipt guards and live-owner destructor guards use real synchronized positive controls.
 import std/[assertions, cmdline, syncio]
 import ../support/paged_native_fixture
-import ../../src/storage/[paged_store, paged_io, paged_stream, paged_codec, file_errors,
-  managed_manifest, state_proof, durability]
+import ../../src/storage/paged/[store as paged_store, io as paged_io, stream as paged_stream,
+    codec as paged_codec]
+import ../../src/storage/file/errors as file_errors
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/storage/[state_proof, durability]
 proc pid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each standalone probe has an isolated ignored namespace.
 proc main() =

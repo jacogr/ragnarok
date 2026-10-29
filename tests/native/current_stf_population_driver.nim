@@ -4,13 +4,26 @@
 ## Complete three-core original maps and real culprit/resize candidates expose population-ceiling and offender semantics.
 import std/[assertions, cmdline, syncio]
 import ../support/current_stf_epoch_context as epoch
-import ../../src/app/[chain, candidate, current_block_input, current_block_download]
+import ../../src/app/[chain, candidate]
+import "../../src/app/current/block/input" as current_block_input
+import "../../src/app/current/block/download" as current_block_download
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, state_layout, state_safrole, state_consensus, state_authorization,
-  state_availability, state_statistics, state_privileges, state_disputes, disputes, report_owned,
-  block_codec, header, state_composition]
-import ../../src/state/[store, accumulation_current_update, current_profile, current_globals,
-  current_state, global_snapshot, block_transition, disputes, safrole_transition, safrole_authentication]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, safrole as state_safrole,
+    consensus as state_consensus, authorization as state_authorization,
+    availability as state_availability, statistics as state_statistics,
+    privileges as state_privileges, disputes as state_disputes]
+import ../../src/codec/[disputes, report_owned, block_codec, header]
+import ../../src/codec/state/composition as state_composition
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/disputes
+import ../../src/state/safrole/[transition as safrole_transition,
+    authentication as safrole_authentication]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ../support/[current_stf_population_context, current_namespace_context,

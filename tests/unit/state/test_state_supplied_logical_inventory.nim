@@ -5,8 +5,11 @@
 # @@Verification={"arc": "state_supplied_logical_inventory_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, supplied_logical_context, arc_evidence]
-import ../../../src/state/[supplied_logical_inventory, inventory, manifest, store]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_service_values]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    service_values as state_service_values]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Short extra-retention limits must refuse before mandatory complete matching hashes.

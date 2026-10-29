@@ -4,12 +4,23 @@
 ## Literal whole-C(13) bytes and independent complete-map roots verify source-derived assembly and rollback.
 
 import std/assertions
-import ../../src/state/[block_activity, core_activity, validator_activity, service_activity,
-  accumulation_statistics, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, guarantee_credentials, block_transition,
-  block_admission, store]
-import ../../src/codec/[bounded, composite, owned, report_owned, work_report, work_digest,
-  state_statistics, state_safrole, state_layout, state_trie, header, tickets]
+import "../../src/state/block/activity" as block_activity
+import ../../src/state/core/activity as core_activity
+import ../../src/state/validator/activity as validator_activity
+import ../../src/state/service/activity as service_activity
+import ../../src/state/accumulation/[statistics as accumulation_statistics,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, owned, report_owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/[statistics as state_statistics, safrole as state_safrole,
+    layout as state_layout, trie as state_trie]
+import ../../src/codec/[header, tickets]
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

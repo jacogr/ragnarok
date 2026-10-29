@@ -4,7 +4,8 @@
 ## Strict completed-origin owner/default source guards with an actual two-child current positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[current_repeated_logical_context, current_identity_context]
-import ../../src/state/[current_identities, current_logical, accumulation_current_update]
+import ../../src/state/current/[identities as current_identities, logical as current_logical]
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/report_owned
 proc extract(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## No default completed source grants an authenticated preservation prefix.

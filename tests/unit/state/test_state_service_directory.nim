@@ -5,8 +5,10 @@
 # @@Verification={"arc": "state_service_directory_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[service_directory, inventory]
-import ../../../src/codec/[bounded, state_accounts, state_composition]
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/inventory
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after fixture capture; directory work is descriptor-only.

@@ -4,10 +4,13 @@
 ## Published Genesis ownership and independently supplied header/state/profile anchors govern new replay chains.
 import std/[assertions, envvars, syncio, parseutils]
 import ../../support/[trace_step_context, accumulation_current_chain_context]
-import ../../../src/state/[trace_genesis, trace_state, store]
-import ../../../src/app/[trace_bootstrap, chain]
+import ../../../src/state/trace/[genesis as trace_genesis, state as trace_state]
+import ../../../src/state/store
+import ../../../src/app/trace/bootstrap as trace_bootstrap
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, parameters, provider]
-import ../../../src/codec/[header, bounded, assurances, state_trie]
+import ../../../src/codec/[header, bounded, assurances]
+import ../../../src/codec/state/trie as state_trie
 proc word(text: string): array[32, byte] =
   ## Decode only frozen independently calculated trust literals, not roots or hashes read from the incoming Genesis file.
   assert text.len == 64

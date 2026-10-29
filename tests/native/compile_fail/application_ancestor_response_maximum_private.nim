@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "maximum"}
 
 ## Private request/response fields cannot forge identity, counts, captured headers or result alternatives.
-import ../../../src/app/ancestor_response
+import ../../../src/app/ancestor/response as ancestor_response
 let owner = default(AncestorRequest)
 discard owner.maximum

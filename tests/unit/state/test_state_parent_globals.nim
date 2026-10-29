@@ -6,9 +6,11 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, parent_profile_context,
     parent_globals_context, arc_evidence]
-import ../../../src/state/[parent_profile, parent_globals, global_snapshot, store]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals]
+import ../../../src/state/[global_snapshot, store]
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Global seed qualification and copied source observations require no hashing after fixture setup.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

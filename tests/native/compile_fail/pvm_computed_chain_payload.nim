@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_chain
+import ../../../src/state/computed/chain as computed_chain
 var candidate: ComputedChainResult[AdvancedComputedChain]
 discard candidate.completed

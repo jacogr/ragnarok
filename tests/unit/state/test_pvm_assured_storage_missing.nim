@@ -6,13 +6,20 @@
 ## Actual deletion makes a read ignore its invalid destination and return full-width NONE, persisted by real guest instructions.
 
 import std/[assertions, syncio]
-import ../../../src/state/[assured_chain, assured_composition, assured_execution, assured_queue,
-  accumulation_execution, accumulation_round, accumulation_inputs, accumulation_batch,
-  accumulation_provisions, accumulation_outcome, accumulation_context, accumulation_effects,
-  accumulation_consensus, accumulation_runner, accumulation_dispatch, store]
+import ../../../src/state/assured/[chain as assured_chain, composition as assured_composition,
+    execution as assured_execution, queue as assured_queue]
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, inputs as accumulation_inputs, batch as accumulation_batch,
+    provisions as accumulation_provisions, outcome as accumulation_outcome,
+    context as accumulation_context, effects as accumulation_effects,
+    consensus as accumulation_consensus, runner as accumulation_runner,
+    dispatch as accumulation_dispatch]
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values,
-  state_statistics, state_workqueues]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, statistics as state_statistics,
+    workqueues as state_workqueues]
 import ../../../src/pvm/[machine, step]
 import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
   pvm_assured_execution, pvm_assured_composition, arc_evidence]

@@ -3,11 +3,15 @@
 
 ## Existing public disk/application APIs verify complete durable prefixes and explicit finality without changing storage contracts.
 import std/assertions
-import ../../src/app/[services, options, chain, candidate, disk_chain]
+import ../../src/app/[services, options, chain, candidate]
+import ../../src/app/disk/chain as disk_chain
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 import ../../src/state/[store, disk_store]
-import ../../src/storage/[file_repository, node_repository, node_records, record_codec, database_identity]
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/[record_codec, database_identity]
 import ../../src/crypto/primitives
 import ./[application_download_chain, application_candidate_context]
 

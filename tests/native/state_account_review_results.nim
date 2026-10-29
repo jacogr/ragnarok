@@ -4,8 +4,9 @@
 ## Dynamic review payload guards retain a real same-source component join as the positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, account_review_context]
-import ../../src/state/[account_review, account_invariants, supervision_table, economics_table]
-include composition_fixture
+import ../../src/state/account/[review as account_review, invariants as account_invariants]
+import ../../src/state/[supervision_table, economics_table]
+include ./composition_fixture
 proc extract(outcome: AccountReviewResult[StateAccountReview]): StateAccountReview {.noinline.} =
   ## Defaults and failed joins grant no composite source-bearing review.
   outcome.value

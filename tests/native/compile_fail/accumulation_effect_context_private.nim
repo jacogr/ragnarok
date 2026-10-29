@@ -6,5 +6,5 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 discard default(AccumulationEffectContext).data

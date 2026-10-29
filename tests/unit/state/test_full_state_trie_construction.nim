@@ -5,8 +5,9 @@
 # @@Verification={"arc": "full_state_trie_construction_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/full_state_trie
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real primitive refusal detects accidental hashing during bounded preflight.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

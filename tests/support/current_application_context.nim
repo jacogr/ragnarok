@@ -6,7 +6,7 @@ import std/[assertions, strutils]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/header
 import ../../src/state/store
-import ../../src/lib/json_writer
+import ../../src/lib/json/writer as json_writer
 import ./accumulation_current_chain_context
 proc hexBytes(value: openArray[byte]): string =
   ## Test-owned canonical lowercase hexadecimal does not reuse the production configuration decoder.

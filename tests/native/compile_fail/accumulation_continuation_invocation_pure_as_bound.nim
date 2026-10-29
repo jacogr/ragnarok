@@ -4,6 +4,7 @@
 
 ## Reject replacement of nominal continuation invocation provenance.
 
-import ../../../src/state/[accumulation_continuation_invocation, accumulation_invocation]
+import ../../../src/state/accumulation/continuation/invocation as accumulation_continuation_invocation
+import ../../../src/state/accumulation/invocation as accumulation_invocation
 var pure: PreparedAccumulationInvocation
 discard bootstrapContinuation(pure)

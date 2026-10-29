@@ -3,6 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## No caller can forge terminal-plan ownership.
-import ../../../src/state/accumulation_current_driver
+import ../../../src/state/accumulation/current/driver as accumulation_current_driver
 let owner = default(CompletedCurrentAccumulationSequence)
 discard owner.data

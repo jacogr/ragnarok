@@ -4,7 +4,8 @@
 
 ## Refuse access or domain substitution across continuation input/state preparation.
 
-import ../../../src/state/[accumulation_continuation_inputs, accumulation_inputs]
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../../src/state/accumulation/inputs as accumulation_inputs
 var inputs: PreparedAccumulationInputs
 var config: AccumulationContinuationInputConfig
 discard prepareAccumulationContinuationInputs(inputs, config)

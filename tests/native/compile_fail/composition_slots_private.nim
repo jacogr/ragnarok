@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "slots"}
 
-import ../../../src/codec/state_composition
+import ../../../src/codec/state/composition as state_composition
 let chapters = default(StateChapters)
 discard chapters.slots

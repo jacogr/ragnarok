@@ -3,8 +3,9 @@
 
 ## Default/refused current validator owners expose no observations, projection, source or inactive nested cause.
 import std/cmdline
-import ../../src/state/[accumulation_current_validators, accumulation_validators,
-    accumulation_current_recent]
+import ../../src/state/accumulation/current/validators as accumulation_current_validators
+import ../../src/state/accumulation/validators as accumulation_validators
+import ../../src/state/accumulation/current/recent as accumulation_current_recent
 let owner = default(CurrentAccumulationValidatorsResult[PreparedCurrentAccumulationValidators])
 let validators = default(PreparedCurrentAccumulationValidators)
 let refused = prepareCurrentAccumulationValidators(default(PreparedCurrentAccumulationRecent),

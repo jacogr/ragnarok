@@ -4,7 +4,8 @@
 ## Strict optimized configured-profile and fixed-context projection guards with genuine full parent/map controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_profile, computed_lookup, store]
+import ../../src/state/computed/[profile as computed_profile, lookup as computed_lookup]
+import ../../src/state/store
 import ../../src/chain/[genesis, parameters]
 import ../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_lookup_vectors, pvm_computed_state]
 

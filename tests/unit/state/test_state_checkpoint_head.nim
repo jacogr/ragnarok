@@ -6,8 +6,9 @@
 ## Independent fixed-byte witness, all-prefix and every-byte corruption checks for local selection metadata.
 
 import std/[assertions, syncio]
-import ../../../src/state/checkpoint_head
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/state/checkpoint/head as checkpoint_head
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 proc cycle(head: CheckpointHead) =

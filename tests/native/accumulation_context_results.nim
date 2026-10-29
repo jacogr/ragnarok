@@ -5,7 +5,8 @@
 ## Each dynamic mode must terminate at its contract rather than expose a default successful context.
 
 import std/cmdline
-import ../../src/state/[accumulation_context, accumulation_invocation]
+import ../../src/state/accumulation/[context as accumulation_context,
+    invocation as accumulation_invocation]
 
 # Dynamic selection retains a real preparation refusal without constant-invalid extraction at compilation.
 let outcome = if paramStr(1) == "refused":

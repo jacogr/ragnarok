@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/accumulation_context
+import ../../../src/state/accumulation/context as accumulation_context
 let owner = default(AccumulationContextResult[PreparedAccumulationContexts])
 discard owner.status # Private storage cannot be used as a public constructor.

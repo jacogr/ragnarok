@@ -10,11 +10,18 @@
 # @@Verification={"arc": "report_transition_arc_release"}
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[report_transition, report_admission, report_assignments,
-  block_transition,
-  block_admission, report_policy, report_anchors, report_packages, guarantee_credentials, store]
-import ../../../src/codec/[bounded, block_codec, header, state_layout, state_trie, state_safrole,
-  state_availability, guarantees, report_owned, owned, state_disputes]
+import ../../../src/state/report/[transition as report_transition, admission as report_admission,
+    assignments as report_assignments]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/[policy as report_policy, anchors as report_anchors,
+    packages as report_packages]
+import ../../../src/state/[guarantee_credentials, store]
+import ../../../src/codec/[bounded, block_codec, header]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole, availability as state_availability]
+import ../../../src/codec/[guarantees, report_owned, owned]
+import ../../../src/codec/state/disputes as state_disputes
 import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Reset observed primitive calls/refusal without substituting successful hashes or signatures.

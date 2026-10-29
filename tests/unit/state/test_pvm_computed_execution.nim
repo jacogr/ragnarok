@@ -5,13 +5,17 @@
 ## Genuine historical service execution retains original computed parameters and never fabricates engine outcomes.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_execution, computed_round, computed_publication,
-  computed_admission, report_admission, accumulation_runner, accumulation_execution,
-  accumulation_round, accumulation_queue, accumulation_inputs, accumulation_batch,
-  accumulation_outcome,
-  accumulation_provisions, block_transition, block_admission,
-  store]
-import ../../../src/state/accumulation_dispatch
+import ../../../src/state/computed/[execution as computed_execution, round as computed_round,
+    publication as computed_publication, admission as computed_admission]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/[runner as accumulation_runner,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    inputs as accumulation_inputs, batch as accumulation_batch, outcome as accumulation_outcome,
+    provisions as accumulation_provisions]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/state/accumulation/dispatch as accumulation_dispatch
 import ../../../src/pvm/step
 import ../../../src/codec/bounded
 import ../../support/[pvm_computed_execution, arc_evidence]

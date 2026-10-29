@@ -6,8 +6,12 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, report_owned, state_trie]
-import ../../../src/state/[current_checkpoint, checkpoint, store, accumulation_current_update, accumulation_current_consensus]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/state/current/checkpoint as current_checkpoint
+import ../../../src/state/[checkpoint, store]
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine current execution/capture has completed on the stable host graph.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

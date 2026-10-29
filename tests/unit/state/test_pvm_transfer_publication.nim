@@ -6,11 +6,16 @@
 
 import std/[assertions, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, header, c2_records, state_accounts,
-  state_layout, state_service_values, state_requests, state_trie]
-import ../../../src/state/[accumulation_batch, accumulation_dispatch, accumulation_effects,
-  accumulation_context, accumulation_invocation, accumulation_outcome, accumulation_provisions,
-  accumulation_transfers, accumulation_inputs, accumulation_service, store]
+import ../../../src/codec/[bounded, composite, header, c2_records]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests, trie as state_trie]
+import ../../../src/state/accumulation/[batch as accumulation_batch,
+    dispatch as accumulation_dispatch, effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation,
+    outcome as accumulation_outcome, provisions as accumulation_provisions,
+    transfers as accumulation_transfers, inputs as accumulation_inputs,
+    service as accumulation_service]
+import ../../../src/state/store
 import ../../../src/pvm/[machine, step]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,

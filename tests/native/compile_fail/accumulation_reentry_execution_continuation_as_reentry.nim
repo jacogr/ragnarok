@@ -4,7 +4,8 @@
 
 ## Reject substitution of nominal reentry bootstrap/completion provenance.
 
-import ../../../src/state/[accumulation_reentry_execution, accumulation_continuation_inputs,
-    accumulation_execution]
+import ../../../src/state/accumulation/reentry/execution as accumulation_reentry_execution
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../../src/state/accumulation/execution as accumulation_execution
 var old: PreparedAccumulationContinuationInputs
 discard completeAccumulationReentry(old, [], [], default(AccumulationExecutionLimits))

@@ -7,7 +7,8 @@
 # @@Verification={"arc": "pvm_fetch_accumulation_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/codec/[c2_records, bounded, composite, work_digest, work_package]
+import ../../../src/codec/[c2_records, bounded, composite]
+import ../../../src/codec/work/[digest as work_digest, package as work_package]
 import ../../../src/chain/parameters
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]
 import ../../support/arc_evidence

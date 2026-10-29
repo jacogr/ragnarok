@@ -4,10 +4,16 @@
 ## Shared signed current Services setup and scalar-only native waits preserve exact disk publication ownership.
 import std/[assertions, monotimes, times]
 import std/posix/posix
-import ../../src/app/[services, options, preparation_worker, current_block_input, candidate, disk_worker]
+import ../../src/app/[services, options, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/candidate
+import ../../src/app/disk/worker as disk_worker
 import ../../src/rpc/server
 import ../../src/codec/[bounded, block_codec]
-import ../../src/state/[store, accumulation_current_update, block_admission, report_admission]
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/report/admission as report_admission
 import ./[accumulation_current_chain_context, accumulation_current_candidate_context]
 proc yieldCurrentDiskThread*() =
   ## Yield within bounded waits without creating or retiring any leased graph alias.

@@ -5,14 +5,21 @@
 ## Real block prefixes and completed accumulation compose exact seven-chapter state without losing either source's effects.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_consensus, accumulation_authorization,
-  accumulation_preimages,
-  accumulation_activity, accumulation_validators, accumulation_times, accumulation_statistics,
-  accumulation_finalization, accumulation_outputs, accumulation_execution, accumulation_round,
-  accumulation_queue, report_admission, report_assignments, guarantee_credentials,
-  block_transition, block_admission, core_service_activity, preimages, authorization, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, guarantees, assurances,
-  state_layout, state_trie, state_accounts, state_service_values]
+import ../../../src/state/accumulation/[consensus as accumulation_consensus,
+    authorization as accumulation_authorization, preimages as accumulation_preimages,
+    activity as accumulation_activity, validators as accumulation_validators,
+    times as accumulation_times, statistics as accumulation_statistics,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/[admission as report_admission, assignments as report_assignments]
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/[preimages, authorization, store]
+import ../../../src/codec/[bounded, composite, header, report_owned, guarantees, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, service_values as state_service_values]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_activity_context, accumulation_provision_integration,
   report_context, arc_evidence]

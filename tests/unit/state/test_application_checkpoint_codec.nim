@@ -5,7 +5,7 @@
 
 ## Exact independently encoded metadata bytes, every cut/tamper and full profile invariants gate local checkpoint context.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/checkpoint_identity
+import ../../../src/app/checkpoint/identity as checkpoint_identity
 import ../../../src/codec/bounded
 import ../../../src/crypto/primitives
 import ../../support/[application_checkpoint_context, arc_evidence]

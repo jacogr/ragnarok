@@ -4,10 +4,14 @@
 ## Genuine storage calls retain bounded original raw identities through immutable effects and actual terminal selection.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
-import ../../src/state/[accumulation_effects, accumulation_dispatch, accumulation_context,
-    accumulation_machine, accumulation_outcome, accumulation_invocation]
+import ../../src/state/accumulation/[effects as accumulation_effects,
+    dispatch as accumulation_dispatch, context as accumulation_context,
+    machine as accumulation_machine, outcome as accumulation_outcome,
+    invocation as accumulation_invocation]
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, state_accounts, state_layout, state_requests]
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    requests as state_requests]
 import ../../src/pvm/[machine, step, gas, host_fetch]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend failure leaves original effect and raw fact ownership unchanged.

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_composition
+import ../../../src/codec/state/composition as state_composition
 let owner = default(StateSnapshot)
 discard owner.data

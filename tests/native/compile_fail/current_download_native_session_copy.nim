@@ -3,7 +3,7 @@
 
 ## The current native composite independently rejects duplicated callback and lease ownership.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CurrentDownloadSession>", "build_name": "current-download-native-session-copy"}
-import ../../../src/quic/current_block_download_session
+import "../../../src/quic/current/block/download/session" as current_block_download_session
 var original = default(CurrentDownloadSession)
 var duplicate = original
 discard original.busy

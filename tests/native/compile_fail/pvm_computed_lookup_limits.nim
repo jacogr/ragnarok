@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedLookupLimits", "early": ["checkComputedLookupAnchor(", "[3] expected: ComputedLookupLimits but got: ByteLimit"]}
 
-import ../../../src/state/[computed_lookup, computed_recent, computed_state, report_identity]
+import ../../../src/state/computed/[lookup as computed_lookup, recent as computed_recent,
+    state as computed_state]
+import ../../../src/state/report/identity as report_identity
 import ../../../src/codec/bounded
 discard checkComputedLookupAnchor(default(RecentComputedReport), [], ByteLimit(1000))

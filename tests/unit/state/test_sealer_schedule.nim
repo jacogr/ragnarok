@@ -10,8 +10,9 @@
 # @@Verification={"arc": "sealer_schedule_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/sealer_schedule
-import ../../../src/codec/[state_safrole, state_consensus, bounded, assurances]
+import ../../../src/state/sealer/schedule as sealer_schedule
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
+import ../../../src/codec/[bounded, assurances]
 import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Observer-linked primitives expose exact call counts and controlled first/late hash refusal only in tests.

@@ -3,6 +3,6 @@
 
 ## Failed/default RawState alternatives cannot expose a successful owner prefix.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/state/trace_state
+import ../../../src/state/trace/state as trace_state
 let outcome = default(TraceStateResult[TraceState])
 discard outcome.completed

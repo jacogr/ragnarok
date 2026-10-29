@@ -11,7 +11,7 @@ finality or preferred-chain authority.
 
 ## Contract and completion tests
 
-`app/download_schedule` owns one non-copyable plan with at most 64 distinct peers,
+`app/download/schedule` owns one non-copyable plan with at most 64 distinct peers,
 an explicit positive attempt budget and per-peer retry delay. Configure atomically
 copies a validated peer list. No allocation precedes its bounds, zero/duplicate
 identity and policy checks. Reconfiguration is forbidden while an attempt is held;

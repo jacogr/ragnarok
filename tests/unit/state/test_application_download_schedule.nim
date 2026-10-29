@@ -6,7 +6,7 @@
 ## Deterministic peer selection, bounded retries, immutable attempt identity and ARC ownership.
 
 import std/[assertions, syncio]
-import ../../../src/app/download_schedule
+import ../../../src/app/download/schedule as download_schedule
 import ../../../src/codec/bounded
 import ../../support/arc_evidence
 

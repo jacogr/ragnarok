@@ -7,9 +7,15 @@ import ../../support/[collected_native_context, collected_supplied_context,
     collected_logical_context,
 
 accumulation_current_candidate_context, current_logical_proof_context]
-import ../../../src/app/[chain, current_block_input, preparation_worker, proof_worker, proof_query,
-    collected_supplied_plan, collected_supplied_state, logical_proof]
-import ../../../src/state/[current_logical, proof_plan]
+import ../../../src/app/chain
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/preparation_worker
+import ../../../src/app/proof/[worker as proof_worker, query as proof_query]
+import ../../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../../src/app/logical/proof as logical_proof
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/proof/plan as proof_plan
 import ../../../src/codec/bounded
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Synchronized scalar waits never copy or retire canonical graph aliases.

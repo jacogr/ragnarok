@@ -5,14 +5,25 @@
 ## Bound reentry entropy/provenance survives real PVM execution, complete coverage and canonical actual gas.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_reentry_invocation, accumulation_reentry_execution,
-  accumulation_reentry, accumulation_continuation_execution, accumulation_continuation_inputs,
-  accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
-  accumulation_inputs, accumulation_batch, accumulation_service, accumulation_invocation,
-  accumulation_dispatch, accumulation_skip, accumulation_outcome, accumulation_provisions,
-  accumulation_terminal_provisions, accumulation_machine, report_admission, block_transition, store]
-import ../../../src/codec/[bounded, composite, report_owned, header, state_safrole, state_layout,
-  state_trie, work_digest]
+import ../../../src/state/accumulation/reentry/[invocation as accumulation_reentry_invocation,
+    execution as accumulation_reentry_execution]
+import ../../../src/state/accumulation/reentry as accumulation_reentry
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    inputs as accumulation_inputs, batch as accumulation_batch, service as accumulation_service,
+    invocation as accumulation_invocation, dispatch as accumulation_dispatch,
+    skip as accumulation_skip, outcome as accumulation_outcome,
+    provisions as accumulation_provisions, terminal_provisions as accumulation_terminal_provisions,
+    machine as accumulation_machine]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, report_owned, header]
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/work/digest as work_digest
 import ../../../src/pvm/[initialize, machine, program]
 import ../../support/[accumulation_reentry_context, accumulation_continuation_execution_context,
   accumulation_execution_context, report_context, arc_evidence]

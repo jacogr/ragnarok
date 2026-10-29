@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/computed_envelope
+import ../../../src/state/computed/envelope as computed_envelope
 var candidate: ComputedGuaranteeEnvelope
 discard candidate.data

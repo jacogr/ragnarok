@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_composition, state_trie]
+import ../../../src/codec/state/[composition as state_composition, trie as state_trie]
 let parsed = default(StateCompositionResult[StateEntry])
 discard parsed.completed

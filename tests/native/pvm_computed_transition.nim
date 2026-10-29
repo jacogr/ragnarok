@@ -4,7 +4,9 @@
 ## Strict optimized transition extraction guards with genuine signed success controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_transition, computed_profile, block_transition, store]
+import ../../src/state/computed/[transition as computed_transition, profile as computed_profile]
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/store
 import ../../src/codec/[bounded, block_codec, header]
 import ../../src/chain/parameters
 import ../support/[pvm_computed_transition, pvm_computed_state, pvm_computed_profile,

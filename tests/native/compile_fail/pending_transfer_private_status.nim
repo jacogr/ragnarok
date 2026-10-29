@@ -3,7 +3,7 @@
 # @@Verification={"group":"privacy","expected":"status"}
 
 ## Pending ownership, selected reasons and nominal budget/ordinal units remain private or distinct.
-import ../../../src/state/accumulation_pending_transfers
+import ../../../src/state/accumulation/pending_transfers as accumulation_pending_transfers
 
 var candidate = default(PendingTransferResult[int])
 candidate.status = PendingTransferError.None

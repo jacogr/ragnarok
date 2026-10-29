@@ -4,9 +4,11 @@
 ## Default/refused later runners cannot expose completion or an unselected child reason.
 
 import std/cmdline
-import ../../src/state/[accumulation_later_runner, accumulation_runner,
-  accumulation_continuation_inputs,
-  accumulation_continuation_execution, accumulation_reentry]
+import ../../src/state/accumulation/[later_runner as accumulation_later_runner,
+    runner as accumulation_runner]
+import ../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    execution as accumulation_continuation_execution]
+import ../../src/state/accumulation/reentry as accumulation_reentry
 import ../../src/chain/parameters
 
 let argument = paramStr(1)

@@ -4,8 +4,10 @@
 ## Strict computed stopped/finalization payload and selected child-reason probes with real completed guest controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_finalization, computed_execution, accumulation_driver,
-  accumulation_finalization]
+import ../../src/state/computed/[finalization as computed_finalization,
+    execution as computed_execution]
+import ../../src/state/accumulation/[driver as accumulation_driver,
+    finalization as accumulation_finalization]
 import ../../src/codec/bounded
 import ../support/pvm_computed_finalization
 

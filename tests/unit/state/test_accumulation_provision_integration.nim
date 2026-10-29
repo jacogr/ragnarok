@@ -6,13 +6,15 @@
 ## Covers canonical set semantics, resource preflight, exact writes, rollback, ownership and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_provisions, accumulation_effects, accumulation_context,
-    preimages, store]
-import ../../../src/codec/[bounded, composite, owned, header, state_accounts, state_requests,
-  state_service_values, state_layout, state_trie]
+import ../../../src/state/accumulation/[provisions as accumulation_provisions,
+    effects as accumulation_effects, context as accumulation_context]
+import ../../../src/state/[preimages, store]
+import ../../../src/codec/[bounded, composite, owned, header]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    service_values as state_service_values, layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_provision_integration, pvm_accumulation_provision, arc_evidence]
-import ../../../src/state/accumulation_dispatch
+import ../../../src/state/accumulation/dispatch as accumulation_dispatch
 import ../../../src/pvm/step
 
 ## Inject backend refusal only after source maps and expected keys have been prepared.

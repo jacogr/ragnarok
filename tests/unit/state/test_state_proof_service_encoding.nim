@@ -3,8 +3,11 @@
 
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 proc main() =
   ## The service response is the existing local envelope, with exact plan matching rather than a new protocol.
   let service = ServiceIndex(7)

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/computed_state
+import ../../../src/state/computed/state as computed_state
 var candidate: ComputedStateResult[StateBoundComputedReport]
 discard candidate.completed

@@ -7,7 +7,8 @@
 import std/[assertions, syncio]
 import ../../../src/pvm/host_fetch
 import ../../../src/state/extrinsic_inputs
-import ../../../src/codec/[bounded, work_package]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/package as work_package
 import ../../support/[pvm_extrinsic_inputs, arc_evidence]
 
 proc input(verified: VerifiedExtrinsics, item, index: uint64): ExtrinsicInputsResult[seq[byte]] =

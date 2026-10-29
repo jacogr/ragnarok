@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 var parsed = default(ServiceMetadataResult[ServiceMetadataRead])
 parsed.status = ServiceMetadataError.None

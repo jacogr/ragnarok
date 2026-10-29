@@ -4,7 +4,9 @@
 ## Publication failures/defaults contain no adopted snapshot or unselected store cause.
 
 import std/cmdline
-import ../../src/state/[accumulation_block_publication, accumulation_consensus, store]
+import "../../src/state/accumulation/block/publication" as accumulation_block_publication
+import ../../src/state/accumulation/consensus as accumulation_consensus
+import ../../src/state/store
 
 let argument = paramStr(1)
 var state = default(StateStore)

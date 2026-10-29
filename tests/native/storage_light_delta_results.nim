@@ -3,8 +3,11 @@
 
 ## Dynamic light-delta result/owner misuse requires real runtime contracts and independent success controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_delta, light_snapshot, light_state_cache, state_proof, database_identity]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../src/storage/[state_proof, database_identity]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Dynamic origins keep default/failed extraction from becoming a compile-only rejection.
   let member = paramStr(1)

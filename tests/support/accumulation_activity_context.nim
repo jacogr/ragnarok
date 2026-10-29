@@ -5,15 +5,23 @@
 
 import std/assertions
 import ./service_namespace_seed
-import ../../src/state/[accumulation_validators, validator_projection, accumulation_times,
-  accumulation_statistics, accumulation_recent, accumulation_ready, accumulation_history,
-  accumulation_finalization, accumulation_outputs, accumulation_continuation_execution,
-  accumulation_continuation_inputs, accumulation_continuation, accumulation_execution,
-  accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip,
-  accumulation_dispatch,
-  accumulation_effects]
-import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_statistics,
-  state_outputs, state_workqueues, state_history, state_trie, state_authorization]
+import ../../src/state/accumulation/validators as accumulation_validators
+import ../../src/state/validator/projection as validator_projection
+import ../../src/state/accumulation/[times as accumulation_times,
+    statistics as accumulation_statistics, recent as accumulation_recent,
+    ready as accumulation_ready, history as accumulation_history,
+    finalization as accumulation_finalization, outputs as accumulation_outputs]
+import ../../src/state/accumulation/continuation/[execution as accumulation_continuation_execution,
+    inputs as accumulation_continuation_inputs]
+import ../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
+    service as accumulation_service, skip as accumulation_skip, dispatch as accumulation_dispatch,
+    effects as accumulation_effects]
+import ../../src/codec/[bounded, composite, header, report_owned]
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/state/[statistics as state_statistics, outputs as state_outputs,
+    workqueues as state_workqueues, history as state_history, trie as state_trie,
+    authorization as state_authorization]
 import ./[accumulation_execution_context, accumulation_provision_integration,
   accumulation_batch_context, pvm_accumulation_provision]
 

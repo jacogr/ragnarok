@@ -4,7 +4,8 @@
 ## Optimized computed-report result guards include independent complete canonical-wire controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_report, availability_specifier]
+import ../../src/state/computed/report as computed_report
+import ../../src/state/availability/specifier as availability_specifier
 import ../../src/codec/bounded
 import ../support/[pvm_computed_report, pvm_computed_report_vectors]
 

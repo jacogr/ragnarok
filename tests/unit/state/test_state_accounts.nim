@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_accounts, bounded]
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/bounded
 
 ## All fixed decoded fields survive both input mutation and local scope exit without a retained owner.
 proc captured(): ServiceMetadataRead =

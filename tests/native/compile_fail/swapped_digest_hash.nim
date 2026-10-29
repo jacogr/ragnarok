@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: PayloadHash but wanted: CodeHash"}
 
-import ../../../src/codec/work_digest
+import ../../../src/codec/work/digest as work_digest
 var wrong = default(PayloadHash)
 var value = default(WorkDigest)
 value.codeHash = wrong

@@ -3,8 +3,10 @@
 # @@Verification={"group":"nominal","expected":"AccumulationFundingMode","early":["prepareAccumulationTransfer(","[8] expected: AccumulationFundingMode but got: AccountBalance"]}
 
 ## Deferred funding uses distinct account and mode domains.
-import ../../../src/state/accumulation_effects
-import ../../../src/codec/[composite, state_accounts, c2_records]
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/codec/composite
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
 import ../../../src/pvm/gas
 

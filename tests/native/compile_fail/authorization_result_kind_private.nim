@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_authorization, state_trie]
+import ../../../src/codec/state/[authorization as state_authorization, trie as state_trie]
 let value = default(AuthorizationResult[AuthorizationKind])
 discard value.completed

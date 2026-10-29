@@ -5,9 +5,13 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[managed_io, managed_manifest, file_repository, full_state_trie,
-  node_repository, node_records, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/database_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc raw() =
   ## Low-level managed reads cover empty/exact/excess limits around both4096-byte chunk boundaries.
   var path = "storage-read-bounds-managed"

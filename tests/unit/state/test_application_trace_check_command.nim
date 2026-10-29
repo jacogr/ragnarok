@@ -3,7 +3,8 @@
 
 ## Offline command activation, finite shape and explicit trust/state budgets reject unrelated side-effect controls.
 import std/[assertions, syncio]
-import ../../../src/app/[options, trace_check_command]
+import ../../../src/app/options
+import ../../../src/app/trace/check_command as trace_check_command
 import ../../../src/codec/bounded
 proc main() =
   ## Parsing is atomic and cannot silently enable listeners, disk ownership, recovery or download behavior for a trace check.

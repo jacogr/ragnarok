@@ -3,8 +3,10 @@
 
 ## Explicit restoration and invariant policies support unchanged-format checkpoint consumer fixtures.
 import ./[state_inventory_context, account_invariant_context]
-import ../../src/state/[account_checkpoint, validated_checkpoint, store, global_snapshot]
-import ../../src/codec/[bounded, state_composition]
+import ../../src/state/account/checkpoint as account_checkpoint
+import ../../src/state/[validated_checkpoint, store, global_snapshot]
+import ../../src/codec/bounded
+import ../../src/codec/state/composition as state_composition
 const accountCheckpointLimits* = AccountCheckpointLimits(
   serialization: StateCheckpointLimits(checkpointBytes: ByteLimit(524288),
     store: StateStoreLimits(trie: inventoryMapLimits, writes: ElementLimit(64),

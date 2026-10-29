@@ -3,8 +3,9 @@
 
 ## Default/refused consensus owners reveal no source, observations or partially composed map.
 import std/cmdline
-import ../../src/state/[accumulation_current_consensus, accumulation_consensus,
-    accumulation_current_authorization]
+import ../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../src/state/accumulation/consensus as accumulation_consensus
+import ../../src/state/accumulation/current/authorization as accumulation_current_authorization
 let owner = default(CurrentAccumulationConsensusResult[PreparedCurrentAccumulationConsensus])
 let consensus = default(PreparedCurrentAccumulationConsensus)
 let refused = prepareCurrentAccumulationConsensus(default(PreparedCurrentAccumulationAuthorization),

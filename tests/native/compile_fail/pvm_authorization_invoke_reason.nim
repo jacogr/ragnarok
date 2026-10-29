@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "executionReason"}
 
-import ../../../src/state/authorization_invocation
+import ../../../src/state/authorization/invocation as authorization_invocation
 var result: AuthorizationInvocationResult[AuthorizationInvocation]
 discard result.executionReason

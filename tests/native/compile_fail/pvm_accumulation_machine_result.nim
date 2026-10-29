@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/accumulation_machine
+import ../../../src/state/accumulation/machine as accumulation_machine
 var outcome: AccumulationMachineResult[PreparedAccumulationMachine]
 discard outcome.completed

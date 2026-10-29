@@ -4,7 +4,7 @@
 ## Strict optimized canonical-output/reporters guards with real current and prior verified source controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_envelope, computed_credentials]
+import ../../src/state/computed/[envelope as computed_envelope, credentials as computed_credentials]
 import ../../src/codec/bounded
 import ../support/pvm_computed_envelope
 

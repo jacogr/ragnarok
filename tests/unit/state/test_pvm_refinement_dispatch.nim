@@ -5,11 +5,15 @@
 ## Original real guests verify bound refinement host inputs, transactional exports and shared heap behavior.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_dispatch, store]
+import ../../../src/state/refinement/dispatch as refinement_dispatch
+import ../../../src/state/store
 import ../../../src/pvm/[machine, program, step, gas, host_fetch, refinement_exports, inner_machines]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_trie, state_service_values,
-  state_requests, work_package, work_digest, work_report]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, trie as state_trie,
+    service_values as state_service_values, requests as state_requests]
+import ../../../src/codec/work/[package as work_package, digest as work_digest,
+    report as work_report]
 import ../../support/arc_evidence
 
 proc parameters(): Parameters =

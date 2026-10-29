@@ -4,6 +4,6 @@
 
 ## Certified validator ownership and result alternatives remain private.
 
-import ../../../src/state/accumulation_validators
+import ../../../src/state/accumulation/validators as accumulation_validators
 var owner: PreparedAccumulationValidators
 discard owner.data

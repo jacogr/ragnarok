@@ -5,7 +5,7 @@ phase 0 Idle, 1 Queued, 2 Running, 3 Done; other abstracts one preparation/disk 
 Mut 1 removes a canonical getter gate, 2 lets unrelated stop resume RPC,
 3 resumes RPC on logical cancellation. One active proof slot; no ticket or payload model.
 Source: src/app/services.nim beginStateProof, stopPreparation, collectStateProof,
-stopStateProofs, chainView and tick. Light analogue: src/app/light_runtime.nim sourceReady/head/beginQuery/collectQuery,
+stopStateProofs, chainView and tick. Light analogue: src/app/light/runtime.nim sourceReady/head/beginQuery/collectQuery,
 stopProofs/stopDisk/close/tick. CPU includes query/import; other is the serialized
 publication/retirement slot. Detached RPC metadata contains no application proof graph.
 Detailed source boundary in feature contract.#

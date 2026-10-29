@@ -3,10 +3,12 @@
 
 ## Compare published TraceStep files against independent exact wires and complete pre/post maps.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/state/[trace_step, trace_state, store, checkpoint]
+import ../../src/state/trace/[step as trace_step, state as trace_state]
+import ../../src/state/[store, checkpoint]
 import ../../src/codec/block_codec
 import ../support/trace_step_context
-import ../../src/codec/[state_trie, bounded]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 proc unhex(text: string): seq[byte] =
   ## Decode only the maintained request transport; production codecs validate actual framing and roots.
   assert text.len mod 2 == 0

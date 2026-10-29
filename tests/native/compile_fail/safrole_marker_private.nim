@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/safrole_markers
+import ../../../src/state/safrole/markers as safrole_markers
 var hidden = default(SafroleMarkerResult)
 discard hidden.completed

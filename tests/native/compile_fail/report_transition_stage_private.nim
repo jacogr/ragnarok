@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "stageReason"}
 
-import ../../../src/state/report_transition
+import ../../../src/state/report/transition as report_transition
 let result = default(BlockReportResult)
 discard result.stageReason # Private field access must fail before lowering.

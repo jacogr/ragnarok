@@ -4,8 +4,10 @@
 ## Guard current-global payloads and exact failed-global reasons with an actual prepared producer success control.
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
-import ../../src/state/[current_globals, current_profile, global_snapshot]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import ../../src/state/current/[globals as current_globals, profile as current_profile]
+import ../../src/state/global_snapshot
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/composition as state_composition
 proc extract(outcome: CurrentGlobalsResult[CurrentGlobalSerialization]) {.noinline.} =
   ## No failed/default global qualification grants its owner.
   discard outcome.value

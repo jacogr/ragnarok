@@ -5,8 +5,11 @@
 # @@Verification={"arc": "storage_retention_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[revision_retention, node_repository, full_state_trie]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/revision_retention
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 
 proc cycle() =
   ## Check count refusals, opaque identity, explicit release and acyclic retained ownership.

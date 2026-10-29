@@ -6,9 +6,14 @@ import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_typed_context,
   accumulation_current_chain_context,
   state_inventory_context, account_review_plan_context]
-import ../../../src/state/[current_profile, current_globals, global_snapshot, manifest, store, inventory,
-  account_review_plan, account_review, economic_profile, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition]
+import ../../../src/state/current/[profile as current_profile, globals as current_globals]
+import ../../../src/state/[global_snapshot, manifest, store, inventory]
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/account/review as account_review
+import ../../../src/state/economic_profile
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Measure targeted account preparation only after mandatory complete matching/capture hashes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

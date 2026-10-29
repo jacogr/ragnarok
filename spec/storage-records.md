@@ -41,7 +41,7 @@ integrity, exact/short encoded budgets and present/empty transport ownership.
 
 ## Atomic in-memory node repository
 
-`node_repository.nim` publishes one complete root only after raw records pass local integrity and
+`src/storage/node/repository.nim` publishes one complete root only after raw records pass local integrity and
 full graph validation: all children exist, keys follow MSB routes, no node repeats/cycles, branches
 contain at least two leaves, and exact entry/node/value budgets agree. Unreachable new records
 refuse. Existing addresses may be reused only with identical physical records; the full left child
@@ -100,7 +100,7 @@ multiple-frame splitting without accepting trailers as one frame. No disk IO occ
 
 ## Exclusive append-only disk repository
 
-`file_repository.nim` implements the same physical revision publication/read contract using one
+`src/storage/file/repository.nim` implements the same physical revision publication/read contract using one
 append-only regular file. Explicit creation uses 0600 `O_EXCL`; reopening requires the full-mode
 identity and independently expected chain. The journal inode itself holds a nonblocking exclusive
 advisory lock for its entire owner lifetime; cooperating callers preserve its directory/inode

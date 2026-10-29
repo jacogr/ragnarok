@@ -4,9 +4,15 @@
 ## Dynamic missing maintenance authority guards have genuine idle-plan and confirmed no-op receipt controls.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/storage/[light_snapshot, light_journal_cache, light_journal_replay, light_delta,
-  database_identity, managed_manifest, file_errors]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/light/snapshot as light_snapshot
+import ../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../src/storage/light/delta as light_delta
+import ../../src/storage/database_identity
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/storage/file/errors as file_errors
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Controls use one exact process-owned fixture namespace.
 proc main() {.raises.} =

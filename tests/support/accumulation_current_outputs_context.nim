@@ -3,8 +3,12 @@
 
 ## Signed two-entry output fixtures exercise duplicate pairs and differing yields from the same service.
 import std/assertions
-import ../../src/codec/[bounded, report_owned, state_outputs, state_workqueues, work_digest]
-import ../../src/state/[accumulation_current_outputs, accumulation_current_driver, accumulation_round]
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/[outputs as state_outputs, workqueues as state_workqueues]
+import ../../src/codec/work/digest as work_digest
+import ../../src/state/accumulation/current/[outputs as accumulation_current_outputs,
+    driver as accumulation_current_driver]
+import ../../src/state/accumulation/round as accumulation_round
 import ./[accumulation_execution_context, accumulation_current_round_context,
   accumulation_current_driver_context, report_context, pvm_accumulation_program]
 proc currentOutputLimits*(): CurrentAccumulationOutputLimits =

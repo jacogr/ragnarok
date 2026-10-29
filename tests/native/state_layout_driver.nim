@@ -8,7 +8,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_layout, bounded, composite]
+import ../../src/codec/state/layout as state_layout
+import ../../src/codec/[bounded, composite]
 
 # Select complete success before reading key, node, hash or consumed progress.
 proc checked[T](parsed: StateLayoutResult[T]): T =

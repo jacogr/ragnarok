@@ -4,9 +4,12 @@
 ## Fixed logical source observations retain the actual collected producer and full original Parameters without hashing or heavy view copies.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context]
-import ../../../src/state/[current_logical, accumulation_current_update, store]
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/chain/parameters
-import ../../../src/app/[preparation_worker, current_block_input]
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fixed source observation must not invoke any content primitive.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

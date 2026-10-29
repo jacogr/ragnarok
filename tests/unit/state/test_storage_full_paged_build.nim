@@ -5,9 +5,12 @@
 # @@Verification={"arc":"storage_full_paged_build_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build, paged_codec,
-  paged_stream, node_records]
-import ../../../src/codec/[bounded, state_layout]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build]
+import ../../../src/storage/paged/[codec as paged_codec, stream as paged_stream]
+import ../../../src/storage/node/records as node_records
+import ../../../src/codec/bounded
+import ../../../src/codec/state/layout as state_layout
 
 type Producer = ref object ## Caller-owned transport fixture deliberately injects replay and end/failure changes.
   records: seq[TrieRecord]

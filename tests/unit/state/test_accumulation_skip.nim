@@ -7,11 +7,17 @@
 # @@Verification={"arc": "accumulation_skip_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[accumulation_skip, accumulation_service, accumulation_round,
-  accumulation_inputs,
-  accumulation_operands, accumulation_queue, report_admission, store]
-import ../../../src/codec/[bounded, composite, work_digest, state_accounts, state_privileges,
-  state_service_values, state_trie, state_layout, state_workqueues, header, report_owned, c2_records]
+import ../../../src/state/accumulation/[skip as accumulation_skip, service as accumulation_service,
+    round as accumulation_round, inputs as accumulation_inputs, operands as accumulation_operands,
+    queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    service_values as state_service_values, trie as state_trie, layout as state_layout,
+    workqueues as state_workqueues]
+import ../../../src/codec/[header, report_owned, c2_records]
 import ../../../src/crypto/primitives
 import ../../support/[report_context, report_admission_context, arc_evidence]
 

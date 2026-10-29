@@ -4,14 +4,22 @@
 ## Genuine current lookup demand drains native connections, resumes original input once, preserves deadlines and rejects a changed canonical parent.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_download, current_block_input,
-  current_handoff,
-  candidate, chain, download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_peers,
-  current_block_download_session, current_block_download_stream]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/download" as current_block_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/[candidate, chain]
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/session" as current_block_download_session
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/state/[store, report_anchors, accumulation_current_update, accumulation_current_consensus]
+import ../../../src/state/store
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 import ../../support/[current_application_context, current_services_disk_samples,
   accumulation_current_chain_context, accumulation_current_candidate_context, block_download_transport]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

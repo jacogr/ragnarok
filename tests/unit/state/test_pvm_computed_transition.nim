@@ -6,9 +6,13 @@
 ## Exact authenticated candidate and posterior provenance, rejection boundaries and ARC lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_transition, computed_profile, computed_lookup, block_transition,
-  block_admission, store]
-import ../../../src/codec/[bounded, header, block_codec, state_layout, state_safrole]
+import ../../../src/state/computed/[transition as computed_transition, profile as computed_profile,
+    lookup as computed_lookup]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, header, block_codec]
+import ../../../src/codec/state/[layout as state_layout, safrole as state_safrole]
 import ../../../src/chain/parameters
 import ../../support/[pvm_computed_transition, pvm_computed_profile, pvm_computed_state,
   report_admission_context, arc_evidence]

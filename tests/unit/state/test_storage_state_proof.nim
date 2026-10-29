@@ -5,8 +5,11 @@
 # @@Verification={"arc": "storage_state_proof_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[state_proof, full_state_trie, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject actual provider refusal and reset its exact attempt counter.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

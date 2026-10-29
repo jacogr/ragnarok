@@ -4,7 +4,8 @@
 ## Strict runtime guards for default/failed normalization results and default outcome extraction.
 
 import std/cmdline
-import ../../src/state/[accumulation_dispatch, accumulation_outcome]
+import ../../src/state/accumulation/[dispatch as accumulation_dispatch,
+    outcome as accumulation_outcome]
 var outcome = normalizeAccumulationOutcome(default(AccumulationDispatchResult))
 if paramStr(1) == "default":
   outcome = default(AccumulationOutcomeResult[AccumulationOutcome]) # Dynamic selection preserves the runtime check.

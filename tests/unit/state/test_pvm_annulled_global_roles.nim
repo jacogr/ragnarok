@@ -4,10 +4,15 @@
 
 ## Genuine parallel role hosts prove R, annulment, original authority and bounded immutable C(12) selection.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_global_roles, accumulation_annulment, accumulation_dispatch,
-  accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_privileges,
-  state_authorization, state_safrole, state_layout, state_trie]
+import ../../../src/state/accumulation/global/roles as accumulation_global_roles
+import ../../../src/state/accumulation/[annulment as accumulation_annulment,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    authorization as state_authorization, safrole as state_safrole, layout as state_layout,
+    trie as state_trie]
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,

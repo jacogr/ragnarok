@@ -5,11 +5,16 @@
 ## Genuine historical authorizers verify fixed invocation inputs, stateless host dispatch, gas and immutable provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[authorization_invocation, refinement_lookup, store]
-import ../../../src/codec/[bounded, composite, work_package, work_digest, work_report]
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/state/refinement/lookup as refinement_lookup
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[package as work_package, digest as work_digest,
+    report as work_report]
 import ../../../src/pvm/[program, machine, step, gas, initialize, host_fetch, output]
 import ../../../src/chain/parameters
-import ../../../src/codec/state_authorization # Invocation names coexist with the existing state codec domain.
+# Invocation names coexist with the existing state codec domain.
+import ../../../src/codec/state/authorization as state_authorization
 import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome, arc_evidence]
 
 # Both public domains remain independently usable when imported into the same module.

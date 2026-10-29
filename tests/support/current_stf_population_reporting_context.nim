@@ -4,11 +4,16 @@
 ## Shared three-core/nine-validator reporting budgets and exact nested scenario failures; no executable entry point.
 import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
-import ../../src/state/[accumulation_current_completion, accumulation_current_driver,
-    accumulation_current_finalization, accumulation_current_sequence, accumulation_history,
-    accumulation_current_round, accumulation_block_guests,
-    accumulation_guest_runner,
-    block_transition, block_admission, disputes]
+import ../../src/state/accumulation/current/[completion as accumulation_current_completion,
+    driver as accumulation_current_driver, finalization as accumulation_current_finalization,
+    sequence as accumulation_current_sequence]
+import ../../src/state/accumulation/history as accumulation_history
+import ../../src/state/accumulation/current/round as accumulation_current_round
+import "../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../src/state/accumulation/guest_runner as accumulation_guest_runner
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/disputes
 import ./[current_stf_population_context, current_stf_reporting_context, current_stf_guest_limits]
 
 proc populationReportingLimits*(): CurrentCandidateLimits =

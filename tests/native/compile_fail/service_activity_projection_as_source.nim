@@ -4,7 +4,7 @@
 
 ## A raw projection or finalized state cannot replace genuine statistics and original block provenance.
 
-import ../../../src/state/[service_activity]
+import ../../../src/state/service/activity as service_activity
 var source: ServiceActivityProjection
 var config: ServiceActivityConfig
 discard prepareServiceActivity(source, config)

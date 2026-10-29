@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_consensus
+import ../../../src/codec/state/consensus as state_consensus
 let owner = SafroleStateSnapshot(data: nil)
 discard owner

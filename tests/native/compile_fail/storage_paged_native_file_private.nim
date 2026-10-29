@@ -3,6 +3,6 @@
 
 ## Private file state cannot forge a native resource or successful receipt.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/paged_io
+import ../../../src/storage/paged/io as paged_io
 let outcome = default(PagedFile)
 discard outcome.data

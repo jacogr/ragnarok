@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "initialized"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/accumulation_storage_history
+import ../../../src/state/accumulation/storage_history as accumulation_storage_history
 let source = default(StorageHistory)
 discard source.initialized

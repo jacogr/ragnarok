@@ -5,9 +5,17 @@
 # @@Verification={"arc":"storage_paged_context_codec_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[paged_codec, full_paged_codec, paged_stream, full_paged_stream,
-  full_paged_build, database_identity, managed_manifest, light_delta, node_repository, node_records, light_state_cache]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/paged/codec as paged_codec
+import ../../../src/storage/full/paged/codec as full_paged_codec
+import ../../../src/storage/paged/stream as paged_stream
+import ../../../src/storage/full/paged/[stream as full_paged_stream, build as full_paged_build]
+import ../../../src/storage/database_identity
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/light/state_cache as light_state_cache
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe provider dispatch independently of structural header and policy preflight.

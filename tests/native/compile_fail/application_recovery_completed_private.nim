@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Recovery results cannot be forged or extracted through private fields.
-import ../../../src/app/checkpoint_recovery
+import ../../../src/app/checkpoint/recovery as checkpoint_recovery
 let outcome = default(ApplicationRecoveryResult)
 discard outcome.completed

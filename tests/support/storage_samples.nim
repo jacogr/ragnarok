@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored standalone storage fixtures share finite policies without application/state consumers.
-import ../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
-import ../../src/codec/[state_layout, state_trie, bounded]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/records as node_records
+import ../../src/storage/record_codec
+import ../../src/storage/node/repository as node_repository
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../src/codec/bounded
 
 proc storageKey*(number: byte): StateKey =
   ## Choose independent root branches while retaining every serialized key byte.

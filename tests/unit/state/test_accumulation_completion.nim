@@ -5,16 +5,28 @@
 ## Genuine stopped driver histories compose complete candidates with manual-root parity and reason-preserving atomic refusal.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_trie]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/pvm/machine
-import ../../../src/state/[accumulation_completion, accumulation_driver, accumulation_runner,
-  accumulation_execution,
-  accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
-  accumulation_finalization, accumulation_outputs, accumulation_history, accumulation_ready,
-  accumulation_recent, accumulation_times, accumulation_statistics, accumulation_validators,
-  accumulation_activity, accumulation_preimages, accumulation_authorization, accumulation_consensus,
-  accumulation_block_publication, accumulation_continuation, accumulation_continuation_inputs,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_effects, store]
+import ../../../src/state/accumulation/[completion as accumulation_completion,
+    driver as accumulation_driver, runner as accumulation_runner,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    outputs as accumulation_outputs, history as accumulation_history, ready as accumulation_ready,
+    recent as accumulation_recent, times as accumulation_times,
+    statistics as accumulation_statistics, validators as accumulation_validators,
+    activity as accumulation_activity, preimages as accumulation_preimages,
+    authorization as accumulation_authorization, consensus as accumulation_consensus]
+import "../../../src/state/accumulation/block/publication" as accumulation_block_publication
+import ../../../src/state/accumulation/continuation as accumulation_continuation
+import ../../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    execution as accumulation_continuation_execution]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    effects as accumulation_effects]
+import ../../../src/state/store
 import ../../support/[accumulation_completion_context, accumulation_activity_context,
   accumulation_runner_context, accumulation_reentry_context, accumulation_execution_context,
   pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]

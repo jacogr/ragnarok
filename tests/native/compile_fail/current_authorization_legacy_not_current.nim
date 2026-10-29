@@ -3,5 +3,7 @@
 # @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentAccumulationPreimages but got: PreparedAccumulationPreimages", "early": ["prepareCurrentAccumulationAuthorization(", "[1] expected: PreparedCurrentAccumulationPreimages but got: PreparedAccumulationPreimages"]}
 
 ## Exact current fulfilled-preimage ownership is required.
-import ../../../src/state/[accumulation_current_authorization, accumulation_authorization, accumulation_preimages]
+import ../../../src/state/accumulation/current/authorization as accumulation_current_authorization
+import ../../../src/state/accumulation/[authorization as accumulation_authorization,
+    preimages as accumulation_preimages]
 discard prepareCurrentAccumulationAuthorization(default(PreparedAccumulationPreimages), default(AccumulationAuthorizationLimits))

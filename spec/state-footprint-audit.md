@@ -4,7 +4,7 @@ Scope: `src/state/footprint_audit.nim` checks only the dependent item and octet 
 of every service in an existing complete, exact-matched `StateInventory`.
 Pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/accounts.tex`, eq:deposits supplies the equations implemented by
-`account_footprint.nim`. Preimages do not contribute a separate payload term.
+`src/state/account/footprint.nim`. Preimages do not contribute a separate payload term.
 
 Service and work limits are explicit. Work charges each row, storage fact and
 request fact, including empty values, before any dependent equation is checked.

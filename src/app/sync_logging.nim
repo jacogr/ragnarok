@@ -5,7 +5,8 @@
 ## The host supplies a fresh copied sample and its monotonic elapsed time after each completed turn.
 
 import ../lib/logging
-import ../quic/[current_sync, announcements]
+import ../quic/current/sync as current_sync
+import ../quic/announcements
 import ./node_logging
 
 type SyncLogState* = object ## Fixed scalar history limits output without retaining canonical or peer owners.

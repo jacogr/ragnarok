@@ -66,7 +66,7 @@ Author an explicit local configuration, for example `build/reopen-pair-config.js
   },
   "allow_sources": [
     "Makefile",
-    "src/storage/node_repository.nim",
+    "src/storage/node/repository.nim",
     "src/storage/record_codec.nim"
   ]
 }

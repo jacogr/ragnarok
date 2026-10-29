@@ -4,8 +4,9 @@
 ## Default or refused accumulated-history results cannot expose projections, maps or unrelated failure reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_history, accumulation_finalization]
-import ../../src/codec/state_workqueues
+import ../../src/state/accumulation/[history as accumulation_history,
+    finalization as accumulation_finalization]
+import ../../src/codec/state/workqueues as state_workqueues
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationHistory)

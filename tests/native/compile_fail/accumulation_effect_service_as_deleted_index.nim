@@ -4,6 +4,6 @@
 
 ## Reject a target service identity used as a captured deletion ordinal.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 discard effectDeletedAccountAt(default(AccumulationEffectContext), ServiceIndex(77))

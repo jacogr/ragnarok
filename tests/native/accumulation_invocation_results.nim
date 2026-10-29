@@ -5,8 +5,11 @@
 ## Dynamic modes must fail at result contracts instead of exposing default IDs, arguments or provenance.
 
 import std/cmdline
-import ../../src/state/[accumulation_invocation, accumulation_service, store]
-import ../../src/codec/[state_safrole, composite, header]
+import ../../src/state/accumulation/[invocation as accumulation_invocation,
+    service as accumulation_service]
+import ../../src/state/store
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/[composite, header]
 
 # Runtime selection preserves a real refused-result path without constant-invalid extraction during compilation.
 let outcome = if paramStr(1) == "refused":

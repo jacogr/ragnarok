@@ -6,9 +6,12 @@
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples, arc_evidence]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, node_repository, database_identity, durability,
-    managed_repository, managed_manifest]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/[database_identity, durability]
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 proc cycle(path: string, policy: StateStoreLimits, limits: ManagedLimits) =
   ## Composite native, trie and mutable-handle owners retire after each independent restart.
   var disk = default(DiskStateStore)

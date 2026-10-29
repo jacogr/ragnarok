@@ -4,6 +4,6 @@
 ## Callers cannot rewrite the private request hash, framing positions or captured canonical context.
 # @@Verification={"group": "privacy", "expected": "pending"}
 
-import ../../../src/app/block_download
+import "../../../src/app/block/download" as block_download
 var download = default(BlockDownload)
 discard download.pending

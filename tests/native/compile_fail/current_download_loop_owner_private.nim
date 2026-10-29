@@ -3,6 +3,6 @@
 
 ## Only current dispatcher transitions may retag its borrow or consumed adoption.
 # @@Verification={"group": "privacy", "expected": "owner"}
-import ../../../src/quic/current_block_download_loop
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
 var dispatcher = default(CurrentDownloadLoop)
 discard dispatcher.owner

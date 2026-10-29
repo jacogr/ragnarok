@@ -5,7 +5,7 @@
 
 ## Retained canonical parent capture excludes the selected head and separated finality, with atomic exact quotas.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/ancestor_inputs
+import ../../../src/app/ancestor/inputs as ancestor_inputs
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, report_owned]
 import ../../support/[application_download_chain, application_candidate_context, arc_evidence]

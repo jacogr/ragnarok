@@ -7,7 +7,7 @@
 
 when defined(ragnarokBrowser):
   import ./rpc
-  import ../app/cli_defaults
+  import ../app/cli/defaults as cli_defaults
 
   # Browser bindings touch textContent only; backend strings never become executable HTML.
   proc text(id, value: string) {.importjs: "document.getElementById(#).textContent = #".}

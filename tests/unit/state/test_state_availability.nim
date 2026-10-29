@@ -8,8 +8,10 @@
 ## interface.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances,
-    state_composition, header]
+import ../../../src/codec/state/availability as state_availability
+import ../../../src/codec/[guarantees, report_owned, owned, bounded, assurances]
+import ../../../src/codec/state/composition as state_composition
+import ../../../src/codec/header
 
 ## Return a copied child after the temporary parent and all its handles leave scope.
 proc detachedChild(input: openArray[byte], config: AvailabilityConfig): AvailabilityAssignment =

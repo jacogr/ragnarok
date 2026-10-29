@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_history, state_trie, bounded, assurances]
+import ../../src/codec/state/[history as state_history, trie as state_trie]
+import ../../src/codec/[bounded, assurances]
 
 ## Preserve empty dictionary and absent-peak transport tokens without adding wire bytes.
 proc unhex(text: string): seq[byte] =

@@ -4,9 +4,11 @@
 ## Runtime payload/location extraction guards retain a genuine independent content control.
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
-import ../../src/state/[preimage_content, inventory]
-import ../../src/codec/[bounded, state_accounts]
-include composition_fixture
+import ../../src/state/preimage/content as preimage_content
+import ../../src/state/inventory
+import ../../src/codec/bounded
+import ../../src/codec/state/accounts as state_accounts
+include ./composition_fixture
 proc extract(outcome: PreimageContentResult[CheckedPreimageContent]): CheckedPreimageContent {.noinline.} =
   ## Keep default and actual invalid-source extraction dynamic.
   outcome.value

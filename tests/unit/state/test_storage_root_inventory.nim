@@ -5,8 +5,9 @@
 # @@Verification={"arc": "storage_root_inventory_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_root_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selection must not hash immutable already-admitted records, even with the backend refusing.

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 discard ServiceMetadataResult[ServiceMetadataRead](status: ServiceMetadataError.None,
     completed: default(ServiceMetadataRead))

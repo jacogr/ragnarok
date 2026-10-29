@@ -7,8 +7,12 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_composition, state_trie, state_layout, bounded, assurances,
-  state_consensus, state_safrole, state_privileges, state_accounts, state_service_values, state_requests]
+import ../../src/codec/state/[composition as state_composition, trie as state_trie,
+    layout as state_layout]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/state/[consensus as state_consensus, safrole as state_safrole,
+    privileges as state_privileges, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 
 ## Empty payloads use one explicit token; all other bytes retain exact order.
 proc unhex(text: string): seq[byte] =

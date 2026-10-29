@@ -6,7 +6,9 @@
 
 import ./genesis
 import ../state/store
-import ../codec/[state_layout, state_safrole, state_statistics, bounded]
+import ../codec/state/[layout as state_layout, safrole as state_safrole,
+    statistics as state_statistics]
+import ../codec/bounded
 export StateValue, bytes, ByteLimit
 
 type

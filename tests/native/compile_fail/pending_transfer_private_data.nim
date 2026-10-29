@@ -3,6 +3,6 @@
 # @@Verification={"group":"privacy","expected":"data"}
 
 ## Pending ownership, selected reasons and nominal budget/ordinal units remain private or distinct.
-import ../../../src/state/accumulation_pending_transfers
+import ../../../src/state/accumulation/pending_transfers as accumulation_pending_transfers
 
 discard default(PreparedPendingTransfers).data

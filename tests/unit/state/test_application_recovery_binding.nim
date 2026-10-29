@@ -5,9 +5,12 @@
 
 ## Exact trusted recovery retains one head and immutable policy without fabricating ancestors or finality.
 import std/[assertions, syncio]
-import ../../../src/app/[chain, checkpoint_identity, checkpoint_recovery]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[identity as checkpoint_identity,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[header, bounded, state_layout, state_trie]
+import ../../../src/codec/[header, bounded]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/state/[store, checkpoint]
 import ../../../src/crypto/primitives
 import ../../support/[application_checkpoint_context, arc_evidence]

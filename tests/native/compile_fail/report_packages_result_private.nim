@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/report_packages
+import ../../../src/state/report/packages as report_packages
 let owner = default(ReportPackageResult[PackageCheckedReports])
 discard owner.completed # Must fail before lowering.

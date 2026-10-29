@@ -5,9 +5,12 @@
 
 ## Explicit recovered startup installs the exact map/header pair before listener setup and retains no false finality.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, state_layout]
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/layout as state_layout
 import ../../../src/state/store
 import ../../support/[application_checkpoint_context, arc_evidence]
 proc recovered(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.raises.} =

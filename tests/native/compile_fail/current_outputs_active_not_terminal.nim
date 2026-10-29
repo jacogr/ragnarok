@@ -3,5 +3,6 @@
 # @@Verification={"group": "nominal", "expected": "expected: CompletedCurrentAccumulationSequence but got: CurrentAccumulationSequence", "early": ["prepareCurrentAccumulationOutputs(", "[1] expected: CompletedCurrentAccumulationSequence but got: CurrentAccumulationSequence"]}
 
 ## An active sequence grants no terminal output authority.
-import ../../../src/state/[accumulation_current_outputs, accumulation_current_sequence]
+import ../../../src/state/accumulation/current/[outputs as accumulation_current_outputs,
+    sequence as accumulation_current_sequence]
 discard prepareCurrentAccumulationOutputs(default(CurrentAccumulationSequence), default(CurrentAccumulationOutputLimits))

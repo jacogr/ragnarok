@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_service_values
+import ../../../src/codec/state/service_values as state_service_values
 let owner = default(ServiceValueSnapshot)
 discard owner.data

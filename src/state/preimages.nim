@@ -5,8 +5,9 @@
 ## Exposes canonical outstanding-request queries, immutable admission/statistics certificates and atomic publication.
 ## Phase/slot binding is caller-owned; query/admission share exact account/history validation.
 
-import ../codec/[bounded, composite, owned, header, state_layout, state_trie, state_accounts,
-  state_service_values, state_requests]
+import ../codec/[bounded, composite, owned, header]
+import ../codec/state/[layout as state_layout, trie as state_trie, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 import ../crypto/primitives
 import ./store
 

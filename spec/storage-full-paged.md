@@ -116,7 +116,7 @@ and successful fsync receipts do not establish device/filesystem power-loss dura
 
 ## Current status
 
-`full_paged_codec.nim` implements format-only admission. The full header is one 4096-byte page:
+`src/storage/full/paged/codec.nim` implements format-only admission. The full header is one 4096-byte page:
 32-byte zero-padded magic, chain at 32, epoch/generation at 64/72, selected root at 80,
 record count/payload extent/root count at 112/120/128, eight reserved zero bytes, then at most
 64 strictly root-sorted 56-byte claims (root, entries, nodes, value bytes) from offset 144.
@@ -142,7 +142,7 @@ below. Recovery, consumer adoption and full resource/crash panels remain open.
 
 ## Bounded graph engine
 
-`full_paged_stream.nim` supplies complete artifact admission and retained-root lookup through
+`src/storage/full/paged/stream.nim` supplies complete artifact admission and retained-root lookup through
 synchronous borrowed byte callbacks. Checked metadata retains only the fixed header, captured
 page root and inherited policies. Every stored postorder digest is checked; subsequent index/
 payload reads authenticate complete pages against that captured root. Strict ordering/coverage,
@@ -168,7 +168,7 @@ qualification remains subsequent work.
 
 ## Replay-bound construction
 
-`full_paged_build.nim` builds complete artifacts from a synchronous sorted physical-record
+`src/storage/full/paged/build.nim` builds complete artifacts from a synchronous sorted physical-record
 producer. Pass zero writes the bounded index, pass one writes canonical record transport;
 a private chained fingerprint binds every complete physical byte across both passes, including
 JAM-masked left bits. Explicit end markers, exact count/coverage and output EOF are mandatory.
@@ -191,7 +191,7 @@ resident reference material, not the production bounded path. Native ownership a
 
 ## Native full-state readers
 
-`full_paged_store.nim` adds move-only explicit-close `FullPagedReader` owners. Strict open decodes
+`src/storage/full/paged/store.nim` adds move-only explicit-close `FullPagedReader` owners. Strict open decodes
 only the full 192-byte CURRENT against an independent chain/root and bounded artifact geometry,
 acquires an independent shared epoch pin, reads/binds the fixed header, admits the complete graph
 with private anonymous scratch, rereads exact CURRENT and checks held identity before adoption.
@@ -199,7 +199,7 @@ Directory retirement occurs before exposing the reader. Each epoch owns its own 
 readers retain no writer lease and owned lookup values survive reader close. One caller serializes
 operations on each owner; independent readers provide independent native seek cursors.
 
-`paged_io.nim` shares only directory-relative native ownership/IO. Existing light CURRENT and
+`src/storage/paged/io.nim` shares only directory-relative native ownership/IO. Existing light CURRENT and
 append-only writer scratch entry points retain their exact width and policy. Full graph scratch
 uses a separate private random-write anonymous descriptor, a bounded signed `ftruncate` extent
 and explicit graph-engine initialization. No database scratch name, selected-file truncation,

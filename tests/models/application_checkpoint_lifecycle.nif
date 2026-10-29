@@ -4,7 +4,7 @@ One staged Publish/Verify request, serialized host and one checkpoint worker.
 phase 0 Idle, 1 Staged, 2 Running, 3 Executing, 4 Done; pc 0 wait, 1 IO, 2 retired, 3 exited.
 req/returned 1 Publish, 2 Verify; io 0 absent, 1 success, 2 failure; receipt 0 absent, 1 Cancelled, 2 Completed.
 Hypothesis: cancellation after dispatch hides entered IO, or joined close loses/mislabels a receipt.
-Source: src/app/checkpoint_worker.nim stage/stageVerification/begin/cancel/run/collect/close.
+Source: src/app/checkpoint/worker.nim stage/stageVerification/begin/cancel/run/collect/close.
 The state checkpoint worker shares the staging/cancel/join transitions; retry is modeled separately.#
   (variables :phase.0. :pc.0. :stop.0. :used.0. :cancelled.0.
               :io.0. :receipt.0. :req.0. :returned.0.)

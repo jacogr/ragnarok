@@ -3,8 +3,9 @@
 
 ## Typed independent inclusion witnesses and finite verification policies.
 
-import ../../src/state/import_justification
-import ../../src/codec/[bounded, work_report]
+import "../../src/state/import/justification" as import_justification
+import ../../src/codec/bounded
+import ../../src/codec/work/report as work_report
 import ../../src/pvm/host_fetch
 
 proc importLimits*(): ImportJustificationLimits =

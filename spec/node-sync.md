@@ -81,7 +81,7 @@ Nimony; native Linux CI remains a separate verdict.
 
 ## Continuous full-state host
 
-`quic/current_sync.nim` keeps `Services` and the existing dispatcher at fixed addresses until
+`quic/current/sync.nim` keeps `Services` and the existing dispatcher at fixed addresses until
 explicit joined close. `sync-current` uses the same explicit endpoint/current-download-policy and
 full-state startup controls as `download-current`, runs until SIGINT/SIGTERM, and refuses a finite
 `--download-blocks` total. No whole-run block count or duration is reserved. `--net-timeout-ms`

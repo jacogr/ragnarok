@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[3] expected: ReadyItemIndex but got: WorkQueueHashIndex"}
 
-import ../../../src/codec/state_workqueues
+import ../../../src/codec/state/workqueues as state_workqueues
 let owner = default(ReadySnapshot)
 discard readyItemAt(owner, WorkQueueSlot(0), WorkQueueHashIndex(0))

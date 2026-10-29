@@ -4,7 +4,8 @@
 ## Build small owned manifests from explicitly supplied independent hash commitments.
 
 import std/assertions
-import ../../src/codec/[bounded, work_package]
+import ../../src/codec/bounded
+import ../../src/codec/work/package as work_package
 import ../../src/state/extrinsic_inputs
 
 proc extrinsicLimits*(): ExtrinsicInputsLimits =

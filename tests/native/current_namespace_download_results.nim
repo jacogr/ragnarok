@@ -3,8 +3,9 @@
 
 ## The appended continuation reason is guarded; healthy default-policy observation remains available without opening workers or storage.
 import std/[assertions, cmdline]
-import ../../src/app/current_logical_download
-import ../../src/state/[accumulation_current_update, current_logical]
+import ../../src/app/current/logical/download as current_logical_download
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/logical as current_logical
 let outcome = default(CurrentLogicalDownloadResult)
 if paramStr(1) == "reason":
   discard outcome.continuationFailure # Default result cannot expose an unrelated source-bound namespace refusal.

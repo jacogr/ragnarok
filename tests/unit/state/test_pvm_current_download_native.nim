@@ -4,13 +4,22 @@
 ## Actual authenticated TLS callbacks feed distinct current sessions without hashing, with native close before genuine current execution.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_download, current_block_input,
-  current_handoff, candidate, preparation_worker, download_schedule, chain]
-import ../../../src/quic/[current_block_download_stream, current_block_download_session,
-  current_block_download_peers, transport]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/download" as current_block_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/[candidate, preparation_worker]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/chain
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../../src/quic/current/block/download/session" as current_block_download_session
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import ../../../src/quic/transport
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
   accumulation_current_chain_context, accumulation_current_candidate_context, block_download_transport]

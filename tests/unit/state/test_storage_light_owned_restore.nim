@@ -5,8 +5,12 @@
 # @@Verification={"arc":"storage_light_owned_restore_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, full_state_trie, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Resource/shape refusal and provider recovery retain the same original owned input.

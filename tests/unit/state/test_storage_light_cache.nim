@@ -5,8 +5,11 @@
 # @@Verification={"arc": "storage_light_cache_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_state_cache, state_proof, full_state_trie]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/light/state_cache as light_state_cache
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual provider refusal must preserve every retained cache and never create absence.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

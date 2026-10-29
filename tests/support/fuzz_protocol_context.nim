@@ -3,7 +3,7 @@
 
 ## Explicit current Tiny structural domains and bounded opaque maps for fuzzer wire witnesses.
 import ./trace_step_context
-import ../../src/state/fuzz_protocol
+import ../../src/state/fuzz/protocol as fuzz_protocol
 import ../../src/codec/bounded
 proc fuzzProtocolTestLimits*(): FuzzLimits =
   ## Codec ceilings are caller policy; peer declarations and historical session versions cannot widen them.

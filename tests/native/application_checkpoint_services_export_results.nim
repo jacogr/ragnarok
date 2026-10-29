@@ -3,7 +3,8 @@
 
 ## Service parent relocation and forgotten export shutdown enforce actual native child lifetimes.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[services, options, checkpoint_file]
+import ../../src/app/[services, options]
+import ../../src/app/checkpoint/file as checkpoint_file
 proc started(): Options =
   ## No listeners, chain or fixtures are needed to test a genuine stable service lifecycle.
   result = default(Options)

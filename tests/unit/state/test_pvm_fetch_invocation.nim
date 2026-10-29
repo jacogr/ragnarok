@@ -7,10 +7,13 @@
 # @@Verification={"arc": "pvm_fetch_invocation_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_fetch, accumulation_inputs, accumulation_operands,
-  accumulation_queue]
-import ../../../src/codec/[bounded, composite, natural, work_digest, work_report, report_owned,
-  c2_records, state_workqueues, state_privileges, header]
+import ../../../src/state/accumulation/[fetch as accumulation_fetch, inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../../src/codec/[bounded, composite, natural]
+import ../../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../../src/codec/[report_owned, c2_records]
+import ../../../src/codec/state/[workqueues as state_workqueues, privileges as state_privileges]
+import ../../../src/codec/header
 import ../../../src/pvm/[host_fetch, machine, step]
 import ../../support/arc_evidence
 

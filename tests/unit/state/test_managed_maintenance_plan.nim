@@ -4,10 +4,14 @@
 ## Opaque maintenance binds canonical state/context/generation/epoch and retains rolling roots plus explicit finality.
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, managed_storage_samples, managed_disk_history_context]
-import ../../../src/app/[chain, disk_chain, disk_history]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, history as disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, managed_repository, managed_manifest, node_repository, database_identity]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 proc main() {.raises.} =
   ## An unselected old map becomes reclaimable while the exact canonical source remains immutable.

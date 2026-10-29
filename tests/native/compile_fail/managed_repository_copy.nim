@@ -3,7 +3,7 @@
 
 ## Managed repository duplication must fail actual native lowering.
 # @@Verification={"group":"ownership_compile","build_name":"managed-repository-copy","expected":"'=dup' is not available for type <ManagedRepository>"}
-import ../../../src/storage/managed_repository
+import ../../../src/storage/managed/repository as managed_repository
 proc duplicated(source: ManagedRepository): ManagedRepository =
   ## A borrowed append owner cannot acquire another retirement authority.
   source

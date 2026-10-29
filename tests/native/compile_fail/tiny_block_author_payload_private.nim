@@ -3,6 +3,6 @@
 
 ## Failed/default authoring outcomes cannot grant access to a fabricated block payload.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/app/block_author
+import "../../../src/app/block/author" as block_author
 let outcome = default(BlockAuthorResult)
 discard outcome.completed

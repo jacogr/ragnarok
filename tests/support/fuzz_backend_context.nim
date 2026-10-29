@@ -4,8 +4,9 @@
 ## Test-only fuzzer request construction composes exact existing immutable child encodings.
 import std/assertions
 import ./[fuzz_protocol_context, current_consecutive_context, accumulation_current_chain_context]
-import ../../src/app/fuzz_backend
-import ../../src/state/[fuzz_protocol, store]
+import ../../src/app/fuzz/backend as fuzz_backend
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/store
 import ../../src/codec/[bounded, header, block_codec]
 import ../../src/crypto/primitives
 proc fuzzBackendTestConfig*(): FuzzBackendConfig =

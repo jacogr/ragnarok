@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "preparationReason"}
 
 ## Frozen review source, policies and successful admission alternatives cannot be replaced externally.
-import ../../../src/app/logical_review
+import ../../../src/app/logical/review as logical_review
 let source = default(LogicalReviewResult[int])
 discard source.preparationReason

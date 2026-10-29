@@ -5,7 +5,8 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_io
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 
 proc scenario(size: int) {.raises.} =

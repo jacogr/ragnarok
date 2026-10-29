@@ -4,9 +4,14 @@
 ## Complete current-pin shape matrices exercise inventory capture, frozen admission and all account predicates together.
 import std/[assertions, envvars, syncio]
 import ../../support/state_inventory_context
-import ../../../src/state/[inventory, account_audit_plan, account_audit, account_invariants,
-    footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, state_composition, state_accounts, state_service_values, state_requests]
+import ../../../src/state/inventory
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset hash counters or refuse all account content work after source capture.

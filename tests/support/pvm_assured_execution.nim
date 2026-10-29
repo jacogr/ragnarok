@@ -3,9 +3,10 @@
 
 ## Actual assurance-fed queues and independently bounded original-parameter execution policies.
 
-import ../../src/state/[assured_execution, assured_queue]
+import ../../src/state/assured/[execution as assured_execution, queue as assured_queue]
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, assurances, work_digest]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/work/digest as work_digest
 import ./[pvm_assured_queue, pvm_computed_execution, accumulation_execution_context]
 
 proc assuredExecutionFixture*(votes = 7): AssuredAccumulationQueue =

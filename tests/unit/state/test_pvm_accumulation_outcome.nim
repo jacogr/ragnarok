@@ -6,10 +6,13 @@
 ## Exercises gas caps, checkpoint selection, bounded return overrides, provenance and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_dispatch, accumulation_outcome,
-  accumulation_context, accumulation_effects, accumulation_invocation, accumulation_service]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    context as accumulation_context, effects as accumulation_effects,
+    invocation as accumulation_invocation, service as accumulation_service]
 import ../../../src/pvm/[machine, program, step, gas, host_fetch]
-import ../../../src/codec/[bounded, c2_records, state_outputs]
+import ../../../src/codec/[bounded, c2_records]
+import ../../../src/codec/state/outputs as state_outputs
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
 ## Refuse backend hashing only after execution; collapsing immutable effects must perform no hashes.

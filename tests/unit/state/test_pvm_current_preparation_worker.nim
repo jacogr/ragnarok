@@ -5,11 +5,17 @@
 
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[preparation_worker, current_block_input, candidate, chain]
-import ../../../src/app/block_input
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/[candidate, chain]
+import "../../../src/app/block/input" as block_input
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[store, report_admission, block_admission, accumulation_current_consensus, accumulation_current_update]
+import ../../../src/state/store
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/accumulation/current/[consensus as accumulation_current_consensus,
+    update as accumulation_current_update]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context]
 
 proc receive(input: var CurrentBlockInput, chain: ApplicationChain, wire: openArray[

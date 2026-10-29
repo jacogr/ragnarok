@@ -3,6 +3,6 @@
 
 ## A failed/default light result cannot expose its inactive success payload.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/app/light_head
+import ../../../src/app/light/head as light_head
 let outcome = default(LightHeadResult[LightApplicationHead])
 discard outcome.completed

@@ -4,7 +4,8 @@
 ## Strict optimized original-transcript credential extraction and selected assignment-cause guards.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_credentials, computed_guarantors]
+import ../../src/state/computed/[credentials as computed_credentials,
+    guarantors as computed_guarantors]
 import ../../src/codec/guarantees
 import ../support/pvm_computed_credentials
 

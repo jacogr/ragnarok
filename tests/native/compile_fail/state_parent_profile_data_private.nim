@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Selected parent/source and tagged result storage remain private.
-import ../../../src/state/parent_profile
+import ../../../src/state/parent/profile as parent_profile
 var owner = default(SelectedParentProfile)
 discard owner.data

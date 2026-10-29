@@ -10,7 +10,7 @@
 import std/[assertions, cmdline, syncio]
 import ../support/authorization_transition_fixture
 import ../../src/state/[authorization, store]
-import ../../src/codec/state_trie
+import ../../src/codec/state/trie as state_trie
 
 ## Select default or an actual invalid-core failure without granting access to a proposed C(1) entry.
 proc rejectedEntry(origin: string): AuthorizationTransitionResult[StateEntry] =

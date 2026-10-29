@@ -8,10 +8,15 @@
 ## tests.
 
 import std/[assertions, parseutils]
-import ../../src/state/[report_policy, guarantee_credentials, guarantors, store]
-import ../../src/codec/[guarantees, assurances, bounded, state_safrole, header,
-  report_owned, owned, work_report, work_digest, composite, state_accounts,
-  state_authorization, state_layout, state_trie]
+import ../../src/state/report/policy as report_policy
+import ../../src/state/[guarantee_credentials, guarantors, store]
+import ../../src/codec/[guarantees, assurances, bounded]
+import ../../src/codec/state/safrole as state_safrole
+import ../../src/codec/[header, report_owned, owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/composite
+import ../../src/codec/state/[accounts as state_accounts, authorization as state_authorization,
+    layout as state_layout, trie as state_trie]
 import ../../src/crypto/[primitives, guarantee]
 from ../../src/codec/disputes import OffenderKey
 

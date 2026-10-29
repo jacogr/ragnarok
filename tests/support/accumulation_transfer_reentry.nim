@@ -5,16 +5,26 @@
 
 import std/assertions
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, composite, header, c2_records, report_owned, state_accounts,
-  state_service_values, state_layout, state_trie, state_outputs, state_statistics]
-import ../../src/state/[accumulation_execution, accumulation_round, accumulation_batch,
-  accumulation_continuation, accumulation_continuation_inputs, accumulation_continuation_invocation,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_reentry_invocation,
-  accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine,
-  accumulation_dispatch, accumulation_skip, accumulation_transfers, accumulation_pending_transfers,
-  accumulation_transfer_partition,
-  accumulation_provisions,
-  accumulation_outputs, accumulation_finalization, accumulation_statistics, store]
+import ../../src/codec/[bounded, composite, header, c2_records, report_owned]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, trie as state_trie, outputs as state_outputs,
+    statistics as state_statistics]
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, batch as accumulation_batch,
+    continuation as accumulation_continuation]
+import ../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    invocation as accumulation_continuation_invocation,
+    execution as accumulation_continuation_execution]
+import ../../src/state/accumulation/reentry as accumulation_reentry
+import ../../src/state/accumulation/reentry/invocation as accumulation_reentry_invocation
+import ../../src/state/accumulation/[inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, skip as accumulation_skip,
+    transfers as accumulation_transfers, pending_transfers as accumulation_pending_transfers,
+    transfer_partition as accumulation_transfer_partition, provisions as accumulation_provisions,
+    outputs as accumulation_outputs, finalization as accumulation_finalization,
+    statistics as accumulation_statistics]
+import ../../src/state/store
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../src/crypto/primitives
 import ./[accumulation_execution_context, accumulation_reentry_context,

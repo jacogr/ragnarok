@@ -3,6 +3,6 @@
 
 ## Private epoch state cannot forge a native resource or successful receipt.
 # @@Verification={"group":"privacy","expected":"identity"}
-import ../../../src/storage/paged_store
+import ../../../src/storage/paged/store as paged_store
 let outcome = default(PagedEpochReceipt)
 discard outcome.identity

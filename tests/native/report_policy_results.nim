@@ -7,7 +7,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/state/[report_policy, guarantee_credentials, store]
+import ../../src/state/report/policy as report_policy
+import ../../src/state/[guarantee_credentials, store]
 let outcome = if paramStr(1) == "error":
   checkReportPolicy(default(VerifiedGuaranteeCredentials), default(StateStoreSnapshot), default(ReportPolicyConfig))
 else:

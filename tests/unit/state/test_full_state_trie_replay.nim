@@ -7,8 +7,10 @@
 ## interface.
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/storage/[full_state_trie, state_proof]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/state_proof
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 type
   ## Trusted published bytes and commitments, independently checked before fixture preparation.

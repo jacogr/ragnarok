@@ -3,7 +3,7 @@
 Authority is the unmodified `traces/schema.asn` and `traces/convert.py` at vector
 pin `23061ae1f9b51171c01387e7dde0f15794c98e24`, with GP compact natural framing.
 RawState is the32-byte complete root followed by a variable sequence of31-byte
-keys and variable value blobs. The new `state/trace_state` module accepts one
+keys and variable value blobs. The new `state/trace/state` module accepts one
 canonical scalar representation; there is no local checkpoint magic or fixed-E8
 record-length fallback.
 

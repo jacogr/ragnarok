@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/report_identity
+import ../../../src/state/report/identity as report_identity
 var outcome: ReportIdentityResult[int]
 discard outcome.status

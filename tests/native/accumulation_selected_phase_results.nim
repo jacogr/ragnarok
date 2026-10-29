@@ -3,9 +3,11 @@
 
 ## Every reusable phase keeps inactive success and parent reason payloads guarded.
 import std/cmdline
-import ../../src/state/[accumulation_account_phase, accumulation_provision_phase,
-  accumulation_global_phase,
-  accumulation_coverage, accumulation_provisions]
+import ../../src/state/accumulation/account/phase as accumulation_account_phase
+import ../../src/state/accumulation/provision/phase as accumulation_provision_phase
+import ../../src/state/accumulation/global/phase as accumulation_global_phase
+import ../../src/state/accumulation/[coverage as accumulation_coverage,
+    provisions as accumulation_provisions]
 case paramStr(1)
 of "account":
   let owner = default(AccumulationAccountPhaseResult[PreparedAccumulationAccountPhase])

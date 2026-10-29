@@ -5,12 +5,18 @@
 ## Explicit RPC publication joins only matching histories; copies form independent immutable-parent branches.
 
 import ../chain/[genesis, provider, parameters]
-import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
-  accumulation_publication, accumulation_current_consensus, accumulation_current_update,
-  accumulation_storage_history, service_identity_history, request_identity_history]
+import ../state/store
+import ../state/accumulation/[chain as accumulation_chain,
+    finalization as accumulation_finalization, completion as accumulation_completion,
+    publication as accumulation_publication]
+import ../state/accumulation/current/[consensus as accumulation_current_consensus,
+    update as accumulation_current_update]
+import ../state/accumulation/storage_history as accumulation_storage_history
+import ../state/service/identity_history as service_identity_history
+import ../state/request_identity_history
 import ../codec/bounded
 import ../lib/logging
-import ../state/parent_profile
+import ../state/parent/profile as parent_profile
 import ../rpc/server as rpc_server
 from ../rpc/protocol import configuredParameters, configuredGenesis
 

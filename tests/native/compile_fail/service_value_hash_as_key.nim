@@ -8,5 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "StateKey"}
 
-import ../../../src/codec/[state_service_values, bounded]
+import ../../../src/codec/state/service_values as state_service_values
+import ../../../src/codec/bounded
 discard captureServiceValue(ServiceIndex(0), default(ServicePreimageHash), @[], ByteLimit(0))

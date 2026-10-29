@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "prepared"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/current_logical
+import ../../../src/app/current/logical as current_logical
 let source = default(CollectedLogicalPlan)
 discard source.prepared

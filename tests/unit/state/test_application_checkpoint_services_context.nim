@@ -5,7 +5,9 @@
 
 ## Services capture one canonical pair only outside execution leases; prepared output retains no canonical graph.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/[services, options, checkpoint_identity, checkpoint_transfer, checkpoint_codec]
+import ../../../src/app/[services, options]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity,
+    transfer as checkpoint_transfer, codec as checkpoint_codec]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
 proc cycle(owner: Services, expected: ApplicationCheckpointIdentity) =

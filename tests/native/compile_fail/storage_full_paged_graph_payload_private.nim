@@ -3,6 +3,6 @@
 
 ## Failed/default admission results cannot expose unchecked complete-graph metadata.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/storage/full_paged_stream
+import ../../../src/storage/full/paged/stream as full_paged_stream
 let outcome = default(FullPagedStreamResult[CheckedFullPagedArtifact])
 discard outcome.completed

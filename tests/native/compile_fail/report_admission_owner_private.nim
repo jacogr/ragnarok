@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/report_admission
+import ../../../src/state/report/admission as report_admission
 let value = default(AdmittedReports)
 discard value.data # Private storage must be rejected before lowering.

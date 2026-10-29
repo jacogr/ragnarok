@@ -5,9 +5,13 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, managed_manifest, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/database_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the observer while preserving actual primitive output.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

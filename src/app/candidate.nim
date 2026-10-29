@@ -10,11 +10,20 @@ import ./[chain, handoff]
 import ../pvm/backend
 import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
-import ../state/[fuzz_ancestry, store, block_transition, report_transition, report_admission,
-  accumulation_queue,
-  accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion,
-  accumulation_current_update, accumulation_storage_history, service_identity_history, request_identity_history]
+import ../state/fuzz/ancestry as fuzz_ancestry
+import ../state/store
+import "../state/block/transition" as block_transition
+import ../state/report/[transition as report_transition, admission as report_admission]
+import ../state/accumulation/[queue as accumulation_queue, round as accumulation_round,
+    runner as accumulation_runner, driver as accumulation_driver,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    completion as accumulation_completion]
+import ../state/report/anchors as report_anchors
+import ../state/accumulation/current/[completion as accumulation_current_completion,
+    update as accumulation_current_update]
+import ../state/accumulation/storage_history as accumulation_storage_history
+import ../state/service/identity_history as service_identity_history
+import ../state/request_identity_history
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.

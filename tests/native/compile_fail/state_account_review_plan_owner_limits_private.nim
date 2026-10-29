@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "limits"}
 
 ## Prepared plan/report storage and result alternatives remain private.
-import ../../../src/state/account_review_plan
+import ../../../src/state/account/review/plan as account_review_plan
 var value = default(StateAccountReviewPlan)
 discard value.limits

@@ -5,8 +5,12 @@
 # @@Verification={"arc":"storage_paged_codec_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[paged_codec, database_identity, managed_manifest, light_delta]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/paged/codec as paged_codec
+import ../../../src/storage/database_identity
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Maintained observer makes provider refusal and structural preflight independently observable.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

@@ -4,7 +4,8 @@
 ## Uninitialized/refused validator certificates cannot expose sources, maps, observations or unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_validators, accumulation_times]
+import ../../src/state/accumulation/[validators as accumulation_validators,
+    times as accumulation_times]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationValidators)

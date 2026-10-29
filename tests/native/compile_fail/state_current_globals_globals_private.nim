@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "globals"}
 
 ## Current global evidence cannot expose or substitute its retained owner graph.
-import ../../../src/state/current_globals
+import ../../../src/state/current/globals as current_globals
 var value = default(CurrentGlobalSerialization)
 discard value.globals

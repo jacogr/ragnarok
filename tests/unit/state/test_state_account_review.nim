@@ -5,9 +5,9 @@
 # @@Verification={"arc": "state_account_review_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_context, arc_evidence]
-import ../../../src/state/[account_review, account_invariants, supervision_table, economics_table,
-    inventory, economic_profile]
-import ../../../src/codec/state_accounts
+import ../../../src/state/account/[review as account_review, invariants as account_invariants]
+import ../../../src/state/[supervision_table, economics_table, inventory, economic_profile]
+import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after constructing real component evidence.

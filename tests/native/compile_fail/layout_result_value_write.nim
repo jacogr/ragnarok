@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 var value = default(StateLayoutResult[StateKey])
 value.value = default(StateKey)

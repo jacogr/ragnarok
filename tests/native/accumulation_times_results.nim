@@ -4,8 +4,9 @@
 ## Defaults/refusals cannot expose timestamp candidates or unrelated nested failure reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_times, accumulation_recent, store]
-import ../../src/codec/state_accounts
+import ../../src/state/accumulation/[times as accumulation_times, recent as accumulation_recent]
+import ../../src/state/store
+import ../../src/codec/state/accounts as state_accounts
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationTimes)

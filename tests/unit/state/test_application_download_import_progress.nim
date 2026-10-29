@@ -4,10 +4,12 @@
 ## Independent trusted checkpoint startup supports successive genuine children while preserving exclusive disk imports and trust-free local restart.
 import std/[assertions, syncio, envvars, os]
 import std/posix/posix
-import ../../../src/app/[download_command, checkpoint_identity, checkpoint_codec, chain]
+import ../../../src/app/download/command as download_command
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_download_chain, application_candidate_context,
   application_download_command_context, application_download_disk_context, block_download_transport]
 

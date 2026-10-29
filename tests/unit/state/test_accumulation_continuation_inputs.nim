@@ -5,12 +5,19 @@
 ## Selected suffix operands retain original queue provenance and actual privately fulfilled state.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_continuation_inputs, accumulation_continuation,
-  accumulation_execution, accumulation_round, accumulation_queue, accumulation_operands,
-  accumulation_inputs, accumulation_batch, accumulation_service, accumulation_invocation,
-  accumulation_machine, accumulation_dispatch, accumulation_provisions, store]
-import ../../../src/codec/[bounded, composite, report_owned, owned, work_report, work_digest,
-  c2_records, state_workqueues, state_safrole, state_service_values, state_trie, state_layout]
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    operands as accumulation_operands, inputs as accumulation_inputs, batch as accumulation_batch,
+    service as accumulation_service, invocation as accumulation_invocation,
+    machine as accumulation_machine, dispatch as accumulation_dispatch,
+    provisions as accumulation_provisions]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, report_owned, owned]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../../src/codec/c2_records
+import ../../../src/codec/state/[workqueues as state_workqueues, safrole as state_safrole,
+    service_values as state_service_values, trie as state_trie, layout as state_layout]
 import ../../../src/crypto/primitives
 import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../support/[accumulation_execution_context, accumulation_batch_context,

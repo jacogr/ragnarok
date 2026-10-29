@@ -10,8 +10,12 @@
 # @@Verification={"arc": "sealer_state_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[sealer_state, sealer_schedule, ticket_state, ticket_admission, entropy, store]
-import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, tickets, bounded]
+import ../../../src/state/sealer/[state as sealer_state, schedule as sealer_schedule]
+import ../../../src/state/ticket/[state as ticket_state, admission as ticket_admission]
+import ../../../src/state/[entropy, store]
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    layout as state_layout, trie as state_trie]
+import ../../../src/codec/[tickets, bounded]
 import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Refuse test-library Blake hashes without changing production primitives.

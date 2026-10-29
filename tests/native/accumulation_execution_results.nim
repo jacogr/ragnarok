@@ -4,7 +4,8 @@
 ## Strict extraction probes keep default/refused round completions from exposing data or parent reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_execution, accumulation_round, accumulation_inputs]
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, inputs as accumulation_inputs]
 
 let argument = paramStr(1)
 let owner = default(CompletedBlockAccumulation)

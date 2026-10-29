@@ -4,7 +4,7 @@
 ## Default/source/reason/view guards use an actual signed selected parent as genuine positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_profile_context]
-import ../../src/state/parent_profile
+import ../../src/state/parent/profile as parent_profile
 import ../../src/chain/[provider, genesis]
 import ../../src/codec/[bounded, report_owned]
 proc extract(outcome: ParentProfileResult[SelectedParentProfile]) {.noinline.} =

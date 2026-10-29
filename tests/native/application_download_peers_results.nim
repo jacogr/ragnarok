@@ -4,8 +4,9 @@
 ## Strict result and explicit-close contracts use actual initialized native endpoints as positive controls.
 
 import std/[cmdline, assertions]
-import ../../src/quic/[block_download_peers, block_download_session]
-import ../../src/app/download_schedule
+import "../../src/quic/block/download/peers" as block_download_peers
+import "../../src/quic/block/download/session" as block_download_session
+import ../../src/app/download/schedule as download_schedule
 import ../../src/codec/bounded
 
 proc lifecycle(mode: string) =

@@ -3,8 +3,8 @@
 
 ## Actual pinned identities, wrong-key refusal, native-close readiness and timeout/cancellation never modify state.
 import std/[assertions, syncio, envvars]
-import ../../../src/quic/[ancestor_peer, ancestor_stream]
-import ../../../src/app/[ancestor_response, ancestor_receiver]
+import ../../../src/quic/ancestor/[peer as ancestor_peer, stream as ancestor_stream]
+import ../../../src/app/ancestor/[response as ancestor_response, receiver as ancestor_receiver]
 import ../../../src/codec/[bounded, block_codec, report_owned]
 import ../../support/[application_download_chain, application_candidate_context, block_download_transport]
 

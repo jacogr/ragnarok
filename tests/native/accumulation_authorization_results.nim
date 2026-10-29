@@ -4,7 +4,8 @@
 ## Default/refused source-bound authorization cannot expose partial sources, encodings, maps or unselected causes.
 
 import std/cmdline
-import ../../src/state/[accumulation_authorization, accumulation_preimages]
+import ../../src/state/accumulation/[authorization as accumulation_authorization,
+    preimages as accumulation_preimages]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationAuthorization)

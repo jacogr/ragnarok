@@ -5,9 +5,9 @@
 
 import ./pvm_computed_storage_program
 import std/assertions
-import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition]
+import ../../src/state/computed/[batch as computed_batch, envelope as computed_envelope,
+    credentials as computed_credentials, guarantors as computed_guarantors,
+    roster as computed_roster, transition as computed_transition]
 import ../../src/codec/[bounded, guarantees]
 import ./[pvm_computed_roster, pvm_computed_guarantors, pvm_computed_credentials]
 

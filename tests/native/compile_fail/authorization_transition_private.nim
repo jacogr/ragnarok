@@ -9,6 +9,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 import ../../../src/state/authorization
-import ../../../src/codec/state_trie
+import ../../../src/codec/state/trie as state_trie
 let hidden = default(AuthorizationTransitionResult[StateEntry])
 discard hidden.completed

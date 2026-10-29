@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "StateEntropyWord"}
 
-import ../../../src/codec/state_safrole
+import ../../../src/codec/state/safrole as state_safrole
 let word = default(StateEntropyWord)
 let entry = timeEntry(word)
 discard entry

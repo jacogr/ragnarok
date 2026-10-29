@@ -5,7 +5,8 @@
 # @@Verification={"arc": "state_preimage_content_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[preimage_content, inventory, manifest, store]
+import ../../../src/state/preimage/content as preimage_content
+import ../../../src/state/[inventory, manifest, store]
 import ../../../src/codec/bounded
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

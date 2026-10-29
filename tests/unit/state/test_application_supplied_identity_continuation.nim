@@ -9,11 +9,22 @@ import ../../support/[collected_native_context, collected_mutation_context,
     accumulation_execution_context, accumulation_current_candidate_context,
     application_download_chain,
     supplied_services_context, current_logical_proof_context]
-import ../../../src/app/[chain, current_logical, preparation_worker, current_block_input, candidate,
-    logical_proof, proof_query]
-import ../../../src/state/[current_logical, supplied_services, supplied_logical_inventory,
-    accumulation_current_update, store, planned_proof]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_service_values]
+import ../../../src/app/chain
+import ../../../src/app/current/logical as current_logical
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/candidate
+import ../../../src/app/logical/proof as logical_proof
+import ../../../src/app/proof/query as proof_query
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/supplied/[services as supplied_services,
+    logical_inventory as supplied_logical_inventory]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    service_values as state_service_values]
 proc main() {.raises.} =
   ## Raw key7 is supplied after its genuine creation, then retained unchanged across three later actual collected children.
   let value = @[91'u8, 92, 93]

@@ -4,7 +4,8 @@
 ## Optimized probes reject refused owners, wrong-stage reason access and protocol-error byte extraction.
 
 import std/[assertions, cmdline]
-import ../../src/state/[refinement_outcome, refinement_bootstrap, refinement_dispatch]
+import ../../src/state/refinement/[outcome as refinement_outcome, bootstrap as refinement_bootstrap,
+    dispatch as refinement_dispatch]
 import ../../src/pvm/[machine, step, refinement_exports, output]
 import ../../src/codec/composite
 import ../support/pvm_refinement_outcome

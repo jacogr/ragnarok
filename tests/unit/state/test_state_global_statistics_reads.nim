@@ -4,8 +4,10 @@
 ## Exact authenticated activity reads preserve independent epoch populations and accepted compact gas.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_statistics, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[statistics as state_statistics, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = ActivityConfig(cores: CoreCount(3), current: ValidatorCount(6),
     previous: ValidatorCount(9),
   maxServices: ElementLimit(1), maxBytes: ByteLimit(4096))

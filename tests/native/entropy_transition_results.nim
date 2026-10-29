@@ -9,7 +9,7 @@
 
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[entropy, store]
-import ../../src/codec/state_safrole
+import ../../src/codec/state/safrole as state_safrole
 from ../../src/codec/header import EpochSlots
 
 case paramStr(1)

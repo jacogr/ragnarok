@@ -3,7 +3,9 @@
 
 ## Compact service facts retain exact logical declarations bound to one complete matched source.
 ## Payload bytes stay in the existing source; callers cannot substitute mutable declarations later.
-import ../codec/[bounded, composite, state_layout, state_accounts, state_composition, state_service_values]
+import ../codec/[bounded, composite]
+import ../codec/state/[layout as state_layout, accounts as state_accounts,
+    composition as state_composition, service_values as state_service_values]
 import ./manifest
 
 type

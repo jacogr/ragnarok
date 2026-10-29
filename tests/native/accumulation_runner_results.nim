@@ -4,7 +4,7 @@
 ## Failed/default runner results cannot expose a completed round or an unselected child reason.
 
 import std/cmdline
-import ../../src/state/[accumulation_runner, accumulation_round]
+import ../../src/state/accumulation/[runner as accumulation_runner, round as accumulation_round]
 import ../../src/chain/parameters
 
 let argument = paramStr(1)

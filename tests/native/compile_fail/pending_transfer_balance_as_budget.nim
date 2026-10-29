@@ -3,7 +3,8 @@
 # @@Verification={"group":"nominal","expected":"Gas","early":["prepareInitialPendingTransfers(","[2] expected: Gas but got: TransferBalance"]}
 
 ## Pending ownership, selected reasons and nominal budget/ordinal units remain private or distinct.
-import ../../../src/state/[accumulation_pending_transfers, accumulation_transfers]
+import ../../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
+    transfers as accumulation_transfers]
 import ../../../src/codec/c2_records
 
 discard prepareInitialPendingTransfers(default(PreparedAccumulationTransfers), TransferBalance(1),

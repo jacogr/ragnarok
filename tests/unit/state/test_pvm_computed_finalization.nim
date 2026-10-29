@@ -5,11 +5,18 @@
 ## Genuine n=0 continuation finalizes actual computed execution without replaying initial guests or losing pending-report provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_finalization, computed_execution, computed_round,
-  computed_publication, computed_admission, report_admission, block_transition, block_admission,
-  accumulation_driver, accumulation_finalization, accumulation_outputs, accumulation_execution,
-  accumulation_continuation, store]
-import ../../../src/codec/[bounded, state_layout]
+import ../../../src/state/computed/[finalization as computed_finalization,
+    execution as computed_execution, round as computed_round, publication as computed_publication,
+    admission as computed_admission]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/accumulation/[driver as accumulation_driver,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    execution as accumulation_execution, continuation as accumulation_continuation]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/layout as state_layout
 import ../../../src/pvm/step
 import ../../support/[pvm_computed_finalization, arc_evidence]
 

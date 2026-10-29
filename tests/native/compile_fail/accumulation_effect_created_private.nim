@@ -4,5 +4,5 @@
 
 ## Reject raw access to the private captured created-account owner.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 discard default(AccumulationEffectContext).created

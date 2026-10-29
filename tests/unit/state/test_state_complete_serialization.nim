@@ -5,8 +5,10 @@
 import std/[assertions, envvars, strutils, syncio, parseutils]
 import ../../support/state_complete_serialization_context
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
-import ../../../src/codec/[bounded, assurances, state_consensus, state_layout, state_trie,
-  state_composition, state_accounts, state_service_values, state_requests]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[consensus as state_consensus, layout as state_layout,
+    trie as state_trie, composition as state_composition, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
 const
   profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),

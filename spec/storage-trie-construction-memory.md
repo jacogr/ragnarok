@@ -1,6 +1,6 @@
 # Direct complete-map construction
 
-Scope: `newFullStateTrie` in `src/storage/full_state_trie.nim`. This changes private construction
+Scope: `newFullStateTrie` in `src/storage/full/state_trie.nim`. This changes private construction
 and scratch ownership; public APIs, complete-map semantics, protocol bytes and mutation ceilings
 remain unchanged. Authority is pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/merklization.tex` M/B/L, through the existing state-layout primitives and independent

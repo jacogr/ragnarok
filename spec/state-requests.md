@@ -7,7 +7,7 @@ fixture hashes are in [pins.json](pins.json). Dependency/compiler/toolchain revi
 
 ## Exact key and tagged history shapes
 
-`src/codec/state_requests.nim` provides `serviceRequestKey`, `serviceRequestEntry` and
+`src/codec/state/requests.nim` provides `serviceRequestKey`, `serviceRequestEntry` and
 `decodeRequestHistory`:
 
 ```text

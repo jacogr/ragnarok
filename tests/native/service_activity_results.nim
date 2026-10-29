@@ -4,8 +4,9 @@
 ## Default/refused service activity cannot expose copied rows, source provenance or partial populations.
 
 import std/cmdline
-import ../../src/state/[service_activity, accumulation_statistics]
-import ../../src/codec/state_statistics
+import ../../src/state/service/activity as service_activity
+import ../../src/state/accumulation/statistics as accumulation_statistics
+import ../../src/codec/state/statistics as state_statistics
 
 let argument = paramStr(1)
 let owner = default(PreparedServiceActivity)

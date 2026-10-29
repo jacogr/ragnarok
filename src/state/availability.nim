@@ -9,8 +9,10 @@
 ## checked contextual failure results.
 
 import std/assertions
-import ../codec/[assurances, bounded, natural, state_safrole, state_availability,
-  state_layout, state_trie, report_owned]
+import ../codec/[assurances, bounded, natural]
+import ../codec/state/[safrole as state_safrole, availability as state_availability,
+    layout as state_layout, trie as state_trie]
+import ../codec/report_owned
 import ../crypto/[primitives, assurance_context]
 import ./store
 

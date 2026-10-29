@@ -3,8 +3,9 @@
 
 ## Independent resident TEST oracle for paged-light bytes; production codec/stream helpers are never used here.
 import std/assertions
-import ../../src/storage/[light_state_cache, database_identity]
-import ../../src/codec/[state_layout, state_trie]
+import ../../src/storage/light/state_cache as light_state_cache
+import ../../src/storage/database_identity
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../src/crypto/primitives
 
 type PagedReference* = object ## Explicit test-only complete artifacts make byte-for-byte and rehashed-corruption checks independent.

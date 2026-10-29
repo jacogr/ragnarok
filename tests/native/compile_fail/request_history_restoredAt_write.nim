@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "restoredAt"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 var history = default(RequestHistory)
 history.restoredAt = RequestSlot(0)

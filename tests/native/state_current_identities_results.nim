@@ -5,7 +5,8 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, current_checkpoint_context,
     parent_logical_context, current_identity_context]
-import ../../src/state/[current_identities, parent_logical]
+import ../../src/state/current/identities as current_identities
+import ../../src/state/parent/logical as parent_logical
 import ../../src/codec/report_owned
 proc extract(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## Defaults/refusals cannot expose a current preservation certificate.

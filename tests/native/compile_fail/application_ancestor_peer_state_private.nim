@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "state"}
 
 ## Private peer authority/lifetime fields cannot be forged outside checked operations.
-import ../../../src/quic/ancestor_peer
+import ../../../src/quic/ancestor/peer as ancestor_peer
 let owner = default(AncestorPeer)
 discard owner.state

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/computed_guarantee
+import ../../../src/state/computed/guarantee as computed_guarantee
 var candidate: ComputedGuaranteeResult[ComputedGuaranteeTranscript]
 discard candidate.status

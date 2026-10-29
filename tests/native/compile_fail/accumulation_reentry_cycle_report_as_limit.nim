@@ -4,7 +4,8 @@
 
 ## Reject mixing report/depth observations with the explicit recursion policy limit.
 
-import ../../../src/state/[accumulation_reentry, accumulation_operands]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    operands as accumulation_operands]
 var completed: CompletedAccumulationReentry
 discard prepareAccumulationReentry(completed, default(AccumulationReentryConfig),
     AccumulationReportPrefix(2))

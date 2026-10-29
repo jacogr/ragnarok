@@ -4,13 +4,19 @@
 
 ## Signed new/provide and real annulled producers fulfill original provisions over complete selected accounts.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
-  state_service_values]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values]
 import ../../../src/crypto/primitives
 import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_provision_stage, accumulation_provisions,
-  accumulation_account_stage, accumulation_block_guests, accumulation_guest_runner,
-  accumulation_coverage, accumulation_annulment, accumulation_creation_union, store]
+import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage
+import ../../../src/state/accumulation/provisions as accumulation_provisions
+import ../../../src/state/accumulation/account/stage as accumulation_account_stage
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    coverage as accumulation_coverage, annulment as accumulation_annulment,
+    creation_union as accumulation_creation_union]
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_current_guests_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

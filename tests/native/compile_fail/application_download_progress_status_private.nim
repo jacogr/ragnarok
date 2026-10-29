@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Finite requests and confirmed progress cannot be manufactured through private fields.
-import ../../../src/app/download_command
+import ../../../src/app/download/command as download_command
 let owner = default(DownloadCommandOutcome)
 discard owner.status

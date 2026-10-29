@@ -11,7 +11,9 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/codec/[bounded, composite, work_digest, owned]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/owned
 import ../../support/ownership_checks
 
 # Return a snapshot made from local stack storage; ARC must retain the copied bytes across this scope.

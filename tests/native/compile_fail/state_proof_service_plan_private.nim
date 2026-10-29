@@ -3,6 +3,6 @@
 
 ## External callers cannot fabricate typed results, requested identities or verified failure alternatives.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/state/proof_service
+import ../../../src/state/proof/service as proof_service
 let plan = default(ServiceProofPlan)
 discard plan.data

@@ -5,9 +5,14 @@
 ## Dynamic modes require the intended contract, including successful contexts with absent yield.
 
 import std/cmdline
-import ../../src/state/[accumulation_effects, accumulation_context, accumulation_invocation]
-import ../../src/codec/[state_outputs, state_accounts, bounded, composite, state_privileges,
-    state_authorization, state_safrole, c2_records, state_service_values, state_requests]
+import ../../src/state/accumulation/[effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation]
+import ../../src/codec/state/[outputs as state_outputs, accounts as state_accounts]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/[privileges as state_privileges, authorization as state_authorization,
+    safrole as state_safrole]
+import ../../src/codec/c2_records
+import ../../src/codec/state/[service_values as state_service_values, requests as state_requests]
 import ../../src/chain/parameters
 import ../support/accumulation_effect_context
 

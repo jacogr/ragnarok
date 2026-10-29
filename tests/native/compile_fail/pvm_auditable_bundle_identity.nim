@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "InputRefinement", "early": ["prepareAuditableBundle(", "[1] expected: InputRefinement but got: ReportIdentity"]}
 
-import ../../../src/state/[auditable_bundle, report_identity]
+import ../../../src/state/auditable_bundle
+import ../../../src/state/report/identity as report_identity
 import ../../../src/codec/bounded
 discard prepareAuditableBundle(default(ReportIdentity), ByteLimit(4096))

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "VerifiedExtrinsics", "early": ["bindImportInputs(", "[1] expected: VerifiedExtrinsics but got: OwnedWorkPackage"]}
 
-import ../../../src/state/import_inputs
-import ../../../src/codec/work_package
+import "../../../src/state/import/inputs" as import_inputs
+import ../../../src/codec/work/package as work_package
 discard bindImportInputs(default(OwnedWorkPackage), [], [], default(ImportInputsLimits))

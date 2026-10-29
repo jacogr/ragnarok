@@ -7,7 +7,8 @@
 ## Exposes OwnedFrame snapshots for bytes, optionals, work, preimages and digests, with bounded
 ## copy and re-encoding operations.
 
-import ./[natural, bounded, composite, work_digest]
+import ./[natural, bounded, composite]
+import ./work/digest as work_digest
 
 type
   OwnedKind* {.pure.} = enum ## Each snapshot has exactly one validated schema, independent of later input mutations.

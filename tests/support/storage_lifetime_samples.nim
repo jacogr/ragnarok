@@ -4,8 +4,9 @@
 ## Isolated lifetime controls retire prepared fixtures before measuring retained repository objects.
 import std/assertions
 import ./[storage_growth_samples, storage_allocations]
-import ../../src/storage/[node_records, node_repository]
-import ../../src/codec/[state_layout, state_trie, bounded]
+import ../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../src/codec/bounded
 
 type LifetimeObservation* = object
   ## Only scalar counters escape; no graph, fixture or extracted value can survive accidentally.

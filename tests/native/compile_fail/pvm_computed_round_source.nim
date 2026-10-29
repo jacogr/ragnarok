@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ComputedReportSuccessor", "early": ["prepareComputedRound(", "[1] expected: ComputedReportSuccessor but got: StateStoreSnapshot"]}
 
-import ../../../src/state/[computed_round, store]
+import ../../../src/state/computed/round as computed_round
+import ../../../src/state/store
 discard prepareComputedRound(default(StateStoreSnapshot), ComputedRoundConfig())

@@ -10,7 +10,7 @@
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/authorization_transition_fixture
 import ../../../src/state/[authorization, store]
-import ../../../src/codec/[state_trie, state_layout]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 
 ## Parse exact trusted fixture hex; malformed fixture transport fails independently from transition results.
 proc unhex(text: string): seq[byte] =

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "policy"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/current_download_policy
+import ../../../src/app/current/download/policy as current_download_policy
 let source = default(CurrentNamespacePolicyResult)
 discard source.policy

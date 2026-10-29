@@ -8,8 +8,11 @@
 ## interface.
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[safrole_markers, marker_state, store]
-import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, header, bounded]
+import ../../../src/state/safrole/markers as safrole_markers
+import ../../../src/state/[marker_state, store]
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    layout as state_layout, trie as state_trie]
+import ../../../src/codec/[header, bounded]
 import ../../support/validator_rotation_fixture
 
 ## Test-library hashes can be refused after map construction to prove validation performs no backend work.

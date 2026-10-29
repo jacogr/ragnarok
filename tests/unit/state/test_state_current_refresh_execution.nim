@@ -6,10 +6,17 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, parent_globals_context, state_inventory_context,
     supplied_logical_context, arc_evidence]
-import ../../../src/state/[current_refresh, current_refresh_plan, current_request_keys,
-    current_identities, current_profile, current_globals, current_state, current_logical,
-    accumulation_current_update, supplied_logical_inventory, inventory, manifest, store]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests, state_composition]
+import ../../../src/state/current/refresh as current_refresh
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/[request_keys as current_request_keys,
+    identities as current_identities, profile as current_profile, globals as current_globals,
+    state as current_state, logical as current_logical]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    composition as state_composition]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Source and request-key derivation finish before observing hash-free execution.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

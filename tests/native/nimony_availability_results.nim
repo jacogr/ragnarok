@@ -11,7 +11,7 @@
 
 import std/[assertions, cmdline, syncio]
 import ../../src/codec/[report_owned, owned]
-include ../../src/codec/state_availability
+include ../../src/codec/state/availability
 import ../support/probe_cases
 
 ## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.

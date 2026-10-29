@@ -9,7 +9,7 @@ upstream revision changes.
 
 ## Exact schema and domains
 
-`src/codec/state_outputs.nim` provides `outputLogEntry(values, config)` for C(16) and
+`src/codec/state/outputs.nim` provides `outputLogEntry(values, config)` for C(16) and
 `decodeOutputLog(input, config)` for one complete sequence prefix:
 
 ```text

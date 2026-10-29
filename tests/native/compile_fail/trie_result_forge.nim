@@ -9,5 +9,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_trie, state_layout]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 discard StateTrieResult[StateTrieCommitment](status: StateTrieError.None)

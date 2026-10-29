@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/block_admission
+import "../../../src/state/block/admission" as block_admission
 import ../../../src/codec/header
 var hidden = default(BlockSafroleResult)
 hidden.status = BlockSafroleError.None

@@ -5,8 +5,12 @@
 # @@Verification={"arc":"storage_paged_native_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_crash, paged_native_fixture, paged_reference]
-import ../../../src/storage/[paged_store, paged_io, paged_codec, paged_stream, file_errors,
-  managed_manifest, light_delta, durability, state_proof]
+import ../../../src/storage/paged/[store as paged_store, io as paged_io, codec as paged_codec,
+    stream as paged_stream]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/[durability, state_proof]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal is independent of native IO instrumentation.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

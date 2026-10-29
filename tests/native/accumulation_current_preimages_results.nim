@@ -3,8 +3,9 @@
 
 ## Default/refused current preimage owners cannot expose source, partial fulfilled maps or inactive causes.
 import std/cmdline
-import ../../src/state/[accumulation_current_preimages, accumulation_preimages,
-    accumulation_current_activity]
+import ../../src/state/accumulation/current/preimages as accumulation_current_preimages
+import ../../src/state/accumulation/preimages as accumulation_preimages
+import ../../src/state/accumulation/current/activity as accumulation_current_activity
 let owner = default(CurrentAccumulationPreimageResult[PreparedCurrentAccumulationPreimages])
 let preimages = default(PreparedCurrentAccumulationPreimages)
 let refused = prepareCurrentAccumulationPreimages(default(PreparedCurrentAccumulationActivity),

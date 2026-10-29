@@ -5,5 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ErasureLayout", "early": ["prepareBundleErasure(", "[1] expected: ErasureLayout but got: AuditableBundle"]}
 
-import ../../../src/state/[bundle_erasure, erasure_layout, erasure_words, auditable_bundle]
+import ../../../src/state/bundle_erasure
+import ../../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../../src/state/auditable_bundle
 discard prepareBundleErasure(default(AuditableBundle), BundleErasureLimits())

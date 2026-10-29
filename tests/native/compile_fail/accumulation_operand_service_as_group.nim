@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: OperandServiceIndex but got: ServiceIndex", "early": ["operandServiceAt(", "[2] expected: OperandServiceIndex but got: ServiceIndex"]}
 
-import ../../../src/state/[accumulation_operands, accumulation_queue]
+import ../../../src/state/accumulation/[operands as accumulation_operands,
+    queue as accumulation_queue]
 import ../../../src/codec/composite
 discard operandServiceAt(default(PreparedAccumulationOperands), ServiceIndex(0))

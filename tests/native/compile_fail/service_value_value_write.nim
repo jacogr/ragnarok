@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/state_service_values
+import ../../../src/codec/state/service_values as state_service_values
 var parsed = default(ServiceValueResult[int])
 parsed.value = 0

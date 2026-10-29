@@ -6,11 +6,19 @@
 
 import std/assertions
 import ../../src/chain/parameters
-import ../../src/state/[accumulation_invocation, accumulation_service, accumulation_inputs,
-  accumulation_operands, accumulation_queue, accumulation_context, store]
-import ../../src/codec/[bounded, composite, header, state_safrole, state_privileges,
-  state_workqueues, state_accounts, state_service_values, state_trie, work_report, report_owned,
-  work_digest, c2_records, assurances, state_authorization, state_layout]
+import ../../src/state/accumulation/[invocation as accumulation_invocation,
+    service as accumulation_service, inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue, context as accumulation_context]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, header]
+import ../../src/codec/state/[safrole as state_safrole, privileges as state_privileges,
+    workqueues as state_workqueues, accounts as state_accounts,
+    service_values as state_service_values, trie as state_trie]
+import ../../src/codec/work/report as work_report
+import ../../src/codec/report_owned
+import ../../src/codec/work/digest as work_digest
+import ../../src/codec/[c2_records, assurances]
+import ../../src/codec/state/[authorization as state_authorization, layout as state_layout]
 import ../../src/crypto/primitives
 
 proc pvmEnvelope*(raw: openArray[byte] = [0'u8, 0, 7, 0, 0, 0, 0, 0, 50, 0, 63], writable: seq[

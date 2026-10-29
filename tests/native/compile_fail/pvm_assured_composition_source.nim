@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "ExecutedAssuredAccumulation", "early": ["composeAssuredState(", "[1] expected: ExecutedAssuredAccumulation but got: CompletedBlockAccumulation"]}
 
-import ../../../src/state/[assured_composition, accumulation_execution]
+import ../../../src/state/assured/composition as assured_composition
+import ../../../src/state/accumulation/execution as accumulation_execution
 discard composeAssuredState(default(CompletedBlockAccumulation), AssuredCompositionConfig())

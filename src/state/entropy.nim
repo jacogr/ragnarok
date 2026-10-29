@@ -8,7 +8,7 @@
 ## Exposes advanceEntropyTime and advanceEntropyTimeState for pure planning and atomic
 ## full-state publication.
 
-import ../codec/[state_safrole, state_layout, state_trie]
+import ../codec/state/[safrole as state_safrole, layout as state_layout, trie as state_trie]
 from ../codec/header import EpochSlots
 import ../crypto/primitives
 import ./store

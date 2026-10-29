@@ -4,7 +4,7 @@
 ## Checked default projections and genuine signed original/posterior positive controls.
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, current_checkpoint_context]
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/chain/provider
 import ../../src/codec/report_owned
 proc extract(mode: string, update: PreparedCurrentChainUpdate) {.noinline.} =

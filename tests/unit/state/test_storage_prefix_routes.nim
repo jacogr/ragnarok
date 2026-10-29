@@ -4,8 +4,9 @@
 ## Authored complete two-leaf graphs exercise every full-key route depth and masked byte boundary.
 import std/[assertions, syncio]
 import ../../support/storage_samples
-import ../../../src/storage/[node_records, node_repository, record_codec]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/record_codec
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc fixture(depth: int, pattern: byte, wrong = -1): TrieExport =
   ## Build valid local hashes independently of the trie builder, optionally misrouting one edge.

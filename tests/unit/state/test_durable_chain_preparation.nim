@@ -4,7 +4,9 @@
 ## Fallible preparation cannot publish; assignment-only installation requires exact original state and history.
 import std/[assertions, envvars, syncio]
 import ../../support/[durable_chain_context, accumulation_completion_context]
-import ../../../src/state/[store, accumulation_publication, accumulation_chain]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[publication as accumulation_publication,
+    chain as accumulation_chain]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

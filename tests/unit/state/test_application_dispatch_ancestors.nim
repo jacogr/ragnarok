@@ -4,11 +4,16 @@
 ## The production dispatcher retires child connections before demand and resumes the original prepared input without another request.
 import std/[assertions, envvars, syncio]
 import std/posix/posix
-import ../../../src/app/[block_input, block_download, candidate, chain, services, options, download_schedule]
-import ../../../src/quic/[block_download_loop, block_download_peers, block_download_stream]
+import "../../../src/app/block/input" as block_input
+import "../../../src/app/block/download" as block_download
+import ../../../src/app/[candidate, chain, services, options]
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/quic/block/download/peers" as block_download_peers
+import "../../../src/quic/block/download/stream" as block_download_stream
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
-import ../../../src/state/report_anchors
+import ../../../src/state/report/anchors as report_anchors
 import ../../support/[application_candidate_context, accumulation_completion_context, block_download_transport]
 import ../../support/report_admission_context as report_context
 

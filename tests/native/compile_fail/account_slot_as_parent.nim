@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: AccountSlot but wanted: ServiceIndex"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 let metadata = ServiceMetadata(parent: AccountSlot(1))
 discard metadata

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze bounded selected request identities from genuine completed current accumulation history; fixed facts preserve original producer positions without payload copying or hashing.
-import ./[accumulation_current_driver, accumulation_current_sequence, accumulation_coverage,
-    accumulation_annulment, accumulation_effects]
+import ./accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence]
+import ./accumulation/[coverage as accumulation_coverage, annulment as accumulation_annulment,
+    effects as accumulation_effects]
 import ../codec/bounded
 type
   RequestIdentityHistoryLimits* = object ## Original entries/outcomes, selected fixed facts and native row storage are independent policies.

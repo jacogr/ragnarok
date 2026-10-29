@@ -4,7 +4,8 @@
 ## Stable managed directory locks and descriptor-relative files preserve exclusive ownership and exact bytes.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/storage/[managed_io, managed_manifest, file_repository]
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/repository as file_repository
 import ../../../src/codec/bounded
 proc renamePath(source, destination: cstring): cint {.importc: "rename", cdecl,
     header: "<stdio.h>".}

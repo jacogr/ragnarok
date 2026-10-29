@@ -122,7 +122,7 @@ interop or resident-pressure CI verdict. Original compiler and provider inputs r
 Clean baseline measurement head: `0860f1b107073f6d37d0182d3fc4f0ac1bd2dccf`.
 Clean candidate measurement head: `52e65c457f7f5ba8f311e4ba8f88826a61f16e5a`.
 The subsequent qualification commit changes this feature record only. The 455 captured measurement
-inputs remain identical to the candidate; only `src/storage/node_repository.nim` differs between
+inputs remain identical to the candidate; only `src/storage/node/repository.nim` differs between
 baseline and candidate. Compiler, checked ARC/Clang LTO flags, providers, interpreter, native
 workload, observer, same-host identity and selected namespace bytes match.
 

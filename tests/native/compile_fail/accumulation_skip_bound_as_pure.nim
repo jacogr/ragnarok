@@ -6,5 +6,5 @@
 
 # @@Verification={"group": "nominal", "expected": "PreparedAccumulationService", "early": ["finishUninvokedAccumulation(", "[1] expected: PreparedAccumulationService but got: BlockAccumulationService"]}
 
-import ../../../src/state/[accumulation_skip, accumulation_service]
+import ../../../src/state/accumulation/[skip as accumulation_skip, service as accumulation_service]
 discard finishUninvokedAccumulation(default(BlockAccumulationService))

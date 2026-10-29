@@ -8,7 +8,8 @@
 ## their codec domains.
 
 import std/assertions
-import ../../src/codec/[state_authorization, assurances, bounded]
+import ../../src/codec/state/authorization as state_authorization
+import ../../src/codec/[assurances, bounded]
 export state_authorization, assurances, bounded
 
 proc authHash*(number: byte): AuthorizerHash =

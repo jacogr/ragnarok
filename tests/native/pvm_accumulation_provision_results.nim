@@ -4,7 +4,7 @@
 ## Actual provide-local failures cannot expose a charged CPU or partially accumulated implication pair.
 
 import std/[assertions, cmdline]
-import ../../src/state/accumulation_dispatch
+import ../../src/state/accumulation/dispatch as accumulation_dispatch
 import ../../src/pvm/[machine, step]
 import ../support/pvm_accumulation_provision
 

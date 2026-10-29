@@ -4,7 +4,8 @@
 ## Known oversized regular files must refuse before buffering under a one-MiB test heap.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/storage/[file_errors, managed_io, managed_manifest]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/codec/bounded
 
 proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,

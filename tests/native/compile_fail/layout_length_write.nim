@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "length"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 var value = default(StateNodeInfo)
 value.length = default(EmbeddedLength)

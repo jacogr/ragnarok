@@ -5,9 +5,11 @@
 
 ## Independent context gates complete-map allocation and every malformed envelope remains payload-free.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, checkpoint_codec, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../../src/chain/genesis
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 import ../../../src/state/[checkpoint, store]
 import ../../support/[application_checkpoint_context, arc_evidence]
 proc matches(state, original: StateStoreSnapshot) =

@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "HistoryBlockIndex"}
 
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 var owner: HistorySnapshot
 var index: HistoryBlockIndex
 let peak = historyPeakAt(owner, index)

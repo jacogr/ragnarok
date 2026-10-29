@@ -7,15 +7,29 @@ import std/posix/posix
 import ../support/[collected_native_context, collected_logical_services_context,
     managed_supplied_context, current_logical_proof_context, supplied_services_context, current_namespace_refresh_context]
 import ../support/current_logical_cli_context
-import ../../src/app/[logical_source_export, current_logical_startup, logical_export]
-import ../../src/state/accumulation_current_update
-import ../../src/app/[logical_code, full_logical_proof, logical_proof, proof_query, services,
-    current_block_input, proof_worker]
-import ../../src/state/[code_availability, current_logical, current_state, current_globals,
-    current_profile, proof_plan, planned_proof, proof_view, proof_state_import, store,
-    global_snapshot, manifest,
-    supplied_logical_inventory, supplied_services]
-import ../../src/codec/[bounded, state_layout, state_trie, state_requests]
+import ../../src/app/logical/source_export as logical_source_export
+import ../../src/app/current/logical/startup as current_logical_startup
+import "../../src/app/logical/export" as logical_export
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/app/logical/code as logical_code
+import ../../src/app/full_logical_proof
+import ../../src/app/logical/proof as logical_proof
+import ../../src/app/proof/query as proof_query
+import ../../src/app/services
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/proof/worker as proof_worker
+import ../../src/state/code_availability
+import ../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/[view as proof_view, state_import as proof_state_import]
+import ../../src/state/[store, global_snapshot, manifest]
+import ../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    requests as state_requests]
 import ../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selector/query admission remains hash-free after genuine execution and qualification finish.

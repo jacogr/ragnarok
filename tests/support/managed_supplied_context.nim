@@ -5,9 +5,16 @@
 import std/assertions
 import ./[current_repeated_logical_context, collected_native_context, collected_logical_context,
     collected_logical_services_context, collected_supplied_context, accumulation_current_candidate_context]
-import ../../src/app/[services, current_block_input, preparation_worker, collected_supplied_plan, collected_supplied_state]
-import ../../src/state/[current_logical, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission]
+import ../../src/app/services
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/preparation_worker
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/state/current/logical as current_logical
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
 proc collectManagedSupplied*(owner: var Services, input: var CurrentBlockInput,
     fixture: CurrentRepeatedLogicalFixture): CurrentLogicalState {.raises.} =
   ## All raw identities remain explicitly supplied; canonical owner and receipt come from actual Services execution and collection.

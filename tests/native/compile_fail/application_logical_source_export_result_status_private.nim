@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/logical_source_export
+import ../../../src/app/logical/source_export as logical_source_export
 let source = default(LogicalSourceExportResult[LogicalSourceExportPlan])
 discard source.status

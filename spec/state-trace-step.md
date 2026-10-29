@@ -5,7 +5,7 @@ Authority: vectors `23061ae1f9b51171c01387e7dde0f15794c98e24`,
 pre-state, regular complete block, and RawState post-state, with no added wrapper,
 magic or invented length fields.
 
-`state/trace_step` composes the existing bounded RawState and owned block codecs.
+`state/trace/step` composes the existing bounded RawState and owned block codecs.
 Its private immutable owner retains each actual child, captured block configuration
 and exact prefix extent. Default/failed alternatives contain no children or progress;
 pre-state, block and post-state failures preserve their original typed reasons.

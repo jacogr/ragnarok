@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/assured_chain
+import ../../../src/state/assured/chain as assured_chain
 var candidate: AssuredChainResult[AdvancedAssuredChain]
 discard candidate.status

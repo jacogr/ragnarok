@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_history, bounded, assurances]
+import ../../../src/codec/state/history as state_history
+import ../../../src/codec/[bounded, assurances]
 
 ## Verify parent/dictionary/peak copies survive input destruction and handle/value replacement.
 proc main() =

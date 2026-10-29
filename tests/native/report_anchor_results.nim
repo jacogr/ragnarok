@@ -7,7 +7,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/state/report_anchors
+import ../../src/state/report/anchors as report_anchors
 import ../../src/codec/header
 let outcome = if paramStr(1) == "error":
   checkReportLookupAnchors(default(RecentAnchoredReports), default(OwnedHeader), [], default(AncestorConfig))

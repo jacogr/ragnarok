@@ -5,9 +5,14 @@
 # @@Verification={"arc":"storage_full_paged_entries_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_store, paged_io,
-  full_state_trie, node_records, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    store as full_paged_store]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 type Capture = ref object ## Private consumer staging owns copies only; failed streams cannot expose a completed capture.
   keys: seq[StateKey]
   values: seq[seq[byte]]

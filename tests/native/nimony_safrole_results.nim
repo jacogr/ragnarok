@@ -8,7 +8,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/codec/[state_safrole, state_trie, bounded, assurances, natural]
+import ../../src/codec/state/[safrole as state_safrole, trie as state_trie]
+import ../../src/codec/[bounded, assurances, natural]
 let useDefault = paramStr(2) == "default"
 let policy = ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
     maxBytes: ByteLimit(2017))

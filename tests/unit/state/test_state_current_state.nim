@@ -6,9 +6,12 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_typed_context,
     accumulation_current_chain_context, state_inventory_context, arc_evidence]
-import ../../../src/state/[current_state, current_globals, current_profile, global_snapshot,
-    manifest, inventory, store, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import ../../../src/state/current/[state as current_state, globals as current_globals,
+    profile as current_profile]
+import ../../../src/state/[global_snapshot, manifest, inventory, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Query assertions disable hashing only after mandatory exact matching/capture completes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -6,8 +6,12 @@
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/codec/[bounded, header, report_owned, block_codec]
-import ../../../src/state/[accumulation_current_chain, accumulation_current_publication,
-  accumulation_current_consensus, report_admission, block_transition, block_admission, store]
+import ../../../src/state/accumulation/current/[chain as accumulation_current_chain,
+    publication as accumulation_current_publication, consensus as accumulation_current_consensus]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

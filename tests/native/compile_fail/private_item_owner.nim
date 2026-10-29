@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/[work_package]
+import ../../../src/codec/work/package as work_package
 
 var owner: OwnedWorkItem
 discard owner.data

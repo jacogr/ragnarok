@@ -6,10 +6,14 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_state_context, current_typed_context,
     accumulation_current_chain_context, supplied_logical_context, supplied_services_context, arc_evidence]
-import ../../../src/state/[current_logical, current_state, current_globals, current_profile,
-    accumulation_current_update, supplied_logical_inventory, supplied_services, inventory, manifest,
-    store, economic_profile]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store, economic_profile]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original producer preparation and complete matching happen before hash-free source/query probes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

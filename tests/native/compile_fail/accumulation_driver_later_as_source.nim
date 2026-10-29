@@ -4,7 +4,8 @@
 
 ## Only genuine initial completion can authorize this driver.
 
-import ../../../src/state/[accumulation_driver, accumulation_continuation_execution]
+import ../../../src/state/accumulation/driver as accumulation_driver
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
 import ../../../src/chain/parameters
 var source: CompletedAccumulationContinuation
 discard driveAccumulation(source, default(Parameters), default(AccumulationDriverLimits))

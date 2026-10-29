@@ -5,7 +5,8 @@
 # @@Verification={"arc": "app_cli_arc_release"}
 
 import std/[assertions, syncio, strutils]
-import ../../../src/app/[options, cli_help, cli_commands]
+import ../../../src/app/options
+import ../../../src/app/cli/[help as cli_help, commands as cli_commands]
 import ../../../src/codec/bounded
 import ../../../src/lib/logging
 import ../../support/arc_evidence

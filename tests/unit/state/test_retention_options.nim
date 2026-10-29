@@ -3,8 +3,9 @@
 
 ## Historical selection is explicit, aliases agree and failed/partial/light configurations grant no full-state policy.
 import std/[assertions, syncio, strutils]
-import ../../../src/app/[options, cli_help]
-import ../../../src/storage/history_index
+import ../../../src/app/options
+import ../../../src/app/cli/help as cli_help
+import ../../../src/storage/history/index as history_index
 proc withControls(base, suffix: seq[string]): seq[string] =
   ## Keep test argument ownership independent without relying on unsupported sequence concatenation.
   result = base

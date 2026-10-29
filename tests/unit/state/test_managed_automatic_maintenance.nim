@@ -5,12 +5,18 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context, managed_storage_samples]
-import ../../../src/app/[services, options, disk_chain, disk_worker, handoff, block_input,
-    preparation_worker, chain]
+import ../../../src/app/[services, options]
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
+import ../../../src/app/handoff
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[preparation_worker, chain]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, accumulation_finalization, accumulation_publication]
-import ../../../src/storage/managed_manifest
-import ../../../src/codec/[report_owned, state_layout]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    publication as accumulation_publication]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/codec/report_owned
+import ../../../src/codec/state/layout as state_layout
 proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFinalAccumulation {.raises.} =
   ## Actual execution creates a certificate bound to this Services owner's independently restored parent map.
   var input = default(BlockInput)

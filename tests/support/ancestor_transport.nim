@@ -4,8 +4,9 @@
 ## Real TLS ancestor-stream client reuses the independent finite responder and native transport policy.
 import std/[assertions, envvars]
 import ../../src/codec/bounded
-import ../../src/app/ancestor_receiver
-import ../../src/quic/[transport, protocol, ancestor_stream]
+import ../../src/app/ancestor/receiver as ancestor_receiver
+import ../../src/quic/[transport, protocol]
+import ../../src/quic/ancestor/stream as ancestor_stream
 import ./block_download_transport
 
 type AncestorClient = object ## Stable exclusive callback owner outlives every native stream close event.

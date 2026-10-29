@@ -5,9 +5,13 @@
 
 import std/[assertions, envvars]
 import ../../src/codec/bounded
-import ../../src/app/[block_download, download_schedule, services]
-import ../../src/state/accumulation_completion
-import ../../src/quic/[transport, protocol, block_download_stream, block_download_session]
+import "../../src/app/block/download" as block_download
+import ../../src/app/download/schedule as download_schedule
+import ../../src/app/services
+import ../../src/state/accumulation/completion as accumulation_completion
+import ../../src/quic/[transport, protocol]
+import "../../src/quic/block/download/stream" as block_download_stream
+import "../../src/quic/block/download/session" as block_download_session
 
 type
   DownloadTransferMode* = enum ## Each fixture mode changes only server wire/lifecycle behavior.

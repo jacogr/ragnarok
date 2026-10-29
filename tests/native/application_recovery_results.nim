@@ -3,7 +3,9 @@
 
 ## Opaque runtime result helpers reject default/refused payloads with genuine success controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[chain, checkpoint_identity, checkpoint_recovery, checkpoint_codec]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[identity as checkpoint_identity, recovery as checkpoint_recovery,
+    codec as checkpoint_codec]
 import ../../src/codec/bounded
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/header

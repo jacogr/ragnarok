@@ -5,10 +5,13 @@
 ## Real designate/bless executions prove original-delegator roster selection, bounded work and atomic whole-map publication.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_context, accumulation_effects,
-  accumulation_dispatch,
-  accumulation_outcome, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_layout, state_safrole, state_trie]
+import ../../../src/state/accumulation/[batch as accumulation_batch,
+    context as accumulation_context, effects as accumulation_effects,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, pvm_accumulation_context,

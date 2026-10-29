@@ -6,7 +6,9 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
 import ../../../src/state/[inventory, manifest, store]
-import ../../../src/codec/[bounded, composite, state_accounts, state_requests, state_composition, state_service_values]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    composition as state_composition, service_values as state_service_values]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and optionally refuse all hashes.

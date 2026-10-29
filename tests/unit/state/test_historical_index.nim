@@ -6,10 +6,12 @@
 ## Fixed metadata and immutable memory archives preserve exact selection without widening protocol lookup history.
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, arc_evidence]
-import ../../../src/storage/[history_index, database_identity]
+import ../../../src/storage/history/index as history_index
+import ../../../src/storage/database_identity
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 
 proc codecWitness() =
   ## E8 counters, exact versions, opaque defaults and malformed rows refuse before count-sized allocation.

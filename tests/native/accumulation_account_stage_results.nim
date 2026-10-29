@@ -3,7 +3,8 @@
 
 ## Inactive account phase owners and reasons remain guarded at runtime.
 import std/cmdline
-import ../../src/state/[accumulation_account_stage, accumulation_block_guests]
+import ../../src/state/accumulation/account/stage as accumulation_account_stage
+import "../../src/state/accumulation/block/guests" as accumulation_block_guests
 let owner = default(AccumulationAccountStageResult[PreparedAccumulationAccountStage])
 let refused = prepareAccumulationAccountStage(default(BlockAccumulationGuests), default(
     AccumulationAccountStageLimits))

@@ -5,6 +5,6 @@
 
 ## The chain result cannot be retagged or expose its private successful/failed payload storage.
 
-import ../../../src/state/accumulation_chain
+import ../../../src/state/accumulation/chain as accumulation_chain
 var outcome = default(AccumulationChainResult)
 discard outcome.completed

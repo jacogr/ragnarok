@@ -4,12 +4,14 @@
 ## Genuine computed successors with original privilege/gas authority and bounded initial-round policies.
 
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_publication, computed_admission, computed_inclusion,
-  computed_batch,
-  computed_envelope, computed_credentials, computed_guarantors, computed_roster,
-  computed_transition, computed_profile, computed_round]
+import ../../src/state/computed/[publication as computed_publication,
+    admission as computed_admission, inclusion as computed_inclusion, batch as computed_batch,
+    envelope as computed_envelope, credentials as computed_credentials,
+    guarantors as computed_guarantors, roster as computed_roster, transition as computed_transition,
+    profile as computed_profile, round as computed_round]
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, assurances, work_digest]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/work/digest as work_digest
 import ./[pvm_computed_publication, accumulation_execution_context]
 
 proc roundFixture*(withReady = true, withRound = true,

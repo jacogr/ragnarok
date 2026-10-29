@@ -3,6 +3,6 @@
 
 ## Refused preparation cannot expose a candidate chain through raw variant fields.
 # @@Verification={"group":"privacy","expected":"completed"}
-import ../../../src/state/accumulation_publication
+import ../../../src/state/accumulation/publication as accumulation_publication
 let result = default(ChainPreparationResult)
 discard result.completed

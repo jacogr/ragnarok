@@ -4,8 +4,12 @@
 ## Synthetic larger workloads use the same public backend admission and synchronization contracts.
 import std/assertions
 import ./storage_deployment_samples
-import ../../src/storage/[node_repository, file_repository, managed_repository, database_identity]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/managed/repository as managed_repository
+import ../../src/storage/database_identity
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc deploymentJournal*(): JournalLimits =
   ## Selected file and aggregate record budgets remain independently bounded in benchmark-only policy.

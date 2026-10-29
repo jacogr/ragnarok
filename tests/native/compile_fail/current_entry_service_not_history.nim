@@ -3,6 +3,6 @@
 # @@Verification={"group": "nominal", "expected": "expected: CurrentSequenceEntryIndex but got: InvocationServiceIndex", "early": ["currentSequenceCoverageAt(", "[2] expected: CurrentSequenceEntryIndex but got: InvocationServiceIndex"]}
 
 ## Later execution accepts genuine plan authority and local policy, never replacement frame/price/index domains.
-import ../../../src/state/accumulation_inputs
-import ../../../src/state/accumulation_current_sequence
+import ../../../src/state/accumulation/inputs as accumulation_inputs
+import ../../../src/state/accumulation/current/sequence as accumulation_current_sequence
 discard currentSequenceCoverageAt(default(CurrentAccumulationSequence), InvocationServiceIndex(0))

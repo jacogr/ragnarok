@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "restored"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/app/logical_checkpoint_import
+import "../../../src/app/logical/checkpoint/import" as logical_checkpoint_import
 let source = default(ImportedLogicalCheckpoint)
 discard source.restored

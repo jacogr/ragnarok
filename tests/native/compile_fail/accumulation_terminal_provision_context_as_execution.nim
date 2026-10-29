@@ -4,7 +4,8 @@
 
 ## Caller-selected effect contexts cannot stand in for completed execution provenance.
 
-import ../../../src/state/[accumulation_terminal_provisions, accumulation_provisions, accumulation_effects]
+import ../../../src/state/accumulation/[terminal_provisions as accumulation_terminal_provisions,
+    provisions as accumulation_provisions, effects as accumulation_effects]
 import ../../../src/codec/header
 var sources: array[1, AccumulationEffectContext]
 discard prepareTerminalAccumulationProvisions(sources, HeaderSlot(128), default(AccumulationProvisionUnionLimits))

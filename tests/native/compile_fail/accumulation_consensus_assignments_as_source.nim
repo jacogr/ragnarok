@@ -4,7 +4,8 @@
 
 ## Detached stages, assignments and complete maps cannot replace the authenticated accumulation source.
 
-import ../../../src/state/[accumulation_consensus, report_assignments]
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/report/assignments as report_assignments
 var source: ReportAssignmentPlan
 var limits: AccumulationConsensusLimits
 discard prepareAccumulationConsensus(source, limits)

@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: TrieNodeLimit"}
 
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 let bytes = default(ByteLimit)
 let limits = StateTrieLimits(nodes: bytes)
 discard limits

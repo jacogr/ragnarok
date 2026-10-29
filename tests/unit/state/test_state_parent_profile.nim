@@ -5,9 +5,12 @@
 # @@Verification={"arc": "state_parent_profile_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, parent_profile_context, arc_evidence]
-import ../../../src/state/[parent_profile, store]
+import ../../../src/state/parent/profile as parent_profile
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_composition, state_accounts]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, composition as state_composition,
+    accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing only after the signed parent and chain view exist.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

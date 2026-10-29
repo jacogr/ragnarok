@@ -5,6 +5,6 @@
 
 ## Reject forged serialization authority at the actual public boundary.
 import ../../../src/state/global_snapshot
-import ../../../src/state/proof_view
-import ../../../src/codec/state_composition
+import ../../../src/state/proof/view as proof_view
+import ../../../src/codec/state/composition as state_composition
 discard validateGlobalState(default(ProofView), default(StateProfile), default(GlobalStateLimits))

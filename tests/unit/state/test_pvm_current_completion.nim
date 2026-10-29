@@ -4,15 +4,24 @@
 
 ## The complete current builder matches existing phase witnesses and preserves every actual failure without publication.
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_current_statistics, accumulation_current_accounts,
-    accumulation_current_finalization, accumulation_current_ready, accumulation_current_recent,
-    accumulation_current_validators, accumulation_current_activity, accumulation_current_preimages,
-    accumulation_current_authorization, accumulation_current_consensus,
-    accumulation_current_completion, accumulation_current_driver, accumulation_current_sequence,
-    accumulation_current_round, accumulation_accounts, accumulation_ready, accumulation_recent,
-    accumulation_validators, accumulation_activity, accumulation_preimages,
-    accumulation_authorization, accumulation_consensus, accumulation_provisions, preimages,
-    accumulation_block_guests, store, accumulation_round, accumulation_queue]
+import ../../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    accounts as accumulation_current_accounts, finalization as accumulation_current_finalization,
+    ready as accumulation_current_ready, recent as accumulation_current_recent,
+    validators as accumulation_current_validators, activity as accumulation_current_activity,
+    preimages as accumulation_current_preimages,
+    authorization as accumulation_current_authorization,
+    consensus as accumulation_current_consensus, completion as accumulation_current_completion,
+    driver as accumulation_current_driver, sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
+import ../../../src/state/accumulation/[accounts as accumulation_accounts,
+    ready as accumulation_ready, recent as accumulation_recent,
+    validators as accumulation_validators, activity as accumulation_activity,
+    preimages as accumulation_preimages, authorization as accumulation_authorization,
+    consensus as accumulation_consensus, provisions as accumulation_provisions]
+import ../../../src/state/preimages
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/store
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../support/[accumulation_current_chain_context, accumulation_current_completion_context,
     accumulation_current_round_context, pvm_accumulation_provision, arc_evidence]

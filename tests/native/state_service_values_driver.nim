@@ -8,7 +8,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_service_values, state_trie, bounded]
+import ../../src/codec/state/[service_values as state_service_values, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve empty logical keys/values without adding framing bytes.
 proc unhex(text: string): seq[byte] =

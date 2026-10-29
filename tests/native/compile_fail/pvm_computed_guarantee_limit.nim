@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ByteLimit", "early": ["prepareComputedGuarantee(", "[2] expected: ByteLimit but got: BundleLength"]}
 
-import ../../../src/state/[computed_guarantee, computed_report]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed/[guarantee as computed_guarantee, report as computed_report]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 discard prepareComputedGuarantee(default(ComputedWorkReport), BundleLength(1000))

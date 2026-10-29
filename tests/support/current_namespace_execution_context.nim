@@ -6,11 +6,17 @@ import std/assertions
 import ./[current_namespace_context, service_namespace_seed, accumulation_activity_context,
     accumulation_execution_context, accumulation_current_chain_context,
     accumulation_current_candidate_context, pvm_accumulation_program]
-import ../../src/codec/[bounded, state_accounts, state_composition, state_requests,
-    state_service_values, state_layout, report_owned]
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests, service_values as state_service_values, layout as state_layout]
+import ../../src/codec/report_owned
 import ../../src/crypto/primitives
-import ../../src/state/[store, accumulation_current_update, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission]
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
 import ../../src/chain/[genesis, provider]
 import ../../src/app/[chain, candidate]
 type NamespaceExecutionFixture* = object ## Explicit authored namespaces/code belong to the same real admitted original parent and current update.

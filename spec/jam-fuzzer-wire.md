@@ -5,7 +5,7 @@ acd4b2da310ff25226c4d41b918712578483fd2c, specifically
 fuzz-proto/fuzz-v1.asn and fuzz-proto/README.md. The Gray Paper remains the JAM
 protocol authority; the tooling pin does not establish exact GP compatibility.
 
-The native state/fuzz_protocol module owns all seven published discriminants:
+The native state/fuzz/protocol module owns all seven published discriminants:
 PeerInfo, Initialize, StateRoot, ImportBlock, GetState, State and Error.
 Peer identity contains E1 fuzzer version, E4 feature bits, three-byte JAM/app
 versions and a compact UTF-8 name. Versions and unknown feature bits are

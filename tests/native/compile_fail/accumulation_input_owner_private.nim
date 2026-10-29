@@ -6,7 +6,8 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/[accumulation_inputs, accumulation_operands]
+import ../../../src/state/accumulation/[inputs as accumulation_inputs,
+    operands as accumulation_operands]
 import ../../../src/codec/composite
 let owner = default(PreparedAccumulationInputs)
 discard owner.data

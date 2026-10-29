@@ -9,11 +9,18 @@ import ./[parent_profile_context, parent_globals_context, supplied_logical_conte
     current_namespace_execution_context,
     current_application_context, current_consecutive_context, current_consecutive_download_context,
     current_download_command_context, current_services_disk_samples, block_download_transport]
-import ../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
-    current_download_command, options]
-import ../../src/codec/[state_composition, state_service_values, state_requests, block_codec]
+import ../../src/app/current/logical/[startup as current_logical_startup,
+    download as current_logical_download]
+import ../../src/app/current/download/[policy as current_download_policy,
+    command as current_download_command]
+import ../../src/app/options
+import ../../src/codec/state/[composition as state_composition,
+    service_values as state_service_values, requests as state_requests]
+import ../../src/codec/block_codec
 import ../../src/chain/[provider, genesis]
-import ../../src/state/[accumulation_current_update, block_admission, report_admission]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/report/admission as report_admission
 proc logicalStartupTestLimits*(): CurrentLogicalStartupLimits =
   ## Startup source/profile/matching budgets remain independent of all later continuation ceilings.
   CurrentLogicalStartupLimits(projection: namespaceRefreshLimits.projection,

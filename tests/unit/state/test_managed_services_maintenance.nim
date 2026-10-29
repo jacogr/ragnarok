@@ -5,10 +5,13 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/managed_storage_samples
-import ../../../src/app/[services, options, disk_worker, disk_chain, handoff]
+import ../../../src/app/[services, options]
+import ../../../src/app/disk/[worker as disk_worker, chain as disk_chain]
+import ../../../src/app/handoff
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/[managed_manifest, file_errors]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/rpc/server
 proc waitFinished(owner: var Services) =
   ## Dispatcher work observes only scalar phase while the native worker owns every canonical graph alias.

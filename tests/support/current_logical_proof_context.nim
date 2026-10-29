@@ -4,11 +4,19 @@
 ## Actual current logical producers feed existing bounded generic proof capture; no response supplies its own trusted root.
 import std/assertions
 import ./current_namespace_refresh_context
-import ../../src/app/proof_query
-import ../../src/state/[current_logical, current_state, current_globals, current_profile,
-    accumulation_current_update, proof_plan, proof_view, trie_proof, proof_global, store]
+import ../../src/app/proof/query as proof_query
+import ../../src/state/current/[logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/proof/[plan as proof_plan, view as proof_view]
+import ../../src/state/trie_proof
+import ../../src/state/proof/global as proof_global
+import ../../src/state/store
 import ../../src/chain/[provider, genesis]
-import ../../src/codec/[bounded, state_layout, state_trie, state_composition, state_service_values, state_accounts]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition, service_values as state_service_values,
+    accounts as state_accounts]
 proc logicalProofLimits*(): ProofQueryLimits =
   ## Fixed independent policies cover actual namespace fixtures without deriving budgets or authority from response bytes.
   ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(128), perValue: ByteLimit(65536),

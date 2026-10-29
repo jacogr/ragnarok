@@ -4,8 +4,12 @@
 ## Dynamic default/failed batch authority guards have complete independent successful native controls.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/storage/[light_journal_cache, light_journal_replay, light_snapshot, light_delta,
-  managed_manifest, managed_io, file_errors, durability]
+import ../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../src/storage/light/[snapshot as light_snapshot, delta as light_delta]
+import ../../src/storage/managed/[manifest as managed_manifest, io as managed_io]
+import ../../src/storage/file/errors as file_errors
+import ../../src/storage/durability
 import ../../src/codec/bounded
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each positive control owns only one process-specific fixture namespace.

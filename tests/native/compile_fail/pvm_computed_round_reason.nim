@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "roundReason"}
 
-import ../../../src/state/computed_round
+import ../../../src/state/computed/round as computed_round
 var candidate: ComputedRoundResult[ComputedAccumulationRound]
 discard candidate.roundReason

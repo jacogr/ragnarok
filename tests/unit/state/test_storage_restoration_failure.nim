@@ -5,8 +5,10 @@
 # @@Verification={"arc": "storage_restoration_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records, full_state_trie]
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse only after the original repository and complete graph are valid.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

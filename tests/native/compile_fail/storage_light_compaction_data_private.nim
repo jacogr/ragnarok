@@ -3,6 +3,6 @@
 
 ## Prepared compaction image and anchor backing remain private immutable authority.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light/journal/cache as light_journal_cache
 let hidden = default(PreparedLightCompaction)
 discard hidden.data

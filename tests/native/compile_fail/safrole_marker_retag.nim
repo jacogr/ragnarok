@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/safrole_markers
+import ../../../src/state/safrole/markers as safrole_markers
 var hidden = default(SafroleMarkerResult)
 hidden.status = SafroleMarkerError.None

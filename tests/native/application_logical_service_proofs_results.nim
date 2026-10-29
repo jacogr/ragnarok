@@ -4,9 +4,15 @@
 ## Complete selected service namespaces authenticate against an independently selected actual posterior root with bounded request hashing.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context, current_logical_proof_context]
-import ../../src/app/[logical_service_proof, logical_proof, proof_query]
-import ../../src/state/[current_logical, proof_plan, planned_proof, proof_view, store]
-import ../../src/codec/[bounded, state_layout, state_requests]
+import ../../src/app/logical/[service_proof as logical_service_proof, proof as logical_proof]
+import ../../src/app/proof/query as proof_query
+import ../../src/state/current/logical as current_logical
+import ../../src/state/proof/plan as proof_plan
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, requests as state_requests]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fail request-key hashing only after genuine complete source qualification.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -4,9 +4,13 @@
 
 ## Real annulled producers retain actual gas/provisions while their outgoing transfers disappear from accpar delivery and refund.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_transfers, accumulation_annulment,
-  accumulation_pending_transfers, accumulation_outcome, accumulation_effects, store]
-import ../../../src/codec/[bounded, state_accounts, c2_records]
+import ../../../src/state/accumulation/[transfers as accumulation_transfers,
+    annulment as accumulation_annulment, pending_transfers as accumulation_pending_transfers,
+    outcome as accumulation_outcome, effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/accounts as state_accounts
+import ../../../src/codec/c2_records
 import ../../support/[accumulation_annulment_context, accumulation_batch_context, arc_evidence]
 
 # Collection/sort/projection and pending-budget accounting do not hash or publish state.

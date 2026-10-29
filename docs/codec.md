@@ -10,32 +10,32 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | Module | Scope |
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
-| `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
-| `state_composition.nim` | Exact typed chapter capture, profile-bound immutable whole mappings, typed service sources and bounded roots; GP-derived qualification is recorded separately from full JAM/STF parity |
-| `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
-| `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
-| `state_requests.nim` | E4-length/hash request keys and fixed tagged 0..3-slot histories; both reserved upper E4 lengths reject |
-| `state_service_values.nim` | Storage/preimage key namespaces, unframed raw values, immutable service/key-bound capture and atomic copies |
-| `state_accounts.nim` | C(255, service) fixed 105-byte supervised version-zero account metadata; value-only copies, nominal fields and explicit version checks |
-| `state_outputs.nim` | Chapter-16 count-prefixed ordered E4 service/output-commitment pairs with immutable snapshots |
-| `state_workqueues.nim` | Chapters 14/15 fixed epoch rings, retained ordered reports, canonical dependency/accumulated package sets |
-| `state_statistics.nim` | Chapter-13 E4 validator counters/service keys, natural core/service values and immutable snapshots; compact gas accepted per vectors, no fallback |
-| `state_privileges.nim` | Chapter-12 E4 role services, fixed core assigners and canonical E4-service/E8-gas dictionary |
-| `state_availability.nim` | Chapter-10 fixed optional core slots, full guarantees and E4 registration timestamps |
-| `state_history.nim` | Chapter-3 recent records, package dictionaries and optional MMR belt peak encoding |
-| `state_disputes.nim` | Chapter-5 canonical judgment/offender sets, whole-parent preflight and immutable snapshots |
-| `state_consensus.nim` | Chapter-4 pending roster, ring commitment, tagged fixed schedule and ticket accumulator |
-| `state_safrole.nim` | State entropy, full staging/active/previous validator rosters and E4 timeslot |
+| `src/codec/state/layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
+| `src/codec/state/composition.nim` | Exact typed chapter capture, profile-bound immutable whole mappings, typed service sources and bounded roots; GP-derived qualification is recorded separately from full JAM/STF parity |
+| `src/codec/state/trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
+| `src/codec/state/authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
+| `src/codec/state/requests.nim` | E4-length/hash request keys and fixed tagged 0..3-slot histories; both reserved upper E4 lengths reject |
+| `src/codec/state/service_values.nim` | Storage/preimage key namespaces, unframed raw values, immutable service/key-bound capture and atomic copies |
+| `src/codec/state/accounts.nim` | C(255, service) fixed 105-byte supervised version-zero account metadata; value-only copies, nominal fields and explicit version checks |
+| `src/codec/state/outputs.nim` | Chapter-16 count-prefixed ordered E4 service/output-commitment pairs with immutable snapshots |
+| `src/codec/state/workqueues.nim` | Chapters 14/15 fixed epoch rings, retained ordered reports, canonical dependency/accumulated package sets |
+| `src/codec/state/statistics.nim` | Chapter-13 E4 validator counters/service keys, natural core/service values and immutable snapshots; compact gas accepted per vectors, no fallback |
+| `src/codec/state/privileges.nim` | Chapter-12 E4 role services, fixed core assigners and canonical E4-service/E8-gas dictionary |
+| `src/codec/state/availability.nim` | Chapter-10 fixed optional core slots, full guarantees and E4 registration timestamps |
+| `src/codec/state/history.nim` | Chapter-3 recent records, package dictionaries and optional MMR belt peak encoding |
+| `src/codec/state/disputes.nim` | Chapter-5 canonical judgment/offender sets, whole-parent preflight and immutable snapshots |
+| `src/codec/state/consensus.nim` | Chapter-4 pending roster, ring commitment, tagged fixed schedule and ticket accumulator |
+| `src/codec/state/safrole.nim` | State entropy, full staging/active/previous validator rosters and E4 timeslot |
 | `c2_records.nim` | Standalone availability, deferred transfers, immutable operands and tagged accumulation inputs |
 | `collections.nim` | Canonical typed sets and dictionaries over natural/fixed unsigned/fixed-octet scalars |
 | `bitstrings.nim` | Strict Boolean prefixes, fixed/variable packed bitstrings and immutable bit owners |
 | `bounded.nim` | Bounded byte strings and homogeneous fixed-width sequences |
 | `composite.nim` | Optional blobs, work-output variants and preimage extrinsics |
-| `work_digest.nim`, `work_report.nim` | Complete nested work digests/reports |
+| `src/codec/work/digest.nim`, `src/codec/work/report.nim` | Complete nested work digests/reports |
 | `tickets.nim`, `guarantees.nim` | Ticket records and immutable report guarantees |
 | `block_codec.nim` | Complete extrinsics/blocks over schema-bound immutable child components |
 | `header.nim` | Full/signing headers, epoch/winner markers, fixed tickets and retained views |
-| `work_package.nim` | Context, packed import references, input commitments, items and retained packages |
+| `src/codec/work/package.nim` | Context, packed import references, input commitments, items and retained packages |
 | `disputes.nim` | Ordered verdicts/judgments and culprit/fault evidence with immutable snapshots |
 | `assurances.nim` | Ordered validator indices, fixed profile bitfields and signatures |
 | `owned.nim`, `report_owned.nim` | Immutable ARC snapshots and owner-bound extraction |

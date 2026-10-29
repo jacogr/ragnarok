@@ -4,5 +4,7 @@
 # @@Verification={"group": "nominal", "expected": "CurrentStateSerialization", "early": ["reviewCurrentState(", "[1] expected: CurrentStateSerialization but got: StateInventory"]}
 
 ## An equal-root detached inventory cannot substitute the original current-bound serialization owner.
-import ../../../src/state/[current_review, inventory, account_review_plan]
+import ../../../src/state/current/review as current_review
+import ../../../src/state/inventory
+import ../../../src/state/account/review/plan as account_review_plan
 discard reviewCurrentState(default(StateInventory), AccountReviewPlanLimits())

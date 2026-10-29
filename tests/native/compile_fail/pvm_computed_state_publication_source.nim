@@ -5,6 +5,8 @@
 
 # @@Verification={"group": "nominal", "expected": "ComposedComputedState", "early": ["publishComputedState(", "[2] expected: ComposedComputedState but got: PreparedAccumulationConsensus"]}
 
-import ../../../src/state/[computed_state_publication, accumulation_consensus, store]
+import ../../../src/state/computed/state/publication as computed_state_publication
+import ../../../src/state/accumulation/consensus as accumulation_consensus
+import ../../../src/state/store
 var target = default(StateStore)
 discard publishComputedState(target, default(PreparedAccumulationConsensus))

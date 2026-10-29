@@ -5,10 +5,12 @@
 
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/state/[checkpoint_worker, checkpoint_bank, checkpoint_head, checkpoint_transfer,
-    checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/state/checkpoint/[worker as checkpoint_worker, bank as checkpoint_bank,
+    head as checkpoint_head, transfer as checkpoint_transfer]
+import ../../../src/state/[checkpoint, store]
+import ../../../src/lib/atomic/file as atomic_file
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 const
   Directory = "state-checkpoint-worker-restart"

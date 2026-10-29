@@ -4,6 +4,6 @@
 
 ## Batch owners/results do not export raw storage or unchecked alternatives.
 
-import ../../../src/state/accumulation_batch
+import ../../../src/state/accumulation/batch as accumulation_batch
 var result: AccumulationBatchResult[PreparedAccumulationBatch]
 result.status = AccumulationBatchError.None

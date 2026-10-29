@@ -4,9 +4,11 @@
 ## Logical checkpoints preserve exact prior/posterior/finality provenance and detached byte ownership after original fixture scopes retire.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context]
-import ../../../src/app/logical_checkpoint
-import ../../../src/state/[current_logical, current_checkpoint, checkpoint,
-    accumulation_current_update, store]
+import ../../../src/app/logical/checkpoint as logical_checkpoint
+import ../../../src/state/current/[logical as current_logical, checkpoint as current_checkpoint]
+import ../../../src/state/checkpoint
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
 import ../../../src/codec/bounded
 proc scoped(): CurrentUpdateCheckpoint {.raises.} =
   ## All source fixtures retire before the caller reads the retained capsule.

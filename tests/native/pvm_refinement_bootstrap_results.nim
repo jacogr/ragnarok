@@ -4,10 +4,14 @@
 ## Optimized probes reject default/refused bootstrap values, BAD executable payloads and absent preimages.
 
 import std/[assertions, cmdline]
-import ../../src/state/[refinement_bootstrap, refinement_dispatch, refinement_lookup, store]
+import ../../src/state/refinement/[bootstrap as refinement_bootstrap,
+    dispatch as refinement_dispatch, lookup as refinement_lookup]
+import ../../src/state/store
 import ../../src/pvm/[host_fetch, refinement_exports]
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, work_package, work_report, state_trie]
+import ../../src/codec/bounded
+import ../../src/codec/work/[package as work_package, report as work_report]
+import ../../src/codec/state/trie as state_trie
 
 proc parameters(): Parameters =
   ## Positive configuration is independent of the intentionally absent service/code data.

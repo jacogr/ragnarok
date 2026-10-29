@@ -5,9 +5,15 @@
 import std/assertions
 import ./[current_namespace_context, current_namespace_execution_context, pvm_accumulation_program,
     current_logical_proof_context]
-import ../../src/codec/[report_owned, state_accounts, state_requests, state_service_values, bounded]
-import ../../src/state/[current_logical, supplied_logical_inventory, inventory,
-    accumulation_current_update, store]
+import ../../src/codec/report_owned
+import ../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    service_values as state_service_values]
+import ../../src/codec/bounded
+import ../../src/state/current/logical as current_logical
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/state/inventory
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/store
 proc logicalHistoryCode(hash: ServicePreimageHash, restore: bool): seq[byte] =
   ## Maintained host26 forget and funded host25 restore consume initialized self/hash/length registers at the actual native invocation slot.
   let raw = array[32, byte](hash)

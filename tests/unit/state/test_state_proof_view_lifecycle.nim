@@ -4,8 +4,11 @@
 ## Repeated partial-view capture, union, projection and transport release every immutable ARC owner.
 # @@Verification={"arc": "state_proof_view_lifecycle_arc_release"}
 import std/[assertions, syncio]
-import ../../../src/state/[trie_proof, proof_view]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import ../../../src/state/trie_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole]
 import ../../support/arc_evidence
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing while immutable read composition and encoding operate on retained facts.

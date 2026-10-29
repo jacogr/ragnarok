@@ -4,7 +4,8 @@
 
 ## A raw projection or finalization cannot replace genuine accumulated statistics.
 
-import ../../../src/state/[accumulation_accounts, accumulation_finalization]
+import ../../../src/state/accumulation/[accounts as accumulation_accounts,
+    finalization as accumulation_finalization]
 var source: PreparedFinalAccumulation
 var config: AccumulationAccountConfig
 discard prepareAccumulationAccounts(source, config)

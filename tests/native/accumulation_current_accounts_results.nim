@@ -3,8 +3,9 @@
 
 ## Refused/default timestamp owners expose no selected state or mismatched reason.
 import std/cmdline
-import ../../src/state/[accumulation_current_accounts, accumulation_accounts,
-    accumulation_current_statistics]
+import ../../src/state/accumulation/current/accounts as accumulation_current_accounts
+import ../../src/state/accumulation/accounts as accumulation_accounts
+import ../../src/state/accumulation/current/statistics as accumulation_current_statistics
 let owner = default(CurrentAccumulationAccountResult[PreparedCurrentAccumulationAccounts])
 let accounts = default(PreparedCurrentAccumulationAccounts)
 let refused = prepareCurrentAccumulationAccounts(default(PreparedCurrentAccumulationStatistics),

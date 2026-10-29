@@ -7,10 +7,14 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[block_input, candidate, chain, handoff, services, options]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[candidate, chain, handoff, services, options]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, header, report_owned, assurances]
-import ../../../src/state/[store, accumulation_finalization, accumulation_runner, report_admission, report_anchors]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    runner as accumulation_runner]
+import ../../../src/state/report/[admission as report_admission, anchors as report_anchors]
 import ../../support/[application_candidate_context, accumulation_completion_context, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

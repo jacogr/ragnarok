@@ -7,7 +7,9 @@ import std/posix/posix
 import ../../../src/app/[services, chain, candidate, handoff]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
-import ../../../src/state/[store, accumulation_chain, accumulation_state, accumulation_completion, accumulation_consensus]
+import ../../../src/state/store
+import ../../../src/state/accumulation/[chain as accumulation_chain, state as accumulation_state,
+    completion as accumulation_completion, consensus as accumulation_consensus]
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution

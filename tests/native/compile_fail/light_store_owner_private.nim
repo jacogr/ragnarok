@@ -3,6 +3,6 @@
 
 ## Callers cannot borrow the light application's native writer outside its excluded owner.
 # @@Verification={"group":"privacy","expected":"writer"}
-import ../../../src/app/light_store
+import ../../../src/app/light/store as light_store
 var store = default(LightPagedStore)
 discard store.writer

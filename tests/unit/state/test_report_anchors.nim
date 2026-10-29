@@ -10,9 +10,17 @@
 # @@Verification={"arc": "report_anchors_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
-import ../../../src/state/[ancestor_context, report_anchors, report_policy, guarantee_credentials, store]
-import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,
-  state_layout, state_trie, state_history, report_owned, owned, work_report, composite]
+import ../../../src/state/ancestor_context
+import ../../../src/state/report/[anchors as report_anchors, policy as report_policy]
+import ../../../src/state/[guarantee_credentials, store]
+import ../../../src/codec/[bounded, guarantees, assurances]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[disputes, header]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    history as state_history]
+import ../../../src/codec/[report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/composite
 import ../../../src/crypto/primitives
 import ../../support/[arc_evidence, report_context]
 

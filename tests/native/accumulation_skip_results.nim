@@ -5,7 +5,7 @@
 ## Dynamic execution must fail at the contract rather than expose default state or zero-effect success.
 
 import std/cmdline
-import ../../src/state/[accumulation_skip, accumulation_service]
+import ../../src/state/accumulation/[skip as accumulation_skip, service as accumulation_service]
 
 # Keep a real refused-result factory path without constant-invalid extraction during compilation.
 let outcome = if paramStr(1) == "refused":

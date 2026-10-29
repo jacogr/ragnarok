@@ -5,7 +5,8 @@
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../src/state/store
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../src/codec/bounded
 
 type
   ## Trusted published bytes and commitments, independently checked before fixture preparation.

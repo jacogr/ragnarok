@@ -8,7 +8,7 @@ revision, primitive backend or toolchain changes.
 
 ## Scope and state keys
 
-`state_layout.nim` implements fixed state-key/node layout and node hashing. It does **not**
+`src/codec/state/layout.nim` implements fixed state-key/node layout and node hashing. It does **not**
 construct a trie/root from entries, serialize state components T(state), derive service storage
 namespace prefixes automatically, build proofs, execute transitions or implement persistence.
 Root construction is now covered separately in [state-trie.md](state-trie.md); the other

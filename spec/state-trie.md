@@ -2,7 +2,7 @@
 
 Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex`, equation M and its B/L node encodings. The chapter SHA-256 is frozen in
-[pins.json](pins.json). This increment adds `src/codec/state_trie.nim` over the existing
+[pins.json](pins.json). This increment adds `src/codec/state/trie.nim` over the existing
 [state-key/node foundation](state-layout.md), without changing dependencies or cryptographic domains.
 
 ## API and scope

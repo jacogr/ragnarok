@@ -3,7 +3,9 @@
 
 ## Legacy candidate limits cannot select current-only download preparation.
 # @@Verification={"group": "nominal", "expected": "expected: CurrentCandidateLimits but got: ApplicationCandidateLimits", "early": ["begin", "[5] expected: CurrentCandidateLimits but got: ApplicationCandidateLimits"]}
-import ../../../src/app/[current_block_download, current_block_input, candidate, chain]
+import "../../../src/app/current/block/download" as current_block_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/[candidate, chain]
 import ../../../src/codec/header
 var receiver = default(CurrentBlockDownload)
 let owner = default(ApplicationChain)

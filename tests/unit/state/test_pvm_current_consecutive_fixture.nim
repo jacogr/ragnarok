@@ -6,7 +6,9 @@ import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, header]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 import ../../support/[current_consecutive_context, accumulation_current_chain_context, current_services_disk_samples]
 
 proc main() {.raises.} =

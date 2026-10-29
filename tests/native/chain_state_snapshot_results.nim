@@ -6,7 +6,8 @@
 import std/[cmdline, syncio]
 import ../../src/chain/genesis
 import ../../src/state/store
-import ../../src/codec/[state_trie, bounded]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 
 let selected = paramStr(1)
 if selected == "block":

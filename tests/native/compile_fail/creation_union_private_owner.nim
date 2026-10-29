@@ -3,5 +3,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Creation union ownership and result storage stay private.
-import ../../../src/state/[accumulation_creation_union, accumulation_annulment]
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    annulment as accumulation_annulment]
 discard default(PreparedAccumulationCreationUnion).data

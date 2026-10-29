@@ -6,7 +6,8 @@
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, c2_records]
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
-import ../../src/state/[accumulation_runner, accumulation_invocation]
+import ../../src/state/accumulation/[runner as accumulation_runner,
+    invocation as accumulation_invocation]
 import ./[accumulation_execution_context, pvm_accumulation_context, accumulation_batch_context]
 
 proc runnerParameters*(cores = 2'u64, epoch = 12'u64, queue = 80'u64,

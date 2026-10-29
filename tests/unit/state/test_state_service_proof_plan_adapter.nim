@@ -3,8 +3,9 @@
 
 ## Service selectors retain their public errors while sharing generic immutable query mechanics.
 import std/[assertions, syncio]
-import ../../../src/state/[proof_plan, proof_service]
-import ../../../src/codec/[bounded, state_layout, state_accounts]
+import ../../../src/state/proof/[plan as proof_plan, service as proof_service]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts]
 proc main() =
   ## Combine explicit global/service identities without granting roots or widening a service selector.
   let service = planProofAccount(ServiceIndex(7), ElementLimit(1)).value

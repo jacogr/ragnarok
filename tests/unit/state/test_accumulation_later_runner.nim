@@ -6,14 +6,22 @@
 
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, report_owned, state_trie, state_safrole, assurances]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[trie as state_trie, safrole as state_safrole]
+import ../../../src/codec/assurances
 import ../../../src/pvm/[initialize, machine, step, gas]
-import ../../../src/state/[accumulation_later_runner, accumulation_runner, accumulation_round,
-  accumulation_execution, accumulation_continuation, accumulation_continuation_inputs,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_inputs,
-  accumulation_dispatch, accumulation_skip, accumulation_service, accumulation_invocation,
-  accumulation_context, accumulation_machine, accumulation_batch, accumulation_effects,
-  accumulation_provisions, accumulation_terminal_provisions, store]
+import ../../../src/state/accumulation/[later_runner as accumulation_later_runner,
+    runner as accumulation_runner, round as accumulation_round, execution as accumulation_execution,
+    continuation as accumulation_continuation]
+import ../../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    execution as accumulation_continuation_execution]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    inputs as accumulation_inputs, dispatch as accumulation_dispatch, skip as accumulation_skip,
+    service as accumulation_service, invocation as accumulation_invocation,
+    context as accumulation_context, machine as accumulation_machine, batch as accumulation_batch,
+    effects as accumulation_effects, provisions as accumulation_provisions,
+    terminal_provisions as accumulation_terminal_provisions]
+import ../../../src/state/store
 import ../../support/[accumulation_runner_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_reentry_context,
   pvm_accumulation_provision, arc_evidence]

@@ -7,7 +7,9 @@
 import ./chain
 import ../chain/genesis
 import ../rpc/server
-import ../state/[store, accumulation_finalization, accumulation_completion, accumulation_publication]
+import ../state/store
+import ../state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion, publication as accumulation_publication]
 
 type
   AccumulationHandoffStage* {.pure.} = enum ## Default Idle owns no candidate; Finished requires explicit acknowledgement.

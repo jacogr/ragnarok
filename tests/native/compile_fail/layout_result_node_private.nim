@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 let value = default(StateLayoutResult[EncodedStateNode])
 discard value.completed

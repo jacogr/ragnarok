@@ -3,7 +3,8 @@
 
 ## External publication transitions require an admitted pending/current job, never a default slot.
 import std/cmdline
-import ../../src/app/[current_handoff, chain]
+import ../../src/app/current/handoff as current_handoff
+import ../../src/app/chain
 import ../../src/chain/genesis
 var slot = default(CurrentAccumulationHandoff)
 case paramStr(1)

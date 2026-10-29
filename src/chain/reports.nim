@@ -6,8 +6,11 @@
 
 import ./genesis
 import ../state/store
-import ../codec/[assurances, state_layout, state_safrole, state_availability, guarantees,
-    report_owned, owned, bounded, state_workqueues]
+import ../codec/assurances
+import ../codec/state/[layout as state_layout, safrole as state_safrole,
+    availability as state_availability]
+import ../codec/[guarantees, report_owned, owned, bounded]
+import ../codec/state/workqueues as state_workqueues
 import ../crypto/primitives
 export report_owned, owned
 

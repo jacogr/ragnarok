@@ -5,13 +5,24 @@
 import std/[assertions, syncio, envvars, strutils, base64, monotimes, times]
 import std/posix/posix
 import ../../support/[application_checkpoint_context, rpc_socket, storage_io]
-import ../../../src/app/[services, options, chain, light_head, light_runtime, light_policy,
-  checkpoint_identity, checkpoint_trust, proof_query, proof_worker, disk_worker, light_store]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/light/[head as light_head, runtime as light_runtime, policy as light_policy]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
+import ../../../src/app/disk/worker as disk_worker
+import ../../../src/app/light/store as light_store
 import ../../../src/chain/[provider, genesis, parameters]
-import ../../../src/codec/[bounded, header, state_layout, state_trie]
-import ../../../src/state/[store, proof_view, proof_plan, planned_proof, trie_proof]
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/store
+import ../../../src/state/proof/[view as proof_view, plan as proof_plan]
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/trie_proof
 import ../../../src/rpc/[protocol, server]
-import ../../../src/storage/[paged_store, paged_codec, paged_stream, file_errors, database_identity]
+import ../../../src/storage/paged/[store as paged_store, codec as paged_codec,
+    stream as paged_stream]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/database_identity
 import ../../../src/crypto/primitives
 import ../../support/mcp_socket
 

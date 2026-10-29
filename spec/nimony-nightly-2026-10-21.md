@@ -165,7 +165,7 @@ reconstruction. Preserve the recorded consumer/producer handoff gates; this sync
 delta API, adoption policy or full current-pin STF/parity claim.
 
 The held compiler rejected the raw-key copy's iterator through `data.rows[row].keys[item]` in
-`supplied_logical_inventory.nim`. Replace only that iterator with bounded indexed byte reads into
+`src/state/supplied/logical_inventory.nim`. Replace only that iterator with bounded indexed byte reads into
 the same newly allocated detached output. Keep all existing source/index/byte-limit validation,
 empty-key behavior, retained-owner lifetimes and bounds checks; use no unchecked borrow or new
 allocation. All other 220 upstream-changed files remain byte-identical to master.
@@ -254,7 +254,7 @@ pins and the sequence-element copy-hook hold. This tranche transfers admitted re
 snapshot payloads instead of copying them, fills bounded read buffers directly, handles actual
 post-stat shrinkage and retires detached snapshot input before journal replay. Preserve all
 consuming-result invalidation, causal guards, strict selected-byte admission and immutable owners.
-The earlier indexed traversal adaptations in `node_repository.nim` remain in place; no additional
+The earlier indexed traversal adaptations in `src/storage/node/repository.nim` remain in place; no additional
 production compatibility changes were necessary.
 
 Native codec qualification exposed a separate stdlib sequence-slice failure on this pin:
@@ -312,7 +312,7 @@ current-download cases, four nonempty-preimage cases, four original-ancestry acq
 and five validator-rotation cases. Their existing independent TLS/map witnesses, fixture hashes,
 request counts, durable-history checks, restart and refusal verdicts were retained. Inventory,
 pinned formatting of all 31 incoming Nim files and the Linux x86-64 semantic check of
-`current_block_download_loop.nim` passed. Diff checks passed.
+`src/quic/current/block/download/loop.nim` passed. Diff checks passed.
 
 These are selected compatibility/runtime results on macOS ARM64. No full E2E plan, new storage
 performance measurement or Linux runtime run is claimed. Earlier broad Python/compiler-guard
@@ -363,7 +363,7 @@ maintainer submission.
 Merge master `90dc41d5` normally (merge `c56899fa`), covering 30 storage merges. Preserve
 structural record preflight, provisional per-record delivery, private staged image/publication
 owners, complete graph authority, atomic refusal and independent retained views. All 47 incoming
-files outside the prior indexed traversal adaptation in `node_repository.nim` remain byte-identical
+files outside the prior indexed traversal adaptation in `src/storage/node/repository.nim` remain byte-identical
 to master. The new record-codec implementation is unchanged. Compiler/browser pin `8cb7a690a`
 and the sequence-element copy-hook hold for #2737 remain unchanged.
 
@@ -733,12 +733,12 @@ contracts cover authenticated page import, producer-owned storage/request identi
 history, storage/request/service/preimage logical continuation, namespace-changing current
 downloads, identity-source refresh and joined-shutdown receipts.
 
-Five new loops in `accumulation_effects.nim` hit the same retained-ref iteration restriction.
+Five new loops in `src/state/accumulation/effects.nim` hit the same retained-ref iteration restriction.
 Use checked indexed reads for request-fact lookup/copy, storage-fact lookup/copy and detached raw
 key copying. Preserve first-touch identity rules, sticky request provenance, immutable fact sharing,
 output order and existing allocation/byte limits. Of the 155 incoming files, 153 remain byte-identical
-to master; `current_logical_startup.nim` retains its two earlier indexed-read adaptations, and only
-`accumulation_effects.nim` needs new compatibility changes. No protocol or ownership contract is
+to master; `src/app/current/logical/startup.nim` retains its two earlier indexed-read adaptations, and only
+`src/state/accumulation/effects.nim` needs new compatibility changes. No protocol or ownership contract is
 weakened.
 
 The E2E timing fix remains byte-identical to master: the real cancellation workload stops polling

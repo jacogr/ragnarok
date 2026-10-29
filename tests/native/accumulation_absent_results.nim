@@ -3,7 +3,8 @@
 
 ## Default/refused absence alternatives cannot expose state, input/slot observations or block authority.
 import std/cmdline
-import ../../src/state/[accumulation_absent, accumulation_inputs, store]
+import ../../src/state/accumulation/[absent as accumulation_absent, inputs as accumulation_inputs]
+import ../../src/state/store
 import ../../src/codec/header
 let argument = paramStr(1)
 let owner = default(AbsentAccumulation)

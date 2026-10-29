@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "PrivilegeEntryIndex"}
 
-import ../../../src/codec/state_privileges
+import ../../../src/codec/state/privileges as state_privileges
 let owner = default(PrivilegeSnapshot)
 discard privilegeAssignerAt(owner, PrivilegeEntryIndex(0))

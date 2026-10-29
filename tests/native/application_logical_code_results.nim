@@ -4,9 +4,12 @@
 ## Genuine collected successors select original compact inventory and child time for complete logical code observations.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
-import ../../src/app/logical_code
-import ../../src/state/[current_logical, current_state, code_availability, inventory, supplied_logical_inventory]
-import ../../src/codec/[bounded, state_requests]
+import ../../src/app/logical/code as logical_code
+import ../../src/state/current/[logical as current_logical, state as current_state]
+import ../../src/state/[code_availability, inventory]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/codec/bounded
+import ../../src/codec/state/requests as state_requests
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real backend failures remain nested under the complete logical code stage.
 proc main() {.raises.} =

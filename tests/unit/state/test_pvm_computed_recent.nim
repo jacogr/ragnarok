@@ -6,8 +6,12 @@
 ## Complete original/corrected history, exact recent tuple, endpoint coherence and immutable lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_recent, computed_state, store]
-import ../../../src/codec/[bounded, state_history, state_layout, state_trie, assurances]
+import ../../../src/state/computed/[recent as computed_recent, state as computed_state]
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[history as state_history, layout as state_layout,
+    trie as state_trie]
+import ../../../src/codec/assurances
 import ../../support/[pvm_computed_recent, pvm_computed_state_vectors, pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

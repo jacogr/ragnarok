@@ -5,9 +5,14 @@
 
 import ./pvm_computed_storage_program
 import std/[assertions, syncio]
-import ../../src/state/[computed_composition, computed_finalization, computed_execution,
-    computed_round, accumulation_completion, accumulation_finalization, accumulation_consensus,
-    report_admission, block_transition, block_admission, store]
+import ../../src/state/computed/[composition as computed_composition,
+    finalization as computed_finalization, execution as computed_execution, round as computed_round]
+import ../../src/state/accumulation/[completion as accumulation_completion,
+    finalization as accumulation_finalization, consensus as accumulation_consensus]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[header, bounded]
 import ./[pvm_computed_composition, pvm_computed_state_publication]

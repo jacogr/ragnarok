@@ -5,7 +5,8 @@
 import std/[assertions, syncio]
 import ../../support/published_state
 import ../../../src/state/[store, checkpoint]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 ## Find a fixture key by linear scan, independent of the production sorted two-pass merge.
 proc find(entries: seq[StateEntry], key: StateKey): int =

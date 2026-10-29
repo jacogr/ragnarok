@@ -4,7 +4,7 @@
 ## Materialize only explicit native resource policy for process-level fuzzer interface checks.
 import std/[assertions, cmdline, syncio]
 import ../support/[trace_check_context, fuzz_guest_replay_context, fuzz_full_replay_context]
-import ../../src/app/current_download_policy
+import ../../src/app/current/download/policy as current_download_policy
 proc main() {.raises.} =
   ## Parameters and all expected state/block bytes remain independently calculated by the Python test reference.
   var policy = traceCheckTestPolicy()

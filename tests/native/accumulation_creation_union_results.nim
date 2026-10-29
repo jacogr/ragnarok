@@ -3,7 +3,8 @@
 
 ## Default/refused creation union alternatives cannot reveal metadata, maps, outcomes or identities.
 import std/cmdline
-import ../../src/state/[accumulation_creation_union, accumulation_annulment]
+import ../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    annulment as accumulation_annulment]
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationCreationUnion)
 let ordinal = AccumulationCreationIndex(0)

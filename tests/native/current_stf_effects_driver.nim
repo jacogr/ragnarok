@@ -5,11 +5,15 @@
 import std/[assertions, cmdline, strutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
-import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
-  state_requests, state_service_values]
+import ../../src/codec/[bounded, report_owned, block_codec]
+import ../../src/codec/state/[composition as state_composition, accounts as state_accounts,
+    requests as state_requests, service_values as state_service_values]
 import ../../src/crypto/primitives
-import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
-  current_globals, current_state, global_snapshot]
+import ../../src/state/[store, checkpoint]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
 import ../support/[accumulation_execution_context, accumulation_activity_context,
   current_namespace_execution_context, current_namespace_context, current_consecutive_context,
   pvm_accumulation_program, state_inventory_context]

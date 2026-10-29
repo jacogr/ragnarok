@@ -5,10 +5,15 @@
 # @@Verification={"arc":"storage_full_paged_publication_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference, full_paged_native_fixture, storage_io]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store,
-  paged_io, managed_manifest, node_records, node_repository, file_errors, durability]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build, store as full_paged_store]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/durability
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive work counters distinguish integer-exhaustion preflight from attempted cryptography.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

@@ -10,7 +10,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_requests
+include ../../../src/codec/state/requests
 # This binary alone links the maintained test-only backend observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 # Copied call counts prove history/key preflight precedes native hashing.

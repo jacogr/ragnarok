@@ -7,7 +7,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_consensus, state_safrole, bounded, assurances]
+import ../../../src/codec/state/[consensus as state_consensus, safrole as state_safrole]
+import ../../../src/codec/[bounded, assurances]
 
 ## Confirm complete parent snapshots retain only independent private copies of every selected field.
 proc main() =

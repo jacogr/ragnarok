@@ -13,10 +13,11 @@
 import std/[strutils, base64]
 import ./wire
 import ./proof_requests
-import ../lib/[json_writer, json_reader]
+import ../lib/json/[writer as json_writer, reader as json_reader]
 import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
-import ../codec/[state_trie, state_layout, header]
+import ../codec/state/[trie as state_trie, layout as state_layout]
+import ../codec/header
 import ../state/store
 import ./light_source
 

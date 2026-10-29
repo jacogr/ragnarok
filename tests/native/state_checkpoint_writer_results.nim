@@ -5,7 +5,8 @@
 
 import std/[cmdline, assertions]
 import std/posix/posix
-import ../../src/state/[checkpoint_writer, checkpoint_file, store]
+import ../../src/state/checkpoint/[writer as checkpoint_writer, file as checkpoint_file]
+import ../../src/state/store
 import ../../src/codec/bounded
 
 proc forgotten() =

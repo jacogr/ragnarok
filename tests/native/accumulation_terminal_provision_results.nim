@@ -4,9 +4,11 @@
 ## Failed/default terminal provision plans and wrong-alternative reasons refuse before extraction.
 
 import std/cmdline
-import ../../src/state/[accumulation_terminal_provisions, accumulation_dispatch,
-  accumulation_provisions, store]
-import ../../src/codec/[header, state_trie]
+import ../../src/state/accumulation/[terminal_provisions as accumulation_terminal_provisions,
+    dispatch as accumulation_dispatch, provisions as accumulation_provisions]
+import ../../src/state/store
+import ../../src/codec/header
+import ../../src/codec/state/trie as state_trie
 import ../support/[accumulation_terminal_provisions, accumulation_provision_integration,
   pvm_accumulation_provision]
 

@@ -6,7 +6,7 @@ sequencer Z. Source hashes and vector revision remain pinned in `spec/pins.json`
 
 ## Inputs and result
 
-`src/state/sealer_schedule.nim` implements `selectSafroleSchedule`. It borrows exact serialized
+`src/state/sealer/schedule.nim` implements `selectSafroleSchedule`. It borrows exact serialized
 parent C(4), staged posterior C(4), posterior active roster C(8), parent/target slots, posterior
 entropy[2], and finite chain/resource policy. Both chapters and the active roster are decoded
 with exact consumption and independent byte/count ceilings before schedule generation. Parent and
@@ -67,7 +67,7 @@ specification checkpoints are unchanged; these tests do not establish complete S
 
 ## Atomic working-store publication
 
-`src/state/sealer_state.nim` exposes `selectSafroleScheduleState`: the caller retains the immutable
+`src/state/sealer/state.nim` exposes `selectSafroleScheduleState`: the caller retains the immutable
 parent snapshot before rotation/admission and supplies the staged full-state store, target slot and
 finite schedule policy. Parent C(4)/C(11) supply the original contest and time. Staged
 C(4)/C(6)/C(8)/C(11) supply admitted state, posterior entropy, posterior active roster and recorded

@@ -6,13 +6,14 @@ import std/assertions
 import ./[current_namespace_transition_context, current_namespace_execution_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_namespace_context, service_namespace_seed, pvm_accumulation_program]
-import ../../src/codec/[bounded, report_owned, composite, state_accounts, state_composition,
-    state_requests, state_service_values]
+import ../../src/codec/[bounded, report_owned, composite]
+import ../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests, service_values as state_service_values]
 import ../../src/crypto/primitives
 import ../../src/app/candidate
 import ../../src/chain/parameters
 import ./accumulation_current_chain_context
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 proc namespaceReplacementCode*(checkpoint = false, panic = false): seq[byte] =
   ## A genuine registrar ejects junior99, optionally checkpoints, then recreates the same reserved ID.
   var payload = newSeq[byte](60)

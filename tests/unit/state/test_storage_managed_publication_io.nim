@@ -6,7 +6,8 @@
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import std/posix/posix
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc cycle(directory: ManagedDirectory) =
   ## A complete journal lease and detached read buffer retire before the next isolated iteration.

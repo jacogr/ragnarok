@@ -8,8 +8,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/[validator_state, store]
-import ../../src/codec/state_safrole
+import ../../src/state/validator/state as validator_state
+import ../../src/state/store
+import ../../src/codec/state/safrole as state_safrole
 
 var state = default(StateStore)
 let outcome = if paramStr(1) == "default": default(ValidatorStateResult) else:

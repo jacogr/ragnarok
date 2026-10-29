@@ -7,7 +7,9 @@
 ##
 ## Exposes validator shuffling, planGuarantors and bounded guarantorAt/shuffledIndex access.
 
-import ../codec/[state_safrole, assurances, bounded, header, guarantees, work_report]
+import ../codec/state/safrole as state_safrole
+import ../codec/[assurances, bounded, header, guarantees]
+import ../codec/work/report as work_report
 from ../codec/disputes import OffenderKey
 import ../crypto/primitives
 

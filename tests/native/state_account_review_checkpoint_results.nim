@@ -5,9 +5,10 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, account_review_checkpoint_context, economic_profile_context]
 import ../../src/chain/parameters
-import ../../src/state/[account_review_checkpoint, account_review, economic_profile, checkpoint,
-    store, manifest]
-include composition_fixture
+import ../../src/state/account/review/checkpoint as account_review_checkpoint
+import ../../src/state/account/review as account_review
+import ../../src/state/[economic_profile, checkpoint, store, manifest]
+include ./composition_fixture
 proc extract(outcome: AccountReviewCheckpointResult): StateAccountReview {.noinline.} =
   ## Default or failed restoration grants no composite review owner.
   outcome.value

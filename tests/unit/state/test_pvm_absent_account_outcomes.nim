@@ -4,11 +4,16 @@
 
 ## Real metadata absence and signed block authority prove identity before credit, zero execution and exact source lifetime.
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_absent, accumulation_inputs, accumulation_service,
-  accumulation_round, accumulation_operands, accumulation_queue, report_admission, store]
-import ../../../src/codec/[bounded, composite, header, work_digest, state_accounts,
-  state_privileges,
-  state_layout, state_trie, state_workqueues, report_owned, c2_records]
+import ../../../src/state/accumulation/[absent as accumulation_absent,
+    inputs as accumulation_inputs, service as accumulation_service, round as accumulation_round,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/[accounts as state_accounts, privileges as state_privileges,
+    layout as state_layout, trie as state_trie, workqueues as state_workqueues]
+import ../../../src/codec/[report_owned, c2_records]
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
   report_admission_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

@@ -3,12 +3,16 @@
 
 ## Explicit tiny-profile resource policies for stopped driver completion and independently authored phase chains.
 
-import ../../src/codec/[bounded, composite, assurances, state_history, state_outputs]
+import ../../src/codec/[bounded, composite, assurances]
+import ../../src/codec/state/[history as state_history, outputs as state_outputs]
 import ../../src/pvm/step
-import ../../src/state/[accumulation_completion, accumulation_driver, accumulation_runner,
-  accumulation_reentry, accumulation_continuation, accumulation_outputs, accumulation_history,
-  accumulation_ready, accumulation_recent, accumulation_times, accumulation_statistics,
-  accumulation_activity, accumulation_preimages, accumulation_authorization, accumulation_consensus]
+import ../../src/state/accumulation/[completion as accumulation_completion,
+    driver as accumulation_driver, runner as accumulation_runner, reentry as accumulation_reentry,
+    continuation as accumulation_continuation, outputs as accumulation_outputs,
+    history as accumulation_history, ready as accumulation_ready, recent as accumulation_recent,
+    times as accumulation_times, statistics as accumulation_statistics,
+    activity as accumulation_activity, preimages as accumulation_preimages,
+    authorization as accumulation_authorization, consensus as accumulation_consensus]
 import ./[accumulation_execution_context, accumulation_runner_context, accumulation_activity_context]
 
 proc completionLimits*(): AccumulationCompletionLimits =

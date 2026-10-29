@@ -5,14 +5,23 @@
 ## One current signed round composes selected state, yields and transfer budgets without guest replay or annulment gas refunds.
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, report_owned, state_outputs, state_layout, state_trie]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[outputs as state_outputs, layout as state_layout,
+    trie as state_trie]
 import ../../../src/pvm/[machine, step, gas]
-import ../../../src/state/[accumulation_current_round, accumulation_round,
-  accumulation_block_guests,
-  accumulation_guest_runner, accumulation_account_stage, accumulation_provision_stage,
-  accumulation_provisions, accumulation_global_stage, accumulation_coverage, accumulation_annulment,
-  accumulation_outcome,
-  accumulation_annulled_outputs, accumulation_transfers, accumulation_pending_transfers, store]
+import ../../../src/state/accumulation/current/round as accumulation_current_round
+import ../../../src/state/accumulation/round as accumulation_round
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/guest_runner as accumulation_guest_runner
+import ../../../src/state/accumulation/account/stage as accumulation_account_stage
+import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage
+import ../../../src/state/accumulation/provisions as accumulation_provisions
+import ../../../src/state/accumulation/global/stage as accumulation_global_stage
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment, outcome as accumulation_outcome,
+    annulled_outputs as accumulation_annulled_outputs, transfers as accumulation_transfers,
+    pending_transfers as accumulation_pending_transfers]
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
   accumulation_current_round_context,
   pvm_accumulation_program, arc_evidence]

@@ -4,6 +4,6 @@
 
 ## Reject private continuation invocation storage access.
 
-import ../../../src/state/accumulation_continuation_invocation
+import ../../../src/state/accumulation/continuation/invocation as accumulation_continuation_invocation
 var result: AccumulationContinuationInvocationResult[int]
 discard result.serviceReason

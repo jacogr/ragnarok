@@ -5,15 +5,24 @@
 ## Genuine signed rounds bind current guest coverage to admitted state, posterior entropy and profile.
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, header, work_digest, assurances, report_owned,
-  state_safrole, state_layout,
-  state_privileges, state_workqueues, c2_records]
-import ../../../src/state/[accumulation_block_guests, accumulation_guest_runner,
-  accumulation_coverage, accumulation_annulment, accumulation_outcome, accumulation_effects,
-  accumulation_context,
-  accumulation_invocation, accumulation_inputs, accumulation_round, accumulation_queue,
-  accumulation_operands, accumulation_service, accumulation_skip, accumulation_absent,
-  report_admission, block_transition, block_admission, store]
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/[assurances, report_owned]
+import ../../../src/codec/state/[safrole as state_safrole, layout as state_layout,
+    privileges as state_privileges, workqueues as state_workqueues]
+import ../../../src/codec/c2_records
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    coverage as accumulation_coverage, annulment as accumulation_annulment,
+    outcome as accumulation_outcome, effects as accumulation_effects,
+    context as accumulation_context, invocation as accumulation_invocation,
+    inputs as accumulation_inputs, round as accumulation_round, queue as accumulation_queue,
+    operands as accumulation_operands, service as accumulation_service, skip as accumulation_skip,
+    absent as accumulation_absent]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../support/[accumulation_runner_context, accumulation_execution_context,
   report_admission_context, accumulation_current_guests_context, arc_evidence]
 proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =

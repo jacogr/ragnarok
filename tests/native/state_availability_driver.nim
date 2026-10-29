@@ -7,7 +7,10 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_availability, guarantees, report_owned, owned, state_trie, bounded, assurances]
+import ../../src/codec/state/availability as state_availability
+import ../../src/codec/[guarantees, report_owned, owned]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/[bounded, assurances]
 
 ## Preserve empty malformed report/input tokens without inventing protocol bytes.
 proc unhex(text: string): seq[byte] =

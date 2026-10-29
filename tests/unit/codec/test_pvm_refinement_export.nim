@@ -6,7 +6,8 @@
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[refinement_exports, host_fetch, machine, program, step, gas]
-import ../../../src/codec/[bounded, work_digest]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/digest as work_digest
 import ../../support/arc_evidence
 
 proc source(): Memory =

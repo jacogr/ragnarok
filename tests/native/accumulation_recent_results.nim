@@ -4,7 +4,7 @@
 ## Refused recent-history candidates cannot expose values or unrelated stage reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_recent, accumulation_ready]
+import ../../src/state/accumulation/[recent as accumulation_recent, ready as accumulation_ready]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationRecent)

@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "payloadSpan"}
 
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 let value = default(OptionalBlob)
 discard value.payloadSpan

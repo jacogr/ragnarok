@@ -8,5 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "RequestLength"}
 
-import ../../../src/codec/[state_requests, bounded]
+import ../../../src/codec/state/requests as state_requests
+import ../../../src/codec/bounded
 discard serviceRequestKey(ServiceIndex(0), default(ServicePreimageHash), RequestSlot(0), ByteLimit(32))

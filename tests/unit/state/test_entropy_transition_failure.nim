@@ -11,7 +11,8 @@
 import std/[assertions, syncio]
 import ../../support/[entropy_transition_fixture, arc_evidence]
 import ../../../src/state/[entropy, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 ## The test-only observer can refuse the very first entropy or commitment hash.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

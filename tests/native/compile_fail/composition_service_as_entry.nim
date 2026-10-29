@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: StateEntryIndex but got: ServiceIndex"}
 
-import ../../../src/codec/[state_composition, state_accounts]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 discard stateEntryAt(default(StateSnapshot), ServiceIndex(0))

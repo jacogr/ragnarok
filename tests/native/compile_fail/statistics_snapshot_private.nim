@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_statistics
+import ../../../src/codec/state/statistics as state_statistics
 let owner = default(ActivitySnapshot)
 discard owner.data

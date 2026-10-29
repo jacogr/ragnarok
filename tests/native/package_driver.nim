@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[work_package, work_report, work_digest, composite, bounded]
+import ../../src/codec/work/[package as work_package, report as work_report, digest as work_digest]
+import ../../src/codec/[composite, bounded]
 
 # Test-only success selection checks the failure branch before accessing expected-good getter fields.
 proc checked[T](parsed: PackageResult[T]): T =

@@ -1,6 +1,6 @@
 # Authenticated global state reads
 
-Use `state/proof_global` to select and decode global chapters from verified partial evidence.
+Use `state/proof/global` to select and decode global chapters from verified partial evidence.
 The [feature contract](../spec/state-global-proofs.md) records scope and verification;
 [selected-state queries](state-proof-queries.md) explains managed worker admission and ownership.
 
@@ -34,8 +34,11 @@ This example accepts a reply for exactly time and entropy, retains all existing 
 and updates the caller's output only after both typed reads succeed:
 
 ```nim
-import src/state/[proof_global, proof_plan, proof_view, planned_proof, trie_proof]
-import src/codec/[bounded, state_composition, state_safrole, state_trie]
+import ./state/proof/[global as proof_global, plan as proof_plan, view as proof_view]
+import ./state/planned/proof as planned_proof
+import ./state/trie_proof
+import ./codec/bounded
+import ./codec/state/[composition as state_composition, safrole as state_safrole, trie as state_trie]
 
 proc verifiedReplyTime(wire: openArray[byte], expectedRoot: StateRoot,
     retained: ProofViewLimits, perProof: StateProofLimits, aggregate: StateProofBatchLimits,

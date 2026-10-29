@@ -3,6 +3,7 @@
 
 ## Explicit whole-global policies accompany independent view/C9 admission for selected parent consumers.
 import ../../src/state/global_snapshot
-import ../../src/codec/[bounded, state_composition]
+import ../../src/codec/bounded
+import ../../src/codec/state/composition as state_composition
 const parentGlobalsTestLimits* = GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(
     10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))

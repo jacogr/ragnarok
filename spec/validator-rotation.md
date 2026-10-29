@@ -63,7 +63,7 @@ Allocation failure remains fail-stop.
 
 ## Atomic working-state publication
 
-`src/state/validator_state.nim` adds `rotateValidatorState` over the complete-map working store.
+`src/state/validator/state.nim` adds `rotateValidatorState` over the complete-map working store.
 It reads exact C(4), C(7), C(8), C(9) and C(11) values. Caller-selected per-chapter byte ceilings
 are checked before copying, followed by exact codec consumption and population validation.
 Its separate guarded result publishes only a completed immutable snapshot; default/failed

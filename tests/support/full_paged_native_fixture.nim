@@ -4,9 +4,15 @@
 ## Shared native full-paged fixtures preserve independent complete-map roots and finite caller-owned producers.
 import std/[assertions, syncio]
 import ./full_paged_reference
-import ../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store, paged_io, managed_manifest, node_repository, node_records, durability, file_errors]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build, store as full_paged_store]
+import ../../src/storage/paged/io as paged_io
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/durability
+import ../../src/storage/file/errors as file_errors
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc producer*(records: seq[TrieRecord]): FullPagedProducer =
   ## Caller-owned fixture records are retained only outside each synchronous producer operation.

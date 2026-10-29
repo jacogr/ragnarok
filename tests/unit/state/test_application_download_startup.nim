@@ -7,12 +7,17 @@
 
 import std/[assertions, strutils, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../../src/app/[download_policy, download_command, options, services, block_download]
-import ../../../src/quic/[block_download_loop, block_download_stream]
-import ../../../src/app/[block_input, download_schedule]
+import ../../../src/app/download/[policy as download_policy, command as download_command]
+import ../../../src/app/[options, services]
+import "../../../src/app/block/download" as block_download
+import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/download/schedule as download_schedule
 import ../../../src/codec/[bounded, block_codec, report_owned, header]
-import ../../../src/lib/atomic_file
-import ../../../src/state/[store, report_admission, report_anchors]
+import ../../../src/lib/atomic/file as atomic_file
+import ../../../src/state/store
+import ../../../src/state/report/[admission as report_admission, anchors as report_anchors]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
 import ../../support/report_admission_context as report_context

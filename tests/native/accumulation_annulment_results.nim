@@ -3,7 +3,9 @@
 
 ## Default/refused accpar certificates cannot expose owners, copied decisions or original/selected state payloads.
 import std/cmdline
-import ../../src/state/[accumulation_annulment, accumulation_inputs, store]
+import ../../src/state/accumulation/[annulment as accumulation_annulment,
+    inputs as accumulation_inputs]
+import ../../src/state/store
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationAnnulment)
 let refused = if argument == "default": default(AccumulationAnnulmentResult[PreparedAccumulationAnnulment])

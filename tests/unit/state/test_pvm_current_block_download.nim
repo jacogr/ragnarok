@@ -5,12 +5,18 @@
 ## Current-only CE128 framing, exact worker handoff, ancestry suspension and stable receiver retirement use genuine signed children.
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, current_block_download, current_block_input, current_handoff,
-  preparation_worker, candidate, chain, options]
+import ../../../src/app/services
+import "../../../src/app/current/block/download" as current_block_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/[preparation_worker, candidate, chain, options]
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, report_owned]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus, report_anchors]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import ../../../src/state/report/anchors as report_anchors
 import ../../support/[current_services_disk_samples, current_application_context,
   accumulation_current_chain_context, accumulation_current_candidate_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

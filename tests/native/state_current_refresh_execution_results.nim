@@ -4,7 +4,8 @@
 ## Strict guarded reconstruction result alternatives with actual original/current positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/current_refresh_context
-import ../../src/state/[current_refresh, current_refresh_plan]
+import ../../src/state/current/refresh as current_refresh
+import ../../src/state/current/refresh/plan as current_refresh_plan
 import ../../src/codec/report_owned
 proc extract(value: CurrentRefreshResult) {.noinline.} =
   ## No default or refused frozen-plan execution exposes partial mutable declarations.

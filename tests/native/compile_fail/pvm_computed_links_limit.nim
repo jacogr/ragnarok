@@ -5,7 +5,10 @@
 
 # @@Verification={"group": "nominal", "expected": "ElementLimit", "early": ["prepareComputedLinks(", "[3] expected: ElementLimit but got: ByteLimit"]}
 
-import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/computed/[links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/pvm/host_fetch
 discard prepareComputedLinks(default(ComputedGuaranteeTranscript), [], ByteLimit(1))

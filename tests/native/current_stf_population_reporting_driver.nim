@@ -11,10 +11,18 @@ import ../support/[current_consecutive_context, accumulation_current_chain_conte
   current_namespace_context, state_inventory_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_composition]
-import ../../src/state/[store, accumulation_current_update, current_profile, current_globals,
-  current_state, global_snapshot, accumulation_current_completion, report_admission,
-  guarantee_credentials, block_transition, availability]
+import ../../src/codec/[bounded, report_owned, block_codec, header]
+import ../../src/codec/state/[layout as state_layout, composition as state_composition]
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import ../../src/state/accumulation/current/completion as accumulation_current_completion
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/availability
 
 proc main() {.raises.} =
   ## Each chain adds only the declared original recent package, then retains exact ancestral header owners.

@@ -4,8 +4,10 @@
 ## Exclusive prepared owners cannot expose a root or size from default, moved or refused alternatives.
 
 import std/[assertions, cmdline]
-import ../../src/state/[checkpoint_transfer, checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/checkpoint/transfer as checkpoint_transfer
+import ../../src/state/[checkpoint, store]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 proc main() =
   ## Real initialized empty-map preparation validates the same accessors exercised by negative cases.

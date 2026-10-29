@@ -11,7 +11,7 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-include ../../../src/codec/state_trie
+include ../../../src/codec/state/trie
 
 # Sequential observer counters distinguish preflight rejection from a primitive refusal.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

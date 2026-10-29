@@ -6,9 +6,14 @@
 ## Covers atomic fulfillment, normalization preflight, copied ownership, guarded refusals and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_terminal_provisions, accumulation_dispatch,
-  accumulation_outcome, accumulation_provisions, accumulation_context, accumulation_effects, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_service_values, state_trie]
+import ../../../src/state/accumulation/[terminal_provisions as accumulation_terminal_provisions,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    provisions as accumulation_provisions, context as accumulation_context,
+    effects as accumulation_effects]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    trie as state_trie]
 import ../../../src/pvm/step
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_terminal_provisions, accumulation_provision_integration,

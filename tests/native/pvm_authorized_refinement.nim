@@ -4,8 +4,10 @@
 ## Strict optimized guards reject failed composition values and unrelated authorization/refinement/digest reason access.
 
 import std/[assertions, cmdline]
-import ../../src/state/[authorized_refinement, authorization_invocation, refinement_dispatch,
-    refinement_report, refinement_digest]
+import ../../src/state/authorized_refinement
+import ../../src/state/authorization/invocation as authorization_invocation
+import ../../src/state/refinement/[dispatch as refinement_dispatch, report as refinement_report,
+    digest as refinement_digest]
 import ../../src/codec/[bounded, composite]
 import ../support/[pvm_authorized_refinement, pvm_report_results, pvm_refinement_outcome]
 

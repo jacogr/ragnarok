@@ -6,9 +6,17 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[arc_evidence, storage_io]
-import ../../../src/storage/[light_file_cache, light_snapshot, light_state_cache, state_proof,
-  full_state_trie, database_identity, file_errors, durability, managed_manifest, node_repository]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/[file_cache as light_file_cache, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/durability
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real provider refusal must release an acquired directory lease on unsuccessful reopen.

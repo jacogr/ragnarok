@@ -5,12 +5,17 @@
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
-import ../../../src/app/[chain, disk_chain, disk_history, disk_worker]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, history as disk_history, worker as disk_worker]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, disk_store, accumulation_publication]
-import ../../../src/storage/[file_repository, node_repository, node_records, record_codec,
-    database_identity, journal_codec]
-import ../../../src/codec/[bounded, state_trie, report_owned]
+import ../../../src/state/[store, disk_store]
+import ../../../src/state/accumulation/publication as accumulation_publication
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, database_identity, journal_codec]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/report_owned
 type
   ResourceLimit {.importc: "struct rlimit", header: "<sys/resource.h>", bycopy.} = object
     ## Exact supported 64-bit SDK fields constrain only the forked writer.

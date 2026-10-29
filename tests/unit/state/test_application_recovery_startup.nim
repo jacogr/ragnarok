@@ -6,11 +6,14 @@
 ## Parsed external recovery opens independent inputs once, preserves explicit policies and never falls back on refusal.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_file]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    file as checkpoint_file]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, state_layout]
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/layout as state_layout
 import ../../../src/state/store
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const CheckpointPath = "application-recovery-startup-map"
 const TrustPath = "application-recovery-startup-identity"

@@ -4,6 +4,7 @@
 
 ## Reject replacement of nominal continuation completion provenance.
 
-import ../../../src/state/[accumulation_continuation_execution, accumulation_continuation]
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../../src/state/accumulation/continuation as accumulation_continuation
 var later: CompletedAccumulationContinuation
 discard planAccumulationContinuation(later, default(AccumulationContinuationLimits))

@@ -8,5 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "outputKind"}
 
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 discard WorkOutput(outputKind: WorkKind.Success, payloadSpan: BlobSpan())

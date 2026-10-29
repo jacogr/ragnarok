@@ -4,10 +4,15 @@
 
 ## Genuine current completion selects next reports, holds supervised incoming credit and never repeats free allowances.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, composite, report_owned, work_digest]
-import ../../../src/state/[accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, accumulation_coverage,
-  accumulation_inputs, accumulation_operands, accumulation_transfer_partition, store]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
+    round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue,
+    coverage as accumulation_coverage, inputs as accumulation_inputs,
+    operands as accumulation_operands, transfer_partition as accumulation_transfer_partition]
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_round_context,
     accumulation_current_sequence_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

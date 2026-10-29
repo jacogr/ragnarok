@@ -4,11 +4,12 @@
 ## Invalid file outcomes must fail the exact same checked accessors as genuine publication and recovery.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/app/[chain, checkpoint_file, checkpoint_identity]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[file as checkpoint_file, identity as checkpoint_identity]
 import ../../src/state/store
 import ../../src/chain/genesis
 import ../../src/codec/bounded
-import ../../src/lib/atomic_file
+import ../../src/lib/atomic/file as atomic_file
 import ../support/application_checkpoint_context
 proc extractIdentity(outcome: ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]) =
   ## Publication grants context only after durable complete success.

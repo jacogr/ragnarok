@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Current validator proof representation stays private.
-import ../../../src/state/[accumulation_current_validators, accumulation_validators,
-    accumulation_current_recent]
+import ../../../src/state/accumulation/current/validators as accumulation_current_validators
+import ../../../src/state/accumulation/validators as accumulation_validators
+import ../../../src/state/accumulation/current/recent as accumulation_current_recent
 let refused = prepareCurrentAccumulationValidators(default(PreparedCurrentAccumulationRecent),
     default(AccumulationValidatorsConfig))
 discard default(PreparedCurrentAccumulationValidators).data

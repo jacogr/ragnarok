@@ -7,7 +7,8 @@
 ##
 ## Exposes planValidatorRotation and checked immutable roster-rotation results.
 
-import ../codec/[state_safrole, assurances, bounded]
+import ../codec/state/safrole as state_safrole
+import ../codec/[assurances, bounded]
 from ../codec/disputes import OffenderKey
 from ../codec/header import EpochSlots
 

@@ -5,9 +5,12 @@
 ## Independent export roots/proof bytes, final-result selection, budget preflight and immutable ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/[export_commitment, report_identity, authorized_refinement,
-    refinement_digest, refinement_report]
-import ../../../src/codec/[bounded, composite, natural, work_report]
+import "../../../src/state/export/commitment" as export_commitment
+import ../../../src/state/report/identity as report_identity
+import ../../../src/state/authorized_refinement
+import ../../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
+import ../../../src/codec/[bounded, composite, natural]
+import ../../../src/codec/work/report as work_report
 import ../../../src/pvm/host_fetch
 import ../../../src/crypto/primitives
 import ../../support/[pvm_export_commitment, pvm_export_vectors, pvm_report_results,

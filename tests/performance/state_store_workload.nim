@@ -5,7 +5,8 @@
 ## Compile the identical source against baseline/candidate trees; output is JSON lines, not timing claims.
 import std/[assertions, syncio]
 import ../../src/state/store
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer without changing protocol hashing behavior.

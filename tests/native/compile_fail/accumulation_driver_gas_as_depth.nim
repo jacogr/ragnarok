@@ -4,6 +4,6 @@
 
 ## Driver retained depth is a nominal policy, distinct from protocol gas.
 
-import ../../../src/state/accumulation_driver
-import ../../../src/codec/work_digest
+import ../../../src/state/accumulation/driver as accumulation_driver
+import ../../../src/codec/work/digest as work_digest
 discard AccumulationDriverLimits(depth: Gas(4))

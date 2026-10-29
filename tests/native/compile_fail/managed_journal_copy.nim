@@ -3,7 +3,7 @@
 
 ## Journal lease duplication must fail actual native lowering.
 # @@Verification={"group":"ownership_compile","build_name":"managed-journal-copy","expected":"'=dup' is not available for type <ManagedJournal>"}
-import ../../../src/storage/managed_io
+import ../../../src/storage/managed/io as managed_io
 proc duplicated(source: ManagedJournal): ManagedJournal =
   ## A borrowed append owner cannot acquire another retirement authority.
   source

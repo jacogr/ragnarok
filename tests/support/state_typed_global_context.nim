@@ -3,10 +3,14 @@
 
 ## Logical GP T sources for complete encoder comparisons; no expected bytes feed these constructors.
 import std/assertions
-import ../../src/codec/[bounded, assurances, composite, work_digest, work_report, owned,
-  report_owned, guarantees, state_layout, state_trie, state_composition, state_authorization,
-  state_history, state_consensus, state_safrole, state_disputes, state_availability,
-  state_privileges, state_statistics, state_workqueues, state_outputs]
+import ../../src/codec/[bounded, assurances, composite]
+import ../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../src/codec/[owned, report_owned, guarantees]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition, authorization as state_authorization,
+    history as state_history, consensus as state_consensus, safrole as state_safrole,
+    disputes as state_disputes, availability as state_availability, privileges as state_privileges,
+    statistics as state_statistics, workqueues as state_workqueues, outputs as state_outputs]
 const
   items = ElementLimit(50000)
   budget = ByteLimit(2000000)

@@ -8,8 +8,8 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/sealer_schedule
-import ../../src/codec/[state_safrole, state_consensus]
+import ../../src/state/sealer/schedule as sealer_schedule
+import ../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
 
 let outcome = if paramStr(1) == "default": default(SealerScheduleResult) else:
   selectSafroleSchedule([], [], [], StateTime(0), StateTime(1), default(StateEntropyWord),

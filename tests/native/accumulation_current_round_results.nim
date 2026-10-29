@@ -4,7 +4,8 @@
 ## Default/refused current round owners expose neither partial success nor inactive nested parent results.
 import std/cmdline
 import ../../src/chain/parameters
-import ../../src/state/[accumulation_current_round, accumulation_round]
+import ../../src/state/accumulation/current/round as accumulation_current_round
+import ../../src/state/accumulation/round as accumulation_round
 let owner = default(CurrentAccumulationRoundResult[PreparedCurrentAccumulationRound])
 let refused = runCurrentBlockAccumulationRound(default(BlockAccumulationRound), default(Parameters),
     default(CurrentAccumulationRoundLimits))

@@ -5,10 +5,13 @@
 ## Actual initial gas releases reserved capacity for a bounded original-queue report suffix.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_continuation, accumulation_execution, accumulation_round,
-  accumulation_inputs, accumulation_operands, accumulation_dispatch, accumulation_queue]
-import ../../../src/codec/[bounded, composite, report_owned, owned, work_report, work_digest,
-  state_workqueues]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
+    operands as accumulation_operands, dispatch as accumulation_dispatch,
+    queue as accumulation_queue]
+import ../../../src/codec/[bounded, composite, report_owned, owned]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../../src/codec/state/workqueues as state_workqueues
 import ../../support/[accumulation_execution_context, report_context, arc_evidence]
 
 # No continuation query or gas-prefix planning is permitted to hash or execute again.

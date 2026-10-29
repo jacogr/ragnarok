@@ -6,7 +6,8 @@
 ## Native whole-envelope publication owns one slot through acknowledgement and preserves actual joined outcomes.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[checkpoint_worker, checkpoint_transfer, checkpoint_codec, checkpoint_file, checkpoint_identity]
+import ../../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer,
+    codec as checkpoint_codec, file as checkpoint_file, identity as checkpoint_identity]
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]

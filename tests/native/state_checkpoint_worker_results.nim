@@ -5,9 +5,11 @@
 
 import std/[assertions, cmdline, monotimes, times, syncio]
 import std/posix/posix
-import ../../src/state/[checkpoint_worker, checkpoint_bank, checkpoint_head, checkpoint_transfer,
-    checkpoint, store]
-import ../../src/codec/[state_trie, bounded]
+import ../../src/state/checkpoint/[worker as checkpoint_worker, bank as checkpoint_bank,
+    head as checkpoint_head, transfer as checkpoint_transfer]
+import ../../src/state/[checkpoint, store]
+import ../../src/codec/state/trie as state_trie
+import ../../src/codec/bounded
 
 proc extractCompletion(completion: CheckpointCompletion) =
   ## Preserve a runtime misuse witness after callers verify its cancellation kind; the accessor still enforces its own contract.

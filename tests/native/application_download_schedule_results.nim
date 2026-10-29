@@ -3,7 +3,7 @@
 
 ## Dynamic default/refused extraction must trip the actual optimized runtime contract.
 import std/cmdline
-import ../../src/app/download_schedule
+import ../../src/app/download/schedule as download_schedule
 import ../../src/codec/bounded
 let mode = paramStr(1)
 var schedule = default(DownloadSchedule)

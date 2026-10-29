@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Timestamp owner and refusal representation remains private.
-import ../../../src/state/[accumulation_current_accounts, accumulation_accounts,
-    accumulation_current_statistics]
+import ../../../src/state/accumulation/current/accounts as accumulation_current_accounts
+import ../../../src/state/accumulation/accounts as accumulation_accounts
+import ../../../src/state/accumulation/current/statistics as accumulation_current_statistics
 let refused = prepareCurrentAccumulationAccounts(default(PreparedCurrentAccumulationStatistics),
     default(AccumulationAccountConfig))
 discard refused.completed

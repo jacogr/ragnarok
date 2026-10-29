@@ -4,21 +4,40 @@
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
 import std/[assertions, monotimes, times]
 import std/posix/posix
-import ../../src/state/[account_review_plan, account_audit_plan, account_audit]
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/state/account/audit/plan as account_audit_plan
+import ../../src/state/account/audit as account_audit
 import ./current_logical_review_context
-import ../../src/state/[current_state, current_review, current_globals, current_profile,
-    supplied_logical_inventory, inventory, manifest, account_review, economic_profile]
+import ../../src/state/current/[state as current_state, review as current_review,
+    globals as current_globals, profile as current_profile]
+import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../src/state/[inventory, manifest]
+import ../../src/state/account/review as account_review
+import ../../src/state/economic_profile
 import ./[accumulation_current_chain_context, parent_profile_context, parent_globals_context, supplied_logical_context]
 import ../../src/chain/[provider, genesis, parameters]
-import ../../src/codec/state_composition
-import ../../src/state/[parent_profile, parent_globals, parent_logical]
+import ../../src/codec/state/composition as state_composition
+import ../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
 import ./[current_identity_context, current_namespace_refresh_context,
     current_logical_proof_context, current_services_disk_samples]
-import ../../src/app/[services, preparation_worker, current_block_input, candidate, proof_query, proof_worker]
+import ../../src/app/[services, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/candidate
+import ../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../src/rpc/server
-import ../../src/codec/[bounded, block_codec, state_layout, state_accounts, state_service_values]
-import ../../src/state/[accumulation_current_update, current_identities, current_request_keys,
-    current_refresh_plan, current_logical_refresh, current_logical, planned_proof, proof_view, store]
+import ../../src/codec/[bounded, block_codec]
+import ../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../src/state/current/refresh/plan as current_refresh_plan
+import ../../src/state/current/logical/refresh as current_logical_refresh
+import ../../src/state/current/logical as current_logical
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/state/store
 type LogicalPreparation = object ## Only scalar receiver/ticket identities cross native wait/cancel/collection boundaries.
   ticket: PreparationTicket
   input: CurrentBlockInputId

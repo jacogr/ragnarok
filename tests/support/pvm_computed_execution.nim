@@ -4,7 +4,8 @@
 ## Real multi-entry original service code and three-core context policies for computed accumulation execution.
 
 import ./pvm_computed_storage_program
-import ../../src/state/[computed_round, accumulation_runner]
+import ../../src/state/computed/round as computed_round
+import ../../src/state/accumulation/runner as accumulation_runner
 import ../../src/codec/[assurances, bounded, c2_records]
 import ./[pvm_computed_round, accumulation_runner_context, pvm_accumulation_context]
 

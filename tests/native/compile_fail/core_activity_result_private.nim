@@ -4,6 +4,6 @@
 
 ## Refuse raw construction or retagging of original-block-bound core activity.
 
-import ../../../src/state/core_activity
+import ../../../src/state/core/activity as core_activity
 var outcome: CoreActivityResult[PreparedCoreActivity]
 discard outcome.completed

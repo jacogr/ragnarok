@@ -4,13 +4,22 @@
 
 ## Current C3 derives sealed header, output root and guarantee dictionary from one genuine terminal source.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, header, report_owned, state_history, state_layout]
+import ../../../src/codec/[bounded, assurances, header, report_owned]
+import ../../../src/codec/state/[history as state_history, layout as state_layout]
 import ../../../src/crypto/primitives
-import ../../../src/state/[accumulation_current_recent, accumulation_recent,
-  accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_statistics, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_current_round, accumulation_block_guests, accumulation_round, accumulation_queue,
-  report_admission, guarantee_credentials, block_transition, block_admission, history, store]
+import ../../../src/state/accumulation/current/recent as accumulation_current_recent
+import ../../../src/state/accumulation/recent as accumulation_recent
+import ../../../src/state/accumulation/current/[ready as accumulation_current_ready,
+    finalization as accumulation_current_finalization, accounts as accumulation_current_accounts,
+    statistics as accumulation_current_statistics, driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence, round as accumulation_current_round]
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/[history, store]
 import ../../support/[accumulation_current_recent_context, accumulation_recent_witnesses, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}

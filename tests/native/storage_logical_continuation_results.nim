@@ -8,12 +8,22 @@ import ../support/[collected_native_context, collected_logical_context, collecte
     current_namespace_context, current_namespace_refresh_context,
     accumulation_execution_context, accumulation_current_candidate_context,
     current_identity_context, current_repeated_logical_context, application_download_chain, arc_evidence]
-import ../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../src/state/[storage_logical_continuation, accumulation_current_update,
-    accumulation_storage_history, accumulation_effects, accumulation_round, accumulation_queue,
-    report_admission, block_transition, block_admission, current_logical, current_identities,
-    supplied_logical_inventory, supplied_services, inventory, manifest, store]
-import ../../src/codec/[bounded, state_layout, state_composition, state_requests, state_accounts]
+import ../../src/app/[chain, candidate, preparation_worker]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/state/storage_logical_continuation
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[storage_history as accumulation_storage_history,
+    effects as accumulation_effects, round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/current/[logical as current_logical, identities as current_identities]
+import ../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../src/state/[inventory, manifest, store]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, composition as state_composition,
+    requests as state_requests, accounts as state_accounts]
 import ../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Bound refusal and genuine mandatory request-key hashing remain distinct.

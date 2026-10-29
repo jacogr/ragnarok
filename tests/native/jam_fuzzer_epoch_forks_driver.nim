@@ -4,10 +4,11 @@
 ## Actual fuzzer ticket siblings and original-last epoch transitions preserve immutable whole-map branch contexts.
 import std/[assertions, cmdline, syncio]
 import ../support/[fuzz_backend_context, current_stf_epoch_context, accumulation_current_chain_context]
-import ../../src/app/[fuzz_backend, fuzz_rejection]
+import ../../src/app/fuzz/[backend as fuzz_backend, rejection as fuzz_rejection]
 import ../../src/chain/genesis
 import ../../src/codec/[bounded, header, block_codec, report_owned, tickets]
-import ../../src/state/[store, fuzz_protocol]
+import ../../src/state/store
+import ../../src/state/fuzz/protocol as fuzz_protocol
 
 proc observe(backend: var FuzzBackend, body: OwnedBlock): StateStoreSnapshot =
   ## Observe only a successful genuine import and exact-header whole-state query.

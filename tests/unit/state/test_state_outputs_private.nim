@@ -10,7 +10,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, syncio]
-include ../../../src/codec/state_outputs
+include ../../../src/codec/state/outputs
 
 ## Independent source pairs preserve descending/repeated services and all fixed commitment octets.
 proc source(marker: byte): seq[AccumulationOutput] =

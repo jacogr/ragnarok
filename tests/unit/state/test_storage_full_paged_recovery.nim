@@ -5,8 +5,12 @@
 # @@Verification={"arc":"storage_full_paged_recovery_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store, paged_io, managed_manifest, node_repository, node_records, file_errors]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build, store as full_paged_store]
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc path(label: string): string =
   ## Every scenario uses a fresh test-owned namespace, without database directory scans.

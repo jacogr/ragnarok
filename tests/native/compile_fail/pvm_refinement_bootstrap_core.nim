@@ -5,9 +5,10 @@
 
 # @@Verification={"group": "nominal", "expected": "CoreIndex", "early": ["prepareRefinementBootstrap(", "[4] expected: CoreIndex but got: FetchItemIndex"]}
 
-import ../../../src/state/[refinement_bootstrap, store]
+import ../../../src/state/refinement/bootstrap as refinement_bootstrap
+import ../../../src/state/store
 import ../../../src/pvm/host_fetch
-import ../../../src/codec/work_package
+import ../../../src/codec/work/package as work_package
 import ../../../src/chain/parameters
 discard prepareRefinementBootstrap(default(StateStoreSnapshot), default(OwnedWorkPackage),
   FetchItemIndex(0), FetchItemIndex(0), default(Parameters), default(RefinementBootstrapLimits))

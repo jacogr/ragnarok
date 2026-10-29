@@ -4,9 +4,12 @@
 ## Authored complete maps and retained implication contexts for union/fulfillment tests and result guards.
 ## Helpers use public preparation APIs; caller-selected contexts/posterior state are explicitly synthetic.
 
-import ../../src/state/[accumulation_provisions, accumulation_effects, accumulation_context, store]
-import ../../src/codec/[bounded, composite, state_accounts, state_requests, state_service_values,
-  state_layout, state_trie]
+import ../../src/state/accumulation/[provisions as accumulation_provisions,
+    effects as accumulation_effects, context as accumulation_context]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/state/[accounts as state_accounts, requests as state_requests,
+    service_values as state_service_values, layout as state_layout, trie as state_trie]
 import ../../src/crypto/primitives
 import ./accumulation_effect_context
 

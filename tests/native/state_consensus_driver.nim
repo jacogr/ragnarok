@@ -8,7 +8,9 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_consensus, state_safrole, state_trie, bounded, assurances]
+import ../../src/codec/state/[consensus as state_consensus, safrole as state_safrole,
+    trie as state_trie]
+import ../../src/codec/[bounded, assurances]
 
 ## Decode trusted hex with a separate token for an empty source.
 proc unhex(text: string): seq[byte] =

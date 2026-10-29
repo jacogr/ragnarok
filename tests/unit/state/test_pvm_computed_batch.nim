@@ -5,10 +5,12 @@
 ## Real shared-context batches prove canonical wire, reporter union, bounded refusal and immutable lifetime behavior.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_batch, computed_envelope, computed_credentials,
-  computed_guarantors,
-  computed_roster, computed_transition, computed_profile, store]
-import ../../../src/codec/[bounded, assurances, guarantees, state_safrole]
+import ../../../src/state/computed/[batch as computed_batch, envelope as computed_envelope,
+    credentials as computed_credentials, guarantors as computed_guarantors,
+    roster as computed_roster, transition as computed_transition, profile as computed_profile]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, assurances, guarantees]
+import ../../../src/codec/state/safrole as state_safrole
 import ../../support/[pvm_computed_batch, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

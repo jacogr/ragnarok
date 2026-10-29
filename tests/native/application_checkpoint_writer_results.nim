@@ -4,7 +4,9 @@
 ## Composite writer retirement and closed result extraction retain real native contracts.
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
-import ../../src/app/[chain, checkpoint_writer, checkpoint_file, checkpoint_identity]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[writer as checkpoint_writer, file as checkpoint_file,
+    identity as checkpoint_identity]
 import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/chain/genesis

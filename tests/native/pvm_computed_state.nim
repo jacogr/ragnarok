@@ -4,7 +4,9 @@
 ## Strict optimized state-binding guards include genuine independent sealed-parent and map-identity controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_state, computed_links, block_admission, store]
+import ../../src/state/computed/[state as computed_state, links as computed_links]
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/store
 import ../support/pvm_computed_state
 
 proc check[T](outcome: ComputedStateResult[T], reason: ComputedStateError) =

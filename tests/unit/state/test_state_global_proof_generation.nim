@@ -4,9 +4,14 @@
 ## Generic global plans bind generation to independent complete snapshots and genuine selected blocks.
 import std/[assertions, syncio]
 import ../../support/[proof_service_helpers, proof_query_context]
-import ../../../src/state/[proof_plan, planned_proof, proof_view, trie_proof, snapshot_proof, store]
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/[trie_proof, snapshot_proof, store]
 import ../../../src/chain/[genesis, state_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained hash observer or fail attempted backend work during bound checks.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

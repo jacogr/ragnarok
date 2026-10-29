@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "ByteLimit"}
 
-import ../../../src/codec/[state_disputes, bounded]
+import ../../../src/codec/state/disputes as state_disputes
+import ../../../src/codec/bounded
 var owner: DisputeStateSnapshot
 var bytes: ByteLimit
 let key = stateOffenderAt(owner, bytes)

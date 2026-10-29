@@ -3,8 +3,13 @@
 
 ## Explicit actual executed-namespace current refresh stages with independent resource policies.
 import ./[current_namespace_transition_context, current_identity_context, current_logical_refresh_context]
-import ../../src/state/[current_identities, current_request_keys, current_refresh_plan,
-    current_logical_refresh, supplied_services, current_logical, accumulation_current_update]
+import ../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../src/state/current/refresh/plan as current_refresh_plan
+import ../../src/state/current/logical/refresh as current_logical_refresh
+import ../../src/state/supplied/services as supplied_services
+import ../../src/state/current/logical as current_logical
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/bounded
 type NamespaceRefreshStages* = object ## Test descriptors hold only genuine successful opaque stages; no raw mutable declaration grants producer authority.
   identities*: PreservedCurrentIdentities

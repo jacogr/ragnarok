@@ -3,8 +3,12 @@
 
 ## Bounded larger synthetic fixtures use distinct four-byte key/value identities without changing runtime policy.
 import std/assertions
-import ../../src/storage/[node_repository, record_codec, node_records, full_state_trie]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/record_codec
+import ../../src/storage/node/records as node_records
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc deploymentKey*(index: int): StateKey =
   ## Big-endian four-byte identities cross the old two-byte boundary while preserving sorted map order.

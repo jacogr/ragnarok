@@ -4,7 +4,7 @@
 # @@Verification={"group": "nominal", "expected": "StateRoot", "early": ["decodeAccountCheckpoint(", "[2] expected: StateRoot but got: seq"]}
 
 ## Arbitrary bytes cannot substitute for an independently selected root identity.
-import ../../../src/state/account_checkpoint
-import ../../../src/codec/state_composition
+import ../../../src/state/account/checkpoint as account_checkpoint
+import ../../../src/codec/state/composition as state_composition
 let bytes: seq[byte] = @[]
 discard decodeAccountCheckpoint(bytes, bytes, [], StateProfile(), AccountCheckpointLimits())

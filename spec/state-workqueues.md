@@ -8,7 +8,7 @@ toolchain revision changes. Existing chapter-13 and crypto parity gates remain u
 
 ## Exact schema and source types
 
-`src/codec/state_workqueues.nim` provides `readyStateEntry` / `decodeReadyState` for C(14), and
+`src/codec/state/workqueues.nim` provides `readyStateEntry` / `decodeReadyState` for C(14), and
 `accumulatedStateEntry` / `decodeAccumulatedState` for C(15):
 
 ```text

@@ -4,8 +4,12 @@
 ## Independent dictionary expectations qualify sparse full-domain supervisor resolution and batch lookup across all declaration orders.
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, fixed_arithmetic_corpus]
-import ../../../src/state/[inventory, service_directory, service_supervision, supervision_table]
-import ../../../src/codec/[bounded, state_accounts, state_composition]
+import ../../../src/state/inventory
+import ../../../src/state/service/[directory as service_directory,
+    supervision as service_supervision]
+import ../../../src/state/supervision_table
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashes only after each independent complete directory is built.

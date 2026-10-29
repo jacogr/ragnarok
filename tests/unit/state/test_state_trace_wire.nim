@@ -3,8 +3,10 @@
 
 ## Published RawState prefix framing, detached ownership and atomic resource/root refusals.
 import std/[assertions, syncio]
-import ../../../src/state/[trace_state, store]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/state/trace/state as trace_state
+import ../../../src/state/store
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 proc policy(): StateStoreLimits =
   ## Tiny independent limits isolate descriptor, value and trie refusal paths.

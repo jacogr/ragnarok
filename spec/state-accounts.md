@@ -8,7 +8,7 @@ the implemented current schema; historical release evidence below remains separa
 
 ## Exact version-zero schema
 
-`src/codec/state_accounts.nim` provides `serviceMetadataEntry(service, metadata, maxBytes)` and
+`src/codec/state/accounts.nim` provides `serviceMetadataEntry(service, metadata, maxBytes)` and
 `decodeServiceMetadata(input, maxBytes)`. The entry key uses existing `chapterServiceKey`:
 255 followed by the four little-endian service-ID octets at key positions 1,3,5,7, with all other
 key octets zero. The source service ID is **not** encoded again in the metadata payload:

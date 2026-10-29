@@ -4,8 +4,11 @@
 ## Code reads derive identity from authenticated metadata instead of accepting a detached replacement hash.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
 proc main() =
   ## Correct content at an unrelated code hash never substitutes for the selected account's code.

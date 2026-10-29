@@ -3,8 +3,11 @@
 
 ## A typed C(11) read keeps missing evidence, authenticated absence and invalid bytes separate.
 import std/[assertions, syncio]
-import ../../../src/state/[trie_proof, proof_view]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
+import ../../../src/state/trie_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole]
 proc view(entries: seq[StateEntry], query: StateKey): ProofView =
   ## Independently commit a complete authored map before preparing and verifying the selected witness.
   let maps = StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(5),

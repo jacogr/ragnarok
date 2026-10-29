@@ -5,9 +5,13 @@
 # @@Verification={"arc":"application_collected_supplied_state_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context, arc_evidence]
-import ../../../src/app/[collected_supplied_plan, collected_supplied_state, chain]
-import ../../../src/state/[current_logical, current_state, supplied_logical_inventory, inventory,
-    manifest, store, accumulation_current_update]
+import ../../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../../src/app/chain
+import ../../../src/state/current/[logical as current_logical, state as current_state]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fail actual complete matching only after original plan and genuine worker collection are finished.

@@ -4,8 +4,12 @@
 ## Prepare genuine combined code/state and verify final manifests before the production execution path runs.
 
 import std/assertions
-import ../../src/state/[input_refinement, import_inputs, import_justification, extrinsic_inputs, store]
-import ../../src/codec/[bounded, composite, work_package, work_report]
+import ../../src/state/input_refinement
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
+import ../../src/state/[extrinsic_inputs, store]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, report as work_report]
 import ../../src/pvm/host_fetch
 import ../../src/chain/parameters
 import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_results,

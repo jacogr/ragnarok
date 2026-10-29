@@ -31,7 +31,7 @@ uint64 range supported by the pinned general-natural encoder. The codec does
 not check state-dependent limits, code availability or hash validity.
 
 Public functions are `encodeDigestBorrowed` and `decodeDigestBorrowed` /
-`decode_digest_borrowed`, in `src/codec/work_digest.nim`.
+`decode_digest_borrowed`, in `src/codec/work/digest.nim`.
 `RefineLoad` groups the five typed metrics. The full tuple is
 `WorkDigest`.
 

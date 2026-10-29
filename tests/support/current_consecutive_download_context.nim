@@ -4,7 +4,7 @@
 ## Explicit consecutive current policies and independent signed-block framing serve real command workloads.
 import std/assertions
 import ../../src/app/candidate
-import ../../src/quic/current_block_download_loop
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
 import ../../src/codec/[bounded, block_codec]
 import ./[current_consecutive_context, current_download_command_context]
 

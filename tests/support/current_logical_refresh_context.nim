@@ -3,7 +3,9 @@
 
 ## Explicit full current logical continuation policy and genuine nonempty frozen source.
 import ./[current_refresh_context, parent_globals_context, supplied_logical_context]
-import ../../src/state/[current_logical_refresh, current_refresh_plan, current_profile]
+import ../../src/state/current/logical/refresh as current_logical_refresh
+import ../../src/state/current/refresh/plan as current_refresh_plan
+import ../../src/state/current/profile as current_profile
 import ../../src/codec/[bounded, report_owned]
 const currentLogicalRefreshTestLimits* = CurrentLogicalRefreshLimits(profile: CurrentProfileLimits(
     validators: ElementLimit(1024), bytes: ByteLimit(65536)), globals: parentGlobalsTestLimits,

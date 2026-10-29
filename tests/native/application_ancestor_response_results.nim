@@ -3,7 +3,7 @@
 
 ## Runtime contract witnesses use the same extractors for invalid and actual successful owners.
 import std/[assertions, cmdline]
-import ../../src/app/ancestor_response
+import ../../src/app/ancestor/response as ancestor_response
 import ../../src/codec/[bounded, header, block_codec, tickets]
 
 proc extract(outcome: AncestorResponseResult[AncestorRequest]) =

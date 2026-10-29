@@ -4,7 +4,10 @@
 # @@Verification={"group": "nominal", "expected": "CheckedAccountFootprints", "early": ["observeServiceDeposit(", "[1] expected: CheckedAccountFootprints but got: StateInventory"]}
 
 ## Structurally complete inventory cannot substitute for checked dependent footprint evidence.
-import ../../../src/state/[service_deposit, account_deposit, service_directory, inventory]
-import ../../../src/codec/state_accounts
+import ../../../src/state/service/deposit as service_deposit
+import ../../../src/state/account/deposit as account_deposit
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/inventory
+import ../../../src/codec/state/accounts as state_accounts
 discard observeServiceDeposit(default(StateInventory), default(StateServiceDirectory), ServiceIndex(
     7), AccountDepositSchedule())

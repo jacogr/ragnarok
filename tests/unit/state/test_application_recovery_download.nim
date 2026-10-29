@@ -4,12 +4,16 @@
 ## Real pinned TLS acquisition executes/adopts a signed child only after independently trusted checkpoint startup succeeds.
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../../src/app/[services, options, download_command, download_policy, download_schedule,
-  block_download,
-  block_input, checkpoint_identity]
-import ../../../src/quic/[block_download_loop, block_download_stream]
+import ../../../src/app/[services, options]
+import ../../../src/app/download/[command as download_command, policy as download_policy,
+    schedule as download_schedule]
+import "../../../src/app/block/download" as block_download
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/checkpoint/identity as checkpoint_identity
+import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/quic/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/chain/[genesis, provider]
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context

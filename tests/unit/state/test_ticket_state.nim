@@ -10,8 +10,11 @@
 # @@Verification={"arc": "ticket_state_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[ticket_state, ticket_admission, entropy, store]
-import ../../../src/codec/[state_safrole, state_consensus, state_layout, state_trie, tickets, bounded]
+import ../../../src/state/ticket/[state as ticket_state, admission as ticket_admission]
+import ../../../src/state/[entropy, store]
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    layout as state_layout, trie as state_trie]
+import ../../../src/codec/[tickets, bounded]
 import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Refuse only test-library Blake hashes; maintained production primitives are unchanged.

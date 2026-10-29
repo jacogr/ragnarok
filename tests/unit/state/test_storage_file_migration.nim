@@ -5,9 +5,12 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[managed_repository, managed_manifest, file_repository, file_migration,
-  node_repository, node_records, full_state_trie, database_identity]
-import ../../../src/codec/state_trie
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/file/[repository as file_repository, migration as file_migration]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/codec/state/trie as state_trie
 proc main() {.raises.} =
   ## Two independent owners continue after a bounded copy; failed identity/existing-target attempts preserve both.
   let limits = managedStorageLimits()

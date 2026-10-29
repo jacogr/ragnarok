@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "unavailableSlot"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 let history = default(RequestHistory)
 discard history.unavailableSlot

@@ -5,7 +5,7 @@
 import std/cmdline
 import ../../src/app/chain
 import ../../src/rpc/server
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 var owner = default(ApplicationChain)
 var rpc = default(Server)
 let prepared = default(PreparedCurrentChainUpdate)

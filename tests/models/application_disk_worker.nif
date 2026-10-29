@@ -4,7 +4,7 @@ One host, one capacity-one disk worker, one admitted full/light publication, ret
 phase 0 Idle, 1 Queued, 2 Executing, 3 Done; pc 0 waiting, 1 IO, 2 retired, 3 exited.
 io/receipt 0 absent, 1 NotExecuted, 2 success, 3 uncertain failure. io is history.
 Hypothesis: shutdown after IO entry loses its receipt or ends a still-active graph lease.
-Source: src/app/disk_worker.nim submit/run/collect/close. No disk contents or crash recovery.#
+Source: src/app/disk/worker.nim submit/run/collect/close. No disk contents or crash recovery.#
   (variables :phase.0. :pc.0. :stop.0. :leased.0. :used.0. :io.0. :receipt.0.)
   (assign Mut.0. 0)
   (assign Witness.0. (false))

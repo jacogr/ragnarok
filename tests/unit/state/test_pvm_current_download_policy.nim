@@ -5,11 +5,16 @@
 ## Every current resource leaf is mandatory; canonical numeric/boolean decoding stays atomic and decoded policies drive genuine current preparation.
 import std/[assertions, syncio, envvars, strutils]
 import std/posix/posix
-import ../../../src/app/[current_download_policy, download_policy, current_block_input, candidate, chain,
-  download_schedule]
-import ../../../src/quic/[current_block_download_loop, current_block_download_stream]
+import ../../../src/app/current/download/policy as current_download_policy
+import ../../../src/app/download/policy as download_policy
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/[candidate, chain]
+import ../../../src/app/download/schedule as download_schedule
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/state/[accumulation_current_update, accumulation_current_consensus]
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
 import ../../support/[current_services_disk_samples, accumulation_current_chain_context,
   accumulation_current_candidate_context, arc_evidence]
 proc policy(): CurrentDownloadLoopLimits =

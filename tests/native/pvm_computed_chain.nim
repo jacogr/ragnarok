@@ -4,7 +4,8 @@
 ## Strict optimized computed-chain result/receipt contracts with genuine success and real late-stage failures.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_chain, computed_composition, store]
+import ../../src/state/computed/[chain as computed_chain, composition as computed_composition]
+import ../../src/state/store
 import ../../src/chain/[genesis, provider, parameters]
 import ../support/[pvm_computed_chain, pvm_computed_state_publication]
 

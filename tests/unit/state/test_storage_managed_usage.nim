@@ -5,9 +5,12 @@
 # @@Verification={"arc":"storage_managed_usage_arc_release"}
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/[storage_samples, managed_storage_samples, arc_evidence]
-import ../../../src/storage/[managed_repository, managed_manifest, node_repository,
-  node_records, full_state_trie, database_identity, file_errors]
-import ../../../src/codec/state_trie
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/state/trie as state_trie
 proc sample(repository: ManagedRepository) =
   ## Scalar usage queries allocate no detached graphs or buffers.
   let usage = repository.usage.value

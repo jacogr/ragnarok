@@ -5,8 +5,10 @@
 # @@Verification={"arc": "state_preimage_linkage_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
-import ../../../src/state/[preimage_linkage, inventory, manifest, store]
-import ../../../src/codec/[bounded, state_requests, state_service_values]
+import ../../../src/state/preimage/linkage as preimage_linkage
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[requests as state_requests, service_values as state_service_values]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after independent fixture capture.

@@ -4,12 +4,15 @@
 ## Read-only verification after recovery preserves distinct actual outcomes while canonical execution exclusion remains held.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[services, chain, block_input, preparation_worker, checkpoint_identity,
-  checkpoint_transfer, checkpoint_worker, checkpoint_file]
+import ../../../src/app/[services, chain]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/preparation_worker
+import ../../../src/app/checkpoint/[identity as checkpoint_identity,
+    transfer as checkpoint_transfer, worker as checkpoint_worker, file as checkpoint_file]
 import ../../../src/rpc/server
 import ../../../src/chain/genesis
 import ../../../src/codec/[bounded, report_owned]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/application_candidate_context as candidate_context
 import ../../support/[application_recovery_execution, application_checkpoint_context]
 const ChainPath = "application-recovery-verify-chain"

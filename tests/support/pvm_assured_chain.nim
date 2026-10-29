@@ -4,8 +4,13 @@
 ## Genuine assured composition and reconstructed predecessor view reuse prepared publication without guest replay.
 
 import std/assertions
-import ../../src/state/[assured_composition, assured_execution, assured_queue, computed_assurances,
-  computed_chain, computed_state_publication, computed_composition, accumulation_finalization, store]
+import ../../src/state/assured/[composition as assured_composition, execution as assured_execution,
+    queue as assured_queue]
+import ../../src/state/computed/[assurances as computed_assurances, chain as computed_chain]
+import ../../src/state/computed/state/publication as computed_state_publication
+import ../../src/state/computed/composition as computed_composition
+import ../../src/state/accumulation/finalization as accumulation_finalization
+import ../../src/state/store
 import ../../src/chain/[genesis, provider]
 import ./[pvm_assured_composition, pvm_computed_chain, pvm_computed_state_publication]
 

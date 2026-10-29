@@ -4,8 +4,10 @@
 ## Request readers enforce the adopted namespace domain and exact canonical history framing.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values, requests as state_requests]
 proc main() =
   ## Maximum admitted length stays a scalar selector and never requests length-sized allocation.
   let service = ServiceIndex(7)

@@ -8,7 +8,9 @@
 ## rejection diagnostic and exit status.
 
 import std/cmdline
-import ../../src/state/[report_transition, block_transition, store]
+import ../../src/state/report/transition as report_transition
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/store
 import ../../src/codec/[block_codec, header]
 var state = default(StateStore)
 let outcome = if paramStr(1) == "error" or paramStr(1) == "nested":

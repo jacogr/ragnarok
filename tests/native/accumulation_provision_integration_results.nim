@@ -4,7 +4,9 @@
 ## Default/refused union and fulfillment results expose no private payload or partially applied map.
 
 import std/cmdline
-import ../../src/state/[accumulation_provisions, accumulation_effects, preimages, store]
+import ../../src/state/accumulation/[provisions as accumulation_provisions,
+    effects as accumulation_effects]
+import ../../src/state/[preimages, store]
 import ../../src/codec/[bounded, composite, owned, header]
 import ../support/accumulation_provision_integration
 

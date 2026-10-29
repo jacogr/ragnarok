@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Planned restoration discriminators and payloads remain private.
-import ../../../src/state/planned_review_checkpoint
+import ../../../src/state/planned/review_checkpoint as planned_review_checkpoint
 var value = default(PlannedReviewCheckpointResult)
 discard value.status

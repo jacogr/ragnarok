@@ -22,7 +22,7 @@ Preserve each row's own last-tested identity rather than silently refreshing his
   [upgrade qualification](nimony-nightly-2026-10-26.md), and permanent
   [sequence-slice suite](../tests/unit/codec/test_nimony_sequence_slices.nim).
 - NIM-002: [report and upstream resolution](nimony-reports-2026-10-27/integer-generic.md);
-  concrete overloads in [JSON writer](../src/lib/json_writer.nim).
+  concrete overloads in [JSON writer](../src/lib/json/writer.nim).
 - NIM-003: [report and passing alternative](nimony-reports-2026-10-27/nullable-var-call.md);
   [callback consumer](../tests/support/block_download_transport.nim). The October 28 archive passes the original probe, control and affected native download fixture.
   The guarded fixture annotations are removed and a focused native regression is retained; other explicit

@@ -4,9 +4,11 @@
 ## Managed snapshots bind selected generation/root, retained complete graphs and exact context bytes.
 import std/[assertions, syncio]
 import ../../support/storage_samples
-import ../../../src/storage/[node_repository, node_records, full_state_trie, database_identity,
-    snapshot_codec, record_codec]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/[database_identity, snapshot_codec, record_codec]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 import ../../../src/crypto/primitives
 proc reseal(bytes: var seq[byte]) =
   ## A valid outer checksum cannot grant authority to corrupt records or false graph metadata.

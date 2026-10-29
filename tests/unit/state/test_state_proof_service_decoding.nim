@@ -3,8 +3,11 @@
 
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 proc main() =
   ## A serialized proof carries no authority until the receiving root and exact query plan both agree.
   let service = ServiceIndex(7)

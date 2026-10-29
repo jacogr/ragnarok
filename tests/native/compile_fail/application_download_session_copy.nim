@@ -3,7 +3,7 @@
 
 ## Composite callback/reception ownership cannot be duplicated.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <BlockDownloadSession>", "build_name": "application-download-session-copy"}
-import ../../../src/quic/block_download_session
+import "../../../src/quic/block/download/session" as block_download_session
 var original = default(BlockDownloadSession)
 var duplicate = original
 discard original.busy

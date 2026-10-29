@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "StatisticsServiceIndex"}
 
-import ../../../src/codec/state_statistics
+import ../../../src/codec/state/statistics as state_statistics
 let owner = default(ActivitySnapshot)
 discard coreActivityAt(owner, StatisticsServiceIndex(0))

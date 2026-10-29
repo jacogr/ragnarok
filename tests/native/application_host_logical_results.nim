@@ -3,9 +3,17 @@
 
 ## Strict guarded host logical result extraction with a genuine complete native positive control.
 import std/[assertions, syncio, cmdline, envvars]
-import ../../src/app/[logical_seed, collected_update, collected_supplied_plan,
-    collected_supplied_state, logical_checkpoint, logical_proof, logical_review, proof_query]
-import ../../src/state/[parent_logical, current_logical, current_checkpoint, current_review, accumulation_current_update]
+import ../../src/app/logical/seed as logical_seed
+import ../../src/app/collected/update as collected_update
+import ../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../src/app/logical/[checkpoint as logical_checkpoint, proof as logical_proof,
+    review as logical_review]
+import ../../src/app/proof/query as proof_query
+import ../../src/state/parent/logical as parent_logical
+import ../../src/state/current/[logical as current_logical, checkpoint as current_checkpoint,
+    review as current_review]
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_supplied_context, parent_profile_context,
     parent_globals_context, supplied_logical_context, current_logical_proof_context, current_logical_review_context]

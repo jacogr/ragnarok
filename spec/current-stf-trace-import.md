@@ -3,7 +3,7 @@
 Pinned authority: GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and the
 unchanged published TraceStep schema at vectors `23061ae1f9b51171c01387e7dde0f15794c98e24`.
 
-`app/trace_import` bridges framed traces to ordinary authenticated current candidate
+`app/trace/import` bridges framed traces to ordinary authenticated current candidate
 preparation. The caller supplies the actual selected `ApplicationChain`, ancestry
 and candidate limits. The trace supplies neither a trusted parent nor Parameters.
 Before executing, the importer compares its entire advertised pre-state against the

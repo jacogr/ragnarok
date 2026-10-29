@@ -3,6 +3,6 @@
 
 ## Failed fuzz startup cannot expose a partially selected successful socket/backend configuration.
 # @@Verification={"group": "privacy", "expected": "config"}
-import ../../../src/app/fuzz_target
+import ../../../src/app/fuzz/target as fuzz_target
 let outcome = default(FuzzTargetResult)
 discard outcome.config

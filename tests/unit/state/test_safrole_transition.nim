@@ -10,10 +10,17 @@
 # @@Verification={"arc": "safrole_transition_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[safrole_transition, store, validator_state, ticket_admission,
-  sealer_schedule, safrole_markers, safrole_authentication, entropy]
-import ../../../src/codec/[state_safrole, state_consensus, state_disputes, state_layout,
-  state_trie, header, tickets, bounded]
+import ../../../src/state/safrole/transition as safrole_transition
+import ../../../src/state/store
+import ../../../src/state/validator/state as validator_state
+import ../../../src/state/ticket/admission as ticket_admission
+import ../../../src/state/sealer/schedule as sealer_schedule
+import ../../../src/state/safrole/[markers as safrole_markers,
+    authentication as safrole_authentication]
+import ../../../src/state/entropy
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    disputes as state_disputes, layout as state_layout, trie as state_trie]
+import ../../../src/codec/[header, tickets, bounded]
 from ../../../src/codec/disputes import OffenderKey
 import ../../support/[validator_rotation_fixture, arc_evidence]
 

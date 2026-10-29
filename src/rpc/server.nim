@@ -10,10 +10,12 @@ import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol, proof_requests]
 import ./light_source
-from ../codec/state_trie import StateRoot
+from ../codec/state/trie as state_trie import StateRoot
 import ../chain/[parameters, genesis, provider]
-import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization,
-  accumulation_publication, accumulation_current_update]
+import ../state/store
+import ../state/accumulation/[chain as accumulation_chain, completion as accumulation_completion,
+    finalization as accumulation_finalization, publication as accumulation_publication]
+import ../state/accumulation/current/update as accumulation_current_update
 
 const MaxConnections* = 8
 

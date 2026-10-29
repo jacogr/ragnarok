@@ -3,7 +3,7 @@
 
 ## Mutable scheduling plans cannot duplicate an outstanding attempt.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <DownloadSchedule>", "build_name": "application-download-schedule-copy"}
-import ../../../src/app/download_schedule
+import ../../../src/app/download/schedule as download_schedule
 var original = default(DownloadSchedule)
 var duplicate = original
 discard original.busy

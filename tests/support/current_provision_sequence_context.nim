@@ -6,7 +6,7 @@ import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[block_codec, report_owned, bounded, composite]
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ./[current_consecutive_context, current_preimage_sequence_context,
   accumulation_activity_context, accumulation_execution_context, pvm_accumulation_provision]
 

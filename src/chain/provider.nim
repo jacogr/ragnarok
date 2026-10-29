@@ -7,7 +7,7 @@
 ## finality only; old readers retain their view. An explicit positive window excludes the finalized anchor.
 
 import ./[genesis, reports, memory_history]
-import ../storage/history_index
+import ../storage/history/index as history_index
 import ../codec/[bounded, header, assurances]
 import ../crypto/primitives
 from ../state/store import sameStateSnapshot

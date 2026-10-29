@@ -4,8 +4,8 @@
 ## Default projections and refused results cannot expose rows, populations or partial epochs.
 
 import std/cmdline
-import ../../src/state/validator_projection
-import ../../src/codec/[state_statistics, state_safrole]
+import ../../src/state/validator/projection as validator_projection
+import ../../src/codec/state/[statistics as state_statistics, safrole as state_safrole]
 
 let argument = paramStr(1)
 let owner = default(ValidatorActivityProjection)

@@ -3,7 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Absence ownership and result storage stay private.
-import ../../../src/state/[accumulation_absent, accumulation_inputs, store]
+import ../../../src/state/accumulation/[absent as accumulation_absent,
+    inputs as accumulation_inputs]
+import ../../../src/state/store
 import ../../../src/codec/header
 let refused = finishAbsentAccumulation(default(PreparedAccumulationInputs), InvocationServiceIndex(
     0), default(StateStoreSnapshot), HeaderSlot(0))

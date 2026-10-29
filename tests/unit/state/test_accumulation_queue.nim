@@ -9,8 +9,15 @@
 # @@Verification={"arc": "accumulation_queue_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio, sequtils]
-import ../../../src/state/[accumulation_queue, report_admission, block_transition, availability, store]
-import ../../../src/codec/[bounded, state_workqueues, report_owned, owned, work_report, composite, header]
+import ../../../src/state/accumulation/queue as accumulation_queue
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/[availability, store]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/workqueues as state_workqueues
+import ../../../src/codec/[report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/[composite, header]
 import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Poison hashing only after genuine inputs exist, proving planning has no backend/write side effects.

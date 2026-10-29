@@ -8,7 +8,7 @@ select a gas-dependent prefix or publish execution-dependent state.
 
 ## Contract
 
-`src/state/accumulation_operands.nim` consumes the immutable priority projection from
+`src/state/accumulation/operands.nim` consumes the immutable priority projection from
 [queue planning](accumulation-queue.md) and an explicit nominal `AccumulationReportPrefix`.
 The prefix must be within the **accumulatable priority sequence**, not the raw edited queue;
 zero is a valid empty projection. The caller's choice does not certify gas affordability or execution.

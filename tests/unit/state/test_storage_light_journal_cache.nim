@@ -6,10 +6,18 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[arc_evidence, storage_io]
-import ../../../src/storage/[light_journal_cache, light_journal_replay, light_delta, light_snapshot,
-  light_file_cache, light_state_cache, state_proof, full_state_trie, database_identity,
-  managed_io, managed_manifest, file_errors, durability]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../../src/storage/light/[delta as light_delta, snapshot as light_snapshot,
+    file_cache as light_file_cache, state_cache as light_state_cache]
+import ../../../src/storage/state_proof
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/durability
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Prepared opaque appends require no provider calls; failed proof preparation never writes.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

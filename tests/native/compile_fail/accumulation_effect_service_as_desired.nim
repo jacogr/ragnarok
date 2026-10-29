@@ -4,7 +4,7 @@
 
 ## Reject a narrow existing service identity used as the full-width creation proposal domain.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 let proposal = AccumulationNewService(desired: ServiceIndex(7))
 discard proposal

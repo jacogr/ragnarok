@@ -3,6 +3,6 @@
 
 ## Raw file read alternatives cannot be retagged or extracted through unguarded byte storage.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 let outcome = default(BoundedFileResult)
 discard outcome.status

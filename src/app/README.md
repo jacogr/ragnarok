@@ -8,15 +8,15 @@ configuration rather than reading command-line globals themselves.
 
 | Modules | Responsibility |
 | --- | --- |
-| [`cli_defaults.nim`](cli_defaults.nim), [`cli_catalog.nim`](cli_catalog.nim), [`cli_commands.nim`](cli_commands.nim), [`cli_help.nim`](cli_help.nim) | Shared defaults, named command grammar and grouped [CLI help](../../docs/cli.md) |
+| [`cli/defaults.nim`](cli/defaults.nim), [`cli/catalog.nim`](cli/catalog.nim), [`cli/commands.nim`](cli/commands.nim), [`cli/help.nim`](cli/help.nim) | Shared defaults, named command grammar and grouped [CLI help](../../docs/cli.md) |
 | [`node_logging.nim`](node_logging.nim), [`sync_logging.nim`](sync_logging.nim) | Runtime identity, service endpoints and copied sync/readiness observations through the shared async logger |
 | [`startup.nim`](startup.nim) | Provision persistent default TLS identity and selected storage parents after CLI validation |
 | [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, MCP, UI and optional canonical state through startup and shutdown |
 | [`chain.nim`](chain.nim), [`candidate.nim`](candidate.nim), [`handoff.nim`](handoff.nim) | Retain the selected complete-state head, prepare finalized candidates and acknowledge deferred adoption |
-| [`block_input.nim`](block_input.nim), [`block_download.nim`](block_download.nim) | Bound received block bytes and hand them to explicit preparation outside transport callbacks |
-| [`download_command.nim`](download_command.nim), `download_policy*`, [`download_schedule.nim`](download_schedule.nim) | Configure the one-child download command, explicit resource budgets and bounded peer rotation |
+| [`block/input.nim`](block/input.nim), [`block/download.nim`](block/download.nim) | Bound received block bytes and hand them to explicit preparation outside transport callbacks |
+| [`download/command.nim`](download/command.nim), `download/policy.nim` and its field include, [`download/schedule.nim`](download/schedule.nim) | Configure the one-child download command, explicit resource budgets and bounded peer rotation |
 | [`preparation_worker.nim`](preparation_worker.nim) | Own one execution worker and its exclusive input/chain lease through collection or joined shutdown |
-| `checkpoint_*` | Capture detached application envelopes, bound file I/O and coordinate checkpoint publication workers |
+| `checkpoint/` | Capture detached application envelopes, bound file I/O and coordinate checkpoint publication workers |
 
 The development proof peer accepts `server`, `client`, retained `mesh` and explicit `download`
 commands. Run `build/ragnarok --help` after `make`; the [networking guide](../../docs/networking.md)
@@ -33,9 +33,9 @@ The [application contract](../../spec/application.md), [chain contract](../../sp
 [checkpoint contract](../../spec/application-checkpoint.md) record exact ownership, verification
 and remaining integration boundaries.
 
-[`ancestor_response.nim`](ancestor_response.nim) validates bounded descending block
+[`ancestor/response.nim`](ancestor/response.nim) validates bounded descending block
 responses against a known child's exact sealed parent chain;
-[`ancestor_receiver.nim`](ancestor_receiver.nim) owns fragmented E4 bytes and both
+[`ancestor/receiver.nim`](ancestor/receiver.nim) owns fragmented E4 bytes and both
 FIN gates. The download command can extend local/file inputs with explicit
 `--download-remote-ancestors COUNT` context before child requests. See the
 [remote acquisition contract](../../spec/application-remote-ancestors.md) and

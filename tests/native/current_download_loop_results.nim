@@ -3,8 +3,11 @@
 
 ## Current adoption/ancestry extraction and explicit Services-borrow retirement remain strict contracts, with an actual positive close control.
 import std/[cmdline, syncio, assertions]
-import ../../src/quic/[current_block_download_loop, current_block_download_stream]
-import ../../src/app/[services, options, download_schedule, current_block_input]
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../src/app/[services, options]
+import ../../src/app/download/schedule as download_schedule
+import "../../src/app/current/block/input" as current_block_input
 import ../../src/codec/[bounded, report_owned]
 import ../support/[accumulation_current_chain_context, current_application_context]
 proc lifecycle(mode: string) {.raises.} =

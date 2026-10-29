@@ -5,10 +5,14 @@
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io, storage_allocations]
-import ../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
-  managed_repository,
-  database_identity, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/managed/repository as managed_repository
+import ../../src/storage/database_identity
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc elapsed(start: MonoTime): int64 =
   ## Positive monotonic nanoseconds describe only the requested public API operation batch.

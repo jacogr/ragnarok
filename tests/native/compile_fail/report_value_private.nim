@@ -8,6 +8,8 @@
 
 # @@Verification={"group": "privacy", "expected": "decodedValue"}
 
-import ../../../src/codec/[composite, work_report, report_owned]
+import ../../../src/codec/composite
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/report_owned
 var value = default(ReportResult)
 echo value.decodedValue.core

@@ -4,9 +4,10 @@
 ## Authenticated optional assignments retain nested guarantee/report lifetime and separate registration time.
 import std/[assertions, syncio]
 import ../../support/[proof_global_helpers, proof_global_report]
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, guarantees, state_availability, state_layout,
-    state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances, guarantees]
+import ../../../src/codec/state/[availability as state_availability, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 proc main() {.raises.} =
   ## Cover present and absent core slots plus independently authenticated malformed outer framing.
   let config = AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(2),

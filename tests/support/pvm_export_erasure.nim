@@ -3,9 +3,12 @@
 
 ## Execute original normalized export cases before constructing their bundle erasure owner.
 
-import ../../src/state/[bundle_erasure, erasure_layout, erasure_words, auditable_bundle,
-    input_refinement, export_erasure]
-import ../../src/codec/[bounded, work_report]
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/[auditable_bundle, input_refinement]
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/codec/bounded
+import ../../src/codec/work/report as work_report
 import ./[pvm_input_refinement, pvm_report_results, pvm_export_commitment, pvm_refinement_outcome]
 
 proc exportErasureLimits*(): ExportErasureLimits =

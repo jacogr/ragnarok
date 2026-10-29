@@ -4,7 +4,8 @@
 
 ## Refuse substitution across finalized-source and nominal statistics-ordinal boundaries.
 
-import ../../../src/state/[accumulation_statistics, accumulation_reentry]
+import ../../../src/state/accumulation/[statistics as accumulation_statistics,
+    reentry as accumulation_reentry]
 var source: CompletedAccumulationReentry
 var limits: AccumulationStatisticsLimits
 discard prepareAccumulationStatistics(source, limits)

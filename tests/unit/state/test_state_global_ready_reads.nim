@@ -4,8 +4,10 @@
 ## Ready-ring evidence retains full report children and owner-bound dependency sets with exact framing.
 import std/[assertions, syncio]
 import ../../support/[proof_global_helpers, proof_global_report]
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_workqueues, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[workqueues as state_workqueues, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 proc main() {.raises.} =
   ## Validate one nonempty ready slot and all independent child/outer resource policies.
   let config = WorkQueueConfig(epochSlots: EpochSlots(2), cores: CoreCount(2),

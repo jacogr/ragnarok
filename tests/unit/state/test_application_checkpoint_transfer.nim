@@ -6,9 +6,11 @@
 ## Detached envelopes preserve sole ownership, explicit moved-source reset and exact publication after source retirement.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_transfer, checkpoint_codec, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[transfer as checkpoint_transfer, codec as checkpoint_codec,
+    identity as checkpoint_identity]
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-transfer"
 proc detached(): PreparedApplicationCheckpoint {.raises.} =

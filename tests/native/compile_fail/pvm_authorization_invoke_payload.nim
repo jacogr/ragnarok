@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/authorization_invocation
+import ../../../src/state/authorization/invocation as authorization_invocation
 var result: AuthorizationInvocationResult[AuthorizationInvocation]
 discard result.completed

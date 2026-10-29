@@ -4,5 +4,5 @@
 
 ## Reject raw access to the private self-key proof backing.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 discard default(AccumulationEffectContext).accountKeys

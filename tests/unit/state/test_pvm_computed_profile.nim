@@ -6,9 +6,12 @@
 ## Complete original configured tuple, exact map/parent identity, fixed projections and immutable lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_profile, computed_lookup, computed_recent, store]
+import ../../../src/state/computed/[profile as computed_profile, lookup as computed_lookup,
+    recent as computed_recent]
+import ../../../src/state/store
 import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/[header, state_trie]
+import ../../../src/codec/header
+import ../../../src/codec/state/trie as state_trie
 import ../../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_lookup_vectors,
   pvm_computed_state, arc_evidence]
 

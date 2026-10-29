@@ -6,9 +6,14 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_deposit_context, economic_profile_context, arc_evidence]
 import ../../../src/chain/parameters
-import ../../../src/state/[economics_table, economic_profile, service_deposit, account_deposit,
-    footprint_audit, service_directory, inventory]
-import ../../../src/codec/[bounded, state_accounts]
+import ../../../src/state/[economics_table, economic_profile]
+import ../../../src/state/service/deposit as service_deposit
+import ../../../src/state/account/deposit as account_deposit
+import ../../../src/state/footprint_audit
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/inventory
+import ../../../src/codec/bounded
+import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after real source/evidence construction.

@@ -4,8 +4,12 @@
 ## Shared genuine signed execution context crosses encoded checkpoint recovery before Services owns its fresh canonical graph.
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
-import ../../src/app/[chain, services, options, checkpoint_identity, checkpoint_codec,
-    checkpoint_recovery, block_input, preparation_worker, checkpoint_worker]
+import ../../src/app/[chain, services, options]
+import ../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
+import "../../src/app/block/input" as block_input
+import ../../src/app/preparation_worker
+import ../../src/app/checkpoint/worker as checkpoint_worker
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../src/state/store

@@ -5,8 +5,10 @@
 # @@Verification={"arc":"storage_light_borrowed_bytes_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[light_snapshot, light_state_cache, state_proof, database_identity]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../../src/storage/[state_proof, database_identity]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc key(first: byte): StateKey =
   ## Two fixed query identities retain authenticated empty-root absence in a nonempty canonical image.
   var raw = default(array[31, byte])

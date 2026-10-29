@@ -4,7 +4,8 @@
 ## Default/refused continuation plans cannot expose partial prefix facts or retained report/source owners.
 
 import std/cmdline
-import ../../src/state/[accumulation_continuation, accumulation_execution]
+import ../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationContinuation)

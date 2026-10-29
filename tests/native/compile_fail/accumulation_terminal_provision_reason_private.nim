@@ -4,6 +4,6 @@
 
 ## Private terminal plan/result storage cannot bypass guarded extraction.
 
-import ../../../src/state/accumulation_terminal_provisions
+import ../../../src/state/accumulation/terminal_provisions as accumulation_terminal_provisions
 var result: AccumulationTerminalProvisionResult[PreparedTerminalAccumulationProvisions]
 discard result.normalizationReason

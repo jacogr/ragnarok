@@ -5,7 +5,9 @@
 ## Current chain result representation stays private.
 import ../../../src/chain/provider
 import ../../../src/codec/bounded
-import ../../../src/state/[accumulation_current_chain, accumulation_current_consensus, store]
+import ../../../src/state/accumulation/current/[chain as accumulation_current_chain,
+    consensus as accumulation_current_consensus]
+import ../../../src/state/store
 var state = default(StateStore)
 var view = default(ChainView)
 let refused = applyCurrentAccumulationChain(state, view, default(

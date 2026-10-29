@@ -1,6 +1,6 @@
 # Proof-backed service reads
 
-Use `state/proof_service` when a reader has authenticated partial evidence rather
+Use `state/proof/service` when a reader has authenticated partial evidence rather
 than a complete execution map. Current supervisor-aware account metadata and the
 bounded request namespace follow unreleased Gray Paper commit
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`; VERSION remains 0.8.0.

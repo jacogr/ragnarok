@@ -7,10 +7,16 @@ import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_review_checkpoint_context,
     economic_profile_context, arc_evidence]
 import ../../../src/chain/parameters
-import ../../../src/state/[planned_review_checkpoint, account_review_plan, account_review,
-  validated_checkpoint,
-  checkpoint, store, inventory, manifest, economic_profile, service_directory, economics_table, preimage_content]
-import ../../../src/codec/[bounded, state_trie, state_composition, state_accounts]
+import ../../../src/state/planned/review_checkpoint as planned_review_checkpoint
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/account/review as account_review
+import ../../../src/state/[validated_checkpoint, checkpoint, store, inventory, manifest, economic_profile]
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/economics_table
+import ../../../src/state/preimage/content as preimage_content
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, composition as state_composition,
+    accounts as state_accounts]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer work and optionally refuse all hash operations.

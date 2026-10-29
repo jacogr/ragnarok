@@ -5,12 +5,21 @@
 ## Genuine continuation bootstraps bind account/input identity and posterior block entropy through execution.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_continuation_invocation, accumulation_continuation_inputs,
-  accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
-  accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine,
-  accumulation_dispatch, accumulation_outcome, report_admission, block_transition, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, work_digest, state_workqueues,
-  state_safrole, state_layout, c2_records]
+import ../../../src/state/accumulation/continuation/[
+    invocation as accumulation_continuation_invocation, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, queue as accumulation_queue,
+    inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, header, report_owned]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/[workqueues as state_workqueues, safrole as state_safrole,
+    layout as state_layout]
+import ../../../src/codec/c2_records
 import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../support/[accumulation_execution_context, accumulation_batch_context,
   pvm_accumulation_context, report_context, arc_evidence]

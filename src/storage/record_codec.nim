@@ -5,8 +5,9 @@
 ## Record validation is local integrity, not complete graph verification or chain authority.
 
 import std/[algorithm, assertions]
-import ./node_records
-import ../codec/[state_trie, state_layout, bounded]
+import ./node/records as node_records
+import ../codec/state/[trie as state_trie, layout as state_layout]
+import ../codec/bounded
 
 const
   CollectionMagic = "RAGNAROK-RECORDS-V1\n"

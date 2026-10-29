@@ -11,8 +11,11 @@
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[guarantee_credentials, guarantors]
-import ../../../src/codec/[guarantees, assurances, bounded, state_safrole, header, disputes,
-  report_owned, owned, work_report, composite]
+import ../../../src/codec/[guarantees, assurances, bounded]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[header, disputes, report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/composite
 import ../../../src/crypto/[primitives, guarantee]
 import ../../support/arc_evidence
 

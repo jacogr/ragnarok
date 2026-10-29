@@ -142,7 +142,7 @@ the caller through `PublishedUnsynced`; recovery policy follows separately.
 
 ## Shared atomic byte publication
 
-`src/lib/atomic_file.nim` owns the common synchronous file-sync/rename/directory-sync
+`src/lib/atomic/file.nim` owns the common synchronous file-sync/rename/directory-sync
 sequence with an explicit byte ceiling and exhaustively typed outcomes. It writes
 exact raw bytes, including an empty file, without interpreting state, roots or
 control metadata. Borrowed input remains stable for the call. The checkpoint
@@ -191,7 +191,7 @@ privacy, lifecycle and actual lowering checks cover both resource types.
 
 ## Local generation/head records
 
-`checkpoint_head.nim` defines exact `RAGNAROK-HEAD-V1\n`, uint64 little-endian
+`src/state/checkpoint/head.nim` defines exact `RAGNAROK-HEAD-V1\n`, uint64 little-endian
 generation, one-byte slot (0/1), complete root (32 bytes), then Blake2b-256 of all
 preceding bytes. The fixed extent is 89 bytes. This is local control metadata, not
 JAM state or a protocol timeslot. Unknown versions, other slots, prefixes, trailers

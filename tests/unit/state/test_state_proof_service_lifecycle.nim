@@ -5,8 +5,12 @@
 # @@Verification={"arc": "state_proof_service_lifecycle_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[proof_service_helpers, arc_evidence]
-import ../../../src/state/[store, snapshot_proof, proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
+import ../../../src/state/[store, snapshot_proof]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Restore the real primitive after each deliberately refused operation.

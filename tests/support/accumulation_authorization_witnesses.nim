@@ -4,16 +4,20 @@
 ## Genuine signed sources and actual assign execution prove original-pool/incoming-use/posterior-queue binding.
 
 import std/assertions
-import ../../src/state/[accumulation_authorization, accumulation_preimages, accumulation_activity,
-  accumulation_validators, accumulation_times, accumulation_statistics, accumulation_consensus,
-  accumulation_finalization,
-  accumulation_outputs, accumulation_batch, accumulation_context, accumulation_effects,
-  accumulation_dispatch,
-  accumulation_execution, accumulation_round,
-  accumulation_continuation,
-  accumulation_continuation_inputs, accumulation_continuation_execution, authorization, store]
-import ../../src/codec/[bounded, assurances, report_owned, state_authorization, state_outputs,
-    state_layout, state_trie]
+import ../../src/state/accumulation/[authorization as accumulation_authorization,
+    preimages as accumulation_preimages, activity as accumulation_activity,
+    validators as accumulation_validators, times as accumulation_times,
+    statistics as accumulation_statistics, consensus as accumulation_consensus,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    batch as accumulation_batch, context as accumulation_context, effects as accumulation_effects,
+    dispatch as accumulation_dispatch, execution as accumulation_execution,
+    round as accumulation_round, continuation as accumulation_continuation]
+import ../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    execution as accumulation_continuation_execution]
+import ../../src/state/[authorization, store]
+import ../../src/codec/[bounded, assurances, report_owned]
+import ../../src/codec/state/[authorization as state_authorization, outputs as state_outputs,
+    layout as state_layout, trie as state_trie]
 import ../../src/pvm/machine
 import ../../src/chain/parameters
 import ./[report_context, block_activity_context, accumulation_execution_context,

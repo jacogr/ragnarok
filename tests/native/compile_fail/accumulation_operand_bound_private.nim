@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/accumulation_operands
+import ../../../src/state/accumulation/operands as accumulation_operands
 let owner = default(BlockAccumulationOperands)
 discard owner.data # Private result/owner data cannot be read or forged.

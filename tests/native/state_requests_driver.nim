@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, syncio, strutils, parseutils]
-import ../../src/codec/[state_requests, state_trie, bounded]
+import ../../src/codec/state/[requests as state_requests, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve malformed empty input without inserting a valid empty-history count.
 proc unhex(text: string): seq[byte] =

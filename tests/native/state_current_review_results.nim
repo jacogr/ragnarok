@@ -5,7 +5,7 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_state_context,
     accumulation_current_chain_context, account_review_plan_context]
-import ../../src/state/[current_review, current_state]
+import ../../src/state/current/[review as current_review, state as current_state]
 import ../../src/codec/report_owned
 proc extract(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## Failed/default alternatives grant no completed owner.

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "OutputLogIndex"}
 
-import ../../../src/codec/state_outputs
+import ../../../src/codec/state/outputs as state_outputs
 let owner = default(OutputLogSnapshot)
 discard outputLogAt(owner, ServiceIndex(0))

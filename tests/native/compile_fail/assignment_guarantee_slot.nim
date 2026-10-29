@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "GuaranteeSlot"}
 
-import ../../../src/codec/[state_availability, guarantees]
+import ../../../src/codec/state/availability as state_availability
+import ../../../src/codec/guarantees
 let slot = default(GuaranteeSlot)
 discard presentAssignment(default(Guarantee), slot)

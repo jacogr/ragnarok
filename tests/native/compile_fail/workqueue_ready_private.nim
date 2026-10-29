@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_workqueues
+import ../../../src/codec/state/workqueues as state_workqueues
 let owner = default(ReadySnapshot)
 discard owner.data

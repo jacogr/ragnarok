@@ -4,9 +4,12 @@
 ## Failed common-source batches expose no partial account/provision state or wrong-alternative reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_batch, accumulation_provisions, accumulation_service,
-    accumulation_inputs, accumulation_skip, accumulation_transfers, store]
-import ../../src/codec/[bounded, header, state_layout]
+import ../../src/state/accumulation/[batch as accumulation_batch,
+    provisions as accumulation_provisions, service as accumulation_service,
+    inputs as accumulation_inputs, skip as accumulation_skip, transfers as accumulation_transfers]
+import ../../src/state/store
+import ../../src/codec/[bounded, header]
+import ../../src/codec/state/layout as state_layout
 import ../support/accumulation_batch_context
 
 let argument = paramStr(1)

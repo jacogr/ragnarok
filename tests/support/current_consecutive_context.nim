@@ -5,9 +5,14 @@
 import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, header, block_codec, report_owned, state_layout, state_safrole]
-import ../../src/state/[store, block_transition, report_admission, accumulation_queue,
-  accumulation_round, accumulation_current_completion, accumulation_current_update]
+import ../../src/codec/[bounded, header, block_codec, report_owned]
+import ../../src/codec/state/[layout as state_layout, safrole as state_safrole]
+import ../../src/state/store
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/report/admission as report_admission
+import ../../src/state/accumulation/[queue as accumulation_queue, round as accumulation_round]
+import ../../src/state/accumulation/current/[completion as accumulation_current_completion,
+    update as accumulation_current_update]
 import ../../src/crypto/extrinsic_commitment
 import ../../src/bandersnatch/bandersnatch
 import ./[accumulation_current_chain_context, accumulation_current_candidate_context]

@@ -4,7 +4,8 @@
 
 ## A refused scheduling result cannot reveal or replace its private partition discriminator payload.
 
-import ../../../src/state/[accumulation_continuation_inputs, accumulation_continuation]
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../../src/state/accumulation/continuation as accumulation_continuation
 let refused = prepareAccumulationContinuationInputs(default(PreparedAccumulationContinuation),
     default(AccumulationContinuationInputConfig))
 discard refused.partitionReason

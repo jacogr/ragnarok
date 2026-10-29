@@ -4,6 +4,6 @@
 ## External code cannot retag a failed result as finalized success.
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/app/block_input
+import "../../../src/app/block/input" as block_input
 var outcome = default(BlockInputResult)
 outcome.status = BlockInputError.None

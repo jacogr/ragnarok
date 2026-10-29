@@ -5,8 +5,12 @@
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[report_owned, state_layout]
-import ../../../src/state/[store, accumulation_current_update, report_admission, guarantee_credentials]
+import ../../../src/codec/report_owned
+import ../../../src/codec/state/layout as state_layout
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
 import ../../support/[current_guarantee_sequence_context, current_consecutive_context,
   accumulation_current_chain_context, current_services_disk_samples]
 

@@ -3,8 +3,10 @@
 
 ## Trusted opt-in fixture namespaces enter complete original maps before roots and signatures.
 import std/assertions
-import ../../src/codec/[bounded, state_layout, state_trie, state_accounts, state_service_values,
-    state_requests, state_composition]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, service_values as state_service_values, requests as state_requests,
+    composition as state_composition]
 type ServiceNamespaceSeed* = object ## Author only children; original executable metadata stays authoritative.
   service*: ServiceIndex
   storage*: seq[StateStorageItem]

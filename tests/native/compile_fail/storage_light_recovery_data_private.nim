@@ -3,6 +3,6 @@
 
 ## Recovery resources remain private behind explicit inspection, repair and close.
 # @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light/journal/cache as light_journal_cache
 let hidden = default(LightJournalRecovery)
 discard hidden.data

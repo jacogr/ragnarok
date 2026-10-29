@@ -7,7 +7,8 @@
 # @@Verification={"arc": "pvm_fetch_inputs_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/codec/[work_package, bounded]
+import ../../../src/codec/work/package as work_package
+import ../../../src/codec/bounded
 import ../../../src/pvm/[program, machine, gas, step, host_fetch]
 import ../../support/arc_evidence
 

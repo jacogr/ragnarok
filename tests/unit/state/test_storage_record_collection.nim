@@ -4,8 +4,11 @@
 ## Record collections preserve shared physical encoding with independent multi-root aggregate ceilings.
 import std/[assertions, syncio]
 import ../../support/storage_samples
-import ../../../src/storage/[full_state_trie, node_records, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/record_codec
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 let limits = storageLimits().codec
 let first = storageTrie(7)
 let last = storageTrie(8)

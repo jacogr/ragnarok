@@ -5,11 +5,14 @@
 ## Genuine signed source histories bind pool use, posterior queue indexing and exact private complete-map publication.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_authorization, accumulation_preimages,
-  accumulation_activity,
-  accumulation_validators, core_service_activity, preimages, authorization, store]
-import ../../../src/codec/[bounded, composite, header, report_owned, state_authorization,
-  state_layout, state_trie, state_accounts, state_service_values]
+import ../../../src/state/accumulation/[authorization as accumulation_authorization,
+    preimages as accumulation_preimages, activity as accumulation_activity,
+    validators as accumulation_validators]
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/[preimages, authorization, store]
+import ../../../src/codec/[bounded, composite, header, report_owned]
+import ../../../src/codec/state/[authorization as state_authorization, layout as state_layout,
+    trie as state_trie, accounts as state_accounts, service_values as state_service_values]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_activity_context, accumulation_provision_integration,
   report_context, arc_evidence]

@@ -4,13 +4,22 @@
 ## Real production UP0/CE128 serving and shared full-state evidence gate participation independently of idle work.
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[tiny_genesis, block_author, chain, candidate, download_schedule,
-    services, options, current_block_input]
+import ../../../src/app/tiny_genesis
+import "../../../src/app/block/author" as block_author
+import ../../../src/app/[chain, candidate]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, block_codec, state_trie]
-import ../../../src/quic/[devnet, sync_targets, announcements, current_block_download_peers,
-    current_sync, current_block_download_loop, current_block_download_stream]
-import ../../../src/state/[store, accumulation_current_update]
+import ../../../src/codec/[bounded, header, block_codec]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/quic/[devnet, sync_targets, announcements]
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import ../../../src/quic/current/sync as current_sync
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/current_consecutive_context
 

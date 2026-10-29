@@ -10,7 +10,8 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/codec/[state_safrole, bounded, assurances]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[bounded, assurances]
 
 ## Verify source destruction and extracted-copy mutation cannot change retained validator records.
 proc main() =

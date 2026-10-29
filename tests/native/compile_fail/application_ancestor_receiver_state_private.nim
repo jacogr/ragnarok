@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "state"}
 
 ## Receiver state and bytes cannot be replaced outside checked generation operations.
-import ../../../src/app/ancestor_receiver
+import ../../../src/app/ancestor/receiver as ancestor_receiver
 let owner = default(AncestorReceiver)
 discard owner.state

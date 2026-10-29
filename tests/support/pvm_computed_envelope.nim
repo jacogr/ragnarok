@@ -4,7 +4,8 @@
 ## Genuine verified current/prior guarantees, including distinct credential indices sharing one reporter key.
 
 import std/assertions
-import ../../src/state/[computed_envelope, computed_credentials, computed_guarantors, computed_roster]
+import ../../src/state/computed/[envelope as computed_envelope, credentials as computed_credentials,
+    guarantors as computed_guarantors, roster as computed_roster]
 import ../../src/codec/[bounded, guarantees]
 import ./[pvm_computed_roster, pvm_computed_guarantors, pvm_computed_credentials]
 

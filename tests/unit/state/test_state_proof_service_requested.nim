@@ -4,8 +4,10 @@
 ## Solicitation is a composed verdict requiring positive evidence or authenticated absence.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_service, proof_view]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values, state_requests]
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    service_values as state_service_values, requests as state_requests]
 proc main() =
   ## An empty encoded history is requested; a missing history needs an actual absence witness.
   let service = ServiceIndex(7)

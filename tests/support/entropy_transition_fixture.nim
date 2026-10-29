@@ -5,7 +5,7 @@
 ##
 ## Exposes entropyWords and re-exports state entropy/time domains and EpochSlots for test callers.
 
-import ../../src/codec/state_safrole
+import ../../src/codec/state/safrole as state_safrole
 from ../../src/codec/header import EpochSlots
 export state_safrole, EpochSlots
 

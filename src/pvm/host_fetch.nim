@@ -8,7 +8,8 @@
 
 import ./[machine, step]
 import ../chain/parameters
-import ../codec/[work_package, fixed_unsigned, c2_records, bounded, natural]
+import ../codec/work/package as work_package
+import ../codec/[fixed_unsigned, c2_records, bounded, natural]
 
 type
   FetchEntropy* = distinct array[32, byte] ## Invocation entropy is one nominal 32-byte value, distinct from arbitrary trace bytes.

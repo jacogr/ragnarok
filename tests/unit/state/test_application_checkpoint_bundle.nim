@@ -5,7 +5,8 @@
 
 ## The independently serialized full application envelope preserves exact aggregate ceilings and source ownership.
 import std/[assertions, envvars, syncio]
-import ../../../src/app/[chain, checkpoint_codec, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
 proc fixtureBytes(): seq[byte] {.raises.} =

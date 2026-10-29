@@ -4,8 +4,9 @@
 ## Default/refused core activity cannot expose copied rows, source provenance or partial populations.
 
 import std/cmdline
-import ../../src/state/[core_activity, report_admission]
-import ../../src/codec/state_statistics
+import ../../src/state/core/activity as core_activity
+import ../../src/state/report/admission as report_admission
+import ../../src/codec/state/statistics as state_statistics
 
 let argument = paramStr(1)
 let owner = default(PreparedCoreActivity)

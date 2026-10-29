@@ -4,7 +4,7 @@
 
 ## A loose timestamp projection cannot replace certified recent-history provenance.
 
-import ../../../src/state/accumulation_times
+import ../../../src/state/accumulation/times as accumulation_times
 var projection: AccumulationTimesProjection
 var config: AccumulationTimesConfig
 discard prepareAccumulationTimes(projection, config)

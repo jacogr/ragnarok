@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "LookupAnchoredComputedReport", "early": ["bindComputedProfile(", "[1] expected: LookupAnchoredComputedReport but got: RecentComputedReport"]}
 
-import ../../../src/state/[computed_profile, computed_lookup, computed_recent]
+import ../../../src/state/computed/[profile as computed_profile, lookup as computed_lookup,
+    recent as computed_recent]
 import ../../../src/chain/[genesis, parameters]
 discard bindComputedProfile(default(RecentComputedReport), default(BlockSnapshotResult))

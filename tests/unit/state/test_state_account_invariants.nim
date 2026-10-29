@@ -5,7 +5,9 @@
 # @@Verification={"arc": "state_account_invariants_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_invariant_context, arc_evidence]
-import ../../../src/state/[account_invariants, inventory, footprint_audit, preimage_content, preimage_linkage]
+import ../../../src/state/account/invariants as account_invariants
+import ../../../src/state/[inventory, footprint_audit]
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable all hashing after generating real independently bounded certificates.

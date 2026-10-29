@@ -6,12 +6,13 @@
 ## Verification owns all decoded maps on the native thread and returns only fixed context with explicit operation identity.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_worker, checkpoint_session, checkpoint_transfer,
-    checkpoint_identity, checkpoint_file]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[worker as checkpoint_worker, session as checkpoint_session,
+    transfer as checkpoint_transfer, identity as checkpoint_identity, file as checkpoint_file]
 import ../../../src/state/store
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context, arc_evidence]
 const FileName = "application-checkpoint-worker-verify"
 proc verified(worker: var ApplicationCheckpointWorker, expected: ApplicationCheckpointIdentity,

@@ -4,8 +4,11 @@
 ## Runtime guards reject default values and inactive nested chapter reasons with a genuine positive control.
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[global_snapshot, store]
-import ../../src/codec/[state_composition, state_layout, state_trie, bounded, assurances, state_consensus]
-include composition_fixture
+import ../../src/codec/state/[composition as state_composition, layout as state_layout,
+    trie as state_trie]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/state/consensus as state_consensus
+include ./composition_fixture
 proc extract(outcome: GlobalStateResult[ValidatedGlobalState]): ValidatedGlobalState {.noinline.} =
   ## Preserve a dynamic successful-payload guard instead of constant-folding a default variant.
   outcome.value

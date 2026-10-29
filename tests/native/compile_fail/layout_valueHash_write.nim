@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "valueHash"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 var value = default(StateNodeInfo)
 value.valueHash = default(StateValueHash)

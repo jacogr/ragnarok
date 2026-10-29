@@ -5,7 +5,8 @@
 ## Only the fixed read registry below reaches RPC. No session, subscription or graph survives dispatch.
 
 import std/strutils
-import ../lib/[json_reader, json_writer, utf8]
+import ../lib/json/[reader as json_reader, writer as json_writer]
+import ../lib/utf8
 import ../rpc/protocol as rpc
 import ../rpc/light_source
 import ../version

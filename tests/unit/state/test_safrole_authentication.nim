@@ -10,8 +10,10 @@
 # @@Verification={"arc": "safrole_authentication_arc_release"}
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/state/[safrole_authentication, entropy]
-import ../../../src/codec/[state_safrole, state_consensus, header, bounded]
+import ../../../src/state/safrole/authentication as safrole_authentication
+import ../../../src/state/entropy
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus]
+import ../../../src/codec/[header, bounded]
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/[validator_rotation_fixture, arc_evidence]
 

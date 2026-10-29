@@ -4,8 +4,13 @@
 ## Real successful syscall stops qualify paged publication, explicit replay recovery and exact retired-epoch cleanup.
 import std/[assertions, syncio, envvars]
 import ../../support/[paged_native_fixture, paged_reference, storage_io, storage_crash]
-import ../../../src/storage/[paged_store, paged_io, paged_codec, paged_stream, managed_manifest,
-  light_delta, file_errors, light_state_cache, state_proof]
+import ../../../src/storage/paged/[store as paged_store, io as paged_io, codec as paged_codec,
+    stream as paged_stream]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/storage/light/state_cache as light_state_cache
+import ../../../src/storage/state_proof
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only fixed test-owned names; discovery never grants recovery authority.

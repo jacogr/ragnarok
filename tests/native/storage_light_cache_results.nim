@@ -3,8 +3,10 @@
 
 ## Dynamic invalid/default light cache access probes retain successful empty-root controls under the same profile.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_state_cache, state_proof]
-import ../../src/codec/[state_layout, state_trie, bounded]
+import ../../src/storage/light/state_cache as light_state_cache
+import ../../src/storage/state_proof
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../src/codec/bounded
 proc main() =
   ## Runtime arguments select invalid origins so compilation alone cannot stand in for checked refusal.
   let member = paramStr(1)

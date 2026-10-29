@@ -9,7 +9,8 @@
 
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ../../src/codec/[composite, work_report]
+import ../../src/codec/composite
+import ../../src/codec/work/report as work_report
 import ../../src/crypto/[primitives, guarantee]
 
 # Render every public byte so the Python fixture oracle can check exact transcript construction.

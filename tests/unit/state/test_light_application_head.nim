@@ -5,11 +5,15 @@
 # @@Verification={"arc":"light_application_head_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context]
-import ../../../src/app/[light_head, checkpoint_identity, checkpoint_trust, chain]
+import ../../../src/app/light/head as light_head
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, assurances, state_layout, state_trie]
+import ../../../src/codec/[bounded, header, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
-import ../../../src/state/[store, trie_proof, proof_view]
+import ../../../src/state/[store, trie_proof]
+import ../../../src/state/proof/view as proof_view
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header

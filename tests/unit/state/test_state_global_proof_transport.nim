@@ -4,8 +4,13 @@
 ## Mixed global/service queries retain exact scope, independent root authority and legacy RPV1 bytes.
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
-import ../../../src/state/[proof_plan, planned_proof, proof_service, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole, state_accounts]
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/[service as proof_service, view as proof_view]
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    safrole as state_safrole, accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained actual hash observer and optionally fail the first backend attempt.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

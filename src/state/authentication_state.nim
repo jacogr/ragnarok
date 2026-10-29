@@ -6,8 +6,11 @@
 ## Exposes authenticateSafroleHeaderState to authenticate a header using retained parent and
 ## staged state snapshots.
 
-import ../codec/[state_safrole, state_consensus, state_layout, header]
-import ./[safrole_authentication, store]
+import ../codec/state/[safrole as state_safrole, consensus as state_consensus,
+    layout as state_layout]
+import ../codec/header
+import ./safrole/authentication as safrole_authentication
+import ./store
 
 ## Retain initialized/missing/resource distinctions when selecting immutable required state views.
 func stateError(reason: StateStoreError): SafroleAuthError =

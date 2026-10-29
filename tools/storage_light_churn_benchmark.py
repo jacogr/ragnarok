@@ -74,7 +74,7 @@ def identities():
         'storage_limit_receipts.py', 'storage_limit_budget.py'])
     for folder, pattern in [('src/storage', '*.nim'), ('src/codec', '*.nim'), ('src/crypto', '*.nim'),
                             ('native/storage_io', '*.[ch]')]:
-        paths.extend(sorted((ROOT/folder).glob(pattern)))
+        paths.extend(sorted((ROOT/folder).rglob(pattern)))
     return {str(path.relative_to(ROOT)): digest(path) for path in paths}
 
 

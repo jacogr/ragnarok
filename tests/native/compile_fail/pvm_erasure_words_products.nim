@@ -5,8 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "FieldProductLimit", "early": ["requireProducts(", "[1] expected: FieldProductLimit but got: ElementLimit"]}
 
-import ../../../src/state/[erasure_words, erasure_layout]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/erasure/[words as erasure_words, layout as erasure_layout]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 proc requireProducts(value: FieldProductLimit) =
   ## Accept only field-product policy.
   discard

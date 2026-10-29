@@ -4,9 +4,15 @@
 
 ## Current terminal providers prove S(s) counts across real execution, unavailable work, annulment and deleted recipients.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, work_digest, report_owned, state_statistics, state_layout]
-import ../../../src/state/[accumulation_current_statistics, accumulation_current_driver,
-  accumulation_current_sequence, accumulation_coverage, accumulation_annulment, store]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/report_owned
+import ../../../src/codec/state/[statistics as state_statistics, layout as state_layout]
+import ../../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver, sequence as accumulation_current_sequence]
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    annulment as accumulation_annulment]
+import ../../../src/state/store
 import ../../support/[accumulation_current_statistics_context, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}

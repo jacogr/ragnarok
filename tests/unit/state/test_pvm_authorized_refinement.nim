@@ -5,9 +5,15 @@
 ## Genuine combined source fixtures verify authorization gating, trace propagation, atomic children and immutable provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[authorized_refinement, authorization_invocation, refinement_report,
-  refinement_digest, refinement_dispatch, refinement_bootstrap, refinement_outcome, store]
-import ../../../src/codec/[bounded, composite, work_digest, work_package, work_report]
+import ../../../src/state/authorized_refinement
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/state/refinement/[report as refinement_report, digest as refinement_digest,
+    dispatch as refinement_dispatch, bootstrap as refinement_bootstrap,
+    outcome as refinement_outcome]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[digest as work_digest, package as work_package,
+    report as work_report]
 import ../../../src/pvm/[host_fetch, refinement_exports]
 import ../../../src/chain/parameters
 import ../../support/[pvm_authorized_refinement, pvm_report_results, pvm_refinement_outcome, arc_evidence]

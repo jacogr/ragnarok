@@ -133,7 +133,7 @@ See [selected parent profiles](../spec/state-parent-profile.md),
 
 ## Consume an actual preparation completion on the host
 
-`app/current_logical.refreshCollectedLogical` connects the bounded stages above to the actual
+`app/current/logical.refreshCollectedLogical` connects the bounded stages above to the actual
 preparation worker receipt. Its Services overloads accept the configured `SelectedLogicalParent`
 or completed `CurrentLogicalState`, the opaque `PreparationCompletion` and explicit
 `CollectedLogicalLimits`. Capture the configured source against the physical Services-owned view

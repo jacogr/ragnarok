@@ -6,11 +6,17 @@
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/pvm/[machine, step, gas]
-import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
-  state_trie, state_service_values]
-import ../../../src/state/[accumulation_account_stage, accumulation_block_guests,
-  accumulation_guest_runner, accumulation_coverage, accumulation_account_selection,
-  accumulation_creation_union, accumulation_selected_writes, store]
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie, service_values as state_service_values]
+import ../../../src/state/accumulation/account/stage as accumulation_account_stage
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    coverage as accumulation_coverage]
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
+    selected_writes as accumulation_selected_writes]
+import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_current_guests_context, pvm_accumulation_program, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

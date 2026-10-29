@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/import_inputs
+import "../../../src/state/import/inputs" as import_inputs
 var candidate: VerifiedImportInputs
 discard candidate.data

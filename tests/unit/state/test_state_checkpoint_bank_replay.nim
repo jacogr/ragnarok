@@ -5,9 +5,12 @@
 
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/state/[checkpoint_bank, checkpoint_head, checkpoint_transfer, checkpoint, store]
-import ../../../src/lib/atomic_file
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/state/checkpoint/[bank as checkpoint_bank, head as checkpoint_head,
+    transfer as checkpoint_transfer]
+import ../../../src/state/[checkpoint, store]
+import ../../../src/lib/atomic/file as atomic_file
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 import ../../support/published_state
 
 const Prefix = "state-bank-replay"

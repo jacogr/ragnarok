@@ -5,9 +5,9 @@
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/trace_step_context
-import ../../../src/state/[trace_file, trace_step, trace_state]
+import ../../../src/state/trace/[file as trace_file, step as trace_step, state as trace_state]
 import ../../../src/codec/bounded
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 proc text(bytes: openArray[byte]): string =
   ## Test-only exact byte materialization preserves binary zeros and all UTF-8-independent payload octets.
   result = newString(bytes.len)

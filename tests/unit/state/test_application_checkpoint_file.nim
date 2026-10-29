@@ -6,11 +6,14 @@
 ## Single-file application envelopes preserve exact old bytes on refusal and restore only independently matched context.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_file, checkpoint_codec, checkpoint_transfer, checkpoint_identity]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[file as checkpoint_file, codec as checkpoint_codec,
+    transfer as checkpoint_transfer, identity as checkpoint_identity]
 import ../../../src/chain/genesis
 import ../../../src/state/[checkpoint, store]
-import ../../../src/codec/[bounded, state_trie]
-import ../../../src/lib/atomic_file
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-file"
 proc cycle(expected: ApplicationCheckpointIdentity) =

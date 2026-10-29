@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/safrole_authentication
+import ../../../src/state/safrole/authentication as safrole_authentication
 var hidden = default(SafroleAuthResult)
 discard hidden.completed

@@ -4,10 +4,15 @@
 ## Genuine solicit/forget/new effects retain original request identities, expiry evidence and actual checkpoint/terminal selection under independent trace bounds.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
-import ../../src/state/[accumulation_effects, accumulation_context, accumulation_machine,
-    accumulation_dispatch, accumulation_outcome, accumulation_invocation, store]
-import ../../src/codec/[bounded, state_accounts, state_layout, state_requests, state_service_values,
-    state_trie, header]
+import ../../src/state/accumulation/[effects as accumulation_effects,
+    context as accumulation_context, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, outcome as accumulation_outcome,
+    invocation as accumulation_invocation]
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    requests as state_requests, service_values as state_service_values, trie as state_trie]
+import ../../src/codec/header
 import ../../src/chain/parameters
 import ../../src/pvm/[machine, step, gas, host_fetch]
 import ../../src/crypto/primitives

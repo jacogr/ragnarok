@@ -6,8 +6,10 @@
 
 import std/[assertions, syncio]
 import ../../support/arc_evidence
-import ../../../src/storage/[full_state_trie, node_records]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/records as node_records
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer proves detachment needs no fresh crypto work.

@@ -3,6 +3,7 @@
 
 ## Disk ownership and selected result backing cannot escape the public lifecycle.
 # @@Verification={"group":"privacy","expected":"batchReason"}
-import ../../../src/storage/[file_repository, node_repository]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/repository as node_repository
 let hidden = default(FileResult[RepositoryView])
 discard hidden.batchReason

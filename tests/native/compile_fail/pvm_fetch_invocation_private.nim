@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/accumulation_fetch
+import ../../../src/state/accumulation/fetch as accumulation_fetch
 var outcome: InvocationFetchResult
 discard outcome.completed

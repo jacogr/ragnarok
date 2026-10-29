@@ -5,8 +5,12 @@
 # @@Verification={"arc":"state_current_identity_prior_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_identity_context, arc_evidence]
-import ../../../src/state/[current_identities, parent_logical, current_logical, current_state,
-    supplied_logical_inventory, inventory, manifest, store, accumulation_current_update]
+import ../../../src/state/current/identities as current_identities
+import ../../../src/state/parent/logical as parent_logical
+import ../../../src/state/current/[logical as current_logical, state as current_state]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Both genuine current children and the first full matching finish before hash-free original-source/identity tests.

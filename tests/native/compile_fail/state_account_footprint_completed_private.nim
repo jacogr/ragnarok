@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Arithmetic result discriminators and payloads remain private.
-import ../../../src/state/account_footprint
+import ../../../src/state/account/footprint as account_footprint
 let private = default(AccountFootprintResult)
 discard private.completed

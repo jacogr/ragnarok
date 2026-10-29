@@ -4,8 +4,8 @@
 
 ## A raw projection cannot replace genuine report admission and original block provenance.
 
-import ../../../src/state/[block_activity]
-import ../../../src/codec/state_statistics
+import "../../../src/state/block/activity" as block_activity
+import ../../../src/codec/state/statistics as state_statistics
 var source: ActivityState
 var config: BlockActivityConfig
 discard prepareBlockActivity(source, config)

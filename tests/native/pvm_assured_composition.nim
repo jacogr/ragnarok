@@ -4,8 +4,10 @@
 ## Strict composed successor result guards with genuine success and selected driver/finalizer/composition refusals.
 
 import std/[assertions, cmdline]
-import ../../src/state/[assured_composition, assured_execution, accumulation_consensus,
-  accumulation_driver, accumulation_finalization, accumulation_completion]
+import ../../src/state/assured/[composition as assured_composition, execution as assured_execution]
+import ../../src/state/accumulation/[consensus as accumulation_consensus,
+    driver as accumulation_driver, finalization as accumulation_finalization,
+    completion as accumulation_completion]
 import ../../src/codec/bounded
 import ../support/pvm_assured_composition
 

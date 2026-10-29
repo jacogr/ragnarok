@@ -4,8 +4,10 @@
 ## Real RPC admission inside a dispatcher turn preserves the current input through exact deadline and joined proof retirement.
 import std/[assertions, syncio, envvars, base64, strutils, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options, download_schedule, proof_worker]
-import ../../../src/quic/current_block_download_loop
+import ../../../src/app/[services, options]
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/proof/worker as proof_worker
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
 import ../../../src/codec/report_owned
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store

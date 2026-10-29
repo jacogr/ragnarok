@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_authorization, bounded, assurances]
+import ../../../src/codec/state/authorization as state_authorization
+import ../../../src/codec/[bounded, assurances]
 
 ## Validate retained data remains immutable under caller wire/source/copy/handle mutation.
 proc main() =

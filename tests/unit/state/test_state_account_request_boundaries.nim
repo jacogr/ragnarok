@@ -5,10 +5,16 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, economic_profile_context]
 import ../../../src/chain/parameters
-import ../../../src/state/[inventory, account_audit_plan, account_audit, account_invariants,
-  footprint_audit,
-  preimage_content, preimage_linkage, service_directory, economic_profile, economics_table]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_requests]
+import ../../../src/state/inventory
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/[economic_profile, economics_table]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing after exact complete source capture for each advertised length.

@@ -4,8 +4,10 @@
 ## Direct complete-state restoration covers unordered overlapping pages, exact admission, empty facts, failure recovery and retired source ownership.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/arc_evidence
-import ../../src/state/[proof_state_import, proof_view, trie_proof, store]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/state/proof/[state_import as proof_state_import, view as proof_view]
+import ../../src/state/[trie_proof, store]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine complete-root backend refusal after local admission has completed.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

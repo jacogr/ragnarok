@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal","expected": "got: ReportHash[2] but wanted: ReportHash[0]"}
 
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 var root: SegmentRoot
 let pair = ReportedPackage(package: root)
 discard pair

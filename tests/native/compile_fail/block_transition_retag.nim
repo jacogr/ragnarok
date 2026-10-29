@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/block_transition
+import "../../../src/state/block/transition" as block_transition
 var outcome = default(BlockTransitionResult)
 discard outcome.status # Must fail privacy checking before generating native code.

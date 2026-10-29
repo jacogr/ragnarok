@@ -5,10 +5,16 @@
 import std/assertions
 import std/posix/posix
 import ./storage_light_journal
-import ../../src/storage/[light_journal_cache, light_journal_replay, light_delta, light_snapshot,
-  light_state_cache, state_proof,
-  full_state_trie, database_identity, managed_io, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light/journal/[cache as light_journal_cache,
+    replay as light_journal_replay]
+import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot,
+    state_cache as light_state_cache]
+import ../../src/storage/state_proof
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/database_identity
+import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 type
   LightRootFixture* = object ## Only immutable images, detached evidence and explicit root/configuration inputs survive fixture construction.
     source*, destination*: PreparedLightSnapshot

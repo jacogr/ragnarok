@@ -5,8 +5,11 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_growth_samples, managed_storage_samples, storage_io, storage_crash]
-import ../../../src/storage/[node_repository, full_state_trie, file_repository, managed_repository,
-  managed_manifest, database_identity, journal_codec]
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/[database_identity, journal_codec]
 import ../../../src/codec/bounded
 
 proc scenario(managed, torn: bool) {.raises.} =

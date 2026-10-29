@@ -3,8 +3,11 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Reusable phases retain private result payloads independently of authenticated wrappers.
-import ../../../src/state/[accumulation_account_phase, accumulation_provision_phase,
-    accumulation_global_phase, accumulation_coverage, accumulation_provisions]
+import ../../../src/state/accumulation/account/phase as accumulation_account_phase
+import ../../../src/state/accumulation/provision/phase as accumulation_provision_phase
+import ../../../src/state/accumulation/global/phase as accumulation_global_phase
+import ../../../src/state/accumulation/[coverage as accumulation_coverage,
+    provisions as accumulation_provisions]
 let refused = prepareAccumulationAccountPhase(default(PreparedAccumulationCoverage), default(
     AccumulationAccountPhaseLimits))
 discard refused.completed

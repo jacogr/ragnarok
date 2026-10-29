@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/state_accounts
+import ../../../src/codec/state/accounts as state_accounts
 var parsed = default(ServiceMetadataResult[ServiceMetadataRead])
 parsed.value = default(ServiceMetadataRead)

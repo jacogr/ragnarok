@@ -5,9 +5,12 @@
 # @@Verification={"arc":"state_current_request_keys_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_request_keys_context, arc_evidence]
-import ../../../src/state/[current_request_keys, current_identities, supplied_logical_inventory,
-    inventory, manifest, store]
-import ../../../src/codec/[bounded, report_owned, state_layout, state_requests]
+import ../../../src/state/current/[request_keys as current_request_keys,
+    identities as current_identities]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, requests as state_requests]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observation and optionally refuse key derivation after complete source qualification.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

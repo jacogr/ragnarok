@@ -9,7 +9,8 @@
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
 import ../support/ownership_checks
-import ../../src/codec/[composite, bounded, work_digest]
+import ../../src/codec/[composite, bounded]
+import ../../src/codec/work/digest as work_digest
 
 # Decode bounded adapter hex, allocating only for the actual trusted request text.
 proc parseBytes(text: string): seq[byte] =

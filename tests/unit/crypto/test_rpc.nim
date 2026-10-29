@@ -8,16 +8,17 @@
 ## interface.
 
 import std/[assertions, syncio, base64]
-from ../../../src/codec/state_accounts import ServiceMetadataBytes
+from ../../../src/codec/state/accounts as state_accounts import ServiceMetadataBytes
 import ../../../src/version
-import ../../../src/lib/json_writer
+import ../../../src/lib/json/writer as json_writer
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../support/report_context import unhex
-from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
-from ../../../src/codec/state_trie import StateEntry
-from ../../../src/codec/state_layout import chapterKey, chapterServiceKey, StateChapter
-from ../../../src/codec/state_service_values import serviceStorageKey, servicePreimageKey,
-    ServiceValueError, error, value
+from ../../../src/codec/state/requests as state_requests import serviceRequestKey, RequestError,
+    error, value
+from ../../../src/codec/state/trie as state_trie import StateEntry
+from ../../../src/codec/state/layout as state_layout import chapterKey, chapterServiceKey, StateChapter
+from ../../../src/codec/state/service_values as state_service_values import serviceStorageKey,
+    servicePreimageKey, ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 

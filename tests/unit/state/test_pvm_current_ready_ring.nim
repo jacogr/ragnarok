@@ -4,9 +4,13 @@
 
 ## Genuine current completion removes only processed parent ready reports and preserves unaffordable original suffixes.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, report_owned, state_layout, state_workqueues]
-import ../../../src/state/[accumulation_current_ready, accumulation_ready,
-  accumulation_current_finalization, accumulation_current_accounts, store]
+import ../../../src/codec/[bounded, assurances, report_owned]
+import ../../../src/codec/state/[layout as state_layout, workqueues as state_workqueues]
+import ../../../src/state/accumulation/current/ready as accumulation_current_ready
+import ../../../src/state/accumulation/ready as accumulation_ready
+import ../../../src/state/accumulation/current/[finalization as accumulation_current_finalization,
+    accounts as accumulation_current_accounts]
+import ../../../src/state/store
 import ../../support/[accumulation_current_outputs_context,
   accumulation_current_finalization_context,
   accumulation_ready_witnesses, report_context, arc_evidence]

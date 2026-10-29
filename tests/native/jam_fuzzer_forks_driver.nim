@@ -4,10 +4,11 @@
 ## Actual independent siblings, original-last imports and complete states are compared with a separate mathematical reference.
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, fuzz_fork_context, accumulation_current_chain_context]
-import ../../src/app/fuzz_backend
+import ../../src/app/fuzz/backend as fuzz_backend
 import ../../src/chain/genesis
 import ../../src/codec/[bounded, header, block_codec, report_owned]
-import ../../src/state/[fuzz_protocol, store, checkpoint]
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/[store, checkpoint]
 proc hex(bytes: openArray[byte]): string =
   ## Preserve exact sealed bytes and complete checkpoint representations.
   result = ""

@@ -4,8 +4,12 @@
 ## Shared explicit command policies and independent forked TLS series retain exact requests and joined process cleanup.
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
-import ../../src/app/[download_command, download_policy, download_schedule, options, block_input]
-import ../../src/quic/[block_download_loop, block_download_stream]
+import ../../src/app/download/[command as download_command, policy as download_policy,
+    schedule as download_schedule]
+import ../../src/app/options
+import "../../src/app/block/input" as block_input
+import "../../src/quic/block/download/loop" as block_download_loop
+import "../../src/quic/block/download/stream" as block_download_stream
 import ../../src/codec/bounded
 import ./[application_download_chain, application_candidate_context, block_download_transport]
 

@@ -3,7 +3,8 @@
 
 ## Default/refused account-source plans cannot reveal complete maps, copied metadata or producer outcomes.
 import std/cmdline
-import ../../src/state/[accumulation_account_selection, accumulation_annulment]
+import ../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../src/state/accumulation/annulment as accumulation_annulment
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationAccountSelection)
 let refused = if argument == "default": default(AccumulationAccountSelectionResult[PreparedAccumulationAccountSelection])

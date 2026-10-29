@@ -5,11 +5,16 @@
 import std/[assertions, syncio, strutils, monotimes, times]
 import ./[current_repeated_logical_context, parent_profile_context, parent_globals_context,
     supplied_logical_context]
-import ../../src/app/[services, options, current_block_input, preparation_worker, candidate]
-import ../../src/state/[parent_logical, parent_globals, parent_profile, store, accumulation_current_update]
+import ../../src/app/[services, options]
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/[preparation_worker, candidate]
+import ../../src/state/parent/[logical as parent_logical, globals as parent_globals,
+    profile as parent_profile]
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, header, block_codec]
-import ../../src/lib/json_writer
+import ../../src/lib/json/writer as json_writer
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield scalar native phase polling under an explicit monotonic deadline.
 proc hexBytes(value: openArray[byte]): string =

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "data"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 let source = default(AccumulationStorageFact)
 discard source.data

@@ -3,6 +3,6 @@
 
 ## Trace map or execution failure cannot expose a usable prepared prefix through public fields.
 # @@Verification={"group": "privacy", "expected": "candidateReason"}
-import ../../../src/app/trace_import
+import "../../../src/app/trace/import" as trace_import
 let source = default(TraceImportResult)
 discard source.candidateReason

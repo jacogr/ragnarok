@@ -10,7 +10,8 @@
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/entropy_transition_fixture
 import ../../../src/state/[entropy, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 ## Parse exact trusted hex transport, independently of protocol framing and result guards.
 proc unhex(text: string): seq[byte] =

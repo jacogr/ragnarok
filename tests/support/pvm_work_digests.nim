@@ -4,8 +4,9 @@
 ## Canonical source-package fixtures vary payloads/manifests before refinement, preserving actual code commitments.
 
 import std/assertions
-import ../../src/state/[refinement_digest, refinement_report]
-import ../../src/codec/[bounded, composite, work_package, work_digest, work_report]
+import ../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, digest as work_digest, report as work_report]
 import ../../src/pvm/host_fetch
 import ./pvm_report_results
 

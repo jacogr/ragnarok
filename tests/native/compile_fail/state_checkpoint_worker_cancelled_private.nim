@@ -3,6 +3,6 @@
 
 ## Callers cannot reclassify real publication through a mutable cancellation flag.
 # @@Verification={"group": "privacy", "expected": "cancelled"}
-import ../../../src/state/checkpoint_worker
+import ../../../src/state/checkpoint/worker as checkpoint_worker
 let worker = default(CheckpointWorker)
 discard worker.cancelled

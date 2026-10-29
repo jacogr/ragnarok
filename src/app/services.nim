@@ -13,45 +13,59 @@ import ../state/logical_continuation
 import ./options
 import ./node_logging
 import ../rpc/light_source
-import ./light_runtime as light_actor
-import ./[light_head, light_policy]
-import ./[checkpoint_recovery, checkpoint_trust]
-import ./[handoff, current_handoff, current_block_input]
+import ./light/runtime as light_actor
+import ./light/[head as light_head, policy as light_policy]
+import ./checkpoint/[recovery as checkpoint_recovery, trust as checkpoint_trust]
+import ./handoff
+import ./current/handoff as current_handoff
+import "./current/block/input" as current_block_input
 import ./candidate
-import ./block_input
+import "./block/input" as block_input
 import ./preparation_worker
-import ./[collected_supplied_plan, collected_supplied_state]
-import ./logical_review
-import ./logical_proof
-import ../state/account_review_plan
-import ./logical_checkpoint
+import ./collected/supplied/[plan as collected_supplied_plan, state as collected_supplied_state]
+import ./logical/review as logical_review
+import ./logical/proof as logical_proof
+import ../state/account/review/plan as account_review_plan
+import ./logical/checkpoint as logical_checkpoint
 import ./frozen_supplied
-import ../state/supplied_services
-import ./logical_service_proof
-import ./logical_export
-import ./logical_source_export
-import ./logical_checkpoint_import
-import ./logical_code
-import ./logical_code_proof
+import ../state/supplied/services as supplied_services
+import ./logical/service_proof as logical_service_proof
+import "./logical/export" as logical_export
+import ./logical/source_export as logical_source_export
+import "./logical/checkpoint/import" as logical_checkpoint_import
+import ./logical/code as logical_code
+import ./logical/code/proof as logical_code_proof
 import ../state/code_availability
 import ./full_logical_proof
-import ./paged_logical_proof
-import ./logical_seed
-import ../codec/[state_composition, composite]
-import ./current_logical as collected_logical
-import ../state/[parent_logical, current_logical]
-import ./[proof_query, proof_worker]
-import ../state/[proof_service, proof_plan, proof_view, trie_proof]
-import ./[disk_chain, disk_worker, historical_disk, historical_context]
-import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
+import ./paged/logical_proof as paged_logical_proof
+import ./logical/seed as logical_seed
+import ../codec/state/composition as state_composition
+import ../codec/composite
+import ./current/logical as collected_logical
+import ../state/parent/logical as parent_logical
+import ../state/current/logical as current_logical
+import ./proof/[query as proof_query, worker as proof_worker]
+import ../state/proof/[service as proof_service, plan as proof_plan, view as proof_view]
+import ../state/trie_proof
+import ./disk/[chain as disk_chain, worker as disk_worker]
+import ./historical/[disk as historical_disk, context as historical_context]
+import ./checkpoint/[identity as checkpoint_identity, transfer as checkpoint_transfer,
+    session as checkpoint_session, worker as checkpoint_worker, file as checkpoint_file]
 import ../codec/bounded
 import ../crypto/primitives
-import ../codec/[block_codec, header, state_trie]
+import ../codec/[block_codec, header]
+import ../codec/state/trie as state_trie
 import ./chain as application_chain
-import ../state/[store, disk_store, accumulation_finalization, accumulation_completion,
-    accumulation_publication, accumulation_current_update]
-import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
-    managed_repository, managed_manifest, full_paged_store, history_index]
+import ../state/[store, disk_store]
+import ../state/accumulation/[finalization as accumulation_finalization,
+    completion as accumulation_completion, publication as accumulation_publication]
+import ../state/accumulation/current/update as accumulation_current_update
+import ../storage/file/repository as file_repository
+import ../storage/node/[repository as node_repository, records as node_records]
+import ../storage/[record_codec, database_identity]
+import ../storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../storage/full/paged/store as full_paged_store
+import ../storage/history/index as history_index
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/[transport, protocol]

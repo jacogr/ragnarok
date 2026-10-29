@@ -4,8 +4,9 @@
 ## Independent complete-map comparisons, exact topology, limits and immutable public ownership.
 
 import std/[assertions, syncio]
-import ../../../src/storage/full_state_trie
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 
 proc key(number: int): StateKey =
   ## Spread authored identities across both early branches and shared suffixes.

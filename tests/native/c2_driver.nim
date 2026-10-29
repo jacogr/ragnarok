@@ -7,7 +7,9 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[c2_records, bounded, composite, work_digest, work_report, assurances]
+import ../../src/codec/[c2_records, bounded, composite]
+import ../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../src/codec/assurances
 
 # Require complete success before reading any fixed fields, owner or consumed/written extent.
 proc checked[T](parsed: RecordResult[T]): T =

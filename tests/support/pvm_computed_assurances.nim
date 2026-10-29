@@ -4,10 +4,12 @@
 ## Real successor signatures use the actual computed parent hash, state root, entropy history and nine authored parent keys.
 
 import std/assertions
-import ../../src/state/[computed_assurances, computed_chain, store]
+import ../../src/state/computed/[assurances as computed_assurances, chain as computed_chain]
+import ../../src/state/store
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, header, block_codec, assurances, state_layout, state_consensus,
-    state_safrole, state_trie]
+import ../../src/codec/[bounded, header, block_codec, assurances]
+import ../../src/codec/state/[layout as state_layout, consensus as state_consensus,
+    safrole as state_safrole, trie as state_trie]
 import ../../src/crypto/[primitives, assurance_context, extrinsic_commitment]
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_chain, pvm_computed_roster, pvm_computed_storage_program, pvm_computed_state_publication]

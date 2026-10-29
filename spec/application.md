@@ -15,10 +15,10 @@ and reports exact-map agreement; listener, disk, recovery and download controls 
 refused for this command.
 
 
-Commands use the [named CLI](../docs/cli.md). `cli_catalog.nim` owns the shared option
-metadata and grouping; `cli_defaults.nim` owns typed defaults and bounds.
-`cli_commands.nim` admits strict named inputs and supplies an owned normalized representation to existing bounded handlers.
-`cli_help.nim` renders overview and command-specific help from the same catalog.
+Commands use the [named CLI](../docs/cli.md). `src/app/cli/catalog.nim` owns the shared option
+metadata and grouping; `src/app/cli/defaults.nim` owns typed defaults and bounds.
+`src/app/cli/commands.nim` admits strict named inputs and supplies an owned normalized representation to existing bounded handlers.
+`src/app/cli/help.nim` renders overview and command-specific help from the same catalog.
 Long positional command forms are rejected. Networking fields use `--net-*`;
 download, trace, devnet and conformance fields use their own descriptive prefixes.
 Dedicated conformance budgets retain separate defaults. Syntax inspection precedes

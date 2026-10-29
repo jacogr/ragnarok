@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "AuthorizationCoreIndex"}
 
-import ../../../src/codec/state_authorization
+import ../../../src/codec/state/authorization as state_authorization
 let owner = default(AuthorizationSnapshot)
 let core = default(AuthorizationCoreIndex)
 let hash = authorizerAt(owner, core, core)

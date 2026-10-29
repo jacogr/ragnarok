@@ -4,12 +4,16 @@
 ## Managed chain startup preserves canonical history/context/finality without exposing an intermediate bootstrap head.
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, managed_storage_samples]
-import ../../../src/app/[chain, disk_chain, disk_history]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, history as disk_history]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/[store, disk_store]
-import ../../../src/storage/[file_repository, managed_repository, managed_manifest, node_repository,
-  node_records, record_codec, database_identity]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, database_identity]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc main() {.raises.} =
   ## Complete structured local maps exercise startup binding; malformed selected metadata never grants fallback.
   let fixture = diskHistoryFixture()

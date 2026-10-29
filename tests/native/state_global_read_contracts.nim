@@ -4,8 +4,11 @@
 ## Runtime success/variant guards for global reads and planned partial-view outcomes.
 import std/[assertions, cmdline, syncio]
 import ../support/proof_global_helpers
-import ../../src/state/[proof_global, proof_plan, planned_proof, proof_view]
-import ../../src/codec/[bounded, state_safrole, state_composition]
+import ../../src/state/proof/[global as proof_global, plan as proof_plan]
+import ../../src/state/planned/proof as planned_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/codec/bounded
+import ../../src/codec/state/[safrole as state_safrole, composition as state_composition]
 let mode = paramStr(1)
 case mode
 of "global-default":

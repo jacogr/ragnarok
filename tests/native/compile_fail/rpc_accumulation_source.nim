@@ -6,7 +6,8 @@
 ## Detached state snapshots cannot impersonate finalized execution provenance at the dispatcher boundary.
 
 import ../../../src/rpc/server
-import ../../../src/state/[store, accumulation_completion]
+import ../../../src/state/store
+import ../../../src/state/accumulation/completion as accumulation_completion
 var owner = default(Server)
 var state = default(StateStore)
 discard publishAccumulation(owner, state, default(StateStoreSnapshot), default(AccumulationCompositionLimits))

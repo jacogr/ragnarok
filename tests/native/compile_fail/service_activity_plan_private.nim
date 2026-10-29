@@ -4,6 +4,6 @@
 
 ## Refuse raw construction or retagging of original-block-bound service activity.
 
-import ../../../src/state/service_activity
+import ../../../src/state/service/activity as service_activity
 var owner: PreparedServiceActivity
 discard owner.data

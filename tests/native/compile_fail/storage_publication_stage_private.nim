@@ -3,6 +3,6 @@
 
 ## External callers cannot construct or access private encoded-admission authority.
 # @@Verification={"group":"privacy","expected":"PublicationStage"}
-import ../../../src/storage/node_repository
+import ../../../src/storage/node/repository as node_repository
 type Hidden = node_repository.PublicationStage
 discard sizeof(Hidden)

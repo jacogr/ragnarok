@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/state/sealer_state
+import ../../../src/state/sealer/state as sealer_state
 var hidden = default(SealerStateResult)
 discard hidden.completed

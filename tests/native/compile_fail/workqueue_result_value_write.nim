@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/[state_workqueues, state_trie]
+import ../../../src/codec/state/[workqueues as state_workqueues, trie as state_trie]
 var value = default(WorkQueueResult[WorkQueueInfo])
 value.value = default(WorkQueueInfo)

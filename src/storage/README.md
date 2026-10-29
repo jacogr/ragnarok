@@ -2,7 +2,7 @@
 
 This folder owns the standalone incremental complete-state trie described in
 [the storage direction](../../docs/design/state-storage.md). The initial module is
-[`full_state_trie.nim`](full_state_trie.nim); its exact contract and verification live in
+[`full/state_trie.nim`](full/state_trie.nim); its exact contract and verification live in
 [`spec/full-state-trie.md`](../../spec/full-state-trie.md).
 
 ## Parallel work and integration boundary
@@ -38,8 +38,9 @@ updates and destruction of their originating handles.
 Check every `TrieResult.error` before extracting its `value`; default handles have no state.
 
 ```nim
-import storage/full_state_trie
-import codec/[bounded, state_layout, state_trie]
+import ./storage/full/state_trie
+import ./codec/bounded
+import ./codec/state/[layout as state_layout, trie as state_trie]
 
 let limits = FullStateTrieLimits(
   trie: StateTrieLimits(items: ElementLimit(64), perValue: ByteLimit(4096),
@@ -75,7 +76,7 @@ remain separate work. It never hashes a partial mapping into a complete state ro
 
 ## Authenticated light lookup retention
 
-`light_state_cache.nim` retains bounded verified key lookups at one caller-trusted complete root.
+`light/state_cache.nim` retains bounded verified key lookups at one caller-trusted complete root.
 Atomic `admit` batches verify all proofs before returning a new immutable cache; `forget` drops
 local evidence without changing retained views. Missing entries return UnknownKey, distinct from
 a stored authenticated Absent result and a present empty value. A different root requires a new
@@ -86,7 +87,7 @@ mode or consensus/trusted-head selection.
 
 ## Light proof-cache snapshots
 
-`light_snapshot.nim` prepares opaque immutable canonical images and restores cache state only
+`light/snapshot.nim` prepares opaque immutable canonical images and restores cache state only
 against independently expected chain/root arguments. Its distinct V1 format stores proof evidence,
 not trusted lookup results; every restored proof is verified after bounded shape/checksum checks.
 Read-only mutation policy can be restored independently of complete-snapshot entry count.
@@ -139,18 +140,18 @@ make unit SUITE=full_state_trie_replay
 
 ## Standalone persistence work
 
-`node_records.nim` defines detached physical transport records. The trie can export a complete
+`node/records.nim` defines detached physical transport records. The trie can export a complete
 revision or just records missing from an explicit base, with no extra hashing. See
 [the record contract](../../spec/storage-records.md). These storage-only APIs do not authorize
 state/checkpoint integration.
 
-`record_codec.nim` validates versioned physical batches. `node_repository.nim` provides atomic
+`record_codec.nim` validates versioned physical batches. `node/repository.nim` provides atomic
 in-memory publication, immutable reads and independently trusted restoration to the standalone
 `FullStateTrie`. Restoration preserves caller-selected mutation limits and never constructs a
 `StateStore` or changes a canonical consumer. These are storage workstream APIs only.
 
 `database_identity.nim` binds the full-state physical schema to an independently selected chain.
-`journal_codec.nim` defines checksummed revision frames. `file_repository.nim` adds an explicitly
+`journal_codec.nim` defines checksummed revision frames. `file/repository.nim` adds an explicitly
 closed, noncopyable append-only owner: each durable frame contains changed records and its root.
 Strict reopen validates the whole journal and refuses partial tails. Retained read views remain
 valid after file close. All calls are synchronous storage work; run them outside networking
@@ -223,7 +224,7 @@ creating a new exact view identity and generation. Ordinary changed-root admissi
 and durability barriers retain their contracts. See `storage_unchanged_publication` and the
 [maintenance measurements](../../spec/disk-state-store.md#maintenance-measurement-scope).
 
-`managed_repository.nim` owns a stable directory lease and exactly the snapshot/journal pair
+`managed/repository.nim` owns a stable directory lease and exactly the snapshot/journal pair
 selected by CURRENT. Creation takes a complete immutable root selection; strict reopen checks the
 chain, schema, snapshot binding, retained graphs and every contiguous journal frame. It never
 scans for a fallback head. Retained views and detached context survive explicit owner close.
@@ -247,7 +248,7 @@ Compaction does not choose canonical roots/finality or schedule application main
 `cleanupRetiredEpoch` retries cleanup of one earlier epoch. Both require a validated live owner,
 refuse the selected pair and avoid directory scanning. Unknown epochs remain untouched.
 
-`file_migration.nim` explicitly copies a locked legacy single-file repository into a new managed
+`file/migration.nim` explicitly copies a locked legacy single-file repository into a new managed
 directory, preserving admitted chain/schema, generation, selected context and explicit retained
 roots. The source remains unchanged and independently usable. Startup never implicitly migrates an
 existing file, and migration supplies no external checkpoint trust.
@@ -292,7 +293,7 @@ observations, the checked comparison rules and Linux qualification, see the
 
 ## Light proof-cache files
 
-`light_file_cache.nim` owns an explicitly selected separate directory and stable lock.
+`light/file_cache.nim` owns an explicitly selected separate directory and stable lock.
 It publishes opaque light images through synchronized atomic `CURRENT` replacement and
 reopens only after bounded proof verification against independently supplied chain/root.
 Immutable readers survive publication and close; uncertain IO requires explicit close
@@ -329,23 +330,23 @@ forget/admit publication, strict reopen, completed write extents, durability cal
 retirement with producer memory excluded. It motivates bounded incremental light persistence;
 its local timings do not establish cold-cache or physical-device behavior.
 
-`light_delta.nim` encodes bounded canonical proof-cache edits with exact chain/root,
+`light/delta.nim` encodes bounded canonical proof-cache edits with exact chain/root,
 predecessor/successor checksums and expected local sequence. Opaque results retain an immutable
 successor; consuming decode transfers bytes only after complete verification. See
 [authenticated update frames](../../spec/storage-light-deltas.md). Durable journal ownership
 and partial-tail recovery remain separate work.
 
-`light_journal_manifest.nim` selects a positive physical light-journal epoch and its checkpoint
+`light/journal/manifest.nim` selects a positive physical light-journal epoch and its checkpoint
 sequence using a distinct `CURRENT` schema. A checksummed journal anchor binds that exact
 selection; old light-image and full-state formats have no fallback. See the
 [selection and anchor contract](../../spec/storage-light-journal-selection.md).
 
-`light_journal_replay.nim` strictly verifies a bounded selected checkpoint/anchor/frame stream
+`light/journal/replay.nim` strictly verifies a bounded selected checkpoint/anchor/frame stream
 before exposing its final immutable image. Separate explicit partial-tail plans bind only a
 fully authenticated prefix to all original journal bytes and selection; complete corruption
 never yields salvage authority. See [replay and tail planning](../../spec/storage-light-journal-replay.md).
 
-`light_journal_cache.nim` owns a separate locked light directory, synchronized checkpoint/anchor
+`light/journal/cache.nim` owns a separate locked light directory, synchronized checkpoint/anchor
 bootstrap and strict replay on reopen. Opaque authenticated updates append only a bounded frame;
 uncertain I/O refuses fresh observations until explicit close and strict reopen. See the
 [durable journal lifecycle](../../spec/storage-light-journal-cache.md).
@@ -415,19 +416,19 @@ and explicit immutable publication. Its implemented storage-only boundaries and 
 consumer adoption remains gated. Full-node paging retains complete-graph
 validation requirements and a separate integration gate.
 
-`paged_codec.nim` supplies the first format boundary: checked dataset geometry, fixed page/index/
+`paged/codec.nim` supplies the first format boundary: checked dataset geometry, fixed page/index/
 manifest codecs, constant-space index ordering/coverage scans, proof framing and bounded postorder
 digest paths. Decoding CURRENT before opening an epoch and explicit header binding keep selection
 metadata separate from complete artifact/proof admission. It owns no files or resident dataset;
 streaming algorithms and native ownership are supplied by the layers below.
 
-`paged_stream.nim` adds synchronous replay-bound append construction, complete root-bound artifact
+`paged/stream.nim` adds synchronous replay-bound append construction, complete root-bound artifact
 admission and authenticated binary-search lookups through borrowed exact-read/EOF callbacks. It
 keeps zero/one-page cache modes, one-proof transport and fixed tree carry scratch under explicit
 workspace and operation budgets. Returned metadata owns no callbacks/files; verified lookup values
 are independently owned.
 
-`paged_io.nim` and `paged_store.nim` add explicit-close move-only writer/candidate/reader owners,
+`paged/io.nim` and `paged/store.nim` add explicit-close move-only writer/candidate/reader owners,
 independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
 reclamation through exclusive pins. Complete verification precedes publication; receipts separate
 confirmed selection from later native retirement diagnostics. Unknown staging/build files remain

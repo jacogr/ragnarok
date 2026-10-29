@@ -3,5 +3,6 @@
 # @@Verification={"group": "nominal", "expected": "expected: CompletedCurrentAccumulationSequence but got: PreparedCurrentAccumulationRound", "early": ["completedSequenceInfo(", "[1] expected: CompletedCurrentAccumulationSequence but got: PreparedCurrentAccumulationRound"]}
 
 ## Terminal current sequence and initial/legacy whole-block owners carry distinct authority.
-import ../../../src/state/[accumulation_current_driver, accumulation_current_round]
+import ../../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    round as accumulation_current_round]
 discard completedSequenceInfo(default(PreparedCurrentAccumulationRound))

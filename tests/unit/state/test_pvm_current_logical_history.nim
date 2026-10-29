@@ -6,17 +6,26 @@ import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/current_consecutive_context
 import ../../support/[current_services_disk_samples, managed_storage_samples]
-import ../../../src/app/disk_worker
-import ../../../src/storage/managed_manifest
+import ../../../src/app/disk/worker as disk_worker
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_namespace_execution_context, current_logical_history_context,
     current_logical_collection_context, current_application_context, parent_profile_context,
     parent_globals_context, supplied_logical_context, current_identity_context,
     accumulation_current_candidate_context, current_logical_proof_context]
-import ../../../src/app/[services, options, current_block_input, current_handoff]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    accumulation_current_update, store, block_admission, report_admission, current_logical]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/identities as current_identities
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/current/logical as current_logical
 proc publishHistory(owner: var Services, update: PreparedCurrentChainUpdate, disk: bool) =
   ## All retained logical/current owners remain stable from enqueue through native disk Done and matching publication collection.
   assert owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.None

@@ -10,12 +10,23 @@
 # @@Verification={"arc": "report_admission_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio, sequtils]
-import ../../../src/state/[report_admission, report_assignments, report_policy, report_anchors,
-  report_packages, guarantee_credentials, block_transition, block_admission, store,
-  safrole_transition, disputes, availability, report_transition]
-import ../../../src/codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
-  state_consensus, state_disputes, state_layout, state_trie, state_history, state_availability,
-  state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite]
+import ../../../src/state/report/[admission as report_admission, assignments as report_assignments,
+    policy as report_policy, anchors as report_anchors, packages as report_packages]
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/state/safrole/transition as safrole_transition
+import ../../../src/state/[disputes, availability]
+import ../../../src/state/report/transition as report_transition
+import ../../../src/codec/[block_codec, header, bounded, guarantees, assurances]
+import ../../../src/codec/state/[safrole as state_safrole, consensus as state_consensus,
+    disputes as state_disputes, layout as state_layout, trie as state_trie,
+    history as state_history, availability as state_availability, workqueues as state_workqueues,
+    authorization as state_authorization]
+import ../../../src/codec/[tickets, report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/composite
 import ../../../src/crypto/[primitives, extrinsic_commitment]
 import ../../../src/bandersnatch/bandersnatch
 import ../../support/[report_context, arc_evidence, safrole_historical_refusal]

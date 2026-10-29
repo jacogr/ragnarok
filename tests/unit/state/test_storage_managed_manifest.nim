@@ -3,8 +3,11 @@
 
 ## Manifest epochs, snapshot identities and journal pairs remain exact across all byte corruption.
 import std/[assertions, syncio]
-import ../../../src/storage/[managed_manifest, database_identity, node_repository]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/database_identity
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 let chain = default(StorageChainId)
 let schema = StorageSchema.FullStateV1
 let limit = ByteLimit(ManagedManifestBytes)

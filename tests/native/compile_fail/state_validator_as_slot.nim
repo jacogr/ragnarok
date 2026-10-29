@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "StateValidatorIndex"}
 
-import ../../../src/codec/[state_consensus, state_safrole]
+import ../../../src/codec/state/[consensus as state_consensus, safrole as state_safrole]
 let owner = default(SafroleStateSnapshot)
 let index = default(StateValidatorIndex)
 let ticket = sealerTicketAt(owner, index)

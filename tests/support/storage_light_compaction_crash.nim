@@ -5,8 +5,11 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_io, storage_crash, storage_light_journal]
-import ../../src/storage/[light_journal_cache, light_journal_manifest, light_journal_replay,
-  light_delta, light_snapshot, managed_io, managed_manifest, file_errors]
+import ../../src/storage/light/journal/[cache as light_journal_cache,
+    manifest as light_journal_manifest, replay as light_journal_replay]
+import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot]
+import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 type LightReplacementAction* = enum ## One coherent namespace transition is observed after its setup completes.
   ReplaceCheckpoint, RetirePrevious, DiscardCandidate

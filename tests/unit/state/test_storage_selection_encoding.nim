@@ -5,8 +5,10 @@
 # @@Verification={"arc": "storage_selection_encoding_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_snapshot_samples, storage_root_samples, arc_evidence]
-import ../../../src/storage/[node_repository, node_records, record_codec, snapshot_codec, database_identity]
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[record_codec, snapshot_codec, database_identity]
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## An unavailable backend cannot affect already-admitted body serialization, but must refuse its new frame checksum.

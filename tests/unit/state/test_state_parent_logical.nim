@@ -7,10 +7,15 @@ import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_typed_context,
     parent_profile_context, parent_globals_context, supplied_logical_context,
     supplied_services_context, arc_evidence]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, global_snapshot,
-    manifest, inventory, supplied_logical_inventory, supplied_services, store]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/[global_snapshot, manifest, inventory]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/store
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, report_owned, state_composition, state_accounts]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing only after mandatory full supplied-map matching.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

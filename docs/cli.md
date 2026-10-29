@@ -93,7 +93,7 @@ ragnarok tiny-devnet node --devnet-dir data --devnet-index 0 \
 `--with-ui`, `--with-rpc`, `--with-management`, `--with-telemetry` and `--with-state`
 appear before their settings in help. Configuring an endpoint, path or port does
 not enable its service. UI also enables RPC. Help shows required fields and
-resolved defaults; defaults are defined in `src/app/cli_defaults.nim`, with the
+resolved defaults; defaults are defined in `src/app/cli/defaults.nim`, with the
 shared diagnostic threshold owned by `src/lib/logging.nim`. Conformance has its own
 write budgets rather than borrowing execution defaults.
 

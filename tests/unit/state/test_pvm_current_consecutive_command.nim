@@ -4,7 +4,7 @@
 ## Real authenticated current command downloads adopt two genuine successors and preserve one confirmed prefix on later resource refusal.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/current_download_command
+import ../../../src/app/current/download/command as current_download_command
 import ../../../src/codec/[report_owned, bounded]
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,

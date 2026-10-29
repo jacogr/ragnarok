@@ -4,5 +4,6 @@
 # @@Verification={"group": "nominal", "expected": "Parameters", "early": ["captureEconomicProfile(", "[1] expected: Parameters but got: AccountDepositSchedule"]}
 
 ## Raw mathematical rates cannot substitute for selected valid immutable parameters.
-import ../../../src/state/[economic_profile, account_deposit]
+import ../../../src/state/economic_profile
+import ../../../src/state/account/deposit as account_deposit
 discard captureEconomicProfile(AccountDepositSchedule())

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "isPresent"}
 
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 let value = default(HistoryPeak)
 discard value.isPresent

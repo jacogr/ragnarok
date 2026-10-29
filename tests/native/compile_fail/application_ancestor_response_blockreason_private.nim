@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "blockReason"}
 
 ## Private request/response fields cannot forge identity, counts, captured headers or result alternatives.
-import ../../../src/app/ancestor_response
+import ../../../src/app/ancestor/response as ancestor_response
 let owner = default(AncestorResponseResult[AncestorResponse])
 discard owner.blockReason

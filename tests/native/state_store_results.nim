@@ -9,7 +9,8 @@
 
 import std/[assertions, cmdline, syncio]
 import ../../src/state/store
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../src/codec/bounded
 
 ## Return a default or actual failed construction without exposing an unchecked store payload.
 proc storeFailure(origin: string): StateStoreResult[StateStore] =

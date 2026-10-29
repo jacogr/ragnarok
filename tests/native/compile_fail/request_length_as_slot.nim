@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "nominal", "expected": "RequestSlot"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 let history = availableHistory(RequestLength(1))
 discard history

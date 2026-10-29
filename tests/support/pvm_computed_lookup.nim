@@ -4,12 +4,23 @@
 ## Genuine authored linked ancestors and original computation/state/recent provenance for lookup validation.
 
 import std/assertions
-import ../../src/state/[computed_lookup, computed_recent, computed_state, computed_links,
-  computed_guarantee, computed_report, block_admission, store, input_refinement, extrinsic_inputs,
-  import_inputs, import_justification, availability_specifier, export_erasure, bundle_erasure,
-  erasure_layout, erasure_words, auditable_bundle]
-import ../../src/codec/[bounded, header, block_codec, work_package, work_report, composite,
-  state_history, state_layout, state_trie, assurances]
+import ../../src/state/computed/[lookup as computed_lookup, recent as computed_recent,
+    state as computed_state, links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/[store, input_refinement, extrinsic_inputs]
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/bundle_erasure
+import ../../src/state/erasure/[layout as erasure_layout, words as erasure_words]
+import ../../src/state/auditable_bundle
+import ../../src/codec/[bounded, header, block_codec]
+import ../../src/codec/work/[package as work_package, report as work_report]
+import ../../src/codec/composite
+import ../../src/codec/state/[history as state_history, layout as state_layout, trie as state_trie]
+import ../../src/codec/assurances
 import ../../src/chain/parameters
 import ../../src/crypto/[primitives, extrinsic_commitment]
 import ./[pvm_computed_state, pvm_computed_recent, pvm_computed_lookup_vectors,

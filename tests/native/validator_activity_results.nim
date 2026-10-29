@@ -4,8 +4,9 @@
 ## Default/refused validator activity cannot expose copied rows, source provenance or partial populations.
 
 import std/cmdline
-import ../../src/state/[validator_activity, report_admission]
-import ../../src/codec/state_statistics
+import ../../src/state/validator/activity as validator_activity
+import ../../src/state/report/admission as report_admission
+import ../../src/codec/state/statistics as state_statistics
 
 let argument = paramStr(1)
 let owner = default(PreparedValidatorActivity)

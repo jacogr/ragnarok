@@ -5,15 +5,26 @@
 ## Signed block observations, inherited full-map identity, codec/policy refusals and immutable validator candidates.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_validators, validator_projection, accumulation_times,
-  accumulation_statistics, accumulation_recent, accumulation_ready, accumulation_history,
-  accumulation_finalization, accumulation_outputs, accumulation_continuation_execution,
-  accumulation_continuation_inputs, accumulation_continuation, accumulation_execution,
-  accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip,
-  accumulation_queue, report_admission, guarantee_credentials, block_transition, block_admission, store]
-import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec,
-  state_safrole, state_accounts, state_statistics, state_outputs, state_workqueues, state_history,
-  state_layout, state_trie]
+import ../../../src/state/accumulation/validators as accumulation_validators
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/state/accumulation/[times as accumulation_times,
+    statistics as accumulation_statistics, recent as accumulation_recent,
+    ready as accumulation_ready, history as accumulation_history,
+    finalization as accumulation_finalization, outputs as accumulation_outputs]
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
+    service as accumulation_service, skip as accumulation_skip, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec]
+import ../../../src/codec/state/[safrole as state_safrole, accounts as state_accounts,
+    statistics as state_statistics, outputs as state_outputs, workqueues as state_workqueues,
+    history as state_history, layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_execution_context, report_context, arc_evidence]
 
 # Fault injection starts only after real signatures, accumulation and complete-map construction.

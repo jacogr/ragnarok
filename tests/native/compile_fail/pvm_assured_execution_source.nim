@@ -5,5 +5,6 @@
 
 # @@Verification={"group": "nominal", "expected": "AssuredAccumulationQueue", "early": ["executeAssuredAccumulation(", "[1] expected: AssuredAccumulationQueue but got: BlockAccumulationQueue"]}
 
-import ../../../src/state/[assured_execution, accumulation_queue]
+import ../../../src/state/assured/execution as assured_execution
+import ../../../src/state/accumulation/queue as accumulation_queue
 discard executeAssuredAccumulation(default(BlockAccumulationQueue), AssuredExecutionConfig())

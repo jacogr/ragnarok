@@ -6,12 +6,18 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,
   accumulation_current_chain_context, reporting_namespace_context, reporting_declarations_context, state_inventory_context]
-import ../../src/app/[chain, candidate, trace_import]
+import ../../src/app/[chain, candidate]
+import "../../src/app/trace/import" as trace_import
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_trie,
-  state_composition]
-import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
-  current_globals, current_state, global_snapshot, trace_step, trace_state]
+import ../../src/codec/[bounded, report_owned, block_codec, header]
+import ../../src/codec/state/[layout as state_layout, trie as state_trie,
+    composition as state_composition]
+import ../../src/state/[store, checkpoint]
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import ../../src/state/trace/[step as trace_step, state as trace_state]
 
 when defined(lateHistories):
   import ../support/current_stf_late_histories_context

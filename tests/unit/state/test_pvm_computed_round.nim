@@ -5,13 +5,18 @@
 ## Original computed gas and exact parent privileges bind real initial accumulation inputs without guest execution.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_round, computed_publication, computed_admission,
-  report_admission,
-  accumulation_round, accumulation_queue, accumulation_inputs, accumulation_operands,
-  block_transition,
-  block_admission, store]
+import ../../../src/state/computed/[round as computed_round, publication as computed_publication,
+    admission as computed_admission]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue,
+    inputs as accumulation_inputs, operands as accumulation_operands]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, work_digest, state_privileges, state_layout]
+import ../../../src/codec/bounded
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/state/[privileges as state_privileges, layout as state_layout]
 import ../../support/[pvm_computed_round, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}

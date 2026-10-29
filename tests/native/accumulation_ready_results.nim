@@ -4,8 +4,9 @@
 ## Default or refused ready-queue results cannot expose projections, maps or unrelated failure reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_ready, accumulation_history]
-import ../../src/codec/[state_workqueues, header]
+import ../../src/state/accumulation/[ready as accumulation_ready, history as accumulation_history]
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/codec/header
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationReady)

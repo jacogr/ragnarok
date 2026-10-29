@@ -5,8 +5,12 @@
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_typed_context,
     accumulation_current_chain_context, state_inventory_context]
-import ../../src/state/[current_state, current_globals, current_profile, global_snapshot, accumulation_current_update]
-import ../../src/codec/[bounded, report_owned, state_composition]
+import ../../src/state/current/[state as current_state, globals as current_globals,
+    profile as current_profile]
+import ../../src/state/global_snapshot
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/composition as state_composition
 proc extract(outcome: CurrentStateResult[CurrentStateSerialization]) {.noinline.} =
   ## Failed/default alternatives cannot expose payloads.
   discard outcome.value

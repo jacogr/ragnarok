@@ -4,10 +4,15 @@
 ## Declaration permutations preserve complete mapping/root/checkpoint bytes while never substituting logical owner identity.
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_account_checkpoint_context]
-import ../../../src/state/[inventory, manifest, store, checkpoint, planned_account_checkpoint,
-  account_audit_plan,
-  account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, state_accounts, state_composition, state_requests]
+import ../../../src/state/[inventory, manifest, store, checkpoint]
+import ../../../src/state/planned/account_checkpoint as planned_account_checkpoint
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests]
 include ../../native/composition_fixture
 const auditLimits = AccountAuditLimits(planning: ElementLimit(64),
   footprints: FootprintAuditLimits(services: ElementLimit(4), checks: ElementLimit(64)),

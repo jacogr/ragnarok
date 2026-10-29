@@ -1,6 +1,6 @@
 # Block-bound report admission planning
 
-`src/state/report_admission.nim` composes the implemented report checks over one successful
+`src/state/report/admission.nim` composes the implemented report checks over one successful
 `BlockTransitionResult`. The result's discriminator/payload are private. Callers cannot construct
 success from a detached `BlockTransition` value, replace its block or substitute another staged
 map. The coordinator now retains its exact frame profile privately; report policies must agree

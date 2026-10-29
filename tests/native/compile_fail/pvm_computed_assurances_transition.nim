@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "transitionReason"}
 
-import ../../../src/state/computed_assurances
+import ../../../src/state/computed/assurances as computed_assurances
 var candidate: ComputedAssuranceResult[AssuredComputedReports]
 discard candidate.transitionReason

@@ -10,7 +10,7 @@
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/history_transition_fixture
 import ../../../src/state/[history, store]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 ## Decode exact lowercase fixture bytes; malformed transport is a test failure, never protocol acceptance.
 proc unhex(text: string): seq[byte] =

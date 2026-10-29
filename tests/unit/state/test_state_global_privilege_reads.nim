@@ -4,8 +4,10 @@
 ## Authenticated role/assigner/always-accumulate fields preserve full-width services and gas values.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, state_privileges, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[privileges as state_privileges, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(2), maxBytes: ByteLimit(128))
 var source = PrivilegeState(manager: ServiceIndex(high(uint32)), delegator: ServiceIndex(255),
   registrar: ServiceIndex(256), assigners: @[ServiceIndex(7), ServiceIndex(8)],

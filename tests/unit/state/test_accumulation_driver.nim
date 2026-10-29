@@ -6,16 +6,22 @@
 
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, report_owned, state_trie, state_outputs]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[trie as state_trie, outputs as state_outputs]
 import ../../../src/pvm/[step, host_fetch]
-import ../../../src/state/[accumulation_driver, accumulation_runner, accumulation_later_runner,
-  accumulation_execution, accumulation_round, accumulation_continuation,
-  accumulation_continuation_inputs,
-  accumulation_continuation_execution, accumulation_reentry, accumulation_inputs,
-  accumulation_service,
-  accumulation_invocation, accumulation_dispatch, accumulation_skip, accumulation_effects,
-  accumulation_batch, accumulation_operands, accumulation_provisions, accumulation_finalization,
-  accumulation_outputs, store]
+import ../../../src/state/accumulation/[driver as accumulation_driver,
+    runner as accumulation_runner, later_runner as accumulation_later_runner,
+    execution as accumulation_execution, round as accumulation_round,
+    continuation as accumulation_continuation]
+import ../../../src/state/accumulation/continuation/[inputs as accumulation_continuation_inputs,
+    execution as accumulation_continuation_execution]
+import ../../../src/state/accumulation/[reentry as accumulation_reentry,
+    inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation, dispatch as accumulation_dispatch,
+    skip as accumulation_skip, effects as accumulation_effects, batch as accumulation_batch,
+    operands as accumulation_operands, provisions as accumulation_provisions,
+    finalization as accumulation_finalization, outputs as accumulation_outputs]
+import ../../../src/state/store
 import ../../support/[accumulation_runner_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_reentry_context,
   pvm_accumulation_context, pvm_accumulation_provision, arc_evidence]

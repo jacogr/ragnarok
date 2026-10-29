@@ -4,8 +4,10 @@
 ## Authenticated value slices admit only exact owner-bound ranges; overlapping view merges compare immutable facts without whole-payload copies.
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/arc_evidence
-import ../../src/state/[trie_proof, proof_view]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/state/trie_proof
+import ../../src/state/proof/view as proof_view
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reading/comparing already authenticated immutable values needs no further crypto backend work.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

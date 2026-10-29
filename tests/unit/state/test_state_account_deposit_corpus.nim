@@ -4,8 +4,8 @@
 ## Independent arbitrary-precision expectations cover exact/cancelled/overflowing deposit and pool arithmetic.
 import std/[assertions, envvars, syncio]
 import ../../support/fixed_arithmetic_corpus
-import ../../../src/state/[account_deposit, account_footprint]
-import ../../../src/codec/state_accounts
+import ../../../src/state/account/[deposit as account_deposit, footprint as account_footprint]
+import ../../../src/codec/state/accounts as state_accounts
 proc main() {.raises.} =
   ## Decode exact SHA-pinned test transport and compare both refusal and nominal successful observations.
   let records = arithmeticCorpus(getEnv("RAGNAROK_ACCOUNT_DEPOSIT_CORPUS"), 1024, 74)

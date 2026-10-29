@@ -4,12 +4,18 @@
 ## Genuine signed completed initial rounds and actual later-round dispatches for continuation coverage tests.
 
 import std/assertions
-import ../../src/state/[accumulation_continuation_inputs, accumulation_continuation,
-  accumulation_continuation_invocation, accumulation_execution, accumulation_round,
-  accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine,
-  accumulation_dispatch, accumulation_skip, accumulation_effects, store]
-import ../../src/codec/[bounded, composite, header, report_owned, work_report, work_digest,
-  state_workqueues, c2_records]
+import ../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
+import ../../src/state/accumulation/continuation as accumulation_continuation
+import ../../src/state/accumulation/continuation/invocation as accumulation_continuation_invocation
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation, machine as accumulation_machine,
+    dispatch as accumulation_dispatch, skip as accumulation_skip, effects as accumulation_effects]
+import ../../src/state/store
+import ../../src/codec/[bounded, composite, header, report_owned]
+import ../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/codec/c2_records
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[accumulation_execution_context, report_context, pvm_accumulation_context,
     accumulation_batch_context, pvm_accumulation_provision]

@@ -4,10 +4,12 @@
 ## Structurally captured linked histories exercise durable retention without fabricating execution certificates.
 import std/assertions
 import ./application_checkpoint_context
-import ../../src/app/[chain, disk_history]
+import ../../src/app/chain
+import ../../src/app/disk/history as disk_history
 import ../../src/chain/[genesis, provider]
 import ../../src/state/store
-import ../../src/codec/[header, bounded, state_trie, state_layout]
+import ../../src/codec/[header, bounded]
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
 
 type DiskHistoryFixture* = object ## Every authored header has its exact complete slot-bearing mapping.
   view*: ChainView

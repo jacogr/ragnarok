@@ -4,9 +4,16 @@
 ## Constant-size proof templates generate populated paged datasets; fresh consumers measure strict admission and spread reads.
 import std/[assertions, cmdline, syncio]
 import ../support/[storage_io, storage_allocations]
-import ../../src/storage/[paged_store, paged_io, paged_stream, paged_codec, state_proof,
-  light_state_cache, full_state_trie, light_delta, file_errors, managed_manifest]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/paged/[store as paged_store, io as paged_io, stream as paged_stream,
+    codec as paged_codec]
+import ../../src/storage/state_proof
+import ../../src/storage/light/state_cache as light_state_cache
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/storage/light/delta as light_delta
+import ../../src/storage/file/errors as file_errors
+import ../../src/storage/managed/manifest as managed_manifest
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 type Fixture = object ## Only three bounded proofs and one cross-page value survive independent complete-map construction.
   config: PagedNativeConfig
   first, absent, last: LightStateProof

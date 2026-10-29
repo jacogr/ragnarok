@@ -8,7 +8,8 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ValidatorIndex but wanted: ImportIndex"}
 
-import ../../../src/codec/[work_package, assurances]
+import ../../../src/codec/work/package as work_package
+import ../../../src/codec/assurances
 
 var value: ImportReference
 value.index = ValidatorIndex(1)

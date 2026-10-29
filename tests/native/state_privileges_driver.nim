@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_privileges, state_trie, bounded]
+import ../../src/codec/state/[privileges as state_privileges, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve empty malformed input without adding a byte to the protocol stream.
 proc unhex(text: string): seq[byte] =

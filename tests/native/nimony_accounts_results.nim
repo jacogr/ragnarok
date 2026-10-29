@@ -7,7 +7,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_accounts
+include ../../src/codec/state/accounts
 let useDefault = paramStr(2) == "default"
 let late = newSeq[byte](88)
 case paramStr(1)

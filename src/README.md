@@ -7,6 +7,11 @@ JAM protocol logic is implemented in Nim with the pinned Nimony compiler. Narrow
 [C/Rust bridges](../native/README.md) provide cryptographic primitives and transport integration.
 The current executable is a development proof peer; full client operation remains future work.
 
+Modules are grouped by feature family, with another subfolder when two or more modules
+share a subfamily. For example, checkpoint codecs live at `app/checkpoint/codec.nim` and
+current accumulation stages at `state/accumulation/current/`. Standalone modules stay
+beside their related family folders. The PVM folder retains its existing layout.
+
 ## Folders
 
 Each folder's README describes its modules, usage, contracts and verification.

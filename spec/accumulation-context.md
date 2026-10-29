@@ -30,7 +30,7 @@ runtime extraction and repeated ARC release will be verified through the existin
 
 ## Implementation and ownership
 
-`src/state/accumulation_context.nim` constructs immutable `PreparedAccumulationContexts` from a
+`src/state/accumulation/context.nim` constructs immutable `PreparedAccumulationContexts` from a
 successful ready-code bootstrap. `initialContext(Regular|Exceptional)` selects the same retained
 initial `I`; the initial-only type cannot express pending transfers, provisions or a present yield.
 `contextInfo` reports their zero/absent initial values, service and next free ID. There is no

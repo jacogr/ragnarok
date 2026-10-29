@@ -5,12 +5,18 @@
 # @@Verification={"arc":"light_proof_requests_arc_release"}
 import std/[assertions, syncio, monotimes, times]
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context]
-import ../../../src/app/[proof_query, proof_worker, light_proof_import, light_head,
-    checkpoint_identity, checkpoint_trust, chain]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
+import ../../../src/app/light/[proof_import as light_proof_import, head as light_head]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, assurances, state_accounts, state_layout, state_trie]
+import ../../../src/codec/[bounded, header, assurances]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 import ../../../src/crypto/primitives
-import ../../../src/state/[store, trie_proof, proof_view, proof_service, proof_plan, planned_proof]
+import ../../../src/state/[store, trie_proof]
+import ../../../src/state/proof/[view as proof_view, service as proof_service, plan as proof_plan]
+import ../../../src/state/planned/proof as planned_proof
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header

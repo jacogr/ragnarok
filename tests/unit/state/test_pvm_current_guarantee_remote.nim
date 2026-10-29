@@ -4,11 +4,14 @@
 ## Actual current command acquires original ancestry only after the first adoption, preserving exact prefixes on wrong context or timeout.
 import std/[assertions, envvars, syncio, monotimes, times, os, strutils]
 import std/posix/posix
-import ../../../src/app/[current_download_command, current_download_policy, options, services]
-import ../../../src/quic/[current_block_download_loop, current_block_download_stream]
+import ../../../src/app/current/download/[command as current_download_command,
+    policy as current_download_policy]
+import ../../../src/app/[options, services]
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_guarantee_sequence_context, current_guarantee_remote_context,
   current_consecutive_download_context, current_download_command_context,
   current_application_context,

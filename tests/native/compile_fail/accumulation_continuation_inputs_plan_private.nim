@@ -4,6 +4,6 @@
 
 ## Refuse access or domain substitution across continuation input/state preparation.
 
-import ../../../src/state/accumulation_continuation_inputs
+import ../../../src/state/accumulation/continuation/inputs as accumulation_continuation_inputs
 var plan: PreparedAccumulationContinuationInputs
 discard plan.data

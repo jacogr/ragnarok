@@ -4,7 +4,8 @@
 ## Every key in all fourteen unchanged pinned maps supplies membership under its original published root.
 import std/[assertions, syncio]
 import ../../../src/state/[store, trie_proof, snapshot_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/published_state
 proc main() {.raises.} =
   ## Reuse exact pinned fixture preparation without converting a partial witness into a complete map.

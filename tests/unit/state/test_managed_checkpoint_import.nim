@@ -4,11 +4,14 @@
 ## Managed startup preserves external checkpoint trust, exclusive import and independent local restart semantics.
 import std/[assertions, syncio, envvars]
 import ../../support/[application_checkpoint_context, managed_storage_samples]
-import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
-import ../../../src/storage/managed_manifest
-import ../../../src/codec/[bounded, header, state_layout]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/codec/[bounded, header]
+import ../../../src/codec/state/layout as state_layout
 proc recovered(): ApplicationRecoveryResult {.raises.} =
   ## The fixture supplies a separate expected identity and exact sealed bytes; no execution-authentication claim is made.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)

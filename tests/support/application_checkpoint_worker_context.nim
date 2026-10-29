@@ -4,7 +4,7 @@
 ## Shared detached producers and bounded real-thread waits keep application worker tests independent of canonical graph lifetime.
 import std/[assertions, monotimes, times]
 import std/posix/posix
-import ../../src/app/[checkpoint_worker, checkpoint_transfer]
+import ../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer]
 import ../../src/codec/bounded
 import ./application_checkpoint_context
 proc detachedApplicationCheckpoint*(variant = CheckpointFixtureVariant.Original): PreparedApplicationCheckpoint {.raises.} =

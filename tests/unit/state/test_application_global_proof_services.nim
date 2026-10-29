@@ -4,10 +4,15 @@
 ## Global plans execute through the same bounded native slot and exclusive Services lease.
 import std/[assertions, syncio, monotimes, times]
 import ../../support/proof_query_context
-import ../../../src/app/[services, options, proof_query, proof_worker]
+import ../../../src/app/[services, options]
+import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[proof_plan, planned_proof, proof_view, trie_proof]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/planned/proof as planned_proof
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/trie_proof
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/rpc/server
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded scalar worker polls.

@@ -6,12 +6,20 @@
 ## Actual previously computed reports enter successor priority through verified assurances and real empty-body report admission.
 
 import std/[assertions, syncio]
-import ../../../src/state/[assured_queue, computed_assurances, computed_chain, accumulation_queue,
-    availability, report_admission, guarantee_credentials, report_assignments, block_transition,
-    block_admission,
-    report_policy, report_anchors, guarantors, store]
+import ../../../src/state/assured/queue as assured_queue
+import ../../../src/state/computed/[assurances as computed_assurances, chain as computed_chain]
+import ../../../src/state/accumulation/queue as accumulation_queue
+import ../../../src/state/availability
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
+import ../../../src/state/report/assignments as report_assignments
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/[policy as report_policy, anchors as report_anchors]
+import ../../../src/state/[guarantors, store]
 import ../../../src/chain/[parameters, genesis]
-import ../../../src/codec/[bounded, header, assurances, report_owned, owned, state_layout, state_workqueues]
+import ../../../src/codec/[bounded, header, assurances, report_owned, owned]
+import ../../../src/codec/state/[layout as state_layout, workqueues as state_workqueues]
 import ../../support/[pvm_assured_queue, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

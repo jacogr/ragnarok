@@ -5,8 +5,10 @@
 
 import std/[cmdline, assertions, syncio]
 import std/posix/posix
-import ../../src/state/[checkpoint_file, checkpoint, store]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/checkpoint/file as checkpoint_file
+import ../../src/state/[checkpoint, store]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 proc main() {.raises.} =
   ## Real files feed the same public loader used at startup; cleanup runs before exit on every path.

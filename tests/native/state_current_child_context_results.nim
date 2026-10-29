@@ -4,7 +4,7 @@
 ## Checked default fixed child access with a genuine signed/current positive control.
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, current_checkpoint_context]
-import ../../src/state/accumulation_current_update
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/report_owned
 proc extract(update: PreparedCurrentChainUpdate) {.noinline.} =
   ## No default update grants an original child context.

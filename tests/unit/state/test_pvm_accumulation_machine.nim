@@ -7,7 +7,8 @@
 # @@Verification={"arc": "pvm_accumulation_machine_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_invocation, accumulation_service]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    invocation as accumulation_invocation, service as accumulation_service]
 import ../../../src/pvm/[initialize, program, machine, step, gas]
 import ../../support/[pvm_accumulation_context, arc_evidence]
 

@@ -7,10 +7,17 @@
 # @@Verification={"arc": "accumulation_credit_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[accumulation_service, accumulation_skip, accumulation_invocation,
-  accumulation_inputs, accumulation_operands, accumulation_queue, store]
-import ../../../src/codec/[bounded, composite, work_digest, c2_records, state_accounts,
-  state_service_values, state_workqueues, state_privileges, state_safrole, state_trie, state_layout, header]
+import ../../../src/state/accumulation/[service as accumulation_service, skip as accumulation_skip,
+    invocation as accumulation_invocation, inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/c2_records
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    workqueues as state_workqueues, privileges as state_privileges, safrole as state_safrole,
+    trie as state_trie, layout as state_layout]
+import ../../../src/codec/header
 import ../../../src/crypto/primitives
 import ../../support/[report_context, arc_evidence]
 

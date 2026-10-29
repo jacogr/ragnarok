@@ -293,7 +293,7 @@ fetching, trust selection and full-node paged graph validation retain their sepa
 
 ## Implemented format boundary
 
-`src/storage/paged_codec.nim` implements checked scalar geometry, exact header/descriptor/CURRENT
+`src/storage/paged/codec.nim` implements checked scalar geometry, exact header/descriptor/CURRENT
 codecs, one-record proof-transport framing, a constant-space first-error index scan and fixed-depth
 postorder digest-path planning/verification. Dataset arithmetic checks unsigned overflow and signed
 native addressability before evaluating offsets. CURRENT can be decoded against independently
@@ -328,7 +328,7 @@ pins, recovery and process/resource qualification remain separate gates.
 
 ## Implemented synchronous stream boundary
 
-`src/storage/paged_stream.nim` builds, completely validates and searches paged-light bytes through
+`src/storage/paged/stream.nim` builds, completely validates and searches paged-light bytes through
 borrowed synchronous exact-read/actual-EOF callbacks and an append-only sink. No callback, native
 handle, directory, lease or resident descriptor inventory is retained in `CheckedPagedArtifact`.
 This opaque copied metadata binds complete admission, exact header/manifest, captured tree root
@@ -401,7 +401,7 @@ remains distinct from complete state serialization and whole-client parity.
 
 ## Native owners, selection and captured reclamation
 
-`src/storage/paged_io.nim` and `paged_store.nim` add the native storage-only boundary. The supported
+`src/storage/paged/io.nim` and `src/storage/paged/store.nim` add the native storage-only boundary. The supported
 local filesystem profile is Linux/macOS with directory-relative no-follow regular-file opens,
 independent open-file-description `flock` pins, atomic same-directory rename and file/directory
 `fsync`. One caller serializes operations on each owner; callbacks remain synchronous and cannot

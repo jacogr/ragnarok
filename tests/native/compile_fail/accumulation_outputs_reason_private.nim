@@ -4,6 +4,6 @@
 
 ## Refuse access or substitution across the admitted output projection boundary.
 
-import ../../../src/state/accumulation_outputs
+import ../../../src/state/accumulation/outputs as accumulation_outputs
 var result: AccumulationOutputsResult[PreparedAccumulationOutputs]
 discard result.historyReason

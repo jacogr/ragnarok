@@ -5,7 +5,8 @@
 ## Each append copies at most one hash path; cached ordinal ranges prune bounded history without a list.
 import std/assertions
 import ./genesis
-import ../storage/[history_index, database_identity]
+import ../storage/history/index as history_index
+import ../storage/database_identity
 
 type
   HistoryNode = ref object ## Strictly increasing branch bits bound traversal depth to 256; leaves own exact snapshots.

@@ -8,7 +8,8 @@
 ## domains.
 
 import std/assertions
-import ../../src/codec/[state_history, state_outputs, bounded, assurances]
+import ../../src/codec/state/[history as state_history, outputs as state_outputs]
+import ../../src/codec/[bounded, assurances]
 export state_history, state_outputs, bounded, assurances
 
 proc historyConfig*(cores = 2): HistoryConfig =

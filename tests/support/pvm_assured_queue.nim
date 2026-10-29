@@ -3,8 +3,12 @@
 
 ## Actual assured successor sources and original-parameter-bound admission/queue policies for subsequent accumulation.
 
-import ../../src/state/[assured_queue, computed_assurances, report_admission, report_policy,
-    report_anchors, guarantors, block_transition]
+import ../../src/state/assured/queue as assured_queue
+import ../../src/state/computed/assurances as computed_assurances
+import ../../src/state/report/[admission as report_admission, policy as report_policy,
+    anchors as report_anchors]
+import ../../src/state/guarantors
+import "../../src/state/block/transition" as block_transition
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, assurances]
 import ./[pvm_computed_assurances, report_admission_context, accumulation_execution_context]

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "stored"}
 
-import ../../../src/state/refinement_lookup
+import ../../../src/state/refinement/lookup as refinement_lookup
 var owner: HistoricalPreimage
 discard owner.stored

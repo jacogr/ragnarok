@@ -5,14 +5,20 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/storage_io
-import ../../../src/app/[disk_chain, disk_worker, disk_history, paged_policy]
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker, history as disk_history]
+import ../../../src/app/paged/policy as paged_policy
 import ../../../src/state/disk_store
-import ../../../src/storage/[file_repository, node_repository, node_records, record_codec,
-    full_paged_store, database_identity]
-import ../../../src/codec/state_trie
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/record_codec
+import ../../../src/storage/full/paged/store as full_paged_store
+import ../../../src/storage/database_identity
+import ../../../src/codec/state/trie as state_trie
 import ../../../src/crypto/primitives
 import ../../../src/chain/parameters
-import ../../../src/app/[services, options, chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../support/application_checkpoint_context

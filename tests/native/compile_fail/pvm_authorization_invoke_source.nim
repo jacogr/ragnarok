@@ -5,9 +5,9 @@
 
 # @@Verification={"group": "nominal", "expected": "StateStoreSnapshot", "early": ["runAuthorizationInvocation(", "[1] expected: StateStoreSnapshot but got: Machine"]}
 
-import ../../../src/state/authorization_invocation
+import ../../../src/state/authorization/invocation as authorization_invocation
 import ../../../src/pvm/machine
-import ../../../src/codec/[work_package, work_report]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 import ../../../src/chain/parameters
 discard runAuthorizationInvocation(default(Machine), default(OwnedWorkPackage), CoreIndex(0),
     default(Parameters), default(AuthorizationInvocationLimits))

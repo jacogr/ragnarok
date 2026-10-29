@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/codec/state_privileges
+import ../../../src/codec/state/privileges as state_privileges
 let owner = default(PrivilegeSnapshot)
 discard owner.data

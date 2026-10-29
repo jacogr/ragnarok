@@ -6,8 +6,12 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_state_context,
     accumulation_current_chain_context, account_review_plan_context, arc_evidence]
-import ../../../src/state/[current_review, current_state, current_globals, current_profile,
-    inventory, account_review, economic_profile, account_review_plan]
+import ../../../src/state/current/[review as current_review, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/inventory
+import ../../../src/state/account/review as account_review
+import ../../../src/state/economic_profile
+import ../../../src/state/account/review/plan as account_review_plan
 import ../../../src/codec/[bounded, report_owned]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing only after complete source qualification.

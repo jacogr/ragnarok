@@ -4,10 +4,17 @@
 ## Current Services refuses enabled RPC fallback, joins actual disk work and preserves kernel IO uncertainty through strict restart.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, current_block_input, current_handoff, disk_chain, disk_worker, chain]
+import ../../../src/app/services
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, disk_store, accumulation_current_update, accumulation_current_consensus]
-import ../../../src/storage/[file_repository, managed_manifest]
+import ../../../src/state/[store, disk_store]
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/report_owned
 import ../../../src/rpc/server
 import ../../support/[current_services_disk_samples, current_application_context,

@@ -5,8 +5,13 @@
 import std/[assertions, syncio, envvars, cmdline, strutils]
 import std/posix/posix
 import ../support/[current_namespace_policy_context, accumulation_current_candidate_context, arc_evidence]
-import ../../src/app/[current_download_policy, candidate, current_logical_download, options]
-import ../../src/state/[logical_continuation, accumulation_effects, accumulation_current_update]
+import ../../src/app/current/download/policy as current_download_policy
+import ../../src/app/candidate
+import ../../src/app/current/logical/download as current_logical_download
+import ../../src/app/options
+import ../../src/state/logical_continuation
+import ../../src/state/accumulation/effects as accumulation_effects
+import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Lexical/schema/file policy checks never require cryptographic availability.

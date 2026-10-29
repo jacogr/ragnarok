@@ -4,6 +4,6 @@
 
 ## Reject private reentry preparation storage access.
 
-import ../../../src/state/accumulation_reentry
+import ../../../src/state/accumulation/reentry as accumulation_reentry
 var owner: PreparedAccumulationReentry
 discard owner.data

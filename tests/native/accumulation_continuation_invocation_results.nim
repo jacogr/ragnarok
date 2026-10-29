@@ -4,8 +4,10 @@
 ## Default and refused continuation bootstraps expose neither owners nor unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_continuation_invocation, accumulation_continuation_inputs,
-  accumulation_inputs, accumulation_service, accumulation_invocation]
+import ../../src/state/accumulation/continuation/[
+    invocation as accumulation_continuation_invocation, inputs as accumulation_continuation_inputs]
+import ../../src/state/accumulation/[inputs as accumulation_inputs, service as accumulation_service,
+    invocation as accumulation_invocation]
 
 let argument = paramStr(1)
 let owner = default(ContinuationAccumulationInvocation)

@@ -3,8 +3,9 @@
 
 ## Connection-local bounded proof selectors, independent of canonical state and native worker lifetime.
 ## Immutable namespace identities prevent stale or foreign completions from consuming a replacement slot.
-import ../state/proof_plan
-import ../codec/[bounded, state_layout]
+import ../state/proof/plan as proof_plan
+import ../codec/bounded
+import ../codec/state/layout as state_layout
 from ../chain/genesis import BlockHash
 export proof_plan, BlockHash, StateKey
 

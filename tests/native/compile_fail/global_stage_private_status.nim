@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## No writable tag or inactive global phase payload is public.
-import ../../../src/state/[accumulation_global_stage, accumulation_provision_stage]
+import ../../../src/state/accumulation/global/stage as accumulation_global_stage
+import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage
 let refused = prepareAccumulationGlobalStage(default(PreparedAccumulationProvisionStage), default(
     AccumulationGlobalStageLimits))
 discard refused.status

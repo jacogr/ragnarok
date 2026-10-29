@@ -4,7 +4,8 @@
 
 ## Refuse access or substitution across the admitted output projection boundary.
 
-import ../../../src/state/[accumulation_outputs, accumulation_batch]
+import ../../../src/state/accumulation/[outputs as accumulation_outputs,
+    batch as accumulation_batch]
 var batch: PreparedAccumulationBatch
 var limits: AccumulationOutputLimits
 discard prepareAccumulationOutputs(batch, limits)

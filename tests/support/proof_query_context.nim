@@ -5,8 +5,10 @@
 import std/[assertions, envvars, syncio]
 import ../../src/codec/[report_owned, bounded]
 import ../../src/chain/[genesis, provider]
-import ../../src/app/[proof_query, chain]
-import ../../src/state/[trie_proof, proof_view]
+import ../../src/app/proof/query as proof_query
+import ../../src/app/chain
+import ../../src/state/trie_proof
+import ../../src/state/proof/view as proof_view
 import ./application_candidate_context
 proc queryContext*(): SeedFixture {.raises.} =
   ## Missing or malformed pinned input must fail, never fabricate a selected empty root.

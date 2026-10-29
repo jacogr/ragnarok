@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_workqueues, state_trie]
+import ../../../src/codec/state/[workqueues as state_workqueues, trie as state_trie]
 discard WorkQueueResult[WorkQueueInfo](status: WorkQueueError.None)

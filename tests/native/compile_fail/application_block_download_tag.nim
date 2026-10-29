@@ -4,6 +4,6 @@
 ## Failed/default result alternatives cannot be retagged as successful admission.
 # @@Verification={"group": "privacy", "expected": "successful"}
 
-import ../../../src/app/block_download
+import "../../../src/app/block/download" as block_download
 var outcome = default(BlockDownloadResult[BlockDownloadId])
 outcome.successful = true

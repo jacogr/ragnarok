@@ -4,12 +4,16 @@
 ## Production command receives a signed two-guest child before fetching only certified missing lookup context through independent TLS processes.
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../../src/app/[download_command, download_policy, download_schedule, block_input,
-    options, chain, candidate, services]
-import ../../../src/quic/[block_download_loop, block_download_stream]
+import ../../../src/app/download/[command as download_command, policy as download_policy,
+    schedule as download_schedule]
+import "../../../src/app/block/input" as block_input
+import ../../../src/app/[options, chain, candidate, services]
+import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/quic/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[report_admission, report_anchors, store]
+import ../../../src/state/report/[admission as report_admission, anchors as report_anchors]
+import ../../../src/state/store
 import ../../support/[application_candidate_context, accumulation_completion_context, block_download_transport]
 import ../../support/report_admission_context as report_context
 

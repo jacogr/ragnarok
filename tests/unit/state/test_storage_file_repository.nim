@@ -6,8 +6,12 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, arc_evidence]
-import ../../../src/storage/[file_repository, node_repository, node_records, full_state_trie, database_identity]
-import ../../../src/codec/[state_trie, bounded]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/database_identity
+import ../../../src/codec/state/trie as state_trie
+import ../../../src/codec/bounded
 
 proc cycle() =
   ## Files live inside the native runner's ignored work directory; cleanup follows explicit close.

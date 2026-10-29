@@ -5,9 +5,14 @@
 
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
-import ../../src/quic/[block_download_loop, block_download_peers, block_download_stream]
-import ../../src/app/[services, options, chain, candidate, handoff, block_download,
-  block_input, download_schedule, preparation_worker]
+import "../../src/quic/block/download/loop" as block_download_loop
+import "../../src/quic/block/download/peers" as block_download_peers
+import "../../src/quic/block/download/stream" as block_download_stream
+import ../../src/app/[services, options, chain, candidate, handoff]
+import "../../src/app/block/download" as block_download
+import "../../src/app/block/input" as block_input
+import ../../src/app/download/schedule as download_schedule
+import ../../src/app/preparation_worker
 import ../../src/codec/[bounded, block_codec, report_owned]
 import ../../src/state/store
 import ../support/[application_candidate_context, accumulation_completion_context,

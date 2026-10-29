@@ -6,10 +6,15 @@
 ## Signed dispatcher adoption with real nonblocking sockets, ordered notifications and atomic failure isolation.
 
 import std/[assertions, syncio, envvars, base64]
-import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
-import ../../../src/state/[accumulation_state, accumulation_consensus, accumulation_times,
-  accumulation_statistics, accumulation_validators, accumulation_activity, report_admission,
-  block_transition, block_admission]
+import ../../../src/codec/[header, bounded, report_owned]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/state/accumulation/[state as accumulation_state,
+    consensus as accumulation_consensus, times as accumulation_times,
+    statistics as accumulation_statistics, validators as accumulation_validators,
+    activity as accumulation_activity]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
 include ../../../src/rpc/server
 

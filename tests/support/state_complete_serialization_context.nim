@@ -4,7 +4,8 @@
 ## Logical corpus inputs shared by single/multi-service tests; expected bytes come only from Python fixtures.
 import std/[assertions, parseutils]
 import ../../src/crypto/primitives
-import ../../src/codec/[state_composition, state_accounts, state_service_values, state_requests]
+import ../../src/codec/state/[composition as state_composition, accounts as state_accounts,
+    service_values as state_service_values, requests as state_requests]
 const sizes = [0, 1, 31, 32, 33, 63, 64, 65]
 proc serializationWord*(caseId, field, bits: int): uint64 =
   ## Fingerprint logical inputs without encoding them; zero/all-ones exercise unsigned domains.

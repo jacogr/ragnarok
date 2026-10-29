@@ -3,5 +3,5 @@
 
 ## Callers cannot forge the exact canonical snapshot bound into an opaque maintenance request.
 # @@Verification={"group":"privacy","expected":"parent"}
-import ../../../src/app/disk_chain
+import ../../../src/app/disk/chain as disk_chain
 let hidden = default(PreparedDiskMaintenance).parent

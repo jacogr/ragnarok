@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "runnerReason"}
 
-import ../../../src/state/assured_execution
+import ../../../src/state/assured/execution as assured_execution
 var candidate: AssuredExecutionResult[ExecutedAssuredAccumulation]
 discard candidate.runnerReason

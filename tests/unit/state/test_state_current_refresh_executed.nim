@@ -7,11 +7,21 @@ import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context, current_namespace_refresh_context, accumulation_execution_context,
     supplied_services_context, arc_evidence]
-import ../../../src/state/[current_logical_refresh, current_refresh_plan, current_request_keys,
-    current_identities, current_logical, current_state, current_globals, current_profile,
-    accumulation_current_update, supplied_logical_inventory, supplied_services, inventory, manifest,
-    store, account_audit_plan, account_audit, account_invariants, footprint_audit, preimage_content, preimage_linkage]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests]
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/[request_keys as current_request_keys,
+    identities as current_identities, logical as current_logical, state as current_state,
+    globals as current_globals, profile as current_profile]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/footprint_audit
+import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual signed/current execution and request-key capture precede hash-free plans and independently counted audit execution.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

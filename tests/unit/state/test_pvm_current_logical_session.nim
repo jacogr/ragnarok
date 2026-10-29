@@ -11,15 +11,26 @@ import ../../support/[current_namespace_execution_context, current_application_c
     parent_profile_context, parent_globals_context, supplied_logical_context,
     current_identity_context,
     current_namespace_refresh_context, current_namespace_transition_context, current_logical_proof_context]
-import ../../../src/app/[services, options, chain, current_handoff, current_block_download,
-    current_logical_download, download_schedule, preparation_worker]
-import ../../../src/quic/[current_block_download_loop, current_block_download_session,
-    current_block_download_peers, current_block_download_stream]
+import ../../../src/app/[services, options, chain]
+import ../../../src/app/current/handoff as current_handoff
+import "../../../src/app/current/block/download" as current_block_download
+import ../../../src/app/current/logical/download as current_logical_download
+import ../../../src/app/download/schedule as download_schedule
+import ../../../src/app/preparation_worker
+import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/quic/current/block/download/session" as current_block_download_session
+import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/quic/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, report_owned, header]
-import ../../../src/state/[store, parent_profile, parent_globals, parent_logical, current_logical,
-    current_identities, accumulation_current_update, block_admission, report_admission]
-import ../../../src/storage/managed_manifest
+import ../../../src/state/store
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[logical as current_logical, identities as current_identities]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/storage/managed/manifest as managed_manifest
 
 type Mode {.pure.} = enum ## Success includes a real empty-response retry; refusals and joined closes publish no logical prefix.
   Consecutive, BudgetRefusal, IdentityRefusal, JoinDone, CancelQueued

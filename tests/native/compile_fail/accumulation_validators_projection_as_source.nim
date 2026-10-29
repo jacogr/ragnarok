@@ -4,7 +4,8 @@
 
 ## Disconnected or partial-stage inputs cannot construct an accumulation validator certificate.
 
-import ../../../src/state/[accumulation_validators, validator_projection]
+import ../../../src/state/accumulation/validators as accumulation_validators
+import ../../../src/state/validator/projection as validator_projection
 var source: ValidatorActivityProjection
 var config: AccumulationValidatorsConfig
 discard prepareAccumulationValidators(source, config)

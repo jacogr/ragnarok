@@ -4,8 +4,9 @@
 ## Default/refused drivers and terminal owners cannot reveal successful prefixes or inactive parent payloads.
 import std/cmdline
 import ../../src/chain/parameters
-import ../../src/state/[accumulation_current_driver, accumulation_current_sequence,
-    accumulation_round]
+import ../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence]
+import ../../src/state/accumulation/round as accumulation_round
 let owner = default(CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence])
 let completed = default(CompletedCurrentAccumulationSequence)
 let refused = finishCurrentAccumulationSequence(default(PreparedCurrentContinuation))

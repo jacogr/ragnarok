@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 discard RequestResult[int](status: RequestError.None, completed: 0)

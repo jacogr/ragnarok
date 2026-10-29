@@ -7,7 +7,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[cmdline, syncio]
-import ../../src/codec/[composite, work_report, report_owned, owned]
+import ../../src/codec/composite
+import ../../src/codec/work/report as work_report
+import ../../src/codec/[report_owned, owned]
 
 let useDefault = paramStr(2) == "default"
 let empty = newSeq[byte](0)

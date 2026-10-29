@@ -1,6 +1,6 @@
 # Report admission policy
 
-`src/state/report_policy.nim` consumes immutable `VerifiedGuaranteeCredentials` and a complete-map
+`src/state/report/policy.nim` consumes immutable `VerifiedGuaranteeCredentials` and a complete-map
 `StateStoreSnapshot`. It returns a private immutable `PolicyCheckedReports` only after the whole
 batch passes. The owner retains both exact inputs; guarded accessors return retained handles.
 Defaults/refusals carry only typed reasons, with no partial values or gas totals.

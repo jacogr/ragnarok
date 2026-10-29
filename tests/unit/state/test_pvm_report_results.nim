@@ -5,9 +5,13 @@
 ## Original multi-item guests verify ordered report I, protocol precedence, source ownership and atomic local refusal.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_report, refinement_bootstrap, refinement_outcome, refinement_dispatch]
+import ../../../src/state/refinement/[report as refinement_report,
+    bootstrap as refinement_bootstrap, outcome as refinement_outcome,
+    dispatch as refinement_dispatch]
 import ../../../src/pvm/[host_fetch, refinement_exports, output, step, initialize, machine]
-import ../../../src/codec/[bounded, composite, work_package, work_digest, work_report]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[package as work_package, digest as work_digest,
+    report as work_report]
 import ../../support/[pvm_report_results, pvm_refinement_outcome, arc_evidence]
 
 let halt = @[50'u8, 0]

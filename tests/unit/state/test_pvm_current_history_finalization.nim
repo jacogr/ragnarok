@@ -4,11 +4,14 @@
 
 ## Same-source C15 and C16 publish together after admitted-time metadata updates, retaining exact terminal progress.
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, assurances, report_owned, state_accounts, state_layout,
-  state_outputs, state_workqueues]
-import ../../../src/state/[accumulation_current_finalization, accumulation_current_accounts,
-  accumulation_current_outputs, accumulation_current_driver, accumulation_current_sequence,
-  accumulation_history, store]
+import ../../../src/codec/[bounded, assurances, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    outputs as state_outputs, workqueues as state_workqueues]
+import ../../../src/state/accumulation/current/[finalization as accumulation_current_finalization,
+    accounts as accumulation_current_accounts, outputs as accumulation_current_outputs,
+    driver as accumulation_current_driver, sequence as accumulation_current_sequence]
+import ../../../src/state/accumulation/history as accumulation_history
+import ../../../src/state/store
 import ../../support/[accumulation_current_finalization_context,
   accumulation_current_outputs_context,
   accumulation_current_statistics_context, accumulation_current_sequence_context,

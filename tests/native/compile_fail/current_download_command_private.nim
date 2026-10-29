@@ -3,6 +3,6 @@
 
 ## Current command progress cannot be retagged as successful adoption by external callers.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/app/current_download_command
+import ../../../src/app/current/download/command as current_download_command
 var outcome = default(CurrentDownloadCommandOutcome)
 discard outcome.status

@@ -5,21 +5,28 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_completion, accumulation_block_publication,
-  accumulation_consensus,
-  accumulation_authorization, accumulation_preimages, accumulation_activity,
-  accumulation_validators, accumulation_times, accumulation_recent, accumulation_ready,
-  accumulation_history, accumulation_queue, preimages,
-  block_activity,
-  service_activity,
-  accumulation_accounts,
-  accumulation_statistics,
-  accumulation_finalization, accumulation_outputs,
-  accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
-  accumulation_execution,
-  accumulation_inputs, accumulation_service, accumulation_dispatch, accumulation_skip, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics, state_trie,
-    state_layout, state_workqueues, owned, composite]
+import ../../../src/state/accumulation/completion as accumulation_completion
+import "../../../src/state/accumulation/block/publication" as accumulation_block_publication
+import ../../../src/state/accumulation/[consensus as accumulation_consensus,
+    authorization as accumulation_authorization, preimages as accumulation_preimages,
+    activity as accumulation_activity, validators as accumulation_validators,
+    times as accumulation_times, recent as accumulation_recent, ready as accumulation_ready,
+    history as accumulation_history, queue as accumulation_queue]
+import ../../../src/state/preimages
+import "../../../src/state/block/activity" as block_activity
+import ../../../src/state/service/activity as service_activity
+import ../../../src/state/accumulation/[accounts as accumulation_accounts,
+    statistics as accumulation_statistics, finalization as accumulation_finalization,
+    outputs as accumulation_outputs, reentry as accumulation_reentry]
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, inputs as accumulation_inputs,
+    service as accumulation_service, dispatch as accumulation_dispatch, skip as accumulation_skip]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[outputs as state_outputs, statistics as state_statistics,
+    trie as state_trie, layout as state_layout, workqueues as state_workqueues]
+import ../../../src/codec/[owned, composite]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
   service_activity_context, block_activity_context, accumulation_completion_context,

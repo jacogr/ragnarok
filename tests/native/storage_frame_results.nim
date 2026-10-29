@@ -3,8 +3,10 @@
 
 ## Journal frame result alternatives remain success/selected-error guarded.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[journal_codec, record_codec, node_records, node_repository]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/[journal_codec, record_codec]
+import ../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 proc main() =
   ## Dynamic origins cover both payload families and the nested refusal diagnostic.
   let member = paramStr(1)

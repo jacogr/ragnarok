@@ -3,7 +3,8 @@
 
 ## Opaque helpers require runtime result selection and also succeed on genuine encoded bytes and precise capture refusal.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[chain, checkpoint_codec, checkpoint_identity]
+import ../../src/app/chain
+import ../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../src/codec/bounded
 import ../../src/state/store
 import ../../src/chain/genesis

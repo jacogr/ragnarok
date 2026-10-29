@@ -5,15 +5,27 @@
 import std/assertions
 import ./service_namespace_seed
 import ../../src/chain/[parameters, genesis, provider]
-import ../../src/codec/[bounded, header, composite, report_owned, state_trie]
-import ../../src/state/[accumulation_current_consensus, accumulation_consensus,
-  accumulation_current_authorization, accumulation_authorization, accumulation_current_preimages,
-  accumulation_preimages, accumulation_current_activity, accumulation_activity,
-  accumulation_current_validators, accumulation_current_recent, accumulation_current_ready,
-  accumulation_current_finalization, accumulation_current_accounts, accumulation_current_statistics,
-  accumulation_current_driver, accumulation_current_sequence, accumulation_current_round,
-  accumulation_block_guests, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, preimages, store]
+import ../../src/codec/[bounded, header, composite, report_owned]
+import ../../src/codec/state/trie as state_trie
+import ../../src/state/accumulation/current/consensus as accumulation_current_consensus
+import ../../src/state/accumulation/consensus as accumulation_consensus
+import ../../src/state/accumulation/current/authorization as accumulation_current_authorization
+import ../../src/state/accumulation/authorization as accumulation_authorization
+import ../../src/state/accumulation/current/preimages as accumulation_current_preimages
+import ../../src/state/accumulation/preimages as accumulation_preimages
+import ../../src/state/accumulation/current/activity as accumulation_current_activity
+import ../../src/state/accumulation/activity as accumulation_activity
+import ../../src/state/accumulation/current/[validators as accumulation_current_validators,
+    recent as accumulation_current_recent, ready as accumulation_current_ready,
+    finalization as accumulation_current_finalization, accounts as accumulation_current_accounts,
+    statistics as accumulation_current_statistics, driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence, round as accumulation_current_round]
+import "../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/state/[preimages, store]
 import ./[accumulation_current_activity_context, accumulation_current_round_context]
 type CurrentChainFixture* = object ## Actual current authority retains its structurally captured exact parent and independently authored parent keys.
   source*: PreparedCurrentAccumulationConsensus

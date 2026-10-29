@@ -5,8 +5,10 @@
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/state/store
-import ../../../src/storage/[full_state_trie, node_records, node_repository]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashing while observing transport-only calls.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

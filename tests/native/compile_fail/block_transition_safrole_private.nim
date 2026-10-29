@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "safroleReason"}
 
-import ../../../src/state/block_transition
+import "../../../src/state/block/transition" as block_transition
 var outcome = default(BlockTransitionResult)
 discard outcome.safroleReason # Must fail privacy checking before generating native code.

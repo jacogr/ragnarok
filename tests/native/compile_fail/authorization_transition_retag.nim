@@ -9,6 +9,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 import ../../../src/state/authorization
-import ../../../src/codec/state_trie
+import ../../../src/codec/state/trie as state_trie
 var hidden = default(AuthorizationTransitionResult[StateEntry])
 hidden.status = AuthorizationTransitionError.None

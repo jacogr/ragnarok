@@ -7,9 +7,11 @@
 # @@Verification={"arc": "pvm_accumulation_fetch_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_machine, accumulation_fetch]
+import ../../../src/state/accumulation/[machine as accumulation_machine,
+    fetch as accumulation_fetch]
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, c2_records, state_safrole]
+import ../../../src/codec/[bounded, c2_records]
+import ../../../src/codec/state/safrole as state_safrole
 import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
 import ../../support/[pvm_accumulation_context, arc_evidence]
 

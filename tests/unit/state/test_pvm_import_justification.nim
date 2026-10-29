@@ -5,8 +5,10 @@
 ## Independent inclusion witnesses, shape/work policy, tampering, canonical path bytes and immutable ownership.
 
 import std/[assertions, syncio]
-import ../../../src/state/[import_justification, export_commitment]
-import ../../../src/codec/[bounded, natural, work_package, work_report]
+import "../../../src/state/import/justification" as import_justification
+import "../../../src/state/export/commitment" as export_commitment
+import ../../../src/codec/[bounded, natural]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 import ../../../src/pvm/host_fetch
 import ../../support/[pvm_import_justification, pvm_import_vectors, pvm_export_commitment, arc_evidence]
 

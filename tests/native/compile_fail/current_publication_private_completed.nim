@@ -3,7 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "completed"}
 
 ## Current publication result representation stays private.
-import ../../../src/state/[accumulation_current_publication, accumulation_current_consensus, store]
+import ../../../src/state/accumulation/current/[publication as accumulation_current_publication,
+    consensus as accumulation_current_consensus]
+import ../../../src/state/store
 var state = default(StateStore)
 let refused = publishCurrentAccumulationState(state, default(PreparedCurrentAccumulationConsensus))
 discard refused.completed

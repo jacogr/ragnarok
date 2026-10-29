@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_service_values, state_trie]
+import ../../../src/codec/state/[service_values as state_service_values, trie as state_trie]
 let parsed = default(ServiceValueResult[StateEntry])
 discard parsed.completed

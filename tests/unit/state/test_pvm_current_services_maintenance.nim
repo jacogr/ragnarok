@@ -4,11 +4,17 @@
 ## Real managed compaction preserves current Pending/Finished authority, publication receipts and exact RPC exclusion.
 import std/[assertions, envvars, syncio, base64, strutils]
 import std/posix/posix
-import ../../../src/app/[services, options, current_block_input, current_handoff, disk_chain,
-  disk_worker, chain]
+import ../../../src/app/[services, options]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[store, accumulation_current_update, accumulation_current_consensus]
-import ../../../src/storage/[managed_manifest, file_errors]
+import ../../../src/state/store
+import ../../../src/state/accumulation/current/[update as accumulation_current_update,
+    consensus as accumulation_current_consensus]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/report_owned
 import ../../../src/rpc/server
 import ../../support/[current_services_disk_samples, current_application_context,

@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "mode"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 discard RequestHistory(mode: RequestState.Available, sinceSlot: RequestSlot(1))

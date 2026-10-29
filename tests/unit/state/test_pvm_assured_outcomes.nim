@@ -6,14 +6,23 @@
 ## Original guest modes retain authentic reports while successor aggregation changes gas exhaustion into real regular commits.
 
 import std/[assertions, syncio]
-import ../../../src/state/[assured_chain, assured_composition, assured_execution, assured_queue,
-  accumulation_execution, accumulation_round, accumulation_queue, accumulation_inputs,
-  accumulation_batch, accumulation_provisions, accumulation_outcome, accumulation_effects,
-  accumulation_context, accumulation_consensus, accumulation_finalization, accumulation_runner,
-  report_admission, block_transition, block_admission, store]
+import ../../../src/state/assured/[chain as assured_chain, composition as assured_composition,
+    execution as assured_execution, queue as assured_queue]
+import ../../../src/state/accumulation/[execution as accumulation_execution,
+    round as accumulation_round, queue as accumulation_queue, inputs as accumulation_inputs,
+    batch as accumulation_batch, provisions as accumulation_provisions,
+    outcome as accumulation_outcome, effects as accumulation_effects,
+    context as accumulation_context, consensus as accumulation_consensus,
+    finalization as accumulation_finalization, runner as accumulation_runner]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../../src/chain/[genesis, provider, parameters]
-import ../../../src/codec/[bounded, state_accounts, state_service_values, state_layout,
-  state_statistics, state_workqueues, work_digest]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    layout as state_layout, statistics as state_statistics, workqueues as state_workqueues]
+import ../../../src/codec/work/digest as work_digest
 import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
   pvm_assured_execution, pvm_assured_composition, arc_evidence]
 

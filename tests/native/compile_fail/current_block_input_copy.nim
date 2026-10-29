@@ -4,7 +4,7 @@
 ## Two mutable receivers cannot share copied callback generations or byte ownership.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CurrentBlockInput>", "build_name": "current-block-input-copy"}
 
-import ../../../src/app/current_block_input
+import "../../../src/app/current/block/input" as current_block_input
 var original = default(CurrentBlockInput)
 var duplicate = original
 discard original.cancel(default(CurrentBlockInputId))

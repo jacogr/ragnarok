@@ -6,12 +6,14 @@
 ## Real source-bound credentials, canonicality/preflight, retained message identity and immutable ARC lifetime.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_credentials, computed_guarantors, computed_roster,
-  computed_transition,
-  computed_profile, computed_lookup, computed_recent, computed_state, computed_links,
-  computed_guarantee,
-  computed_report, store]
-import ../../../src/codec/[guarantees, state_safrole]
+import ../../../src/state/computed/[credentials as computed_credentials,
+    guarantors as computed_guarantors, roster as computed_roster, transition as computed_transition,
+    profile as computed_profile, lookup as computed_lookup, recent as computed_recent,
+    state as computed_state, links as computed_links, guarantee as computed_guarantee,
+    report as computed_report]
+import ../../../src/state/store
+import ../../../src/codec/guarantees
+import ../../../src/codec/state/safrole as state_safrole
 import ../../../src/crypto/[primitives, guarantee]
 import ../../support/[pvm_computed_credentials, arc_evidence]
 

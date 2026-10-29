@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Host logical authority and backing storage remain private and cannot be retagged or substituted.
-import ../../../src/app/logical_checkpoint
+import ../../../src/app/logical/checkpoint as logical_checkpoint
 let source = default(LogicalCheckpointResult)
 discard source.status

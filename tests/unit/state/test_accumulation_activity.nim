@@ -5,12 +5,23 @@
 ## Literal signed C(13) bytes, exact parent/body binding, independent full-map roots and atomic publication refusals.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_activity, accumulation_validators, validator_projection,
-  core_service_activity, preimages, accumulation_times, accumulation_statistics,
-  accumulation_finalization, accumulation_outputs, accumulation_execution, accumulation_round,
-  accumulation_queue, report_admission, guarantee_credentials, block_transition, block_admission, store]
-import ../../../src/codec/[bounded, composite, natural, block_codec, owned, report_owned,
-  state_statistics, state_layout, state_trie, state_accounts]
+import ../../../src/state/accumulation/[activity as accumulation_activity,
+    validators as accumulation_validators]
+import ../../../src/state/validator/projection as validator_projection
+import ../../../src/state/core/service_activity as core_service_activity
+import ../../../src/state/preimages
+import ../../../src/state/accumulation/[times as accumulation_times,
+    statistics as accumulation_statistics, finalization as accumulation_finalization,
+    outputs as accumulation_outputs, execution as accumulation_execution,
+    round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/guarantee_credentials
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, natural, block_codec, owned, report_owned]
+import ../../../src/codec/state/[statistics as state_statistics, layout as state_layout,
+    trie as state_trie, accounts as state_accounts]
 import ../../support/[accumulation_activity_context, accumulation_provision_integration,
   report_context, arc_evidence]
 

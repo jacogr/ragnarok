@@ -11,10 +11,10 @@ input does not become mutable published storage.
 | Integer, sequence and ownership foundations | `natural`, `fixed_unsigned`, `bounded`, `bitstrings`, `collections`, `composite`, `owned` |
 | Blocks and extrinsics | `header`, `block_codec`, `tickets`, `assurances`, `guarantees`, `disputes` |
 | Work packages and reports | `work_package`, `work_digest`, `work_report`, `report_owned`, `c2_records` |
-| State chapters and service records | `state_accounts`, `state_service_values`, `state_requests` and the other `state_*` chapter codecs |
-| State keys and commitments | [`state_layout.nim`](state_layout.nim), [`state_trie.nim`](state_trie.nim) |
+| State chapters and service records | `state/accounts`, `state/service_values`, `state/requests` and the other `state/` chapter codecs |
+| State keys and commitments | [`state/layout.nim`](state/layout.nim), [`state/trie.nim`](state/trie.nim) |
 
-The complete-map root calculator in `state_trie.nim` is an independent reference for the
+The complete-map root calculator in `state/trie.nim` is an independent reference for the
 incremental [storage trie](../storage/README.md). Serialization and commitment primitives are
 shared across consumers; complete full-state roots and partial light-state proofs retain distinct
 contracts.

@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/import_justification
+import "../../../src/state/import/justification" as import_justification
 var outcome: ImportJustificationResult[int]
 discard outcome.status

@@ -7,7 +7,8 @@
 ## observations for the independent Python harness.
 
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[state_disputes, state_trie, bounded]
+import ../../src/codec/state/[disputes as state_disputes, trie as state_trie]
+import ../../src/codec/bounded
 
 ## Preserve empty set/input tokens without inventing a wire byte.
 proc unhex(text: string): seq[byte] =

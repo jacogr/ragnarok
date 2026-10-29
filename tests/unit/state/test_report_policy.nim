@@ -10,10 +10,15 @@
 # @@Verification={"arc": "report_policy_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[report_policy, guarantee_credentials, guarantors, store]
-import ../../../src/codec/[guarantees, assurances, bounded, state_safrole, disputes,
-  report_owned, owned, work_report, work_digest, composite, header, state_accounts,
-  state_authorization, state_layout, state_trie]
+import ../../../src/state/report/policy as report_policy
+import ../../../src/state/[guarantee_credentials, guarantors, store]
+import ../../../src/codec/[guarantees, assurances, bounded]
+import ../../../src/codec/state/safrole as state_safrole
+import ../../../src/codec/[disputes, report_owned, owned]
+import ../../../src/codec/work/[report as work_report, digest as work_digest]
+import ../../../src/codec/[composite, header]
+import ../../../src/codec/state/[accounts as state_accounts, authorization as state_authorization,
+    layout as state_layout, trie as state_trie]
 import ../../../src/crypto/[primitives, guarantee]
 import ../../support/[arc_evidence, report_context]
 

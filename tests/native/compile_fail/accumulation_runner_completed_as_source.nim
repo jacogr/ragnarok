@@ -4,7 +4,8 @@
 
 ## Only genuine initial-round provenance can authorize guest execution.
 
-import ../../../src/state/[accumulation_runner, accumulation_execution]
+import ../../../src/state/accumulation/[runner as accumulation_runner,
+    execution as accumulation_execution]
 import ../../../src/chain/parameters
 var source: CompletedBlockAccumulation
 discard runBlockAccumulation(source, default(Parameters), default(AccumulationRunnerLimits))

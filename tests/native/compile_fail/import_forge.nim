@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "referenceKind"}
 
-import ../../../src/codec/[work_package, work_report]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 var value = default(ImportReference)
 discard ImportReference(referenceKind: ImportKind.Root)

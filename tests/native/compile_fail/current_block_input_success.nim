@@ -4,6 +4,6 @@
 ## Finalized certificates require guarded extraction rather than direct payload access.
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/app/current_block_input
+import "../../../src/app/current/block/input" as current_block_input
 var owner = default(CurrentBlockInputResult)
 discard owner.completed

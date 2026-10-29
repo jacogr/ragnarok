@@ -3,6 +3,6 @@
 
 ## External callers cannot forge retained logical startup authority.
 # @@Verification={"group": "privacy", "expected": "policy"}
-import ../../../src/app/[current_download_policy]
+import ../../../src/app/current/download/policy as current_download_policy
 var owner = default(CurrentLogicalPolicyResult)
 discard owner.policy

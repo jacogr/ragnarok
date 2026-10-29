@@ -7,8 +7,10 @@
 ## selected path must terminate at the checked success precondition rather than yield a value.
 
 import std/cmdline
-import ../../src/state/[accumulation_queue, report_admission]
-import ../../src/codec/[state_workqueues, header]
+import ../../src/state/accumulation/queue as accumulation_queue
+import ../../src/state/report/admission as report_admission
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/codec/header
 # Runtime selection keeps default/refused extraction in the executable rather than constant folding it.
 let outcome = if paramStr(1) == "refused":
   planAccumulationQueues([], [], [], HeaderSlot(0), default(AccumulationQueueConfig))

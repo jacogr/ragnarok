@@ -8,7 +8,10 @@
 ## Exposes parent-history correction, accumulationRoot, advanceHistory and advanceHistoryState.
 
 import std/algorithm
-import ../codec/[natural, state_history, state_outputs, state_layout, state_trie, bounded]
+import ../codec/natural
+import ../codec/state/[history as state_history, outputs as state_outputs, layout as state_layout,
+    trie as state_trie]
+import ../codec/bounded
 import ../crypto/primitives
 import ./store
 

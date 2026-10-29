@@ -6,12 +6,21 @@ import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_consecutive_context, accumulation_current_chain_context,
   current_namespace_context, state_inventory_context, fuzz_backend_context]
-import ../../src/app/[chain, candidate, fuzz_backend, fuzz_rejection]
+import ../../src/app/[chain, candidate]
+import ../../src/app/fuzz/[backend as fuzz_backend, rejection as fuzz_rejection]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_composition]
-import ../../src/state/[fuzz_protocol, store, accumulation_current_update, current_profile,
-  current_globals,
-  current_state, global_snapshot, report_admission, guarantee_credentials, block_transition, availability]
+import ../../src/codec/[bounded, report_owned, block_codec, header]
+import ../../src/codec/state/[layout as state_layout, composition as state_composition]
+import ../../src/state/fuzz/protocol as fuzz_protocol
+import ../../src/state/store
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/availability
 
 proc limits(): CurrentCandidateLimits =
   ## Six distinct reporters/assurers and two available reports have explicit resource ceilings.

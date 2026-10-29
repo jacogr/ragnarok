@@ -3,7 +3,8 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Phase result storage cannot expose inactive payloads or writable discriminators.
-import ../../../src/state/[accumulation_account_stage, accumulation_block_guests]
+import ../../../src/state/accumulation/account/stage as accumulation_account_stage
+import "../../../src/state/accumulation/block/guests" as accumulation_block_guests
 let refused = prepareAccumulationAccountStage(default(BlockAccumulationGuests), default(
     AccumulationAccountStageLimits))
 discard refused.status

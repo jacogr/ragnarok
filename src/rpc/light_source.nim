@@ -4,7 +4,8 @@
 ## Immutable bounded light metadata transport contains no state map, proof graph or root/chain trust authority.
 ## The canonical application supplies already trusted identities; copying and structural checks perform no cryptography or native IO.
 import std/assertions
-import ../codec/[bounded, header, state_trie]
+import ../codec/[bounded, header]
+import ../codec/state/trie as state_trie
 from ../chain/genesis import BlockHash
 const
   MaxRpcLightHeaders* = 8           ## Metadata retention remains finite independently of proof/state retention.

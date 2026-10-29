@@ -5,16 +5,26 @@
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context, storage_io]
-import ../../../src/app/[disk_worker, light_store, light_head, checkpoint_identity,
-    checkpoint_trust, chain]
+import ../../../src/app/disk/worker as disk_worker
+import ../../../src/app/light/[store as light_store, head as light_head]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
+import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, assurances, state_layout, state_trie]
+import ../../../src/codec/[bounded, header, assurances]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/full_paged_native_fixture as fullfixture
-import ../../../src/state/[disk_store, paged_state, store, trie_proof, proof_view, paged_proof_view]
-import ../../../src/storage/light_state_cache as nativecache
-import ../../../src/storage/[paged_store, paged_codec, paged_stream, paged_io, node_records,
-    durability, file_errors]
+import ../../../src/state/disk_store
+import ../../../src/state/paged/state as paged_state
+import ../../../src/state/[store, trie_proof]
+import ../../../src/state/proof/view as proof_view
+import ../../../src/state/paged/proof_view as paged_proof_view
+import ../../../src/storage/light/state_cache as nativecache
+import ../../../src/storage/paged/[store as paged_store, codec as paged_codec,
+    stream as paged_stream, io as paged_io]
+import ../../../src/storage/node/records as node_records
+import ../../../src/storage/durability
+import ../../../src/storage/file/errors as file_errors
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header

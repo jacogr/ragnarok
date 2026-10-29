@@ -6,7 +6,10 @@ import std/assertions
 import ./current_consecutive_context
 import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
-import ../../src/state/[report_admission, guarantee_credentials, block_transition, availability]
+import ../../src/state/report/admission as report_admission
+import ../../src/state/guarantee_credentials
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/availability
 
 proc reportingLimits*(): CurrentCandidateLimits =
   ## Six distinct reporters/assurers and two available reports have explicit resource ceilings.

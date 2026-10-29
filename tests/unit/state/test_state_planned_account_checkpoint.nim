@@ -5,9 +5,14 @@
 # @@Verification={"arc": "state_planned_account_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_account_checkpoint_context, arc_evidence]
-import ../../../src/state/[planned_account_checkpoint, validated_checkpoint, checkpoint, manifest, store,
-  inventory, account_audit_plan, account_audit, account_invariants, preimage_content]
-import ../../../src/codec/[bounded, state_trie, state_accounts, state_composition]
+import ../../../src/state/planned/account_checkpoint as planned_account_checkpoint
+import ../../../src/state/[validated_checkpoint, checkpoint, manifest, store, inventory]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/account/[audit as account_audit, invariants as account_invariants]
+import ../../../src/state/preimage/content as preimage_content
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
+    composition as state_composition]
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset hash counters or reject all primitive calls.

@@ -3,8 +3,10 @@
 
 ## Real complete-source economic fixtures retain independently checked footprint and directory evidence.
 import ./[state_inventory_context, account_invariant_context, service_directory_context]
-import ../../src/state/[inventory, footprint_audit, service_directory, account_deposit]
-import ../../src/codec/[state_accounts, state_composition]
+import ../../src/state/[inventory, footprint_audit]
+import ../../src/state/service/directory as service_directory
+import ../../src/state/account/deposit as account_deposit
+import ../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 type ServiceDepositTestSource* = object ## Tests retain matching genuine source-bound certificates, never forged owners.
   footprints*: CheckedAccountFootprints
   directory*: StateServiceDirectory

@@ -3,7 +3,7 @@
 
 ## Actual TLS fragments, framing/FIN failures, deadlines and callback retirement perform no decoding or state mutation.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/[ancestor_response, ancestor_receiver]
+import ../../../src/app/ancestor/[response as ancestor_response, receiver as ancestor_receiver]
 import ../../../src/chain/genesis
 import ../../../src/codec/[bounded, block_codec, report_owned]
 import ../../support/[application_download_chain, application_candidate_context, ancestor_transport,

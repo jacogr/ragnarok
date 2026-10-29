@@ -4,10 +4,12 @@
 ## Query admission binds exact selected identity and refuses each policy before proof work.
 import std/[assertions, syncio]
 import ../../support/proof_query_context
-import ../../../src/app/proof_query
+import ../../../src/app/proof/query as proof_query
 import ../../../src/chain/genesis
-import ../../../src/state/[proof_service, store]
-import ../../../src/codec/[bounded, state_trie]
+import ../../../src/state/proof/service as proof_service
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/trie as state_trie
 proc main() {.raises.} =
   ## The real source has current metadata and a complete immutable commitment.
   let selected = querySelection(queryContext())

@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "source"}
 
 ## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import ../../../src/state/service_identity_history
+import ../../../src/state/service/identity_history as service_identity_history
 let source = default(ServiceIdentityHistory)
 discard source.source

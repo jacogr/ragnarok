@@ -4,10 +4,15 @@
 
 ## Explicit-input current coverage reuses complete selected algorithms without gaining authenticated initial-block ownership.
 import std/[assertions, syncio]
-import ../../../src/codec/[bounded, composite, header, state_safrole, state_trie]
-import ../../../src/state/[accumulation_guest_runner, accumulation_coverage,
-  accumulation_account_phase, accumulation_provision_phase, accumulation_global_phase,
-  accumulation_provisions, store]
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
+import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    coverage as accumulation_coverage]
+import ../../../src/state/accumulation/account/phase as accumulation_account_phase
+import ../../../src/state/accumulation/provision/phase as accumulation_provision_phase
+import ../../../src/state/accumulation/global/phase as accumulation_global_phase
+import ../../../src/state/accumulation/provisions as accumulation_provisions
+import ../../../src/state/store
 import ../../support/[accumulation_batch_context, accumulation_current_guests_context,
     pvm_accumulation_program, arc_evidence]
 proc provisions(): AccumulationProvisionUnionLimits =

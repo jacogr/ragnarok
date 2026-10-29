@@ -3,8 +3,9 @@
 
 ## Default and refused role owners cannot expose identities, source outcomes, snapshots or wire storage.
 import std/cmdline
-import ../../src/state/[accumulation_global_roles, accumulation_annulment]
-import ../../src/codec/state_privileges
+import ../../src/state/accumulation/global/roles as accumulation_global_roles
+import ../../src/state/accumulation/annulment as accumulation_annulment
+import ../../src/codec/state/privileges as state_privileges
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationGlobalRoles)
 let refused = if argument == "default": default(AccumulationGlobalRoleResult[PreparedAccumulationGlobalRoles])

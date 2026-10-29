@@ -5,8 +5,12 @@
 # @@Verification={"arc": "state_service_deposit_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_deposit_context, arc_evidence]
-import ../../../src/state/[service_deposit, account_deposit, footprint_audit, service_directory, inventory]
-import ../../../src/codec/state_accounts
+import ../../../src/state/service/deposit as service_deposit
+import ../../../src/state/account/deposit as account_deposit
+import ../../../src/state/footprint_audit
+import ../../../src/state/service/directory as service_directory
+import ../../../src/state/inventory
+import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after all real independent test certificates are built.

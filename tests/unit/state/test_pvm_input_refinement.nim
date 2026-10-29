@@ -5,11 +5,19 @@
 ## Genuine owned-input execution binds fetched bytes, source identity and lookup; failures retain no completed prefix.
 
 import std/[assertions, syncio]
-import ../../../src/state/[input_refinement, import_inputs, extrinsic_inputs, import_justification,
-  report_identity, authorized_refinement, authorization_invocation, refinement_digest,
-  refinement_report, refinement_outcome, refinement_bootstrap, refinement_dispatch,
-  refinement_lookup, store]
-import ../../../src/codec/[bounded, composite, work_package, work_report]
+import ../../../src/state/input_refinement
+import "../../../src/state/import/inputs" as import_inputs
+import ../../../src/state/extrinsic_inputs
+import "../../../src/state/import/justification" as import_justification
+import ../../../src/state/report/identity as report_identity
+import ../../../src/state/authorized_refinement
+import ../../../src/state/authorization/invocation as authorization_invocation
+import ../../../src/state/refinement/[digest as refinement_digest, report as refinement_report,
+    outcome as refinement_outcome, bootstrap as refinement_bootstrap,
+    dispatch as refinement_dispatch, lookup as refinement_lookup]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/work/[package as work_package, report as work_report]
 import ../../../src/pvm/host_fetch
 import ../../../src/chain/parameters
 import ../../../src/crypto/primitives

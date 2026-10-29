@@ -4,6 +4,6 @@
 
 ## Reject access to a prepared transfer's private immutable plan backing.
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 let plan = default(PreparedAccumulationTransfer)
 discard plan.data

@@ -4,7 +4,9 @@
 ## Optimized availability result guards with genuine independent completed-root controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[availability_specifier, export_erasure, erasure_words]
+import ../../src/state/availability/specifier as availability_specifier
+import "../../src/state/export/erasure" as export_erasure
+import ../../src/state/erasure/words as erasure_words
 import ../../src/codec/bounded
 import ../support/[pvm_export_erasure, pvm_availability_vectors]
 

@@ -5,11 +5,20 @@
 ## Ordinary retained StateStore snapshots/forks keep their memory contract after close or IO refusal.
 
 import std/assertions
-import ./[store, paged_state]
-import ../storage/[file_repository, node_repository, node_records, full_state_trie,
-  database_identity, durability, managed_repository, file_migration, managed_manifest,
-  full_paged_store, full_paged_codec, full_paged_stream, history_index, history_files]
-import ../codec/[state_trie, bounded]
+import ./store
+import ./paged/state as paged_state
+import ../storage/file/repository as file_repository
+import ../storage/node/[repository as node_repository, records as node_records]
+import ../storage/full/state_trie as full_state_trie
+import ../storage/[database_identity, durability]
+import ../storage/managed/repository as managed_repository
+import ../storage/file/migration as file_migration
+import ../storage/managed/manifest as managed_manifest
+import ../storage/full/paged/[store as full_paged_store, codec as full_paged_codec,
+    stream as full_paged_stream]
+import ../storage/history/[index as history_index, files as history_files]
+import ../codec/state/trie as state_trie
+import ../codec/bounded
 
 type
   DiskStoreError* {.pure.} = enum ## Selected failures expose reasons alone; roots grant no block authority.

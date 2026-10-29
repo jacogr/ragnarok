@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: Gas"}
 
-import ../../../src/state/accumulation_round
+import ../../../src/state/accumulation/round as accumulation_round
 import ../../../src/codec/bounded
 discard AccumulationRoundConfig(blockGas: ByteLimit(10)) # Byte ceilings are not protocol gas.

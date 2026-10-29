@@ -5,7 +5,7 @@
 
 ## Genuine composed parents witness complete descending responses, quotas, linkage and immutable observations.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/ancestor_response
+import ../../../src/app/ancestor/response as ancestor_response
 import ../../../src/chain/genesis
 import ../../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../support/[application_download_chain, application_candidate_context, arc_evidence]

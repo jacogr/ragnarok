@@ -6,7 +6,7 @@ import std/[assertions, syncio, envvars]
 import ../../support/managed_storage_samples
 import ../../../src/app/[services, options]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 proc configured(path: string, layout: string): Options =
   ## Harness-owned configured genesis is captured before listeners or storage become observable.
   result = default(Options)

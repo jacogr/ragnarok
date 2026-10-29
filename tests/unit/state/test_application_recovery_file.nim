@@ -6,11 +6,13 @@
 ## Startup recovery reads exactly one selected bounded envelope and never repairs or modifies it.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_identity, checkpoint_codec, checkpoint_file, checkpoint_recovery]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    file as checkpoint_file, recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const PathName = "application-recovery-file"
 proc cycle(wire: seq[byte], expected: ApplicationCheckpointIdentity) =

@@ -4,8 +4,9 @@
 ## Default and invalid finalized statistics cannot expose rows, totals or retained state provenance.
 
 import std/cmdline
-import ../../src/state/[accumulation_statistics, accumulation_finalization]
-import ../../src/codec/state_statistics
+import ../../src/state/accumulation/[statistics as accumulation_statistics,
+    finalization as accumulation_finalization]
+import ../../src/codec/state/statistics as state_statistics
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationStatistics)

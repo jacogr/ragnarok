@@ -4,6 +4,6 @@
 
 ## Outcome storage and result alternatives remain private behind guarded accessors.
 
-import ../../../src/state/accumulation_outcome
+import ../../../src/state/accumulation/outcome as accumulation_outcome
 var owner: AccumulationOutcome
 discard owner.data

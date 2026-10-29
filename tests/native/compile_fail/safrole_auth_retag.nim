@@ -9,6 +9,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/safrole_authentication
+import ../../../src/state/safrole/authentication as safrole_authentication
 var hidden = default(SafroleAuthResult)
 hidden.status = SafroleAuthError.None

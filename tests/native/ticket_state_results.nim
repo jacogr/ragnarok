@@ -7,8 +7,9 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/state/[ticket_state, ticket_admission, store]
-import ../../src/codec/state_safrole
+import ../../src/state/ticket/[state as ticket_state, admission as ticket_admission]
+import ../../src/state/store
+import ../../src/codec/state/safrole as state_safrole
 
 var state = default(StateStore)
 let outcome = if paramStr(1) == "default": default(TicketStateResult) else:

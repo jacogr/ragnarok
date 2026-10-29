@@ -7,9 +7,12 @@
 # @@Verification={"arc": "accumulation_inputs_arc_release"}
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
-import ../../../src/state/[accumulation_inputs, accumulation_operands, accumulation_queue]
-import ../../../src/codec/[bounded, composite, header, work_digest, report_owned,
-  c2_records, state_workqueues, state_privileges]
+import ../../../src/state/accumulation/[inputs as accumulation_inputs,
+    operands as accumulation_operands, queue as accumulation_queue]
+import ../../../src/codec/[bounded, composite, header]
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/[report_owned, c2_records]
+import ../../../src/codec/state/[workqueues as state_workqueues, privileges as state_privileges]
 import ../../support/[report_context, arc_evidence]
 
 ## Finite independent local ceilings cover input descriptors, allowance rows and union services.

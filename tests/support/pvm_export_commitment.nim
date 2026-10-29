@@ -3,7 +3,9 @@
 
 ## Genuine source-bound report fixtures for export roots and proof-page witnesses.
 
-import ../../src/state/[export_commitment, report_identity, authorized_refinement]
+import "../../src/state/export/commitment" as export_commitment
+import ../../src/state/report/identity as report_identity
+import ../../src/state/authorized_refinement
 import ../../src/codec/bounded
 import ./[pvm_authorized_refinement, pvm_report_identity, pvm_report_results]
 

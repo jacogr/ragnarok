@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/codec/state_requests
+import ../../../src/codec/state/requests as state_requests
 var parsed = default(RequestResult[int])
 parsed.value = 0

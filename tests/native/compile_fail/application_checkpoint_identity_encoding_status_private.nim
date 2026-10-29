@@ -3,6 +3,6 @@
 
 ## Callers cannot retag codec results or replace private success payloads.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/app/checkpoint_identity
+import ../../../src/app/checkpoint/identity as checkpoint_identity
 let outcome = default(ApplicationCheckpointEncodingResult)
 discard outcome.status

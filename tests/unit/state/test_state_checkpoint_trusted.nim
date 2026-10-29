@@ -7,8 +7,11 @@
 
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/state/[checkpoint, checkpoint_file, store]
-import ../../../src/codec/[state_trie, state_layout, bounded]
+import ../../../src/state/checkpoint
+import ../../../src/state/checkpoint/file as checkpoint_file
+import ../../../src/state/store
+import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 proc policy(): StateStoreLimits =

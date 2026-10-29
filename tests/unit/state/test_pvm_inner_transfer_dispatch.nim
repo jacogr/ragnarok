@@ -5,9 +5,11 @@
 ## Genuine refinement guests compose creation/pages/poke/peek with normalized bytes, gas and typed local refusals.
 
 import std/[assertions, syncio]
-import ../../../src/state/[refinement_bootstrap, refinement_dispatch, refinement_outcome]
+import ../../../src/state/refinement/[bootstrap as refinement_bootstrap,
+    dispatch as refinement_dispatch, outcome as refinement_outcome]
 import ../../../src/pvm/[inner_machines, machine, step, refinement_exports]
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 import ../../support/[pvm_refinement_outcome, pvm_inner_lifecycle, arc_evidence]
 
 proc limits(): RefinementInvocationLimits =

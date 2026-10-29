@@ -4,6 +4,7 @@
 
 ## A per-context provision ordinal cannot select a retained union source.
 
-import ../../../src/state/[accumulation_provisions, accumulation_effects]
+import ../../../src/state/accumulation/[provisions as accumulation_provisions,
+    effects as accumulation_effects]
 var plan: PreparedAccumulationProvisions
 discard provisionSourceAt(plan, AccumulationProvisionIndex(0))

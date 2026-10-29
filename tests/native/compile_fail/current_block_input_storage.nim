@@ -4,6 +4,6 @@
 ## Callers cannot replace the receiver's private mutable byte/context storage.
 # @@Verification={"group": "privacy", "expected": "pending"}
 
-import ../../../src/app/current_block_input
+import "../../../src/app/current/block/input" as current_block_input
 var owner = default(CurrentBlockInput)
 discard owner.pending

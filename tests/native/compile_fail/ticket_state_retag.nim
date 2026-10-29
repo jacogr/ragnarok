@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/[ticket_state, ticket_admission]
+import ../../../src/state/ticket/[state as ticket_state, admission as ticket_admission]
 var hidden = default(TicketStateResult)
 hidden.status = TicketAdmissionError.None

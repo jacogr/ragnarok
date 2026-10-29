@@ -3,8 +3,10 @@
 
 ## Dynamic strict extraction probes distinguish default/refused plans and invalid initialized output ordinals.
 import std/[cmdline, syncio]
-import ../../src/state/[accumulation_transfer_partition, store]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/state/accumulation/transfer_partition as accumulation_transfer_partition
+import ../../src/state/store
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 let outcome = if paramStr(1) == "refused":
   prepareAccumulationTransferPartition(default(StateStoreSnapshot), [], [], default(TransferPartitionLimits))

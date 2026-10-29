@@ -4,6 +4,6 @@
 
 ## Completion tags, successful candidates and phase-reason storage remain private.
 
-import ../../../src/state/accumulation_completion
+import ../../../src/state/accumulation/completion as accumulation_completion
 var outcome: AccumulationCompletionResult
 discard outcome.consensusReason

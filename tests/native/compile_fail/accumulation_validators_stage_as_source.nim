@@ -4,7 +4,8 @@
 
 ## Disconnected or partial-stage inputs cannot construct an accumulation validator certificate.
 
-import ../../../src/state/[accumulation_validators, block_transition]
+import ../../../src/state/accumulation/validators as accumulation_validators
+import "../../../src/state/block/transition" as block_transition
 var source: BlockTransitionResult
 var config: AccumulationValidatorsConfig
 discard prepareAccumulationValidators(source, config)

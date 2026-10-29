@@ -8,7 +8,9 @@
 ## constructors, allocation-free input sizing, codecs and copied payload access.
 
 import std/assertions
-import ./[natural, fixed_unsigned, bounded, composite, work_digest, work_report, assurances]
+import ./[natural, fixed_unsigned, bounded, composite]
+import ./work/[digest as work_digest, report as work_report]
+import ./assurances
 
 type
   RecordError* {.pure.} = enum ## Missing/default outcomes cannot expose a fabricated fixed record, retained owner or cursor.

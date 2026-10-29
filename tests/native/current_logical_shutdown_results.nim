@@ -8,16 +8,30 @@ import ../support/[current_namespace_execution_context, current_namespace_transi
   current_logical_cli_context, current_namespace_policy_context, current_application_context,
   current_consecutive_download_context, current_services_disk_samples, managed_storage_samples,
   block_download_transport, current_download_command_context]
-import ../../src/app/[services, options, current_handoff, current_download_policy,
-  current_logical_startup, current_logical_download, logical_source_export, candidate, disk_worker, download_schedule]
-import ../../src/quic/[current_block_download_loop, current_block_download_session,
-  current_block_download_peers, current_block_download_stream]
-import ../../src/state/[store, current_logical, accumulation_current_update, accumulation_round,
-  accumulation_queue,
-  report_admission, block_transition, block_admission]
-import ../../src/codec/[bounded, report_owned, state_service_values, state_accounts]
+import ../../src/app/[services, options]
+import ../../src/app/current/handoff as current_handoff
+import ../../src/app/current/download/policy as current_download_policy
+import ../../src/app/current/logical/[startup as current_logical_startup,
+    download as current_logical_download]
+import ../../src/app/logical/source_export as logical_source_export
+import ../../src/app/candidate
+import ../../src/app/disk/worker as disk_worker
+import ../../src/app/download/schedule as download_schedule
+import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/quic/current/block/download/session" as current_block_download_session
+import "../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import ../../src/state/store
+import ../../src/state/current/logical as current_logical
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import "../../src/state/block/admission" as block_admission
+import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/state/[service_values as state_service_values, accounts as state_accounts]
 import ../../src/chain/[provider, genesis]
-import ../../src/storage/managed_manifest
+import ../../src/storage/managed/manifest as managed_manifest
 type Witness {.pure.} = enum ## Independently selected legal ownership boundaries require no probabilistic sleep or guessed worker timing.
   Pending, NativeDone, Finished, Observed, Raw, Refused
 proc peerKey(): CurrentDownloadPeerKey {.raises.} =

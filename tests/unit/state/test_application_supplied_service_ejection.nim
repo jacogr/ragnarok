@@ -8,11 +8,18 @@ import ../../support/[collected_native_context, collected_mutation_context,
     current_namespace_execution_context,
     accumulation_execution_context,
     current_identity_context, supplied_services_context, pvm_accumulation_program, service_namespace_seed]
-import ../../../src/app/[collected_supplied_state, preparation_worker, current_block_input]
-import ../../../src/state/[current_identities, current_logical, supplied_logical_inventory,
-    supplied_services, accumulation_current_update, store]
-import ../../../src/codec/[bounded, state_layout, state_accounts, state_composition,
-    state_service_values, state_requests]
+import ../../../src/app/collected/supplied/state as collected_supplied_state
+import ../../../src/app/preparation_worker
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/state/current/[identities as current_identities, logical as current_logical]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    composition as state_composition, service_values as state_service_values,
+    requests as state_requests]
 import ../../../src/crypto/primitives
 proc main() {.raises.} =
   ## Real signed inputs and the fixed-address native preparation worker choose all actual regular/exceptional effects.

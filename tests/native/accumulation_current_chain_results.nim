@@ -5,7 +5,9 @@
 import std/cmdline
 import ../../src/chain/provider
 import ../../src/codec/bounded
-import ../../src/state/[accumulation_current_chain, accumulation_current_consensus, store]
+import ../../src/state/accumulation/current/[chain as accumulation_current_chain,
+    consensus as accumulation_current_consensus]
+import ../../src/state/store
 let owner = default(CurrentAccumulationChainResult)
 var state = default(StateStore)
 var view = default(ChainView)

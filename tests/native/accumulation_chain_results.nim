@@ -5,7 +5,9 @@
 
 import std/cmdline
 import ../../src/chain/[provider, genesis]
-import ../../src/state/[accumulation_chain, accumulation_finalization, accumulation_completion, store]
+import ../../src/state/accumulation/[chain as accumulation_chain,
+    finalization as accumulation_finalization, completion as accumulation_completion]
+import ../../src/state/store
 
 let argument = paramStr(1)
 var state = default(StateStore)

@@ -4,8 +4,9 @@
 ## Dynamic default/refused repository accesses require exact optimized public contracts.
 import std/[assertions, cmdline, syncio]
 import ../support/storage_samples
-import ../../src/storage/[node_repository, node_records, full_state_trie]
-import ../../src/codec/[state_layout, state_trie]
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/full/state_trie as full_state_trie
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc main() =
   ## Genuine active read controls run through the same native profile as refused accesses.

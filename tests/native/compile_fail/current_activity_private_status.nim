@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "status"}
 
 ## Current activity proof representation stays private.
-import ../../../src/state/[accumulation_current_activity, accumulation_activity,
-    accumulation_current_validators]
+import ../../../src/state/accumulation/current/activity as accumulation_current_activity
+import ../../../src/state/accumulation/activity as accumulation_activity
+import ../../../src/state/accumulation/current/validators as accumulation_current_validators
 let refused = prepareCurrentAccumulationActivity(default(PreparedCurrentAccumulationValidators),
     default(AccumulationActivityConfig))
 discard refused.status

@@ -5,7 +5,8 @@
 # @@Verification={"arc": "state_account_audit_plan_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_audit_plan_context, arc_evidence]
-import ../../../src/state/[account_audit_plan, inventory]
+import ../../../src/state/account/audit/plan as account_audit_plan
+import ../../../src/state/inventory
 import ../../../src/codec/bounded
 include ../../native/composition_fixture
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

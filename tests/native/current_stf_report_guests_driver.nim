@@ -3,31 +3,45 @@
 
 ## Immediate available reports drive genuine guests, grouped operands and complete current-state publication.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/[header, assurances, state_trie]
+import ../../src/codec/[header, assurances]
+import ../../src/codec/state/trie as state_trie
 import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_guest_limits
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
     current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context, current_stf_foreign_funding_context]
-import ../../src/app/[chain, candidate, logical_source_export, current_logical_startup,
-    trace_import, trace_bootstrap]
+import ../../src/app/[chain, candidate]
+import ../../src/app/logical/source_export as logical_source_export
+import ../../src/app/current/logical/startup as current_logical_startup
+import "../../src/app/trace/import" as trace_import
+import ../../src/app/trace/bootstrap as trace_bootstrap
 import ../support/[supplied_logical_context, parent_profile_context, parent_globals_context]
-import ../../src/state/[current_logical, supplied_services]
+import ../../src/state/current/logical as current_logical
+import ../../src/state/supplied/services as supplied_services
 import ../../src/chain/[provider, genesis, parameters]
-import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
-  state_requests, state_service_values, state_layout, state_safrole, composite]
+import ../../src/codec/[bounded, report_owned, block_codec]
+import ../../src/codec/state/[composition as state_composition, accounts as state_accounts,
+    requests as state_requests, service_values as state_service_values, layout as state_layout,
+    safrole as state_safrole]
+import ../../src/codec/composite
 import ../../src/crypto/primitives
-import ../../src/state/[trace_step, trace_state, trace_file, trace_genesis]
-import ../../src/state/safrole_transition
-import ../../src/state/[store, checkpoint, accumulation_current_update,
-  accumulation_current_completion,
-  accumulation_current_driver, accumulation_current_round, accumulation_block_guests,
-  accumulation_guest_runner, accumulation_dispatch, accumulation_invocation, report_admission,
-  block_transition,
-  guarantee_credentials,
-  current_profile,
-  current_globals, current_state, global_snapshot]
+import ../../src/state/trace/[step as trace_step, state as trace_state, file as trace_file,
+    genesis as trace_genesis]
+import ../../src/state/safrole/transition as safrole_transition
+import ../../src/state/[store, checkpoint]
+import ../../src/state/accumulation/current/[update as accumulation_current_update,
+    completion as accumulation_current_completion, driver as accumulation_current_driver,
+    round as accumulation_current_round]
+import "../../src/state/accumulation/block/guests" as accumulation_block_guests
+import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
+    dispatch as accumulation_dispatch, invocation as accumulation_invocation]
+import ../../src/state/report/admission as report_admission
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/guarantee_credentials
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
 import ../support/[accumulation_execution_context, accumulation_activity_context,
   current_namespace_execution_context, current_namespace_context, current_consecutive_context,
   accumulation_current_chain_context,

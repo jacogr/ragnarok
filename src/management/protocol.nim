@@ -4,7 +4,8 @@
 ## Private management JSON-RPC registry, deliberately independent of the public WS dispatcher.
 ## Input/output, nesting, tokens and batch count are bounded. No key material is serialized.
 
-import ../lib/[json_reader, json_writer, utf8]
+import ../lib/json/[reader as json_reader, writer as json_writer]
+import ../lib/utf8
 import ../version
 
 const MaxManagementBody* = 8192 ## Bounded request and serialized reply, independent of WS budgets.

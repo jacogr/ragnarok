@@ -2,7 +2,7 @@
 
 ## Scope and pinned authority
 
-`src/state/accumulation_service.nim` resolves the account and code entry gate for one prepared
+`src/state/accumulation/service.nim` resolves the account and code entry gate for one prepared
 initial-round service. Authority is GP 0.8.0 at revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`: `accounts.tex`'s service code/metadata definition
 (SHA-256 `badaf09677a420ec6d47ae439f8d7641173e8fd460ed8f2305e336d999073d7a`) and

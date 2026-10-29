@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: ByteLimit but wanted: ServiceCodeLimit"}
 
-import ../../../src/state/[accumulation_service, accumulation_round, accumulation_inputs]
+import ../../../src/state/accumulation/[service as accumulation_service,
+    round as accumulation_round, inputs as accumulation_inputs]
 import ../../../src/codec/[bounded, composite]
 discard AccumulationServiceConfig(codeLimit: ByteLimit(10)) # Local byte budgets are not protocol code limits.

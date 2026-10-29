@@ -8,6 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "kind"}
 
-import ../../../src/codec/[composite, work_digest]
+import ../../../src/codec/composite
+import ../../../src/codec/work/digest as work_digest
 var value = default(WorkOutput)
 value.kind = WorkKind.Success

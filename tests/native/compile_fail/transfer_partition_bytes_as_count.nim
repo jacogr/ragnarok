@@ -3,7 +3,7 @@
 # @@Verification={"group":"nominal","expected":"got: ByteLimit but wanted: ElementLimit"}
 
 ## Partition ownership, selected results and nominal units cannot be substituted.
-import ../../../src/state/accumulation_transfer_partition
+import ../../../src/state/accumulation/transfer_partition as accumulation_transfer_partition
 import ../../../src/codec/bounded
 
 discard TransferPartitionLimits(transfers: ByteLimit(1))

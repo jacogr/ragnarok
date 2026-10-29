@@ -5,9 +5,12 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/managed_storage_samples
 import ../../../src/state/store
-import ../../../src/storage/[managed_repository, managed_manifest, node_repository, node_records,
-    database_identity, record_codec, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../../src/storage/[database_identity, record_codec]
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer restores real primitive behavior and resets counters, without replacing runtime implementations.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}

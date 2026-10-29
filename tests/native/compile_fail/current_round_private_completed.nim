@@ -4,7 +4,8 @@
 
 ## Current round result tags and inactive parent payloads remain private.
 import ../../../src/chain/parameters
-import ../../../src/state/[accumulation_current_round, accumulation_round]
+import ../../../src/state/accumulation/current/round as accumulation_current_round
+import ../../../src/state/accumulation/round as accumulation_round
 let refused = runCurrentBlockAccumulationRound(default(BlockAccumulationRound), default(Parameters),
     default(CurrentAccumulationRoundLimits))
 discard refused.completed

@@ -3,5 +3,6 @@
 # @@Verification={"group":"privacy","expected":"data"}
 
 ## Account-source selection and failed result storage remain private to their immutable owners.
-import ../../../src/state/[accumulation_account_selection, accumulation_annulment]
+import ../../../src/state/accumulation/account/selection as accumulation_account_selection
+import ../../../src/state/accumulation/annulment as accumulation_annulment
 discard default(PreparedAccumulationAccountSelection).data

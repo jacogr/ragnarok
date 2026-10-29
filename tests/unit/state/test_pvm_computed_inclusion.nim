@@ -5,7 +5,10 @@
 ## Actual signed guarantee-bearing candidates prove exact inclusion, refusal, provenance and lifetime behavior.
 
 import std/[assertions, syncio]
-import ../../../src/state/[computed_inclusion, computed_batch, block_transition, block_admission, store]
+import ../../../src/state/computed/[inclusion as computed_inclusion, batch as computed_batch]
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/store
 import ../../../src/codec/[bounded, block_codec]
 import ../../support/[pvm_computed_inclusion, pvm_computed_batch, arc_evidence]
 

@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_outputs
+include ../../src/codec/state/outputs
 let useDefault = paramStr(2) == "default"
 let policy = OutputLogConfig(items: ElementLimit(1), maxBytes: ByteLimit(37))
 let noItems = OutputLogConfig(items: ElementLimit(0), maxBytes: ByteLimit(37))

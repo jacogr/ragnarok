@@ -5,10 +5,16 @@
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/report_context as signed_fixture
-import ../../../src/app/[chain, disk_chain, disk_worker, historical_disk]
+import ../../../src/app/chain
+import ../../../src/app/disk/[chain as disk_chain, worker as disk_worker]
+import ../../../src/app/historical/disk as historical_disk
 import ../../../src/chain/provider
-import ../../../src/state/[store, disk_store, accumulation_current_update]
-import ../../../src/storage/[file_repository, node_repository, database_identity, history_index]
+import ../../../src/state/[store, disk_store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/database_identity
+import ../../../src/storage/history/index as history_index
 import ../../../src/codec/[bounded, report_owned]
 import ../../support/[accumulation_current_chain_context, accumulation_current_disk_context, accumulation_provision_integration]
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}

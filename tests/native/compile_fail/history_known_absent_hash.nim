@@ -9,7 +9,7 @@
 # @@Verification={"group": "contracts", "expected": "peak.isPresent"}
 
 import std/assertions
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 let peak = absentHistoryPeak()
 assert not peak.present
 discard peak.hash

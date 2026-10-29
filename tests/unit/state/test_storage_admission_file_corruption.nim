@@ -5,9 +5,13 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
-import ../../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
-  managed_repository, managed_manifest, database_identity, journal_codec, snapshot_codec, record_codec]
-import ../../../src/codec/[state_layout, state_trie, bounded]
+import ../../../src/storage/full/state_trie as full_state_trie
+import ../../../src/storage/node/[records as node_records, repository as node_repository]
+import ../../../src/storage/file/repository as file_repository
+import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ../../../src/storage/[database_identity, journal_codec, snapshot_codec, record_codec]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+import ../../../src/codec/bounded
 import ../../../src/crypto/primitives
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}

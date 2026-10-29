@@ -4,9 +4,14 @@
 ## Original combined authorizer/refinement source fixtures bind all code and package fields before authorization executes.
 
 import std/assertions
-import ../../src/state/[authorized_refinement, authorization_invocation, refinement_dispatch, store]
-import ../../src/codec/[bounded, composite, work_package, work_digest, work_report,
-  state_accounts, state_service_values, state_requests, state_trie]
+import ../../src/state/authorized_refinement
+import ../../src/state/authorization/invocation as authorization_invocation
+import ../../src/state/refinement/dispatch as refinement_dispatch
+import ../../src/state/store
+import ../../src/codec/[bounded, composite]
+import ../../src/codec/work/[package as work_package, digest as work_digest, report as work_report]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests, trie as state_trie]
 import ../../src/chain/parameters
 import ../../src/pvm/host_fetch
 import ./[pvm_authorization_invoke, pvm_report_results, pvm_work_digests]

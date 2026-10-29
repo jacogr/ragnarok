@@ -4,7 +4,7 @@
 ## Strict frozen plan/default result guards with a genuine nonempty actual successor control.
 import std/[assertions, cmdline, syncio]
 import ../support/current_refresh_context
-import ../../src/state/current_refresh_plan
+import ../../src/state/current/refresh/plan as current_refresh_plan
 import ../../src/codec/report_owned
 proc extract(value: CurrentRefreshPlanResult[CurrentRefreshPlan]) {.noinline.} =
   ## No default/refused result carries an executable admitted plan.

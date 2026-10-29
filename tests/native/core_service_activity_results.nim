@@ -4,8 +4,8 @@
 ## Default/refused projections and invalid full-width ordinals cannot expose partial per-block activity.
 
 import std/cmdline
-import ../../src/state/core_service_activity
-import ../../src/codec/state_statistics
+import ../../src/state/core/service_activity as core_service_activity
+import ../../src/codec/state/statistics as state_statistics
 
 let argument = paramStr(1)
 let owner = default(CoreServiceActivityProjection)

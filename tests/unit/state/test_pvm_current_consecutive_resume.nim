@@ -4,10 +4,11 @@
 ## Actual disk restart resumes from the persisted current child, then retains every exact successor without replaying the first.
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import ../../../src/app/[current_download_command, services]
+import ../../../src/app/current/download/command as current_download_command
+import ../../../src/app/services
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
-import ../../../src/storage/managed_manifest
+import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
   current_sequence_command_context, current_services_disk_samples, managed_storage_samples,

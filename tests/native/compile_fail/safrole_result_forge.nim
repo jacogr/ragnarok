@@ -9,5 +9,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/[state_safrole, state_trie]
+import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
 discard StateComponentResult[int](status: StateComponentError.None)

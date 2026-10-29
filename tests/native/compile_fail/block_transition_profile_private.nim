@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "profile"}
 
-import ../../../src/state/block_transition
+import "../../../src/state/block/transition" as block_transition
 let value = default(BlockTransition)
 discard value.profile # Private storage must be rejected before lowering.

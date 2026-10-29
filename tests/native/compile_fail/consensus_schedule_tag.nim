@@ -9,6 +9,7 @@
 
 # @@Verification={"group": "privacy", "expected": "mode"}
 
-import ../../../src/codec/[state_consensus, state_safrole, state_trie]
+import ../../../src/codec/state/[consensus as state_consensus, safrole as state_safrole,
+    trie as state_trie]
 let value = default(SealerSchedule)
 discard value.mode

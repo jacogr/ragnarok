@@ -4,7 +4,9 @@
 ## Exercise the public offline command with independent configured chains, Genesis and complete signed trace files.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../support/[trace_check_context, current_stf_population_reporting_context]
-import ../../src/app/[options, trace_check_command, current_download_policy]
+import ../../src/app/options
+import ../../src/app/trace/check_command as trace_check_command
+import ../../src/app/current/download/policy as current_download_policy
 when defined(lateHistories):
   import ../support/current_stf_late_histories_context
 elif defined(lateRetention):

@@ -4,7 +4,9 @@
 ## Default/refused atomic state results expose no published snapshot or unselected nested failure.
 
 import std/cmdline
-import ../../src/state/[accumulation_state, accumulation_finalization, accumulation_completion, store]
+import ../../src/state/accumulation/[state as accumulation_state,
+    finalization as accumulation_finalization, completion as accumulation_completion]
+import ../../src/state/store
 
 let argument = paramStr(1)
 var target: StateStore

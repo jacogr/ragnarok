@@ -4,8 +4,9 @@
 
 ## Service identities cannot substitute for absolute account slots.
 
-import ../../../src/state/[accumulation_times, store]
-import ../../../src/codec/state_accounts
+import ../../../src/state/accumulation/times as accumulation_times
+import ../../../src/state/store
+import ../../../src/codec/state/accounts as state_accounts
 var state: StateStoreSnapshot
 var service: ServiceIndex
 var limits: AccumulationTimesLimits

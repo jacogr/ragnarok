@@ -5,9 +5,12 @@
 
 ## Exact checkpoint roundtrips preserve complete state while importing no producer history, finality or mutation policy.
 import std/[assertions, syncio, envvars]
-import ../../../src/app/[chain, candidate, checkpoint_identity, checkpoint_codec, checkpoint_recovery]
+import ../../../src/app/[chain, candidate]
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, report_owned, state_layout]
+import ../../../src/codec/[bounded, header, report_owned]
+import ../../../src/codec/state/layout as state_layout
 import ../../../src/state/store
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context

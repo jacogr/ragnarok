@@ -9,17 +9,32 @@ import ../../support/[current_namespace_execution_context, current_application_c
     parent_globals_context, supplied_logical_context, current_identity_context,
     current_namespace_refresh_context, current_services_disk_samples, managed_storage_samples,
     pvm_accumulation_program, current_logical_proof_context]
-import ../../../src/app/[candidate, services, options, current_block_download,
-    current_logical_download, current_block_input, current_handoff, preparation_worker]
+import ../../../src/app/[candidate, services, options]
+import "../../../src/app/current/block/download" as current_block_download
+import ../../../src/app/current/logical/download as current_logical_download
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
+import ../../../src/app/preparation_worker
 import ../../../src/rpc/server
 import ../../../src/chain/[provider, genesis]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_layout, state_accounts,
-    state_service_values]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_logical,
-    current_identities, current_request_keys, current_refresh_plan, current_logical_refresh,
-    accumulation_current_update, store, block_admission, report_admission, logical_continuation,
-    accumulation_storage_history, request_identity_history, accumulation_effects]
-import ../../../src/storage/managed_manifest
+import ../../../src/codec/[bounded, block_codec, report_owned]
+import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
+    service_values as state_service_values]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[logical as current_logical, identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/logical_continuation
+import ../../../src/state/accumulation/storage_history as accumulation_storage_history
+import ../../../src/state/request_identity_history
+import ../../../src/state/accumulation/effects as accumulation_effects
+import ../../../src/storage/managed/manifest as managed_manifest
 
 type Refusal {.pure.} = enum ## Each real collected update reaches its own explicit source/policy boundary before any enqueue.
   DefaultPolicy, InvalidParent, ForeignParent, IdentityBudget, RequestBudget, ProjectionBudget,

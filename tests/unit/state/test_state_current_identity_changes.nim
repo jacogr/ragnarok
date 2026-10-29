@@ -7,9 +7,12 @@ import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context, service_namespace_seed, accumulation_execution_context,
     current_identity_context, arc_evidence]
-import ../../../src/state/[current_identities, accumulation_current_update, store]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_composition, state_requests,
-    state_service_values, state_layout]
+import ../../../src/state/current/identities as current_identities
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests, service_values as state_service_values, layout as state_layout]
 import ../../../src/crypto/primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original full matching and genuine actual mutation execution precede hash-free identity refusal observation.

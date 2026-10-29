@@ -2,12 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Reconstruct complete current logical state across producer-proven storage/request/service identity changes while preserving exact original parent, selected rollback and genuine successor provenance.
-import ./[parent_logical, current_logical, current_identities, accumulation_current_update,
-    accumulation_storage_history, accumulation_effects, supplied_logical_inventory,
-    supplied_services, inventory, store, current_profile, current_globals, current_state,
-    global_snapshot, request_identity_history, service_identity_history,
-    accumulation_current_sequence, accumulation_current_driver, accumulation_annulment]
-import ../codec/[bounded, state_layout, state_composition, state_accounts, state_requests, state_service_values]
+import ./parent/logical as parent_logical
+import ./current/[logical as current_logical, identities as current_identities]
+import ./accumulation/current/update as accumulation_current_update
+import ./accumulation/[storage_history as accumulation_storage_history,
+    effects as accumulation_effects]
+import ./supplied/[logical_inventory as supplied_logical_inventory, services as supplied_services]
+import ./[inventory, store]
+import ./current/[profile as current_profile, globals as current_globals, state as current_state]
+import ./[global_snapshot, request_identity_history]
+import ./service/identity_history as service_identity_history
+import ./accumulation/current/[sequence as accumulation_current_sequence,
+    driver as accumulation_current_driver]
+import ./accumulation/annulment as accumulation_annulment
+import ../codec/bounded
+import ../codec/state/[layout as state_layout, composition as state_composition,
+    accounts as state_accounts, requests as state_requests, service_values as state_service_values]
 type
   LogicalContinuationLimits* = object ## Original binding, admitted identity scratch, bounded planning and whole output/current qualification retain independent policies.
     identity*: CurrentIdentityLimits

@@ -6,7 +6,10 @@ import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../support/[storage_deployment_samples, storage_deployment_backends, storage_allocations,
   managed_storage_samples]
-import ../../src/storage/[node_repository, file_repository, database_identity, managed_manifest]
+import ../../src/storage/node/repository as node_repository
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/database_identity
+import ../../src/storage/managed/manifest as managed_manifest
 
 type DeploymentObservation = object
   ## Scalar witnesses cannot keep native owners or immutable graphs alive after scope retirement.

@@ -3,6 +3,6 @@
 
 ## Caller code cannot mutate or borrow raw native file ownership internals.
 # @@Verification={"group": "privacy", "expected": "path"}
-import ../../../src/lib/atomic_file_writer
+import ../../../src/lib/atomic/file/writer as atomic_file_writer
 let writer = default(AtomicFileWriter)
 discard writer.path

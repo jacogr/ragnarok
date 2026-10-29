@@ -4,10 +4,16 @@
 ## Frozen original logical review admission remains hash-free, immutable and reusable after content failures, source retirement and managed shutdown.
 import std/[assertions, syncio, cmdline, envvars]
 import std/posix/posix
-import ../../src/app/[services, logical_review, current_block_input, current_handoff]
-import ../../src/state/[current_review, current_state, current_globals, current_profile,
-    current_logical, account_review, account_review_plan, economic_profile,
-    inventory, preimage_content]
+import ../../src/app/services
+import ../../src/app/logical/review as logical_review
+import "../../src/app/current/block/input" as current_block_input
+import ../../src/app/current/handoff as current_handoff
+import ../../src/state/current/[review as current_review, state as current_state,
+    globals as current_globals, profile as current_profile, logical as current_logical]
+import ../../src/state/account/review as account_review
+import ../../src/state/account/review/plan as account_review_plan
+import ../../src/state/[economic_profile, inventory]
+import ../../src/state/preimage/content as preimage_content
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_supplied_context,
     collected_logical_services_context, managed_supplied_context, current_logical_review_context, arc_evidence]

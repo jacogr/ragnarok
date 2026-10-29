@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "regularHash"}
 
-import ../../../src/codec/state_layout
+import ../../../src/codec/state/layout as state_layout
 let value = default(StateNodeInfo)
 discard value.regularHash

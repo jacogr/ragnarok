@@ -4,6 +4,6 @@
 
 ## Guarded completed-round ownership cannot be bypassed by direct field access.
 
-import ../../../src/state/accumulation_round_transfers
+import ../../../src/state/accumulation/round/transfers as accumulation_round_transfers
 var result: AccumulationRoundTransferResult[PreparedRoundAccumulationTransfers]
 discard result.completed

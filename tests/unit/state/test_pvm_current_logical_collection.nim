@@ -8,13 +8,22 @@ import ../../support/[current_namespace_execution_context, current_application_c
     accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
     supplied_logical_context, current_identity_context, current_namespace_refresh_context,
     current_logical_proof_context]
-import ../../../src/app/[services, options, preparation_worker, current_block_input, current_handoff]
+import ../../../src/app/[services, options, preparation_worker]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/app/current/handoff as current_handoff
 import ../../../src/rpc/server
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, block_codec, report_owned]
-import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    current_request_keys, current_refresh_plan, current_logical_refresh,
-    accumulation_current_update, store, block_admission, report_admission]
+import ../../../src/state/parent/[profile as parent_profile, globals as parent_globals,
+    logical as parent_logical]
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
 proc waitDone(owner: var Services) =
   ## Only synchronized scalar worker observations and independent service ticks occur during the exclusive canonical graph lease.
   let started = getMonoTime()

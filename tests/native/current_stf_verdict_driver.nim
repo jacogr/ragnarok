@@ -9,10 +9,18 @@ import ../support/[current_stf_population_context, current_namespace_context,
   accumulation_current_chain_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
-import ../../src/codec/[bounded, report_owned, block_codec, state_layout, disputes, state_disputes, state_composition]
-import ../../src/state/[store, block_transition, disputes, accumulation_current_update,
-  current_profile,
-  current_globals, current_state, global_snapshot, report_admission]
+import ../../src/codec/[bounded, report_owned, block_codec]
+import ../../src/codec/state/layout as state_layout
+import ../../src/codec/disputes
+import ../../src/codec/state/[disputes as state_disputes, composition as state_composition]
+import ../../src/state/store
+import "../../src/state/block/transition" as block_transition
+import ../../src/state/disputes
+import ../../src/state/accumulation/current/update as accumulation_current_update
+import ../../src/state/current/[profile as current_profile, globals as current_globals,
+    state as current_state]
+import ../../src/state/global_snapshot
+import ../../src/state/report/admission as report_admission
 
 proc number(text: string): uint32 {.raises.} =
   ## Trusted request slots still require complete E4 conversion rather than an unchecked narrowing cast.

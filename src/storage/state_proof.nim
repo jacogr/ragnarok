@@ -4,7 +4,8 @@
 ## Bounded single-key GP lookup proofs bind authenticated presence/absence to a caller-trusted root.
 ## Proofs are detached local transport, not a network format or a source of chain/finality trust.
 import std/assertions
-import ../codec/[state_layout, state_trie, bounded]
+import ../codec/state/[layout as state_layout, trie as state_trie]
+import ../codec/bounded
 
 type
   StateProof* = object ## Untrusted stable borrowed input; raw value bytes are used only for proven presence.

@@ -11,16 +11,27 @@ import ../../support/[collected_native_context, collected_logical_context,
   current_namespace_context, current_namespace_refresh_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_identity_context, application_download_chain, pvm_accumulation_program, arc_evidence]
-import ../../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence,
-   logical_continuation,
-  service_identity_history,
-  accumulation_current_update, accumulation_storage_history, request_identity_history,
-  accumulation_effects, accumulation_round, accumulation_queue, report_admission,
-  block_transition, block_admission, current_logical, current_identities,
-  supplied_logical_inventory, supplied_services, store]
-import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
-    state_requests, state_service_values]
+import ../../../src/app/[chain, candidate, preparation_worker]
+import "../../../src/app/current/block/input" as current_block_input
+import ../../../src/state/accumulation/current/[driver as accumulation_current_driver,
+    sequence as accumulation_current_sequence]
+import ../../../src/state/logical_continuation
+import ../../../src/state/service/identity_history as service_identity_history
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/storage_history as accumulation_storage_history
+import ../../../src/state/request_identity_history
+import ../../../src/state/accumulation/[effects as accumulation_effects,
+    round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/current/[logical as current_logical, identities as current_identities]
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, composite, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    requests as state_requests, service_values as state_service_values]
 import ../../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Early planning ceilings must refuse independently of crypto availability.

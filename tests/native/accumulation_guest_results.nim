@@ -3,7 +3,7 @@
 
 ## Default current-guest results cannot reveal successful coverage or inactive parent refusal payloads.
 import std/cmdline
-import ../../src/state/accumulation_guest_runner
+import ../../src/state/accumulation/guest_runner as accumulation_guest_runner
 let owner = default(AccumulationGuestResult)
 case paramStr(1)
 of "service": discard owner.serviceFailure # Only the actual selected ServiceFailure branch exposes this reason.

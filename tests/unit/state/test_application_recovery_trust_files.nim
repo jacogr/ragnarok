@@ -6,10 +6,12 @@
 ## Separate operator trust files are bounded and captured once before any checkpoint recovery.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../../src/app/[chain, checkpoint_identity, checkpoint_codec, checkpoint_recovery, checkpoint_trust]
+import ../../../src/app/chain
+import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
+    recovery as checkpoint_recovery, trust as checkpoint_trust]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
-import ../../../src/lib/atomic_file
+import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const IdentityPath = "application-recovery-operator-identity"
 const HeaderPath = "application-recovery-operator-header"

@@ -4,8 +4,10 @@
 ## Exact managed snapshot bytes bind a complete retained root union and context to chain/schema/generation.
 ## Encoding consumes opaque validated selections; decoding admits every complete graph before success.
 import std/[algorithm, assertions]
-import ./[node_repository, node_records, record_codec, database_identity]
-import ../codec/[bounded, state_trie]
+import ./node/[repository as node_repository, records as node_records]
+import ./[record_codec, database_identity]
+import ../codec/bounded
+import ../codec/state/trie as state_trie
 import ../crypto/primitives
 const
   Magic = "RAGNAROK-SNAPSHOT-V1\n"

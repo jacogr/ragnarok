@@ -3,8 +3,9 @@
 # @@Verification={"group": "privacy", "expected": "historyReason"}
 
 ## Current recent-history proof representation stays private.
-import ../../../src/state/[accumulation_current_recent, accumulation_recent,
-    accumulation_current_ready]
+import ../../../src/state/accumulation/current/recent as accumulation_current_recent
+import ../../../src/state/accumulation/recent as accumulation_recent
+import ../../../src/state/accumulation/current/ready as accumulation_current_ready
 let refused = prepareCurrentAccumulationRecent(default(PreparedCurrentAccumulationReady), default(
     AccumulationRecentConfig))
 discard refused.historyReason

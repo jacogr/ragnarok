@@ -4,6 +4,6 @@
 # @@Verification={"group":"privacy","expected":"first"}
 
 ## Callers cannot rewrite a selected historical prefix or fabricate unpruned availability.
-import ../../../src/storage/history_index
+import ../../../src/storage/history/index as history_index
 let cursor = default(HistoryCursor)
 discard cursor.first

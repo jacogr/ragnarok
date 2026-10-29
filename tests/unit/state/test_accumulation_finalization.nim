@@ -5,10 +5,17 @@
 ## Genuine stopped accseq histories retain service effects and privately replace only the output chapter.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_finalization, accumulation_outputs, accumulation_reentry,
-  accumulation_continuation_execution, accumulation_continuation_inputs, accumulation_continuation,
-  accumulation_execution, accumulation_inputs, accumulation_dispatch, accumulation_skip, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_layout, state_trie]
+import ../../../src/state/accumulation/[finalization as accumulation_finalization,
+    outputs as accumulation_outputs, reentry as accumulation_reentry]
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, inputs as accumulation_inputs,
+    dispatch as accumulation_dispatch, skip as accumulation_skip]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[outputs as state_outputs, layout as state_layout,
+    trie as state_trie]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   pvm_accumulation_context, pvm_accumulation_provision, report_context, arc_evidence]
 

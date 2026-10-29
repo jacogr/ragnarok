@@ -4,11 +4,18 @@
 ## Execute authorization/refinement from original verified inputs and retain their matching report identity.
 ## Root/state freshness and package-to-root correspondence remain explicit caller obligations.
 
-import ../codec/[bounded, composite, work_package, work_report]
+import ../codec/[bounded, composite]
+import ../codec/work/[package as work_package, report as work_report]
 import ../pvm/host_fetch
 import ../chain/parameters
-import ./[store, import_inputs, import_justification, extrinsic_inputs, authorization_invocation,
-  authorized_refinement, refinement_dispatch, report_identity]
+import ./store
+import "./import/inputs" as import_inputs
+import "./import/justification" as import_justification
+import ./extrinsic_inputs
+import ./authorization/invocation as authorization_invocation
+import ./authorized_refinement
+import ./refinement/dispatch as refinement_dispatch
+import ./report/identity as report_identity
 
 type
   InputRefinementError* {.pure.} = enum ## Refusals retain only the selected reason, never a partial completed report.

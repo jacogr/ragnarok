@@ -8,5 +8,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ServicePreimageHash"}
 
-import ../../../src/codec/[state_service_values, work_digest, bounded]
+import ../../../src/codec/state/service_values as state_service_values
+import ../../../src/codec/work/digest as work_digest
+import ../../../src/codec/bounded
 discard servicePreimageKey(ServiceIndex(0), default(CodeHash), ByteLimit(32))

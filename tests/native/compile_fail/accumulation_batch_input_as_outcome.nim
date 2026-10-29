@@ -4,6 +4,6 @@
 
 ## A service-group position cannot substitute a plan-owned execution ordinal.
 
-import ../../../src/state/[accumulation_batch, accumulation_inputs]
+import ../../../src/state/accumulation/[batch as accumulation_batch, inputs as accumulation_inputs]
 var plan: PreparedAccumulationBatch
 discard batchOutcomeAt(plan, InvocationServiceIndex(0))

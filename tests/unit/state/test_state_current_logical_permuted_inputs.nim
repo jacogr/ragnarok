@@ -8,10 +8,19 @@ import ../../support/[current_namespace_transition_context, current_namespace_ex
     current_namespace_context, current_namespace_refresh_context, current_repeated_logical_context,
     current_identity_context, supplied_logical_context, supplied_services_context,
     accumulation_execution_context, arc_evidence]
-import ../../../src/state/[parent_logical, current_identities, current_request_keys,
-    current_refresh_plan, current_logical_refresh, current_logical, supplied_logical_inventory,
-    supplied_services, inventory, manifest, store, accumulation_current_update]
-import ../../../src/codec/[bounded, report_owned, state_accounts, state_composition, state_requests]
+import ../../../src/state/parent/logical as parent_logical
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/supplied/[logical_inventory as supplied_logical_inventory,
+    services as supplied_services]
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
+    requests as state_requests]
 proc cycle(plan: CurrentLogicalRefreshPlan, value, code: openArray[byte]) =
   ## Retire fresh complete captures/projections while original supplied ordinals remain tied to their actual service/hash/key identities.
   let logical = executeCurrentLogicalRefresh(plan).value

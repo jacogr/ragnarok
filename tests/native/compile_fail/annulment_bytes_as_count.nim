@@ -3,6 +3,6 @@
 # @@Verification={"group":"nominal","expected":"got: ByteLimit but wanted: ElementLimit"}
 
 ## Predicate checks count bounded operations, not a copied payload byte budget.
-import ../../../src/state/accumulation_annulment
+import ../../../src/state/accumulation/annulment as accumulation_annulment
 import ../../../src/codec/bounded
 discard AccumulationAnnulmentLimits(checks: ByteLimit(1))

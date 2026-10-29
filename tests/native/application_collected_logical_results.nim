@@ -3,8 +3,9 @@
 
 ## Every failed/default extraction must trigger its exact supported contract.
 import std/[cmdline, assertions]
-import ../../src/app/[current_logical, preparation_worker, chain]
-import ../../src/state/parent_logical
+import ../../src/app/current/logical as current_logical
+import ../../src/app/[preparation_worker, chain]
+import ../../src/state/parent/logical as parent_logical
 proc main() =
   ## Default and wrong-stage results grant neither logical state nor a typed unrelated reason.
   let mode = paramStr(1)

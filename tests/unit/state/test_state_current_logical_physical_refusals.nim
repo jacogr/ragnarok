@@ -8,10 +8,20 @@ import ../../support/[current_repeated_logical_context, current_identity_context
     current_namespace_refresh_context, parent_profile_context, parent_globals_context,
     supplied_logical_context, accumulation_current_candidate_context,
     accumulation_current_chain_context, arc_evidence]
-import ../../../src/state/[current_identities, current_request_keys, current_refresh_plan,
-    current_logical_refresh, parent_logical, parent_globals, parent_profile, current_logical,
-    supplied_logical_inventory, inventory, manifest, store, accumulation_current_update,
-    accumulation_round, accumulation_queue, report_admission, block_transition, block_admission]
+import ../../../src/state/current/[identities as current_identities,
+    request_keys as current_request_keys]
+import ../../../src/state/current/refresh/plan as current_refresh_plan
+import ../../../src/state/current/logical/refresh as current_logical_refresh
+import ../../../src/state/parent/[logical as parent_logical, globals as parent_globals,
+    profile as parent_profile]
+import ../../../src/state/current/logical as current_logical
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[inventory, manifest, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/[round as accumulation_round, queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
 import ../../../src/chain/[provider, genesis]
 import ../../../src/app/[chain, candidate]
 import ../../../src/codec/[bounded, report_owned]

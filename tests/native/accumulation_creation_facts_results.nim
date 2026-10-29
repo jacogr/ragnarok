@@ -3,7 +3,7 @@
 
 ## Independent creation observations cannot reveal payloads from default contexts.
 import std/cmdline
-import ../../src/state/accumulation_effects
+import ../../src/state/accumulation/effects as accumulation_effects
 let owner = default(AccumulationEffectContext)
 if paramStr(1) == "count":
   discard owner.effectCreatedAccountFactCount.value # No false initialized empty history.

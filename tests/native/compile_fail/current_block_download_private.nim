@@ -3,6 +3,6 @@
 
 ## Mutable current reception and its worker-borrow state remain private to the original owner.
 # @@Verification={"group": "privacy", "expected": "pending"}
-import ../../../src/app/current_block_download
+import "../../../src/app/current/block/download" as current_block_download
 var receiver = default(CurrentBlockDownload)
 discard receiver.pending

@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_outputs
+import ../../../src/codec/state/outputs as state_outputs
 discard OutputLogResult[int](status: OutputLogError.None, completed: 0)

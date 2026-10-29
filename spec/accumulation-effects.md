@@ -35,7 +35,7 @@ arguments and strict selected-result extraction require compiler/runtime probes.
 
 ## Implemented ownership and API contract
 
-`src/state/accumulation_effects.nim` constructs `AccumulationEffects` only through
+`src/state/accumulation/effects.nim` constructs `AccumulationEffects` only through
 `prepareAccumulationEffects(PreparedAccumulationContexts)`. Both dimensions initially retain one
 immutable `AccumulationEffectContext`. `recordAccumulationYield` creates a new regular version and
 retains the old exceptional snapshot; `checkpointAccumulationEffects` gives the new pair the same

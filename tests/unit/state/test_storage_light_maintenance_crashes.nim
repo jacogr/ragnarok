@@ -4,9 +4,12 @@
 ## Actual stopped-child deaths qualify combined threshold compaction/cleanup and cleanup-only continuation without head fallback.
 import std/[assertions, envvars, syncio]
 import ../../support/[storage_io, storage_crash, storage_light_root, storage_light_journal, storage_light_maintenance]
-import ../../../src/storage/[light_snapshot, light_state_cache, light_journal_cache,
-  light_journal_manifest,
-  light_delta, managed_io, managed_manifest, file_errors]
+import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../../src/storage/light/journal/[cache as light_journal_cache,
+    manifest as light_journal_manifest]
+import ../../../src/storage/light/delta as light_delta
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}

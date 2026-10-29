@@ -12,7 +12,7 @@
 import std/[assertions, syncio]
 import ../../support/[history_transition_fixture, arc_evidence]
 import ../../../src/state/[history, store]
-import ../../../src/codec/[state_layout, state_trie]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 ## Test-only observer flags independently refuse Blake2b (1) and Keccak (2).
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}

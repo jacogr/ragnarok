@@ -8,8 +8,9 @@
 
 import std/[assertions, envvars, strutils, parseutils, syncio]
 import ../../../src/state/[preimages, store]
-import ../../../src/codec/[natural, bounded, composite, owned, header, state_layout, state_trie,
-  state_accounts, state_service_values, state_requests]
+import ../../../src/codec/[natural, bounded, composite, owned, header]
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
+    accounts as state_accounts, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
 import ../../support/arc_evidence
 

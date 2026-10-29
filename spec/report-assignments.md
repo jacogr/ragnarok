@@ -1,6 +1,6 @@
 # Report assignment planning
 
-`src/state/report_assignments.nim` plans the proposed C(10) after new guarantees. Its private,
+`src/state/report/assignments.nim` plans the proposed C(10) after new guarantees. Its private,
 immutable `ReportAssignmentPlan` retains certified credentials, the original post-assurance table
 and the complete proposed table/serialization. It performs no hashing, state writes or publication.
 

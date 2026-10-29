@@ -9,9 +9,9 @@ import ../lib/logging
 
 import std/[strutils, assertions]
 import ../codec/bounded
-import ../storage/history_index
+import ../storage/history/index as history_index
 
-import ./[cli_catalog, cli_commands, cli_defaults]
+import ./cli/[catalog as cli_catalog, commands as cli_commands, defaults as cli_defaults]
 export cli_defaults
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.

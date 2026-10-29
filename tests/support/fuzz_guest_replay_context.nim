@@ -3,7 +3,7 @@
 
 ## Explicit finite host policy admits the known full authorization queue and code envelopes in fixed guest STF cases.
 import ./[fuzz_backend_context, trace_check_context]
-import ../../src/app/fuzz_backend
+import ../../src/app/fuzz/backend as fuzz_backend
 import ../../src/codec/bounded
 import ../../src/pvm/[initialize, machine]
 proc fuzzGuestReplayConfig*(): FuzzBackendConfig =

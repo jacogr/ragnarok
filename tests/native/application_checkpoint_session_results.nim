@@ -3,7 +3,8 @@
 
 ## Managed parent address and selected shutdown receipt access enforce real lifecycle contracts.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[checkpoint_session, checkpoint_worker, checkpoint_file]
+import ../../src/app/checkpoint/[session as checkpoint_session, worker as checkpoint_worker,
+    file as checkpoint_file]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_worker_context
 proc inspect(session: ApplicationCheckpointSession) =

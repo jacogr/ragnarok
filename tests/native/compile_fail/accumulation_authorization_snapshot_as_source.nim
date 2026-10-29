@@ -4,7 +4,8 @@
 
 ## Detached credentials or a complete state cannot replace the authenticated preimage candidate.
 
-import ../../../src/state/[accumulation_authorization, store]
+import ../../../src/state/accumulation/authorization as accumulation_authorization
+import ../../../src/state/store
 var source: StateStoreSnapshot
 var limits: AccumulationAuthorizationLimits
 discard prepareAccumulationAuthorization(source, limits)

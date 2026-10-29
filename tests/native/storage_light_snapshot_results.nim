@@ -3,8 +3,10 @@
 
 ## Dynamic light snapshot misuse probes preserve successful immutable-image and selected-proof-failure controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/[light_snapshot, light_state_cache, state_proof, database_identity]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
+import ../../src/storage/[state_proof, database_identity]
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Dynamic origin arguments require actual runtime guards after the whole driver builds successfully.
   let member = paramStr(1)

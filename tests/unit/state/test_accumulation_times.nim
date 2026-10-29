@@ -5,13 +5,20 @@
 ## Literal account timestamps and certified S membership preserve complete maps and atomic rollback.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_times, accumulation_statistics, accumulation_recent,
-  accumulation_ready, accumulation_history, accumulation_finalization, accumulation_outputs,
-  accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
-  accumulation_execution, accumulation_inputs, accumulation_dispatch, accumulation_service,
-  accumulation_skip, store]
-import ../../../src/codec/[bounded, owned, report_owned, state_accounts, state_statistics,
-  state_outputs, state_workqueues, state_history, state_layout, state_trie]
+import ../../../src/state/accumulation/[times as accumulation_times,
+    statistics as accumulation_statistics, recent as accumulation_recent,
+    ready as accumulation_ready, history as accumulation_history,
+    finalization as accumulation_finalization, outputs as accumulation_outputs,
+    reentry as accumulation_reentry]
+import ../../../src/state/accumulation/continuation/execution as accumulation_continuation_execution
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    execution as accumulation_execution, inputs as accumulation_inputs,
+    dispatch as accumulation_dispatch, service as accumulation_service, skip as accumulation_skip]
+import ../../../src/state/store
+import ../../../src/codec/[bounded, owned, report_owned]
+import ../../../src/codec/state/[accounts as state_accounts, statistics as state_statistics,
+    outputs as state_outputs, workqueues as state_workqueues, history as state_history,
+    layout as state_layout, trie as state_trie]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, pvm_accumulation_provision, report_context, arc_evidence]
 

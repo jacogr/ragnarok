@@ -4,6 +4,6 @@
 
 ## Composed owner storage, result payloads and discriminators remain private.
 
-import ../../../src/state/accumulation_consensus
+import ../../../src/state/accumulation/consensus as accumulation_consensus
 var owner: PreparedAccumulationConsensus
 discard owner.data

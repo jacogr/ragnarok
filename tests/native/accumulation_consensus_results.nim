@@ -4,7 +4,9 @@
 ## Default/refused composition cannot expose source, facts, maps or unselected store causes; assignment extents also need success.
 
 import std/cmdline
-import ../../src/state/[accumulation_consensus, accumulation_authorization, report_assignments]
+import ../../src/state/accumulation/[consensus as accumulation_consensus,
+    authorization as accumulation_authorization]
+import ../../src/state/report/assignments as report_assignments
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationConsensus)

@@ -4,8 +4,12 @@
 ## Execute genuine ordinary/mixed-shape input packages before assembling their auditable wire bytes.
 
 import std/assertions
-import ../../src/state/[input_refinement, import_inputs, import_justification, extrinsic_inputs]
-import ../../src/codec/[bounded, work_package, work_report]
+import ../../src/state/input_refinement
+import "../../src/state/import/inputs" as import_inputs
+import "../../src/state/import/justification" as import_justification
+import ../../src/state/extrinsic_inputs
+import ../../src/codec/bounded
+import ../../src/codec/work/[package as work_package, report as work_report]
 import ./[pvm_input_refinement, pvm_refinement_outcome, pvm_report_results, pvm_import_inputs,
   pvm_import_justification, pvm_import_vectors, pvm_extrinsic_inputs, pvm_bundle_vectors]
 

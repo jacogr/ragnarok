@@ -5,9 +5,12 @@
 ## Independent full-wire witnesses, exact budgets and immutable original execution provenance.
 
 import std/[assertions, syncio]
-import ../../../src/state/[auditable_bundle, input_refinement, import_inputs, extrinsic_inputs,
-  authorized_refinement, report_identity]
-import ../../../src/codec/[bounded, work_report]
+import ../../../src/state/[auditable_bundle, input_refinement]
+import "../../../src/state/import/inputs" as import_inputs
+import ../../../src/state/[extrinsic_inputs, authorized_refinement]
+import ../../../src/state/report/identity as report_identity
+import ../../../src/codec/bounded
+import ../../../src/codec/work/report as work_report
 import ../../../src/crypto/primitives
 import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_import_vectors, arc_evidence]
 

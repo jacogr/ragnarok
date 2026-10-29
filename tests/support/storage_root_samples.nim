@@ -3,8 +3,11 @@
 
 ## Independent singleton historical maps form large complete root unions without quadratic publication setup.
 import std/[algorithm, assertions]
-import ../../src/storage/[node_records, record_codec, node_repository]
-import ../../src/codec/[state_trie, state_layout, bounded]
+import ../../src/storage/node/records as node_records
+import ../../src/storage/record_codec
+import ../../src/storage/node/repository as node_repository
+import ../../src/codec/state/[trie as state_trie, layout as state_layout]
+import ../../src/codec/bounded
 
 type RootFixture* = object ## Only an immutable closed-owner view and copied scalar root identities survive setup.
   view*: RepositoryView

@@ -4,7 +4,10 @@
 ## Shared real service/preparation lifetimes retain no fixture graph alias when leasing canonical state.
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
-import ../../src/app/[services, options, block_input, preparation_worker, checkpoint_worker]
+import ../../src/app/[services, options]
+import "../../src/app/block/input" as block_input
+import ../../src/app/preparation_worker
+import ../../src/app/checkpoint/worker as checkpoint_worker
 import ../../src/codec/[bounded, report_owned]
 import ./application_candidate_context as candidate_context
 proc checkpointServicesOptions*(path: string): Options =

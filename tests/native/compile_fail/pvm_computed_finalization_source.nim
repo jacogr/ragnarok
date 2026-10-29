@@ -5,6 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "ExecutedComputedAccumulation", "early": ["finalizeComputedAccumulation(", "[1] expected: ExecutedComputedAccumulation but got: CompletedBlockAccumulation"]}
 
-import ../../../src/state/[computed_finalization, accumulation_execution]
+import ../../../src/state/computed/finalization as computed_finalization
+import ../../../src/state/accumulation/execution as accumulation_execution
 discard finalizeComputedAccumulation(default(CompletedBlockAccumulation),
     ComputedFinalizationConfig())

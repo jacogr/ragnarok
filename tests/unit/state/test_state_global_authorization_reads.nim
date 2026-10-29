@@ -4,8 +4,10 @@
 ## Distinct authenticated pool and fixed queue chapters preserve row order and exact caller ceilings.
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
-import ../../../src/state/[proof_global, proof_view]
-import ../../../src/codec/[bounded, assurances, state_authorization, state_layout, state_safrole, state_trie]
+import ../../../src/state/proof/[global as proof_global, view as proof_view]
+import ../../../src/codec/[bounded, assurances]
+import ../../../src/codec/state/[authorization as state_authorization, layout as state_layout,
+    safrole as state_safrole, trie as state_trie]
 let config = AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
     maxBytes: ByteLimit(6000))
 for kind in [AuthorizationKind.Pools, AuthorizationKind.Queues]:

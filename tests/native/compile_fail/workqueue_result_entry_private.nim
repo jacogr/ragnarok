@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_workqueues, state_trie]
+import ../../../src/codec/state/[workqueues as state_workqueues, trie as state_trie]
 let value = default(WorkQueueResult[StateEntry])
 discard value.completed

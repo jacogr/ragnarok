@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/state/export_commitment
+import "../../../src/state/export/commitment" as export_commitment
 var outcome: ExportCommitmentResult[int]
 discard outcome.status

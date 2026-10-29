@@ -3,6 +3,6 @@
 
 ## Sole bytes, initialized context and typed refusal tags cannot be rewritten by consumers.
 # @@Verification={"group": "privacy", "expected": "identityReason"}
-import ../../../src/app/checkpoint_transfer
+import ../../../src/app/checkpoint/transfer as checkpoint_transfer
 let prepared = default(PreparedApplicationCheckpoint)
 discard prepared.identityReason

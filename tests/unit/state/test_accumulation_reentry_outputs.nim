@@ -5,11 +5,16 @@
 ## Genuine repeated rounds form a bounded immutable pair union, with independent literal log/root witnesses.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_outputs, accumulation_execution,
-  accumulation_continuation_execution, accumulation_continuation_inputs, accumulation_continuation,
-  accumulation_reentry, accumulation_inputs, accumulation_dispatch, accumulation_skip,
-  accumulation_service, history, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_trie]
+import ../../../src/state/accumulation/[outputs as accumulation_outputs,
+    execution as accumulation_execution]
+import ../../../src/state/accumulation/continuation/[
+    execution as accumulation_continuation_execution, inputs as accumulation_continuation_inputs]
+import ../../../src/state/accumulation/[continuation as accumulation_continuation,
+    reentry as accumulation_reentry, inputs as accumulation_inputs,
+    dispatch as accumulation_dispatch, skip as accumulation_skip, service as accumulation_service]
+import ../../../src/state/[history, store]
+import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/state/[outputs as state_outputs, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, pvm_accumulation_context,

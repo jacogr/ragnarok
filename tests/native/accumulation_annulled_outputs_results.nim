@@ -3,7 +3,8 @@
 
 ## Default/refused selected yield owners cannot reveal source, accounting, pair values or encoded log bytes.
 import std/cmdline
-import ../../src/state/[accumulation_annulled_outputs, accumulation_annulment]
+import ../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
+    annulment as accumulation_annulment]
 let argument = paramStr(1)
 let owner = default(PreparedAnnulmentOutputs)
 let refused = if argument == "default": default(AnnulmentOutputsResult[PreparedAnnulmentOutputs])

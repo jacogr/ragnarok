@@ -4,7 +4,8 @@
 ## Strict optimized admission/result-reason guards retain genuine included computed reports as positive controls.
 
 import std/[assertions, cmdline]
-import ../../src/state/[computed_admission, computed_inclusion, report_admission, report_policy]
+import ../../src/state/computed/[admission as computed_admission, inclusion as computed_inclusion]
+import ../../src/state/report/[admission as report_admission, policy as report_policy]
 import ../../src/codec/bounded
 import ../support/pvm_computed_admission
 

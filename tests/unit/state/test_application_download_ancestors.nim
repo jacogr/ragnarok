@@ -4,11 +4,13 @@
 ## A framed signed child suspends through Services worker collection and resumes without another stream or early publication.
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[block_input, block_download, candidate, chain, services, options,
-    preparation_worker, handoff]
+import "../../../src/app/block/input" as block_input
+import "../../../src/app/block/download" as block_download
+import ../../../src/app/[candidate, chain, services, options, preparation_worker, handoff]
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
-import ../../../src/state/[report_anchors, accumulation_completion]
+import ../../../src/state/report/anchors as report_anchors
+import ../../../src/state/accumulation/completion as accumulation_completion
 import ../../support/[application_candidate_context, accumulation_completion_context]
 import ../../support/report_admission_context as report_context
 

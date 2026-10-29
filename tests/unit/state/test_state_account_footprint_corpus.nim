@@ -4,8 +4,8 @@
 ## Independent arbitrary-precision item/octet expectations cover both output domains without mirroring checked arithmetic.
 import std/[assertions, envvars, syncio]
 import ../../support/fixed_arithmetic_corpus
-import ../../../src/state/account_footprint
-import ../../../src/codec/state_accounts
+import ../../../src/state/account/footprint as account_footprint
+import ../../../src/codec/state/accounts as state_accounts
 proc main() {.raises.} =
   ## Require every SHA-pinned shape's exact success values or explicit nonrepresentability.
   let records = arithmeticCorpus(getEnv("RAGNAROK_ACCOUNT_FOOTPRINT_CORPUS"), 2048, 57)

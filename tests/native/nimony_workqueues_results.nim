@@ -10,7 +10,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-include ../../src/codec/state_workqueues
+include ../../src/codec/state/workqueues
 import ../support/probe_cases
 
 ## Declared misuse modes; custom strings preserve CLI labels and typed dispatch is exhaustive.

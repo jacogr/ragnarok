@@ -3,6 +3,6 @@
 
 ## Paged codec metadata remains private behind validated constructors and guarded accessors.
 # @@Verification={"group": "privacy", "expected": "tree"}
-import ../../../src/storage/paged_codec
+import ../../../src/storage/paged/codec as paged_codec
 let hidden = default(PagedManifest)
 discard hidden.tree

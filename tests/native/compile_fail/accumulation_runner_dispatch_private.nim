@@ -4,6 +4,6 @@
 
 ## Runner discriminators and payloads remain private.
 
-import ../../../src/state/accumulation_runner
+import ../../../src/state/accumulation/runner as accumulation_runner
 var outcome: AccumulationRunnerResult
 discard outcome.dispatchReason

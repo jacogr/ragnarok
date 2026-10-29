@@ -4,6 +4,6 @@
 # @@Verification={"group": "privacy", "expected": "initialized"}
 
 ## Current state owners and result alternatives remain private.
-import ../../../src/state/current_state
+import ../../../src/state/current/state as current_state
 var source = default(CurrentStateSerialization)
 discard source.initialized

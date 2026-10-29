@@ -6,5 +6,5 @@
 # @@Verification={"group": "nominal", "expected": "ExportOffset", "early": ["captureRefinementExports(", "[1] expected: ExportOffset but got: ExportCount"]}
 
 import ../../../src/pvm/refinement_exports
-import ../../../src/codec/work_digest
+import ../../../src/codec/work/digest as work_digest
 discard captureRefinementExports(ExportCount(0))

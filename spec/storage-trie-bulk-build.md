@@ -1,7 +1,7 @@
 # Direct initial complete-trie construction
 
 Scope: construct an initial immutable complete map without repeated path copying. This changes
-only `src/storage/full_state_trie.nim`, its existing dedicated tests and this feature record.
+only `src/storage/full/state_trie.nim`, its existing dedicated tests and this feature record.
 The [full trie contract](full-state-trie.md) and pinned merklization authority remain unchanged.
 
 ## Construction and failure contract

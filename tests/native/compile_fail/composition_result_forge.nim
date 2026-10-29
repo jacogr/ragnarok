@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/codec/state_composition
+import ../../../src/codec/state/composition as state_composition
 discard StateCompositionResult[StateSnapshot](status: StateCompositionError.None,
     completed: default(StateSnapshot))

@@ -5,10 +5,15 @@
 # @@Verification={"arc":"storage_full_paged_context_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store,
-  paged_codec, paged_stream, paged_io, managed_manifest, node_repository, durability, file_errors]
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
+    build as full_paged_build, store as full_paged_store]
+import ../../../src/storage/paged/[codec as paged_codec, stream as paged_stream, io as paged_io]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/durability
+import ../../../src/storage/file/errors as file_errors
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc path(label: string): string =
   ## Process-private test namespaces remain under the ignored native runner directory.
   "full-paged-context-" & $storageProcessId() & "-" & label

@@ -4,11 +4,15 @@
 
 ## Genuine common-source supervisor and junior executions prove the current accpar N selection boundary.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_annulment, accumulation_outcome, accumulation_effects,
-  accumulation_dispatch, accumulation_inputs, store]
+import ../../../src/state/accumulation/[annulment as accumulation_annulment,
+    outcome as accumulation_outcome, effects as accumulation_effects,
+    dispatch as accumulation_dispatch, inputs as accumulation_inputs]
+import ../../../src/state/store
 import ../../../src/pvm/machine
 import ../../../src/chain/parameters
-import ../../../src/codec/[bounded, composite, state_accounts, state_layout, state_trie]
+import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
+    trie as state_trie]
 import ../../support/[accumulation_batch_context, pvm_accumulation_program,
     pvm_accumulation_context, accumulation_annulment_context, arc_evidence]
 

@@ -4,8 +4,10 @@
 ## Refused later-round completion exposes neither usable batches, source owners nor gas observations.
 
 import std/cmdline
-import ../../src/state/[accumulation_continuation_execution, accumulation_continuation_inputs,
-  accumulation_execution, accumulation_inputs]
+import ../../src/state/accumulation/continuation/[execution as accumulation_continuation_execution,
+    inputs as accumulation_continuation_inputs]
+import ../../src/state/accumulation/[execution as accumulation_execution,
+    inputs as accumulation_inputs]
 
 let argument = paramStr(1)
 let owner = default(CompletedAccumulationContinuation)

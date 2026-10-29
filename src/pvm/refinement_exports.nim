@@ -6,7 +6,8 @@
 
 import std/assertions
 import ./[machine, step, host_fetch]
-import ../codec/[bounded, work_digest]
+import ../codec/bounded
+import ../codec/work/digest as work_digest
 
 type
   ExportOffset* = distinct uint64 ## Package segment position before this invocation's ordered exports.

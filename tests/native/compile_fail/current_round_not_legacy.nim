@@ -4,7 +4,9 @@
 
 ## Current parallel round success is not legacy completed-block/history authorization.
 import ../../../src/chain/parameters
-import ../../../src/state/[accumulation_current_round, accumulation_round, accumulation_execution]
+import ../../../src/state/accumulation/current/round as accumulation_current_round
+import ../../../src/state/accumulation/[round as accumulation_round,
+    execution as accumulation_execution]
 let refused = runCurrentBlockAccumulationRound(default(BlockAccumulationRound), default(Parameters),
     default(CurrentAccumulationRoundLimits))
 discard executionInfo(refused.value)

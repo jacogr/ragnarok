@@ -4,7 +4,8 @@
 ## Default/refused account timestamp results cannot expose successor state, sources or unrelated nested reasons.
 
 import std/cmdline
-import ../../src/state/[accumulation_accounts, accumulation_statistics]
+import ../../src/state/accumulation/[accounts as accumulation_accounts,
+    statistics as accumulation_statistics]
 
 let argument = paramStr(1)
 let owner = default(PreparedAccumulationAccounts)

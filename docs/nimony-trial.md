@@ -196,7 +196,7 @@ shared result API; those higher-level families are not yet runtime-ported or cla
 
 ## Fifth increment: complete work reports and report snapshots
 
-`work_report.nim` and `report_owned.nim` now run under the same pinned Nimony nightly.
+`src/codec/work/report.nim` and `report_owned.nim` now run under the same pinned Nimony nightly.
 Report/header results keep their discriminator and payload private. Read-only `error` remains
 available on every outcome; `value` and report `consumed` require success. Default results still
 carry Uninitialized. Hash/root/slot/shard domains remain distinct. Report owners use a stable
@@ -369,7 +369,7 @@ ARC/Clang LTO. Linux, contextual quorum/epoch eligibility and signature verifica
 
 ## Tenth increment: work-package inputs and retained item snapshots
 
-`work_package.nim` now runs under the same pinned Nimony nightly. `PackageResult[T]` keeps status/
+`src/codec/work/package.nim` now runs under the same pinned Nimony nightly. `PackageResult[T]` keeps status/
 value private and guards application access on success. Default results remain Uninitialized.
 Package/item handles use private nullable references, retained in stable checked locals before
 access or extraction. Child indices remain private. A child retains its complete original parent
@@ -692,7 +692,7 @@ unchanged. This completes the raw primitive slice, not all M2 or M1 migration.
 
 ## Seventeenth increment: state keys and fixed node layout/hashing
 
-`src/codec/state_layout.nim` now runs on the same pristine nightly. The scope remains Gray Paper
+`src/codec/state/layout.nim` now runs on the same pristine nightly. The scope remains Gray Paper
 0.8.0 state-key functions C, branch/leaf encodings B/L and raw node identification from the
 merklization chapter. No wire rule, native primitive, dependency pin or compiler source changes.
 This adds no trie construction, state-component serialization, proof or persistence behavior.
@@ -737,7 +737,7 @@ unverified. No compiler/private-runtime hooks, source patches or omitted corpus 
 
 ## Eighteenth increment: bounded state trie roots
 
-`src/codec/state_trie.nim` now runs on the same pristine nightly, retaining Gray Paper 0.8.0
+`src/codec/state/trie.nim` now runs on the same pristine nightly, retaining Gray Paper 0.8.0
 merklization equation M and the verified B/L encodings. Private sorted key/index scratch still
 uses the supported standard-library sort. `StateTrieResult[T]` hides status/payload behind a
 read-only reason and success-precondition getter, protecting both public commitments and private
@@ -785,7 +785,7 @@ Protocol/native dependency pins and pristine upstream/compiler sources are uncha
 
 ## Nineteenth increment: entropy, validator rosters and timeslot state
 
-`src/codec/state_safrole.nim` now runs on the same pristine nightly. It preserves Gray Paper
+`src/codec/state/safrole.nim` now runs on the same pristine nightly. It preserves Gray Paper
 0.8.0 T(state) chapters 6–9 and 11: four ordered fixed entropy words, staging/active/previous
 variable validator rosters and the exact E4 most-recent timeslot. This is structural serialization,
 not Safrole execution, key/point verification or a complete state root. Protocol/native dependency
@@ -839,7 +839,7 @@ checked ARC/Clang LTO; full M1, broader M2, M3 and Linux parity remain unverifie
 
 ## Twentieth increment: authorization pools and queues
 
-`src/codec/state_authorization.nim` now runs on the same pristine nightly, preserving Gray Paper
+`src/codec/state/authorization.nim` now runs on the same pristine nightly, preserving Gray Paper
 0.8.0 T(state) chapters 1–2 and authorization composition. Core order, per-core hash order, duplicate
 hashes, explicit empty pools, canonical pool counts and fixed 80-hash queues remain unchanged.
 This is serialization, not authorization execution or a complete state commitment. No protocol
@@ -892,7 +892,7 @@ M3 and Linux parity remain unverified.
 
 ## Twenty-first increment: chapter-4 Safrole basic state
 
-`src/codec/state_consensus.nim` now runs on the same pristine nightly, preserving Gray Paper
+`src/codec/state/consensus.nim` now runs on the same pristine nightly, preserving Gray Paper
 0.8.0 T(state) chapter 4 and C.2 ticket fields: pending full validators, opaque 144-byte ring
 commitment, tag-selected fixed sealer schedule and variable ticket accumulator. This remains
 structural serialization, not Safrole execution, key/proof verification or a complete state root.
@@ -999,7 +999,7 @@ Full Linux runtime evidence still awaits CI execution after publishing these cha
 
 ## Twenty-third bounded increment: chapter-5 dispute judgment/offender state
 
-`src/codec/state_disputes.nim` now targets the same pristine Nimony nightly. Gray Paper 0.8.0
+`src/codec/state/disputes.nim` now targets the same pristine Nimony nightly. Gray Paper 0.8.0
 T(state) chapter 5 retains four independently canonical sorted sets, canonical general-natural
 counts and nominally separate report hashes and offender keys. There is no source sorting,
 deduplication, alternate wire format, dispute transition or cryptographic validation added here.
@@ -1053,7 +1053,7 @@ full M1/M2/M3 parity remain unverified; compile-only success does not replace ru
 
 ## Twenty-fourth bounded increment: chapter-3 recent history
 
-`src/codec/state_history.nim` now targets the same pristine Nimony nightly, preserving Gray Paper
+`src/codec/state/history.nim` now targets the same pristine Nimony nightly, preserving Gray Paper
 0.8.0 T(state) chapter 3. Ordered recent blocks retain header/super-peak/state/E4-slot order,
 independently canonical package/segment dictionaries and ordered optional belt peaks. No
 history/MMR transition, commitment verification, source normalization or new wire format is added.
@@ -1132,7 +1132,7 @@ unchanged; CI safeguard tests are separate. Chapter-10 availability remains the 
 
 ## Twenty-fifth bounded increment: chapter-10 availability state
 
-`src/codec/state_availability.nim` now runs on the same pristine Nimony nightly, preserving Gray
+`src/codec/state/availability.nim` now runs on the same pristine Nimony nightly, preserving Gray
 Paper 0.8.0 T(state) chapter 10: a fixed per-core sequence of optional full standalone guarantees,
 each followed by its distinct E4 registration time. Shared guarantee/report framing, credential
 policy and error precedence remain unchanged. This does not verify signatures, availability
@@ -1190,7 +1190,7 @@ ARC/Clang LTO; actual Linux execution and full M1/M2/M3 migration remain separat
 
 ## Twenty-sixth bounded increment: chapter-12 privileged services
 
-`src/codec/state_privileges.nim` now targets the same pristine Nimony nightly, preserving Gray
+`src/codec/state/privileges.nim` now targets the same pristine Nimony nightly, preserving Gray
 Paper 0.8.0 T(state) chapter 12. Fixed E4 manager/assigner/delegator/registrar roles precede one
 canonical natural dictionary count and fixed E4-service/E8-gas pairs. Keys remain strictly
 increasing numerically, including cases such as 255/256 whose little-endian byte order differs.
@@ -1240,7 +1240,7 @@ the accepted compact C13 gas policy and parked request-namespace question remain
 
 ## Twenty-seventh bounded increment: chapter-13 activity statistics
 
-`src/codec/state_statistics.nim` now targets the same pristine Nimony nightly, preserving Gray
+`src/codec/state/statistics.nim` now targets the same pristine Nimony nightly, preserving Gray
 Paper 0.8.0 T(state) chapter 13 and the maintainer's accepted compact gas policy. Separate current
 and previous validator populations retain their natural counts and six E4 counters per record.
 Core tuples retain eight natural fields without an array count; the numeric service dictionary
@@ -1299,7 +1299,7 @@ runtime parity remain separate gates. Chapters 14/15 work queues are the next bo
 
 ## Twenty-eighth bounded increment: chapters 14/15 work queues
 
-`src/codec/state_workqueues.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+`src/codec/state/workqueues.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
 0.8.0 T(state) chapters 14/15 retain their fixed epoch rings, ordered ready-report rows, complete
 C.2 child reports, canonical dependency sets and canonical accumulated package sets. Report
 sequence order and repeated report identities remain significant; hash sets remain strictly
@@ -1346,7 +1346,7 @@ remain separate gates. Chapter-16 last accumulation outputs is the next bounded 
 
 ## Twenty-ninth bounded increment: chapter-16 last accumulation outputs
 
-`src/codec/state_outputs.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
+`src/codec/state/outputs.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
 Paper 0.8.0 T(state) chapter 16 retains one canonical natural pair count followed by fixed E4
 service IDs and opaque 32-byte commitments. Source order, descending/repeated service IDs and
 repeated pairs remain unchanged. No sorting, deduplication, output commitment verification or
@@ -1392,7 +1392,7 @@ but service-keyed state and whole-state composition remain. Next is C(255, servi
 
 ## Thirtieth bounded increment: C(255, service) account metadata
 
-`src/codec/state_accounts.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
+`src/codec/state/accounts.nim` now targets the same pristine pinned Nimony 0.6.3 nightly. Gray
 Paper 0.8.0 T's C(255, service) mapping retains the interleaved service key and exact 89-byte
 version-zero value: one canonical zero discriminator, a fixed code hash, five E8 fields and four
 E4 fields. Balance, gas, storage, timeslot and service domains remain nominally distinct, with
@@ -1442,7 +1442,7 @@ parity remain gates. Next is service storage/preimage keys and retained raw valu
 
 ## Thirty-first bounded increment: service storage/preimage keyed values
 
-`src/codec/state_service_values.nim` now targets the same pristine pinned Nimony nightly. Gray
+`src/codec/state/service_values.nim` now targets the same pristine pinned Nimony nightly. Gray
 Paper 0.8.0 T's storage/preimage mappings retain their distinct E4 namespace prefixes, original
 raw keys/fixed lookup hashes, maintained Blake2b-256 key derivation and unframed raw values.
 Values, including empty/count-like bytes and supplied hash/content mismatches, remain structural
@@ -1499,7 +1499,7 @@ maintainer-parked namespace question without inventing interim restrictions.
 
 ## Thirty-second bounded increment: service request histories
 
-`src/codec/state_requests.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+`src/codec/state/requests.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
 0.8.0 T's request mappings retain E4 advertised lengths plus fixed lookup hashes, maintained
 Blake2b/interleaved-service keys, canonical 0–3 counts and E4 timeslots in supplied order.
 Equal/descending slots and the complete uint32 length domain remain structural data. Both top-end
@@ -1557,7 +1557,7 @@ all existing interpretations and the parked namespace question.
 
 ## Thirty-third bounded increment: exact state composition and published roots
 
-`src/codec/state_composition.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
+`src/codec/state/composition.nim` now targets the same pristine pinned Nimony nightly. Gray Paper
 0.8.0 T's sixteen mandatory chapters retain exact typed capture, complete consumed extents and
 shared core/validator/epoch profile association. Typed service metadata, storage/preimage/request
 sources and explicitly opaque captured mappings retain their original keys and bytes. Parent

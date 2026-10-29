@@ -5,7 +5,8 @@
 import std/assertions
 import ./[service_namespace_seed, current_typed_context]
 import ../../src/state/store
-import ../../src/codec/[state_accounts, state_service_values, state_requests, state_composition]
+import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
+    requests as state_requests, composition as state_composition]
 import ../../src/crypto/primitives
 proc namespaceSeeds*(): seq[ServiceNamespaceSeed] =
   ## Independent known contents include empty raw keys, present-empty values/preimages and available histories.

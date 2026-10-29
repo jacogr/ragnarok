@@ -3,5 +3,6 @@
 # @@Verification={"group":"privacy","expected":"data"}
 
 ## Selected yield certificates and failed tagged storage cannot be read or forged by callers.
-import ../../../src/state/[accumulation_annulled_outputs, accumulation_annulment]
+import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
+    annulment as accumulation_annulment]
 discard default(PreparedAnnulmentOutputs).data

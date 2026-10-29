@@ -4,7 +4,8 @@
 ## Atomic ordered batch verification retains independent root/key authority and whole-batch quotas.
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout, state_trie]
+import ../../../src/codec/bounded
+import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc main() =
   ## Duplicates remain explicit and all failures discard earlier successful lookups.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(10))

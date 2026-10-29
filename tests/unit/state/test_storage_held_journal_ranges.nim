@@ -6,7 +6,8 @@
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[arc_evidence, storage_io]
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
+import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
+import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only equal-byte inode replacement cannot become selected-file authority.

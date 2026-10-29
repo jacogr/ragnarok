@@ -5,13 +5,20 @@
 ## Signed stopped accumulation binds complete sealed headers, guarantee packages and selected outputs to private C(3).
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[accumulation_recent, accumulation_ready, accumulation_history,
-  accumulation_finalization, accumulation_outputs, accumulation_reentry, accumulation_continuation,
-  accumulation_execution, accumulation_inputs, accumulation_dispatch, accumulation_round,
-  accumulation_queue, report_admission, block_transition, block_admission, history, store]
-import ../../../src/codec/[bounded, header, block_codec, composite, report_owned, owned,
-  work_report,
-  state_history, state_outputs, state_workqueues, state_layout, state_trie]
+import ../../../src/state/accumulation/[recent as accumulation_recent, ready as accumulation_ready,
+    history as accumulation_history, finalization as accumulation_finalization,
+    outputs as accumulation_outputs, reentry as accumulation_reentry,
+    continuation as accumulation_continuation, execution as accumulation_execution,
+    inputs as accumulation_inputs, dispatch as accumulation_dispatch, round as accumulation_round,
+    queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/[history, store]
+import ../../../src/codec/[bounded, header, block_codec, composite, report_owned, owned]
+import ../../../src/codec/work/report as work_report
+import ../../../src/codec/state/[history as state_history, outputs as state_outputs,
+    workqueues as state_workqueues, layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   pvm_accumulation_program, pvm_accumulation_context, pvm_accumulation_provision,

@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/codec/[state_disputes, bounded]
+import ../../../src/codec/state/disputes as state_disputes
+import ../../../src/codec/bounded
 
 ## Validate source/wire/copy/handle independence and typed errors through the public owner interface.
 proc main() =

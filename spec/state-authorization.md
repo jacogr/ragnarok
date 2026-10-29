@@ -7,7 +7,7 @@ Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 
 ## Exact entries
 
-`src/codec/state_authorization.nim` provides `authorizationEntry(kind, rows, config)` and
+`src/codec/state/authorization.nim` provides `authorizationEntry(kind, rows, config)` and
 `decodeAuthorization(kind, input, config)`. `AuthorizationKind` selects the entry namespace and
 value schema:
 

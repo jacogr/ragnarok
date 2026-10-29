@@ -9,10 +9,16 @@
 # @@Verification={"arc": "accumulation_operands_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
-import ../../../src/state/[accumulation_operands, accumulation_queue, report_admission,
-  block_transition, store]
-import ../../../src/codec/[bounded, natural, composite, work_digest, work_report, report_owned,
-  owned, c2_records, state_workqueues, header]
+import ../../../src/state/accumulation/[operands as accumulation_operands,
+    queue as accumulation_queue]
+import ../../../src/state/report/admission as report_admission
+import "../../../src/state/block/transition" as block_transition
+import ../../../src/state/store
+import ../../../src/codec/[bounded, natural, composite]
+import ../../../src/codec/work/[digest as work_digest, report as work_report]
+import ../../../src/codec/[report_owned, owned, c2_records]
+import ../../../src/codec/state/workqueues as state_workqueues
+import ../../../src/codec/header
 import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Refuse cryptographic providers after real signed inputs exist, proving preparation has no crypto side effects.

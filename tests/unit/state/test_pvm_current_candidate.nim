@@ -7,8 +7,12 @@ import std/[assertions, envvars, syncio]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned, block_codec, header, composite]
-import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus,
-  accumulation_current_update, accumulation_current_completion, accumulation_current_driver]
+import ../../../src/state/store
+import "../../../src/state/block/admission" as block_admission
+import ../../../src/state/report/admission as report_admission
+import ../../../src/state/accumulation/current/[consensus as accumulation_current_consensus,
+    update as accumulation_current_update, completion as accumulation_current_completion,
+    driver as accumulation_current_driver]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   pvm_accumulation_provision, arc_evidence]
 proc currentLimits(provided: bool): CurrentCandidateLimits =

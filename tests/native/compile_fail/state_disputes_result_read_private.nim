@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/codec/[state_disputes, state_trie]
+import ../../../src/codec/state/[disputes as state_disputes, trie as state_trie]
 let value = default(DisputeStateResult[DisputeStateRead])
 discard value.completed

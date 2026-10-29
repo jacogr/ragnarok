@@ -4,8 +4,11 @@
 ## Dynamic stream-result/metadata guard probes share real successful admission and lookup controls.
 import std/[assertions, cmdline, syncio]
 import ../support/paged_reference
-import ../../src/storage/[paged_stream, paged_codec, database_identity, state_proof, light_state_cache]
-import ../../src/codec/[bounded, state_layout, state_trie]
+import ../../src/storage/paged/[stream as paged_stream, codec as paged_codec]
+import ../../src/storage/[database_identity, state_proof]
+import ../../src/storage/light/state_cache as light_state_cache
+import ../../src/codec/bounded
+import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc policy(): PagedStreamLimits =
   ## Small positive limits keep every control on the actual admission path.
   let maximum = ElementLimit(100000)

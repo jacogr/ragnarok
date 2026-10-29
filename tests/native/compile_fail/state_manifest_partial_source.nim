@@ -5,5 +5,5 @@
 
 ## Reject mutable or partial-state shortcuts at the complete-manifest boundary.
 import ../../../src/state/manifest
-import ../../../src/state/proof_view
+import ../../../src/state/proof/view as proof_view
 discard validateStateManifest(default(ProofView), [], default(StateManifestLimits))

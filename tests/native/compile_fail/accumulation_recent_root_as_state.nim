@@ -5,7 +5,7 @@
 ## An output root cannot correct a parent state root.
 
 import ../../../src/state/history
-import ../../../src/codec/state_history
+import ../../../src/codec/state/history as state_history
 var source: HistorySnapshot
 var root: AccumulationRoot
 var config: HistoryConfig

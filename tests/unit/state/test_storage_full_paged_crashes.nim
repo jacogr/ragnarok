@@ -4,8 +4,12 @@
 ## Real successful syscall stops qualify complete full-graph publication, explicit replay recovery and exact retired-epoch cleanup.
 import std/[assertions, syncio, envvars]
 import ../../support/[full_paged_native_fixture, full_paged_reference, storage_io, storage_crash]
-import ../../../src/storage/[full_paged_store, paged_io, full_paged_codec, full_paged_stream,
-  managed_manifest, node_repository, file_errors]
+import ../../../src/storage/full/paged/store as full_paged_store
+import ../../../src/storage/paged/io as paged_io
+import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream]
+import ../../../src/storage/managed/manifest as managed_manifest
+import ../../../src/storage/node/repository as node_repository
+import ../../../src/storage/file/errors as file_errors
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only fixed test-owned names; discovery never grants recovery authority.

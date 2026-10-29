@@ -4,7 +4,7 @@
 
 ## A raw projection cannot replace genuine report admission and original block provenance.
 
-import ../../../src/state/[core_activity]
+import ../../../src/state/core/activity as core_activity
 var source: CoreActivityProjection
 var config: CoreActivityConfig
 discard prepareCoreActivity(source, config)

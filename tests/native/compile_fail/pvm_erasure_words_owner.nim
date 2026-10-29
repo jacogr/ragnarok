@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/erasure_words
+import ../../../src/state/erasure/words as erasure_words
 var candidate: ErasureWordCode
 discard candidate.data

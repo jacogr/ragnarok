@@ -6,11 +6,19 @@ import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context,
     current_logical_review_context,
     current_logical_proof_context]
-import ../../../src/app/[collected_supplied_plan, collected_supplied_state, logical_checkpoint,
-    logical_review, logical_proof, proof_query]
-import ../../../src/state/[current_logical, current_state, current_review, current_checkpoint,
-    supplied_logical_inventory, manifest, inventory, preimage_content, account_review_plan,
-    proof_plan, trie_proof]
+import ../../../src/app/collected/supplied/[plan as collected_supplied_plan,
+    state as collected_supplied_state]
+import ../../../src/app/logical/[checkpoint as logical_checkpoint, review as logical_review,
+    proof as logical_proof]
+import ../../../src/app/proof/query as proof_query
+import ../../../src/state/current/[logical as current_logical, state as current_state,
+    review as current_review, checkpoint as current_checkpoint]
+import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
+import ../../../src/state/[manifest, inventory]
+import ../../../src/state/preimage/content as preimage_content
+import ../../../src/state/account/review/plan as account_review_plan
+import ../../../src/state/proof/plan as proof_plan
+import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset only the test observer after actual execution and before selected bounded failure boundaries.

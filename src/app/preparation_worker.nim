@@ -6,7 +6,9 @@
 ## One host thread serializes control calls; worker/input/chain addresses cannot move while borrowed.
 
 import std/[assertions, locks, rawthreads]
-import ./[block_input, current_block_input, chain]
+import "./block/input" as block_input
+import "./current/block/input" as current_block_input
+import ./chain
 
 type
   PreparationPhase* {.pure.} = enum ## Done still occupies capacity and retains the exclusive graph lease.

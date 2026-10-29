@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared current terminal finalization policies retain genuine statistics and timestamp ownership.
-import ../../src/codec/[bounded, assurances, state_workqueues]
-import ../../src/state/[accumulation_current_finalization, accumulation_history,
-  accumulation_current_accounts, accumulation_accounts, accumulation_current_statistics,
-  accumulation_current_driver]
+import ../../src/codec/[bounded, assurances]
+import ../../src/codec/state/workqueues as state_workqueues
+import ../../src/state/accumulation/current/finalization as accumulation_current_finalization
+import ../../src/state/accumulation/history as accumulation_history
+import ../../src/state/accumulation/current/accounts as accumulation_current_accounts
+import ../../src/state/accumulation/accounts as accumulation_accounts
+import ../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
+    driver as accumulation_current_driver]
 import ./[accumulation_current_outputs_context, accumulation_current_statistics_context]
 proc currentFinalizationConfig*(): CurrentAccumulationFinalizationConfig =
   ## Match the authenticated two-core/twelve-slot profile and one processed package.

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "data"}
 
-import ../../../src/state/report_policy
+import ../../../src/state/report/policy as report_policy
 let owner = default(PolicyCheckedReports)
 discard owner.data # Must fail before lowering.

@@ -3,6 +3,6 @@
 
 ## Root-advance authority stays behind opaque and success-guarded public accessors.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/storage/light_journal_cache
+import ../../../src/storage/light/journal/cache as light_journal_cache
 let hidden = default(LightJournalResult[PreparedLightRootAdvance])
 discard hidden.completed

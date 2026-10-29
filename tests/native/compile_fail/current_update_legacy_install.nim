@@ -4,7 +4,9 @@
 
 ## Legacy prepared owners cannot bypass current installation readiness.
 import ../../../src/chain/provider
-import ../../../src/state/[accumulation_current_update, accumulation_publication, store]
+import ../../../src/state/accumulation/current/update as accumulation_current_update
+import ../../../src/state/accumulation/publication as accumulation_publication
+import ../../../src/state/store
 var state = default(StateStore)
 var view = default(ChainView)
 installCurrentChainUpdate(state, view, default(PreparedChainUpdate))

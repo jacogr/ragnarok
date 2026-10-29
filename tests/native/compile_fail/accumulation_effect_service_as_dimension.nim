@@ -6,6 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "AccumulationDimension", "early": ["effectContext(", "[2] expected: AccumulationDimension but got: ServiceIndex"]}
 
-import ../../../src/state/accumulation_effects
+import ../../../src/state/accumulation/effects as accumulation_effects
 import ../../../src/codec/composite
 discard effectContext(default(AccumulationEffects), ServiceIndex(42))

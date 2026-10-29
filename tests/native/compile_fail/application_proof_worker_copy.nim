@@ -4,7 +4,7 @@
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <StateProofWorker>", "build_name": "application-proof-worker-copy"}
 
 ## Reject duplicated composite thread owners during actual ownership lowering.
-import ../../../src/app/proof_worker
+import ../../../src/app/proof/worker as proof_worker
 var original = default(StateProofWorker)
 var duplicate = original
 original.close()

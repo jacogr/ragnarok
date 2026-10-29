@@ -6,8 +6,12 @@ import std/assertions
 import std/posix/posix
 import ../../src/chain/genesis
 import ../../src/state/store
-import ../../src/storage/[file_repository, node_repository, node_records, record_codec, managed_repository]
-import ../../src/codec/[bounded, state_trie]
+import ../../src/storage/file/repository as file_repository
+import ../../src/storage/node/[repository as node_repository, records as node_records]
+import ../../src/storage/record_codec
+import ../../src/storage/managed/repository as managed_repository
+import ../../src/codec/bounded
+import ../../src/codec/state/trie as state_trie
 
 func historyHashName*(hash: BlockHash): string =
   ## Encode all header identity bits in one safe local filename component.

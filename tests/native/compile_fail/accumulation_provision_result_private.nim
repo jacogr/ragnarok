@@ -4,6 +4,6 @@
 
 ## Refused unions cannot expose a private completed payload.
 
-import ../../../src/state/accumulation_provisions
+import ../../../src/state/accumulation/provisions as accumulation_provisions
 var outcome: AccumulationProvisionResult[int]
 discard outcome.completed
