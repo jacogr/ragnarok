@@ -131,10 +131,11 @@ same environment overrides. Help identifies every mapping.
 ## PVM execution
 
 `--pvm-backend jit|compiled|interpreted|polkavm-interpreted|polkavm-compiled` selects the guest engine for
-application and nested invocation. `compiled` reserves the independent source-only preparation
-policy. Its current interface returns `BackendNotBuilt` before startup resources, guest work or
-callbacks; a separately qualified implementation is required before it can publish an owner.
-See [the unavailable policy contract](../spec/pvm-compiled-policy.md).
+application and nested invocation. `compiled` selects source-only eager preparation and requires
+a genuine complete sealed source stream before publishing an independent owner. The landed
+shared stub still returns `BackendNotBuilt` before startup resources or guest/host work; ordinary
+native JIT flags alone do not establish this facility. See the
+[owner implementation](../spec/pvm-eager-compilation.md) and [policy contract](../spec/pvm-compiled-policy.md).
 The default `jit` uses our ARM64 native fragments on supported
 macOS/Linux hosts, retaining our checked interpreter for unsupported platforms, instructions,
 executable-storage refusals and native cache limits. `interpreted` forces our interpreter even
