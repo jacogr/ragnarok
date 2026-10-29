@@ -340,3 +340,11 @@ identity before collection. Execution still uses the original already timed bina
 there is no diagnostic guest build or runtime instrumentation. These copies permit
 independent static disassembly of the accepted small path and field access offsets
 after CI completes, rather than guessing a CPU cause from aggregate counts.
+
+The shared x86 diagnostic also opts into minimal as a fifth retained scope, without
+removing sieve/Pinky/initialization/gameplay or changing the13-call state protocol.
+This supplies ten cold/reused profiles /130 checked calls and the same four
+collection controls. Direct helper defaults remain unchanged. In particular, the
+paired-shift child has a repeated minimal CPU regression that cannot be inferred
+from its initialization profile; its own corrected-parent diagnostic must resolve
+the missing scope before a final retention claim.

@@ -78,7 +78,7 @@ class X86ProfileScopeTests(unittest.TestCase):
         expanded=profile_plan('arm64',include_minimal=True)
         self.assertEqual(expanded['cases'],(('sieve',100000),('minimal',100000),('init',0),('tick',0)))
         self.assertEqual(expanded['roles'],original['roles'])
-        self.assertEqual(profile_plan('x86_64',include_minimal=True)['cases'],profile_plan('x86_64')['cases'])
+        self.assertEqual(profile_plan('x86_64')['cases'],(('sieve',100000),('pinky',1),('tick',0)))
         environment=profile_environment('minimal',100000,'jit','arm64')
         self.assertEqual(environment['RAGNAROK_PVM_GUEST'],'minimal')
         self.assertIn('pvm-arm64-applications/inputs/minimal/100000',environment['RAGNAROK_PVM_SIEVE_INPUT'])
@@ -100,6 +100,18 @@ class X86ProfileScopeTests(unittest.TestCase):
                          profile_plan('arm64')['cases'])
         make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
         self.assertIn('tools/pvm_x86_jit_profile.py --paired-baseline --include-init',make)
+
+    def test_x86_minimal_adds_scope_without_replacing_original_cases(self):
+        """A repeated minimal regression needs its own calibrated full invocation, with the ordinary kernel image and thirteen calls."""
+        original=profile_plan('x86_64',paired_baseline=True,include_init=True)
+        expanded=profile_plan('x86_64',paired_baseline=True,include_init=True,include_minimal=True)
+        self.assertEqual(expanded['roles'],original['roles'])
+        self.assertEqual(expanded['cases'],(('sieve',100000),('minimal',100000),('pinky',1),('init',0),('tick',0)))
+        self.assertEqual(tuple(c for c in expanded['cases'] if c[0]!='minimal'),original['cases'])
+        env=profile_environment('minimal',100000,'jit')
+        self.assertEqual(env['RAGNAROK_PVM_GUEST'],'minimal')
+        self.assertEqual(env['RAGNAROK_PVM_SIEVE_SAMPLES'],'13')
+        self.assertIn('pvm-x86-applications/inputs/minimal/100000',env['RAGNAROK_PVM_SIEVE_INPUT'])
 
     def test_expanded_profile_runner_retains_ci_refusal_and_plan(self):
         """Wire the optional runner argument through to a durable complete plan without ever invoking native work locally."""
