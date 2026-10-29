@@ -99,6 +99,25 @@ for word in ["--download-policy", "policy", "--net-peer", "4001:peer:key", "--wi
 let downloads = parsed(download)
 assert downloads.argument(8) == "policy" and downloads.argument(9) == "4001", "CLI invariant: downloads.argument(8) == \"policy\" and downloads.argument(9) == \"4001\""
 assert downloads.argument(10) == "peer:key" and downloads.downloadBlocks == 1, "CLI invariant: downloads.argument(10) == \"peer:key\" and downloads.downloadBlocks == 1"
+# Continuous sync has its own lifecycle controls and refuses finite totals or partial light execution.
+var syncInput = peer("sync-current")
+for word in ["--download-policy", "policy", "--with-state", "--chain", "chain",
+    "--sync-source-age-ms", "1234", "--sync-reconnect-ms", "567"]: syncInput.add(word)
+let syncOptions = parsed(syncInput)
+assert syncOptions.argument(1) == "sync-current" and syncOptions.syncSourceAgeMs == 1234
+assert syncOptions.syncReconnectMs == 567
+assert "Runs until SIGINT/SIGTERM" in commandHelp("sync-current")
+for extra in [@["--download-blocks", "2"], @["--sync-source-age-ms", "0"],
+    @["--state-mode", "light", "--state-trust", "trust", "--state-header", "header"]]:
+  var refused = default(Options)
+  var input = syncInput
+  for word in extra: input.add(word) # Append through the maintained sequence API.
+  assert not parseOptions(input, refused)
+  assert not refused.valid # A failed repeated or inappropriate control clears earlier configuration.
+var unrelated = peer()
+for word in ["--sync-reconnect-ms", "100"]: unrelated.add(word)
+var refusedSyncControl = default(Options)
+assert not parseOptions(unrelated, refusedSyncControl)
 normalized(@["tiny-devnet", "init", "--devnet-output", "chain.json"], @["tiny-devnet", "init", "chain.json"])
 normalized(@["tiny-devnet", "identity", "--devnet-index", "3"], @["tiny-devnet", "identity", "3"])
 normalized(@["tiny-devnet", "node", "--devnet-dir", "data", "--devnet-index", "0",

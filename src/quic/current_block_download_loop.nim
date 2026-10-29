@@ -4,7 +4,8 @@
 ## One-child dispatcher drives native I/O, private preparation and actual deferred adoption separately.
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
-import ./[current_block_download_peers, current_block_download_session, current_block_download_stream]
+import ./[current_block_download_peers, current_block_download_session,
+    current_block_download_stream, announcements, announcement_stream]
 import ../app/[services, handoff, current_handoff, chain, candidate, current_block_input,
     current_block_download, download_schedule, preparation_worker, current_logical_download]
 import ../codec/[bounded, header]
@@ -243,7 +244,8 @@ proc retry(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
     return CurrentDownloadLoopError.SessionFailure # Keep the lease for explicit close on unexpected retirement failure.
   dispatcher.finish(DownloadAttemptOutcome.Retry, now)
 
-proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): CurrentDownloadLoopError =
+proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick,
+    acquire = true): CurrentDownloadLoopError =
   ## One turn polls bounded endpoints, submits/collects at most one job and adopts only an earlier queued candidate.
   if dispatcher.status == CurrentDownloadLoopStage.Uninitialized: return CurrentDownloadLoopError.Uninitialized
   if dispatcher.status == CurrentDownloadLoopStage.Closed: return CurrentDownloadLoopError.Closed
@@ -307,7 +309,9 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
         dispatcher.status = CurrentDownloadLoopStage.AwaitingAncestors # Actual connection close precedes exposing the host acquisition turn.
     return CurrentDownloadLoopError.None # Host explicitly acquires context; this turn cannot submit or request another child.
   if dispatcher.status in [CurrentDownloadLoopStage.Adopted, CurrentDownloadLoopStage.Exhausted,
-      CurrentDownloadLoopStage.Failed]: return CurrentDownloadLoopError.None # Terminal plans never select or prepare again.
+      CurrentDownloadLoopStage.Failed]:
+    discard dispatcher.catalog.poll()
+    return CurrentDownloadLoopError.None # Terminal acquisition remains idle while persistent discovery keeps advancing.
   if dispatcher.status in [CurrentDownloadLoopStage.Preparing, CurrentDownloadLoopStage.Cancelling]:
     let token = dispatcher.current
     if token == nil:
@@ -337,6 +341,7 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
   discard dispatcher.catalog.poll() # Native callbacks only copy/route input; all preparation below follows their return.
   let token = dispatcher.current
   if token == nil:
+    if not acquire: return CurrentDownloadLoopError.None # Discovery-only turns never create an input or execution lease.
     let selected = if dispatcher.qualifyLogical:
         dispatcher.session.begin(owner[], dispatcher.ancestors, dispatcher.limits.input,
             dispatcher.limits.candidate, DownloadScheduleTick(uint64(now)),
@@ -491,3 +496,42 @@ proc resumeAncestors*(dispatcher: var CurrentDownloadLoop, ancestors: openArray[
   dispatcher.ancestors = retained
   dispatcher.status = CurrentDownloadLoopStage.Receiving # requested remains true: the next tick prepares Ready input without another network request.
   CurrentDownloadLoopError.None
+
+proc enableAnnouncements*(dispatcher: var CurrentDownloadLoop, local: AnnouncementHandshake,
+    limits: AnnouncementLimits): CurrentDownloadPeerError =
+  ## Opt in before opening endpoints; the dispatcher keeps the stable callback catalog private.
+  dispatcher.catalog.enableAnnouncements(local, limits)
+proc announcements*(dispatcher: CurrentDownloadLoop,
+    peer: DownloadPeerId): PeerAnnouncementSnapshot =
+  ## Copy only currently authenticated stream claims; no native owner or canonical alias escapes.
+  dispatcher.catalog.announcements(peer)
+proc incarnation*(dispatcher: CurrentDownloadLoop, peer: DownloadPeerId): uint64 =
+  ## Identify actual transport/UP0 replacement independently of repeated leaf values.
+  dispatcher.catalog.incarnation(peer)
+proc publishAnnouncement*(dispatcher: var CurrentDownloadLoop, header: OwnedHeader,
+    finalized: AnnouncedBlock): AnnouncementError =
+  ## Caller has retired preparation/publication before encoding detached canonical header bytes.
+  dispatcher.catalog.publishAnnouncement(header, finalized)
+proc restart*(dispatcher: var CurrentDownloadLoop,
+    now: CurrentDownloadLoopTick): CurrentDownloadLoopError =
+  ## Continuous hosts explicitly renew a spent retry budget only after every old lease retired.
+  if dispatcher.status != CurrentDownloadLoopStage.Exhausted or dispatcher.current != nil:
+    return CurrentDownloadLoopError.Busy # In-flight, refused or adopted work has separate retirement authority.
+  if uint64(now) < dispatcher.lastTick: return CurrentDownloadLoopError.ClockRegression
+  if dispatcher.session.busy or dispatcher.session.streamActive or dispatcher.catalog.busy:
+    return CurrentDownloadLoopError.ServicesBusy
+  if dispatcher.session.configure(dispatcher.peers, dispatcher.limits.schedule,
+      DownloadScheduleTick(uint64(now))) != DownloadScheduleError.None:
+    return CurrentDownloadLoopError.InvalidPolicy
+  dispatcher.lastTick = uint64(now)
+  dispatcher.status = CurrentDownloadLoopStage.Waiting
+  CurrentDownloadLoopError.None
+
+proc reconnectPeer*(dispatcher: var CurrentDownloadLoop, id: DownloadPeerId,
+    expected: CurrentDownloadPeerKey, port: uint16,
+    certificate, key, alpn: string): CurrentDownloadPeerError =
+  ## Retire a stale endpoint only between attempts; the catalog preserves its fixed ID/key pin.
+  if dispatcher.status != CurrentDownloadLoopStage.Waiting or dispatcher.current != nil:
+    return CurrentDownloadPeerError.Busy
+  discard dispatcher.catalog.retire(id)
+  dispatcher.openPeer(id, expected, port, certificate, key, alpn)

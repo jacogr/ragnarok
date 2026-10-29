@@ -35,3 +35,10 @@ copied bytes to its host; it grants no execution/adoption authority. A catalog e
 only after ordinary candidate validation, durable journal publication and canonical installation.
 Explicit teardown emits connection close while UDP is still live, retires both engines and only
 then releases callback storage. No consensus execution occurs inside native callbacks.
+
+The continuous current-sync owner composes that catalog with the ordinary one-child dispatcher.
+Discovery-only turns preserve live transports without granting reception/preparation authority;
+spent retry plans are explicitly renewed after delay. Only consumed canonical installation and
+live target evidence establish the copied full readiness observation. Rolling ancestor retention
+is bounded independently of the lifetime import count. See [node sync](../../spec/node-sync.md)
+for the command, trust and participation boundaries.
