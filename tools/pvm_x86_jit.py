@@ -49,10 +49,9 @@ def qualify(checks, compiler, rows=None):
                 'X86_REGION_PREFIX_CASES,1440\n' not in run['output'] or 'X86_CACHE_REUSE_OK\n' not in run['output']):
             raise ValueError('incomplete native x86 scalar/cache witness')
         if name.startswith('x86-'):
-            for marker,count in [('X86_COMPACT_REGION_TAG_CASES',52),('X86_COMPACT_SPAN_BOUNDARY_CASES',5)]:
-                expected = 0 if refused else count
-                if marker+','+str(expected)+'\n' not in run['output']:
-                    raise ValueError('Missing compact source-proof controls: '+marker)
+            # Deferred triples still retain complete original-source and same-owner/root/policy boundary checks.
+            if 'X86_CHECKED_THREE_SOURCE_CASES,3546\n' not in run['output'] or 'X86_EXISTING_ROOT_SOURCE_CASES,6\n' not in run['output']:
+                raise ValueError('Missing checked triple source/root controls')
             # The new context oracle must execute on native storage; refused builds retain the existing full fallback matrix.
             expected = 0 if refused else 1440
             if 'X86_RESIDENT_CONTEXT_CASES,'+str(expected)+'\n' not in run['output']:
@@ -67,16 +66,6 @@ def qualify(checks, compiler, rows=None):
             expected = 0 if refused else 2120
             if 'X86_REGION_ARITHMETIC_CASES,'+str(expected)+'\n' not in run['output']:
                 raise ValueError('incomplete whole-region arithmetic witness')
-        if name.startswith('x86-'):
-            # Three-block source controls include refused builds; raw native contexts/publication require executable ownership.
-            for marker,count in [('X86_THREE_CONTEXT_CASES',720),('X86_RESERVED_REGION_CASES',1),('X86_REGION_PROMOTION_CONTEXTS',2),('X86_FULL_PROMOTION_REFUSAL_CASES',1)]:
-                expected = 0 if refused else count
-                if marker+','+str(expected)+'\n' not in run['output']:
-                    raise ValueError('incomplete three-block native controls: '+marker)
-            if 'X86_REGION_PROMOTION_SOURCE_CASES,6\n' not in run['output']:
-                raise ValueError('Missing cold-to-hot region promotion source controls')
-            if 'X86_THREE_SOURCE_CASES,3546\n' not in run['output']:
-                raise ValueError('incomplete independent three-block source/gas/pricing controls')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.

@@ -348,3 +348,31 @@ collection controls. Direct helper defaults remain unchanged. In particular, the
 paired-shift child has a repeated minimal CPU regression that cannot be inferred
 from its initialization profile; its own corrected-parent diagnostic must resolve
 the missing scope before a final retention claim.
+
+## Final bounded-run verdict: defer the x86 triple runtime
+
+All correctness/native/state controls passed, and initialization gains remain
+substantial. The isolated separated-path model nevertheless regresses gameplay
+across the clean repetition, while its paired-shift child trades that improvement
+for a repeated roughly9% minimal regression. The full candidate versus current
+master improves initialization about45% and long sieve8–15%, but minimal slows
+about10%. No universal no-regression gate was met. Preserve the source heads and
+qualified receipts; defer this runtime rather than call the result unconditional.
+
+Restore `x86_jit.nim` and the complete shared handler stream to this layer's
+accepted parent; descendants retain their own independent ARM changes. Remove the
+raw triple-only builders/contexts/compaction tests with the rejected implementation.
+Keep3,546 complete checked triple-source budget/gas/paid/PC/register/source/policy
+controls and six old-root/source-reuse controls, without claiming native triple
+execution. Keep the useful replay/calibrated profile/image-retention tooling and all
+measured rejection evidence. Exact experimental native implementations remain in
+repository history and immutable CI refs, including4495d0e2 and5a9c4be4.
+
+The same-image source/image control40803954273 does not reproduce the large
+minimal slowdown. Static retained-image inspection shows identical executed
+gameplay work and34/36 selected entries after relocation normalization for the
+triple change; the remaining entries are the unused new triple function and the
+required small-call mode guard. In the fold child, minimal has zero native fragments,
+identical92,997,007 Ir and38/38 selected hot instruction sequences. Addresses differ;
+no hardware cause is established. This warrants a dedicated placement-sensitivity
+study and broader useful x86 native coverage, not more blind changes in this run.
