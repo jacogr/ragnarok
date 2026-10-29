@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FULL_GUEST_RING_INPUT",
   "files": {
-    "jam-full-guest-ring-input.json": "dcad125d7fc47906d96a6fc85143005b71e1ddf312dc8fdf8658acc6500575bf"
+    "jam-full-guest-ring-input.json": "be2f9c283c2b4813bef8810c8110a961f7be540bc809d5be30d0fdde43c6c3d4"
   },
   "target": "jam-full-guest-ring-input.json"
 }

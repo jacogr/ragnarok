@@ -131,6 +131,19 @@ class PinnedProvenanceHarness(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Invalid pinned fixture path'):
                 pinned_fixture_sources(root)
 
+    def test_jam_input_witnesses_bind_current_bandersnatch_pins(self):
+        """Metadata-only pin edits must refresh frozen input provenance before native fuzz CI."""
+        expected = hashlib.sha256((ROOT/'spec/bandersnatch-pins.json').read_bytes()).hexdigest()
+        witnesses = []
+        for path in sorted((ROOT/'tests/fixtures').glob('jam-*-input.json')):
+            # The provenance field owns membership; unrelated input schemas are outside this contract.
+            record = json.loads(path.read_text())
+            if 'bandersnatch_pins_sha256' in record:
+                witnesses.append(path)
+                with self.subTest(witness=path.name):
+                    self.assertEqual(record['bandersnatch_pins_sha256'], expected)
+        self.assertTrue(witnesses, 'Missing JAM Bandersnatch input witnesses')
+
     # All three native verification groups obtain these pins through their shared source expansion.
     def test_shared_expansion(self):
         pinned = set(pinned_fixture_sources(ROOT))
