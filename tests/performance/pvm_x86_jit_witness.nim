@@ -479,3 +479,60 @@ for paired in [false, true]:
           checkFlatSource(checkedFrame)
           inc regionCases
 stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
+
+# The original scalar context is an independent oracle for resident visits and endpoint publication.
+var contextCases = 0
+when not defined(pvmX86JitRefuse):
+  let addSlots = instructionRegisters(instruction(branchProgram, CodeAddress(0)))
+  let compareSlots = instructionRegisters(instruction(branchProgram, CodeAddress(3)))
+  for active in 1..2:
+    # Publish a real ordinary leaf first so the independently owned arena has genuine executable storage.
+    let jit = newX86Jit()
+    discard x86Entry(jit, 0, 32)
+    var warm = default(X86Block)
+    for operation in 0..<4: emitX86Operation(warm, 149, addSlots, 1)
+    assert publishX86Entry(jit, 0, 4, 4, warm)
+    var blocks = default(array[2, X86RegionBlock])
+    for index in 0..<active:
+      # Both blocks increment R0 and branch on R0<R1, with distinct gas prices and original header coordinates.
+      let header = uint32(7+index)
+      let following = if active == 1 or index == 1: 7'u32 else: 8'u32
+      var body = default(X86Block)
+      emitX86Operation(body, 149, addSlots, 1)
+      emitX86Branch(body, 172, compareSlots, 0, following, 10)
+      blocks[index] = X86RegionBlock(header: header, span: 2, operations: 2,
+        price: uint64(3+index*2), yes: following, no: 10, body: move(body))
+    assert publishX86Region(jit, blocks, range[1..2](active))
+    for initial in [0'u64, 4, 99, high(uint64)]:
+      for gas in [0'u64, 1, 2, 3, 4, 5, 8, 16, high(uint64)]:
+        for quota in [0'u64, 1, 2, 3, 4, 5, 10, 63, 64, high(uint64)]:
+          for sentinel in [0xffffffff'u64, 0xfedcba9876543210'u64]:
+            # Preserve arbitrary complete zero-block endpoint bits, not merely the normal frame's low-word sentinel.
+            var registers = default(RegisterFile)
+            for slot in 0..<13: registers[slot] = RegisterValue(0xfedcba9876540000'u64+uint64(slot))
+            registers[0] = RegisterValue(initial)
+            registers[1] = RegisterValue(5)
+            var expectedRegisters = registers
+            var state = [gas, quota, 0'u64, 0'u64, sentinel]
+            var expected = state
+            var destination = 7'u32
+            while destination < 10:
+              # A complete source block checks quota then gas before changing any guest/context byte.
+              let index = int(destination-7)
+              let price = uint64(3+index*2)
+              if expected[1] < 2 or expected[0] < price: break
+              expected[0] -= price
+              expected[1] -= 2
+              inc expected[index+2]
+              expected[4] = uint64(destination)
+              expectedRegisters[0] = RegisterValue(uint64(expectedRegisters[0])+1)
+              if uint64(expectedRegisters[0]) >= 5:
+                destination = 10
+              else:
+                destination = if active == 1 or index == 1: 7'u32 else: 8'u32
+            let returned = callX86Region(jit, registers, state)
+            assert returned == destination
+            assert registers == expectedRegisters
+            assert state == expected
+            inc contextCases
+stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)

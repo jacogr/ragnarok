@@ -68,10 +68,10 @@ def matching_native_activity(measured, profiled):
         raise ValueError('Profile changed native execution or code working set')
 
 
-def profile_plan(architecture):
+def profile_plan(architecture, paired_baseline=False):
     """Select a bounded native cohort and roles; an ARM diagnostic compares the supplied parent with current JIT."""
     if architecture == 'x86_64':
-        return dict(folder=BUILD, cohort=COHORT, roles=('interpreter','jit'),
+        return dict(folder=BUILD, cohort=COHORT, roles=('baseline','jit') if paired_baseline else ('interpreter','jit'),
                     cases=(('sieve',100000),('pinky',1),('tick',0)))
     if architecture == 'arm64':
         return dict(folder=ROOT/'build/tests/pvm-arm64-profiles',
@@ -132,13 +132,13 @@ def diagnostic_image(checks, cohort, role, case, report):
     return saved
 
 
-def run(architecture="x86_64", calibration_only=False):
+def run(architecture="x86_64", calibration_only=False, paired_baseline=False):
     """Calibrate exact scope and last-return selection, profile unchanged images and retain partial failure receipts."""
-    plan = profile_plan(architecture)
+    plan = profile_plan(architecture, paired_baseline)
     folder, cohort_folder = plan["folder"], plan["cohort"]
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder/'results.json'
-    report = dict(status='incomplete', architecture=architecture, profiles=[], controls=[], builds=[],
+    report = dict(status='incomplete', architecture=architecture, profile_roles=list(plan['roles']), profiles=[], controls=[], builds=[],
                   diagnostic_builds=[], boundary_protocol='client-requests-v1' if architecture=='arm64' else 'symbol-returns-v1',
                   hardware_counters=False, clock_policy='discarded',
                   scope='public invocation including memory construction and immutable publication')
@@ -243,5 +243,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--architecture', choices=('x86_64','arm64'), default='x86_64')
     parser.add_argument('--calibrate-only',action='store_true')
+    parser.add_argument('--paired-baseline',action='store_true')
     options=parser.parse_args()
-    run(options.architecture,options.calibrate_only)
+    run(options.architecture,options.calibrate_only,options.paired_baseline)

@@ -93,6 +93,10 @@ class X86ProfileScopeTests(unittest.TestCase):
         self.assertEqual(baseline,current)
         with self.assertRaises(ValueError):profile_plan('riscv64')
         self.assertEqual(profile_plan('x86_64')['roles'],('interpreter','jit'))
+        paired=profile_plan('x86_64',paired_baseline=True)
+        self.assertEqual(paired['roles'],('baseline','jit'))
+        self.assertEqual(paired['cases'],profile_plan('x86_64')['cases'])
+        self.assertIn('tools/pvm_x86_jit_profile.py --paired-baseline',make)
 
     def test_native_activity_cannot_turn_into_fallback(self):
         """Identical source/output alone cannot certify that an instrumented JIT actually executed native code."""
