@@ -309,7 +309,9 @@ func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == Prepa
 func compiledPreparationFailure(reason: FlatError, callerPolicy: bool): PreparationError =
   ## Translate the shared contract without turning unexpected/default/success states into usable owners.
   case reason
-  of FlatError.InvalidProgram: PreparationError.InvalidProgram
+  of FlatError.InvalidProgram:
+    # Malformed caller source is distinct from a hook rejecting an already admitted immutable plan.
+    if callerPolicy: PreparationError.InvalidProgram else: PreparationError.BackendFailure
   of FlatError.CodeLimitExceeded, FlatError.FactLimitExceeded, FlatError.JumpLimitExceeded,
       FlatError.PageLimitExceeded, FlatError.StreamLimitExceeded,
           FlatError.PreparationLimitExceeded:
