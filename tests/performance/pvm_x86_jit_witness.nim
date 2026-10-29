@@ -610,3 +610,45 @@ when not defined(pvmX86JitRefuse):
         assert registers == original
         inc compactCases
 stdout.writeLine("X86_COMPACT_IMMEDIATE_CASES," & $compactCases)
+
+
+# The useful whole-region arithmetic/context matrix remains independent of the rejected resident-register policy.
+var regionArithmeticCases = 0
+when not defined(pvmX86JitRefuse):
+  for opcode in 0..255:
+    if not supportedX86Opcode(byte(opcode)): continue
+    for pattern in [0'u8, 17, 128, 255]:
+      var part = @[byte(opcode)]
+      for index in 0..<24: part.add(pattern)
+      let source = owner([part, part, part, part, @[0'u8]])
+      let decoded = instruction(source, CodeAddress(0))
+      assert decoded.error == ProgramError.None
+      let slots = instructionRegisters(decoded)
+      let jit = newX86Jit()
+      discard x86Entry(jit, 0, 32)
+      var warm = default(X86Block)
+      for index in 0..<4: emitX86Operation(warm, 100, identitySlots, 0)
+      assert publishX86Entry(jit, 0, 4, 4, warm)
+      var body = default(X86Block)
+      for index in 0..<4: emitX86Operation(body, byte(opcode), slots, uint64(decoded.value.x))
+      emitX86Branch(body, 81, slots, 0, 10, 10)
+      var blocks = default(array[2, X86RegionBlock])
+      blocks[0] = X86RegionBlock(header: 7, span: 5, operations: 5,
+        price: 1, yes: 10, no: 10, body: move(body))
+      assert publishX86Region(jit, blocks, 1)
+      for seed in [0'u64, 31, 32, 63, 64, 127, 0x80000000'u64, 0xffffffff'u64,
+          0x8000000000000000'u64, high(uint64)]:
+        var registers = default(RegisterFile)
+        for index in 0..<13: registers[index] = RegisterValue(seed xor uint64(index))
+        var expected = registers
+        for index in 0..<4:
+          # Owner-decoded portable execution cannot consult the emitted region or its scalar accounting context.
+          let evaluated = evaluateRegisters(source, CodeAddress(uint32(index*25)), expected)
+          assert evaluated.error == RegisterError.None
+          expected = evaluated.value
+        var context = [100'u64, 5'u64, 0'u64, 0'u64, 0xfedcba9876543210'u64]
+        assert callX86Region(jit, registers, context) == 10
+        assert registers == expected
+        assert context == [99'u64, 0'u64, 1'u64, 0'u64, 7'u64]
+        inc regionArithmeticCases
+stdout.writeLine("X86_REGION_ARITHMETIC_CASES," & $regionArithmeticCases)

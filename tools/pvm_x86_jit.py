@@ -58,6 +58,11 @@ def qualify(checks, compiler, rows=None):
             expected = 0 if refused else 3168
             if 'X86_COMPACT_IMMEDIATE_CASES,'+str(expected)+'\n' not in run['output']:
                 raise ValueError('incomplete compact immediate witness')
+        if name.startswith('x86-'):
+            # Independent whole-region arithmetic covers the restored emitter together with exact source/gas context.
+            expected = 0 if refused else 2120
+            if 'X86_REGION_ARITHMETIC_CASES,'+str(expected)+'\n' not in run['output']:
+                raise ValueError('incomplete whole-region arithmetic witness')
         rows.append(dict(name=name, build=build, run=run))
     for moving in (True, False):
         # The private owner must disarm actual published authority, and still reject duplication.
