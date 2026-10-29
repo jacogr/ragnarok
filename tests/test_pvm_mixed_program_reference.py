@@ -6,6 +6,7 @@ import hashlib
 import json
 import unittest
 from pvm_mixed_program_reference import ROOT, HEADER, MASK, fixtures
+from pvm_gas_reference import simulate, tables, TERMINATORS
 
 
 class MixedProgramReferenceTests(unittest.TestCase):
@@ -28,6 +29,27 @@ class MixedProgramReferenceTests(unittest.TestCase):
         self.assertEqual(cursor,len(data))
         self.assertEqual(seen,{(n,value,address) for n in (1,2,7,31)
             for value in (0,MASK,(1<<63)-1,1<<63) for address in (0x10000,0x10fff)})
+
+    def test_independent_interior_entry_containing_price(self):
+        """Interior PC10 remains in the independently priced original block; hosts do not end it."""
+        data,_=fixtures();cursor=12;definitions=tables();seen=set()
+        while cursor<len(data):
+            # Existing frozen framing owns all instruction boundaries; neither execution engine supplies prices.
+            row=HEADER.unpack_from(data,cursor)
+            wire=data[cursor+HEADER.size:cursor+HEADER.size+row[0]]
+            self.assertEqual(wire[:3],bytes((0,0,22)))
+            code=wire[3:25]
+            prefix=[code[:3],code[3:5],code[5:8],code[8:10]]
+            tail=[code[10:13],code[13:20],code[20:22]]
+            self.assertEqual([part[0] for part in tail],[131,83,50])
+            self.assertEqual(sum(map(len,prefix)),10)
+            self.assertTrue(all(part[0] not in TERMINATORS for part in prefix))
+            self.assertIn(tail[1][0],TERMINATORS)
+            seen.add(simulate([*prefix,*tail],definitions))
+            self.assertEqual(row[5:7],(103,106))
+            self.assertEqual(simulate([tail[-1]],definitions,prefix=[*prefix,*tail[:-1]]),(22,25))
+            cursor+=HEADER.size+row[0]
+        self.assertEqual(seen,{(103,106)})
 
     def test_literal_carry_and_accumulation(self):
         """Known carries and triangular sums catch mistakes in the complete-program oracle."""

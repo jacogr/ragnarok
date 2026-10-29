@@ -61,7 +61,7 @@ proc respondFallible(context: var HostContext, suspension: StepOutcome): HostRes
   hostSuccess[HostRefusal](respond(context, suspension))
 
 proc runReply(source: Machine, context: var HostContext, mode: PricingMode,
-    cycles: uint64, plan: GasPlan, memo: GasMemo): StepOutcome =
+    cycles: uint64, plan: GasPlan, memo: GasMemo, owner: PreparedProgram): StepOutcome =
   ## Each response-only policy retains identical attempt/callback budgets and the same invocation-local context.
   let steps = ExecutionStepLimit(6 * context.iterations + 1)
   let hosts = HostCallLimit(2 * context.iterations)
@@ -73,16 +73,13 @@ proc runReply(source: Machine, context: var HostContext, mode: PricingMode,
     of PricingMode.Memo:
       executeWithHost(source, context, respond, steps, hosts, memo)
     of PricingMode.Prepared:
-      # The same frozen program/state/host oracle qualifies the independently prepared operation stream.
-      let prepared = newPreparedProgram(programOf(source).value, defaultPreparedLimits(
-          GasCycleLimit(cycles)))
-      assert prepared.error == PreparationError.None
-      executeWithHost(source, context, respond, steps, hosts, prepared.value)
+      # Reuse the same prepared owner across independent frozen scenarios and typed host adapters.
+      executeWithHost(source, context, respond, steps, hosts, owner)
   assert checked.error == StepError.None
   checked.value
 
 proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
-    cycles: uint64, plan: GasPlan, memo: GasMemo): StepOutcome =
+    cycles: uint64, plan: GasPlan, memo: GasMemo, owner: PreparedProgram): StepOutcome =
   ## Fallible host successes must preserve the same complete memory/register prefix at every gas boundary.
   let steps = ExecutionStepLimit(6 * context.iterations + 1)
   let hosts = HostCallLimit(2 * context.iterations)
@@ -94,11 +91,8 @@ proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
     of PricingMode.Memo:
       executeWithHost(source, context, respondFallible, steps, hosts, memo)
     of PricingMode.Prepared:
-      # Typed callback selection and complete post-state use the same independent expectations.
-      let prepared = newPreparedProgram(programOf(source).value, defaultPreparedLimits(
-          GasCycleLimit(cycles)))
-      assert prepared.error == PreparationError.None
-      executeWithHost(source, context, respondFallible, steps, hosts, prepared.value)
+      # Reuse the same prepared owner across independent frozen scenarios and typed host adapters.
+      executeWithHost(source, context, respondFallible, steps, hosts, owner)
   assert checked.error == HostExecutionError.None
   checked.value
 
@@ -164,12 +158,15 @@ for row in 0..<32:
     cycles: GasCycleLimit(cycles)))
   assert learned.error == GasMemoError.None
   let memo = learned.value
+  let execution = newPreparedProgram(program, defaultPreparedLimits(GasCycleLimit(cycles)))
+  assert execution.error == PreparationError.None
+  let owner = execution.value # This exact owner remains alive through both warm orders and every host repair.
   assert gasMemoInfo(memo).value.pricedBlocks == 0
   assert uint64(blockGas(memo, CodeAddress(0)).value) == price
   assert uint64(blockGas(memo, CodeAddress(20)).value) == haltPrice
   for mode in [PricingMode.Dynamic, PricingMode.Planned, PricingMode.Memo, PricingMode.Prepared]:
     for warm in [false, true]:
-      if warm and mode != PricingMode.Memo: continue # Only a lazy memo has learned facts to distinguish.
+      if warm and mode notin [PricingMode.Memo, PricingMode.Prepared]: continue # Both mutable cache identities are reused through the second complete pass.
       for fallible in [false, true]:
         for scenario in 0..<4:
           # Exact and surplus success, final-block shortage and initial-block shortage share the same guest.
@@ -188,8 +185,8 @@ for row in 0..<32:
               cycles: GasCycleLimit(cycles)))
             assert cold.error == GasMemoError.None
             selectedMemo = cold.value
-          let outcome = if fallible: runFallible(source, context, mode, cycles, plan, selectedMemo)
-            else: runReply(source, context, mode, cycles, plan, selectedMemo)
+          let outcome = if fallible: runFallible(source, context, mode, cycles, plan, selectedMemo, owner)
+            else: runReply(source, context, mode, cycles, plan, selectedMemo, owner)
           inc checkedScenarios
           checkedCalls += context.calls
           if mode == PricingMode.Memo:
@@ -198,6 +195,9 @@ for row in 0..<32:
             assert gasMemoInfo(selectedMemo).value.pricedBlocks == learnedBlocks
           let posterior = machineInfo(outcome.machine).value
           let progressed = scenario != 3
+          assert uint64(posterior.gasDeficit) == 0
+          let indices = pageIndices(memoryOf(outcome.machine).value).value
+          assert indices.len == 2 and uint32(indices[0]) == 16 and uint32(indices[1]) == 17
           assert context.calls == (if progressed: 2 * iterations else: 0'u64)
           if scenario < 2:
             # Successful dynamic halt normalizes the native PC after paying the final block exactly once.
@@ -226,9 +226,11 @@ for row in 0..<32:
               assert actual.bytes[i] == expected
             assert pageImage(memoryOf(source).value, PageIndex(uint32(16 + page))).value.bytes ==
                 images[page].bytes
+          assert uint64(machineInfo(source).value.pc) == 0 and uint64(machineInfo(
+              source).value.gasDeficit) == 0
           assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
               source).value.blockCharged
 assert cursor == data.len
-assert checkedScenarios == 1280 and checkedCalls == 19680
+assert checkedScenarios == 1536 and checkedCalls == 23616
 
-echo "PVM mixed-program cross-check passed: 32 programs, 1280 policy/host scenarios"
+echo "PVM mixed-program cross-check passed: 32 programs, 1536 policy/host scenarios"
