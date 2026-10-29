@@ -64,8 +64,7 @@ class NimonyCISafeguards(unittest.TestCase):
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
-        self.assertEqual(text.count('needs:'), 7)
-        self.assertIn('needs: unit', text)
+        self.assertNotIn('needs:', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
         self.assertNotIn('nimony-trial', text)
@@ -105,25 +104,42 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('format.py --check', plan)
         self.assertIn('test_modules.py --compiler "$NIMONY" --smoke', plan)
 
-    # The lightweight gate must roll up without starting heavy compilation on ordinary PR updates.
-    def test_smoke_build_rollup(self):
-        """A lightweight request expands only Smoke and still requires the complete selected matrix."""
+    def test_lgtm_requests_only_smoke_without_cancelling_heavy_runs(self):
+        """Review approval creates fresh Smoke evidence on the same head, isolated from heavy requests."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        gate = job_section(text, 'build-status')
-        self.assertIn('needs: build', gate)
-        self.assertIn('SHARDS_RESULT: ${{ needs.build.result }}', gate)
+        event = event_context('pull_request', 'labeled', 'lgtm')
+        self.assertEqual([row['name'] for row in selected_families(text, 'build', event)], ['Smoke'])
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        for job in jobs:
+            self.assertEqual(bool(expression(job_condition(text, job), event)), job == 'build')
+        key = re.search(r'^  group: ci-\$\{\{ github.workflow \}\}-\$\{\{ (.*) \}\}$',
+                        text, re.MULTILINE).group(1)
+        keys = {}
+        for label in ('lgtm', 'ci:full', 'unrelated'):
+            request = event_context('pull_request', 'labeled', label)
+            request['github'].update(run_id=100, ref='refs/pull/1791/merge')
+            request['github']['event']['pull_request']['number'] = 1791
+            keys[label] = expression(key, request)
+        self.assertEqual(keys['lgtm'], 'smoke-1791')
+        self.assertNotEqual(keys['lgtm'], keys['ci:full'])
+        self.assertNotEqual(keys['lgtm'], keys['unrelated'])
+
+    # Ordinary PR updates retain only the named lightweight workload.
+    def test_smoke_build_scope(self):
+        """A lightweight request expands only Smoke without an extra aggregate runner."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
         families = selected_families(text, 'build', event_context('pull_request', 'synchronize'))
         self.assertEqual([row['group'] for row in families], ['smoke'])
         self.assertNotIn('minutes', families[0])
 
-    def test_source_and_guards_share_linux_packaging_without_expanding_smoke(self):
-        """Linux reuses packaging setup while preserving independent source/guard failures and evidence."""
+    def test_source_shares_linux_packaging_without_expanding_smoke(self):
+        """Linux reuses packaging setup while Tooling owns independent compiler rejection checks."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         family = family_section(text, 'build', 'binary', 'Linux & Docker')
-        commands = ['package-binary', 'check-modules', 'check-guards', 'check-docker']
+        commands = ['package-binary', 'check-modules', 'check-docker']
         positions = [family.index('run: make '+command+'\n') for command in commands]
         self.assertEqual(positions, sorted(positions))
-        for target in ('check-modules', 'check-guards'):
+        for target in ('check-modules',):
             # Explicit status conditions allow every independent check after an earlier failed step.
             step = next(s for s in re.findall(r'^      - .*?(?=^      - |\Z)', family, re.M | re.S)
                         if 'run: make '+target+'\n' in s)
@@ -132,18 +148,19 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('!cancelled()', guard)
             self.assertTrue(expression(guard, context))
             self.assertFalse(expression(guard, dict(context, cancelled=True)))
-        for group in ('modules', 'guards'):
+        for group in ('modules',):
             self.assertIn('build/tests/'+group+'/results.json', family)
             self.assertIn('run: make summary-'+group+' SUMMARY_OUTPUT=', family)
         # Unit requests preserve checks without adding binary archives or a Docker build.
         context = event_context('workflow_dispatch', suite='unit')
         checks = family_section(text, 'build', 'checks', context=context)
         self.assertIn('run: make check-modules', checks)
-        self.assertIn('run: make check-guards', checks)
+        self.assertNotIn('run: make check-guards', checks)
+        self.assertNotIn('run: make check-guards', family)
         self.assertNotIn('run: make package-binary', checks)
         self.assertNotIn('run: make check-docker', checks)
-        for group, name in [('smoke', None), ('python', None), ('binary', 'macOS')]:
-            # The fast gate, long Python references and macOS packaging gain no compiler-guard work.
+        for group, name in [('smoke', None), ('binary', 'macOS')]:
+            # The fast gate and macOS packaging gain no compiler-guard work.
             selected = family_section(text, 'build', group, name)
             self.assertNotIn('run: make check-modules', selected)
             self.assertNotIn('run: make check-guards', selected)
@@ -154,7 +171,7 @@ class NimonyCISafeguards(unittest.TestCase):
         jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
         self.assertEqual(text.count('&ci-job-timeout 60'), 1)
         for job in jobs:
-            # Aggregate and future jobs must opt into the same bound rather than inherit six hours.
+            # Every workload must opt into the same bound rather than inherit six hours.
             section = job_section(text, job)
             expected = '&ci-job-timeout 60' if job == 'build' else '*ci-job-timeout'
             self.assertIn('timeout-minutes: '+expected+'\n', section)
@@ -178,7 +195,7 @@ class NimonyCISafeguards(unittest.TestCase):
             for job in groups:
                 rows = selected_families(text, job, event_context('pull_request', action))
                 self.assertEqual([row['group'] for row in rows], ['smoke'] if job == 'build' else [])
-        labels = {'ci:unit': {'build': unit}, 'ci:docker': {'build': ['docker']},
+        labels = {'lgtm': {'build': ['smoke']}, 'ci:unit': {'build': unit}, 'ci:docker': {'build': ['docker']},
                   'ci:interop': {'interop': groups['interop']}, 'ci:perf': {'perf': groups['perf']}}
         for label in (*labels, 'ci:e2e', 'ci:fuzz', 'unrelated'):
             for job in groups:
@@ -217,7 +234,6 @@ class NimonyCISafeguards(unittest.TestCase):
         for folder in ('pvm-benchmark', 'pvm-doom'):
             self.assertIn('build/tests/'+folder+'/results.json', combined.replace('*.json', 'results.json'))
             self.assertIn('build/tests/'+folder+'/summary.md', combined)
-        self.assertIn('needs: [perf, pvm-comparison]', job_section(text, 'perf-status'))
 
     def test_performance_monitoring_replaces_experiment_jobs(self):
         """Retain regular interpreted comparisons and local tools without historical CI experiments."""
@@ -234,7 +250,6 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('build/tests/pvm-doom/results.json',section.replace('*.json','results.json'))
         self.assertIn('build/tests/pvm-doom/summary.md',section)
         self.assertNotIn('continue-on-error',section)
-        self.assertIn('needs: [perf, pvm-comparison]',job_section(text,'perf-status'))
 
     def test_pvm_comparison_runs_with_regular_perf_requests(self):
         """Master and explicit Perf/Full requests include exact-master comparison; ordinary PR updates remain light."""
@@ -259,10 +274,6 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('if: always()',section)
         self.assertIn('build/tests/pvm-interpreter-linux/*.json',section)
         self.assertNotIn('continue-on-error',section)
-        summary=job_section(text,'perf-status')
-        self.assertIn('needs: [perf, pvm-comparison]',summary)
-        self.assertIn('COMPARISON_RESULT: ${{ needs.pvm-comparison.result }}',summary)
-        self.assertIn('test "$SHARDS_RESULT" = success && test "$COMPARISON_RESULT" = success',summary)
 
     def test_pvm_native_linux_architectures(self):
         """Both native hosts retain correctness, distinct timing cohorts and unique failure artifacts."""
@@ -306,7 +317,7 @@ class NimonyCISafeguards(unittest.TestCase):
         seen = set()
         for merged in (False, True):
             # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
-            for label in ('ci:full', 'ci:unit', 'ci:docker', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'unrelated'):
+            for label in ('ci:full', 'ci:unit', 'ci:docker', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'lgtm', 'unrelated'):
                 event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
                 event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
                 for job in jobs:
@@ -321,13 +332,13 @@ class NimonyCISafeguards(unittest.TestCase):
     # Automatic smoke updates and explicit heavy requests use separate cancellation groups.
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm') && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:docker' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
-    # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
-    def test_ci_unit_partition_gate(self):
+    # The Unit matrix covers every partition once with independently named results.
+    def test_ci_unit_partitions(self):
         from native_tests import parse_unit_shard
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         from workflow_fixtures import selected_families, event_context
@@ -341,7 +352,7 @@ class NimonyCISafeguards(unittest.TestCase):
         count = partitions[0][1]
         self.assertEqual(count, 16)
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
-        unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
+        unit = job_section(text, 'unit')
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
         self.assertIn('max-parallel: 20', unit)
         self.assertIn('CORPUS_SHARD: ${{ matrix.family.corpus_shard }}', unit)
@@ -356,17 +367,6 @@ class NimonyCISafeguards(unittest.TestCase):
             # The corpus row cannot disappear from a requested Unit run or add an extra skipped PR job.
             self.assertEqual(selected_families(text, 'unit', context), families)
         self.assertEqual(selected_families(text, 'unit', event_context(event='pull_request')), [])
-        gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
-        self.assertIn('name: Unit', gate)
-        self.assertIn('needs: unit', gate)
-        self.assertIn('if: ${{ always() && (', gate)
-        self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
-        command = re.search(r'        run: ([^\n]+)', gate).group(1)
-        for result in ['success', 'failure', 'cancelled', 'skipped']:
-            # The matrix result includes calibrated sanitizers; any non-success keeps Unit red.
-            with self.subTest(result=result):
-                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(status == 0,result == 'success')
 
     def test_promoted_interpreter_has_one_native_ci_path(self):
         """The production engine is qualified through discovered native suites, with no duplicate overlay job."""
@@ -390,11 +390,11 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertTrue(path.with_suffix('.output').is_file())
             self.assertTrue((ROOT/'tools/native_requirements/codec'/(path.stem[5:]+'.json')).is_file())
 
-    # Every contract partition is scheduled, and its stable aggregate rejects failure, cancellation and skip.
-    def test_ci_contract_partition_gate(self):
+    # Every contract partition retains its independently named workload.
+    def test_ci_contract_partitions(self):
         from failure_plans import parse_failure_shard
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  failures:\n', 1)[1].split('  failures-status:\n', 1)[0]
+        section = job_section(text, 'failures')
         values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', section).group(1)+']')
         partitions = [parse_failure_shard(value) for value in values]
         count = partitions[0][1]
@@ -402,23 +402,12 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         self.assertIn('FAILURE_SHARD: ${{ matrix.shard }}', section)
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', section)
-        gate = text.split('  failures-status:\n', 1)[1].split('  e2e:\n', 1)[0]
-        self.assertIn('name: Contract', gate)
-        self.assertIn('needs: failures', gate)
-        self.assertIn('if: ${{ always() && (', gate)
-        self.assertIn('SHARDS_RESULT: ${{ needs.failures.result }}', gate)
-        command = re.search(r'        run: ([^\n]+)', gate).group(1)
-        for result in ['success', 'failure', 'cancelled', 'skipped']:
-            # Execute the actual gate command rather than inferring success from job presence.
-            with self.subTest(result=result):
-                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(status == 0, result == 'success')
 
-    def test_ci_e2e_family_gate(self):
-        """Every declared E2E family runs independently and the stable gate refuses incomplete matrices."""
+    def test_ci_e2e_families(self):
+        """Every declared E2E family runs independently with its own result and diagnostics."""
         from e2e_checks import PLAN
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  e2e:\n', 1)[1].split('  e2e-status:\n', 1)[0]
+        section = job_section(text, 'e2e')
         groups = tuple(row['group'] for row in selected_families(text, 'e2e', event_context()))
         self.assertEqual(tuple(group for group in groups if group != 'mcp'), PLAN.groups())
         self.assertIn('mcp', groups)
@@ -431,46 +420,19 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('build/tests/e2e/tiny-devnet-*/**', section)
         self.assertNotIn('node-*/*.pem', section) # Retain narrow diagnostics rather than TLS key directories.
         self.assertNotIn('needs:', section)
-        gate = text.split('  e2e-status:\n', 1)[1].split('  interop:\n', 1)[0]
-        self.assertIn('name: E2E', gate)
-        self.assertIn('needs: e2e', gate)
-        self.assertIn('SHARDS_RESULT: ${{ needs.e2e.result }}', gate)
-        command = re.search(r'        run: ([^\n]+)', gate).group(1)
-        for result in ('success', 'failure', 'cancelled', 'skipped'):
-            # Exercise the exact shell predicate rather than relying on matrix job names alone.
-            with self.subTest(result=result):
-                code = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
-                self.assertEqual(code == 0, result == 'success')
 
-    def test_group_gates_require_every_dependency(self):
-        """Failed, skipped or cancelled matrix results cannot produce green group aggregates."""
+    def test_logical_groups_have_no_aggregate_runners(self):
+        """Display groups retain named workloads without runner-only result aggregators."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        for group in ('interop', 'perf', 'build'):
-            gate = job_section(text, group+'-status')
-            dependencies = {'perf':'[perf, pvm-comparison]', 'interop':'[interop, pvm-doom-backends]'}.get(group, group)
-            self.assertIn('needs: '+dependencies+'\n', gate)
-            self.assertIn('if: ${{ always() && (', gate)
-            self.assertIn('SHARDS_RESULT: ${{ needs.'+group+'.result }}', gate)
-            command = re.search(r'        run: ([^\n]+)', gate).group(1)
-            results = ('success', 'failure', 'cancelled', 'skipped')
-            for result in results:
-                for comparison_result in (results if group in ('perf', 'interop') else ('success',)):
-                    # Execute all Perf dependency combinations; a missing or failed comparison stays red.
-                    environment = dict(SHARDS_RESULT=result, COMPARISON_RESULT=comparison_result,
-                                       BACKENDS_RESULT=comparison_result, FOCUSED="false")
-                    status = subprocess.run(['bash', '-c', command], env=environment).returncode
-                    self.assertEqual(status == 0, result == comparison_result == 'success')
-            for suite in ('smoke', 'ref-pvm', 'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker'):
-                # Only Build's lightweight requests have an aggregate; standalone other groups omit theirs.
-                condition = re.search(r'^    if: (.+)$', gate, re.MULTILINE).group(1)
-                self.assertEqual(bool(expression(condition, event_context('workflow_dispatch', suite=suite))),
-                                 group == 'build' and suite == 'smoke')
-        fuzz = job_section(text, 'fuzz-status')
-        self.assertIn('needs: [pvm-fuzz]', fuzz)
-        command = re.search(r'        run: ([^\n]+)', fuzz).group(1)
-        for result in ('success', 'failure', 'cancelled', 'skipped'):
-            status = subprocess.run(['bash', '-c', command], env={'PVM_FUZZ_RESULT': result}).returncode
-            self.assertEqual(status == 0, result == 'success')
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        self.assertEqual(jobs, ['build', 'unit', 'failures', 'e2e', 'interop',
+                                'pvm-doom-backends', 'perf', 'pvm-comparison', 'pvm-fuzz'])
+        self.assertNotIn('needs:', text)
+        for job, group in [('build', 'Build'), ('unit', 'Unit'), ('failures', 'Contract'),
+                           ('e2e', 'E2E'), ('interop', 'Interop'), ('pvm-doom-backends', 'Interop'),
+                           ('perf', 'Perf'), ('pvm-comparison', 'Perf'), ('pvm-fuzz', 'Fuzz')]:
+            self.assertIn('    name: '+group+' / ', job_section(text, job))
+            self.assertIn('  # '+group+' group:', text)
 
     def test_binary_builds_match_pinned_hosts_and_publish_only_archives(self):
         """Linux owns its native archive and isolated Docker build; macOS keeps its qualified host."""
@@ -545,13 +507,45 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertTrue(expression(guard, dict(event_context(), cancelled=False,
             matrix=dict(family=dict(group='binary', platform='linux-amd64')))))
 
+    def test_tooling_preserves_independent_model_checks(self):
+        """Models share Tooling's runner while retaining scheduling, failure evidence and strict results."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        self.assertNotIn('\n  models:\n', text)
+        tooling = family_section(text, 'build', 'python')
+        self.assertIn('run: make check-models', tooling)
+        self.assertIn('run: make summary-models SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', tooling)
+        for path in ('build/ci/model-tools.log', 'build/ci/models.log', 'build/ci/setup.log',
+                     'build/tests/models/*.log', 'build/tests/models/*.nif',
+                     'build/tests/models/results.json'):
+            self.assertIn(path, tooling)
+        step = re.search(r'      - name: Check lifecycle.*?(?=      - name:)',
+                         tooling, re.DOTALL).group(0)
+        guard = re.search(r'^        if: (.+)$', step, re.MULTILINE).group(1)
+        # A prior Python failure must not suppress model checks; cancellation may stop expensive work.
+        for cancelled in (False, True):
+            context = dict(event_context(), matrix=dict(family=dict(group='python')), cancelled=cancelled)
+            self.assertEqual(expression(guard, context), not cancelled)
+        for group in ('smoke', 'binary', 'checks', 'docker'):
+            context = dict(event_context(), matrix=dict(family=dict(group=group)))
+            self.assertFalse(expression(guard, context))
+        # Rejection checks share this runner and retain strict evidence after other Tooling failures.
+        self.assertIn('run: make check-guards', tooling)
+        self.assertIn('run: make summary-guards SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', tooling)
+        self.assertIn('build/tests/guards/results.json', tooling)
+        rejection = next(s for s in re.findall(r'^      - .*?(?=^      - |\Z)', tooling, re.M | re.S)
+                         if 'run: make check-guards\n' in s)
+        rejection_guard = re.search(r'^        if: (.+)$', rejection, re.MULTILINE).group(1)
+        self.assertEqual(rejection_guard, guard)
+        self.assertNotIn('continue-on-error', tooling)
+
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):
         """Every native matrix family validates inventory before its own provisioning command."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         self.assertIn('run: &inventory-run make check-inventory', text)
         for job, family, target in [('build', 'binary', 'check-modules'), ('build', 'python', 'check-python'),
-                                    ('build', 'binary', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
+                                    ('build', 'python', 'check-models'),
+                                    ('build', 'python', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
                                     ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
                                     ('e2e', 'mcp', 'check-mcp-interop'),
                                     ('perf', 'bench-pvm-all', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
@@ -559,7 +553,7 @@ class NimonyCISafeguards(unittest.TestCase):
             section = family_section(text, job, family)
             self.assertEqual(section.count('name: Validate verification inventory'), 1)
             self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make '+target))
-        for job in ('unit', 'failures', 'e2e', 'pvm-fuzz', 'models'):
+        for job in ('unit', 'failures', 'e2e', 'pvm-fuzz'):
             self.assertIn('run: *inventory-run', job_section(text, job))
         self.assertNotIn('continue-on-error:', text)
 
