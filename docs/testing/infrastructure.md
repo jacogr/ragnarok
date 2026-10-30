@@ -247,7 +247,12 @@ build commands. Production builds do not import test harnesses; independent equa
 fixture checks, observation libraries and network scenarios remain in `tests/`. Dependency pins,
 compiler flags, locked/offline Cargo builds and release adapter tests are unchanged.
 
-`make check-python` provisions its sources with `setup_submodules.py --prefetch-blobs`, resolving the vector `git_blobs` paths already recorded in `spec/pins.json` against
+`make check-python` prepares an isolated `build/python-tests` environment with hash-pinned
+PyYAML for safe, parsed workflow inspection. Focused Python tests use
+`build/python-tests/bin/python -m unittest discover -s tests -p 'test_<name>.py'`;
+`make python-test-tools` prepares only this environment. Workflow scheduling/partition coverage
+is checked once by the Python suite; dependency-free inventory preflight checks source declarations.
+The target provisions its sources with `setup_submodules.py --prefetch-blobs`, resolving the vector `git_blobs` paths already recorded in `spec/pins.json` against
 the pinned tree and fetches missing objects together. This keeps network provisioning outside
 Python discovery's deadline and avoids a separate lazy fetch per fixture. Warm/full clones
 perform no fetch. Other groups retain focused setup. The sparse working tree, immutable pin and per-blob SHA-256 checks remain

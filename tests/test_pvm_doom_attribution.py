@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from pvm_doom_attribution import event_hashes,tga_rgba,timing_samples,reference_lifecycle_samples,scope_entries,summary_lines,run
 from pvm_instruction_profile import collect
-from workflow_fixtures import event_context,expression,job_condition,job_section
+from workflow_fixtures import event_context,expression,job_condition,job_section,commands
 
 
 class DoomAttributionTests(unittest.TestCase):
@@ -109,12 +109,12 @@ class DoomAttributionTests(unittest.TestCase):
                 (event_context('pull_request','labeled','ci:perf',state='closed'),False)]:
             families=selected_families(text,'perf',context)
             sections=[family_section(text,'perf',family['group'],context=context) for family in families]
-            self.assertEqual(any('run: make bench-pvm-doom\n' in section for section in sections),wanted)
+            self.assertEqual(any('make bench-pvm-doom' in commands(section) for section in sections),wanted)
         sections=[family_section(text,'perf',family['group'])
                   for family in selected_families(text,'perf',event_context())]
-        section=next(section for section in sections if 'run: make bench-pvm-doom\n' in section)
-        self.assertIn('run: make bench-pvm-doom',section)
-        self.assertNotIn('valgrind',section)
+        section=next(section for section in sections if 'make bench-pvm-doom' in commands(section))
+        self.assertIn('make bench-pvm-doom',commands(section))
+        self.assertFalse(any('valgrind' in command for command in commands(section)))
         make=(ROOT/'Makefile').read_text().split('bench-pvm-doom: setup\n')[1].split('\n\n')[0]
         self.assertIn('--timings-only --warmup 1320',make)
         self.assertIn('cargo fetch --locked',make)
@@ -126,7 +126,6 @@ class DoomAttributionTests(unittest.TestCase):
             report['slowdown'][phase]=[dict(order=i,native_cpu_ns=2000000,
                 reference_cpu_ns=1000000,native_over_reference=2.0)for i in (0,1)]
         text='\n'.join(summary_lines(report))
-        self.assertIn('Ragnarök CPU ms',text)
         self.assertIn('| tick/1 | 2.000 | 1.000 | 2.000× |',text)
         self.assertNotIn('| Instructions |',text)
         with self.assertRaisesRegex(ValueError,'missing DOOM timing summary'):

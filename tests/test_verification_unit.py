@@ -5,7 +5,6 @@
 
 Exposes VerificationUnit for unittest discovery; test methods exercise the stated contracts.
 """
-import ast
 import io
 import json
 import os
@@ -57,17 +56,8 @@ class VerificationUnit(unittest.TestCase):
             self.assertNotEqual(*caches)
             self.assertTrue(NativeChecks(folder).lto)
 
-    # The native unit runner cannot silently grow another full Python discovery or live E2E invocation.
-    def test_unit_group_has_no_e2e_or_discovery(self):
-        tree = ast.parse((ROOT/'tools/test_runtime.py').read_text())
-        imports = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
-        self.assertFalse(imports & {'nimony_peer', 'test_quic_service', 'test_quic_mesh',
-                                   'test_quic_resilience', 'test_quic_soak', 'e2e_checks'})
-        functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
-        self.assertNotIn('python_tests', functions)
-
     # Reusing intermediates never skips a suite, its fresh ARC observation or independent corpora.
-    def test_serial_batch_execution_and_progress(self):
+    def test_serial_batch_execution_and_evidence(self):
         batches = [('first', ('one',), 'one'), ('second', ('two',), 'two')]
         report = {'suites': []}
         checked = dict(exit_code=0, output='', elapsed_seconds=1.25)
@@ -78,7 +68,7 @@ class VerificationUnit(unittest.TestCase):
                 test_runtime, 'command', return_value=checked) as command, patch.object(
                 test_runtime, 'ARC_SUITES', {'one': 'one_arc', 'two': 'two_arc'}), patch.object(
                 test_runtime, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch.object(
-                test_runtime, 'run_corpora') as corpora, patch('sys.stdout', new_callable=io.StringIO) as output:
+                test_runtime, 'run_corpora') as corpora, patch('sys.stdout', new_callable=io.StringIO):
             test_runtime.run_unit(Path('/fixture/nimony'), report, {}, {}, None, None)
         self.assertEqual([call.args[0] for call in command.call_args_list], [['one'], ['two']])
         self.assertEqual([call.args[1] for call in evidence.call_args_list], ['one', 'two'])
@@ -87,8 +77,6 @@ class VerificationUnit(unittest.TestCase):
         self.assertEqual(report['one_arc'], {'cycles': 1000})
         self.assertEqual(report['two_arc'], {'cycles': 1000})
         corpora.assert_called_once()
-        self.assertIn('RUN first (Hastur)', output.getvalue())
-        self.assertIn('Completed second in 1.25s', output.getvalue())
 
     # A shard must contain exactly its discovered suites and only its assigned independent corpora.
     def test_partition_verdicts(self):

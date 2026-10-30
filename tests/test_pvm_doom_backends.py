@@ -13,7 +13,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from pvm_doom_backends import Mismatch, backend_cohort, compare, negative_frames, rgba_frames, observation
 import pvm_doom_backends as harness
-from workflow_fixtures import event_context, expression, job_condition, job_section, selected_families
+from workflow_fixtures import event_context, expression, job_condition, job_section, selected_families, commands
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,7 +93,7 @@ class DoomBackendTests(unittest.TestCase):
         section = job_section(text, 'pvm-doom-backends')
         self.assertEqual({row['arch'] for row in selected_families(text, 'pvm-doom-backends', event_context())},
                          {'arm64', 'x86_64'})
-        self.assertIn('make check-pvm-doom-backends', section)
+        self.assertIn('make check-pvm-doom-backends', commands(section))
         for context in (event_context('push'), event_context('workflow_dispatch', suite='pvm-backends'),
                         event_context('workflow_dispatch', suite='interop'),
                         event_context('workflow_dispatch', suite='full')):

@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 import check_jam_fuzzer_interface as interface
 from jam_fuzz_corpora import CORPORA
-from workflow_fixtures import job_section
+from workflow_fixtures import job_section, commands, artifact_paths
 
 
 class JamInterfaceCI(unittest.TestCase):
@@ -164,11 +164,9 @@ class JamInterfaceCI(unittest.TestCase):
     def test_ci_summary_reads_its_private_shard(self):
         """Execute the workflow's real summary shell so a sibling report cannot supply the displayed coverage."""
         import subprocess
-        import textwrap
         text = (interface.ROOT/'.github/workflows/ci.yml').read_text()
         job = job_section(text, 'pvm-fuzz')
-        step = job.split('- name: Show JAM interface verdict and pending engine validation', 1)[1].split('      - name:', 1)[0]
-        script = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        script = next(command for command in commands(job) if 'JAM_FUZZ_SHARD' in command and 'GITHUB_STEP_SUMMARY' in command)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = root/'summary.md'
@@ -291,9 +289,9 @@ class JamInterfaceCI(unittest.TestCase):
         focused = event_context('workflow_dispatch', suite='fuzz-pvm')
         self.assertEqual({row['group'] for row in selected_families(text, 'pvm-fuzz', focused)}, {'pvm'})
         section = family_section(text, 'pvm-fuzz', 'pvm', context=focused)
-        self.assertIn('run: make fuzz-pvm-upstream', section)
-        self.assertNotIn('run: make check-jam-fuzzer-interface', section)
-        self.assertIn('build/tests/jam-fuzzer-interface/**/results.json', job)
+        self.assertIn('make fuzz-pvm-upstream', commands(section))
+        self.assertNotIn('make check-jam-fuzzer-interface', commands(section))
+        self.assertIn('build/tests/jam-fuzzer-interface/**/results.json', artifact_paths(job))
 
     def test_minifuzz_profile_completeness(self):
         """A dropped, duplicated, partial or unverified target profile cannot pass aggregate CI evidence."""

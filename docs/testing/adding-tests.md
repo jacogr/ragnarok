@@ -120,6 +120,9 @@ upstream input contracts and generated-fixture hashes.
 
 ## Python reference and tooling tests
 
+Tests should survive behavior-preserving refactors. Presentation assertions require an identifiable
+consumer requirement; do not add an automated source-policy checker to enforce this guidance.
+
 Test observable failures, not the current implementation's shape. State what concrete wrong result,
 lost coverage, unsafe operation or misleading verdict each test prevents. Avoid assertions about
 comments, formatting, headings, display names, job order, YAML anchor names, incidental grouping or

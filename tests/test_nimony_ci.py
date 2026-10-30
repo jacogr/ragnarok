@@ -17,7 +17,7 @@ import unittest
 from harness_fixtures import temporary_folder
 import threading
 from unittest.mock import patch
-from workflow_fixtures import event_context, expression, job_section, selected_families, family_section, job_condition
+from workflow_fixtures import event_context, expression, job_section, selected_families, family_section, job_condition, workflow, selected_steps, commands, artifact_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -47,14 +47,18 @@ def network_report(**workloads):
 def scheduled_targets(text, context):
     """Collect target identities across whichever jobs/families own them, ignoring display names and order."""
     targets = []
-    for job in re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE):
-        if not expression(job_condition(text, job), context):
+    for job in workflow(text)['jobs'].values():
+        if not expression(job.get('if', True), context):
             continue # Disabled jobs cannot contribute work merely because their commands exist in YAML.
-        families = selected_families(text, job, context)
-        sections = [family_section(text, job, row['group'], row.get('name'), context) for row in families if 'group' in row]
-        for section in sections or [job_section(text, job)]:
-            for command in re.findall(r'^\s+run: make ([^\n]+)', section, re.MULTILINE):
-                targets.extend(word for word in command.split() if re.fullmatch(r'[a-z][a-z0-9-]*', word))
+        families = job.get('strategy', {}).get('matrix', {}).get('family', [])
+        if isinstance(families, str):
+            families = expression(families, context)
+        sections = [dict(steps=selected_steps(job, row, context)) for row in families] or [job]
+        for section in sections:
+            for command in commands(section):
+                # Only shell make invocations contribute scheduled verification targets.
+                for arguments in re.findall(r'^make ([^\n]+)', command, re.MULTILINE):
+                    targets.extend(word for word in arguments.split() if re.fullmatch(r'[a-z][a-z0-9-]*', word))
     return targets
 
 
@@ -138,7 +142,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_cancellation_isolation_and_closed_prs(self):
         """Approval/PR updates cannot cancel heavy runs; closed PR labels cannot schedule or cancel master."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        key = re.search(r'^  group: (.+)$', text, re.MULTILINE).group(1)
+        key = workflow(text)['concurrency']['group']
         # Evaluate the existing expression, without freezing the spelling of its cancellation keys.
         def cancellation(event):
             """Provide the run/ref identity shared by master and closed-PR regression witnesses."""
@@ -155,9 +159,15 @@ class NimonyCISafeguards(unittest.TestCase):
                 event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
                 self.assertFalse(scheduled_targets(text, event))
                 self.assertNotEqual(cancellation(event), master)
-        self.assertNotRegex(text, re.compile(r'^\s*pull_request_target\s*:', re.MULTILINE))
-        self.assertNotRegex(text, re.compile(r'^\s*contents:\s*write\b', re.MULTILINE))
-        self.assertRegex(text, re.compile(r'^\s*persist-credentials:\s*false\s*(?:#.*)?$', re.MULTILINE))
+        config = workflow(text)
+        self.assertNotIn('pull_request_target', config['on'])
+        self.assertNotEqual(config['permissions'].get('contents'), 'write')
+        for job in config['jobs'].values():
+            self.assertNotEqual(job.get('permissions', {}).get('contents'), 'write')
+            for step in job['steps']:
+                # Checkout credentials must not be exposed to subsequent workload commands.
+                if step.get('uses', '').startswith('actions/checkout@'):
+                    self.assertIs(step.get('with', {}).get('persist-credentials'), False)
 
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
@@ -176,7 +186,7 @@ class NimonyCISafeguards(unittest.TestCase):
         tasks = [name for shard in corpus for name in corpus_partition(shard, 'audit')]
         self.assertEqual(Counter(tasks), Counter(corpus_partition(None, 'audit')))
         section = job_section(text, 'failures')
-        values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', section).group(1)+']')
+        values = section['strategy']['matrix']['shard']
         cases = [(family, json.dumps(case, sort_keys=True)) for value in values
                  for family, cases in failure_partition(parse_failure_shard(value), 'audit')[0].items() for case in cases]
         expected = [(family, json.dumps(case, sort_keys=True)) for family, cases in FAILURE_PLANS.items() for case in cases]
@@ -188,33 +198,29 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         groups = [row['group'] for row in selected_families(text, 'e2e', event_context())]
         self.assertCountEqual(groups, [*PLAN.groups(), 'mcp'])
-        for job in re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE):
-            section = job_section(text, job)
-            bound = re.search(r'^    timeout-minutes: (.+)$', section, re.MULTILINE).group(1)
-            if bound.startswith('*'):
-                bound = re.search(r'&'+re.escape(bound[1:])+r' (\d+)', text).group(1)
-            else:
-                bound = bound.split()[-1]
-            self.assertGreater(int(bound), 0)
-            self.assertLessEqual(int(bound), 60) # Deliberate repository limit, independent of YAML anchor choice.
-            self.assertNotRegex(section, re.compile(r'^\s*continue-on-error:\s*true\b', re.MULTILINE))
+        for section in workflow(text)['jobs'].values():
+            bound = section['timeout-minutes']
+            self.assertGreater(bound, 0)
+            self.assertLessEqual(bound, 60) # Deliberate repository execution limit.
+            self.assertFalse(section.get('continue-on-error', False))
+            self.assertFalse(any(step.get('continue-on-error', False) for step in section['steps']))
 
     def test_independent_checks_and_diagnostics_survive_prior_failure(self):
         """Explicit status conditions keep independent checks and failed-run logs observable."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         checks = {'check-models', 'check-guards', 'check-modules', 'check-docker'}
         found = set()
-        for step in re.findall(r'^      - .*?(?=^      - |^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL):
-            command = re.search(r'^        run: make (\S+)', step, re.MULTILINE)
-            diagnostic = '          path: |' in step and '*.log' in step
-            if not diagnostic and (command is None or command[1] not in checks):
-                continue
-            guard = re.search(r'^        if: (.+)$', step, re.MULTILINE)
-            self.assertIsNotNone(guard, command[1] if command else 'diagnostic upload')
-            # GitHub otherwise injects success(), suppressing the step after an earlier failure.
-            self.assertRegex(guard[1], r'\b(always|cancelled)\s*\(')
-            if command is not None:
-                found.add(command[1])
+        for job in workflow(text)['jobs'].values():
+            for step in job['steps']:
+                command = re.match(r'make (\S+)', step.get('run', ''))
+                diagnostic = 'actions/upload-artifact@' in step.get('uses', '') and '*.log' in step.get('with', {}).get('path', '')
+                if not diagnostic and (command is None or command[1] not in checks):
+                    continue
+                guard = step.get('if', '')
+                # GitHub otherwise injects success(), suppressing the step after an earlier failure.
+                self.assertRegex(guard, r'\b(always|cancelled)\s*\(')
+                if command is not None:
+                    found.add(command[1])
         self.assertEqual(found, checks)
 
     def test_artifact_globs_exclude_private_keys_and_dependency_trees(self):
@@ -225,14 +231,12 @@ class NimonyCISafeguards(unittest.TestCase):
                      'build/tests/e2e/tiny-devnet-example/node-1/a.key.pem',
                      'build/quic/fixtures/a.key.pem', 'vendor/example/private.key',
                      'build/mcp-interop-python/lib/python/site-packages/example.py')
-        paths = re.findall(r'^          path: \|\n((?:            .+\n)+)', text, re.MULTILINE)
+        paths = [path for job in workflow(text)['jobs'].values() for path in artifact_paths(job)]
         self.assertTrue(paths)
-        for block in paths:
-            for pattern in block.splitlines():
-                pattern = pattern.strip()
-                for private in sensitive:
-                    self.assertFalse(fnmatchcase(private, pattern) or fnmatchcase(private, pattern.rstrip('/')+'/**'),
-                                     (pattern, private))
+        for pattern in paths:
+            for private in sensitive:
+                self.assertFalse(fnmatchcase(private, pattern) or fnmatchcase(private, pattern.rstrip('/')+'/**'),
+                                 (pattern, private))
 
     def test_bandersnatch_clean_build_directory(self):
         with temporary_folder() as temporary:

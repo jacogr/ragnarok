@@ -5,7 +5,6 @@
 
 Exposes VerificationGuards for unittest discovery; test methods exercise the stated contracts.
 """
-import ast
 import json
 import tempfile
 from pathlib import Path
@@ -44,9 +43,6 @@ class VerificationGuards(unittest.TestCase):
                 replaced = [dict(row) for row in report[key]]
                 replaced[0]['name'] = 'unrelated-fixture'
                 self.assertFalse(test_guards.passed({**report, key: replaced}))
-        tree = ast.parse((ROOT/'tools/test_runtime.py').read_text())
-        functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
-        self.assertNotIn('compile_rejections', functions)
 
 
 # Cache controls must enable ordinary import reuse without sharing concurrent compiler state.

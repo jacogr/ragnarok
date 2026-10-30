@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 import pvm_doom_compare as compare
 from pvm_doom_attribution import timing_samples
-from workflow_fixtures import event_context, expression, job_condition, job_section
 
 
 def complete_runs():
