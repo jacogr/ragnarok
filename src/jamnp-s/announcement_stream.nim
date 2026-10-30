@@ -4,7 +4,7 @@
 ## One UP0 route borrows its catalog-owned stream, frames bounded messages and retains copied
 ## untrusted peer leaves. Stream closure revokes every observation; no chain executes in callbacks.
 
-import ./announcements
+import ./[announcements, streams]
 import ../quic/transport
 import ../codec/[bounded, header]
 
@@ -60,6 +60,7 @@ proc bindStream*(route: var AnnouncementRoute, stream: NativeStream, initiator: 
     local: AnnouncementHandshake, limits: AnnouncementLimits): AnnouncementError =
   ## Install every byte owner before enabling callbacks; the acceptor first checks the kind byte.
   if stream == NativeStream(nil): return AnnouncementError.InvalidStream
+  if not persistentInitiator(stream.streamId): return AnnouncementError.InvalidStream
   if route.stream != NativeStream(nil): return AnnouncementError.Busy
   let encoded = encodeHandshake(local, limits)
   if encoded.error != AnnouncementError.None: return encoded.error

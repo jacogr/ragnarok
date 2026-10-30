@@ -24,6 +24,7 @@ type
     RetainedPeer = 3, CrashRecovery = 4, SaturatedService = 5
   ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure,
       final.} = object ## Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
+  NativeStreamId* = distinct uint64 ## A copied IETF stream number is independent of a native handle and its lifetime.
   NativeStream* = distinct (nil pointer) ## Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
   CertFields* {.importc: "rq_cert_fields", header: CertHeader,
       bycopy.} = object ## Certificate observations copy bounded primitive fields; JAM identity policy stays in the peer.
@@ -121,6 +122,9 @@ proc streamFlush*(stream: NativeStream): cint {.importc: "rq_stream_flush", head
 # Compare live stream owners synchronously, proving isolation across different connections without borrowing a connection handle.
 proc samePeer*(a, b: NativeStream): cint {.importc: "rq_stream_same_peer", header: BridgeHeader,
     cdecl, raises: [].}
+# Copy a live stream's IETF number; protocol admission and replacement remain Nim policy.
+proc streamId*(stream: NativeStream): NativeStreamId {.importc: "rq_stream_id",
+    header: BridgeHeader, cdecl, raises: [].}
 # Half-close writing while keeping response reads available.
 proc streamFin*(stream: NativeStream) {.importc: "rq_stream_fin", header: BridgeHeader, cdecl,
     raises: [].}

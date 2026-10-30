@@ -35,7 +35,7 @@ production path exists; it does not assert all normative behavior has been verif
 | ALPN | Configured protocol identifier passed to transport | Exact genesis/version identifier; accept `/builder` and base on incoming connections; CE133 admission independent of negotiated builder suffix |
 | Required connectivity | Development mesh and preferred/fallback dialing in `session.nim` | Previous/current/next validator union, metadata IPv6/LE port, duplicate arbitration, bounded builder slots and live epoch changes |
 | Epoch transitions | No general validator-set lifecycle | Finalized first block plus elapsed-slot threshold; preserve old connectivity until both conditions hold |
-| UP/CE lifecycle | Per-stream bounded owners, cancellation and retirement | UP initiator restriction and greatest-ID replacement; concurrent CE isolation; both FINs before success; rejection/cancellation mapping |
+| UP/CE lifecycle | Per-stream bounded owners, cancellation and retirement; actual-ID UP admission and same-connection greatest-ID replacement | General CE transcripts/dispatch, both FINs before success, rejection/cancellation mapping across all kinds |
 | E4 messages | Shared bounded `messages.nim` codec, CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
 | Grid | No general validator gossip scheduler | Pinned grid neighbors and forwarding with duplicate suppression |
 | UP0 block announcement | `announcements.nim`, `announcement_stream.nim`, current sync and Tiny routes | Complete handshake/announcement rules, greatest-ID handling, finality/leaves validation and actual peer exchanges |
@@ -79,3 +79,6 @@ runtime evidence; unresolved normative ambiguities must be documented with focus
 
 The shared framing and audit codec contracts are recorded in [message codecs](jamnp-messages.md).
 Their tests establish structural behavior only; runtime/authentication requirements remain open.
+
+[Persistent stream lifecycle](jamnp-stream-lifecycle.md) records actual-ID UP0 replacement,
+claim revocation, pending-route handling and connection isolation.
