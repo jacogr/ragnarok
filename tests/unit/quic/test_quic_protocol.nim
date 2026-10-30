@@ -62,6 +62,11 @@ let emptyFrame = default(FrameResult)
 let emptyLength = default(LengthResult)
 assert emptyFrame.error == FrameError.Uninitialized
 assert emptyLength.error == FrameError.Uninitialized
+# Advancing the source pin does not admit unsupported audit protocols through the CE143 parser.
+for kind in [138'u8, 144'u8, 145'u8]:
+  for fin in [false, true]:
+    # Even an otherwise complete empty frame cannot select a different stream protocol.
+    assert inspectFrame([kind, 0'u8, 0, 0, 0], true, 1024, fin).error == FrameError.InvalidKind
 prefixes()
 malformed()
 echo "Nimony protocol: exact prefixes and 10000 malformed DER/frame inputs passed"

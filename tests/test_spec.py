@@ -19,6 +19,31 @@ BANDERSNATCH = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())
 
 # Specification upgrades must retain source identity and verify published vectors.
 class SpecificationTests(unittest.TestCase):
+    def test_jamnp_audit_revision(self):
+        """Bind the networking source and distinguish new audit schemas from supported stream handlers."""
+        entry = json.loads((ROOT/'spec/quic-proof-pins.json').read_text())
+        path = require_submodule(dict(path=entry['networking_source']['path'],
+            repository='zdave-parity/jam-np', commit=entry['networking_commit']))
+        for name, digest in entry['networking_source']['source_sha256'].items():
+            # Exact source bytes, rather than a moving branch, define this qualification.
+            self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)
+        source = (path/'simple.md').read_text()
+        def section(name):
+            """Read one normative CE section without accidentally matching another stream's fields."""
+            return source.split('### '+name+':', 1)[1].split('\n### ', 1)[0]
+        shards = section('CE 138')
+        self.assertIn('Node -> Assurer', shards)
+        self.assertIn('may also be used by non-validator nodes', shards)
+        announcements = section('CE 144')
+        self.assertIn('Intent = 0 (Initial tranche) OR 1 ++ Core Index (Later tranche)', announcements)
+        self.assertIn('Announcement = Header Hash ++ Validator Index ++ Intent ++ Bandersnatch Signature', announcements)
+        self.assertIn('--> [Announcement]', announcements)
+        self.assertNotIn('No-Show =', announcements)
+        judgments = section('CE 145')
+        self.assertIn('Validity = 0 ++ Guarantee (Invalid) OR 1 (Valid)', judgments)
+        self.assertIn('Judgment = Epoch Index ++ Validator Index ++ Validity ++ Work-Report Hash ++ Ed25519 Signature', judgments)
+        self.assertIn('--> [Judgment]', judgments)
+
     # The checked-out release, its version marker and all consumed chapters must match the recorded pin.
     def test_graypaper_unreleased_revision(self):
         entry = PINS['graypaper']

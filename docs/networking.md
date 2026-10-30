@@ -23,6 +23,8 @@ Port release/native bind is not descriptor inheritance, so unrelated processes r
 See [development commands](development.md). General validator-set management, multi-target dialing,
 independent JAM-stack interoperability, production sizing and full protocol/state coverage remain open.
 Pinned networking source is recorded in `spec/quic-proof-pins.json` and `vendor/jam-np`.
+The [audit-source qualification](../spec/jamnp-audit-upgrade.md) records the current
+CE138/CE144/CE145 reference formats and their unimplemented runtime boundary.
 
 ## Compiler and verification
 
