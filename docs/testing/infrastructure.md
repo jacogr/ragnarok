@@ -232,7 +232,7 @@ timeouts remain unchanged, and summaries identify the shard and seed.
 Contract reports distinguish timed Make setup (`build/ci/failure-setup.json`), native-provider
 preparation, fixture preparation, actual compiler invocations and child execution. Shared build
 receipts count compiler time once. To measure the pilot in CI, dispatch the workflow with
-`contract_measure_bundles=true`; the shard owning `pvm-core` performs two counterbalanced pairs
+`contract_measure_bundles=true` (also included in explicit PR `ci:full` requests); the shard owning `pvm-core` performs two counterbalanced pairs
 of standalone versus bundled builds using fresh private intermediate caches, identical checked
 flags and the same rejection/positive-control workload. The optional measurement adds work and
 does not replace scheduled checks. Logs and complete evidence remain in the Contract artifacts.

@@ -57,7 +57,7 @@ arguments, deterministic shard co-location, preparation selection, cache-profile
 compiled enumeration and refusal of wrong-state/status/positive-output observations. Native builds
 and timings run on CI only, respecting the maintainer's local timing work.
 
-The opt-in CI measurement runs two counterbalanced standalone/bundled pairs, each in fresh private
+Explicit PR `ci:full` requests and the manual `contract_measure_bundles` input run two counterbalanced standalone/bundled pairs, each in fresh private
 intermediate caches with identical inputs and checked flags. All 20 original negative probes and
 three original positive fixture modes must pass before timings are valid. Setup, native-provider
 preparation, fixture preparation, compilation and child execution have separate receipts. The

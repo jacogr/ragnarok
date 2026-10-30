@@ -289,7 +289,7 @@ jobs:
         os: *ci-os
         shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
     env:
-      FAILURE_MEASURE_BUNDLES: ${{ inputs.contract_measure_bundles && '1' || '0' }}
+      FAILURE_MEASURE_BUNDLES: ${{ (inputs.contract_measure_bundles || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) && '1' || '0' }}
       FAILURE_SHARD: ${{ matrix.shard }}
       CI_SHARD_SEED: ${{ github.run_id }}
     runs-on: ${{ matrix.os }}
