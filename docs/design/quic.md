@@ -1,9 +1,10 @@
-# QUIC networking
+# JAMNP-S over QUIC
 
 [Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
 update their feature contract rather than appending progress here.
 
-`src/quic/` owns JAM identities, DER/framing checks, stream policy and lifetimes. A bounded POSIX
+`src/jamnp-s/` owns JAM identities, framing checks, stream policy and peer lifetimes.
+`src/quic/` owns UDP readiness, primitive DER observations and the QUIC/TLS adapter. A bounded POSIX
 nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
 an OS thread. Raw-block preparation uses one reusable Services worker and one outstanding input
 lease after native callbacks retire; endpoint polling continues while canonical/RPC access is gated.
@@ -27,7 +28,7 @@ revokes availability. See [continuous sync](../../spec/node-sync.md) for the tru
 
 ## Canonical development block serving
 
-`quic/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and
+`jamnp-s/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and
 six pinned identities. Sixteen fixed incoming stream slots copy bounded CE128 requests and serve
 one canonical child from the host-published finite catalog. An absent child returns an empty
 response sequence. The outgoing path requires exact framing and response FIN before returning

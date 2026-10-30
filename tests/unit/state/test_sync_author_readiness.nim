@@ -13,11 +13,13 @@ import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header, block_codec]
 import ../../../src/codec/state/trie as state_trie
-import ../../../src/quic/[devnet, sync_targets, announcements]
-import "../../../src/quic/current/block/download/peers" as current_block_download_peers
-import ../../../src/quic/current/sync as current_sync
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/devnet"
+import "../../../src/jamnp-s/sync_targets"
+import "../../../src/jamnp-s/announcements"
+import "../../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../../src/jamnp-s/current/sync" as current_sync
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../../src/state/store
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch

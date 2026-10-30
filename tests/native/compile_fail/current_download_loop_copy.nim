@@ -3,7 +3,7 @@
 
 ## Current dispatchers cannot duplicate callback addresses, Services borrows or result consumption authority.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <CurrentDownloadLoop>", "build_name": "current-download-loop-copy"}
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
 var original = default(CurrentDownloadLoop)
 var duplicate = original
 discard original.stage

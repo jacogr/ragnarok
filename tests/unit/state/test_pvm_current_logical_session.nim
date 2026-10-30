@@ -17,10 +17,10 @@ import "../../../src/app/current/block/download" as current_block_download
 import ../../../src/app/current/logical/download as current_logical_download
 import ../../../src/app/download/schedule as download_schedule
 import ../../../src/app/preparation_worker
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../../src/quic/current/block/download/session" as current_block_download_session
-import "../../../src/quic/current/block/download/peers" as current_block_download_peers
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/session" as current_block_download_session
+import "../../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, block_codec, report_owned, header]
 import ../../../src/state/store

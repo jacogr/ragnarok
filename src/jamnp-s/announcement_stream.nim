@@ -4,7 +4,8 @@
 ## One UP0 route borrows its catalog-owned stream, frames bounded messages and retains copied
 ## untrusted peer leaves. Stream closure revokes every observation; no chain executes in callbacks.
 
-import ./[announcements, transport]
+import ./announcements
+import ../quic/transport
 import ../codec/[bounded, header]
 
 type

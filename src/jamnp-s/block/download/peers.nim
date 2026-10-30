@@ -4,7 +4,8 @@
 ## Fixed-address outgoing transport catalog pins authenticated peers before routing scheduled downloads.
 ## Callers keep borrowed sessions stable and explicitly close this owner before destruction.
 
-import ../../[transport, protocol]
+import ../../../quic/transport
+import ../../protocol
 import ./[session as block_download_session, stream as block_download_stream]
 import ../../../app/download/schedule as download_schedule
 import "../../../app/block/download" as block_download

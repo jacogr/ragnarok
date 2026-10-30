@@ -8,7 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/quic/protocol
+import "../../../src/jamnp-s/protocol"
 
 # The original request and response prefixes must remain pending until exact FIN.
 proc prefixes() =

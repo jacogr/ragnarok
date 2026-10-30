@@ -3,6 +3,6 @@
 
 ## Joined session internals cannot be forged or retagged.
 # @@Verification={"group": "privacy", "expected": "route"}
-import "../../../src/quic/block/download/session" as block_download_session
+import "../../../src/jamnp-s/block/download/session" as block_download_session
 var owner = default(BlockDownloadSession)
 discard owner.route

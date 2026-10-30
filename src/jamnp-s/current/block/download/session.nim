@@ -4,7 +4,7 @@
 ## Join scheduled attempts, bounded raw reception and native close barriers in one stable owner.
 ## Explicit producer/host acknowledgement remains outside native callbacks and never infers adoption.
 
-import ../../../transport
+import ../../../../quic/transport
 import ./stream as current_block_download_stream
 import ../../../../app/download/schedule as download_schedule
 import "../../../../app/current/block/download" as current_block_download

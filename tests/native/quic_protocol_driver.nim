@@ -9,7 +9,7 @@
 
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ../../src/quic/protocol
+import "../../src/jamnp-s/protocol"
 
 # Empty tokens use dash; bounded fixture hex never invokes a permissive integer parser.
 proc unhex(text: string): seq[byte] =

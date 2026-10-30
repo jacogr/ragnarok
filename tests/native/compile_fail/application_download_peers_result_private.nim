@@ -3,6 +3,6 @@
 
 ## Native peer ownership and selected result tags remain private.
 # @@Verification={"group": "privacy", "expected": "status"}
-import "../../../src/quic/block/download/peers" as block_download_peers
+import "../../../src/jamnp-s/block/download/peers" as block_download_peers
 var owner = default(DownloadPeerResult[bool])
 discard owner.status

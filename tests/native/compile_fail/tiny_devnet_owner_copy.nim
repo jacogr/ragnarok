@@ -3,7 +3,7 @@
 
 ## Composite native transport owners cannot duplicate their stable callback addresses.
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <DevnetNetwork>", "build_name": "tiny-devnet-owner-copy"}
-import ../../../src/quic/devnet
+import "../../../src/jamnp-s/devnet"
 var original = DevnetNetwork()
 var duplicate = original
 discard original.finished

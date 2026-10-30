@@ -3,7 +3,9 @@
 
 ## Independent literal UP0/CE128 TLS server for continuous synchronization witnesses.
 import std/[assertions, envvars]
-import ../../src/quic/[transport, protocol, announcements]
+import ../../src/quic/transport
+import "../../src/jamnp-s/protocol"
+import "../../src/jamnp-s/announcements"
 import ../../src/codec/header
 
 type

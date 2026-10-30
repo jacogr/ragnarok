@@ -5,7 +5,7 @@ phase 0 Free, 1 Queued, 2 Running, 3 Done; w1/w2 0 idle, 1 distinguished job, 2 
 q/d count other queued/done slots; their running count comes from the worker PCs.
 Hypothesis: cancel/stop frees running capacity before native return, duplicate claims occur,
 or uncollected completions stop counting toward the real four-slot admission bound.
-Source: src/quic/offload.nim worker/submitPool/cancelPool/collectPool/stopPool, enabled offload profile.
+Source: src/jamnp-s/offload.nim worker/submitPool/cancelPool/collectPool/stopPool, enabled offload profile.
 Job bytes, setup failure, test-only held gate, crypto results and job IDs remain native/E2E checks.#
   (variables :phase.0. :q.0. :d.0. :w1.0. :w2.0. :cancelled.0.
               :stop.0. :joined.0. :saturated.0.)

@@ -9,7 +9,7 @@ import "../../../src/app/block/download" as block_download
 import ../../../src/app/[candidate, chain, services, options, preparation_worker, handoff]
 import ../../../src/app/download/schedule as download_schedule
 import ../../../src/app/download/schedule as download_schedule
-import "../../../src/quic/block/download/session" as block_download_session
+import "../../../src/jamnp-s/block/download/session" as block_download_session
 import ../../../src/chain/provider
 import ../../../src/codec/[bounded, report_owned, block_codec, header]
 import ../../../src/state/report/anchors as report_anchors

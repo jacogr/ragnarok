@@ -9,7 +9,7 @@
 
 import std/[assertions, cmdline, strutils, syncio]
 import ./batch_support
-import ../../src/quic/integration
+import "../../src/jamnp-s/integration"
 import ../../src/codec/owned
 
 # Fixture text is bounded; dash preserves explicit empty inputs without a fake zero byte.

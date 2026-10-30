@@ -36,3 +36,6 @@ Other JSON records preserve focused adoption evidence.
 Upstream Git revisions live in [`vendor/`](../vendor/README.md); local fixture provenance is
 explained in [`vectors/`](../vectors/README.md) and [`tests/fixtures/`](../tests/fixtures/README.md).
 Passing a contract's checks establishes its recorded scope, not complete JAM conformance.
+
+[The JAMNP-S compliance inventory](jamnp-compliance.md) tracks complete protocol coverage and
+the separation between JAM protocol policy and its underlying QUIC transport.

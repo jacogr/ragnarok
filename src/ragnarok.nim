@@ -9,7 +9,10 @@
 
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
-import ./quic/[session, transport, integration, offload]
+import "./jamnp-s/session"
+import ./quic/transport
+import "./jamnp-s/integration"
+import "./jamnp-s/offload"
 import ./app/options
 import ./app/cli/[help as cli_help, commands as cli_commands]
 import ./app/download/command as download_command

@@ -3,6 +3,6 @@
 
 ## External producers cannot forge an author-ready target observation.
 # @@Verification={"group": "privacy", "expected": "status"}
-import ../../../src/quic/sync_targets
+import "../../../src/jamnp-s/sync_targets"
 var observation = default(SyncTargetProgress)
 observation.status = CurrentSyncStage.CaughtUp

@@ -5,7 +5,8 @@
 ## polling. Callbacks only frame/copy bytes; block execution and catalog publication stay outside.
 
 import std/assertions
-import ./[transport, protocol, announcements, announcement_stream]
+import ../quic/transport
+import ./[protocol, announcements, announcement_stream]
 import ../codec/header
 
 const MaxBlock = 65536 ## Empty Tiny blocks and variable epoch markers fit this explicit local ceiling.

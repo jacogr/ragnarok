@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "frameExtent"}
 
-import ../../../src/quic/session
+import "../../../src/jamnp-s/session"
 discard session.frameExtent

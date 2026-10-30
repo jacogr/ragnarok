@@ -3,7 +3,7 @@
 
 ## A session callback token cannot acknowledge a detached scheduler lease.
 # @@Verification={"group": "nominal", "expected": "DownloadAttempt", "early": ["finish", "[2] expected: DownloadAttempt but got: ref DownloadSessionAttempt.Obj not nil"]}
-import "../../../src/quic/block/download/session" as block_download_session
+import "../../../src/jamnp-s/block/download/session" as block_download_session
 import ../../../src/app/download/schedule as download_schedule
 var schedule = default(DownloadSchedule)
 let token = DownloadSessionAttempt()
