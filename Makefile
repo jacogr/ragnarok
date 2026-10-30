@@ -666,13 +666,17 @@ check-pvm-doom-timing: check-inventory toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_timing.py
 
-# Private local ARM64 whole-program sieve using already provisioned pins; no host-tool installers.
-# Gas is disabled only for the standalone diagnostic image.
-# Private initial Pinky ratios; no provisioning, network setup, policy changes or sieve retiming.
-.PHONY: check-pvm-whole-pinky
+# Private local ARM64 experiments use already provisioned pins and never invoke host installers.
+.PHONY: check-pvm-whole-memory check-pvm-whole-memory-compare check-pvm-whole-pinky check-pvm-whole-sieve
+check-pvm-whole-memory: check-inventory
+	$(PYTHON) tools/pvm_whole_memory.py
+
+# Exact-head independent source/correctness proof is mandatory before the one comparison cohort.
+check-pvm-whole-memory-compare: check-inventory
+	$(PYTHON) tools/pvm_whole_memory.py --compare --correctness "$(PVM_WHOLE_MEMORY_CORRECTNESS)" --review "$(PVM_WHOLE_MEMORY_REVIEW)"
+
 check-pvm-whole-pinky: check-inventory
 	$(PYTHON) tools/pvm_whole_pinky.py
 
-.PHONY: check-pvm-whole-sieve
 check-pvm-whole-sieve: check-inventory
 	$(PYTHON) tools/pvm_whole_sieve.py
