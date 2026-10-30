@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse, baseline_revision
+from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness
 
 
 def transcript():
@@ -76,6 +76,24 @@ class Arm64JitReportTests(unittest.TestCase):
         for value in ('-1', 'x', '１', str(2**63)):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse(transcript()+f'ARM_JIT,sieve,1,13,26,36,{value}\n', 'sieve', True)
+
+    def test_dirty_loop_requires_active_owner_and_resident_blocks(self):
+        """Neither checked fallback nor incomplete owner receipts can claim the native loop gain."""
+        boundaries = 'ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
+        owner = 'ARM_DIRTY_LOOP_OWNER,1\n'
+        active = 'ARM_DIRTY_LOOP,3,25,1\n'
+        self.assertEqual(dirty_loop_witness(boundaries+owner+active, 'native'),
+                         {'calls': 3, 'blocks': 25, 'declines': 1})
+        self.assertIsNone(dirty_loop_witness(boundaries+owner, 'refused'))
+        self.assertIsNone(dirty_loop_witness(boundaries, 'interpreted'))
+        for output, mode in ((boundaries+active, 'native'),
+                             (boundaries+owner+'ARM_DIRTY_LOOP,3,3,1\n', 'native'),
+                             (boundaries+owner+active, 'refused'),
+                             (boundaries+owner, 'interpreted'),
+                             (boundaries+owner+owner+active, 'native'),
+                             (boundaries.replace('840', '839')+owner+active, 'native')):
+            with self.subTest(output=output[-45:], mode=mode), self.assertRaises(ValueError):
+                dirty_loop_witness(output, mode)
 
     def test_missing_samples_and_nonadditive_lifecycle(self):
         """Native coverage cannot excuse missing calls or mismatched reset/call/publication sums."""

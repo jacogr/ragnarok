@@ -41,6 +41,10 @@ type
     prices: array[3, uint64]
     calls, blocks: uint64
     blockCount: uint32 # Active two/three-block shape; unused counter lanes remain zero.
+  ArmDirtyLoopCache = object ## Independent one-block cache cannot displace the existing connected region.
+    status: uint8
+    header, span, operations, code: uint32
+    price, calls, blocks, declines: uint64
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
@@ -56,6 +60,7 @@ type
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
     arena: ArenaOwner
     region: ArmRegionCache
+    dirtyLoop: ArmDirtyLoopCache
     entries: seq[ArmEntryRecord]
     branchCalls*, headerCalls*: uint64
     fragments*: uint64
@@ -72,9 +77,17 @@ proc `=wasMoved`(owner: var ArenaOwner) {.nodestroy, inline.} =
   ## A moved native handle has no allocation left to release.
   owner.handle = nil
 
+when defined(pvmArmDirtyLoopOwnerReceipt):
+  var armArenaDestroyedCount {.threadvar.}: uint64
+
+  proc armDirtyLoopArenaDestroyed*(): uint64 =
+    armArenaDestroyedCount
+
 proc `=destroy`(owner: ArenaOwner) =
   ## A default or moved-from owner has no executable mapping to release.
-  if owner.handle != nil: destroyArena(owner.handle)
+  if owner.handle != nil:
+    when defined(pvmArmDirtyLoopOwnerReceipt): inc armArenaDestroyedCount
+    destroyArena(owner.handle)
 
 proc createArena(): nil pointer =
   ## Local refusal controls prove that unavailable executable storage preserves checked fallback.
@@ -85,7 +98,8 @@ proc newArmJit*(): ArmJit =
   ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
-  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache), entries: @[],
+  ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache),
+      dirtyLoop: default(ArmDirtyLoopCache), entries: @[],
       unavailable: false)
 
 func supportedArmOpcode*(opcode: byte): bool =
@@ -97,6 +111,11 @@ func newArmRegionBody*(): ArmBlock =
   ## Connected bodies have their own measured constant policy; ordinary fragment layout stays unchanged.
   result = default(ArmBlock)
   result.compact = true
+
+proc emitArmDirtyRegionByteStore*(body: var ArmBlock, valueSlot: range[0..12]) =
+  ## The address guard leaves its accepted pointer in D0; source value is read after the pure prefix.
+  body.words.add(0x9e660001'u32) # FMOV X1,D0.
+  body.words.add(0x39000020'u32 or (uint32(valueSlot)+4))
 
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
@@ -762,3 +781,199 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
 func armRegionStatistics*(jit: ArmJit): array[2, uint64] =
   ## Distinguish connected calls from complete guarded blocks without labelling guest operations as CPU instructions.
   [jit.region.calls, jit.region.blocks]
+
+func armDirtyLoopStatus*(jit: ArmJit): uint8 =
+  jit.dirtyLoop.status
+
+func armDirtyLoopChargeMatches*(jit: ArmJit, header, span: uint32, price: uint64): bool =
+  jit.dirtyLoop.status == 2 and jit.dirtyLoop.header == header and
+    jit.dirtyLoop.span == span and jit.dirtyLoop.price == price
+
+proc armDirtyLoopObserve*(jit: ArmJit, header: uint32, backedge: bool): uint8 =
+  ## Return 1 on a hot observed loop, 2 when the bounded probe should retire.
+  if jit.dirtyLoop.status != 0 or int(header) >= jit.entries.len: return 2
+  let entry = addr jit.entries[int(header)]
+  if entry.code >= 2: return 2
+  if entry.ending < 256: inc entry.ending
+  if backedge and entry.operations < 64: inc entry.operations
+  if entry.operations == 64: return 1
+  if entry.ending == 256: return 2
+  0
+
+proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
+    baseSlot: range[0..12], displacement: uint32): bool =
+  ## Keep the memory-capable one-block loop separate from the established multi-block region.
+  assert jit.dirtyLoop.status == 0
+  if item.span != 5 or item.operations != 5 or item.span > 4095 or
+      (item.yes != item.header and item.no != item.header): return false
+  if item.body.terminal.len notin [6, 10]:
+    if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
+      return false
+  var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
+      0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
+  var fixes: seq[ArmRegionFixup] = @[]
+  for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  let label = words.len
+  words.add(0xf100007f'u32 or (item.span shl 10))
+  armRegionEdge(words, fixes, item.header, 3, true) # Partial source budget returns before any current-block mutation.
+  if item.price <= 4095:
+    words.add(0xf100005f'u32 or (uint32(item.price) shl 10))
+  else:
+    armImmediate(words, 1, item.price)
+    words.add(0xeb01005f'u32)
+  armRegionEdge(words, fixes, item.header, 3, true) # Gas decline returns to canonical precedence.
+
+  # The guard may reuse X2/X3/X17 only after preserving live gas, attempts and context in caller-saved SIMD lanes.
+  let memoryFixStart = fixes.len
+  words.add(0x9e670054'u32) # FMOV D20,X2.
+  words.add(0x9e670075'u32) # FMOV D21,X3.
+  words.add(0x9e670236'u32) # FMOV D22,X17.
+  words.add(0x2a0003e3'u32 or ((uint32(baseSlot)+4) shl 16))
+  words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+  words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+  words.add(0x0b020063'u32) # Modulo-2^32 effective address.
+  words.add(0xf140407f'u32) # Protected prefix.
+  armRegionEdge(words, fixes, item.header, 3, true)
+  words.add(0x12800022'u32) # Last valid byte address is 0xfffffffe.
+  words.add(0xeb02007f'u32)
+  armRegionEdge(words, fixes, item.header, 8, true)
+  words.add(0xf9401631'u32) # Fresh descriptor pointer, context word 5.
+  words.add(0xf100023f'u32) # CMP X17,#0.
+  armRegionEdge(words, fixes, item.header, 0, true)
+  var admitted: seq[int] = @[]
+  for selected in 0..<2:
+    let region = 1-selected # RW before stack for the observed framebuffer, both checked equally.
+    words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+    let absent = words.len
+    words.add(0xb4000002'u32) # CBZ X2,next region.
+    words.add(0x91001c42'u32) # Reconstruct full byte extent from conservative read descriptor.
+    words.add(0xcb010061'u32)
+    words.add(0xeb02003f'u32)
+    let outside = words.len
+    words.add(0x54000002'u32) # B.HS,next region.
+    words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
+    words.add(0x8b010041'u32)
+    words.add(0x9e670020'u32) # FMOV D0,X1 keeps the admitted byte pointer through prefix arithmetic.
+    admitted.add(words.len)
+    words.add(0x14000000'u32)
+    let following = words.len
+    words[absent] = words[absent] or (uint32(following-absent) shl 5)
+    words[outside] = words[outside] or (uint32(following-outside) shl 5)
+  armRegionEdge(words, fixes, item.header, 16, true)
+  let afterRegions = words.len
+  for at in admitted: words[at] = words[at] or uint32(afterRegions-at)
+  words.add(0x9e6602d1'u32) # FMOV X17,D22 restores context.
+  words.add(0xf9401a22'u32) # Dirty word count, context word 6.
+  words.add(0xd352fc61'u32) # Address >> 18 selects a 64-page word.
+  words.add(0xeb02003f'u32)
+  armRegionEdge(words, fixes, item.header, 2, true)
+  words.add(0xf9401e22'u32) # Dirty bitmap pointer, context word 7.
+  words.add(0xf100005f'u32) # CMP X2,#0.
+  armRegionEdge(words, fixes, item.header, 0, true)
+  words.add(0x8b010c42'u32)
+  words.add(0xd34cfc61'u32)
+  words.add(0xd2800031'u32)
+  words.add(0x9ac12231'u32)
+  words.add(0xf9400041'u32)
+  words.add(0xea11003f'u32)
+  armRegionEdge(words, fixes, item.header, 0, true) # Clean bit is always checked fallback.
+  let memoryFixEnd = fixes.len
+  words.add(0x9e660282'u32) # FMOV X2,D20.
+  words.add(0x9e6602a3'u32) # FMOV X3,D21.
+  words.add(0x9e6602d1'u32) # FMOV X17,D22.
+
+  if item.price <= 4095:
+    words.add(0xd1000042'u32 or (uint32(item.price) shl 10))
+  else:
+    armImmediate(words, 1, item.price)
+    words.add(0xcb010042'u32)
+  words.add(0xd1000063'u32 or (item.span shl 10))
+  words.add(0x5ef38400'u32 or (16'u32 shl 5) or 16'u32)
+  for word in item.body.words: words.add(word)
+  for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
+  let condition = (item.body.terminal[item.body.terminal.len-1] shr 12) and 15
+  armRegionEdge(words, fixes, item.yes, condition, false)
+  armRegionEdge(words, fixes, item.no, 16, false)
+
+  # A guard after spilling live state must restore it before taking the ordinary charged-header exit.
+  let restoreLabel = words.len
+  words.add(0x9e660282'u32)
+  words.add(0x9e6602a3'u32)
+  words.add(0x9e6602d1'u32)
+  armRegionEdge(words, fixes, item.header, 16, true)
+
+  var exits: seq[uint32] = @[]
+  for fix in fixes:
+    if not fix.guard and fix.target == item.header: continue
+    if fix.target notin exits: exits.add(fix.target)
+  var exitLabels: seq[int] = @[]
+  var epilogueBranches: seq[int] = @[]
+  for target in exits:
+    exitLabels.add(words.len)
+    words.add(0x52800001'u32 or ((target and 65535) shl 5))
+    words.add(0x72a00001'u32 or ((target shr 16) shl 5))
+    epilogueBranches.add(words.len)
+    words.add(0)
+  let epilogue = words.len
+  for slot in 0..<13: words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  words.add(0xf9000222'u32)
+  words.add(0xf9000623'u32)
+  words.add(0xfd000a30'u32)
+  words.add(0xfd000e31'u32)
+  words.add(0xfd001232'u32)
+  words.add(0x2a0103e0'u32)
+  if words.len >= 1024: return false
+  for at in epilogueBranches: words[at] = 0x14000000'u32 or uint32(epilogue-at)
+  for fixIndex, fix in fixes:
+    var destination = -1
+    if fixIndex >= memoryFixStart and fixIndex < memoryFixEnd: destination = restoreLabel
+    elif not fix.guard and fix.target == item.header: destination = label
+    if destination < 0:
+      for index in 0..<exits.len:
+        if exits[index] == fix.target: destination = exitLabels[index]
+    assert destination >= 0
+    let relative = if destination >= fix.at: uint32(destination-fix.at)
+      else: 0'u32-uint32(fix.at-destination)
+    words[fix.at] = if fix.condition < 16:
+        0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
+      else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
+  jit.dirtyLoop.status = 1
+  # The final arena slot remains reserved for the established multi-block region.
+  if not publishArmEntry(jit, item.header, 0, 0, words): return false
+  jit.dirtyLoop.header = item.header
+  jit.dirtyLoop.span = item.span
+  jit.dirtyLoop.price = item.price
+  jit.dirtyLoop.operations = item.operations
+  jit.dirtyLoop.code = jit.entries[int(item.header)].code
+  jit.dirtyLoop.status = 2
+  true
+
+proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var array[8, uint64]): uint32 =
+  ## All invocation pointers are borrowed only across this one native call.
+  assert jit.dirtyLoop.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert state[2] == 0 and state[3] == 0 and state[4] == 0
+  let gas = state[0]
+  let available = state[1]
+  state[5] = cast[uint64](addr regions)
+  state[6] = uint64(dirtyWords.len)
+  state[7] = 0
+  if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
+  let destination = regionArena(jit.arena.handle, jit.dirtyLoop.code-2, addr registers, addr state)
+  assert state[0] <= gas and state[1] <= available
+  let consumed = available-state[1]
+  assert state[2] <= consumed div uint64(jit.dirtyLoop.span)
+  assert state[2]*uint64(jit.dirtyLoop.span) == consumed
+  assert state[3] == 0 and state[4] == 0
+  inc jit.calls
+  inc jit.branchCalls
+  inc jit.headerCalls
+  inc jit.dirtyLoop.calls
+  jit.dirtyLoop.blocks+=state[2]
+  jit.operations+=state[2]*uint64(jit.dirtyLoop.operations)
+  if destination == jit.dirtyLoop.header: inc jit.dirtyLoop.declines
+  destination
+
+func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
+  [jit.dirtyLoop.calls, jit.dirtyLoop.blocks, jit.dirtyLoop.declines]
