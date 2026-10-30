@@ -48,6 +48,7 @@ proc unchanged(left, right: Memory) =
 
 var registers = default(RegisterFile)
 registers[0] = RegisterValue(0xffff0000'u64)
+for i in 1..<13: registers[i] = RegisterValue(0x1122334455667700'u64+uint64(i))
 let empty = captureMemory(@[], PageLimit(4))
 assert empty.error == MachineError.None
 block:
@@ -55,6 +56,7 @@ block:
   let loop = source(@[149'u8, 0x77, 1, 172, 0x87, 3, 149, 0x77, 1, 172, 0x87, 0xf7, 50, 0, 0],
       @[0, 3, 6, 9, 12])
   var cpu = registers
+  cpu[7] = RegisterValue(0)
   cpu[8] = RegisterValue(20)
   let (done, memory) = execute(loop, empty.value, cpu)
   echo "CONTROL_LOOP,", done.status, ",", done.pc, ",", done.registers[7], ",", done.exits
@@ -121,6 +123,67 @@ block:
   let (done, actual) = execute(signed, captured.value, cpu)
   assert done.status == 1 and done.loads == 1 and done.registers[1] == 0xffffffffffffff80'u64
   unchanged(captured.value, actual)
+block:
+  # Nonzero-PC explicit and invalid-control panics publish the checked terminal PC zero, preserving earlier writes.
+  let cases = @[
+    source(@[51'u8, 7, 42, 0], @[0, 3]),
+    source(@[51'u8, 7, 42, 40, 0x7f], @[0, 3]),
+    source(@[51'u8, 7, 42, 50, 1, 0], @[0, 3]),
+    source(@[2'u8, 80, 0x17, 42, 0x7f], @[0, 1])]
+  for program in cases:
+    var cpu = registers
+    cpu[1] = RegisterValue(1)
+    let (done, actual) = execute(program, empty.value, cpu)
+    assert done.status == 2 and done.pc == 0 and done.registers[7] == 42
+    unchanged(empty.value, actual)
+block:
+  # Memory panic normalization and nonzero fault PC retention share the actual checked-memory callback route.
+  let program = source(@[51'u8, 7, 42, 123, 0x17, 0, 50, 0, 0], @[0, 3, 6])
+  let readonly = PageImage(index: PageIndex(17), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  let captured = captureMemory(@[readonly], PageLimit(4))
+  assert captured.error == MachineError.None
+  for scenario in 0..<2:
+    var cpu = registers
+    cpu[1] = RegisterValue(if scenario == 0: 0xffff'u64 else: 0x11000'u64)
+    let (done, actual) = execute(program, captured.value, cpu)
+    assert done.status == (if scenario == 0: 2'u64 else: 3'u64)
+    assert done.pc == (if scenario == 0: 0'u64 else: 3'u64)
+    assert done.registers[7] == 42 and done.stores == 1
+    unchanged(captured.value, actual)
+block:
+  # Immediate/register conditions validate both successors before either outcome; earlier writes survive panic.
+  let badTargetRegister = source(@[51'u8, 9, 42, 172, 0x87, 0x7f, 50, 0, 0], @[0, 3, 6])
+  let badTargetImmediate = source(@[51'u8, 9, 42, 83, 0x17, 1, 0x7f, 50, 0, 0], @[0, 3, 7])
+  let missingRegister = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 172, 0x87, 0xfd], @[0, 3, 5, 8])
+  let missingImmediate = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 83, 0x17, 1, 0xfd], @[0, 3, 5, 8])
+  for program in @[badTargetRegister, badTargetImmediate, missingRegister, missingImmediate]:
+    for taken in 0..<2:
+      var cpu = registers
+      cpu[7] = RegisterValue(if taken == 0: 2'u64 else: 0'u64)
+      cpu[8] = RegisterValue(1)
+      let (done, actual) = execute(program, empty.value, cpu)
+      assert done.status == 2 and done.pc == 0
+      for register in 0..<13:
+        assert done.registers[register] == (if register == 9: 42'u64 else: uint64(cpu[register]))
+      unchanged(empty.value, actual)
+block:
+  # A final nonterminator refuses compilation without allocating code or mutating any caller CPU/memory.
+  let before = allocationCounts()
+  for program in @[source(@[51'u8, 7, 42], @[0]), source(@[123'u8, 0x17, 0], @[0]),
+      source(@[130'u8, 0x17, 0], @[0])]:
+    var image = default(WholeImage)
+    var diagnostic = ""
+    assert not compileWhole(program, CodeAddress(0), image, diagnostic)
+    assert diagnostic == "missing successor at 0"
+    assert allocationCounts() == before
+block:
+  # Fallthrough is a true control opcode: a missing target is guest Panic, not local-invalid compilation refusal.
+  let endProgram = source(@[1'u8], @[0])
+  let (done, actual) = execute(endProgram, empty.value, registers)
+  assert done.status == 2 and done.pc == 0
+  for i in 0..<13: assert done.registers[i] == uint64(registers[i])
+  unchanged(empty.value, actual)
 block:
   # Automatic scope destruction and explicit release both retire one raw image exactly once.
   let before = allocationCounts()

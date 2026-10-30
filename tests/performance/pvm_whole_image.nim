@@ -368,6 +368,12 @@ proc finish(builder: var Builder) =
   storeWord(builder.words, 1, 12, 104)
   let terminal = builder.words.len
   loadWord(builder.words, 12, 31, 96)
+  # Both explicit/control panics and checked-memory panics normalize PC to zero; faults retain their source PC.
+  loadWord(builder.words, 1, 12, 104)
+  builder.words.add(0xf100083f'u32) # CMP X1,#2.
+  builder.words.add(0x54000061'u32) # B.NE +12 skips only the panic PC normalization.
+  emitImmediate(builder.words, 1, 0)
+  storeWord(builder.words, 1, 12, 112)
   for i in 0..<13: storeWord(builder.words, reg(i), 12, i*8)
   loadWord(builder.words, 1, 12, 144)
   builder.words.add(0x91000421'u32) # ADD X1,X1,#1 counts a genuine native exit.
@@ -461,6 +467,10 @@ proc compileWhole*(source: Program, entry: CodeAddress, image: var WholeImage,
       diagnostic = "invalid jump table"
       return false
     targets.add(uint64(found.value))
+  # A larger logical table is an explicit compilation refusal, never a truncated native target map.
+  if jumpTarget(source, JumpIndex(uint64(targets.len))).error != ProgramError.InvalidIndex:
+    diagnostic = "jump table exceeds standalone compiler bound"
+    return false
   var builder = Builder(words: @[], labels: newSeq[int](int(extent.value)), fixups: @[],
       exits: @[], halts: @[], panics: @[], tableLoads: @[])
   enter(builder)
@@ -472,6 +482,10 @@ proc compileWhole*(source: Program, entry: CodeAddress, image: var WholeImage,
     if decoded.error != ProgramError.None: continue # Operand bytes are never compiled as instructions.
     let item = decoded.value
     let slots = instructionRegisters(decoded)
+    # The checked executor rejects a local-invalid nonterminator before any register or memory effect.
+    if not terminatesBlock(item.opcode) and not instructionHasFallthrough(decoded):
+      diagnostic = "missing successor at " & $pc
+      return false
     builder.labels[int(pc)] = builder.words.len
     inc compiled
     inc counts[int(item.opcode)]
@@ -490,23 +504,18 @@ proc compileWhole*(source: Program, entry: CodeAddress, image: var WholeImage,
         let right = if item.opcode <= 90: 1'u32 else: reg(slots.bIndex)
         if item.opcode <= 90: emitImmediate(builder.words, 1, uint64(item.x))
         builder.words.add(0xeb00001f'u32 or (right shl 16) or (reg(slots.aIndex) shl 5))
-      if instructionTargetStartsBlock(decoded):
+      if not unconditional and (not instructionTargetStartsBlock(decoded) or
+          not instructionHasFallthrough(decoded)):
+        # Both successors are part of the accepted conditional contract, regardless of its selected outcome.
+        fail(builder, pc)
+      elif instructionTargetStartsBlock(decoded):
         let target = if item.displacement < 0: pc-uint64(-item.displacement) else: pc+uint64(
             item.displacement)
         let at = if unconditional: branch(builder.words) else: conditional(builder.words,
             conditionCode(item.opcode))
         builder.fixups.add(Fixup(at: at, pc: target))
-      elif unconditional:
-        fail(builder, pc)
       else:
-        # Only a taken invalid arm panics; the valid fallthrough never reaches the failure stub.
-        let skip = builder.words.len
-        builder.words.add(0'u32)
         fail(builder, pc)
-        let span = builder.words.len-skip
-        assert span > 0 and span < 262144
-        builder.words[skip] = 0x54000000'u32 or (uint32(span) shl 5) or (conditionCode(
-            item.opcode) xor 1'u32)
     elif not emitOperation(builder.words, item.opcode, slots, uint64(item.x)):
       diagnostic = "unsupported opcode " & $item.opcode & " at " & $pc
       return false
