@@ -4,6 +4,8 @@
 ## Drive genuine completed initial accumulation through bounded report-only rounds to an actual stopped certificate.
 ## Exposes explicit per-entry/depth policy and guarded terminal alternatives/reasons; never publishes caller state.
 
+import ../../pvm/worker
+
 import ../../chain/parameters
 import ./[execution as accumulation_execution, continuation as accumulation_continuation]
 import ./continuation/[inputs as accumulation_continuation_inputs,
@@ -117,7 +119,8 @@ proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Paramete
   if inputs.error != AccumulationContinuationInputError.None:
     return AccumulationDriverResult(status: AccumulationDriverError.InputFailure,
       inputReason: inputs) # No partially applied initial batch or selected inputs survive failure.
-  let later = runAccumulationContinuation(inputs.value, parameters, limits.execution)
+  let worker = newExecutionWorker() # One code-only worker spans continuation and every bounded reentry round.
+  let later = runAccumulationContinuation(inputs.value, parameters, limits.execution, worker)
   if later.error != AccumulationLaterRunnerError.None:
     return AccumulationDriverResult(status: AccumulationDriverError.ContinuationFailure,
       continuationReason: later) # Preserve exact local engine, context and completion causes.
@@ -132,7 +135,7 @@ proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Paramete
   var entry = first.value
   while true:
     # Each successful live iteration advances a checked depth below the explicit cap; stopped entries return immediately.
-    let completed = runAccumulationReentry(entry, parameters, limits.execution)
+    let completed = runAccumulationReentry(entry, parameters, limits.execution, worker)
     if completed.error != AccumulationLaterRunnerError.None:
       return AccumulationDriverResult(status: AccumulationDriverError.ReentryExecutionFailure,
         executionReason: completed) # Release all earlier successful rounds on late refusal.

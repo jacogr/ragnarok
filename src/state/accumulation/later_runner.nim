@@ -4,6 +4,8 @@
 ## Execute one genuine report-only continuation or reentry from its actual posterior state.
 ## Reuses explicit initial-runner policies and existing completion certificates; no recursion or publication.
 
+import ../../pvm/worker
+
 import ../../chain/parameters
 import ../../codec/bounded
 import ./[runner as accumulation_runner, round as accumulation_round, inputs as accumulation_inputs,
@@ -232,7 +234,7 @@ proc invocationFor(source: LaterSource, index: InvocationServiceIndex,
 
 proc runServices(source: LaterSource, round: BlockAccumulationRound,
     inputs: PreparedAccumulationInputs, parameters: Parameters,
-    limits: AccumulationRunnerLimits): AccumulationLaterRunnerResult[GuestBatch] =
+    limits: AccumulationRunnerLimits, worker: ExecutionWorker): AccumulationLaterRunnerResult[GuestBatch] =
   ## Private callers already proved source ownership; neither root nor inputs are public substitution points.
   ## Both source families use the same bounded service/CPU loop and retain their own invocation adapters.
   let profile = round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.blockTransitionProfile
@@ -281,14 +283,14 @@ proc runServices(source: LaterSource, round: BlockAccumulationRound,
       if initial.error != AccumulationContextError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.ContextFailure, contextReason: initial.error))
-      let machine = initializeAccumulationMachine(bootstrap, limits.initialization)
+      let machine = initializeAccumulationMachine(bootstrap, limits.initialization, worker)
       if machine.error != AccumulationMachineError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.MachineFailure, machineReason: machine.error))
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts, logging = limits.logging, backend = limits.backend)
+        limits.deletedAccounts, logging = limits.logging, backend = limits.backend, worker = worker)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.DispatchFailure,
@@ -298,7 +300,8 @@ proc runServices(source: LaterSource, round: BlockAccumulationRound,
     completed: GuestBatch(executions: executions, skipped: skipped))
 
 proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs,
-    parameters: Parameters, limits: AccumulationRunnerLimits):
+    parameters: Parameters, limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
+        ExecutionWorker)):
     AccumulationLaterRunnerResult[CompletedAccumulationContinuation] =
   ## Execute all selected continuation services against their actual post-initial-batch map; certify completion once.
   let plan = source.continuationPlan
@@ -308,7 +311,8 @@ proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs
       status: AccumulationLaterRunnerError.InvalidSource)) # Defaults do not authorize a synthetic stopped round.
   let round = plan.value.continuationSource.value.executionRound.value
   let guests = runServices(LaterSource(kind: LaterSourceKind.Continuation, continuation: source),
-      round, source.continuationInputs.value, parameters, limits)
+      round, source.continuationInputs.value, parameters, limits,
+      if worker.initialized: worker else: newExecutionWorker())
   if guests.error != AccumulationLaterRunnerError.None:
     return AccumulationLaterRunnerResult[CompletedAccumulationContinuation](succeeded: false,
         refusal: guests.refusal) # Copy reasons alone.
@@ -323,7 +327,8 @@ proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs
       completed: finished.value)
 
 proc runAccumulationReentry*(source: PreparedAccumulationReentry,
-    parameters: Parameters, limits: AccumulationRunnerLimits):
+    parameters: Parameters, limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
+        ExecutionWorker)):
     AccumulationLaterRunnerResult[CompletedAccumulationReentry] =
   ## Execute one genuine reentry at any prepared depth, with direct original-block provenance and exact posterior state.
   if source.reentryInfo.error != AccumulationReentryError.None:
@@ -332,7 +337,8 @@ proc runAccumulationReentry*(source: PreparedAccumulationReentry,
       status: AccumulationLaterRunnerError.InvalidSource)) # No default/pure source or caller-authored outcome arrays.
   let round = source.reentrySource.value.executionContinuation.value.continuationPlan.value.continuationSource.value.executionRound.value
   let guests = runServices(LaterSource(kind: LaterSourceKind.Reentry, reentry: source), round,
-      source.reentryInputs.value, parameters, limits)
+      source.reentryInputs.value, parameters, limits,
+      if worker.initialized: worker else: newExecutionWorker())
   if guests.error != AccumulationLaterRunnerError.None:
     return AccumulationLaterRunnerResult[CompletedAccumulationReentry](succeeded: false,
         refusal: guests.refusal) # No successful intermediates retained.

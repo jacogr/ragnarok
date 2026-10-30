@@ -1,0 +1,15 @@
+{
+  "defines": [
+    "pvmArm64Jit"
+  ],
+  "directory": "state",
+  "includes": [
+    "crypto",
+    "pvm_jit"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}

@@ -6,7 +6,7 @@
 
 import std/assertions
 import ../../src/state/accumulation/machine as accumulation_machine
-import ../../src/pvm/[initialize, machine, program]
+import ../../src/pvm/[initialize, machine, program, worker]
 import ./pvm_accumulation_context
 import ../../src/codec/state/[trie as state_trie, accounts as state_accounts]
 import ../../src/codec/header
@@ -44,7 +44,8 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
         spareEntries = 0, manager = 0'u32, assigner = 0'u32, delegator = 0'u32, registrar = 0'u32,
             cores = 2'u64, writes = 2'u64, probes = 1'u64, slot = HeaderSlot(128),
 
-writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulationMachine =
+writable: seq[byte] = @[81'u8], service = ServiceIndex(42), worker: ExecutionWorker = default(
+    ExecutionWorker)): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
   ## No upstream assembler runs; independently framed code lengths are bounded before narrowing.
   ## service selects the nominal invoking identity; the default preserves existing authored programs.
@@ -57,7 +58,7 @@ writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulatio
             delegator = delegator, cores = cores, writes = writes, probes = probes,
                 registrar = registrar, slot = slot),
     InitializationLimits(envelope: InitializationByteLimit(4096), program: ProgramByteLimit(160),
-      jumps: JumpCountLimit(0), pages: PageLimit(5))).value
+      jumps: JumpCountLimit(0), pages: PageLimit(5)), worker).value
 
 proc registerImmediate*(index: byte, address: uint64): seq[byte] =
   ## Load a full 64-bit pointer; extended immediates avoid sign-extension aliases in address witnesses.

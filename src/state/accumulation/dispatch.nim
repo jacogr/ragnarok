@@ -6,6 +6,8 @@
 ## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
+import ../../pvm/worker
+
 import ../../lib/logging
 
 import ../../chain/parameters
@@ -1264,7 +1266,8 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
             accountWriteFacts = ElementLimit(0),
     storageFacts = default(AccumulationStorageFactLimits),
     requestFacts = ElementLimit(0), logging: LogWriter = default(
-        LogWriter), backend: PvmBackend = PvmBackend.Jit): AccumulationDispatchResult =
+        LogWriter), backend: PvmBackend = PvmBackend.Jit, worker: ExecutionWorker = default(
+            ExecutionWorker)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
   ## accountWriteFacts independently enables bounded physical account/key facts; zero disables their queries.
@@ -1312,7 +1315,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
 effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes,
       transferLimit: transferLimit)
   let evaluated = executeWithHost(prepared.accumulationMachine.value, context, dispatchHostCall,
-    steps, calls, cycles, backend)
+    steps, calls, cycles, backend, worker)
   case evaluated.error
   of HostExecutionError.None:
     # Preserve halt, panic, fault and gas outcomes without inventing a Psi_A transition.
