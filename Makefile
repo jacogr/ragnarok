@@ -318,9 +318,15 @@ check-inventory:
 	$(PYTHON) tools/check_inventory.py
 
 # Independent Python discovery and long-running networking are selectable without the other workloads.
-check-python: check-inventory sources
+# Workflow tests use a real safe YAML loader rather than maintaining an indentation parser.
+.PHONY: python-test-tools
+python-test-tools: tools/python-test-requirements.txt
+	$(PYTHON) -m venv build/python-tests
+	build/python-tests/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/python-test-requirements.txt
+
+check-python: check-inventory sources python-test-tools
 	$(PYTHON) tools/setup_submodules.py --prefetch-blobs vendor/jamtestvectors 2>&1 | tee build/ci/python-sources.log
-	$(PYTHON) tools/test_python.py 2>&1 | tee build/ci/python.log
+	build/python-tests/bin/python tools/test_python.py 2>&1 | tee build/ci/python.log
 check-e2e: setup browser-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
 

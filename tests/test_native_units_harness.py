@@ -40,15 +40,13 @@ class NativeUnitHarness(unittest.TestCase):
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
-        self.assertIn("natural", batches[0][1])
-        self.assertNotIn("rpc", batches[0][1])
-        self.assertEqual(native_tests.UNIT_LINKS["rpc"], "crypto")
-        self.assertIsNone(batches[0][2])
-        for name, members, target in batches[1:]:
-            # Every profile with special linking or runtime resources remains a single-file invocation.
-            self.assertEqual(members, (name,))
-            self.assertEqual(target, name)
-            self.assertIn(name, native_tests.UNIT_LINKS)
+        for name, members, target in batches:
+            if target is None:
+                # Pure directory discovery must not acquire a linked/resource-bearing suite.
+                self.assertTrue(set(members).isdisjoint(native_tests.UNIT_LINKS))
+            else:
+                self.assertEqual(members, (target,))
+                self.assertIn(target, native_tests.UNIT_LINKS)
 
     # Any supported shard count covers every discovered suite exactly once, without new registrations.
     def test_partition_inventory(self):
@@ -202,10 +200,8 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(commands[0][-1], str(native_tests.UNIT_ROOT))
             self.assertFalse(any('--passL:' in arg and 'flto' not in arg and 'fuse-ld' not in arg
                                  for arg in commands[0]))
-            for name, arguments in zip(native_tests.UNIT_LINKS, commands[1:]):
-                # Every linked identity is scheduled once with its required library, never included in pure discovery.
-                self.assertEqual(arguments, native_tests.unit_command(folder/'nimony', name, libraries))
-                self.assertEqual(arguments[-1], str(native_tests.unit_source(name)))
+            self.assertCountEqual([arguments[-1] for arguments in commands[1:]],
+                                  [str(native_tests.unit_source(name)) for name in native_tests.UNIT_LINKS])
 
     # Omitting selection preserves complete batching and all existing ARC evidence checks.
     def test_complete_run_scope(self):
@@ -217,28 +213,24 @@ class NativeUnitHarness(unittest.TestCase):
                 native_tests, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch('sys.stdout', new_callable=io.StringIO):
             compiler = folder/'nimony'
             native_tests.run_units(compiler, {}, {})
-            plan.assert_called_once_with(compiler, {})
-            environment.assert_called_once_with(compiler, fixtures={})
-            self.assertEqual([call.args[0] for call in run.call_args_list], [['hastur', 'codecs'], ['hastur', 'linked']])
-            self.assertEqual([call.args[1] for call in evidence.call_args_list], list(native_tests.ARC_SUITES))
+            self.assertCountEqual([call.args[0] for call in run.call_args_list], [['hastur', 'codecs'], ['hastur', 'linked']])
+            self.assertTrue(all(call.kwargs['check'] and call.kwargs['env'] == {}
+                                for call in run.call_args_list))
+            self.assertCountEqual([call.args[1] for call in evidence.call_args_list], native_tests.ARC_SUITES)
 
-    # Selection executes exactly one suite and reads only its fresh ARC observation.
+    # Selected execution uses real command/environment planning; only the native process is mocked.
     def test_selected_suite_scope(self):
-        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
-                native_tests, 'unit_command', return_value=['hastur', 'bits']) as command, patch.object(
-                native_tests, 'unit_environment', return_value={'fixture': 'checked'}) as environment, patch.object(
-                native_tests, 'unit_work_directory', return_value=folder), patch.object(
+        """A focused request launches one checked suite and writes its own log without preparing siblings."""
+        with temporary_folder('hastur') as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
                 native_tests.subprocess, 'run') as run, patch.object(
-                native_tests, 'unit_evidence', return_value={'cycles': 1000}) as evidence, patch('sys.stdout', new_callable=io.StringIO):
-            compiler = folder/'nimony'
-            native_tests.run_units(compiler, {}, {}, 'bits')
-            command.assert_called_once_with(compiler, 'bits', {})
-            environment.assert_called_once_with(compiler, name='bits', fixtures={})
+                native_tests, 'unit_evidence', return_value={'cycles': 1000}), patch('sys.stdout', new_callable=io.StringIO):
+            native_tests.run_units(folder/'nimony', {}, {}, 'bits')
             self.assertEqual(run.call_count, 1)
-            self.assertEqual(run.call_args.args[0], ['hastur', 'bits'])
+            arguments = run.call_args.args[0]
+            self.assertEqual(arguments[-1], str(native_tests.unit_source('bits')))
+            self.assertIn('--forward:--mm:arc', arguments)
             self.assertTrue(run.call_args.kwargs['check'])
-            self.assertEqual(run.call_args.kwargs['env'], {'fixture': 'checked'})
-            evidence.assert_called_once_with(compiler, 'bits')
+            self.assertIn('RAGNAROK_TEST_EVIDENCE', run.call_args.kwargs['env'])
             self.assertTrue((folder/'build/tests/native/selected/bits.log').is_file())
 
     # Quiet output must preserve a failing child status and retain diagnostics beyond its excerpt.
@@ -247,10 +239,7 @@ class NativeUnitHarness(unittest.TestCase):
         def fail(arguments, **kwargs):
             kwargs['stdout'].write(''.join('diagnostic-'+str(index)+'\n' for index in range(60)))
             raise subprocess.CalledProcessError(7, arguments)
-        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
-                native_tests, 'unit_command', return_value=['hastur', 'natural']), patch.object(
-                native_tests, 'unit_environment', return_value={}), patch.object(
-                native_tests, 'unit_work_directory', return_value=folder), patch.object(
+        with temporary_folder('hastur') as folder, patch.object(native_tests, 'ROOT', folder), patch.object(
                 native_tests.subprocess, 'run', side_effect=fail), patch('sys.stdout', new_callable=io.StringIO) as output:
             with self.assertRaises(subprocess.CalledProcessError) as raised:
                 native_tests.run_units(folder/'nimony', {}, {}, 'natural')

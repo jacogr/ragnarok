@@ -118,6 +118,32 @@ Runtime, E2E and compiler-guard reports share `runtime_provenance.runtime_source
 New project modules, helpers and fixtures are included automatically; retain explicit pinned
 upstream input contracts and generated-fixture hashes.
 
+## Python reference and tooling tests
+
+Tests should survive behavior-preserving refactors. Presentation assertions require an identifiable
+consumer requirement; do not add an automated source-policy checker to enforce this guidance.
+
+Test observable failures, not the current implementation's shape. State what concrete wrong result,
+lost coverage, unsafe operation or misleading verdict each test prevents. Avoid assertions about
+comments, formatting, headings, display names, job order, YAML anchor names, incidental grouping or
+historical organization. Do not replace these with snapshots or a more elaborate configuration parser.
+For CI partition changes, use the configured partitions and require discovered work exactly once;
+retain fixed limits only when they express a deliberate safety or resource requirement.
+
+Keep independent mathematical/protocol equations, literal boundary expectations, frozen-vector
+provenance and semantic witnesses. A hash detects fixture drift; it does not establish protocol
+correctness by itself. Do not calculate an expected answer by calling the function under test again
+or copying its implementation. Repeated calls are useful when explicitly testing determinism or
+caller ownership, rather than claiming independent correctness.
+
+Mock external processes/network and expensive fixture providers where practical. Use inert local
+executables for Make/process integration and refuse unmocked native/network work in synthetic tests.
+Assert meaningful command properties and outputs, not exhaustive internal helper-call sequences.
+Preserve rejection of failed builds, stale binaries, incomplete results and missing fresh evidence,
+plus archive safety, process cleanup and failure propagation. Measure expensive tests before changing
+setup or derivations; retain fixture ownership and reference/production independence. Remove tooling
+only after checking Make, dispatches, dynamic discovery, documented CLI use and downstream consumers.
+
 ## Harness ownership
 
 | Harness | Responsibility |

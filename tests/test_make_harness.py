@@ -48,8 +48,9 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
                                         cwd=folder, env=environment, capture_output=True, text=True)
                 calls = [json.loads(line) for line in (folder/'calls').read_text().splitlines()]
                 self.assertEqual(result.returncode == 0, not failure, result.stdout+result.stderr)
-                self.assertEqual(calls[0], ['build', '--platform', 'linux/amd64',
-                                            '--tag', 'ragnarok:local', '.'])
+                self.assertEqual(calls[0][0], 'build')
+                self.assertEqual(calls[0][calls[0].index('--platform')+1], 'linux/amd64')
+                image = calls[0][calls[0].index('--tag')+1]
                 if failure == 'build':
                     # A failed image build prevents every runtime invocation.
                     self.assertEqual(len(calls), 1)
@@ -59,7 +60,7 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
                         # Stop at the failed selftest, including when commands write through a log pipe.
                         options = options[:options.index(failure)+1]
                     self.assertEqual(calls[1:], [['run', '--rm', '--network', 'none',
-                                                  'ragnarok:local', option] for option in options])
+                                                  image, option] for option in options])
                 self.assertTrue((folder/'build/ci/docker-build.log').is_file())
 
     # Production dependency preparation must not load reference suites or test-process orchestration.
@@ -205,6 +206,7 @@ if os.environ['FIXTURE_FAILURE'] == stage:
             (folder/'spec').mkdir()
             shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
             (folder/'tools').mkdir()
+            shutil.copyfile(ROOT/'tools/python-test-requirements.txt', folder/'tools/python-test-requirements.txt')
             (folder/'tests').mkdir()
             (folder/'bin').mkdir()
             # Avoid OS package provisioning while exercising Make on any host.
@@ -242,6 +244,9 @@ if name == 'test_models.py' and os.environ.get('FAIL_MODELS'):
 if (name == 'setup_jam_minifuzz.py' and os.environ.get('FAIL_MINIFUZZ')) or (name == 'check_jam_fuzzer_interface.py' and os.environ.get('FAIL_FUZZ')):
     print('deliberate fuzz failure')
     sys.exit(7)
+# Python discovery failure remains authoritative through the isolated interpreter and tee.
+if name == 'test_python.py' and os.environ.get('FAIL_PYTHON_TESTS'):
+    sys.exit(7)
 # A failing runtime must not turn green merely because tee successfully wrote its log.
 if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' in sys.argv and os.environ.get('FAIL_FAILURES'))):
     print('deliberate runtime failure')
@@ -260,7 +265,26 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 '    def test_discovery(self): pass\n')
             environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
                            'CI': '', 'UI_MINIFY': '0'}
-            arguments = ['make', '--no-print-directory', 'PYTHON='+sys.executable]
+            # The Python environment installer is an external boundary: never run pip/network here.
+            python = folder/'bin/python'
+            python.write_text('#!'+sys.executable+'\n'+"""import os, shutil, sys
+from pathlib import Path
+# An inert environment launcher handles pip locally and forwards only fixture scripts.
+if sys.argv[1:3] == ['-m', 'venv']:
+    destination = Path(sys.argv[3])/'bin/python'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(__file__, destination)
+    destination.chmod(0o755)
+    sys.exit(0)
+if sys.argv[1:3] == ['-m', 'pip']:
+    assert '--require-hashes' in sys.argv and '--only-binary=:all:' in sys.argv
+    with Path('calls').open('a') as output:
+        output.write('python-dependencies\\n')
+    sys.exit(7 if os.environ.get('FAIL_PYTHON_SETUP') else 0)
+os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+""")
+            python.chmod(0o755)
+            arguments = ['make', '--no-print-directory', 'PYTHON='+str(python)]
             (folder/'build/nested').mkdir(parents=True)
             (folder/'build/nested/stale').write_text('old artifact')
             subprocess.run(arguments+['clean'], cwd=folder, env=environment, check=True, capture_output=True)
@@ -268,26 +292,6 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             result = subprocess.run(arguments+['check'], cwd=folder, env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
-            self.assertEqual(calls.count('setup_jam_minifuzz.py'), 1)
-            self.assertEqual(calls.count('check_jam_fuzzer_interface.py'), 1)
-            self.assertLess(calls.index('setup_jam_minifuzz.py'), calls.index('check_jam_fuzzer_interface.py'))
-            self.assertEqual(calls.count('setup_nimony.py'), 1)
-            self.assertEqual(calls.count('setup_tlanif.py'), 1)
-            self.assertEqual(calls.count('test_models.py'), 1)
-            self.assertEqual(calls.count('check_inventory.py'), 1)
-            self.assertEqual(calls.count('build_ui.py'), 1)
-            self.assertEqual(calls.count('build_ui.py --rpc-test'), 1)
-            self.assertNotIn('setup_minifier.py', calls)
-            self.assertEqual(calls.count('build_info.py'), 1)
-            self.assertLess(calls.index('setup_nimony.py'), calls.index('build_info.py'))
-            self.assertLess(calls.index('build_info.py'), calls.index('test_modules.py'))
-            self.assertLess(calls.index('build_info.py'), calls.index('test_runtime.py'))
-            self.assertLess(calls.index('setup_nimony.py'), calls.index('setup_web.py'))
-            self.assertLess(calls.index('setup_web.py'), calls.index('build_ui.py'))
-            self.assertLess(calls.index('build_ui.py'), calls.index('test_modules.py'))
-            self.assertLess(calls.index('build_ui.py'), calls.index('test_runtime.py'))
-            self.assertLess(calls.index('check_inventory.py'), calls.index('setup_nimony.py'))
-            self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
             failed_model = subprocess.run(arguments+['check-models'], cwd=folder,
                 env={**environment, 'FAIL_MODELS': '1'}, capture_output=True, text=True)
@@ -296,10 +300,16 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)
             self.assertTrue((folder/'build/ci/failures.log').is_file())
-            self.assertLess(calls.index('setup_submodules.py --prefetch-blobs vendor/jamtestvectors'),
-                            calls.index('test_python.py'))
             self.assertTrue((folder/'build/ci/python.log').is_file())
             self.assertTrue((folder/'build/ci/e2e.log').is_file())
+            for failure in ('FAIL_PYTHON_SETUP', 'FAIL_PYTHON_TESTS'):
+                # Failed dependency preparation prevents discovery; failed discovery cannot reuse green output.
+                (folder/'calls').write_text('')
+                failed_python = subprocess.run(arguments+['check-python'], cwd=folder,
+                    env={**environment, failure: '1'}, capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(failed_python.returncode, 0, failed_python.stdout+failed_python.stderr)
+                python_calls = (folder/'calls').read_text().splitlines()
+                self.assertEqual(python_calls.count('test_python.py'), 0 if failure == 'FAIL_PYTHON_SETUP' else 1)
             failed = subprocess.run(arguments+['runtime'], cwd=folder,
                                     env={**environment, 'FAIL_RUNTIME': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)

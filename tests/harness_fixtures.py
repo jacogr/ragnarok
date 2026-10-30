@@ -8,6 +8,8 @@ Exposes temporary_folder, native_libraries for the verification harness.
 from contextlib import contextmanager
 from pathlib import Path
 import tempfile
+import os
+import subprocess
 
 
 # Yield an isolated Path and optional empty files; cleanup also runs when a test raises an exception.
@@ -31,3 +33,13 @@ def native_libraries(folder):
         # Empty files satisfy presence checks without compiling or loading a fabricated native library.
         path.touch()
     return libraries
+
+
+# Inspect Make's expanded commands rather than dependency-line spelling or recipe adjacency.
+def make_plan(target, *assignments, skip=()):
+    """Dry-run Make with inert recursive/Python commands; no compiler, installer or network runs."""
+    root = Path(__file__).resolve().parents[1]
+    return subprocess.run(['make', '--dry-run', '--no-print-directory', 'MAKE=echo', 'PYTHON=echo', 'RUSTUP_TOOLCHAIN=fixture', *assignments,
+                           *(option for prerequisite in skip for option in ('-o', prerequisite)), target],
+                          cwd=root, env=dict(os.environ, MAKEFLAGS='', MFLAGS=''), check=True,
+                          capture_output=True, text=True, timeout=10).stdout

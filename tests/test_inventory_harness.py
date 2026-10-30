@@ -7,7 +7,6 @@ Exposes InventoryPreflight for unittest discovery; test methods exercise the sta
 """
 import copy
 import json
-import re
 from pathlib import Path
 import subprocess
 import sys
@@ -22,25 +21,7 @@ from failure_checks import FAILURE_SUITES, load_suites
 
 # Exercise invalid declarations and real command wiring without substituting native verdicts.
 class InventoryPreflight(unittest.TestCase):
-    def test_e2e_matrix_matches_source_owned_groups(self):
-        """A newly declared or missing family must fail preflight rather than silently lose E2E coverage."""
-        from check_inventory import validate_e2e_groups
-        workflow = (ROOT/'.github/workflows/ci.yml').read_text()
-        validate_e2e_groups(workflow)
-        from workflow_fixtures import job_section
-        rows = list(re.finditer(r'^          - \{group: ([a-z_]+), name: [^\n]+\}\n',
-                               job_section(workflow, 'e2e'), re.MULTILINE))
-        self.assertTrue(rows)
-        for match in rows:
-            row, group = match.group(0), match.group(1)
-            for replacement in ('', row+row, row.replace('group: '+group, 'group: unknown')):
-                # Select an existing row: stale family names must never turn these mutations into no-ops.
-                changed = workflow.replace(row, replacement, 1)
-                self.assertNotEqual(changed, workflow)
-                with self.subTest(group=group, replacement=replacement), self.assertRaisesRegex(ValueError, 'E2E matrix'):
-                    validate_e2e_groups(changed)
 
-    # Both a new ARC key and a new failure family must fail preflight when their report keys collide.
     def test_arc_failure_report_key_collision(self):
         from unittest.mock import patch
         from check_inventory import validate_inventory

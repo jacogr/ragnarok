@@ -3,6 +3,7 @@
 
 """Prepared-execution reporting must reject partial output, substituted engines and invalid clocks/cache observations."""
 import unittest
+from harness_fixtures import make_plan
 from pvm_prepared_blocks import parse_output, summary
 
 
@@ -153,13 +154,13 @@ class PreparedExecutionToolTests(unittest.TestCase):
 
     def test_manual_measurement_scope_preserves_existing_gates(self):
         """Historical prepared comparisons remain local; ordinary native tests retain their Make entry."""
-        from native_checks import ROOT
-        text=(ROOT/'.github/workflows/ci.yml').read_text()
-        self.assertNotIn('  prepared-pvm:\n',text)
-        make = (ROOT/'Makefile').read_text()
-        self.assertIn('tools/pvm_prepared_blocks.py --counts --timings', make)
+        # Default verification cannot acquire these expensive optional measurements under another job name.
+        self.assertNotIn('tools/pvm_prepared_blocks.py',make_plan('check'))
+        measured=make_plan('profile-pvm-prepared', skip=('setup','check-inventory'))
+        self.assertIn('tools/pvm_prepared_blocks.py --counts --timings',measured)
         for target in ('check-pvm-prepared', 'profile-pvm-prepared'):
-            # A clean runner must fetch the locked reference dependencies before its offline build.
-            recipe = make.split(target+': setup check-inventory\n')[1].split('\n\n')[0]
-            self.assertIn('cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml', recipe)
-            self.assertLess(recipe.index('cargo fetch'), recipe.index('$(PYTHON)'))
+            # A clean runner must fetch locked dependencies before its offline driver starts.
+            recipe=make_plan(target, skip=('setup','check-inventory'))
+            fetch='cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml'
+            self.assertIn(fetch,recipe)
+            self.assertLess(recipe.index(fetch),recipe.index('tools/pvm_prepared_blocks.py'))

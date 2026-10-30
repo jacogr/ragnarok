@@ -8,7 +8,7 @@ import unittest
 import textwrap
 import tempfile
 from unittest.mock import Mock, patch
-from workflow_fixtures import event_context, expression, job_condition, job_section, family_section
+from workflow_fixtures import event_context, expression, job_condition, job_section, family_section, commands, artifact_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('interpreter_linux',ROOT/'tools/pvm_interpreter_compare.py')
@@ -164,14 +164,13 @@ class InterpreterLinuxTests(unittest.TestCase):
                         parsed['lifecycle']=[dict(restore_ns=2,cpu_ns=100,teardown_ns=1,lifecycle_ns=103) for _ in range(13)]
                     runs.append(dict(case=case,order=order,role=role,parsed=parsed))
         report=dict(status='passed',master='master',candidate='candidate',prepared_baseline='a'*40,runs=runs)
-        self.assertIn('Current / prior',comparison.summary(report))
         with self.assertRaises(ValueError):
             comparison.summary(dict(report,runs=[row for row in runs if row['role']!='baseline']))
 
     def test_optional_baseline_fetch_rejects_non_commit_input(self):
         """The dispatch input never becomes a Git option or executable shell fragment."""
         section=job_section((ROOT/'.github/workflows/ci.yml').read_text(),'pvm-comparison')
-        block=section.split("python3 - <<'PYBASE'\n",1)[1].split('          PYBASE',1)[0]
+        block=next(command for command in commands(section) if "python3 - <<'PYBASE'" in command).split("python3 - <<'PYBASE'\n",1)[1].split('\nPYBASE',1)[0]
         source=textwrap.dedent(block)
         for value in ('','a'*40,'HEAD','--upload-pack=bad','a'*40+'; command','A'*40):
             with self.subTest(value=value),patch.dict('os.environ',PVM_COMPARE_PREPARED_BASE=value),patch('subprocess.run') as fetch:
@@ -192,13 +191,12 @@ class InterpreterLinuxTests(unittest.TestCase):
             # Inspect applicable steps, so a command present only on the wrong native runner cannot satisfy this contract.
             with self.subTest(architecture=group):
                 native = family_section(text,'pvm-comparison',group)
-                self.assertIn('run: make check-pvm-native',native)
-                self.assertIn('run: make bench-pvm-'+command+'-applications',native)
-                self.assertNotIn('run: make bench-pvm-'+other+'-applications',native)
-                self.assertIn('build/tests/pvm-'+command+'-applications/*.json',native)
-                self.assertIn('build/tests/pvm-'+command+'-applications/summary.md',native)
-        self.assertIn('git fetch --no-tags origin master:refs/remotes/origin/master',section)
-        self.assertIn('if: always()',section)
+                self.assertIn('make check-pvm-native',commands(native))
+                self.assertIn('make bench-pvm-'+command+'-applications',commands(native))
+                self.assertNotIn('make bench-pvm-'+other+'-applications',commands(native))
+                self.assertIn('build/tests/pvm-'+command+'-applications/*.json',artifact_paths(native))
+                self.assertIn('build/tests/pvm-'+command+'-applications/summary.md',artifact_paths(native))
+        self.assertTrue(any('git fetch --no-tags origin master:refs/remotes/origin/master' in command for command in commands(section)))
         for context,wanted in ((event_context(),True),
                 (event_context('pull_request','synchronize'),False),
                 (event_context('workflow_dispatch',suite='bench-pvm'),True),

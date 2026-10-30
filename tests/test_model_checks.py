@@ -32,7 +32,6 @@ class ModelChecks(unittest.TestCase):
         report = dict(status='passed', cases=[dict(model='worker.nif', case='mutant',
             expected='violated', verdict='violated', passed=True)])
         text = summarize(report, 'models')
-        self.assertIn('## Model verification', text)
         self.assertIn('| violated | violated | Pass |', text)
         with self.assertRaises(ValueError):
             summarize(dict(status='passed', cases=[]), 'models')

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Host and build-policy tests for the shared exact-state native application cohort; never execute a compiler."""
 import unittest
+from harness_fixtures import make_plan
 import json
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -15,8 +16,7 @@ class NativeApplicationPolicyTests(unittest.TestCase):
     """A guest ISA or role cannot disguise an unsupported host or create unequal current policy images."""
     def test_make_provisions_both_offline_reference_builds(self):
         """A clean CI runner must fetch both locked references before the offline shared harness starts."""
-        make=(Path(__file__).resolve().parents[1]/'Makefile').read_text()
-        target=make.split('bench-pvm-x86-applications: toolchain sources rust-tools\n',1)[1]
+        target=make_plan('bench-pvm-x86-applications', skip=('toolchain','sources','rust-tools'))
         for crate in ('polkavm','polkavm_doom'):
             fetch='cargo fetch --locked --manifest-path tests/performance/'+crate+'/Cargo.toml'
             self.assertIn(fetch,target)

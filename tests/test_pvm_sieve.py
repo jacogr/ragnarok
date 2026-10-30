@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from harness_fixtures import make_plan
 from unittest.mock import patch
 from dependencies import ROOT
 import pvm_sieve_benchmark as benchmark
@@ -192,7 +193,6 @@ class SieveBenchmarkTests(unittest.TestCase):
 
     def test_opt_in_make_scope(self):
         """The maintained command provisions normally and stays outside default verification."""
-        make=(ROOT/'Makefile').read_text()
-        target=make.split('bench-pvm-sieve: setup\n',1)[1].split('\n\n',1)[0]
+        target=make_plan('bench-pvm-sieve', skip=('setup',))
         self.assertIn('cargo fetch --locked',target);self.assertIn('tools/pvm_sieve_benchmark.py',target)
-        self.assertNotIn('bench-pvm-sieve',make.split('check: ',1)[1].splitlines()[0])
+        self.assertNotIn('tools/pvm_sieve_benchmark.py',make_plan('check'))

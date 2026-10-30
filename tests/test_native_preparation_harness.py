@@ -45,31 +45,14 @@ class NativePreparationHarness(unittest.TestCase):
 
     # Provider order and library/evidence identities must stay consistent across entry points.
     def test_prepared_libraries(self):
-        order = []
-        def crypto(folder):
-            # Both crypto profiles come from the same independent preparation call.
-            order.append(('crypto', folder))
-            return 'crypto', 'observer', {'crypto': 'evidence'}
-        def bandersnatch(folder):
-            # Keep real and observed Rust library identities distinct.
-            order.append(('bandersnatch', folder))
-            return 'bs', 'bs-observer', {'bs': 'evidence'}
-        def polkavm(folder):
-            # The optional runtime has its own library and evidence, without executing Cargo here.
-            order.append(('polkavm', folder))
-            return 'polkavm', {'polkavm': 'evidence'}
-        def quic():
-            # QUIC preparation owns its certificate workspace and takes no caller folder.
-            order.append(('quic', None))
-            return 'quic', 'certificates', {'quic': 'evidence'}
-        with patch('nimony_crypto.prepare', side_effect=crypto), patch(
-                'bandersnatch_native.prepare', side_effect=bandersnatch), patch(
-                'build_polkavm.prepare', side_effect=polkavm), patch(
-                'nimony_quic.prepare', side_effect=quic), patch(
+        # Provider return values are external build/fixture boundaries; no internal call order is required.
+        with patch('nimony_crypto.prepare', return_value=('crypto', 'observer', {'crypto': 'evidence'})), patch(
+                'bandersnatch_native.prepare', return_value=('bs', 'bs-observer', {'bs': 'evidence'})), patch(
+                'build_polkavm.prepare', return_value=('polkavm', {'polkavm': 'evidence'})), patch(
+                'nimony_quic.prepare', return_value=('quic', 'certificates', {'quic': 'evidence'})), patch(
                 'storage_io_observer.prepare', return_value=('storage-io', {'io': 'evidence'})), patch(
                 'subprocess.run', side_effect=AssertionError('Native build escaped provider mocks')):
             libraries, certificates, evidence = native_preparation.prepare_libraries(Path('/fixture'))
-        self.assertEqual(order, [('crypto', Path('/fixture')), ('bandersnatch', Path('/fixture')), ('polkavm', Path('/fixture')), ('quic', None)])
         self.assertEqual(libraries, dict(crypto='crypto', observer='observer', bandersnatch='bs', bandersnatch_observer='bs-observer', quic='quic', storage_io='storage-io', polkavm='polkavm'))
         self.assertEqual(certificates, 'certificates')
         self.assertEqual(evidence, dict(crypto_native={'crypto': 'evidence'}, bandersnatch_native={'bs': 'evidence'}, quic_native={'quic': 'evidence'}, storage_io_native={'io': 'evidence'}, polkavm_native={'polkavm': 'evidence'}))
@@ -105,29 +88,19 @@ class NativePreparationHarness(unittest.TestCase):
         quic.assert_not_called()
         self.assertEqual(recorded, [('crypto_native', {'ready': True})])
 
-    # Preserve feature order, independent evidence names and all consumers when combining shared fixtures.
+    # Preserve all consumers and their independent evidence when combining shared fixtures.
     def test_fixture_assembly(self):
-        names = ('pvm_step', 'pvm_gas', 'store', 'authorization', 'history', 'signing', 'entropy', 'validator', 'ticket', 'sealer')
-        keys = ('pvm_step_fixture', 'pvm_gas_fixture', 'store_replay_fixture', 'authorization_stf_fixture', 'history_stf_fixture',
-                'signing_domain_fixture', 'entropy_stf_fixture', 'validator_stf_fixture',
-                'ticket_stf_fixture', 'sealer_stf_fixture')
-        order = []
         plan = native_preparation.PROVIDERS.plan('root')
         with ExitStack() as stack:
-            runtime = stack.enter_context(patch.object(native_preparation, 'unit_runtime_fixtures', return_value={'runtime': 'manifest'}))
+            stack.enter_context(patch.object(native_preparation, 'unit_runtime_fixtures', return_value={'runtime': 'manifest'}))
+            stack.enter_context(patch('subprocess.run', side_effect=AssertionError('Unmocked native fixture build')))
             for provider in plan:
-                # Mock every declared stage, including newly added ones, so this never invokes real generators.
-                def prepare(folder, name=provider.name):
-                    order.append(name)
-                    return {name: folder/name}, {'fixture_sha256': name}
-                stack.enter_context(patch.object(native_fixtures, provider.function, side_effect=prepare))
+                # Stub all declared generators; omissions cannot unexpectedly launch a compiler.
+                stack.enter_context(patch.object(native_fixtures, provider.function,
+                    return_value=({provider.name: Path('/fixture')/provider.name}, {'fixture_sha256': provider.name})))
             fixtures, evidence = native_preparation.prepare_unit_fixtures(Path('/fixture'), 'certs', 'wires', 'reload')
-        runtime.assert_called_once_with('certs', 'wires', 'reload')
-        self.assertEqual([name for name in order if name in names], list(names))
-        self.assertEqual(list(fixtures), ['runtime', *order])
-        self.assertEqual({key: evidence[key] for key in keys},
-                         {key: {'fixture_sha256': name} for key, name in zip(keys, names)})
-        self.assertEqual(set(evidence), {provider.evidence[0] for provider in plan})
+        self.assertEqual(fixtures, {'runtime': 'manifest', **{p.name: Path('/fixture')/p.name for p in plan}})
+        self.assertEqual(evidence, {p.evidence[0]: {'fixture_sha256': p.name} for p in plan})
 
     # Required profiles select provider families before native builds and expose only requested library names.
     def test_selected_library_providers(self):
@@ -149,7 +122,7 @@ class NativePreparationHarness(unittest.TestCase):
                 libraries, certificates, evidence = native_preparation.prepare_libraries(
                     Path('/fixture'), lambda name, value: recorded.append((name, value)), required=required)
                 self.assertEqual(libraries, wanted)
-                self.assertEqual(tuple(name for name, mock in [('crypto', crypto), ('bs', bs), ('polkavm', polkavm), ('quic', quic)] if mock.called), expected)
+                self.assertEqual({name for name, mock in [('crypto', crypto), ('bs', bs), ('polkavm', polkavm), ('quic', quic)] if mock.called}, set(expected))
                 self.assertEqual(certificates, 'certs' if 'quic' in expected else None)
                 self.assertEqual(dict(recorded), evidence)
                 self.assertEqual(len(evidence), len(expected))
