@@ -69,10 +69,10 @@ def derive(folder, *, clocked=False):
         baseline=once(original,'import ./fast_image','import ./compact_image')
         baseline=once(baseline,'import ../../src/pvm/[program, machine]','import ../../src/pvm/program')
         fast=once(original,'import ../../src/pvm/[program, machine]','import ../../src/pvm/program')
-        fast=once(fast,'  let frozen = snapshotMemory(writer)',
+        marker='  let publishCpu = cpuNs()' if clocked else "  let publishCpu = 0'u64"
+        fast=once(fast,marker,
             '  let cache = readCacheCounters(writer)\n'
-            '  echo "WHOLE_READ_CACHE,", sample, ",", cache[0], ",", cache[1], ",", cache[2]\n'
-            '  let frozen = snapshotMemory(writer)')
+            '  echo "WHOLE_READ_CACHE,", sample, ",", cache[0], ",", cache[1], ",", cache[2]\n'+marker)
         (folder/('baseline_'+guest+'.nim')).write_text(baseline)
         (folder/(guest+'.nim')).write_text(fast)
     controls=once((folder/'controls.nim').read_text(),'import ../../src/pvm/[program, machine]',

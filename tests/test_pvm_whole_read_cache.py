@@ -39,6 +39,8 @@ class WholeReadCacheTests(unittest.TestCase):
             self.assertEqual((folder/'baseline_machine.nim.inc').read_text().replace('import ../../src/pvm/program','import ./program'),(h.ROOT/'src/pvm/machine.nim').read_text())
             self.assertEqual((folder/'fast_image.nim').read_text().replace('import ../../src/pvm/program\ninclude "./private_machine.nim.inc"','import ../../src/pvm/[program, machine]'),accepted)
             self.assertEqual((folder/'pvm_whole_image.h').read_bytes(),(Path(two)/'pvm_whole_image.h').read_bytes())
+            driver=(folder/'pinky.nim').read_text()
+            self.assertLess(driver.index('echo "WHOLE_READ_CACHE,'),driver.index("  let publishCpu = 0'u64"))
 
     def test_checked_cache_admission_and_shared_alias_retirement(self):
         """Cache fields/updates stay private; original load checks precede backup lookup and COW precedes mutation."""
