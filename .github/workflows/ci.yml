@@ -886,3 +886,55 @@ jobs:
             build/tests/jam-network/*.log
             build/tests/jam-network/*.json
             build/tests/jam-network/summary.md
+
+  # Private bounded three-engine DOOM comparison; never merge this diagnostic job.
+  pvm-doom-timing:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke' }}
+    name: Perf / DOOM Three Engines (${{ matrix.family.name }})
+    timeout-minutes: *ci-job-timeout
+    strategy:
+      fail-fast: false
+      matrix:
+        family:
+          - name: Linux ARM64
+            arch: arm64
+            os: *ubuntu-arm-version
+          - name: Linux x86-64
+            arch: x86_64
+            os: *ubuntu-x86-version
+    runs-on: ${{ matrix.family.os }}
+    env:
+      PVM_CI_SYSTEM: Linux
+      PVM_CI_ARCH: ${{ matrix.family.arch }}
+    steps:
+      - *checkout
+      - *python
+      - name: Fetch exact production and retained experimental sources
+        run: |
+          git fetch --no-tags origin 387b90ff4a29273d97e5a424e8eda1871898e05b
+          git fetch --no-tags origin 17672e5a0fe9992027e502da216f054ae0bab583
+      - name: Qualify two-call DOOM and compare all three engines to untraced reference
+        run: make check-pvm-doom-timing
+      - name: Retain raw CPU, exact images and complete state/source/input controls
+        if: ${{ always() }}
+        uses: *upload-artifact
+        with:
+          name: pvm-doom-timing-${{ matrix.family.arch }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build/ci/*.log
+            build/tests/pvm-doom-timing/*.json
+            build/tests/pvm-doom-timing/*.log
+            build/tests/pvm-doom-timing/consumer.nim
+            build/tests/pvm-doom-timing/production-0
+            build/tests/pvm-doom-timing/production-1
+            build/tests/pvm-doom-timing/experimental-0
+            build/tests/pvm-doom-timing/experimental-1
+            build/tests/pvm-doom-timing/reference-0
+            build/tests/pvm-doom-timing/reference-1
+            build/tests/pvm-doom-timing/reference-source/
+            build/tests/pvm-doom-timing/retained-inputs/
+            build/tests/pvm-doom-timing/retained-output/
+            build/tests/pvm-doom/*.json
+            build/tests/pvm-doom/*.log

@@ -468,7 +468,8 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
         self.assertEqual(jobs, ['build', 'unit', 'failures', 'e2e', 'interop',
-                                'pvm-doom-backends', 'perf', 'pvm-comparison', 'pvm-fuzz'])
+                                'pvm-doom-backends', 'perf', 'pvm-comparison', 'pvm-fuzz',
+                                'pvm-doom-timing'])
         self.assertNotIn('needs:', text)
         for job, group in [('build', 'Build'), ('unit', 'Unit'), ('failures', 'Contract'),
                            ('e2e', 'E2E'), ('interop', 'Interop'), ('pvm-doom-backends', 'Interop'),

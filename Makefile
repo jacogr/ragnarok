@@ -659,3 +659,9 @@ bench-pvm-x86-applications: toolchain sources rust-tools
 .PHONY: profile-pvm-x86-jit
 profile-pvm-x86-jit:
 	$(PYTHON) tools/pvm_x86_jit_profile.py --paired-baseline --include-init --include-minimal
+
+# Private DOOM-only timing experiment: never merge this diagnostic entry point.
+.PHONY: check-pvm-doom-timing
+check-pvm-doom-timing: check-inventory toolchain sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_doom_timing.py
