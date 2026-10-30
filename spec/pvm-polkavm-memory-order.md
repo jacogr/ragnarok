@@ -11,12 +11,13 @@ prose/equation conflict and the separate mapped-last-byte deviation. This supers
 the prior local wrapping-access gate at the scalar owner, not by invocation-only
 conversion of a local error into panic.
 
-PolkaVM remains pinned at `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`.
-`spec/polkavm-pins.json` records its cross-check role and the SHA-256 of both
-`crates/polkavm/src/tests.rs` and `crates/polkavm/src/interpreter.rs`.
-GP0.8.0 stays at `07f041dabd073f9018b418e9ee72e79dd2185401` and vectors at
-`d3c089c9a1d5352ad353626d7a2db8589f137b2a`. No upstream code, compiler,
-dependency version or gitlink changes; Rust is not a production PVM dependency.
+The original adoption evidence used PolkaVM `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`,
+GP0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401` and vectors
+`d3c089c9a1d5352ad353626d7a2db8589f137b2a`; those observations retain their exact
+historical identities. Current optional runtime/reference sources use
+`acff91f0df4494b576471feb0c031066ab7406df`, recorded with inspected source hashes in
+[PolkaVM pins](polkavm-pins.json). The [stack-clamp qualification](pvm-polkavm-stack-clamp.md)
+changes no independent interpreter semantics or approved memory-order exception.
 
 ## Exact rule and source evidence
 

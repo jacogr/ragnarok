@@ -3,7 +3,9 @@
 `make fuzz-pvm-upstream` runs the original PolkaVM fuzz targets and separately
 compares JAM-adapted generated programs with Ragnarök. It changes no production
 PVM code and is independent of the prepared-execution experiment and pvm #8.
-The reference commit remains `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`.
+The current reference commit is `acff91f0df4494b576471feb0c031066ab7406df`; the
+[stack-clamp qualification](pvm-polkavm-stack-clamp.md) records the three-commit delta.
+Historical campaign receipts and frozen replay provenance keep their original revision.
 
 ## Original campaigns
 
@@ -27,7 +29,10 @@ ignored manifest are relocated to the pristine vendored crates. Target bodies,
 The original VM target retains its `Latest64` profile and randomized interpreter
 cache settings. `CORRECTNESS_FUZZER` is removed from the subprocess environment,
 so these runs do not select upstream's compiler comparison mode. Running these
-Rust targets alone provides no evidence about Ragnarök's interpreter.
+Rust targets alone provides no evidence about Ragnarök's interpreter. Upstream #428
+now adds a separate correctness-fuzzer CI row and reuses one engine per backend; this
+runner continues to require interpreter campaigns and does not claim compiled-backend
+qualification. Upstream #427 makes allocator free operations actually free nonzero allocations.
 
 Make installs the exact upstream `nightly-2025-03-29` separately from our host
 Rust and Nimony toolchains. Cargo uses `--locked`. The build applies libFuzzer

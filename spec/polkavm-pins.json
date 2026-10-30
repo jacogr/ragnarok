@@ -1,12 +1,14 @@
 {
+  "guest_artifact_commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
   "repository": "paritytech/polkavm",
   "path": "vendor/polkavm",
-  "commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "commit": "acff91f0df4494b576471feb0c031066ab7406df",
   "role": "optional explicit runtime engine and implementation cross-check; Gray Paper is primary; approved fixture exceptions are documented in spec/graypaper-discrepancies.md",
   "source_sha256": {
-    "crates/polkavm/src/interpreter.rs": "315d0267e74c456ff71a8beaa196481d27ab9400a2b5daab9ef5ca2d0b07b5a9",
-    "crates/polkavm/src/tests.rs": "9ff58513983fea317d1d118980ebe69fa24d566457a214a8e3e387414cd307c6",
-    "fuzz/fuzz_targets/fuzz_polkavm.rs": "9d428027b1f57ba1c5ff1937051ff847368bb2b1dea16ac75eaa9cc0711e3ec0",
+    ".github/workflows/rust.yml": "4767ae1745ee4c09bc9c67ff4ed45d5ab427989e549697339c82e80d23362fb7",
+    "crates/polkavm/src/interpreter.rs": "318f555d8e29b98dbf7e0123a9153d67dd04bc87587ed81e2b73c100193f3e9d",
+    "crates/polkavm/src/tests.rs": "b074fa3122cf9b96269eff686c90cce7a4207232d6a71ea6d2d2f92228d6b00f",
+    "fuzz/fuzz_targets/fuzz_polkavm.rs": "34b3c4c0b270af9978db5e7f5518360e1163f4628fd4dfabf75676854564a65e",
     "fuzz/fuzz_targets/fuzz_page_set.rs": "3fd40c786b40f7522e93eeb8260a94b9834ce0a130b76e8008178349dcab42a9",
     "fuzz/.gitignore": "a24ed50fc1f28dcafa5d4f9eac712faf4b1ffd7910177f5ce30289197a7a2484",
     "ci/jobs/fuzz.sh": "cc7f73a0bb7e4c258db9d8514e8499b99e86e499dc36ad2c2825a3320d38b546",
@@ -46,7 +48,7 @@
     "fuzz/Cargo.lock": "2fa069de01a3605afabcc0b4c9983850bda12d603f55baa568c3a3a70fc40ff7",
     "fuzz/rust-toolchain.toml": "0efa0eba6982366e2d7f6eff84fac9afe9b065c1df8fd03cff6692cfbb86868a",
     "fuzz/fuzz_targets/fuzz_extended_decode.rs": "5b075ff7972777ac28d66b165204848d8b6b166c48fdb52c764de552058a66a6",
-    "fuzz/fuzz_targets/fuzz_generic_allocator.rs": "f864f92a00dbd856211c86294bcb1ee79e1c9883e50d14ae3c47c208aecd3477",
+    "fuzz/fuzz_targets/fuzz_generic_allocator.rs": "4c4583314820bab771a9cfe86dc928592ea84e873c1d69f55b7fb82a0e648d97",
     "fuzz/fuzz_targets/fuzz_linker.rs": "6ab673657df73ae02064402dd7b223ff403ccf774a2a8c8e544b2eac6986c430",
     "fuzz/fuzz_targets/fuzz_program_blob.rs": "3c88ecd4c50e842596da97629750a979874e1183683e4207f555abbc608e6a21",
     "fuzz/fuzz_targets/fuzz_shm_allocator.rs": "17801d8b001ce11452a9ef93b11158aafdba505c121ef18e5f6ec4cbe7b7ad4b"

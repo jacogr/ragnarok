@@ -10,7 +10,7 @@ use polkavm_common::program::InstructionSetKind;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 /// Immutable identity used by both the loaded-library handshake and local engine diagnostics.
-const REVISION: &std::ffi::CStr = c"69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa";
+const REVISION: &std::ffi::CStr = c"acff91f0df4494b576471feb0c031066ab7406df";
 
 /// Exclusive invocation owner; module and engine lifetimes are retained by the public instance.
 pub struct Rpvm {

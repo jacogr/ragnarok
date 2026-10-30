@@ -41,7 +41,8 @@ def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None,guest='sieve'):
         if digest(path)!=expected:raise ValueError('Changed sieve fixture: '+str(path))
     provenance=json.loads((target/('provenance.json' if guest=='sieve' else guest+'.provenance.json')).read_text())
     pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
-    if provenance['schema']!=1 or provenance['polkavm_commit']!=pins['commit']:
+    # Frozen guest generation and the currently executing host runtime have distinct exact identities.
+    if provenance['schema']!=1 or provenance['polkavm_commit']!=pins.get('guest_artifact_commit'):
         raise ValueError('Sieve provenance pin mismatch')
     for name,key in ((('sieve' if guest=='sieve' else guest)+'.polkavm','artifact_sha256'),(('checked_entry' if guest=='sieve' else guest+'.checked_entry')+'.rs.inc','checked_entry_sha256'),
                      ('guest-Cargo.lock','guest_lock_sha256')):
@@ -53,8 +54,10 @@ def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None,guest='sieve'):
             if digest(target/name)!=expected:raise ValueError('Changed guest build manifest')
     if upstream is not None:
         # Public reference source and every registry package stay at their pristine existing pins.
-        for name,expected in {**pins['source_sha256'],**provenance['upstream_sources']}.items():
-            if digest(upstream/name)!=expected:raise ValueError('Changed upstream source: '+name)
+        for sources in (pins['source_sha256'],provenance['upstream_sources']):
+            for name,expected in sources.items():
+                # Validate both contracts independently; one cannot overwrite the other's source commitment.
+                if digest(upstream/name)!=expected:raise ValueError('Changed upstream source: '+name)
         if guest!='sieve':
             # Adapted source prefixes and normalized manifests are declared, never silently patched.
             if provenance.get('guest')!=guest:raise ValueError('Guest provenance family mismatch')

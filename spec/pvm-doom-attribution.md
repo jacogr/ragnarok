@@ -6,13 +6,16 @@ remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
 
 ## Scope and correctness
 
-Use the existing PolkaVM pin `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`, its
+Current runs use the exact [PolkaVM pin](polkavm-pins.json) and its
 `test-data/doom_64.elf.zst`, shareware WAD and upstream golden images. Asset
 identities are in [pvm-doom-assets.json](pvm-doom-assets.json); all Cargo packages
 retain existing upstream lock identities. Public linking targets JamV1 with an
 explicit 16 KiB minimum stack. The original 8 KiB declaration traps under 4 KiB pages;
 16 KiB restores the stack extent implicitly mapped by the upstream example's
-16 KiB pages. No guest rebuild, vendor/pin upgrade or runtime optimization is included.
+16 KiB pages. The original attribution evidence used `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`
+and remains frozen. The [stack-clamp qualification](pvm-polkavm-stack-clamp.md) advances
+current source identity while proving these asset bytes unchanged; it does not rebuild
+the guest or reinterpret historical timing receipts.
 
 Both runners receive identical complete code/jump-table framing, thirteen
 registers, gas, 4,285 mapped 4 KiB pages and permissions. They compare normal exit,

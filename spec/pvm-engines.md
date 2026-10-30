@@ -6,7 +6,8 @@ All engines use the existing immutable `Program`/`Machine`, `PreparedProgram`, `
 and synchronous `executeWithHost` boundaries. The protocol authority remains the pinned Gray
 Paper and the established `pvm-step`, `pvm-execution`, `pvm-host-execution` and
 `pvm-polkavm-memory-order` contracts. The optional bridge uses only public PolkaVM APIs at
-`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; source/dependency/toolchain pins stay unchanged.
+`acff91f0df4494b576471feb0c031066ab7406df`; see the [stack-clamp qualification](pvm-polkavm-stack-clamp.md).
+Rust dependency and toolchain pins stay unchanged.
 Application and API defaults use the independent `jit` policy; the optional foreign engine never becomes an implicit fallback.
 
 ## Ownership and use

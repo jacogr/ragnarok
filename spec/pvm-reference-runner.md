@@ -2,11 +2,13 @@
 
 ## Scope and authority
 
-Gray Paper 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401` remains primary.
-Pinned PolkaVM at `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` supplies an
+The pinned Gray Paper in [protocol pins](pins.json) remains primary.
+Pinned PolkaVM at `acff91f0df4494b576471feb0c031066ab7406df` supplies an
 implementation cross-check through public APIs. The independent native implementation
 and approved JAM compatibility exceptions remain unchanged. See the
-[discrepancy register](graypaper-discrepancies.md).
+[discrepancy register](graypaper-discrepancies.md) and
+[upstream stack-clamp qualification](pvm-polkavm-stack-clamp.md). Historical receipts
+and frozen fixture provenance retain their original source revisions.
 
 `make check-pvm-reference` provisions the existing pinned Nimony/Rust tools and
 sources, fetches the optional reference crate's locked dependencies, builds its
