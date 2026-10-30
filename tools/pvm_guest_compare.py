@@ -4,15 +4,16 @@
 
 """Compare a resolved PVM revision and working sources using one checked driver and paired guests.
 
-Make owns provisioning. Only library sources vary; fixtures, driver, compiler, flags and pricing
-policies stay fixed. Fresh canonical compiler paths and retained role images preserve reproducible
-images; same-source controls require byte-identical executables before any timing. Successful
+Make owns provisioning. Library sources vary; fixtures, driver bodies, compiler, flags and pricing
+policies stay fixed. Generated driver imports follow each source endpoint's module locations.
+Fresh canonical compiler paths and retained role images preserve reproducible images; same-source controls require byte-identical executables before any timing. Successful
 reports require complete state checks and unchanged byte identities.
 """
 import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import re
 import shutil
 import statistics
 import subprocess
@@ -69,6 +70,87 @@ def working_paths():
     return [source_path(path.relative_to(ROOT).as_posix()) for path in paths]
 
 
+# Module locations are the sole adapter boundary between archived flat sources and the current folders.
+PVM_MODULE_LOCATIONS = {'gas': 'gas/gas', 'gas_plan': 'gas/plan', 'gas_memo': 'gas/memo',
+                        'host_fetch': 'host/fetch', 'host_gas': 'host/gas',
+                        'host_heap': 'host/heap', 'host_log': 'host/log'}
+
+
+def snapshot_imports(source, pvm_root, prefix='../src/pvm/'):
+    """Bind driver import locations to one source tree, preserving bodies, namespaces and module order."""
+    if prefix not in ('../src/pvm/', '../../src/pvm/'):
+        raise ValueError('unsupported snapshot driver import prefix')
+    pvm_root = Path(pvm_root)
+    lines = source.splitlines(keepends=True)
+    edits, index = [], 0
+    while index < len(lines):
+        start = index
+        match = re.match(r'^([ \t]*)import (.*)', lines[index])
+        if match is None:
+            index += 1
+            continue  # Only import declarations can change; comments, literals and executable code remain exact.
+        body = match[2].rstrip('\n')
+        depth = body.count('[')-body.count(']')
+        while depth or body.rstrip().endswith(','):
+            index += 1
+            if index >= len(lines):
+                raise ValueError('incomplete snapshot driver import')
+            body += ' '+lines[index].strip()
+            depth = body.count('[')-body.count(']')
+        index += 1
+        if prefix not in body:
+            continue  # Other imports retain their original source bytes and coordinates.
+        chunks, at, depth = [], 0, 0
+        for offset, char in enumerate(body):
+            depth += (char == '[')-(char == ']')
+            if char == ',' and depth == 0:
+                chunks.append(body[at:offset].strip())
+                at = offset+1
+        chunks.append(body[at:].strip())
+        members = []
+        for chunk in chunks:
+            if '/[' in chunk:
+                parent, tail = chunk.split('/[', 1)
+                if not tail.endswith(']'):
+                    raise ValueError('invalid snapshot driver import group')
+                members.extend(parent+'/'+item.strip() for item in tail[:-1].split(','))
+            else:
+                members.append(chunk)
+        rewritten, changed = [], False
+        for member in members:
+            parsed = re.fullmatch(r'(\S+)(?:\s+as\s+(\w+))?', member)
+            if parsed is None:
+                raise ValueError('invalid snapshot driver module import')
+            module, alias = parsed.groups()
+            if module.startswith(prefix):
+                relative = module[len(prefix):]
+                pair = next(((old, new) for old, new in PVM_MODULE_LOCATIONS.items()
+                             if relative in (old, new)), None)
+                if pair is not None:
+                    available = []
+                    for location in pair:
+                        candidate = pvm_root/(location+'.nim')
+                        if candidate.is_symlink() or (candidate.exists() and
+                                not candidate.resolve().is_relative_to(pvm_root.resolve())):
+                            raise ValueError('foreign snapshot driver module')
+                        if candidate.is_file():
+                            available.append(location)
+                    if len(available) != 1:
+                        raise ValueError('missing or ambiguous snapshot driver module: '+relative)
+                    selected = prefix+available[0]
+                    if selected != module:
+                        alias = alias or module.rsplit('/', 1)[-1]
+                        module, changed = selected, True
+            rewritten.append((module, alias))
+        if changed:
+            # One import per line keeps the original order and explicit aliases without touching runtime code.
+            edits.append((start, index, ''.join(match[1]+'import '+module+
+                (' as '+alias if alias else '')+'\n' for module, alias in rewritten)))
+    for start, end, replacement in reversed(edits):
+        lines[start:end] = [replacement]
+    return ''.join(lines)
+
+
 def snapshot(folder, commit, driver):
     """Copy one exact source endpoint; remove prior owned snapshots so deleted modules cannot survive."""
     if set(driver) != set(DRIVER) or any(type(data) is not bytes for data in driver.values()):
@@ -99,7 +181,9 @@ def snapshot(folder, commit, driver):
     sources.update(driver)
     hashes = {}
     for name, data in sources.items():
-        # Driver bytes are frozen once and reused on both sides; no historic harness or build script is executed.
+        # Frozen driver bodies use the endpoint's exact module locations; generated bytes remain sealed below.
+        if name in DRIVER and name.endswith('.nim'):
+            data = snapshot_imports(data.decode(), folder/'src/pvm', '../../src/pvm/').encode()
         target = folder/name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)

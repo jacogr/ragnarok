@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT/'tools'))
 from pvm_comparison_policy import policy_receipt
 from native_checks import NativeChecks
 from pvm_guest_inputs import prepare_inputs, digest
-from pvm_guest_compare import revision, unchanged
+from pvm_guest_compare import revision, unchanged, snapshot_imports
 from pvm_sieve_report import parse_process_output
 from pvm_prepared_blocks import parse_output as parse_prepared_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
@@ -289,6 +289,7 @@ class Comparison:
             ROOT/'tools/native_checks.py',ROOT/'tools/pvm_comparison_policy.py',
             ROOT/'tools/pvm_prepared_blocks.py',ROOT/'tools/pvm_sieve_report.py',
             ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_guest_inputs.py',
+            ROOT/'tools/pvm_guest_compare.py',
             ROOT/'tools/setup_nimony.py',ROOT/'spec/toolchain.json']}
         self.report['compiler_version'] = subprocess.check_output([str(installed()[0]),'--version'],text=True).strip()
         self.report['clang_version'] = subprocess.check_output(['clang','--version'],text=True).splitlines()[0]
@@ -333,12 +334,12 @@ class Comparison:
                 for driver, source in DRIVERS.items():
                     # Rebase only imports into the canonical snapshot; do not inject another implementation.
                     text = source.read_text().replace('../../src/', '../src/')
-                    (drivers/(driver+'.nim')).write_text(text)
+                    (drivers/(driver+'.nim')).write_text(snapshot_imports(text, canonical/'src/pvm'))
             else:
                 for driver, source in (('kernel', ROOT/'tests/performance/pvm_sieve.nim'), ('doom', ROOT/'tests/performance/pvm_doom.nim')):
                     # The same checked public driver is imported from one-level-up source coordinates.
                     text = subprocess.check_output(['git','show',commit+':'+str(source.relative_to(ROOT))],cwd=ROOT,text=True).replace('../../src/', '../src/')
-                    (drivers/(driver+'.nim')).write_text(text)
+                    (drivers/(driver+'.nim')).write_text(snapshot_imports(text, canonical/'src/pvm'))
             self.report.setdefault('sources', {})[role] = {str(p.relative_to(canonical)):digest(p) for p in sorted(canonical.rglob('*.nim'))}
             for driver in ('kernel','doom'):
                 images = []

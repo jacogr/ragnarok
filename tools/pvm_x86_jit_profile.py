@@ -21,7 +21,7 @@ import subprocess
 from native_checks import NativeChecks, ROOT
 from setup_nimony import cache_directory, installed
 from pvm_arm64_jit_applications import parse_run
-from pvm_guest_compare import unchanged
+from pvm_guest_compare import unchanged, snapshot_imports
 from pvm_instruction_profile import calibrate_scope, collect, profile_counts, exclusive_costs
 from pvm_native_ci import host_identity
 
@@ -113,7 +113,8 @@ def diagnostic_image(checks, cohort, role, case, report):
     expected={p:v for p,v in cohort['sources'][role].items() if p.startswith(('src/','native/pvm_jit/'))}
     if sources!=expected: raise ValueError('Diagnostic runtime sources differ from sealed cohort')
     driver=canonical/'benchmarks'/(family+'.nim');driver.parent.mkdir()
-    driver.write_text((ROOT/('tests/performance/pvm_doom.nim' if family=='doom' else 'tests/performance/pvm_sieve.nim')).read_text().replace('../../src/','../src/'))
+    text = (ROOT/('tests/performance/pvm_doom.nim' if family=='doom' else 'tests/performance/pvm_sieve.nim')).read_text().replace('../../src/','../src/')
+    driver.write_text(snapshot_imports(text, canonical/'src/pvm'))
     original=next(b for b in cohort['builds'] if b['role']==role and b['family']==family)
     defines=[*original['defines'],'pvmProfileRequests']
     pair=[]

@@ -18,7 +18,7 @@ import tarfile
 from native_checks import NativeChecks, ROOT
 from pvm_arm64_jit import parse as parse_core, baseline_revision
 from pvm_guest_inputs import prepare_inputs, digest
-from pvm_guest_compare import unchanged
+from pvm_guest_compare import unchanged, snapshot_imports
 from pvm_interpreter_compare import parse_public, parse_candidate
 from pvm_sieve_report import parse_process_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
@@ -167,7 +167,8 @@ def run(architecture="arm64", build=None, baseline=None):
         (canonical/'benchmarks').mkdir()
         for family,name in zip(('kernel','doom'),drivers):
             driver=canonical/'benchmarks'/(family+'.nim')
-            driver.write_text((ROOT/('tests/performance/'+name+'.nim')).read_text().replace('../../src/','../src/'))
+            text = (ROOT/('tests/performance/'+name+'.nim')).read_text().replace('../../src/','../src/')
+            driver.write_text(snapshot_imports(text, canonical/'src/pvm'))
             defines=application_defines(architecture, role, (canonical/'src/pvm/internal/x86_jit.nim').is_file())
             # All public policy roles need identical code-generation settings, including out-of-clock coverage receipts.
             if role in ('interpreter','baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
