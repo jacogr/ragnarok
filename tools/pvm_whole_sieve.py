@@ -228,7 +228,7 @@ def run():
                              if platform.system()=='Darwin' else Path('/proc/cpuinfo').read_text())
         compiler,_=installed();report['compiler']=dict(path=str(compiler),sha256=digest(compiler),
             identity=(compiler.parent.parent/'NIGHTLY.txt').read_text())
-        pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins,fetch=True)
+        pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins,fetch=False)
         report['fixture']=verify_fixture(upstream=upstream,guest='sieve')
         rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
         rust_binary=Path(subprocess.check_output(['rustup','which','--toolchain',rust,'rustc'],text=True).strip())
@@ -272,7 +272,6 @@ def run():
             if path.name=='sieve.rs':text=reference_projection(text)
             (crate/('src/'+path.name if path.suffix=='.rs' else path.name)).write_text(text)
         source_identities.update({p:digest(p) for p in crate.rglob('*') if p.is_file()})
-        report['builds'].append(command(['rustup','run',rust,'cargo','fetch','--locked','--manifest-path',crate/'Cargo.toml'],'reference-fetch'))
         report['builds'].append(command(['rustup','run',rust,'cargo','build','--release','--locked','--offline','--manifest-path',crate/'Cargo.toml','--target-dir',build/'reference-target'],'reference-build'))
         reference=build/'reference-target/release/ragnarok-pvm-benchmark'
         driver=subprocess.check_output(['git','show',PRODUCTION+':tests/performance/pvm_sieve.nim'],cwd=ROOT).decode()
