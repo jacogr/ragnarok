@@ -26,7 +26,7 @@ def validate_requirements(records):
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
         # Fixed heap-cap and backend profiles exercise refusal without allowing arbitrary compiler switches.
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
-                    'pvmX86Jit', 'pvmX86JitRefuse'},
+                    'pvmX86Jit', 'pvmX86JitRefuse', 'pvmInnerPreparedReceipt'},
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
