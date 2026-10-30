@@ -71,13 +71,25 @@ automatic alphabetical scheduling from those validated files. No runner edit or 
 The declared cases supply expected identities before execution; never infer expectations from
 observed results. Specialized drivers own typed enum cases tagged with `# @@ProbeCases` and expose
 `--list-cases`; add their origin/diagnostic combinations to the specialized source-owned plan.
-Preserve positive controls and intentional language-policy cases.
+Preserve positive controls and intentional language-policy cases. Establish the intended error/state
+before forbidden extraction. A setup refusal must have a different status or diagnostic from the
+expected access assertion; do not accept any crash as success. Avoid exposing a static postcondition
+that turns the runtime witness into compile-time rejection.
+
+Build sharing is opt-in via a family's `bundle` field. Use a small group with matching source
+directory, libraries and defines, export `runFailureProbe(selection: string)` from each fixture,
+and retain its standalone `when isMainModule` entry. Cases keep their original identities,
+selection argument and precise diagnostics. Measure representative standalone/bundled cold-cache
+builds and run positive controls before expanding a bundle. Do not trade probe coverage or process
+isolation for fewer binaries. Selected production-profile regressions need a documented defect or
+mechanism rationale; preserve their ordinary checked-profile execution.
 
 Typed specialized drivers declare `# @@Verification={"group": "failure_driver"}` in the header
 of `tests/native/nimony_<family>_results.nim`, alongside their `@@ProbeCases` enum. Source discovery
 supplies family paths; removing the header from a typed probe fails preflight. Register a matching
 `run_<family>` handler in `tools/failure_controls.py` with `@CONTROLS.case`, its execution rank
-and source-based case planner. Each handler owns build flags, fixtures and exact predicates.
+and source-based case planner. Declare native `libraries` and fixture `sources` for non-typed
+controls; typed drivers supply their own source root. Each handler owns build flags, fixtures and exact predicates.
 Discovery requires one handler per marked source. Language/resource controls use the same local
 registration with explicit plans and identity fields. No central driver or handler list is needed.
 

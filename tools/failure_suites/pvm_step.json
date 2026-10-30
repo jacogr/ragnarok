@@ -59,5 +59,6 @@
       "diagnostic": "r.status == None",
       "description": "PVM step whole-block scan refusal before a register mutation"
     }
-  ]
+  ],
+  "bundle": "pvm-core"
 }

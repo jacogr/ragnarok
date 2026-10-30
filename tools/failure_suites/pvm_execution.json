@@ -103,5 +103,6 @@
       "diagnostic": "r.status == None",
       "description": "PVM execution result selection invalid"
     }
-  ]
+  ],
+  "bundle": "pvm-core"
 }

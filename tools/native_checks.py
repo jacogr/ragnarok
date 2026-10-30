@@ -56,10 +56,13 @@ class NativeChecks:
 
 
     # Keep ARC, Clang and checks fixed; production-like callers retain ThinLTO by default.
-    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None):
+    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None, lto=None, profile_directory=None):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
-        if self.lto:
+        effective_lto = self.lto if lto is None else lto
+        if type(effective_lto) is not bool:
+            raise ValueError("Native LTO profile must be boolean")
+        if effective_lto:
             # Units/contracts may opt out of link-time optimization without disabling runtime checks.
             flags += ['--passC:-flto=thin', '--passL:-flto=thin']
         if platform.system() == 'Linux':
@@ -94,7 +97,7 @@ class NativeChecks:
                 # Header content changes must invalidate a profile just like changed native libraries.
                 if used:
                     inputs.extend(sorted((ROOT/'native'/directory).glob('*.h')))
-            profile = dict(directory=str(Path(source).resolve().parent), flags=flags,
+            profile = dict(directory=str(Path(profile_directory or Path(source).parent).resolve()), flags=flags,
                            native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
             identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
             cache_name = 'profile-'+identity

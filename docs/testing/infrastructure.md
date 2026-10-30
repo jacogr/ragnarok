@@ -192,27 +192,54 @@ case data are included in report provenance.
 
 Contract verification opts into compiler-intermediate reuse only for matching source directories,
 ordered compiler/linker profiles, native library/header contents and compiler installations.
-Each driver retains its own executable and every probe remains a separate process. A group-owned
+Ordinary families normally retain their own executable. Opt-in `bundle` metadata groups compatible
+fixtures behind generated module-isolated dispatchers; every probe remains a separate process.
+A bundle must have one source directory and identical ordered libraries/defines. The dispatcher
+appends a family routing argument, preserving the original selection at argv 1, diagnostic,
+identity and child log. It imports each fixture module separately and calls its exported
+`runFailureProbe(selection)`. Standalone fixture execution remains supported. Failed bundle
+builds cannot execute stale binaries. Generated mains explicitly reuse the original source-directory
+profile, extending the existing intermediate cache rather than creating a separate cache system. A group-owned
 advisory lock protects shared build intermediates; other verification groups retain their existing
 per-build caches. Independent unit corpora use this same profile-reuse path. Progress logs identify
 the active build and elapsed time.
 
 Units, independent corpora and runtime contracts keep ARC, Clang, release/speed optimization and
-runtime checks enabled, but omit LTO to reduce compilation/linking cost. E2E, performance
+runtime checks enabled, but normally omit LTO to reduce compilation/linking cost. A small
+`production_regressions` control additionally qualifies documented slicing, pointer-refinement and
+noncopyable sequence-move mechanisms, plus premise-checked PVM result refusals, under both checked
+and ThinLTO profiles. Its source enum, compiled enumeration, exact positive output and runtime
+rejection predicates remain mandatory for both profiles. See the
+[bounded optimization record](../../spec/runtime-contract-builds-2026-10-30.md). E2E, performance
 workloads and the shipped peer use ThinLTO (`--passC:-flto=thin --passL:-flto=thin`), retaining
 release/speed optimization and all runtime checks. The shared native builder defaults to
 ThinLTO, including future production-like and fuzz callers unless they deliberately opt out.
 LTO flags participate in the compiler cache identity, so incompatible intermediates cannot mix.
 
-CI partitions discovered ordinary contract families and one specialized-control bundle across
+CI partitions compatible ordinary build units and one specialized-control bundle across
 six bounded jobs. The shared run-ID seed shuffles these work items before round-robin assignment;
 controls keep their dependency order inside their randomly assigned bundle and execute once.
 Each partition requires its exact predeclared identities and diagnostic predicates; the stable
 contract check requires all partitions to pass. Reproduce a seeded scope on the same revision with
-`CI_SHARD_SEED=<run-id> FAILURE_SHARD=2/6 make check-failures`. Unseeded local partitions retain their
-historical assignment; plain `make check-failures` remains complete. Ordinary partitions prepare
-only their declared native providers; the specialized owner retains full setup. CI jobs share a 60-minute limit; command
+`CI_SHARD_SEED=<run-id> FAILURE_SHARD=2/6 make check-failures`. Unseeded partitions also keep bundled families together; plain `make check-failures` remains complete.
+`failure-setup` selects existing Make prerequisites from the partition: compiler, pinned sources,
+build metadata, required native Cargo preparation, and UI assets only for transitive UI-server
+consumers. Specialized handlers declare their native providers and fixture source roots beside
+their plans. Contract does not need model tooling or the unused integration corpus inputs.
+Full application setup retains all original preparation. CI jobs share a 60-minute limit; command
 timeouts remain unchanged, and summaries identify the shard and seed.
+
+Contract reports distinguish timed Make setup (`build/ci/failure-setup.json`), native-provider
+preparation, fixture preparation, actual compiler invocations and child execution. Shared build
+receipts count compiler time once. To measure the pilot in CI, dispatch the workflow with
+`contract_measure_bundles=true` (also included in explicit PR `ci:full` requests); the shard owning `pvm-core` performs two counterbalanced pairs
+of standalone versus bundled builds using fresh private intermediate caches, identical checked
+flags and the same rejection/positive-control workload. The optional measurement adds work and
+does not replace scheduled checks. Each invocation allocates a new private measurement tree, retaining earlier logs and caches for
+audit while preventing them from warming a repeated measurement. Logs and complete evidence
+remain in the Contract artifacts.
+Do not infer aggregate CI savings from this small pilot or mix its cold-cache measurements with
+ordinary shard totals.
 
 Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
 `tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
