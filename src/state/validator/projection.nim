@@ -66,8 +66,8 @@ proc projectedValidatorAt*(projection: ValidatorActivityProjection, epoch: Stati
   ValidatorActivityResult[ValidatorActivity](status: ValidatorActivityError.None,
     completed: data.rows[epoch][int(uint64(index))])
 
-# Checked fixed-counter addition is explicit because Nimony arithmetic wraps.
 proc add(row: var ValidatorActivity, measure: ValidatorMeasure, amount: uint64): bool =
+  ## Checked fixed-counter addition is explicit because Nimony arithmetic wraps.
   let prior = uint64(uint32(row[measure]))
   if amount > uint64(high(uint32))-prior: return false # Check before addition/narrowing.
   row[measure] = ValidatorCounter(uint32(prior+amount))

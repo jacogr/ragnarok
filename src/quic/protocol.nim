@@ -28,17 +28,21 @@ type
 func error*(value: LengthResult): FrameError =
   ## Read the reason without allowing callers to retag results or forge successful metadata.
   value.status
+
 func error*(value: FrameResult): FrameError =
   ## Preserve incomplete versus malformed frame outcomes without exposing partial payload metadata.
   value.status
+
 func value*(value: LengthResult): int {.inline, requires: value.status ==
     FrameError.None.} =
   ## Successful bounded lengths are usable only after selecting/checking success.
   value.completed
+
 func size*(value: FrameResult): int {.inline, requires: value.status ==
     FrameError.None.} =
   ## The completed payload size is absent on default, pending and rejected frames.
   value.payloadSize
+
 func extent*(value: FrameResult): int {.inline, requires: value.status ==
     FrameError.None.} =
   ## The completed frame extent includes its selector/header and is absent until exact FIN.

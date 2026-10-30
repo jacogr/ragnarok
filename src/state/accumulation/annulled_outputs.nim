@@ -35,10 +35,12 @@ type
 func error*[T](outcome: AnnulmentOutputsResult[T]): AnnulmentOutputsError =
   ## Inspect the selected reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: AnnulmentOutputsResult[T]): T {.inline,
     requires: outcome.status == AnnulmentOutputsError.None.} =
   ## Extract complete selected success under checked optimized contracts.
   outcome.completed
+
 func comparePair(left, right: AccumulationOutput): int =
   ## Preserve the established pair-set order; genuine unique sources permit only one commitment per service here.
   if uint32(left.service) < uint32(right.service): return -1
@@ -98,6 +100,7 @@ proc annulmentOutputsInfo*(plan: PreparedAnnulmentOutputs): AnnulmentOutputsResu
       status: AnnulmentOutputsError.Uninitialized) # No fabricated empty projection.
   AnnulmentOutputsResult[AnnulmentOutputsInfo](status: AnnulmentOutputsError.None,
       completed: data.info)
+
 proc annulmentOutputsSource*(plan: PreparedAnnulmentOutputs): AnnulmentOutputsResult[
     PreparedAccumulationAnnulment] =
   ## Retain the exact genuine conflict decisions that authorized pair presence.
@@ -106,6 +109,7 @@ proc annulmentOutputsSource*(plan: PreparedAnnulmentOutputs): AnnulmentOutputsRe
       status: AnnulmentOutputsError.Uninitialized) # Default owners have no source.
   AnnulmentOutputsResult[PreparedAccumulationAnnulment](status: AnnulmentOutputsError.None,
       completed: data.source)
+
 proc annulmentOutputAt*(plan: PreparedAnnulmentOutputs,
     index: AnnulmentOutputIndex): AnnulmentOutputsResult[AccumulationOutput] =
   ## Copy a complete service/hash pair after a full-width bound check, preserving real zero commitments.
@@ -116,6 +120,7 @@ proc annulmentOutputAt*(plan: PreparedAnnulmentOutputs,
       status: AnnulmentOutputsError.InvalidIndex) # Upper bits never alias an existing ordinal.
   AnnulmentOutputsResult[AccumulationOutput](status: AnnulmentOutputsError.None,
       completed: data.values[int(uint64(index))])
+
 proc annulmentOutputsEntry*(plan: PreparedAnnulmentOutputs): AnnulmentOutputsResult[StateEntry] =
   ## Encode fresh C(16)-format bytes for this selected set; no state store or final block output is published.
   let data = plan.data

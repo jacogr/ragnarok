@@ -54,26 +54,31 @@ type
 func error*[T](outcome: CurrentAccumulationActivityResult[T]): CurrentAccumulationActivityError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationActivityResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationActivityError.None.} =
   ## Extract only complete selected success in checked optimized builds.
   outcome.completed
+
 func preimageError*[T](outcome: CurrentAccumulationActivityResult[
     T]): PreimageTransitionError {.inline,
 
 requires: outcome.status == CurrentAccumulationActivityError.PreimageFailure.} =
   ## Inspect only selected original-parent admission refusal.
   outcome.preimageReason
+
 func coreError*[T](outcome: CurrentAccumulationActivityResult[
     T]): CoreServiceActivityError {.inline,
 
 requires: outcome.status == CurrentAccumulationActivityError.CoreFailure.} =
   ## Inspect only selected pure core/service projection refusal.
   outcome.coreReason
+
 func codecError*[T](outcome: CurrentAccumulationActivityResult[T]): ActivityError {.inline,
     requires: outcome.status == CurrentAccumulationActivityError.CodecFailure.} =
   ## Inspect only selected complete C(13) codec refusal.
   outcome.codecReason
+
 func stateError*[T](outcome: CurrentAccumulationActivityResult[T]): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationActivityError.StateFailure.} =
   ## Inspect only selected private atomic-publication refusal.

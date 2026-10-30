@@ -33,17 +33,21 @@ type
       requestReason: RequestError
     else:
       discard # No retained continuation source escapes a refused derivation.
+
 func error*[T](outcome: CurrentRequestKeyResult[T]): CurrentRequestKeyError =
   ## Read selected immutable stage only.
   outcome.status
+
 func value*[T](outcome: CurrentRequestKeyResult[T]): T {.inline, requires: outcome.status ==
     CurrentRequestKeyError.None.} =
   ## Extract only fully successful original-key companions or fixed observations.
   outcome.completed
+
 func requestError*[T](outcome: CurrentRequestKeyResult[T]): RequestError {.inline,
     requires: outcome.status == CurrentRequestKeyError.RequestFailure.} =
   ## Preserve exact original request key codec/backend refusal without reclassifying it as absence or limits.
   outcome.requestReason
+
 proc captureCurrentRequestKeys*(source: PreservedCurrentIdentities,
     limits: CurrentRequestKeyLimits): CurrentRequestKeyResult[CurrentRequestKeys] =
   ## Admit all descriptor arrays and finite key work before derivation; no actual successor payload is copied or decoded.
@@ -84,6 +88,7 @@ proc captureCurrentRequestKeys*(source: PreservedCurrentIdentities,
     completed: CurrentRequestKeys(data: RequestKeyData(source: source, rows: rows,
       info: CurrentRequestKeyInfo(services: count, requests: uint64(limits.requests)-requests,
           bytes: budget-available))))
+
 proc requestKeysSource*(source: CurrentRequestKeys): CurrentRequestKeyResult[
     PreservedCurrentIdentities] =
   ## Retain exact original-parent/genuine-update provenance, never a caller supplied target or replacement logical map.
@@ -92,6 +97,7 @@ proc requestKeysSource*(source: CurrentRequestKeys): CurrentRequestKeyResult[
       status: CurrentRequestKeyError.Uninitialized)
   CurrentRequestKeyResult[PreservedCurrentIdentities](status: CurrentRequestKeyError.None,
       completed: data.source)
+
 proc requestKeysInfo*(source: CurrentRequestKeys): CurrentRequestKeyResult[CurrentRequestKeyInfo] =
   ## Copy successful fixed retention/work accounting without mutable array exposure.
   let data = source.data
@@ -99,6 +105,7 @@ proc requestKeysInfo*(source: CurrentRequestKeys): CurrentRequestKeyResult[Curre
       status: CurrentRequestKeyError.Uninitialized)
   CurrentRequestKeyResult[CurrentRequestKeyInfo](status: CurrentRequestKeyError.None,
       completed: data.info)
+
 proc currentRequestKeyAt*(source: CurrentRequestKeys, service: InventoryServiceIndex,
     request: InventoryRequestIndex): CurrentRequestKeyResult[StateKey] =
   ## Full-width nominal ordinals are checked before narrowing; copied fixed keys require no allocation or hash.

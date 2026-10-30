@@ -17,17 +17,21 @@ type
     of None: completed: T
     of ProjectionFailure: projectionReason: SuppliedServicesError
     else: discard # Failed stages carry no partial logical declaration arrays.
+
 func error*[T](outcome: LogicalExportResult[T]): LogicalExportError =
   ## Observe the selected immutable stage only.
   outcome.status
+
 func value*[T](outcome: LogicalExportResult[T]): T {.inline, requires: outcome.status ==
     LogicalExportError.None.} =
   ## Extract only complete admission, copied accounting or detached output.
   outcome.completed
+
 func projectionError*[T](outcome: LogicalExportResult[T]): SuppliedServicesError {.inline,
     requires: outcome.status == LogicalExportError.ProjectionFailure.} =
   ## Preserve original source and independently bounded projection refusal.
   outcome.projectionReason
+
 proc planLogicalExport*(source: CurrentLogicalState,
     limits: SuppliedServicesLimits): LogicalExportResult[LogicalExportPlan] =
   ## Original qualified raw-key provenance supplies complete declarations; no physical map inversion or caller declaration replacement is accepted.
@@ -40,12 +44,14 @@ proc planLogicalExport*(source: CurrentLogicalState,
         projectionReason: planned.error)
   LogicalExportResult[LogicalExportPlan](status: LogicalExportError.None,
     completed: LogicalExportPlan(initialized: true, logical: source, projection: planned.value))
+
 proc logicalExportInfo*(plan: LogicalExportPlan): LogicalExportResult[SuppliedServicesInfo] =
   ## Copy the exact admitted fact/byte ledger without copying declaration payloads.
   if not plan.initialized: return LogicalExportResult[SuppliedServicesInfo](
       status: LogicalExportError.InvalidPlan)
   LogicalExportResult[SuppliedServicesInfo](status: LogicalExportError.None,
       completed: plan.projection.suppliedServicesPlanInfo.value)
+
 proc executeLogicalExport*(plan: LogicalExportPlan): LogicalExportResult[seq[StateService]] =
   ## Frozen limits and source produce ordinary detached supplied data; output mutation cannot change subsequent exports.
   if not plan.initialized: return LogicalExportResult[seq[StateService]](

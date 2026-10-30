@@ -59,48 +59,59 @@ type
       logicalReason: CurrentLogicalResult[CurrentLogicalState]
     else:
       discard # No partially reconstructed/matched current source escapes any failure.
+
 func error*[T](outcome: LogicalRefreshPlanResult[T]): LogicalRefreshPlanError =
   ## Observe immutable planning stage without retagging or manufacturing qualification.
   outcome.status
+
 func value*[T](outcome: LogicalRefreshPlanResult[T]): T {.inline, requires: outcome.status ==
     LogicalRefreshPlanError.None.} =
   ## Full successful admission alone exposes plans, fixed quotas or observations.
   outcome.completed
+
 func refusedPhase*[T](outcome: LogicalRefreshPlanResult[T]): LogicalRefreshRefusal {.inline,
     requires: outcome.status == LogicalRefreshPlanError.LimitExceeded.} =
   ## Only an actual resource refusal grants its specific policy boundary.
   outcome.phase
+
 func profileFailure*[T](outcome: LogicalRefreshPlanResult[T]): CurrentProfileResult[
     DerivedCurrentProfile] {.inline, requires: outcome.status ==
     LogicalRefreshPlanError.ProfileFailure.} =
   ## Preserve the original actual current profile/C9 failure.
   outcome.profileReason
+
 func globalsFailure*[T](outcome: LogicalRefreshPlanResult[T]): CurrentGlobalsResult[
     CurrentGlobalSerialization] {.inline, requires: outcome.status ==
     LogicalRefreshPlanError.GlobalsFailure.} =
   ## Preserve original all-chapter missing/malformed/resource distinctions.
   outcome.globalsReason
+
 func error*(outcome: LogicalRefreshResult): LogicalRefreshError =
   ## Observe immutable actual execution stage only.
   outcome.status
+
 func value*(outcome: LogicalRefreshResult): CurrentLogicalState {.inline,
     requires: outcome.status == LogicalRefreshError.None.} =
   ## Existing complete supplied current logical authority still retains the original genuine update/profile and actual full map.
   outcome.completed
+
 func refreshFailure*(outcome: LogicalRefreshResult): CurrentRefreshResult {.inline,
     requires: outcome.status == LogicalRefreshError.RefreshFailure.} =
   ## Retain only the actual failed reconstruction, never a successful mutable output prefix.
   outcome.refreshReason
+
 func stateFailure*(outcome: LogicalRefreshResult): CurrentStateResult[
     CurrentStateSerialization] {.inline, requires: outcome.status ==
     LogicalRefreshError.StateFailure.} =
   ## Preserve genuine failed complete mapping/capture/backend qualification.
   outcome.stateReason
+
 func logicalFailure*(outcome: LogicalRefreshResult): CurrentLogicalResult[
     CurrentLogicalState] {.inline, requires: outcome.status ==
     LogicalRefreshError.LogicalFailure.} =
   ## Preserve the actual failed original-raw-key capture/revalidation result.
   outcome.logicalReason
+
 proc planCurrentLogicalRefresh*(source: CurrentRefreshPlan,
     limits: CurrentLogicalRefreshLimits): LogicalRefreshPlanResult[CurrentLogicalRefreshPlan] =
   ## Preflight all known future matching/capture/scan arrays before any service payload copy, then qualify actual target profile/globals under frozen policies.
@@ -172,6 +183,7 @@ proc planCurrentLogicalRefresh*(source: CurrentRefreshPlan,
       info: CurrentLogicalRefreshInfo(services: compact.services, entries: map.entries,
           checks: uint64(limits.checks)-checks, valueBytes: valueBudget-bytes, facts: compact.facts,
           rawKeyBytes: raw.rawKeyBytes, retainedBytes: retainedBudget-retained)))
+
 proc logicalRefreshPlanSource*(plan: CurrentLogicalRefreshPlan): LogicalRefreshPlanResult[
     CurrentRefreshPlan] =
   ## Retain only the exact frozen reconstruction/original/current source graph.
@@ -179,6 +191,7 @@ proc logicalRefreshPlanSource*(plan: CurrentLogicalRefreshPlan): LogicalRefreshP
       status: LogicalRefreshPlanError.Uninitialized)
   LogicalRefreshPlanResult[CurrentRefreshPlan](status: LogicalRefreshPlanError.None,
       completed: plan.source)
+
 proc logicalRefreshPlanLimits*(plan: CurrentLogicalRefreshPlan): LogicalRefreshPlanResult[
     CurrentLogicalRefreshLimits] =
   ## Copied policies cannot alter existing plan admission or execution quotas.
@@ -186,6 +199,7 @@ proc logicalRefreshPlanLimits*(plan: CurrentLogicalRefreshPlan): LogicalRefreshP
       status: LogicalRefreshPlanError.Uninitialized)
   LogicalRefreshPlanResult[CurrentLogicalRefreshLimits](status: LogicalRefreshPlanError.None,
       completed: plan.limits)
+
 proc logicalRefreshPlanInfo*(plan: CurrentLogicalRefreshPlan): LogicalRefreshPlanResult[
     CurrentLogicalRefreshInfo] =
   ## Copy successful scan/retention facts with no mutable source or construction exposure.
@@ -193,6 +207,7 @@ proc logicalRefreshPlanInfo*(plan: CurrentLogicalRefreshPlan): LogicalRefreshPla
       status: LogicalRefreshPlanError.Uninitialized)
   LogicalRefreshPlanResult[CurrentLogicalRefreshInfo](status: LogicalRefreshPlanError.None,
       completed: plan.info)
+
 proc executeCurrentLogicalRefresh*(plan: CurrentLogicalRefreshPlan): LogicalRefreshResult =
   ## Use only frozen policies and actual already-qualified globals, then reproduce the whole actual map through existing current and raw-key constructors.
   if not plan.initialized: return LogicalRefreshResult(status: LogicalRefreshError.InvalidPlan)

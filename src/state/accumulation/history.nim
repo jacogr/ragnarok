@@ -74,8 +74,8 @@ func stateError*[T](outcome: AccumulationHistoryResult[T]): StateStoreError {.in
   ## Inspect only a genuine private store refusal.
   outcome.stateReason
 
-# Package-set ordering compares every identity octet without interpreting hashes numerically.
 func compareHash(left, right: PackageHash): int =
+  ## Package-set ordering compares every identity octet without interpreting hashes numerically.
   for index in 0..<32:
     if left.bytes[index] < right.bytes[index]: return -1
     if left.bytes[index] > right.bytes[index]: return 1

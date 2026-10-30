@@ -54,6 +54,7 @@ func error*[T](outcome: AccumulationInvocationResult[
     T]): AccumulationInvocationError =
   ## Read failure without granting result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationInvocationResult[T]): T {.inline,
     requires: outcome.status == AccumulationInvocationError.None.} =
   ## Extract only selected success under supported compiler/runtime contracts.

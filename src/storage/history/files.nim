@@ -25,14 +25,17 @@ type
 proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The SDK supplies the native two-argument non-creation ABI.
+
 proc synchronize(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Directory synchronization makes namespace changes explicitly durable.
+
 func parent(path: string): string =
   ## Find a stable parent without normalizing or silently changing caller path identity.
   var slash = -1
   for index, character in path:
     if character == '/': slash = index
   if slash < 0: "." elif slash == 0: "/" else: path.substr(0, slash-1)
+
 proc syncDirectory(path: string): HistoryError =
   ## One native directory owner is retired on every kind/sync/close path.
   var name = path
@@ -43,6 +46,7 @@ proc syncDirectory(path: string): HistoryError =
   let synced = valid and synchronize(descriptor) == 0
   let closed = posix.close(descriptor) == 0 # Interrupted close never retries a potentially reused descriptor.
   if synced and closed: HistoryError.None else: HistoryError.PublishedUnsynced
+
 func fileReason(reason: AtomicFileError): HistoryError =
   ## Preserve visibility uncertainty and resource refusals independently of canonical selection.
   case reason
@@ -50,14 +54,17 @@ func fileReason(reason: AtomicFileError): HistoryError =
   of AtomicFileError.LimitExceeded: HistoryError.LimitExceeded
   of AtomicFileError.PublishedUnsynced: HistoryError.PublishedUnsynced
   else: HistoryError.IoFailure
+
 proc absent(path: string): bool =
   ## Only ENOENT means unavailable; permission and invalid-parent failures remain real IO errors.
   var name = path
   var metadata = default(Stat)
   posix.stat(name.toCString(), metadata) != 0 and errno() == ENOENT
+
 func ordinalPath(files: HistoryFiles, ordinal: HistoryOrdinal, record: bool): string =
   ## Namespace admission reserves enough path capacity for the longest E8 decimal suffix.
   files.folder & (if record: "/record-" else: "/row-") & $uint64(ordinal)
+
 func hashPath(files: HistoryFiles, hash: HistoryBlockHash): string =
   ## Full 256-bit names never truncate identities or interpret raw bytes as paths.
   const digits = "0123456789abcdef"
@@ -67,15 +74,19 @@ func hashPath(files: HistoryFiles, hash: HistoryBlockHash): string =
     text[index*2] = digits[int(octet shr 4)]
     text[index*2+1] = digits[int(octet and 15)]
   files.folder & "/block-" & text
+
 func initialized*(files: HistoryFiles): bool =
   ## Defaults grant no namespace authority.
   files.ready
+
 func initialized*(selection: CheckedHistorySelection): bool =
   ## A parsed cursor alone does not establish that every retained index row exists.
   selection.ready
+
 func historyCursor*(selection: CheckedHistorySelection): HistoryCursor {.requires: selection.ready.} =
   ## Return copied scalar metadata, never an archive-sized table or mutable cache.
   selection.cursor
+
 proc openHistoryFiles*(folder: string, chain: StorageChainId,
     create = false, exclusive = false): HistoryResult[HistoryFiles] =
   ## Validate a separate full-node chain identity; opening never adopts a different mode/schema or chain.
@@ -114,6 +125,7 @@ proc openHistoryFiles*(folder: string, chain: StorageChainId,
     if actual.value[index] != expected[index]: return historyFailure[HistoryFiles](
         HistoryError.WrongChain)
   historySuccess(HistoryFiles(ready: true, folder: folder, chain: chain))
+
 proc readRawRow(files: HistoryFiles, ordinal: HistoryOrdinal): HistoryResult[HistoryRow] =
   ## Missing retained rows are corruption/IO failure; callers test pruning bounds before this access.
   let read = readBoundedFile(ordinalPath(files, ordinal, false), ByteLimit(HistoryRowBytes))
@@ -123,6 +135,7 @@ proc readRawRow(files: HistoryFiles, ordinal: HistoryOrdinal): HistoryResult[His
   if uint64(decoded.value.ordinal) != uint64(ordinal): return historyFailure[HistoryRow](
       HistoryError.InvalidFormat)
   decoded
+
 proc recordPresent(files: HistoryFiles, ordinal: HistoryOrdinal, limit: ByteLimit): HistoryError =
   ## Startup admits bounded regular records without loading every complete historical map into memory.
   var name = ordinalPath(files, ordinal, true)
@@ -132,6 +145,7 @@ proc recordPresent(files: HistoryFiles, ordinal: HistoryOrdinal, limit: ByteLimi
     return HistoryError.IoFailure
   if uint64(metadata.st_size) > uint64(limit): return HistoryError.LimitExceeded
   HistoryError.None
+
 proc validateHistorySelection*(files: HistoryFiles, cursor: HistoryCursor,
     recordBytes: ByteLimit): HistoryResult[CheckedHistorySelection] =
   ## Scan fixed rows with constant memory; the canonical terminal digest authenticates the retained suffix.
@@ -171,6 +185,7 @@ proc validateHistorySelection*(files: HistoryFiles, cursor: HistoryCursor,
     previous = row
     inc index
   historySuccess(CheckedHistorySelection(ready: true, files: files, cursor: cursor))
+
 proc stageHistoryEntry*(files: HistoryFiles, append: HistoryAppend,
     record: openArray[byte], recordBytes: ByteLimit): HistoryResult[HistoryCursor] =
   ## Sync record, ordinal row and hash alias before returning a cursor eligible for canonical publication.
@@ -192,6 +207,7 @@ proc stageHistoryEntry*(files: HistoryFiles, append: HistoryAppend,
   let alias = replaceAtomicFile(hashPath(files, row.blockHash), encoded.value, ByteLimit(HistoryRowBytes))
   if alias != AtomicFileError.None: return historyFailure[HistoryCursor](fileReason(alias))
   historySuccess(append.nextCursor)
+
 proc advanceCheckedHistorySelection*(before: CheckedHistorySelection, append: HistoryAppend,
     recordBytes: ByteLimit): HistoryResult[CheckedHistorySelection] =
   ## An immutable already checked prefix plus one fully staged row admits a successor in constant metadata work.
@@ -214,6 +230,7 @@ proc advanceCheckedHistorySelection*(before: CheckedHistorySelection, append: Hi
   if present != HistoryError.None: return historyFailure[CheckedHistorySelection](present)
   historySuccess(CheckedHistorySelection(ready: true, files: before.files,
       cursor: append.nextCursor))
+
 func reselectCheckedHistory*(before: CheckedHistorySelection,
     cursor: HistoryCursor): HistoryResult[CheckedHistorySelection] =
   ## An unchanged checked terminal row permits only policy changes that preserve or shrink the available suffix.
@@ -227,6 +244,7 @@ func reselectCheckedHistory*(before: CheckedHistorySelection,
           cursor.selectedSlot:
     return historyFailure[CheckedHistorySelection](HistoryError.StaleSelection)
   historySuccess(CheckedHistorySelection(ready: true, files: before.files, cursor: cursor))
+
 proc rowAt*(selection: CheckedHistorySelection, ordinal: HistoryOrdinal): HistoryResult[HistoryRow] =
   ## Indexed ordinal addressing does not scan or allocate an archive-sized container.
   if not selection.ready: return historyFailure[HistoryRow](HistoryError.Uninitialized)
@@ -235,6 +253,7 @@ proc rowAt*(selection: CheckedHistorySelection, ordinal: HistoryOrdinal): Histor
   if uint64(ordinal) < uint64(selection.cursor.firstOrdinal): return historyFailure[HistoryRow](
       HistoryError.Pruned)
   readRawRow(selection.files, ordinal)
+
 proc rowAt*(selection: CheckedHistorySelection, hash: HistoryBlockHash): HistoryResult[HistoryRow] =
   ## A stale orphan alias cannot select a future ordinal or substitute another selected row.
   if not selection.ready: return historyFailure[HistoryRow](HistoryError.Uninitialized)
@@ -252,6 +271,7 @@ proc rowAt*(selection: CheckedHistorySelection, hash: HistoryBlockHash): History
   if array[32, byte](selected.value.rowDigest) != array[32, byte](decoded.value.rowDigest):
     return historyFailure[HistoryRow](HistoryError.Unavailable)
   selected
+
 proc readHistoryRecord*(selection: CheckedHistorySelection, row: HistoryRow,
     recordBytes: ByteLimit): HistoryResult[seq[byte]] =
   ## Complete bounded reads close their descriptor before returning independent bytes, which survive unlink/pruning.
@@ -264,11 +284,13 @@ proc readHistoryRecord*(selection: CheckedHistorySelection, row: HistoryRow,
   let read = readBoundedFile(ordinalPath(selection.files, row.ordinal, true), recordBytes)
   if read.error != AtomicFileError.None: return historyFailure[seq[byte]](fileReason(read.error))
   historySuccess(read.value)
+
 proc unlinkIfPresent(path: string): HistoryError =
   ## Cleanup is idempotent after interrupted reclamation; unrelated native failures remain explicit.
   var name = path
   if posix.unlink(name.toCString()) == 0 or errno() == ENOENT: return HistoryError.None
   HistoryError.IoFailure
+
 proc cleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryResult[uint64] =
   ## A checksum-protected watermark tracks physical reclamation only; the canonical cursor alone selects availability.
   const magic = "RAGNAROK-HISTORY-CLEANUP-V1\n"
@@ -298,6 +320,7 @@ proc cleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryResult[
     if bytes[80+index] != expected[index]: return historyFailure[uint64](
         HistoryError.ChecksumMismatch)
   historySuccess(first)
+
 proc saveCleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryError =
   ## Publish a progress acknowledgement only after every older file deletion and directory sync succeeded.
   const magic = "RAGNAROK-HISTORY-CLEANUP-V1\n"
@@ -313,6 +336,7 @@ proc saveCleanupProgress(files: HistoryFiles, cursor: HistoryCursor): HistoryErr
   let hash = array[32, byte](digest.value)
   for index in 0..<32: bytes[80+index] = hash[index]
   fileReason(replaceAtomicFile(files.folder & "/CLEANUP", bytes, ByteLimit(112)))
+
 proc pruneHistoryFiles*(files: HistoryFiles, before, selected: HistoryCursor,
     resetProgress = false): HistoryResult[uint64] =
   ## Call only after confirmed canonical selection. Failures never roll back the selected cursor or invalidate loaded readers.

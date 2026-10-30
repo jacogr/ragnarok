@@ -39,12 +39,15 @@ func unavailableParameters*(): ParameterResult =
 func ok*(decoded: ParameterResult): bool =
   ## Read-only result selection precedes extraction of an immutable owned snapshot.
   decoded.success
+
 func value*(decoded: ParameterResult): Parameters {.requires: decoded.success.} =
   ## Copy the complete fixed-size snapshot only after successful decoding.
   decoded.snapshot
+
 func error*(decoded: ParameterResult): ParameterError {.requires: not decoded.success.} =
   ## Explain a failed decode without exposing a partial snapshot.
   decoded.reason
+
 func get*(parameters: Parameters, field: Parameter): uint64 =
   ## Return one scalar by nominal field identity, with no borrow into the original byte buffer.
   parameters.numbers[ord(field)]

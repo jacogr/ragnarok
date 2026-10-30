@@ -33,14 +33,17 @@ type
 func error*[T](outcome: ComputedAdmissionResult[T]): ComputedAdmissionError =
   ## Observe selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedAdmissionResult[T]): T
     {.requires: outcome.status == ComputedAdmissionError.None.} =
   ## Guard complete successful extraction in optimized builds.
   outcome.completed
+
 func admissionError*[T](outcome: ComputedAdmissionResult[T]): ReportAdmissionResult[AdmittedReports]
     {.requires: outcome.status == ComputedAdmissionError.AdmissionFailure.} =
   ## Preserve the original selected report-stage refusal and its nested diagnostics.
   outcome.admissionReason
+
 proc computedAdmissionSource*(admitted: AdmittedComputedReports): ComputedAdmissionResult[
     IncludedComputedGuarantees] =
   ## Share the original included computations and exact authenticated candidate.
@@ -49,6 +52,7 @@ proc computedAdmissionSource*(admitted: AdmittedComputedReports): ComputedAdmiss
       status: ComputedAdmissionError.Uninitialized)
   ComputedAdmissionResult[IncludedComputedGuarantees](status: ComputedAdmissionError.None,
       completed: data.source)
+
 proc computedAdmissionReports*(admitted: AdmittedComputedReports): ComputedAdmissionResult[
     AdmittedReports] =
   ## Share only a completed maintained report-admission certificate, never caller-supplied observation tuples.
@@ -57,6 +61,7 @@ proc computedAdmissionReports*(admitted: AdmittedComputedReports): ComputedAdmis
       status: ComputedAdmissionError.Uninitialized)
   ComputedAdmissionResult[AdmittedReports](status: ComputedAdmissionError.None,
       completed: data.admitted)
+
 proc admitComputedReports*(source: IncludedComputedGuarantees,
     config: ReportAdmissionConfig): ComputedAdmissionResult[AdmittedComputedReports] =
   ## Bind semantic knobs and retained ancestry before running the existing full implemented report plan.

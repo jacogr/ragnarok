@@ -30,17 +30,21 @@ type
       previousReason: StateComponentError
     else:
       discard # No failed/default result contains a successful prefix.
+
 func error*[T](outcome: CurrentProfileResult[T]): CurrentProfileError =
   ## Observe the immutable selected reason.
   outcome.status
+
 func value*[T](outcome: CurrentProfileResult[T]): T {.inline, requires: outcome.status ==
     CurrentProfileError.None.} =
   ## Only complete initialized projection authorizes extraction.
   outcome.completed
+
 func previousError*[T](outcome: CurrentProfileResult[T]): StateComponentError {.inline,
     requires: outcome.status == CurrentProfileError.PreviousFailure.} =
   ## Preserve only the actual previous-roster decoder refusal.
   outcome.previousReason
+
 proc captureCurrentProfile*(source: PreparedCurrentChainUpdate,
     limits: CurrentProfileLimits): CurrentProfileResult[DerivedCurrentProfile] =
   ## Read only the stable host-owned update before enqueue or after collection/join, including alias retirement.
@@ -78,16 +82,19 @@ proc captureCurrentProfile*(source: PreparedCurrentChainUpdate,
   CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.None,
     completed: DerivedCurrentProfile(initialized: true, source: source, profile: profile,
         parameters: child.parameters))
+
 proc derivedStateProfile*(captured: DerivedCurrentProfile): CurrentProfileResult[StateProfile] =
   ## Copy structural cardinalities only from an initialized same-source projection.
   if not captured.initialized:
     return CurrentProfileResult[StateProfile](status: CurrentProfileError.Uninitialized)
   CurrentProfileResult[StateProfile](status: CurrentProfileError.None, completed: captured.profile)
+
 proc derivedParameters*(captured: DerivedCurrentProfile): CurrentProfileResult[Parameters] =
   ## Retain the full original tuple separately; four cardinalities cannot replace execution/economic configuration.
   if not captured.initialized:
     return CurrentProfileResult[Parameters](status: CurrentProfileError.Uninitialized)
   CurrentProfileResult[Parameters](status: CurrentProfileError.None, completed: captured.parameters)
+
 proc derivedUpdate*(captured: DerivedCurrentProfile): CurrentProfileResult[
     PreparedCurrentChainUpdate] =
   ## Return the exact retained authenticated producer without accepting a replacement map or child.

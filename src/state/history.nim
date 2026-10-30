@@ -39,13 +39,14 @@ type
 func error*[T](outcome: HistoryTransitionResult[T]): HistoryTransitionError =
   ## Read a reason without granting access to any payload.
   outcome.status
+
 func value*[T](outcome: HistoryTransitionResult[T]): T {.inline,
     requires: outcome.status == HistoryTransitionError.None.} =
   ## Only complete success permits extraction, including in checked optimized builds.
   outcome.completed
 
-## Preserve resource and canonicality failures from the existing component codec.
 func codecError(reason: HistoryError): HistoryTransitionError =
+  ## Preserve resource and canonicality failures from the existing component codec.
   case reason
   of HistoryError.None: HistoryTransitionError.None # Complete encoding/decoding only.
   of HistoryError.InvalidConfig: HistoryTransitionError.InvalidConfig # Do not infer a profile.
@@ -54,8 +55,8 @@ func codecError(reason: HistoryError): HistoryTransitionError =
   of HistoryError.NonCanonical: HistoryTransitionError.NonCanonical # Reject duplicate/descending dictionary keys.
   else: HistoryTransitionError.InvalidState # Invalid owners, shapes and framing are not valid state.
 
-## Preserve atomic-store failure causes without manufacturing a root or empty component.
 func storeError(reason: StateStoreError): HistoryTransitionError =
+  ## Preserve atomic-store failure causes without manufacturing a root or empty component.
   case reason
   of StateStoreError.None: HistoryTransitionError.None # Complete publication only.
   of StateStoreError.Uninitialized: HistoryTransitionError.Uninitialized # Default store is not empty state.
@@ -65,8 +66,8 @@ func storeError(reason: StateStoreError): HistoryTransitionError =
   of StateStoreError.BackendFailure: HistoryTransitionError.BackendFailure # No root on primitive refusal.
   else: HistoryTransitionError.InvalidState # Unexpected store failure cannot be success.
 
-## Copy immutable history into private synchronous scratch, after applying the caller's input policy.
 proc capture(owner: HistorySnapshot, config: HistoryConfig): HistoryTransitionResult[HistoryState] =
+  ## Copy immutable history into private synchronous scratch, after applying the caller's input policy.
   let info = historyInfo(owner)
   if info.error != HistoryError.None:
     return HistoryTransitionResult[HistoryState](status: HistoryTransitionError.InvalidState) # No default owners.
@@ -139,8 +140,8 @@ proc correctHistoryParent*(owner: HistorySnapshot, parent: HistoryStateRoot,
     return HistoryTransitionResult[StateEntry](status: codecError(encoded.error)) # No partial encoding.
   HistoryTransitionResult[StateEntry](status: HistoryTransitionError.None, completed: encoded.value)
 
-## Build N recursively with logarithmic depth and fixed-size children, preserving raw singleton leaves.
 proc outputNode(values: openArray[AccumulationOutput], start, count: int): HistoryTransitionResult[OutputNode] =
+  ## Build N recursively with logarithmic depth and fixed-size children, preserving raw singleton leaves.
   if count == 1:
     # N(singleton) is the raw E4-service/hash blob, not a prehashed leaf.
     var node = OutputNode(size: 36, bytes: default(array[36, byte]))
@@ -198,8 +199,8 @@ proc accumulationRoot*(values: openArray[AccumulationOutput],
   HistoryTransitionResult[AccumulationRoot](status: HistoryTransitionError.None,
       completed: AccumulationRoot(root))
 
-## Canonical dictionary order is by package octets, independent of guarantee/core order.
 func comparePackages(a, b: ReportedPackage): int =
+  ## Canonical dictionary order is by package octets, independent of guarantee/core order.
   for i in 0..<32:
     if a.package.bytes[i] < b.package.bytes[i]: return -1 # First unequal octet determines order.
     if a.package.bytes[i] > b.package.bytes[i]: return 1 # Values never decide dictionary order.

@@ -50,57 +50,72 @@ type
 proc `=copy`*(destination: var CurrentDownloadSession, source: CurrentDownloadSession) {.
     error: "CurrentDownloadSession owns callbacks and scheduled reception".}
   ## Composite ownership must not depend solely on its nested non-copyable fields.
+
 proc `=dup`*(source: CurrentDownloadSession): CurrentDownloadSession {.error.}
   ## Duplicating this owner would duplicate native callback obligations and scheduler authority.
 
 func error*(reason: CurrentDownloadSessionFailure): CurrentDownloadSessionError =
   ## Inspect a reason without allowing retagging or nested-payload mutation.
   reason.status
+
 func error*[T](outcome: CurrentDownloadSessionResult[T]): CurrentDownloadSessionError =
   ## A default result cannot authorize a token, request or finalized successor.
   if outcome.successful: CurrentDownloadSessionError.None
   else: outcome.refused.error # Failures retain no successful prefix.
+
 func value*[T](outcome: CurrentDownloadSessionResult[T]): T {.inline,
     requires: outcome.successful.} =
   ## Extract only the selected successful payload.
   outcome.completed
+
 func failure*[T](outcome: CurrentDownloadSessionResult[T]): CurrentDownloadSessionFailure {.inline,
     requires: not outcome.successful.} =
   ## Successful results have no failure alternative to extract.
   outcome.refused
+
 func scheduleError*(reason: CurrentDownloadSessionFailure): DownloadScheduleError {.inline,
     requires: reason.status == CurrentDownloadSessionError.ScheduleFailure.} =
   ## Preserve the scheduler's exact refusal rather than flattening waiting/budget/clock outcomes.
   reason.scheduleReason
+
 func downloadFailure*(reason: CurrentDownloadSessionFailure): CurrentBlockDownloadFailure {.inline,
     requires: reason.status == CurrentDownloadSessionError.DownloadFailure.} =
   ## Inspect only a genuine failed admission/reception/preparation child.
   reason.downloadReason
+
 func streamError*(reason: CurrentDownloadSessionFailure): CurrentDownloadStreamError {.inline,
     requires: reason.status == CurrentDownloadSessionError.StreamFailure.} =
   ## Inspect only a native binding refusal.
   reason.streamReason
+
 func peer*(attempt: CurrentDownloadSessionAttempt): DownloadPeerId =
   ## Tokens expose the selected authenticated-peer catalog identity, never mutable callback storage.
   attempt.selectedPeer
+
 func stage*(session: CurrentDownloadSession): CurrentBlockDownloadStage =
   ## Observe raw framing independently of whether its native close has retired.
   session.download.stage
+
 proc streamActive*(session: CurrentDownloadSession): bool =
   ## Cancellation retains this barrier until the route's real close callback.
   session.route.active
+
 func busy*(session: CurrentDownloadSession): bool =
   ## A queued candidate also retains its lease until explicit host acknowledgement.
   session.current != nil
+
 func receivedBytes*(session: CurrentDownloadSession): uint64 =
   ## Native-test/host observations borrow only a scalar, not the internal route.
   session.route.receivedBytes
+
 func matches(session: CurrentDownloadSession, attempt: CurrentDownloadSessionAttempt): bool =
   ## Exact immutable token identity rejects foreign sessions and previous generations.
   session.current == attempt
+
 func plain(reason: CurrentDownloadSessionError): CurrentDownloadSessionFailure =
   ## Construct only a payload-free lifecycle result.
   CurrentDownloadSessionFailure(status: reason)
+
 func refused[T](reason: CurrentDownloadSessionFailure): CurrentDownloadSessionResult[T] =
   ## Failed generic results never retain a successful owner.
   CurrentDownloadSessionResult[T](successful: false, refused: reason)
@@ -145,6 +160,7 @@ proc begin*(session: var CurrentDownloadSession, owner: Services,
         CurrentDownloadSessionAttempt] =
   ## Raw sessions retain the existing scheduler/native-close and deferred-adoption contract.
   session.beginSession(owner, ancestors, resources, policies, now, false, default(CurrentLogicalDownloadPolicy))
+
 proc begin*(session: var CurrentDownloadSession, owner: Services,
     ancestors: openArray[OwnedHeader], resources: CurrentBlockInputLimits,
     policies: CurrentCandidateLimits, now: DownloadScheduleTick,
@@ -152,6 +168,7 @@ proc begin*(session: var CurrentDownloadSession, owner: Services,
         CurrentDownloadSessionAttempt] =
   ## Retain the explicit logical source and frozen budgets before any stream or worker can borrow the receiver.
   session.beginSession(owner, ancestors, resources, policies, now, true, logical)
+
 proc logicalCompletion*(session: CurrentDownloadSession,
     attempt: CurrentDownloadSessionAttempt): CurrentDownloadSessionResult[CurrentLogicalState] =
   ## Exact queued attempt and retired native/worker leases precede logical result extraction; this is still not an adoption receipt.

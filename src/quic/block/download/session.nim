@@ -49,56 +49,71 @@ type
 proc `=copy`*(destination: var BlockDownloadSession, source: BlockDownloadSession) {.
     error: "BlockDownloadSession owns callbacks and scheduled reception".}
   ## Composite ownership must not depend solely on its nested non-copyable fields.
+
 proc `=dup`*(source: BlockDownloadSession): BlockDownloadSession {.error.}
   ## Duplicating this owner would duplicate native callback obligations and scheduler authority.
 
 func error*(reason: DownloadSessionFailure): DownloadSessionError =
   ## Inspect a reason without allowing retagging or nested-payload mutation.
   reason.status
+
 func error*[T](outcome: DownloadSessionResult[T]): DownloadSessionError =
   ## A default result cannot authorize a token, request or finalized successor.
   if outcome.successful: DownloadSessionError.None
   else: outcome.refused.error # Failures retain no successful prefix.
+
 func value*[T](outcome: DownloadSessionResult[T]): T {.inline, requires: outcome.successful.} =
   ## Extract only the selected successful payload.
   outcome.completed
+
 func failure*[T](outcome: DownloadSessionResult[T]): DownloadSessionFailure {.inline,
     requires: not outcome.successful.} =
   ## Successful results have no failure alternative to extract.
   outcome.refused
+
 func scheduleError*(reason: DownloadSessionFailure): DownloadScheduleError {.inline,
     requires: reason.status == DownloadSessionError.ScheduleFailure.} =
   ## Preserve the scheduler's exact refusal rather than flattening waiting/budget/clock outcomes.
   reason.scheduleReason
+
 func downloadFailure*(reason: DownloadSessionFailure): BlockDownloadFailure {.inline,
     requires: reason.status == DownloadSessionError.DownloadFailure.} =
   ## Inspect only a genuine failed admission/reception/preparation child.
   reason.downloadReason
+
 func streamError*(reason: DownloadSessionFailure): DownloadStreamError {.inline,
     requires: reason.status == DownloadSessionError.StreamFailure.} =
   ## Inspect only a native binding refusal.
   reason.streamReason
+
 func peer*(attempt: DownloadSessionAttempt): DownloadPeerId =
   ## Tokens expose the selected authenticated-peer catalog identity, never mutable callback storage.
   attempt.selectedPeer
+
 func stage*(session: BlockDownloadSession): BlockDownloadStage =
   ## Observe raw framing independently of whether its native close has retired.
   session.download.stage
+
 proc streamActive*(session: BlockDownloadSession): bool =
   ## Cancellation retains this barrier until the route's real close callback.
   session.route.active
+
 func busy*(session: BlockDownloadSession): bool =
   ## A queued candidate also retains its lease until explicit host acknowledgement.
   session.current != nil
+
 func receivedBytes*(session: BlockDownloadSession): uint64 =
   ## Native-test/host observations borrow only a scalar, not the internal route.
   session.route.receivedBytes
+
 func matches(session: BlockDownloadSession, attempt: DownloadSessionAttempt): bool =
   ## Exact immutable token identity rejects foreign sessions and previous generations.
   session.current == attempt
+
 func plain(reason: DownloadSessionError): DownloadSessionFailure =
   ## Construct only a payload-free lifecycle result.
   DownloadSessionFailure(status: reason)
+
 func refused[T](reason: DownloadSessionFailure): DownloadSessionResult[T] =
   ## Failed generic results never retain a successful owner.
   DownloadSessionResult[T](successful: false, refused: reason)

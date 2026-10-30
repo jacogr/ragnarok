@@ -34,10 +34,12 @@ type
 func error*[T](outcome: GlobalStateResult[T]): GlobalStateError =
   ## Inspect the alternative without authorizing payload mutation.
   outcome.status
+
 func value*[T](outcome: GlobalStateResult[T]): T {.inline,
     requires: outcome.status == GlobalStateError.None.} =
   ## Only complete success grants a retained source or chapter owner.
   outcome.completed
+
 func failedChapter*[T](outcome: GlobalStateResult[T]): StateChapterId {.inline,
     requires: outcome.status in {GlobalStateError.MissingChapter,
         GlobalStateError.ChapterFailure}.} =
@@ -46,6 +48,7 @@ func failedChapter*[T](outcome: GlobalStateResult[T]): StateChapterId {.inline,
     outcome.missing # Absence in a complete map is established by the source lookup.
   else:
     outcome.chapter # A present value was refused by the existing exact decoder.
+
 func chapterError*[T](outcome: GlobalStateResult[T]): StateCompositionError {.inline,
     requires: outcome.status == GlobalStateError.ChapterFailure.} =
   ## Inspect the nested decoder reason only for an actual present chapter refusal.
@@ -87,11 +90,13 @@ proc globalSource*(state: ValidatedGlobalState): GlobalStateResult[StateStoreSna
   if state.data == nil:
     return GlobalStateResult[StateStoreSnapshot](status: GlobalStateError.Uninitialized) # Default certificates retain no source.
   GlobalStateResult[StateStoreSnapshot](status: GlobalStateError.None, completed: state.data.source)
+
 proc globalChapters*(state: ValidatedGlobalState): GlobalStateResult[StateChapters] =
   ## Copy the fixed chapter handle array; replacing caller slots cannot edit the retained certificate.
   if state.data == nil:
     return GlobalStateResult[StateChapters](status: GlobalStateError.Uninitialized) # No default chapter array pretends to be validated.
   GlobalStateResult[StateChapters](status: GlobalStateError.None, completed: state.data.chapters)
+
 proc globalByteLength*(state: ValidatedGlobalState): GlobalStateResult[uint64] =
   ## Report validated global bytes only, excluding opaque service values from the codec claim.
   if state.data == nil:

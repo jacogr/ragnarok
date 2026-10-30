@@ -32,15 +32,18 @@ type
 func error*[T](outcome: ComputedLinksResult[T]): ComputedLinksError =
   ## Inspect a reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedLinksResult[T]): T
     {.requires: outcome.status == ComputedLinksError.None.} =
   ## Preserve success selection under optimized runtime contracts.
   outcome.completed
+
 proc computedLinkCount*(links: ComputedReportLinks): ComputedLinksResult[int] =
   ## Count completed witnesses without treating a default owner as an accepted empty relation.
   let data = links.data
   if data == nil: return ComputedLinksResult[int](status: ComputedLinksError.Uninitialized)
   ComputedLinksResult[int](status: ComputedLinksError.None, completed: data.count)
+
 proc computedLinkSource*(links: ComputedReportLinks): ComputedLinksResult[
     ComputedGuaranteeTranscript] =
   ## Retain the original exact transcript, never a later replacement report or message.
@@ -49,6 +52,7 @@ proc computedLinkSource*(links: ComputedReportLinks): ComputedLinksResult[
       status: ComputedLinksError.Uninitialized)
   ComputedLinksResult[ComputedGuaranteeTranscript](status: ComputedLinksError.None,
       completed: data.source)
+
 proc computedLinkWitness*(links: ComputedReportLinks,
     index: ReportLookupIndex): ComputedLinksResult[ComputedWorkReport] =
   ## Extract the immutable exporter at the source's nominal canonical lookup ordinal.
@@ -60,6 +64,7 @@ proc computedLinkWitness*(links: ComputedReportLinks,
         status: ComputedLinksError.InvalidIndex) # Check before narrowing.
   ComputedLinksResult[ComputedWorkReport](status: ComputedLinksError.None,
       completed: data.witnesses[int(uint64(index))])
+
 proc prepareComputedLinks*(source: ComputedGuaranteeTranscript,
     witnesses: openArray[ComputedWorkReport], limit: ElementLimit): ComputedLinksResult[
         ComputedReportLinks] =

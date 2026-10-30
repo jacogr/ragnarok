@@ -27,20 +27,25 @@ type
 func error*[T](outcome: RetentionResult[T]): RetentionError =
   ## Inspect a refusal without exposing any result storage.
   outcome.status
+
 func value*[T](outcome: RetentionResult[T]): T {.requires: outcome.status == RetentionError.None.} =
   ## Extract only the selected successful result.
   outcome.completed
+
 proc newRevisionRetention*(limit: ElementLimit): RevisionRetention =
   ## Open an empty bounded catalog; zero capacity is valid and admits no pins.
   RevisionRetention(head: RetentionData(limit: limit))
+
 func opened*(catalog: RevisionRetention): bool =
   ## Query lifecycle without exposing catalog storage.
   catalog.head != nil
+
 proc len*(catalog: RevisionRetention): int {.requires: catalog.head != nil.} =
   ## Count explicit pins, including repeated independent pins of the same view.
   let head = catalog.head
   assert head != nil
   head.slots.len
+
 proc retain*(catalog: var RevisionRetention, view: RepositoryView): RetentionResult[
     RetentionToken] =
   ## Copy immutable owners into a fresh slot only after lifecycle, view and count checks.
@@ -56,6 +61,7 @@ proc retain*(catalog: var RevisionRetention, view: RepositoryView): RetentionRes
   slots.add(slot)
   catalog.head = RetentionData(slots: slots, limit: head.limit)
   RetentionResult[RetentionToken](status: RetentionError.None, completed: RetentionToken(slot: slot))
+
 proc lookup*(catalog: RevisionRetention, token: RetentionToken): RetentionResult[RepositoryView] =
   ## Require exact slot membership, never a forgeable ordinal or generation-only match.
   let head = catalog.head
@@ -67,6 +73,7 @@ proc lookup*(catalog: RevisionRetention, token: RetentionToken): RetentionResult
     if slot == selected:
       return RetentionResult[RepositoryView](status: RetentionError.None, completed: slot.view)
   RetentionResult[RepositoryView](status: RetentionError.MissingToken)
+
 proc release*(catalog: var RevisionRetention, token: RetentionToken): RetentionError =
   ## Remove catalog ownership explicitly; caller-held tokens/views and copied catalogs survive.
   let head = catalog.head
@@ -87,6 +94,7 @@ proc release*(catalog: var RevisionRetention, token: RetentionToken): RetentionE
       slots.add(slot)
   catalog.head = RetentionData(slots: slots, limit: head.limit)
   RetentionError.None
+
 proc close*(catalog: var RevisionRetention): RetentionError =
   ## Drop this catalog's pins without revoking immutable readers or another copied handle.
   if catalog.head == nil: return RetentionError.Uninitialized

@@ -43,6 +43,7 @@ type
 func error*[T](outcome: ReportPackageResult[T]): ReportPackageError =
   ## Read a failure reason without allowing external retagging.
   outcome.status
+
 func value*[T](outcome: ReportPackageResult[T]): T {.inline,
     requires: outcome.status == ReportPackageError.None.} =
   ## Extract only a completely selected success under the checked-build contract.
@@ -57,16 +58,16 @@ proc packageRecent*(owner: PackageCheckedReports): ReportPackageResult[RecentAnc
   ReportPackageResult[RecentAnchoredReports](status: ReportPackageError.None,
       completed: data.recent)
 
-## Compare fixed package octets without silently interchanging root/hash domains.
 func compareHash(a, b: PackageHash): int =
+  ## Compare fixed package octets without silently interchanging root/hash domains.
   # The first unequal octet decides lexicographic identity order.
   for i in 0..<32:
     if a.bytes[i] < b.bytes[i]: return -1 # Smaller key precedes larger.
     if a.bytes[i] > b.bytes[i]: return 1 # Larger key follows smaller.
   0
 
-## Sort complete pairs, retaining distinct roots for the same historical key as set-union members.
 func comparePair(a, b: ReportedPackage): int =
+  ## Sort complete pairs, retaining distinct roots for the same historical key as set-union members.
   let key = compareHash(a.package, b.package)
   if key != 0: return key # Root bytes only order equal keys.
   # Exact pair membership implements the paper's union of key/value pairs.
@@ -75,8 +76,8 @@ func comparePair(a, b: ReportedPackage): int =
     if a.segment.bytes[i] > b.segment.bytes[i]: return 1 # Later root octet.
   0
 
-## Binary search privately sorted identities; repeated existing identities are ordinary set-union evidence.
 func contains(values: seq[PackageHash], key: PackageHash): bool =
+  ## Binary search privately sorted identities; repeated existing identities are ordinary set-union evidence.
   var low = 0
   var high = values.len
   # Halving bounds avoids repeated scans over large accumulated/ready rings.
@@ -88,8 +89,8 @@ func contains(values: seq[PackageHash], key: PackageHash): bool =
       high = middle # Keep the first candidate equal to or greater than the key.
   low < values.len and compareHash(values[low], key) == 0
 
-## Search exact key/root pairs; a matching key with a different root cannot satisfy this check.
 func contains(values: seq[ReportedPackage], key: ReportedPackage): bool =
+  ## Search exact key/root pairs; a matching key with a different root cannot satisfy this check.
   var low = 0
   var high = values.len
   # Search sorted copied pairs without exporting mutable index storage.

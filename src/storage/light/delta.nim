@@ -39,77 +39,96 @@ type
     key: StateKey
     index: int
     admit: bool
+
 func error*[T](outcome: LightDeltaResult[T]): LightDeltaError =
   ## Inspect the selected typed reason without granting completed-data authority.
   outcome.status
+
 func value*[T](outcome: LightDeltaResult[T]): T {.inline,
     requires: outcome.status == LightDeltaError.None.} =
   ## Only success authorizes an encoded frame, extent or authenticated successor.
   outcome.completed
+
 func proofError*[T](outcome: LightDeltaResult[T]): LightCacheError {.requires:
     outcome.status == LightDeltaError.ProofFailure.} =
   ## Preserve only a selected proof/admission failure.
   outcome.proofReason
+
 func failed[T](reason: LightDeltaError): LightDeltaResult[T] =
   ## Private typed refusal never initializes an inactive payload.
   LightDeltaResult[T](status: reason)
+
 func proofFailed[T](reason: LightCacheError): LightDeltaResult[T] =
   ## Preserve the selected cache cause without retaining its failed scratch.
   LightDeltaResult[T](status: LightDeltaError.ProofFailure, proofReason: reason)
+
 func initialized*(delta: PreparedLightDelta): bool =
   ## Default handles safely report that they carry no transition authority.
   delta.owner != nil
+
 proc snapshot*(delta: PreparedLightDelta): PreparedLightSnapshot {.requires: delta.owner != nil.} =
   ## Retain the exact privately verified successor independently of frame lifetime.
   let owner = delta.owner
   assert owner != nil
   owner.image
+
 proc sequence*(delta: PreparedLightDelta): LightDeltaSequence {.requires: delta.owner != nil.} =
   ## Read the explicit frame sequence; it is not a consensus generation.
   let owner = delta.owner
   assert owner != nil
   owner.sequence
+
 proc baseChecksum*(delta: PreparedLightDelta): StorageChecksum {.requires: delta.owner != nil.} =
   ## Bind publication to the complete predecessor evidence image, not just its trusted root.
   let owner = delta.owner
   assert owner != nil
   owner.base
+
 proc checksum*(delta: PreparedLightDelta): StorageChecksum {.requires: delta.owner != nil.} =
   ## Return copied local corruption-detection metadata without granting root trust.
   let owner = delta.owner
   assert owner != nil
   owner.checksum
+
 proc byteLength*(delta: PreparedLightDelta): int {.requires: delta.owner != nil.} =
   ## Inspect exact frame extent without copying output.
   let owner = delta.owner
   assert owner != nil
   owner.encoded.len
+
 proc encoded(owner: nil DeltaData): lent seq[byte] {.requires: owner != nil.} =
   ## Keep nullable-owner borrow provenance through a checked parameter.
   assert owner != nil
   owner.encoded
+
 proc encodedBytes*(delta: PreparedLightDelta): lent seq[byte] {.requires: delta.owner != nil.} =
   ## Borrow immutable bytes only while their owner remains alive during the synchronous operation.
   encoded(delta.owner)
+
 proc copyBytes(input: openArray[byte]): seq[byte] =
   ## Copy only an already bounded stable input, retaining no caller-owned mutable storage.
   result = newSeq[byte](input.len)
   for index in 0..<input.len: result[index] = input[index]
+
 proc bytes*(delta: PreparedLightDelta): seq[byte] {.requires: delta.owner != nil.} =
   ## Return independently mutable transport bytes; editing them cannot change successor authority.
   copyBytes(delta.encodedBytes)
+
 func number(input: openArray[byte], offset: int, width = 8): uint64 =
   ## Callers establish each complete fixed-width little-endian field before reading.
   result = 0
   for index in 0..<width: result = result or (uint64(input[offset+index]) shl (8*index))
+
 proc put(output: var seq[byte], offset: int, value: uint64, width = 8) =
   ## Exact encoded extent proves every fixed field write.
   for index in 0..<width: output[offset+index] = byte((value shr (8*index)) and 255)
+
 func readKey(input: openArray[byte], offset: int): StateKey =
   ## Complete edit-header preflight proves these fixed query bytes.
   var raw = default(array[31, byte])
   for index in 0..<31: raw[index] = input[offset+index]
   StateKey(raw)
+
 func compareKey(a, b: StateKey): int =
   ## Canonical ordering compares every serialized query octet.
   let left = array[31, byte](a)
@@ -118,20 +137,24 @@ func compareKey(a, b: StateKey): int =
     if left[index] < right[index]: return -1
     if left[index] > right[index]: return 1
   0
+
 proc compareEdit(a, b: EditIndex): int =
   ## Sort fixed identities while borrowed proof buffers remain stable.
   compareKey(a.key, b.key)
+
 proc grow(total: var uint64, amount, maximum: uint64): bool =
   ## Prove native addressing and policy before addition or later narrowing.
   if total > maximum or amount > maximum-total: return false
   total += amount
   true
+
 func prefix(input: openArray[byte], offset: int, expected: openArray[byte]): bool =
   ## Even partial known metadata must match before incomplete input can be classified as an unfinished frame.
   for index in 0..<expected.len:
     if offset+index >= input.len: return true
     if input[offset+index] != expected[index]: return false
   true
+
 proc lightDeltaDeclaredExtent*(input: openArray[byte], limits: LightDeltaLimits): LightDeltaResult[int] =
   ## Bound one declared frame from available fixed header bytes before any frame-sized allocation; no proof or checksum authority is granted.
   let maximum = min(uint64(limits.bytes), uint64(high(int)))
@@ -146,12 +169,14 @@ proc lightDeltaDeclaredExtent*(input: openArray[byte], limits: LightDeltaLimits)
   if count > body div uint64(EditBytes): return failed[int](LightDeltaError.InvalidFormat)
   let extent = body+uint64(LightDeltaOverhead)
   LightDeltaResult[int](status: LightDeltaError.None, completed: int(extent))
+
 proc lightDeltaExtent*(input: openArray[byte], limits: LightDeltaLimits): LightDeltaResult[int] =
   ## Identify one complete bounded frame, never accepting trailing bytes as part of its checksum.
   let declared = lightDeltaDeclaredExtent(input, limits)
   if declared.error != LightDeltaError.None: return declared
   if declared.value > input.len: return failed[int](LightDeltaError.IncompleteFrame)
   declared
+
 proc snapshotFailure[T](outcome: LightSnapshotResult[PreparedLightSnapshot]): LightDeltaResult[T] =
   ## Translate only the already selected atomic admission refusal, retaining no candidate image.
   case outcome.error
@@ -160,6 +185,7 @@ proc snapshotFailure[T](outcome: LightSnapshotResult[PreparedLightSnapshot]): Li
   of LightSnapshotError.LimitExceeded: failed[T](LightDeltaError.LimitExceeded)
   of LightSnapshotError.LengthOverflow: failed[T](LightDeltaError.LengthOverflow)
   else: failed[T](LightDeltaError.InvalidTransition)
+
 proc prepareLightDelta*(before: PreparedLightSnapshot, sequence: LightDeltaSequence,
     proofs: openArray[LightStateProof], forgotten: openArray[StateKey],
     limits: LightDeltaLimits): LightDeltaResult[PreparedLightDelta] =
@@ -237,6 +263,7 @@ proc prepareLightDelta*(before: PreparedLightSnapshot, sequence: LightDeltaSeque
   LightDeltaResult[PreparedLightDelta](status: LightDeltaError.None,
     completed: PreparedLightDelta(owner: DeltaData(image: changed.value, base: before.checksum,
       sequence: sequence, encoded: output, checksum: checksum)))
+
 proc verified(input: openArray[byte], before: PreparedLightSnapshot, expected: LightDeltaSequence,
     limits: LightDeltaLimits): LightDeltaResult[DeltaData] =
   ## Strict shape/checksum/proof verification creates only private candidate metadata; output ownership follows success.
@@ -333,6 +360,7 @@ proc verified(input: openArray[byte], before: PreparedLightSnapshot, expected: L
   LightDeltaResult[DeltaData](status: LightDeltaError.None,
     completed: DeltaData(image: changed.value, base: before.checksum, sequence: expected,
       checksum: StorageChecksum(checksum)))
+
 proc decodeLightDelta*(input: openArray[byte], before: PreparedLightSnapshot,
     expected: LightDeltaSequence, limits: LightDeltaLimits): LightDeltaResult[PreparedLightDelta] =
   ## Copy stable transport only after every frame, predecessor and proof check has completed.
@@ -343,6 +371,7 @@ proc decodeLightDelta*(input: openArray[byte], before: PreparedLightSnapshot,
   let data = checked.value
   data.encoded = copyBytes(input)
   LightDeltaResult[PreparedLightDelta](status: LightDeltaError.None, completed: PreparedLightDelta(owner: data))
+
 proc takeLightDelta*(input: var seq[byte], before: PreparedLightSnapshot,
     expected: LightDeltaSequence, limits: LightDeltaLimits): LightDeltaResult[PreparedLightDelta] =
   ## Consume one owned transport buffer only on success; all refusals preserve the caller's original bytes.

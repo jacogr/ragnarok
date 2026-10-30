@@ -47,24 +47,29 @@ func error*[T](outcome: AvailabilityTransitionResult[
     T]): AvailabilityTransitionError =
   ## Read the status without allowing external retagging.
   outcome.status
+
 func value*[T](outcome: AvailabilityTransitionResult[T]): T {.inline,
     requires: outcome.status == AvailabilityTransitionError.None.} =
   ## Extract only complete success under supported checked-build contracts.
   outcome.completed
+
 func contextError*[T](outcome: AvailabilityTransitionResult[T]): AssuranceContextError {.inline,
     requires: outcome.status == AvailabilityTransitionError.ContextFailure.} =
   ## Inspect only the explicitly selected assurance-signature/context refusal.
   outcome.contextReason
+
 proc assuredAssignments*(plan: AvailabilityPlan): AvailabilitySnapshot {.requires: plan.data != nil.} =
   ## Retain the immutable posterior assignment sequence independently of every caller handle.
   let data = plan.data
   assert data != nil # A default owner is not an empty C(10).
   data.assignments
+
 proc availableReportCount*(plan: AvailabilityPlan): int {.requires: plan.data != nil.} =
   ## Count newly available reports in core order, independently of timeout/resize clearing.
   let data = plan.data
   assert data != nil # No success-like empty list for an uninitialized plan.
   data.available.len
+
 proc availableReportAt*(plan: AvailabilityPlan, index: int): AvailabilityTransitionResult[OwnedReport] =
   ## Copy one retained complete report handle after checking its ordinal.
   let data = plan.data

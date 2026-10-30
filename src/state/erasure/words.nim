@@ -40,16 +40,19 @@ const
 func error*[T](outcome: ErasureWordResult[T]): ErasureWordError =
   ## Read the selected reason without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: ErasureWordResult[T]): T
     {.requires: outcome.status == ErasureWordError.None.} =
   ## Extract only a fully completed selected success.
   outcome.completed
+
 func changeBasis(word: uint16, columns: array[16, uint16]): uint16 =
   ## Apply an exact binary linear map; both basis tables are inverses over all sixteen bits.
   var converted = 0'u16
   for bit in 0..<16:
     if (word and (1'u16 shl bit)) != 0: converted = converted xor columns[bit]
   converted
+
 func multiply(left, right: uint16): uint16 =
   ## Multiply polynomial representatives modulo x^16+x^5+x^3+x^2+1.
   var shifted = uint32(left)
@@ -61,6 +64,7 @@ func multiply(left, right: uint16): uint16 =
     shifted = shifted shl 1
     if (shifted and 65536) != 0: shifted = shifted xor 65581 # 0x1002d cancels the degree-sixteen term.
   uint16(product) # Reduction keeps shifted and product below 2^16 throughout.
+
 func inverse(word: uint16): uint16 =
   ## Fermat inversion of nonzero polynomial representatives uses exactly 31 field products.
   var power = 65534'u32
@@ -71,11 +75,13 @@ func inverse(word: uint16): uint16 =
     base = multiply(base, base) # All sixteen iterations square, including the final iteration.
     power = power shr 1
   answer
+
 proc wordCodeInfo*(code: ErasureWordCode): ErasureWordResult[ErasureWordInfo] =
   ## Copy fixed work/size facts from a completed immutable codeword.
   let data = code.data
   if data == nil: return ErasureWordResult[ErasureWordInfo](status: ErasureWordError.Uninitialized)
   ErasureWordResult[ErasureWordInfo](status: ErasureWordError.None, completed: data.info)
+
 proc codeWord*(code: ErasureWordCode, index: ErasureShardIndex): ErasureWordResult[ErasureWord] =
   ## Copy one systematic or parity scalar without exposing writable sequence storage.
   let data = code.data
@@ -83,6 +89,7 @@ proc codeWord*(code: ErasureWordCode, index: ErasureShardIndex): ErasureWordResu
   if uint64(index) >= uint64(uint16(data.info.shards)):
     return ErasureWordResult[ErasureWord](status: ErasureWordError.InvalidIndex)
   ErasureWordResult[ErasureWord](status: ErasureWordError.None, completed: data.words[int(uint64(index))])
+
 proc encodeErasureWords*(input: openArray[ErasureWord], shards: ErasureShards,
     limits: ErasureWordLimits): ErasureWordResult[ErasureWordCode] =
   ## Borrow stable original words during encoding; preflight all variable buffers and multiplication work.

@@ -37,28 +37,33 @@ type
 func error*[T](outcome: CurrentSequenceDriverResult[T]): CurrentSequenceDriverError =
   ## Inspect only the selected alternative without permitting retagging.
   outcome.status
+
 func value*[T](outcome: CurrentSequenceDriverResult[T]): T {.inline,
     requires: outcome.status == CurrentSequenceDriverError.None.} =
   ## Extract complete selected ownership only after success under checked optimized contracts.
   outcome.completed
+
 func initialFailure*[T](outcome: CurrentSequenceDriverResult[T]): CurrentAccumulationRoundResult[
     PreparedCurrentAccumulationRound] {.inline,
 
 requires: outcome.status == CurrentSequenceDriverError.InitialFailure.} =
   ## Retain only the actual failed initial orchestration, never a successful earlier round.
   outcome.initialReason
+
 func planningFailure*[T](outcome: CurrentSequenceDriverResult[T]): CurrentSequenceResult[
     PreparedCurrentContinuation] {.inline,
 
 requires: outcome.status == CurrentSequenceDriverError.PlanningFailure.} =
   ## Preserve the actual bounded suffix/input classification refusal.
   outcome.planningReason
+
 func executionFailure*[T](outcome: CurrentSequenceDriverResult[T]): CurrentSequenceResult[
     CurrentAccumulationSequence] {.inline,
 
 requires: outcome.status == CurrentSequenceDriverError.ExecutionFailure.} =
   ## Preserve the actual refused later entry and its original nested reason without a successful prefix.
   outcome.executionReason
+
 proc finishCurrentAccumulationSequence*(terminal: PreparedCurrentContinuation): CurrentSequenceDriverResult[
     CompletedCurrentAccumulationSequence] =
   ## Require genuine initialized planning and no further dispatch; copied metadata cannot invent protocol termination.
@@ -73,6 +78,7 @@ proc finishCurrentAccumulationSequence*(terminal: PreparedCurrentContinuation): 
     status: CurrentSequenceDriverError.None,
     completed: CompletedCurrentAccumulationSequence(data: CurrentCompletionData(
         terminal: terminal)))
+
 proc runCurrentAccumulationSequence*(source: CurrentAccumulationSequence,
     planning: CurrentContinuationLimits, execution: CurrentContinuationExecutionLimits):
     CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence] =
@@ -95,6 +101,7 @@ proc runCurrentAccumulationSequence*(source: CurrentAccumulationSequence,
         status: CurrentSequenceDriverError.ExecutionFailure,
         executionReason: executed) # Only the genuinely failed parent survives; earlier selected states remain private.
     current = executed.value # A fresh flat vector has strictly one more fact; the pre-execution cap makes further dispatch finite.
+
 proc runCurrentBlockAccumulationSequence*(round: BlockAccumulationRound, parameters: Parameters,
     limits: CurrentSequenceDriverLimits): CurrentSequenceDriverResult[
         CompletedCurrentAccumulationSequence] =
@@ -112,6 +119,7 @@ proc runCurrentBlockAccumulationSequence*(round: BlockAccumulationRound, paramet
     return CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence](
         status: CurrentSequenceDriverError.InvalidSequence) # Genuine initial orchestration must retain an initialized source graph.
   runCurrentAccumulationSequence(source.value, limits.planning, limits.execution)
+
 proc completedSequencePlan*(completed: CompletedCurrentAccumulationSequence): CurrentSequenceDriverResult[
     PreparedCurrentContinuation] =
   ## Retain the exact terminal proof; default completion cannot claim queue exhaustion or unaffordability.
@@ -121,6 +129,7 @@ proc completedSequencePlan*(completed: CompletedCurrentAccumulationSequence): Cu
         status: CurrentSequenceDriverError.Uninitialized)
   CurrentSequenceDriverResult[PreparedCurrentContinuation](status: CurrentSequenceDriverError.None,
       completed: data.terminal)
+
 proc completedSequenceSource*(completed: CompletedCurrentAccumulationSequence): CurrentSequenceDriverResult[
     CurrentAccumulationSequence] =
   ## Retain complete flat history through its genuine terminal owner, without mutable row exposure.
@@ -130,6 +139,7 @@ proc completedSequenceSource*(completed: CompletedCurrentAccumulationSequence): 
         status: CurrentSequenceDriverError.Uninitialized)
   CurrentSequenceDriverResult[CurrentAccumulationSequence](status: CurrentSequenceDriverError.None,
     completed: data.terminal.currentContinuationSource.value)
+
 proc completedSequenceInfo*(completed: CompletedCurrentAccumulationSequence): CurrentSequenceDriverResult[
     CurrentSequenceInfo] =
   ## Copy completed progress/budget while keeping final block-statistics/time/publication claims separate.
@@ -139,6 +149,7 @@ proc completedSequenceInfo*(completed: CompletedCurrentAccumulationSequence): Cu
         status: CurrentSequenceDriverError.Uninitialized)
   CurrentSequenceDriverResult[CurrentSequenceInfo](status: CurrentSequenceDriverError.None,
     completed: data.terminal.currentContinuationSource.value.currentSequenceInfo.value)
+
 proc completedSequenceState*(completed: CompletedCurrentAccumulationSequence): CurrentSequenceDriverResult[
     StateStoreSnapshot] =
   ## Retain selected recursive accumulation state only; this does not certify final whole-block serialization/publication.

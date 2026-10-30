@@ -48,21 +48,24 @@ type
 func error*[T](outcome: AccumulationReadyResult[T]): AccumulationReadyError =
   ## Read a reason without exposing the discriminator to writes.
   outcome.status
+
 func value*[T](outcome: AccumulationReadyResult[T]): T {.inline,
     requires: outcome.status == AccumulationReadyError.None.} =
   ## Extract only selected complete success.
   outcome.completed
+
 func codecError*[T](outcome: AccumulationReadyResult[T]): WorkQueueError {.inline,
     requires: outcome.status == AccumulationReadyError.CodecFailure.} =
   ## Read only a selected codec refusal.
   outcome.codecReason
+
 func stateError*[T](outcome: AccumulationReadyResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationReadyError.StateFailure.} =
   ## Read only a selected private store refusal.
   outcome.stateReason
 
-# Hash ordering and binary membership operate in the package domain, without hashing or numeric conversion.
 func compareHash(left, right: PackageHash): int =
+  ## Hash ordering and binary membership operate in the package domain, without hashing or numeric conversion.
   for index in 0..<32:
     if left.bytes[index] < right.bytes[index]: return -1
     if left.bytes[index] > right.bytes[index]: return 1

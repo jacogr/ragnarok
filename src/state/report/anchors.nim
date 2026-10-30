@@ -61,6 +61,7 @@ type
 func error*[T](outcome: ReportAnchorResult[T]): ReportAnchorError =
   ## Inspect a reason without permitting external retagging.
   outcome.status
+
 func value*[T](outcome: ReportAnchorResult[T]): T {.inline,
     requires: outcome.status == ReportAnchorError.None.} =
   ## Extract only a completely selected success.
@@ -175,6 +176,7 @@ proc missingLookups*(demand: ReportLookupDemand): ReportAnchorResult[int] =
   let data = demand.data
   if data == nil: return ReportAnchorResult[int](status: ReportAnchorError.Uninitialized)
   ReportAnchorResult[int](status: ReportAnchorError.None, completed: data.missing)
+
 proc lookupDemandChild*(demand: ReportLookupDemand): ReportAnchorResult[OwnedHeader] =
   ## Missing context starts at the oldest retained child's parent, never at an arbitrary report hash.
   let data = demand.data
@@ -183,6 +185,7 @@ proc lookupDemandChild*(demand: ReportLookupDemand): ReportAnchorResult[OwnedHea
     return ReportAnchorResult[OwnedHeader](status: ReportAnchorError.MissingLookupAnchor)
   ReportAnchorResult[OwnedHeader](status: ReportAnchorError.None,
     completed: data.context.headerAt(data.context.len - 1).value)
+
 proc lookupDemandMaximum*(demand: ReportLookupDemand, available: ElementLimit): ReportAnchorResult[ElementLimit] =
   ## Strict slot descent bounds potentially useful headers independently of the operator's remaining count.
   let data = demand.data
@@ -231,6 +234,7 @@ proc requiresFuzzView*(owner: AnchoredReports): bool =
   ## The immutable certificate retains the supplied-initial-membership domain through publication.
   let data = owner.data
   data != nil and data.fuzzOrigin
+
 proc checkFuzzReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeader,
     context: FuzzAncestry, config: AncestorConfig): ReportAnchorResult[AnchoredReports] =
   ## Preserve every GP lookup predicate using real child headers; missing initial evidence stays local.

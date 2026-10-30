@@ -52,6 +52,7 @@ type RpcProofDispatch* = object ## Host-only routing retains a detached request 
 func valid*(dispatch: RpcProofDispatch): bool =
   ## Default routing tickets grant no connection delivery authority.
   dispatch.selection.valid
+
 func proofRequest*(dispatch: RpcProofDispatch): RpcProofRequest {.requires: dispatch.valid.} =
   ## The host receives exact fixed selectors after the RPC tick activation has retired.
   dispatch.selection
@@ -71,31 +72,49 @@ type
 func error*(outcome: RpcAccumulationResult): RpcAccumulationError =
   ## Inspect publication status without exposing a mutable discriminator.
   outcome.status
+
 func value*(outcome: RpcAccumulationResult): BlockSnapshot {.inline,
     requires: outcome.status == RpcAccumulationError.None.} =
   ## Retain only the exact child installed in both state and RPC history.
   outcome.completed
+
 func chainFailure*(outcome: RpcAccumulationResult): AccumulationChainResult {.inline,
     requires: outcome.status == RpcAccumulationError.ChainFailure.} =
   ## Inspect only an actual failed state/chain adoption, preserving its nested guarded causes.
   outcome.chainReason
 
-# POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
+  ## POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
+
 proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
+  ## Bind the descriptor to the borrowed socket address, returning the native status.
+
 proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
+  ## Enable incoming connections with the requested native listen backlog.
+
 proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
+  ## Accept one incoming connection without retaining the optional peer-address pointers.
+
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
+  ## Read socket bytes into the caller-owned buffer and return the native byte count or error.
+
 proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
+  ## Send from a borrowed byte buffer and return the native byte count or error.
+
 proc setOption(fd, level, option: cint, value: pointer,
     size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
+  ## Apply one native socket option from the borrowed option-value buffer.
+
 proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
     header: "<arpa/inet.h>".}
+  ## Parse an IP address into caller-owned native storage using the selected address family.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
+  ## Convert a host-order port to the native network byte order.
 let
   GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
   SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
@@ -107,13 +126,16 @@ when defined(macosx):
 else:
   let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint # Per-send Linux suppression.
 
-# Composite owner is explicitly non-copyable: copying slots would duplicate native descriptor ownership.
 proc `=copy`*(destination: var Server, source: Server) {.error: "RPC Server owns socket descriptors".}
+  ## Composite owner is explicitly non-copyable: copying slots would duplicate native descriptor ownership.
+
 proc `=dup`*(source: Server): Server {.error.}
   ## Native listener and suspension ownership cannot be duplicated.
+
 proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
   ## Retiring shared canonical aliases during worker execution is a host lifecycle defect.
   discard
+
 proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false
@@ -166,8 +188,8 @@ proc resumeChain*(server: var Server, lease: nil RpcChainLease): bool =
   server.lease = nil
   true
 
-# Retire one slot exactly once and release queued data; close is not retried after EINTR.
 proc close(slot: var Connection) =
+  ## Retire one slot exactly once and release queued data; close is not retried after EINTR.
   if slot.opened:
     discard posix.close(slot.fd)
   slot.opened = false
@@ -222,6 +244,7 @@ proc finishStateProofImport*(server: var Server, dispatch: RpcProofDispatch,
     server.connections[index].close() # A slow originating consumer cannot roll back adopted storage.
     return false
   true
+
 proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: StateRoot,
     wire: openArray[byte], failure = ""): bool =
   ## Deliver only after lease release; connection-local namespaces suppress stale/reset completions.
@@ -235,8 +258,8 @@ proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: Sta
     return false
   true
 
-# Configure descriptor flags before any network operation; failed configuration leaves ownership with caller.
 proc nonblocking(fd: cint): bool =
+  ## Configure descriptor flags before any network operation; failed configuration leaves ownership with caller.
   let flags = fcntl(fd, F_GETFL, 0)
   let descriptorFlags = fcntl(fd, GetFd, 0)
   if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
@@ -308,6 +331,7 @@ proc start*(server: var Server, port: uint16, role: string,
   true
 
 proc queueBestUpdates(server: var Server, child: BlockSnapshotResult) =
+  ## Queue head updates for usable WebSocket clients, closing only overflowing subscribers.
   for slot in mitems(server.connections):
     if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
       if not slot.session.queueChainUpdates(child):
@@ -362,6 +386,7 @@ proc canInstallPreparedAccumulation*(server: Server, state: StateStore, view: Ch
   ## Preflight exact canonical/RPC history and optional exclusive lease before durability begins.
   server.opened and server.lease == lease and canInstallChainUpdate(state, view, prepared) and
     sameChainView(server.chain, view)
+
 proc installPreparedAccumulation*(server: var Server, state: var StateStore, view: var ChainView,
     prepared: PreparedChainUpdate, lease: nil RpcChainLease = nil) {.requires:
       canInstallPreparedAccumulation(server, state, view, prepared, lease).} =
@@ -377,6 +402,7 @@ proc canInstallPreparedAccumulation*(server: Server, state: StateStore, view: Ch
   server.opened and server.lease == lease and canInstallCurrentChainUpdate(state, view,
       prepared) and
     sameChainView(server.chain, view)
+
 proc installPreparedAccumulation*(server: var Server, state: var StateStore, view: var ChainView,
     prepared: PreparedCurrentChainUpdate, lease: nil RpcChainLease = nil) {.requires:
       canInstallPreparedAccumulation(server, state, view, prepared, lease).} =
@@ -405,16 +431,16 @@ proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
         slot.close() # Finality still advances; only the slow consumer is disconnected.
   ViewFinalizeError.None
 
-# Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
 proc reject(slot: var Connection, code: int, now: int64) =
+  ## Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
   let payload = $char(code shr 8) & $char(code and 255)
   slot.output = frame(payload, 8)
   slot.offset = 0
   slot.closing = true
   slot.deadline = now + 5000
 
-# Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
 proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 = 0) =
+  ## Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
   if not slot.upgraded: # The only HTTP operation is an explicit WebSocket upgrade, never RPC over POST.
     let ending = slot.input.find("\r\n\r\n")
     if ending < 0:
@@ -595,9 +621,11 @@ proc startLight*(server: var Server, port: uint16, role: string, parameters: Par
     server.light = head # No dispatcher can observe the listener until this startup activation retires.
     server.lightDisk = disk
   true
+
 proc canInstallLightHead*(server: Server, expected: RpcLightHead): bool =
   ## Exact immutable source incarnation includes proof knowledge, unlike equal header/root metadata alone.
   server.opened and server.lease == nil and sameRpcLightHead(server.light, expected)
+
 proc installLightHead*(server: var Server, expected, target: RpcLightHead): bool =
   ## A preflighted host installs only after actual worker collection/join; no IO or proof verification runs here.
   if not target.valid or not server.canInstallLightHead(

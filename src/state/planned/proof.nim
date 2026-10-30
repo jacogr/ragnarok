@@ -14,17 +14,21 @@ type PlannedProofResult*[T] = object ## Private plan-scoped outcomes preserve ex
   of None: completed: T
   of ProofFailure: proofReason: StateProofError
   else: discard # Refusals never expose a partial verified view or encoded prefix.
+
 func error*[T](outcome: PlannedProofResult[T]): ProofViewError =
   ## Preserve exact view reasons without extracting payloads.
   outcome.status
+
 func value*[T](outcome: PlannedProofResult[T]): T {.inline,
     requires: outcome.status == ProofViewError.None.} =
   ## Complete planned success alone grants payload access.
   outcome.completed
+
 func proofError*[T](outcome: PlannedProofResult[T]): StateProofError {.inline,
     requires: outcome.status == ProofViewError.ProofFailure.} =
   ## Nested authentication/backend failure remains distinct from framing and scope refusal.
   outcome.proofReason
+
 proc fromView[T](outcome: ProofViewResult[T]): PlannedProofResult[T] =
   ## Translate only already guarded owner results, preserving every precise error and success payload.
   case outcome.error

@@ -90,31 +90,39 @@ type
 func hostSuccess*[Reason: enum](response: HostResponse): HostResult[Reason] =
   ## Construct a selected response; applyHostResponse still validates its fields before publication.
   HostResult[Reason](selection: HostResultKind.Response, response: response)
+
 func hostFailure*[Reason: enum](reason: Reason): HostResult[Reason] =
   ## Construct a local callback refusal, preserving even the zero ordinal of the supplied enum.
   HostResult[Reason](selection: HostResultKind.Failure, reason: reason)
+
 func kind*[Reason: enum](r: HostResult[Reason]): HostResultKind =
   ## Read callback selection without allowing discriminator mutation.
   r.selection
+
 func value*[Reason: enum](r: HostResult[Reason]): HostResponse
     {.requires: r.selection == HostResultKind.Response.} =
   ## Select a callback response only after checking its kind.
   r.response
+
 func failure*[Reason: enum](r: HostResult[Reason]): Reason
     {.requires: r.selection == HostResultKind.Failure.} =
   ## Select the local reason only after choosing the callback failure branch.
   r.reason
+
 func error*[Reason: enum](r: HostExecutionResult[Reason]): HostExecutionError =
   ## Inspect fallible execution status without permitting result forgery.
   r.status
+
 func value*[Reason: enum](r: HostExecutionResult[Reason]): StepOutcome
     {.requires: r.status == HostExecutionError.None.} =
   ## Extract completed guest state only after successful execution.
   r.completed
+
 func executionError*[Reason: enum](r: HostExecutionResult[Reason]): StepError
     {.requires: r.status == HostExecutionError.ExecutionFailure.} =
   ## Extract an engine reason only from the selected execution-failure alternative.
   r.executionReason
+
 func hostError*[Reason: enum](r: HostExecutionResult[Reason]): Reason
     {.requires: r.status == HostExecutionError.HostFailure.} =
   ## Extract the original callback enum only from a selected host failure.
@@ -123,6 +131,7 @@ func hostError*[Reason: enum](r: HostExecutionResult[Reason]): Reason
 func error*(r: StepResult): StepError =
   ## Inspect status without permitting success forgery or retagging.
   r.status
+
 func value*(r: StepResult): StepOutcome {.requires: r.status == StepError.None.} =
   ## Select successful evaluation before inspecting either guest outcome and its machine snapshot.
   r.completed
@@ -134,6 +143,7 @@ func terminalExit(kind: StepExit): bool {.inline.} =
 func exit*(outcome: StepOutcome): StepExit =
   ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
   outcome.kind
+
 func backend*(outcome: StepOutcome): PvmBackend =
   ## Completed outcomes identify actual execution; local refusals carry no receipt.
   outcome.engine
@@ -239,10 +249,13 @@ const executionClasses = # Immutable byte metadata: r registers, m memory, h hos
 when defined(polkavmRuntime):
   type ForeignOwner = object ## Owning foreign lifetime stays inside one prepared identity.
     handle: PolkaHandle
+
   proc `=copy`(destination: var ForeignOwner, source: ForeignOwner) {.error.}
     ## Copying would duplicate the exclusive raw instance lifetime.
+
   proc `=dup`(source: ForeignOwner): ForeignOwner {.error.}
     ## Implicit duplication must never alias one destructible foreign handle.
+
   proc `=wasMoved`(owner: var ForeignOwner) {.nodestroy, inline.} =
     ## A moved native handle has no allocation left to release.
     owner.handle = nil
@@ -301,6 +314,7 @@ type
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
+
 proc `=dup`(source: PreparedStorage): PreparedStorage {.error.}
   ## Prepared storage is allocated once and never implicitly duplicated by a container or return.
 
@@ -626,12 +640,15 @@ proc scopedStep(source: Machine, cycles: GasCycleLimit, scope: range[0..3],
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Evaluate one permitted register instruction with the shared checked engine.
   scopedStep(source, limit, 0)
+
 proc stepControl*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Add control instructions while preserving exact single-step PC conventions.
   scopedStep(source, limit, 1)
+
 proc stepMemory*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Add atomic checked loads/stores; host instructions remain outside this capability.
   scopedStep(source, limit, 2)
+
 proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Evaluate every instruction under Psi_1; all mutation occurs in the same recursive engine.
   scopedStep(source, limit, 3)
@@ -644,15 +661,19 @@ proc scopedPlanStep(source: Machine, plan: GasPlan, scope: range[0..3]): StepRes
       plan, owner.value):
     return StepResult(status: StepError.InvalidGasPlan)
   scopedStep(source, settings.value.cycleLimit, scope, plan)
+
 proc stepRegisters*(source: Machine, plan: GasPlan): StepResult =
   ## Complete prices do not broaden the register-only capability.
   scopedPlanStep(source, plan, 0)
+
 proc stepControl*(source: Machine, plan: GasPlan): StepResult =
   ## Control scope uses the same immutable price capability and engine.
   scopedPlanStep(source, plan, 1)
+
 proc stepMemory*(source: Machine, plan: GasPlan): StepResult =
   ## Memory scope retains checked atomic accesses under complete prices.
   scopedPlanStep(source, plan, 2)
+
 proc stepOnce*(source: Machine, plan: GasPlan): StepResult =
   ## Full Psi_1 scope preserves the existing price-owner validation boundary.
   scopedPlanStep(source, plan, 3)
@@ -828,6 +849,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   ## Fallible host dispatch retains typed callback failures and the shared source-attempt budget.
   hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
       fallible: handler), stepLimit, hostLimit, gasLimit)
+
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
@@ -843,6 +865,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   ## Prepared callbacks share scalar executable facts while same-owner reentry remains refused.
   hostSelected[Context, Reason, true](source, prepared, context, HostCallbacks[Context, Reason](
       fallible: handler), stepLimit, hostLimit)
+
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
@@ -863,6 +886,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     return executionResult[Reason](StepResult(status: StepError.InvalidGasPlan))
   hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
       fallible: handler), stepLimit, hostLimit, settings.value.cycleLimit, plan)
+
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, plan: GasPlan): StepResult =
@@ -887,6 +911,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     return executionResult[Reason](StepResult(status: StepError.InvalidGasMemo))
   hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
       fallible: handler), stepLimit, hostLimit, settings.value.cycleLimit, memo = memo)
+
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, memo: GasMemo): StepResult =

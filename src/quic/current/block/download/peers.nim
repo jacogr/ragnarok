@@ -51,11 +51,14 @@ type
 proc `=copy`*(destination: var CurrentDownloadPeers, source: CurrentDownloadPeers) {.
     error: "CurrentDownloadPeers owns native transports and callback addresses".}
   ## Composite ownership must not rely on fields silently inheriting exclusive native lifetimes.
+
 proc `=dup`*(source: CurrentDownloadPeers): CurrentDownloadPeers {.error.}
   ## Duplicating the catalog would duplicate borrowed callback targets and engine retirement obligations.
+
 proc requireRetired(catalog: CurrentDownloadPeers) {.requires: catalog.count == 0.} =
   ## Keep the explicit-close obligation as a runtime/compiler contract, including optimized destructor lowering.
   discard
+
 proc `=wasMoved`*(catalog: var CurrentDownloadPeers) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(catalog.slots)
@@ -80,42 +83,51 @@ proc `==`*(left, right: CurrentDownloadPeerKey): bool =
   for index in 0..<32:
     if first[index] != second[index]: return false # Stop on the first unequal identity byte.
   true
+
 func error*[T](outcome: CurrentDownloadPeerResult[T]): CurrentDownloadPeerError =
   ## Inspect a reason without authorizing payload extraction.
   outcome.status
+
 func value*[T](outcome: CurrentDownloadPeerResult[T]): T {.inline,
     requires: outcome.status == CurrentDownloadPeerError.None.} =
   ## Only actual successful lookup can expose a selected binding failure.
   outcome.completed
+
 func count*(catalog: CurrentDownloadPeers): int =
   ## Count currently owned native endpoints, excluding retired fixed identity reservations.
   catalog.count
+
 proc find(catalog: CurrentDownloadPeers, id: DownloadPeerId): int =
   ## Search at most sixteen stable identity reservations.
   for index in 0..<catalog.limit:
     if catalog.slots[index].known and catalog.slots[index].id ==
         id: return index # Never return an unregistered/default identity.
   -1
+
 proc ready(slot: PeerSlot): bool =
   ## A lifetime success counter alone cannot authorize a closed or unauthenticated connection.
   slot.registered and not slot.stopping and not slot.failed and not slot.announcementOpening and
       slot.verified and
     slot.transport.transportStatus == 1 and slot.transport.peerMetric(0) == 1 and
     slot.transport.authenticatedConnections > 0
+
 proc ready*(catalog: CurrentDownloadPeers, id: DownloadPeerId): bool =
   ## Missing/retired peers cannot be selected for a native stream.
   let index = catalog.find(id)
   index >= 0 and catalog.slots[index].ready
+
 proc identityRejected*(catalog: CurrentDownloadPeers, id: DownloadPeerId): bool =
   ## Distinguish an observed certificate-policy refusal from an incomplete handshake.
   let index = catalog.find(id)
   index >= 0 and catalog.slots[index].checked and not catalog.slots[index].verified
+
 proc readyPeers*(catalog: CurrentDownloadPeers): seq[DownloadPeerId] =
   ## Return copied authenticated catalog identities in stable registration-slot order.
   result = @[]
   for index in 0..<catalog.limit:
     if catalog.slots[index].ready: result.add(catalog.slots[
         index].id) # The configured cap bounds both scanning and allocation.
+
 proc busy*(catalog: CurrentDownloadPeers): bool =
   ## Pending native opens also prevent callback mapping reuse until actual retirement.
   for index in 0..<catalog.limit:
@@ -202,10 +214,12 @@ proc announcements*(catalog: CurrentDownloadPeers, id: DownloadPeerId): PeerAnno
   let index = catalog.find(id)
   if index < 0 or not catalog.slots[index].ready: return default(PeerAnnouncementSnapshot)
   catalog.slots[index].announcements.snapshot
+
 proc incarnation*(catalog: CurrentDownloadPeers, id: DownloadPeerId): uint64 =
   ## New transports and reopened persistent streams change provenance even for identical leaf claims.
   let index = catalog.find(id)
   if index >= 0: catalog.slots[index].incarnation else: 0
+
 proc publishAnnouncement*(catalog: var CurrentDownloadPeers, owner: OwnedHeader,
     finalized: AnnouncedBlock): AnnouncementError =
   ## Only host-side canonical publication updates the outbound view; callbacks merely send bytes.

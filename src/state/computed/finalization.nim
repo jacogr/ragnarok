@@ -33,19 +33,23 @@ type
 func error*[T](outcome: ComputedFinalizationResult[T]): ComputedFinalizationError =
   ## Inspect reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedFinalizationResult[T]): T
     {.requires: outcome.status == ComputedFinalizationError.None.} =
   ## Guard complete-success extraction under optimized compilation.
   outcome.completed
+
 func driverFailure*[T](outcome: ComputedFinalizationResult[T]): AccumulationDriverResult
     {.requires: outcome.status == ComputedFinalizationError.DriverFailure.} =
   ## Retain only an actual refused driver result and its guarded nested reason.
   outcome.driverReason
+
 func finalizationFailure*[T](outcome: ComputedFinalizationResult[
     T]): AccumulationFinalizationResult[PreparedFinalAccumulation]
     {.requires: outcome.status == ComputedFinalizationError.FinalizationFailure.} =
   ## Retain only an actual refused finalizer result and its guarded output/store cause.
   outcome.finalizationReason
+
 proc computedFinalizationSource*(finalized: FinalizedComputedAccumulation): ComputedFinalizationResult[
     ExecutedComputedAccumulation] =
   ## Share exact original computations, pending guarantees, actual paid execution and Parameters.
@@ -54,6 +58,7 @@ proc computedFinalizationSource*(finalized: FinalizedComputedAccumulation): Comp
       status: ComputedFinalizationError.Uninitialized)
   ComputedFinalizationResult[ExecutedComputedAccumulation](status: ComputedFinalizationError.None,
       completed: data.source)
+
 proc computedFinalizationStopped*(finalized: FinalizedComputedAccumulation): ComputedFinalizationResult[
     StoppedAccumulation] =
   ## Share only the genuine stopped variant selected by the maintained driver.
@@ -62,6 +67,7 @@ proc computedFinalizationStopped*(finalized: FinalizedComputedAccumulation): Com
       status: ComputedFinalizationError.Uninitialized)
   ComputedFinalizationResult[StoppedAccumulation](status: ComputedFinalizationError.None,
       completed: data.stopped)
+
 proc computedFinalizationPlan*(finalized: FinalizedComputedAccumulation): ComputedFinalizationResult[
     PreparedFinalAccumulation] =
   ## Share the actual private accumulation successor, without claiming whole-block publication.
@@ -70,6 +76,7 @@ proc computedFinalizationPlan*(finalized: FinalizedComputedAccumulation): Comput
       status: ComputedFinalizationError.Uninitialized)
   ComputedFinalizationResult[PreparedFinalAccumulation](status: ComputedFinalizationError.None,
       completed: data.final)
+
 proc finalizeComputedAccumulation*(source: ExecutedComputedAccumulation,
     config: ComputedFinalizationConfig): ComputedFinalizationResult[FinalizedComputedAccumulation] =
   ## Derive original parameter authority, certify n=0 through the real driver and finalize once without replaying initial guests.

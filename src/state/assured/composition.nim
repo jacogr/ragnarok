@@ -34,25 +34,30 @@ type
 func error*[T](outcome: AssuredCompositionResult[T]): AssuredCompositionError =
   ## Inspect selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: AssuredCompositionResult[T]): T {.requires: outcome.status ==
     AssuredCompositionError.None.} =
   ## Guard complete-success extraction under optimized compilation.
   outcome.completed
+
 func driverFailure*[T](outcome: AssuredCompositionResult[
     T]): AccumulationDriverResult {.requires: outcome.status ==
     AssuredCompositionError.DriverFailure.} =
   ## Retain only the real refused driver result and its guarded selected cause.
   outcome.driverReason
+
 func finalizationFailure*[T](outcome: AssuredCompositionResult[T]): AccumulationFinalizationResult[
     PreparedFinalAccumulation] {.requires: outcome.status ==
     AssuredCompositionError.FinalizationFailure.} =
   ## Retain only the actual failed finalizer, including output/store reasons.
   outcome.finalizationReason
+
 func compositionFailure*[T](outcome: AssuredCompositionResult[
     T]): AccumulationCompletionResult {.requires: outcome.status ==
     AssuredCompositionError.CompositionFailure.} =
   ## Retain the actual refused state phase without exposing any earlier successful map.
   outcome.compositionReason
+
 proc assuredCompositionSource*(composed: ComposedAssuredState): AssuredCompositionResult[
     ExecutedAssuredAccumulation] =
   ## Share actual PVM completion and original authenticated assurance/report authority.
@@ -61,6 +66,7 @@ proc assuredCompositionSource*(composed: ComposedAssuredState): AssuredCompositi
       status: AssuredCompositionError.Uninitialized)
   AssuredCompositionResult[ExecutedAssuredAccumulation](status: AssuredCompositionError.None,
       completed: data.source)
+
 proc assuredCompositionStopped*(composed: ComposedAssuredState): AssuredCompositionResult[
     StoppedAccumulation] =
   ## Share the genuine stopped history after all source handles retire.
@@ -69,6 +75,7 @@ proc assuredCompositionStopped*(composed: ComposedAssuredState): AssuredComposit
       status: AssuredCompositionError.Uninitialized)
   AssuredCompositionResult[StoppedAccumulation](status: AssuredCompositionError.None,
       completed: data.stopped)
+
 proc assuredCompositionFinal*(composed: ComposedAssuredState): AssuredCompositionResult[
     PreparedFinalAccumulation] =
   ## Share actual execution-side finalization independently of the fully composed state view.
@@ -77,6 +84,7 @@ proc assuredCompositionFinal*(composed: ComposedAssuredState): AssuredCompositio
       status: AssuredCompositionError.Uninitialized)
   AssuredCompositionResult[PreparedFinalAccumulation](status: AssuredCompositionError.None,
       completed: data.final)
+
 proc assuredCompositionPlan*(composed: ComposedAssuredState): AssuredCompositionResult[
     PreparedAccumulationConsensus] =
   ## Share only the genuine completed state composition certificate.
@@ -85,6 +93,7 @@ proc assuredCompositionPlan*(composed: ComposedAssuredState): AssuredComposition
       status: AssuredCompositionError.Uninitialized)
   AssuredCompositionResult[PreparedAccumulationConsensus](status: AssuredCompositionError.None,
       completed: data.plan)
+
 proc assuredCompositionParameters*(composed: ComposedAssuredState): AssuredCompositionResult[Parameters] =
   ## Inspect all original parameters without permitting replacement execution authority.
   let data = composed.data
@@ -92,6 +101,7 @@ proc assuredCompositionParameters*(composed: ComposedAssuredState): AssuredCompo
       status: AssuredCompositionError.Uninitialized)
   AssuredCompositionResult[Parameters](status: AssuredCompositionError.None,
       completed: data.source.assuredExecutionParameters.value)
+
 proc composeAssuredState*(source: ExecutedAssuredAccumulation,
     config: AssuredCompositionConfig): AssuredCompositionResult[ComposedAssuredState] =
   ## Derive retained parameters, certify actual termination and prepare every state phase once before exposing success.

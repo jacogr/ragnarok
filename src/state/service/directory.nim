@@ -32,13 +32,16 @@ type
       completed: T
     else:
       discard
+
 func error*[T](outcome: ServiceDirectoryResult[T]): ServiceDirectoryError =
   ## Read the immutable discriminator without permitting caller retagging.
   outcome.status
+
 func value*[T](outcome: ServiceDirectoryResult[T]): T {.inline,
     requires: outcome.status == ServiceDirectoryError.None.} =
   ## Defaults and failed lookups grant no complete owner or fabricated coordinate.
   outcome.completed
+
 proc buildStateServiceDirectory*(source: StateInventory,
     limits: ServiceDirectoryLimits): ServiceDirectoryResult[StateServiceDirectory] =
   ## Preflight native retained allocation and full insertion work before allocating or copying descriptors.
@@ -77,6 +80,7 @@ proc buildStateServiceDirectory*(source: StateInventory,
     completed: StateServiceDirectory(data: ServiceDirectoryData(source: source, entries: entries,
       info: ServiceDirectoryInfo(services: info.value.services,
         retainedBytes: count * uint64(sizeof(ServiceDirectoryEntry)), comparisonCeiling: ceiling))))
+
 proc directoryInfo*(directory: StateServiceDirectory): ServiceDirectoryResult[
     ServiceDirectoryInfo] =
   ## Copy completed accounting without exposing mutable index storage.
@@ -86,6 +90,7 @@ proc directoryInfo*(directory: StateServiceDirectory): ServiceDirectoryResult[
         status: ServiceDirectoryError.Uninitialized) # Default has no complete map.
   ServiceDirectoryResult[ServiceDirectoryInfo](status: ServiceDirectoryError.None,
       completed: data.info)
+
 proc directoryInventory*(directory: StateServiceDirectory): ServiceDirectoryResult[StateInventory] =
   ## Retain the exact original complete logical inventory.
   let data = directory.data
@@ -93,6 +98,7 @@ proc directoryInventory*(directory: StateServiceDirectory): ServiceDirectoryResu
     return ServiceDirectoryResult[StateInventory](
         status: ServiceDirectoryError.Uninitialized) # Default has no provenance.
   ServiceDirectoryResult[StateInventory](status: ServiceDirectoryError.None, completed: data.source)
+
 proc directoryServiceAt*(directory: StateServiceDirectory,
     index: DirectoryServiceIndex): ServiceDirectoryResult[ServiceDirectoryEntry] =
   ## Validate the full-width sorted coordinate before narrowing to the native array index.
@@ -105,6 +111,7 @@ proc directoryServiceAt*(directory: StateServiceDirectory,
         status: ServiceDirectoryError.InvalidIndex) # No modulo truncation.
   ServiceDirectoryResult[ServiceDirectoryEntry](status: ServiceDirectoryError.None,
       completed: data.entries[int(uint64(index))])
+
 proc findService*(directory: StateServiceDirectory, service: ServiceIndex): ServiceDirectoryResult[
     InventoryServiceIndex] =
   ## Bounded binary search returns an original inventory ordinal or proven complete-source absence.

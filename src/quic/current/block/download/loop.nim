@@ -57,13 +57,16 @@ type
 proc `=copy`*(destination: var CurrentDownloadLoop, source: CurrentDownloadLoop) {.
     error: "CurrentDownloadLoop owns stable native callbacks and exclusive adoption".}
   ## Copying the aggregate would duplicate callback addresses and result-consumption authority.
+
 proc `=dup`*(source: CurrentDownloadLoop): CurrentDownloadLoop {.error.}
   ## Explicitly forbid composite duplication independently of nested owner hooks.
+
 proc requireClosed(dispatcher: CurrentDownloadLoop) {.requires:
     dispatcher.status in [CurrentDownloadLoopStage.Uninitialized,
         CurrentDownloadLoopStage.Closed].} =
   ## Even an endpoint-free configured dispatcher must release its Services borrow explicitly.
   discard
+
 proc `=wasMoved`*(dispatcher: var CurrentDownloadLoop) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(dispatcher.catalog)
@@ -101,24 +104,29 @@ proc `=destroy`*(dispatcher: CurrentDownloadLoop) =
 func stage*(dispatcher: CurrentDownloadLoop): CurrentDownloadLoopStage =
   ## Inspect progress without exposing native owners or mutable session state.
   dispatcher.status
+
 func sessionFailure*(dispatcher: CurrentDownloadLoop): CurrentDownloadSessionFailure {.requires:
     dispatcher.status notin [CurrentDownloadLoopStage.Preparing,
         CurrentDownloadLoopStage.Cancelling].} =
   ## Retain the latest selected admission/reception/preparation refusal for diagnostics, including retries.
   dispatcher.refusal
+
 func completed*(dispatcher: CurrentDownloadLoop): bool =
   ## A retained adoption refusal also counts as an observed result, never as successful adoption.
   dispatcher.hasCompletion
+
 func adoption*(dispatcher: CurrentDownloadLoop): CurrentHandoffResult {.
     requires: dispatcher.hasCompletion and dispatcher.status notin [
         CurrentDownloadLoopStage.Preparing, CurrentDownloadLoopStage.Cancelling].} =
   ## Copy only a real consumed Services result; its own success/failure guards remain authoritative.
   dispatcher.completion
+
 func logicalAdoption*(dispatcher: CurrentDownloadLoop): CurrentDownloadSessionResult[
     CurrentLogicalState] {.
     requires: dispatcher.status == CurrentDownloadLoopStage.Adopted.} =
   ## Only actual consumed successful adoption exposes the logical continuation; raw dispatchers retain an uninitialized result.
   dispatcher.logicalResult
+
 proc readyPeers*(dispatcher: CurrentDownloadLoop): seq[DownloadPeerId] =
   ## Return copied authenticated identities without granting native callback access.
   dispatcher.catalog.readyPeers
@@ -511,17 +519,21 @@ proc enableAnnouncements*(dispatcher: var CurrentDownloadLoop, local: Announceme
     limits: AnnouncementLimits): CurrentDownloadPeerError =
   ## Opt in before opening endpoints; the dispatcher keeps the stable callback catalog private.
   dispatcher.catalog.enableAnnouncements(local, limits)
+
 proc announcements*(dispatcher: CurrentDownloadLoop,
     peer: DownloadPeerId): PeerAnnouncementSnapshot =
   ## Copy only currently authenticated stream claims; no native owner or canonical alias escapes.
   dispatcher.catalog.announcements(peer)
+
 proc incarnation*(dispatcher: CurrentDownloadLoop, peer: DownloadPeerId): uint64 =
   ## Identify actual transport/UP0 replacement independently of repeated leaf values.
   dispatcher.catalog.incarnation(peer)
+
 proc publishAnnouncement*(dispatcher: var CurrentDownloadLoop, header: OwnedHeader,
     finalized: AnnouncedBlock): AnnouncementError =
   ## Caller has retired preparation/publication before encoding detached canonical header bytes.
   dispatcher.catalog.publishAnnouncement(header, finalized)
+
 proc restart*(dispatcher: var CurrentDownloadLoop,
     now: CurrentDownloadLoopTick): CurrentDownloadLoopError =
   ## Continuous hosts explicitly renew a spent retry budget only after every old lease retired.

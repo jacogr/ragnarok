@@ -19,6 +19,7 @@ import ../lib/json/writer as json_writer
 proc tinySigningKey*(index: range[0..5]): BsResult[BsKey] =
   ## Use JIP-5 development identities Alice through Fergie for actual Tiny block signing.
   deriveBandersnatchKey(trivialSeed(uint32(index)))
+
 proc tinyPeerKey*(index: range[0..5]): CryptoResult[EdPublicKey] =
   ## The same JIP-5 development index supplies the validator roster and TLS identity.
   let imported = deriveEd25519Seed(trivialSeed(uint32(index)))
@@ -26,6 +27,7 @@ proc tinyPeerKey*(index: range[0..5]): CryptoResult[EdPublicKey] =
     return CryptoResult[EdPublicKey]() # No identity is exposed on primitive refusal.
   defer: clearSeed(imported.value)
   publicKey(imported.value)
+
 proc tinyParameters*(): ParameterResult =
   ## Select the canonical immutable Tiny tuple from the shared chain catalog.
   presetParameters(ChainPreset.Tiny)
@@ -123,6 +125,7 @@ proc hex*(bytes: openArray[byte]): string =
   ## Canonical lowercase diagnostics/configuration encoding retains every complete octet.
   result = ""
   for octet in bytes: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc tinyChainText*(parent: BlockSnapshot): string =
   ## Emit the existing strict chain configuration, including every complete-map entry and header.
   var wire = newSeq[byte](parent.header.headerInfo.value.consumed)

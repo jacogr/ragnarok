@@ -14,6 +14,7 @@ type FileStatus* {.importc: "struct stat", header: "<sys/stat.h>", bycopy.} = ob
 proc readStatus*(path: cstring, status: var FileStatus): cint {.importc: "lstat",
     header: "<sys/stat.h>".}
   ## Inspect the selected path itself without following a terminal symlink.
+
 proc readFileStatus*(fd: cint, status: var FileStatus): cint {.importc: "fstat",
     header: "<sys/stat.h>".}
   ## Observe one already opened descriptor without changing its file position.

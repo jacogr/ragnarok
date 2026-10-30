@@ -24,8 +24,10 @@ when declared(ExecutionCursor):
 
     proc `=copy`(destination: var BackendCursor, source: BackendCursor) {.error.}
       ## Copying would alias one active foreign borrow and its invocation-local mutation state.
+
     proc `=dup`(source: BackendCursor): BackendCursor {.error.}
       ## Containers and implicit return duplication cannot share foreign execution state.
+
     proc backendStatus(status: cint): StepError =
       ## Preserve local capability refusals separately from guest exits and host errors.
       case status

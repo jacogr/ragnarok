@@ -19,17 +19,21 @@ type
       globalReason: GlobalStateResult[ValidatedGlobalState]
     else:
       discard # Default/invalid input grants no configured parent or complete global authority.
+
 func error*[T](outcome: ParentGlobalsResult[T]): ParentGlobalsError =
   ## Observe selected immutable alternatives only.
   outcome.status
+
 func value*[T](outcome: ParentGlobalsResult[T]): T {.inline, requires: outcome.status ==
     ParentGlobalsError.None.} =
   ## Extract only successful original-source evidence.
   outcome.completed
+
 func globalFailure*[T](outcome: ParentGlobalsResult[T]): GlobalStateResult[
     ValidatedGlobalState] {.inline, requires: outcome.status == ParentGlobalsError.GlobalFailure.} =
   ## Preserve only the genuinely failed original global result, including guarded chapter/codec/resource reasons.
   outcome.globalReason
+
 proc qualifyParentGlobals*(source: SelectedParentProfile,
     limits: GlobalStateLimits): ParentGlobalsResult[SelectedParentGlobals] =
   ## Preflight every required original cached chapter extent before existing exact codecs allocate/copy values.
@@ -42,6 +46,7 @@ proc qualifyParentGlobals*(source: SelectedParentProfile,
         globalReason: globals) # No stripped, rebuilt or equal-root map can satisfy the original selected parent qualification.
   ParentGlobalsResult[SelectedParentGlobals](status: ParentGlobalsError.None,
       completed: SelectedParentGlobals(initialized: true, profile: source, globals: globals.value))
+
 proc parentGlobalsProfile*(source: SelectedParentGlobals): ParentGlobalsResult[
     SelectedParentProfile] =
   ## Retain the exact original selection, ordered history, full Parameters and explicit finality state.
@@ -49,6 +54,7 @@ proc parentGlobalsProfile*(source: SelectedParentGlobals): ParentGlobalsResult[
     return ParentGlobalsResult[SelectedParentProfile](status: ParentGlobalsError.Uninitialized)
   ParentGlobalsResult[SelectedParentProfile](status: ParentGlobalsError.None,
       completed: source.profile)
+
 proc parentGlobals*(source: SelectedParentGlobals): ParentGlobalsResult[ValidatedGlobalState] =
   ## Retain all sixteen qualified globals on the original physical source without claiming service serialization.
   if not source.initialized:

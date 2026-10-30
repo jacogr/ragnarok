@@ -64,55 +64,66 @@ type
 func error*(outcome: AccumulationCompletionResult): AccumulationCompletionError =
   ## Inspect the selected reason without writable variant fields.
   outcome.status
+
 func value*(outcome: AccumulationCompletionResult): PreparedAccumulationConsensus {.inline,
     requires: outcome.status == AccumulationCompletionError.None.} =
   ## Retain the existing full private candidate only after every phase completes.
   outcome.completed
+
 func finalizationFailure*(outcome: AccumulationCompletionResult):
     AccumulationFinalizationResult[PreparedFinalAccumulation] {.inline,
     requires: outcome.status == AccumulationCompletionError.FinalizationFailure.} =
   ## Inspect only the actual failed finalization result and its existing guarded child reasons.
   outcome.finalizationReason
+
 func historyFailure*(outcome: AccumulationCompletionResult):
     AccumulationHistoryResult[PreparedAccumulationHistory] {.inline,
     requires: outcome.status == AccumulationCompletionError.HistoryFailure.} =
   ## Inspect only the actual failed history result and its existing guarded child reasons.
   outcome.historyReason
+
 func readyFailure*(outcome: AccumulationCompletionResult):
     AccumulationReadyResult[PreparedAccumulationReady] {.inline,
     requires: outcome.status == AccumulationCompletionError.ReadyFailure.} =
   ## Inspect only the actual failed ready result and its existing guarded child reasons.
   outcome.readyReason
+
 func recentFailure*(outcome: AccumulationCompletionResult):
     AccumulationRecentResult[PreparedAccumulationRecent] {.inline,
     requires: outcome.status == AccumulationCompletionError.RecentFailure.} =
   ## Inspect only the actual failed recent result and its existing guarded child reasons.
   outcome.recentReason
+
 func timesFailure*(outcome: AccumulationCompletionResult):
     AccumulationTimesResult[PreparedAccumulationTimes] {.inline,
     requires: outcome.status == AccumulationCompletionError.TimesFailure.} =
   ## Inspect only the actual failed times result and its existing guarded child reasons.
   outcome.timesReason
+
 func validatorsFailure*(outcome: AccumulationCompletionResult):
     AccumulationValidatorsResult[PreparedAccumulationValidators] {.inline,
     requires: outcome.status == AccumulationCompletionError.ValidatorsFailure.} =
   ## Inspect only the actual failed validators result and its existing guarded child reasons.
   outcome.validatorsReason
+
 func activityFailure*(outcome: AccumulationCompletionResult):
     AccumulationActivityResult[PreparedAccumulationActivity] {.inline,
     requires: outcome.status == AccumulationCompletionError.ActivityFailure.} =
   ## Inspect only the actual failed activity result and its existing guarded child reasons.
   outcome.activityReason
+
 func preimagesFailure*(outcome: AccumulationCompletionResult):
     AccumulationPreimageResult[PreparedAccumulationPreimages] {.inline,
     requires: outcome.status == AccumulationCompletionError.PreimagesFailure.} =
   ## Inspect only the actual failed preimages result and its existing guarded child reasons.
   outcome.preimagesReason
+
 func authorizationFailure*(outcome: AccumulationCompletionResult):
     AccumulationAuthorizationResult[PreparedAccumulationAuthorization] {.inline,
     requires: outcome.status == AccumulationCompletionError.AuthorizationFailure.} =
   ## Inspect only the actual failed authorization result and its existing guarded child reasons.
   outcome.authorizationReason
+
 func consensusFailure*(outcome: AccumulationCompletionResult):
     AccumulationConsensusResult[PreparedAccumulationConsensus] {.inline,
     requires: outcome.status == AccumulationCompletionError.ConsensusFailure.} =

@@ -37,19 +37,24 @@ type
   CapturedHeader = object ## One private capture binds its copied hash/slot to exact full sealed bytes.
     fact: Fact
     bytes: uint64
+
 func error*[T](outcome: FuzzAncestryResult[T]): FuzzAncestryError =
   ## Inspect only the immutable selected reason.
   outcome.status
+
 func value*[T](outcome: FuzzAncestryResult[T]): T {.inline,
     requires: outcome.status == FuzzAncestryError.None.} =
   ## Extract only a complete successful value.
   outcome.completed
+
 func refused[T](reason: FuzzAncestryError): FuzzAncestryResult[T] =
   ## Centralize failure without publishing a prefix of a purported ancestry.
   FuzzAncestryResult[T](status: reason)
+
 func valid(limits: FuzzAncestryLimits): bool =
   ## Local retention is finite and nonzero; the wire schema independently caps initial records at24.
   uint64(limits.records) > 0 and uint64(limits.records) <= 14400 and uint64(limits.bytes) >= 36
+
 proc capture(source: OwnedHeader, limits: FuzzAncestryLimits): FuzzAncestryResult[CapturedHeader] =
   ## Re-decode under this consumer's profile before hashing exact sealed bytes; no borrowed input survives.
   let info = source.headerInfo
@@ -72,6 +77,7 @@ proc capture(source: OwnedHeader, limits: FuzzAncestryLimits): FuzzAncestryResul
       hash: FuzzHeaderHash(array[32, byte](hashed.value))), header: decoded.value.owner)
   FuzzAncestryResult[CapturedHeader](status: FuzzAncestryError.None,
       completed: CapturedHeader(fact: fact, bytes: size))
+
 proc captureFuzzAncestry*(seed: OwnedHeader, declared: openArray[FuzzAncestor],
     limits: FuzzAncestryLimits): FuzzAncestryResult[FuzzAncestry] =
   ## Initial membership is an explicit fuzz seed assumption; it is not full-header authentication or root evidence.
@@ -110,6 +116,7 @@ proc captureFuzzAncestry*(seed: OwnedHeader, declared: openArray[FuzzAncestor],
       dec position
   FuzzAncestryResult[FuzzAncestry](status: FuzzAncestryError.None, completed: FuzzAncestry(
     data: AncestryData(records: records, profile: limits.header, bytes: metadata+head.value.bytes)))
+
 proc fuzzAncestryInfo*(context: FuzzAncestry): FuzzAncestryResult[FuzzAncestryInfo] =
   ## Return only copied observations from one initialized immutable context.
   let data = context.data
@@ -121,6 +128,7 @@ proc fuzzAncestryInfo*(context: FuzzAncestry): FuzzAncestryResult[FuzzAncestryIn
   FuzzAncestryResult[FuzzAncestryInfo](status: FuzzAncestryError.None,
       completed: FuzzAncestryInfo(records: data.records.len, knownHeaders: known,
         bytes: data.bytes, head: data.records[0].member))
+
 proc fuzzAncestorAt*(context: FuzzAncestry, index: FuzzAncestorIndex): FuzzAncestryResult[FuzzAncestor] =
   ## Copied nominal membership survives source release without exporting sequence backing storage.
   let data = context.data
@@ -128,6 +136,7 @@ proc fuzzAncestorAt*(context: FuzzAncestry, index: FuzzAncestorIndex): FuzzAnces
   if int(index) < 0 or int(index) >= data.records.len: return refused[FuzzAncestor](
       FuzzAncestryError.InvalidIndex)
   FuzzAncestryResult[FuzzAncestor](status: FuzzAncestryError.None, completed: data.records[int(index)].member)
+
 proc validateFuzzParent*(context: FuzzAncestry, parent: OwnedHeader,
     limits: FuzzAncestryLimits): FuzzAncestryError =
   ## A reused context must match the exact current parent and this consumer's profile/budgets.
@@ -151,6 +160,7 @@ proc validateFuzzParent*(context: FuzzAncestry, parent: OwnedHeader,
       0].member.hash):
     return FuzzAncestryError.WrongParent
   FuzzAncestryError.None
+
 proc extendFuzzAncestry*(context: FuzzAncestry, child: OwnedHeader,
     limits: FuzzAncestryLimits): FuzzAncestryResult[FuzzAncestry] =
   ## Restore an old branch context by value; a successful append never mutates the source or another sibling.
@@ -186,6 +196,7 @@ proc extendFuzzAncestry*(context: FuzzAncestry, child: OwnedHeader,
   FuzzAncestryResult[FuzzAncestry](status: FuzzAncestryError.None, completed: FuzzAncestry(
     data: AncestryData(records: records, profile: limits.header, bytes: uint64(
         limits.bytes)-available)))
+
 proc findFuzzLookup*(context: FuzzAncestry, hash: FuzzHeaderHash, slot: HeaderSlot,
     root: PriorStateRoot): FuzzAncestryResult[FuzzAncestorIndex] =
   ## A hash/slot record alone never proves a posterior root; require an actual retained child and compare its exact prior root.

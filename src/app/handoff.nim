@@ -76,10 +76,12 @@ proc preparePending*(handoff: AccumulationHandoff,
     handoff.status == AccumulationHandoffStage.Pending.} =
   ## Stage the opaque update before granting any native durable-publication lease.
   chain.prepareAccumulation(handoff.source, handoff.limits)
+
 proc markPublishing*(handoff: var AccumulationHandoff) {.requires:
     handoff.status == AccumulationHandoffStage.Pending.} =
   ## Retire source aliases before native IO begins; the service owns the opaque publication until receipt collection.
   handoff = AccumulationHandoff(status: AccumulationHandoffStage.Publishing)
+
 proc completePublication*(handoff: var AccumulationHandoff,
     outcome: ApplicationChainResult[BlockSnapshot]) {.requires:
     handoff.status in [AccumulationHandoffStage.Pending, AccumulationHandoffStage.Publishing].} =

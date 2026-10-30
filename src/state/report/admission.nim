@@ -70,31 +70,38 @@ type
 func error*[T](outcome: ReportAdmissionResult[T]): ReportAdmissionError =
   ## Observe status without granting discriminator mutation.
   outcome.status
+
 func value*[T](outcome: ReportAdmissionResult[T]): T {.inline,
     requires: outcome.status == ReportAdmissionError.None.} =
   ## Extract only completely selected success under the supported checked-build contract.
   outcome.completed
+
 func credentialError*[T](outcome: ReportAdmissionResult[T]): GuaranteeCredentialResult[
     VerifiedGuaranteeCredentials] {.inline,
     requires: outcome.status == ReportAdmissionError.CredentialFailure.} =
   ## Inspect the original credential refusal, including its codec/assignment subreason.
   outcome.credentialReason
+
 func policyError*[T](outcome: ReportAdmissionResult[T]): ReportPolicyError {.inline,
     requires: outcome.status == ReportAdmissionError.PolicyFailure.} =
   ## Inspect the selected parent authorization/service/gas failure.
   outcome.policyReason
+
 func historyError*[T](outcome: ReportAdmissionResult[T]): HistoryTransitionError {.inline,
     requires: outcome.status == ReportAdmissionError.HistoryFailure.} =
   ## Inspect the selected parent-history correction failure.
   outcome.historyReason
+
 func anchorError*[T](outcome: ReportAdmissionResult[T]): ReportAnchorError {.inline,
     requires: outcome.status == ReportAdmissionError.AnchorFailure.} =
   ## Inspect the selected recent/lookup ancestor failure.
   outcome.anchorReason
+
 func packageError*[T](outcome: ReportAdmissionResult[T]): ReportPackageError {.inline,
     requires: outcome.status == ReportAdmissionError.PackageFailure.} =
   ## Inspect the selected prior-pipeline/dependency/root failure.
   outcome.packageReason
+
 func assignmentError*[T](outcome: ReportAdmissionResult[T]): ReportAssignmentError {.inline,
     requires: outcome.status == ReportAdmissionError.AssignmentFailure.} =
   ## Inspect the selected post-assurance vacancy/encoding failure.
@@ -128,8 +135,8 @@ proc reportAssignments*(owner: AdmittedReports): ReportAdmissionResult[ReportAss
   ReportAdmissionResult[ReportAssignmentPlan](status: ReportAdmissionError.None,
       completed: data.assignments)
 
-## Bound required state before allocating its detached bytes; missing is never interpreted as an empty chapter.
 proc chapter(source: StateStoreSnapshot, number: byte, limit: ByteLimit): ReportAdmissionResult[seq[byte]] =
+  ## Bound required state before allocating its detached bytes; missing is never interpreted as an empty chapter.
   let found = source.lookup(chapterKey(StateChapter(number)))
   if found.error == StateStoreError.MissingKey:
     return ReportAdmissionResult[seq[byte]](status: ReportAdmissionError.MissingState) # Required explicit chapter absent.
@@ -265,6 +272,7 @@ proc completeBlockReports*(prepared: PreparedReportAdmission,
       status: ReportAdmissionError.InvalidTransition)
   completeAnchoredReports(prepared, checkReportLookupAnchors(data.recent,
     data.staged.value.admitted.admittedParent, older, data.config.ancestors))
+
 proc completeFuzzBlockReports*(prepared: PreparedReportAdmission,
     context: FuzzAncestry): ReportAdmissionResult[AdmittedReports] =
   ## Alternate initial membership is explicitly retained as fuzz-only authority in every completed owner.
@@ -273,6 +281,7 @@ proc completeFuzzBlockReports*(prepared: PreparedReportAdmission,
       status: ReportAdmissionError.InvalidTransition)
   completeAnchoredReports(prepared, checkFuzzReportLookupAnchors(data.recent,
     data.staged.value.admitted.admittedParent, context, data.config.ancestors))
+
 proc requiresFuzzView*(owner: AdmittedReports): bool =
   ## Downstream chain producers inspect the original immutable anchor domain before publishing.
   let data = owner.data

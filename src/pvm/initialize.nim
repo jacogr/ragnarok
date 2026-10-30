@@ -29,25 +29,26 @@ type
 func error*(r: InitializationResult): InitializationError =
   ## Inspect success without permitting result retagging.
   r.status
+
 func value*(r: InitializationResult): Machine {.inline, requires: r.status ==
     InitializationError.None.} =
   ## Borrowing the result yields a retained immutable machine only on successful selection.
   r.completed
 
-# Decode a fixed little-endian field after its caller establishes the complete header extent.
 func fixed(input: openArray[byte], start, width: int): uint64 =
+  ## Decode a fixed little-endian field after its caller establishes the complete header extent.
   result = 0
   # Widths here are at most four; shifts cannot overflow the 64-bit accumulator.
   for i in 0..<width:
     result = result or (uint64(input[start + i]) shl (8 * i))
 
-# Inputs are bounded by fixed-width envelope fields or the 2^24 argument bound, so rounding is safe.
 func rounded(value, quantum: uint64): uint64 =
+  ## Inputs are bounded by fixed-width envelope fields or the 2^24 argument bound, so rounding is safe.
   ((value + quantum - 1) div quantum) * quantum
 
-# Materialize an already-budgeted region with explicit zero padding and copied input bytes.
 proc region(pages: var seq[PageImage], start, size: uint64, access: PageAccess,
     input: openArray[byte], offset, length: int) =
+  ## Materialize an already-budgeted region with explicit zero padding and copied input bytes.
   var consumed = 0
   # Regions are page-aligned, nonoverlapping and emitted in increasing address order.
   for ordinal in 0..<int(size div 4096):

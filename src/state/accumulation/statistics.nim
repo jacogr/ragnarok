@@ -90,17 +90,17 @@ proc statisticsAt*(plan: PreparedAccumulationStatistics, index: StatisticsServic
   AccumulationStatisticsResult[ServiceStatisticsEntry](status: AccumulationStatisticsError.None,
       completed: data.values[int(uint64(index))])
 
-# Bound counts and native extents before allocation; rowBytes=1 proves count-only transfer accounting.
 proc charge(total: var int, count: int, limit: ElementLimit, rowBytes = sizeof(
     ServiceStatisticsEntry)): bool =
+  ## Bound counts and native extents before allocation; rowBytes=1 proves count-only transfer accounting.
   if uint64(count) > uint64(limit)-uint64(total) or count > high(int) div rowBytes-total:
     return false # Earlier successful charges establish both subtraction preconditions.
   total += count
   true
 
-# Append one genuine service gas row and its bound destination transfer count into preflighted scratch.
 proc appendGas(usage: AccumulationGasUsage, rows: var seq[ServiceStatisticsEntry],
     cursor: var int, total: var uint64, budget: uint64, group: InvocationServiceInfo): bool =
+  ## Append one genuine service gas row and its bound destination transfer count into preflighted scratch.
   let gas = uint64(usage.gasUsed)
   if usage.service != group.service or gas > budget-total:
     return false # Prove aggregate arithmetic against actual certified consumption.
@@ -112,8 +112,8 @@ proc appendGas(usage: AccumulationGasUsage, rows: var seq[ServiceStatisticsEntry
   inc cursor # Complete history preflight proved candidate storage.
   true
 
-# Dictionary order depends only on the numeric service identity, never report or execution arrival order.
 func compareService(left, right: ServiceStatisticsEntry): int =
+  ## Dictionary order depends only on the numeric service identity, never report or execution arrival order.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   0

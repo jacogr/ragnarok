@@ -22,25 +22,31 @@ type
     of GlobalsFailure: globalsReason: ParentGlobalsResult[SelectedParentGlobals]
     of LogicalFailure: logicalReason: ParentLogicalResult[SelectedLogicalParent]
     else: discard             # Defaults grant neither selected state nor logical inventory.
+
 func error*(outcome: LogicalSeedResult): LogicalSeedError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*(outcome: LogicalSeedResult): SelectedLogicalParent {.inline, requires: outcome.status ==
     LogicalSeedError.None.} =
   ## Retain only fully matched original selected logical evidence.
   outcome.completed
+
 func profileFailure*(outcome: LogicalSeedResult): ParentProfileResult[
     SelectedParentProfile] {.inline, requires: outcome.status == LogicalSeedError.ProfileFailure.} =
   ## Preserve missing C9, malformed roster, missing head and retention failures.
   outcome.profileReason
+
 func globalsFailure*(outcome: LogicalSeedResult): ParentGlobalsResult[
     SelectedParentGlobals] {.inline, requires: outcome.status == LogicalSeedError.GlobalsFailure.} =
   ## Preserve exact original all-global codec and resource failures.
   outcome.globalsReason
+
 func logicalFailure*(outcome: LogicalSeedResult): ParentLogicalResult[
     SelectedLogicalParent] {.inline, requires: outcome.status == LogicalSeedError.LogicalFailure.} =
   ## Preserve complete map matching and raw-key capture refusals.
   outcome.logicalReason
+
 proc captureLogicalSeed*(chain: ApplicationChain, services: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult =
   ## Match stable borrowed declarations against the original whole selected view; host execution must be outside every native graph lease.

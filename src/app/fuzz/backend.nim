@@ -44,28 +44,35 @@ type
     forkParent: ApplicationChain
     forkAncestry: FuzzAncestry
     siblings: seq[ForkState]
+
 func error*[T](outcome: FuzzBackendResult[T]): FuzzBackendError =
   ## Inspect the immutable selected stage.
   outcome.status
+
 func value*[T](outcome: FuzzBackendResult[T]): T {.inline,
     requires: outcome.status == FuzzBackendError.None.} =
   ## Extract only a completed backend value.
   outcome.completed
+
 func candidateFailure*[T](outcome: FuzzBackendResult[T]): CurrentCandidateResult {.inline,
     requires: outcome.status == FuzzBackendError.CandidateFailure.} =
   ## Preserve the actual failure for conservative consensus-versus-internal classification.
   outcome.candidateReason
+
 func ancestryFailure*[T](outcome: FuzzBackendResult[T]): FuzzAncestryError {.inline,
     requires: outcome.status == FuzzBackendError.AncestryFailure.} =
   ## Report missing/invalid local context without converting it into a consensus rejection.
   outcome.ancestryReason
+
 func ancestryLimits(config: FuzzBackendConfig): FuzzAncestryLimits =
   ## Share the exact configured report-context profile and retention budget.
   let policy = config.candidate.reporting.reports.ancestors
   FuzzAncestryLimits(header: policy.header, records: policy.headers, bytes: policy.maxBytes)
+
 func refused[T](reason: FuzzBackendError): FuzzBackendResult[T] =
   ## Failed/default operations retain no successful reply or chain prefix.
   FuzzBackendResult[T](status: reason)
+
 proc initFuzzBackend*(config: FuzzBackendConfig): FuzzBackendResult[FuzzBackend] =
   ## Select explicit profile agreement before admitting any supplied seed.
   let frame = config.wire.frame
@@ -87,15 +94,18 @@ proc initFuzzBackend*(config: FuzzBackendConfig): FuzzBackendResult[FuzzBackend]
       config.parameters.get(maxLookupAnchorAge)) # GP reporting_assurance limitlookupanchorage uses the host protocol tuple.
   FuzzBackendResult[FuzzBackend](status: FuzzBackendError.None,
       completed: FuzzBackend(configured: true, config: selected))
+
 proc fuzzBackendHeader*(backend: FuzzBackend): FuzzBackendResult[OwnedHeader] =
   ## Expose only an immutable selected header; this is no prepared update or production trust receipt.
   if not backend.seeded: return refused[OwnedHeader](FuzzBackendError.MissingSeed)
   let owner = if backend.executing: backend.chain.chainView.bestBlock.value.header else: backend.seedHeader
   FuzzBackendResult[OwnedHeader](status: FuzzBackendError.None, completed: owner)
+
 proc response(backend: FuzzBackend, message: FuzzResult[FuzzMessage]): FuzzBackendResult[FuzzMessage] =
   ## Output budget/backend construction failures stay local rather than becoming protocol Error text.
   if message.error != FuzzError.None: return refused[FuzzMessage](FuzzBackendError.ReplyFailure)
   FuzzBackendResult[FuzzMessage](status: FuzzBackendError.None, completed: message.value)
+
 proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendResult[FuzzMessage] =
   ## Execute one session-ordered host request synchronously outside transport ticks, preserving atomic import publication.
   if not backend.configured: return refused[FuzzMessage](FuzzBackendError.Uninitialized)

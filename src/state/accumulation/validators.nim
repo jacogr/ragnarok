@@ -50,26 +50,30 @@ type
 func error*[T](outcome: AccumulationValidatorsResult[T]): AccumulationValidatorsError =
   ## Inspect a reason without granting discriminator mutation.
   outcome.status
+
 func value*[T](outcome: AccumulationValidatorsResult[T]): T {.inline,
     requires: outcome.status == AccumulationValidatorsError.None.} =
   ## Extract only complete selected success under optimized-build contracts.
   outcome.completed
+
 func rosterError*[T](outcome: AccumulationValidatorsResult[T]): StateComponentError {.inline,
     requires: outcome.status == AccumulationValidatorsError.RosterFailure.} =
   ## Inspect only a selected roster codec refusal.
   outcome.rosterReason
+
 func activityError*[T](outcome: AccumulationValidatorsResult[T]): ActivityError {.inline,
     requires: outcome.status == AccumulationValidatorsError.ActivityFailure.} =
   ## Inspect only a selected parent statistics codec refusal.
   outcome.activityReason
+
 func projectionError*[T](outcome: AccumulationValidatorsResult[T]): ValidatorActivityError {.inline,
     requires: outcome.status == AccumulationValidatorsError.ProjectionFailure.} =
   ## Inspect only a selected pure validator projection refusal.
   outcome.projectionReason
 
-# Copy only a present whole chapter whose byte extent fits the independent policy.
 proc chapter(state: StateStoreSnapshot, number: byte, limit: ByteLimit):
     AccumulationValidatorsResult[seq[byte]] =
+  ## Copy only a present whole chapter whose byte extent fits the independent policy.
   let found = state.lookup(chapterKey(StateChapter(number)))
   if found.error == StateStoreError.MissingKey:
     return AccumulationValidatorsResult[seq[byte]](status: AccumulationValidatorsError.MissingState)
@@ -81,9 +85,9 @@ proc chapter(state: StateStoreSnapshot, number: byte, limit: ByteLimit):
   AccumulationValidatorsResult[seq[byte]](status: AccumulationValidatorsError.None,
     completed: found.value.bytes)
 
-# Exact roster decoding prevents a suffix or incompatible population from shaping C(13) framing.
 proc roster(state: StateStoreSnapshot, number: byte, config: ValidatorStateConfig):
     AccumulationValidatorsResult[ValidatorStateSnapshot] =
+  ## Exact roster decoding prevents a suffix or incompatible population from shaping C(13) framing.
   let bytes = chapter(state, number, config.maxBytes)
   if bytes.error != AccumulationValidatorsError.None:
     return AccumulationValidatorsResult[ValidatorStateSnapshot](status: bytes.error)

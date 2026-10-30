@@ -47,18 +47,22 @@ type
 func error*[T](outcome: ApplicationChainResult[T]): ApplicationChainError =
   ## Read status without exposing private result tags.
   outcome.status
+
 func value*[T](outcome: ApplicationChainResult[T]): T {.inline,
     requires: outcome.status == ApplicationChainError.None.} =
   ## Extract only a fully initialized application owner or successfully installed child.
   outcome.completed
+
 func stateError*[T](outcome: ApplicationChainResult[T]): StateStoreError {.inline,
     requires: outcome.status == ApplicationChainError.StateFailure.} =
   ## Inspect only an actual failed seed fork.
   outcome.stateReason
+
 func chainFailure*[T](outcome: ApplicationChainResult[T]): AccumulationChainResult {.inline,
     requires: outcome.status == ApplicationChainError.ChainFailure.} =
   ## Preserve the actual failed RPC-independent adoption and its selected nested causes.
   outcome.chainReason
+
 func rpcFailure*[T](outcome: ApplicationChainResult[T]): rpc_server.RpcAccumulationResult {.inline,
     requires: outcome.status == ApplicationChainError.RpcFailure.} =
   ## Preserve only a failed enabled-listener publication, including stale-view and lifecycle refusal.
@@ -68,6 +72,7 @@ func parametersError*[T](outcome: ApplicationChainResult[T]): ParameterError {.i
     requires: outcome.status == ApplicationChainError.ParametersFailure.} =
   ## Preserve only the actual failed bounded parameter decode, with no partial configuration tuple.
   outcome.parametersReason
+
 func genesisFailure*[T](outcome: ApplicationChainResult[T]): GenesisError {.inline,
     requires: outcome.status == ApplicationChainError.GenesisFailure.} =
   ## Distinguish an absent pair from an invalid configured genesis/policy without exposing candidate maps.
@@ -76,6 +81,7 @@ func genesisFailure*[T](outcome: ApplicationChainResult[T]): GenesisError {.inli
 func chainView*(chain: ApplicationChain): ChainView =
   ## Retain an immutable request/history view; default owners retain an explicitly uninitialized view.
   chain.view
+
 proc describeHead*(chain: ApplicationChain): string =
   ## Format selected best/finalized observations without granting chain or finality authority.
   if chain.view.retainedCount == 0: return "best: unavailable, finalized: unavailable"
@@ -92,6 +98,7 @@ proc captureParentProfile*(chain: ApplicationChain,
     limits: ParentProfileLimits): ParentProfileResult[SelectedParentProfile] =
   ## Borrow the original private view directly so profile admission precedes its whole-view/index copy.
   parent_profile.captureParentProfile(chain.view, limits)
+
 proc stateSnapshot*(chain: ApplicationChain): StateStoreResult[StateStoreSnapshot] =
   ## Retain the canonical complete-map version; default owners return the store's precise initialization error.
   chain.state.snapshot
@@ -148,17 +155,21 @@ proc prepareAccumulation*(chain: ApplicationChain, source: PreparedFinalAccumula
     limits: AccumulationCompositionLimits): ChainPreparationResult =
   ## Stage existing fallible adoption privately while retaining the exact original application authority.
   prepareChainUpdate(chain.state, chain.view, source, limits)
+
 proc canInstallPrepared*(chain: ApplicationChain, prepared: PreparedChainUpdate): bool =
   ## Check original state and entire history/finality before starting any durable publication.
   canInstallChainUpdate(chain.state, chain.view, prepared)
+
 proc installPrepared*(chain: var ApplicationChain, prepared: PreparedChainUpdate) {.requires:
     canInstallPrepared(chain, prepared).} =
   ## Assignment-only canonical replacement occurs after confirmed durability and under host exclusion.
   installChainUpdate(chain.state, chain.view, prepared)
+
 proc canInstallPrepared*(chain: ApplicationChain, rpc: rpc_server.Server,
     prepared: PreparedChainUpdate, lease: nil rpc_server.RpcChainLease = nil): bool =
   ## Enabled RPC must retain the exact same ordered history and the caller's optional exclusive lease.
   rpc.canInstallPreparedAccumulation(chain.state, chain.view, prepared, lease)
+
 proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
     prepared: PreparedChainUpdate, lease: nil rpc_server.RpcChainLease = nil) {.requires:
       canInstallPrepared(chain, rpc, prepared, lease).} =
@@ -172,22 +183,27 @@ proc prepareAccumulation*(chain: ApplicationChain, source: PreparedCurrentAccumu
   ## Stage the genuine current composed child privately, preserving the exact canonical parent/view and complete parameter tuple.
   prepareCurrentChainUpdate(chain.state, chain.view, source, headerBytes, storageLimits,
       requestLimits, serviceLimits)
+
 proc canInstallPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainUpdate): bool =
   ## Current candidates retain exact original state and complete history/finality before durability begins.
   canInstallCurrentChainUpdate(chain.state, chain.view, prepared)
+
 proc installPrepared*(chain: var ApplicationChain, prepared: PreparedCurrentChainUpdate) {.requires:
     canInstallPrepared(chain, prepared).} =
   ## Assignment-only current installation follows confirmed durability under stable single-threaded ownership.
   installCurrentChainUpdate(chain.state, chain.view, prepared)
+
 proc canInstallPrepared*(chain: ApplicationChain, rpc: rpc_server.Server,
     prepared: PreparedCurrentChainUpdate, lease: nil rpc_server.RpcChainLease = nil): bool =
   ## Enabled RPC joins only exact current canonical history and the caller's matching optional exclusive lease.
   rpc.canInstallPreparedAccumulation(chain.state, chain.view, prepared, lease)
+
 proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
     prepared: PreparedCurrentChainUpdate, lease: nil rpc_server.RpcChainLease = nil) {.requires:
       canInstallPrepared(chain, rpc, prepared, lease).} =
   ## Replace current canonical/RPC handles before subscriber work without execution, capture or hashing.
   rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)
+
 proc installedPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainUpdate): ApplicationChainResult[
     BlockSnapshot] {.requires:
     prepared.ready and sameStateSnapshot(chain.stateSnapshot.value, prepared.currentUpdateState) and
@@ -199,15 +215,18 @@ proc installedPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainU
 proc durabilityRequired*(): ApplicationChainResult[BlockSnapshot] =
   ## Disk consumers use the asynchronous handoff; synchronous application calls cannot bypass persistence.
   ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.DurabilityRequired)
+
 proc durabilityFailure*(): ApplicationChainResult[BlockSnapshot] =
   ## The service retains the exact disk stage/IO outcome separately; this completion grants no child.
   ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.DurabilityFailure)
+
 proc preparationRefusal*(failure: ChainPreparationResult): ApplicationChainResult[
     BlockSnapshot] {.requires:
     failure.error == ChainPreparationError.ChainFailure.} =
   ## Preserve the original composition/capture refusal without synthesizing a partial child.
   ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.ChainFailure,
       chainReason: failure.chainFailure)
+
 proc installedPrepared*(chain: ApplicationChain, prepared: PreparedChainUpdate): ApplicationChainResult[
     BlockSnapshot] {.requires:
     prepared.ready and sameStateSnapshot(chain.stateSnapshot.value, prepared.stateSnapshot) and

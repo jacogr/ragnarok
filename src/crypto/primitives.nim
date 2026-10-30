@@ -10,29 +10,34 @@
 
 const Header = "primitive_bridge.h"
 
-# Erase owned seed storage with the backend's explicit wipe, including on last ARC release.
 proc wipe(bytes: pointer, length: csize_t) {.importc: "rc_wipe", header: Header, cdecl, raises: [], gcsafe.}
-# The bridge owns only ephemeral native scratch and copies a complete 32-byte digest to output.
+  ## Erase owned seed storage with the backend's explicit wipe, including on last ARC release.
+
 proc nativeBlake(data: pointer, length: csize_t, output: pointer): cint {.importc: "rc_blake2b256",
     header: Header, cdecl, raises: [], gcsafe.}
-# Legacy Keccak parameters and opaque native state stay behind the synchronous Rust ABI.
+  ## The bridge owns only ephemeral native scratch and copies a complete 32-byte digest to output.
+
 proc nativeKeccak(data: pointer, length: csize_t, output: pointer): cint {.importc: "rc_keccak256",
     header: Header, cdecl, raises: [], gcsafe.}
-# Derive public bytes from a borrowed 32-byte seed; expanded secret scratch is erased before return.
+  ## Legacy Keccak parameters and opaque native state stay behind the synchronous Rust ABI.
+
 proc nativePublic(seed, output: pointer): cint {.importc: "rc_ed_public", header: Header, cdecl,
     raises: [], gcsafe.}
-# Sign an exact raw message; failure leaves no public signature value and native secret scratch is wiped.
+  ## Derive public bytes from a borrowed 32-byte seed; expanded secret scratch is erased before return.
+
 proc nativeSign(seed, data: pointer, length: csize_t,
     output: pointer): cint {.importc: "rc_ed_sign", header: Header, cdecl, raises: [], gcsafe.}
-# Apply current Gray Paper ZIP215 rules without adding an application domain or prehash mode.
+  ## Sign an exact raw message; failure leaves no public signature value and native secret scratch is wiped.
+
 proc nativeVerify(key, signature, data: pointer, length: csize_t): cint {.importc: "rc_ed_verify",
     header: Header, cdecl, raises: [], gcsafe.}
+  ## Apply current Gray Paper ZIP215 rules without adding an application domain or prehash mode.
 
-# Named ZIP215 capability shares the same maintained verifier selected by the current protocol.
 proc nativeVerifyZip215(key, signature, data: pointer,
     length: csize_t): cint {.importc: "rc_ed_verify_zip215",
 
 header: Header, cdecl, raises: [], gcsafe.}
+  ## Named ZIP215 capability shares the same maintained verifier selected by the current protocol.
 
 type
   Blake2bHash* = distinct array[32, byte] ## Nominal 32-byte Blake2b digest; not interchangeable with a Keccak hash or signing key.
@@ -61,6 +66,7 @@ type
 func error*[T](value: CryptoResult[T]): CryptoError =
   ## Outcomes are read-only; failed/default imports and backend calls carry no usable value.
   value.status
+
 func cryptoFailure*[T](reason: CryptoError): CryptoResult[T] {.requires: reason !=
     CryptoError.None.} =
   ## Compose a typed failure without exposing private result fields or permitting fabricated success.
@@ -77,10 +83,11 @@ proc `=wasMoved`(storage: var SeedStorage) {.raises: [], gcsafe.} =
   storage.alive = false
 
 proc `=destroy`(storage: SeedStorage) {.raises: [], gcsafe.} =
+  ## Erase retained secret bytes when the seed storage owner is destroyed.
   wipe(cast[pointer](unsafeAddr storage.bytes[0]), 32)
 
-# Select a borrowed input pointer only while its original open array is alive; nil represents an empty message.
 proc dataPointer(input: openArray[byte]): pointer {.raises: [], gcsafe.} =
+  ## Select a borrowed input pointer only while its original open array is alive; nil represents an empty message.
   # Empty arrays have no element address to evaluate.
   if input.len == 0: return nil
   unsafeAddr input[0]

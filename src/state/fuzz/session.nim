@@ -47,51 +47,65 @@ type
 func error*[T](outcome: FuzzSessionResult[T]): FuzzSessionError =
   ## Inspect the immutable reason without touching an absent payload.
   outcome.status
+
 func value*[T](outcome: FuzzSessionResult[T]): T {.inline,
     requires: outcome.status == FuzzSessionError.None.} =
   ## Extract only the completed alternative.
   outcome.completed
+
 func refused[T](reason: FuzzSessionError): FuzzSessionResult[T] =
   ## Construct a failure containing only the selected reason.
   FuzzSessionResult[T](status: reason)
+
 func kind*(dispatch: FuzzDispatch): FuzzDispatchKind =
   ## Select the guarded request/reply accessor.
   dispatch.selected
+
 func reply*(dispatch: FuzzDispatch): FuzzMessage {.inline,
     requires: dispatch.selected == FuzzDispatchKind.Reply.} =
   ## Automatic responses are limited to the negotiated handshake.
   dispatch.response
+
 func request*(dispatch: FuzzDispatch): FuzzRequest {.inline,
     requires: dispatch.selected == FuzzDispatchKind.Execute.} =
   ## Retain the outstanding immutable execution ticket.
   dispatch.ticket
+
 proc requestMessage*(ticket: FuzzRequest): FuzzSessionResult[FuzzMessage] =
   ## Default tickets grant no backend input.
   let data = ticket.data
   if data == nil: return refused[FuzzMessage](FuzzSessionError.StaleRequest)
   FuzzSessionResult[FuzzMessage](status: FuzzSessionError.None, completed: data.message)
+
 func consumed*(progress: FuzzFrameProgress): int =
   ## Report the exact bounded input prefix consumed by the reader.
   progress.used
+
 func complete*(progress: FuzzFrameProgress): bool =
   ## Incomplete frames retain their private assembly and expose no message.
   progress.ready
+
 func message*(progress: FuzzFrameProgress): FuzzMessage {.inline, requires: progress.ready.} =
   ## Extract one completely decoded message.
   progress.message
+
 func sameVersion(left, right: FuzzVersion): bool =
   ## Require exact selected JAM profile; application versions are informational.
   left.major == right.major and left.minor == right.minor and left.patch == right.patch
+
 proc close*(session: var FuzzSession) =
   ## Closing invalidates outstanding tickets and releases retained input ownership.
   session.phase = Terminated
   session.pending = nil
+
 func closed*(session: FuzzSession): bool =
   ## Dormant/default and terminated connections cannot accept messages.
   session.phase in {Dormant, Terminated}
+
 func negotiatedFeatures*(session: FuzzSession): uint32 =
   ## Only advertised supported bits intersect; the host must implement every bit it advertises.
   session.features
+
 proc initFuzzSession*(local: FuzzPeer, limits: FuzzLimits): FuzzSessionResult[FuzzSession] =
   ## Validate the target declaration before any connection becomes active.
   if local.protocol != 1 or (local.features and not 3'u32) != 0 or uint64(limits.bytes) == 0:
@@ -100,6 +114,7 @@ proc initFuzzSession*(local: FuzzPeer, limits: FuzzLimits): FuzzSessionResult[Fu
     return refused[FuzzSession](FuzzSessionError.InvalidConfiguration)
   FuzzSessionResult[FuzzSession](status: FuzzSessionError.None,
       completed: FuzzSession(phase: Handshake, local: local, limits: limits))
+
 proc receive*(session: var FuzzSession, message: FuzzMessage): FuzzSessionResult[FuzzDispatch] =
   ## Admit only one ordered request. No initialization or import runs inside this protocol boundary.
   if session.closed: return refused[FuzzDispatch](FuzzSessionError.Closed)
@@ -140,6 +155,7 @@ proc receive*(session: var FuzzSession, message: FuzzMessage): FuzzSessionResult
   session.phase = Pending
   FuzzSessionResult[FuzzDispatch](status: FuzzSessionError.None,
       completed: FuzzDispatch(selected: FuzzDispatchKind.Execute, ticket: FuzzRequest(data: data)))
+
 proc respond*(session: var FuzzSession, ticket: FuzzRequest,
     response: FuzzMessage): FuzzSessionResult[FuzzMessage] =
   ## Host success must match the outstanding request. Error is meaningful only for a consensus ImportBlock refusal.
@@ -165,9 +181,11 @@ proc respond*(session: var FuzzSession, ticket: FuzzRequest,
   session.pending = nil
   session.phase = Active
   FuzzSessionResult[FuzzMessage](status: FuzzSessionError.None, completed: response)
+
 proc initFuzzFrameReader*(limits: FuzzLimits): FuzzFrameReader =
   ## An explicit policy enables assembly; zero budgets fail before payload allocation.
   FuzzFrameReader(configured: uint64(limits.bytes) > 0, limits: limits)
+
 proc feed*(reader: var FuzzFrameReader, input: openArray[byte]): FuzzSessionResult[
     FuzzFrameProgress] =
   ## Consume at most one frame and leave pipelined suffix bytes with the caller. Bad input permanently retires this reader.

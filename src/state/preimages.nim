@@ -52,22 +52,23 @@ type
 func error*[T](outcome: PreimageTransitionResult[T]): PreimageTransitionError =
   ## Read a reason without granting result mutation or retagging.
   outcome.status
+
 func value*[T](outcome: PreimageTransitionResult[T]): T {.inline,
     requires: outcome.status == PreimageTransitionError.None.} =
   ## Extract selected success under supported compiler/runtime contracts in optimized builds too.
   outcome.completed
 
-## Map complete-store failures without changing backend/resource refusals into protocol invalidity.
 func storeReason(reason: StateStoreError): PreimageTransitionError =
+  ## Map complete-store failures without changing backend/resource refusals into protocol invalidity.
   case reason
   of StateStoreError.BackendFailure: PreimageTransitionError.BackendFailure # Never fabricate a state root.
   of StateStoreError.LimitExceeded, StateStoreError.LengthOverflow: PreimageTransitionError.LimitExceeded # Preserve local policy/native extent refusal.
   else: PreimageTransitionError.InvalidState # Default owners or conflicting writes cannot publish state.
 
-## Require an existing structurally valid account and an exact canonical zero-slot request history.
-## Missing accounts/requests and nonempty histories are ordinary false; malformed present values are refusals.
 proc outstanding(state: StateStoreSnapshot, service: ServiceIndex,
     request: StateKey): PreimageTransitionResult[bool] =
+  ## Require an existing structurally valid account and an exact canonical zero-slot request history.
+  ## Missing accounts/requests and nonempty histories are ordinary false; malformed present values are refusals.
   let account = state.lookup(chapterServiceKey(StateChapter(255), service))
   if account.error == StateStoreError.MissingKey:
     return PreimageTransitionResult[bool](status: PreimageTransitionError.None,
@@ -109,17 +110,17 @@ proc preimageRequested*(state: StateStoreSnapshot, service: ServiceIndex,
     return PreimageTransitionResult[bool](status: PreimageTransitionError.BackendFailure)
   outstanding(state, service, key.value)
 
-## Compare raw byte sequences lexicographically; wire lengths and hash digests do not order equal-service blobs.
 func compareBlob(a, b: openArray[byte]): int =
+  ## Compare raw byte sequences lexicographically; wire lengths and hash digests do not order equal-service blobs.
   for i in 0..<min(a.len, b.len):
     if a[i] < b[i]: return -1 # First unequal raw octet determines ordering.
     if a[i] > b[i]: return 1 # Greater raw octets must follow smaller ones.
   cmp(a.len, b.len) # A proper prefix sorts before its extension; equal lengths here imply duplicate data.
 
-## Admit exact source ordering and prior-state solicitation after complete work/copy preflight.
-## Prepare bounded canonical identities; only explicit extrinsic admission additionally requires prior solicitation.
 proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
     limits: PreimageLimits, requireRequested: bool): PreimageTransitionResult[PreimageData] =
+  ## Admit exact source ordering and prior-state solicitation after complete work/copy preflight.
+  ## Prepare bounded canonical identities; only explicit extrinsic admission additionally requires prior solicitation.
   ## Refuse atomically; no earlier row or provision counter escapes a later invalid item.
   template fail(reason: PreimageTransitionError) =
     return PreimageTransitionResult[PreimageData](status: reason)
@@ -228,10 +229,10 @@ proc provisionAt*(plan: AdmittedPreimages, index: ProvisionIndex): PreimageTrans
   PreimageTransitionResult[PreimageProvision](status: PreimageTransitionError.None,
     completed: data.provisions[int(uint64(index))])
 
-## Recheck post-accumulation solicitation, prepare complete private writes, then publish in one atomic batch.
-## The caller supplies the actual post-accumulation store and authenticated candidate slot; neither is fabricated here.
 proc integratePrepared(state: var StateStore, current: StateStoreSnapshot, data: PreimageData,
     slot: HeaderSlot): PreimageTransitionResult[StateStoreSnapshot] =
+  ## Recheck post-accumulation solicitation, prepare complete private writes, then publish in one atomic batch.
+  ## The caller supplies the actual post-accumulation store and authenticated candidate slot; neither is fabricated here.
   ## No mutation occurs before the final complete-map apply succeeds.
   template fail(reason: PreimageTransitionError) =
     return PreimageTransitionResult[StateStoreSnapshot](status: reason)

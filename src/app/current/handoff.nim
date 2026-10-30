@@ -23,16 +23,20 @@ type
     of Pending, Publishing: update: PreparedCurrentChainUpdate
     of Finished: outcome: CurrentHandoffResult
     else: discard # Idle owns no source, result or implicit queue.
+
 func phase*(handoff: CurrentAccumulationHandoff): CurrentHandoffPhase =
   ## Observe producer capacity without reading or changing the retained candidate.
   handoff.status
+
 func error*(outcome: CurrentHandoffResult): CurrentHandoffError =
   ## Observe only the selected installation status.
   outcome.status
+
 func value*(outcome: CurrentHandoffResult): BlockSnapshot {.inline,
     requires: outcome.status == CurrentHandoffError.None.} =
   ## Retain only an actually installed captured current child.
   outcome.completed
+
 proc enqueue*(handoff: var CurrentAccumulationHandoff, owner: ApplicationChain,
     update: PreparedCurrentChainUpdate): CurrentHandoffAdmission =
   ## Backpressure precedes parent inspection; admission retains immutable handles without hashing or guest work.
@@ -42,10 +46,12 @@ proc enqueue*(handoff: var CurrentAccumulationHandoff, owner: ApplicationChain,
   if not owner.canInstallPrepared(update): return CurrentHandoffAdmission.StaleState
   handoff = CurrentAccumulationHandoff(status: CurrentHandoffPhase.Pending, update: update)
   CurrentHandoffAdmission.None
+
 proc pendingUpdate*(handoff: CurrentAccumulationHandoff): PreparedCurrentChainUpdate {.requires:
     handoff.status == CurrentHandoffPhase.Pending.} =
   ## Retain the already prepared immutable candidate, never a writable application or source borrow.
   handoff.update
+
 proc process*(handoff: var CurrentAccumulationHandoff, owner: var ApplicationChain) =
   ## Attempt at most one current update; success and exact-parent refusal both require acknowledgment.
   if handoff.status != CurrentHandoffPhase.Pending: return # Idle, Publishing and Finished never attempt installation.
@@ -58,6 +64,7 @@ proc process*(handoff: var CurrentAccumulationHandoff, owner: var ApplicationCha
   handoff = CurrentAccumulationHandoff(status: CurrentHandoffPhase.Finished,
     outcome: CurrentHandoffResult(status: CurrentHandoffError.None,
         completed: update.currentUpdateChild))
+
 proc process*(handoff: var CurrentAccumulationHandoff, owner: var ApplicationChain,
     rpc: var Server, lease: nil RpcChainLease = nil) =
   ## Enabled RPC must join the exact prepared state/history/lease; refusal never falls back to canonical-only installation.
@@ -75,6 +82,7 @@ proc process*(handoff: var CurrentAccumulationHandoff, owner: var ApplicationCha
   handoff = CurrentAccumulationHandoff(status: CurrentHandoffPhase.Finished,
     outcome: CurrentHandoffResult(status: CurrentHandoffError.None,
         completed: update.currentUpdateChild))
+
 proc markPublishing*(handoff: var CurrentAccumulationHandoff) {.requires:
     handoff.status == CurrentHandoffPhase.Pending.} =
   ## Freeze the exact expected current child before external publication; no cancellation or ordinary processing may install it.
@@ -122,6 +130,7 @@ proc take*(handoff: var CurrentAccumulationHandoff): CurrentHandoffResult {.requ
   ## Transfer exactly one retained result and release producer backpressure.
   result = handoff.outcome
   handoff = default(CurrentAccumulationHandoff)
+
 proc cancel*(handoff: var CurrentAccumulationHandoff): bool =
   ## Only an unattempted update may be dropped; completed results require acknowledgment.
   if handoff.status != CurrentHandoffPhase.Pending: return false

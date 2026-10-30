@@ -53,26 +53,31 @@ type
 func error*[T](outcome: RefinementDigestResult[T]): RefinementDigestError =
   ## Inspect a reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: RefinementDigestResult[T]): T
     {.requires: outcome.status == RefinementDigestError.None.} =
   ## Extract only a complete selected result.
   outcome.completed
+
 proc digestCount*(digests: RefinementDigests): RefinementDigestResult[int] =
   ## Inspect only an initialized complete ordered projection.
   let data = digests.data
   if data == nil: return RefinementDigestResult[int](status: RefinementDigestError.Uninitialized)
   RefinementDigestResult[int](status: RefinementDigestError.None, completed: data.items.len)
+
 proc digestEncodedBytes*(digests: RefinementDigests): RefinementDigestResult[uint64] =
   ## Report the exact occupied canonical encoding size, excluding sequence/container framing.
   let data = digests.data
   if data == nil: return RefinementDigestResult[uint64](status: RefinementDigestError.Uninitialized)
   RefinementDigestResult[uint64](status: RefinementDigestError.None, completed: data.encodedBytes)
+
 proc digestReport*(digests: RefinementDigests): RefinementDigestResult[RefinedPackage] =
   ## Retain the original report, including its matching ordered export/trace selection.
   let data = digests.data
   if data == nil: return RefinementDigestResult[RefinedPackage](
       status: RefinementDigestError.Uninitialized)
   RefinementDigestResult[RefinedPackage](status: RefinementDigestError.None, completed: data.report)
+
 proc digestAt*(digests: RefinementDigests, index: FetchItemIndex): RefinementDigestResult[
     RefinedDigest] =
   ## Check the full-width nominal index before narrowing into the bounded item sequence.
@@ -83,6 +88,7 @@ proc digestAt*(digests: RefinementDigests, index: FetchItemIndex): RefinementDig
     return RefinementDigestResult[RefinedDigest](status: RefinementDigestError.InvalidIndex)
   RefinementDigestResult[RefinedDigest](status: RefinementDigestError.None, completed: data.items[
       int(uint64(index))])
+
 proc digestInfo*(digest: RefinedDigest): RefinementDigestResult[RefinementDigestInfo] =
   ## Copy selected fixed fields without exposing wire storage or an output span.
   let data = digest.data
@@ -90,6 +96,7 @@ proc digestInfo*(digest: RefinedDigest): RefinementDigestResult[RefinementDigest
       status: RefinementDigestError.Uninitialized)
   RefinementDigestResult[RefinementDigestInfo](status: RefinementDigestError.None,
       completed: data.info)
+
 proc digestSource*(digest: RefinedDigest): RefinementDigestResult[RefinedWorkItem] =
   ## Extract only this digest's original immutable final item.
   let data = digest.data
@@ -97,6 +104,7 @@ proc digestSource*(digest: RefinedDigest): RefinementDigestResult[RefinedWorkIte
       status: RefinementDigestError.Uninitialized)
   RefinementDigestResult[RefinedWorkItem](status: RefinementDigestError.None,
       completed: data.source)
+
 proc digestBytes*(digest: RefinedDigest): RefinementDigestResult[seq[byte]] =
   ## Return an independent complete canonical byte copy; callers may borrow/decode their own copy explicitly.
   let data = digest.data
@@ -106,6 +114,7 @@ proc digestBytes*(digest: RefinedDigest): RefinementDigestResult[seq[byte]] =
   for index in 0..<bytes.len: bytes[index] = data.wire[
       index] # Retained canonical bytes cannot be mutated through extraction.
   RefinementDigestResult[seq[byte]](status: RefinementDigestError.None, completed: bytes)
+
 proc digestOutput*(digest: RefinedDigest): RefinementDigestResult[seq[byte]] =
   ## Copy final Success bytes only; all work errors remain payload-free, including Oversize and BadExports.
   let data = digest.data

@@ -67,40 +67,51 @@ type
   DecodedContext = object ## Native authentication precedes parsing; an independently expected previous manifest grants bounded retirement authority.
     previous: PagedManifest
     inner: seq[byte]
+
 func error*[T](outcome: LightStoreResult[T]): LightStoreError =
   ## Observe the selected stage without authorizing extraction.
   outcome.status
+
 func value*[T](outcome: LightStoreResult[T]): T {.inline, requires: outcome.status ==
     LightStoreError.None.} =
   ## Checked success alone exposes an immutable completed result.
   outcome.completed
+
 func nativeFailure*[T](outcome: LightStoreResult[T]): PagedNativeResult[
     bool] {.requires: outcome.status == LightStoreError.NativeFailure.} =
   ## Preserve exact native IO, stream and proof uncertainty without a successful native payload.
   outcome.nativeCause
+
 func headError*[T](outcome: LightStoreResult[T]): LightHeadError {.requires: outcome.status ==
     LightStoreError.HeadFailure.} =
   ## Header/profile/link refusal remains distinct from physical storage uncertainty.
   outcome.headCause
+
 func viewFailure*[T](outcome: LightStoreResult[T]): PagedProofViewResult[
     ProofView] {.requires: outcome.status == LightStoreError.ViewFailure.} =
   ## This nested result is always failed and contains no partial materialized proof view.
   outcome.viewCause
+
 func fileError*[T](outcome: LightStoreResult[T]): FileError {.requires: outcome.status ==
     LightStoreError.FileFailure.} =
   ## Inspect a real file or resource retirement refusal.
   outcome.fileCause
+
 func nativeFailed[T, U](outcome: PagedNativeResult[U]): LightStoreResult[
     T] {.requires: outcome.error != PagedNativeError.None.} =
   ## Convert only a failed native alternative while preserving its original selected cause.
   LightStoreResult[T](status: LightStoreError.NativeFailure, nativeCause: outcome.failure)
+
 func opened*(store: LightPagedStore): bool =
   ## Passive lifetime observation never touches CURRENT or native identity.
   store.writer.opened
+
 proc `=copy`*(destination: var LightPagedStore, source: LightPagedStore) {.error.}
   ## Native ownership cannot be copied between light application stores.
+
 proc `=dup`*(source: LightPagedStore): LightPagedStore {.error.}
   ## Retaining a partial snapshot never duplicates the unique writer.
+
 proc `=wasMoved`*(store: var LightPagedStore) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(store.writer)
@@ -109,23 +120,28 @@ proc `=wasMoved`*(store: var LightPagedStore) {.nodestroy, inline.} =
 proc `=destroy`*(store: LightPagedStore) =
   ## Explicit close joins the owning runtime before the native owner leaves scope.
   assert not store.opened
+
 proc close*(store: var LightPagedStore): FileError =
   ## Retained external snapshots remain readable after native handles and the mutable cache retire.
   result = store.writer.close
   store.cache = nil
+
 func valid*(snapshot: LightStorageSnapshot): bool =
   ## Default snapshots grant no trusted metadata or partial proof access.
   snapshot.data != nil
+
 proc head*(snapshot: LightStorageSnapshot): LightApplicationHead {.requires: snapshot.data != nil.} =
   ## Immutable metadata and proof ownership outlive every native source.
   let data = snapshot.data
   assert data != nil
   data.head
+
 proc manifest*(snapshot: LightStorageSnapshot): PagedManifest {.requires: snapshot.data != nil.} =
   ## Passive physical metadata never substitutes for independent consensus trust.
   let data = snapshot.data
   assert data != nil
   data.selected
+
 proc snapshot*(store: LightPagedStore): LightStoreResult[LightStorageSnapshot] =
   ## Dispatcher reads use only already admitted cached ownership and perform zero native calls.
   let cache = store.cache
@@ -138,18 +154,22 @@ proc snapshot*(store: LightPagedStore): LightStoreResult[LightStorageSnapshot] =
       status: LightStoreError.NotReady) # Only completely restored application state is cached.
   LightStoreResult[LightStorageSnapshot](status: LightStoreError.None,
       completed: LightStorageSnapshot(data: current))
+
 func retirementPending*(store: LightPagedStore): bool =
   ## Passive bounded-backpressure observation never scans native names.
   let cache = store.cache
   cache != nil and cache.pending
+
 proc quarantine(store: LightPagedStore) =
   ## IO uncertainty invalidates future facade operations but never changes retained immutable snapshots.
   let cache = store.cache
   if cache != nil: cache.healthy = false # Only the excluded owner mutates this latch.
+
 proc copyBytes(bytes: openArray[byte]): seq[byte] =
   ## The caller bounds this extent before any detached transport allocation.
   result = newSeq[byte](bytes.len)
   for index in 0..<bytes.len: result[index] = bytes[index] # No mutable source backing escapes.
+
 func policyValid(limits: LightPagedLimits): bool =
   ## Reserve the worst-case envelope independently of logical proof bytes and native total extent.
   let cap = uint64(limits.native.limits.contextBytes)
@@ -158,6 +178,7 @@ func policyValid(limits: LightPagedLimits): bool =
   inner > 0 and overhead <= cap and inner <= cap-overhead and
     overhead <= uint64(limits.native.limits.dataset.bytes) and inner <= uint64(
         limits.native.limits.dataset.bytes)-overhead
+
 proc envelope(inner: openArray[byte], previous: PagedManifest,
     limits: LightPagedLimits): LightStoreResult[seq[byte]] =
   ## The exact predecessor is inside the same authenticated native artifact as the new partial proofs and header metadata.
@@ -179,6 +200,7 @@ proc envelope(inner: openArray[byte], previous: PagedManifest,
     for index in 0..<PagedManifestBytes: bytes[ContextPrefix+index] = encoded[index]
   for index in 0..<inner.len: bytes[prefix+index] = inner[index] # Detached immutable context capture.
   LightStoreResult[seq[byte]](status: LightStoreError.None, completed: bytes)
+
 proc decodeContext(bytes: openArray[byte], selected: PagedManifest,
     limits: LightPagedLimits): LightStoreResult[DecodedContext] =
   ## Complete native authentication grants byte integrity; independent current trust still anchors application interpretation.
@@ -232,6 +254,7 @@ proc decodeContext(bytes: openArray[byte], selected: PagedManifest,
       return LightStoreResult[DecodedContext](status: LightStoreError.InvalidFormat) # Different-root advancement preserves ordinary sequence.
   LightStoreResult[DecodedContext](status: LightStoreError.None,
     completed: DecodedContext(previous: previous, inner: copyBytes(bytes.toOpenArray(prefix, bytes.high))))
+
 proc prepare(head: LightApplicationHead, limits: LightPagedLimits): LightStoreResult[PreparedData] =
   ## Recheck inherited header/profile and all retained proof/payload quotas before native namespace mutation.
   if not head.valid: return LightStoreResult[PreparedData](
@@ -303,8 +326,10 @@ proc prepare(head: LightApplicationHead, limits: LightPagedLimits): LightStoreRe
         status: LightStoreError.LimitExceeded) # No largest-proof copy begins before full workspace preflight.
   LightStoreResult[PreparedData](status: LightStoreError.None,
     completed: PreparedData(head: retained, inner: encoded.value, count: count, payload: payload))
+
 proc producer(prepared: PreparedData): PagedProducer =
   ## Repeated synchronous passes borrow one immutable view and materialize at most one detached native proof at a time.
+
   proc next(pass: int, ordinal: uint64, output: var nativecache.LightStateProof): PagedProducerStep {.closure.} =
     ## Host-extent proof follows the retained view's bounded length; no closure escapes native authoring.
     if ordinal >= prepared.count: return PagedProducerStep.End # Explicit stable end on every pass.
@@ -316,6 +341,7 @@ proc producer(prepared: PreparedData): PagedProducer =
         nodes: nodes, value: witness.suppliedValue.value))
     PagedProducerStep.Item
   next
+
 proc prepareLightProofMerge*(source: LightStorageSnapshot,
     batch: VerifiedStateProofBatch): LightStoreResult[PreparedLightPublication] =
   ## Passive preparation admits only independently verified same-root facts and retains exact expected source incarnation.
@@ -333,6 +359,7 @@ proc prepareLightProofMerge*(source: LightStorageSnapshot,
     return LightStoreResult[PreparedLightPublication](status: target.error)
   LightStoreResult[PreparedLightPublication](status: LightStoreError.None,
       completed: PreparedLightPublication(source: data, target: target.value))
+
 proc prepareLightHeadAdvance*(source: LightStorageSnapshot, trust: TrustedApplicationCheckpoint,
     evidence: ProofView): LightStoreResult[PreparedLightPublication] =
   ## Independent successor trust must satisfy the retained parent/hash/prior-root/profile contract before any disk work.
@@ -350,6 +377,7 @@ proc prepareLightHeadAdvance*(source: LightStorageSnapshot, trust: TrustedApplic
     return LightStoreResult[PreparedLightPublication](status: target.error)
   LightStoreResult[PreparedLightPublication](status: LightStoreError.None,
       completed: PreparedLightPublication(source: data, target: target.value))
+
 proc initializeLightPagedStore*(store: var LightPagedStore, path: string,
     head: LightApplicationHead, limits: LightPagedLimits): LightStoreResult[LightStorageSnapshot] =
   ## Exclusive bootstrap publishes one trusted metadata/partial-proof pair; no complete-state snapshot is allocated or retained.
@@ -386,6 +414,7 @@ proc initializeLightPagedStore*(store: var LightPagedStore, path: string,
   adopted = true
   LightStoreResult[LightStorageSnapshot](status: LightStoreError.None,
       completed: LightStorageSnapshot(data: current))
+
 proc openLightPagedStore*(store: var LightPagedStore, path: string,
     trust: TrustedApplicationCheckpoint,
 
@@ -454,6 +483,7 @@ limits: LightPagedLimits): LightStoreResult[LightStorageSnapshot] =
   adopted = true
   LightStoreResult[LightStorageSnapshot](status: LightStoreError.None,
       completed: LightStorageSnapshot(data: current))
+
 proc commit*(store: var LightPagedStore, job: PreparedLightPublication): LightStoreResult[
     LightStorageSnapshot] =
   ## The excluded IO owner publishes the exact privately prepared source/target pair before passive cache adoption.
@@ -512,6 +542,7 @@ proc commit*(store: var LightPagedStore, job: PreparedLightPublication): LightSt
   cache.current = current # Confirmed native success precedes target metadata/proof adoption.
   LightStoreResult[LightStorageSnapshot](status: LightStoreError.None,
       completed: LightStorageSnapshot(data: current))
+
 proc prepareLightRetirement*(store: LightPagedStore): LightStoreResult[PreparedLightRetirement] =
   ## Passive job construction does no native IO and captures no reader pin.
   let selected = store.snapshot
@@ -524,6 +555,7 @@ proc prepareLightRetirement*(store: LightPagedStore): LightStoreResult[PreparedL
   LightStoreResult[PreparedLightRetirement](status: LightStoreError.None,
     completed: PreparedLightRetirement(owner: cache, current: selected.value.data,
         previous: cache.previous))
+
 proc retire*(store: var LightPagedStore, job: PreparedLightRetirement): LightStoreResult[
     PagedReclamation] =
   ## A separate excluded operation confirms expected old-content absence without changing the adopted application head.
@@ -551,6 +583,7 @@ proc retire*(store: var LightPagedStore, job: PreparedLightRetirement): LightSto
   cache.pending = false
   cache.previous = default(PagedManifest)
   LightStoreResult[PagedReclamation](status: LightStoreError.None, completed: retired.value)
+
 proc synchronize*(store: var LightPagedStore): LightStoreResult[StorageDurability] =
   ## Real native barriers run only on the excluded owner, never from passive cache accessors.
   let selected = store.snapshot
@@ -565,6 +598,7 @@ proc synchronize*(store: var LightPagedStore): LightStoreResult[StorageDurabilit
 func ready*(job: PreparedLightPublication): bool =
   ## Passive worker admission distinguishes a fully prepared immutable target/source pair from default jobs.
   job.source != nil and job.target != nil
+
 func ready*(job: PreparedLightRetirement): bool =
   ## A queued cleanup job must retain its exact cache incarnation, current selection and expected predecessor.
   job.owner != nil and job.current != nil and job.previous.initialized

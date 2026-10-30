@@ -38,73 +38,92 @@ type
     case status: RpcLightSourceError
     of None: completed: RpcLightHead
     else: discard # Refusals contain reasons only.
+
 func error*(outcome: RpcLightSourceResult): RpcLightSourceError =
   ## Observe capture policy/structure refusal before selecting metadata.
   outcome.status
+
 func value*(outcome: RpcLightSourceResult): RpcLightHead {.requires: outcome.status ==
     RpcLightSourceError.None.} =
   ## Only a complete owned transport source escapes capture.
   outcome.completed
+
 func valid*(head: RpcLightHead): bool =
   ## Default transport describes no current header or root.
   head.data != nil
+
 func valid*(header: RpcLightHeader): bool =
   ## Missing retained metadata never becomes a zero-hash descriptor.
   header.ready
+
 func sameRpcLightHead*(left, right: RpcLightHead): bool =
   ## Source incarnation includes coverage metadata; matching root/hash alone does not imply identical local knowledge.
   left.data != nil and left.data == right.data
+
 func blockHash*(identity: RpcLightIdentity): BlockHash =
   ## Display only; the receiving client still selects root/header trust independently.
   identity.blockIdentity
+
 func stateRoot*(identity: RpcLightIdentity): StateRoot =
   ## A copied posterior-root selector is never recomputed from partial state.
   identity.root
+
 func slot*(identity: RpcLightIdentity): uint32 =
   ## Application slot remains separate from native publication counters.
   identity.time
+
 func identity*(header: RpcLightHeader): RpcLightIdentity {.requires: header.ready.} =
   ## Valid retained metadata supplies only its copied fixed selectors.
   header.selected
+
 func headerInfo*(header: RpcLightHeader): HeaderInfo {.requires: header.ready.} =
   ## Structural metadata retains no full-state provider.
   header.info
+
 func byteLength*(header: RpcLightHeader): int =
   ## Defaults have no sealed wire to expose.
   header.wire.len
+
 proc copyHeader*(header: RpcLightHeader, output: var openArray[byte]): bool =
   ## Insufficient destinations remain untouched; successful copies never alias immutable backing storage.
   if not header.ready or output.len < header.wire.len: return false # Preflight precedes every destination write.
   for index in 0..<header.wire.len: output[index] = header.wire[index] # Proved fixed extent.
   true
+
 func len*(head: RpcLightHead): int =
   ## Metadata length is bounded independently of state/proof coverage.
   let data = head.data
   if data == nil: 0 else: data.headers.len
+
 proc current*(head: RpcLightHead): RpcLightHeader {.requires: head.data != nil.} =
   ## Successful source capture always retains at least one current record.
   let data = head.data
   assert data != nil
   data.headers[data.headers.len-1]
+
 proc stateRoot*(head: RpcLightHead): StateRoot {.requires: head.data != nil.} =
   ## Copied current metadata supplies a display selector, never independently trusted state authority.
   head.current.identity.stateRoot
+
 proc headerAt*(head: RpcLightHead, index: int): RpcLightHeader =
   ## Unknown history remains an invalid metadata owner without fallback or native lookup.
   let data = head.data
   if data == nil or index < 0 or index >= data.headers.len: return default(
       RpcLightHeader) # No invalid index grants a descriptor.
   data.headers[index]
+
 proc headerProfile*(head: RpcLightHead): HeaderConfig {.requires: head.data != nil.} =
   ## Caller-selected configured geometry is not an inferred verified state roster.
   let data = head.data
   assert data != nil
   data.profile
+
 proc knownFacts*(head: RpcLightHead): int {.requires: head.data != nil.} =
   ## Coverage counts both presence and proven absence, never total complete-map keys.
   let data = head.data
   assert data != nil
   data.facts
+
 proc captureRpcLightHead*(headers: openArray[RpcLightHeaderInput], profile: HeaderConfig,
     knownFacts: int): RpcLightSourceResult =
   ## Bounds and canonical header structure precede private copying; trust remains the application caller's separate responsibility.

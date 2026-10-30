@@ -36,6 +36,7 @@ type
 func error*[T](outcome: ReportAssignmentResult[T]): ReportAssignmentError =
   ## Inspect the reason without allowing external retagging.
   outcome.status
+
 func value*[T](outcome: ReportAssignmentResult[T]): T {.inline,
     requires: outcome.status == ReportAssignmentError.None.} =
   ## Extract complete success only under supported checked-build contracts.
@@ -78,8 +79,8 @@ proc reportAssignmentEntry*(plan: ReportAssignmentPlan): ReportAssignmentResult[
   for i in 0..<copy.value.len: copy.value[i] = data.entry.value[i]
   ReportAssignmentResult[StateEntry](status: ReportAssignmentError.None, completed: copy)
 
-## Preserve ordinary byte/count refusal versus invalid profile and malformed table distinctions.
 func codecError(reason: AvailabilityError): ReportAssignmentError =
+  ## Preserve ordinary byte/count refusal versus invalid profile and malformed table distinctions.
   case reason
   of AvailabilityError.LimitExceeded, AvailabilityError.LengthOverflow:
     ReportAssignmentError.LimitExceeded # Current resource policy must apply to old and new records alike.

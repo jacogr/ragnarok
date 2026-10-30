@@ -31,23 +31,28 @@ type
 func error*[T](outcome: AncestorContextResult[T]): AncestorContextError =
   ## Read status without allowing external retagging.
   outcome.status
+
 func value*[T](outcome: AncestorContextResult[T]): T {.inline, requires:
     outcome.status == AncestorContextError.None.} =
   ## Extract only the selected complete success.
   outcome.completed
+
 func valid*(context: AncestorContext): bool =
   ## A default differs from a valid parent-only context.
   context.data != nil
+
 proc len*(context: AncestorContext): int =
   ## Count includes the selected parent; default context contains no headers.
   let data = context.data
   if data == nil: return 0 # No implicit parent.
   data.headers.len
+
 proc serializedBytes*(context: AncestorContext): uint64 =
   ## Count exact retained sealed bytes, including markers and seals.
   let data = context.data
   if data == nil: return 0 # No default byte claim.
   data.bytes
+
 proc headerAt*(context: AncestorContext, index: int): AncestorContextResult[OwnedHeader] =
   ## Retain an immutable owner by newest-first ordinal without a mutable sequence view.
   let data = context.data
@@ -56,6 +61,7 @@ proc headerAt*(context: AncestorContext, index: int): AncestorContextResult[Owne
   if index < 0 or index >= data.headers.len:
     return AncestorContextResult[OwnedHeader](status: AncestorContextError.InvalidIndex)
   AncestorContextResult[OwnedHeader](status: AncestorContextError.None, completed: data.headers[index])
+
 proc hashAt*(context: AncestorContext, index: int): AncestorContextResult[HeaderParent] =
   ## Copy the sealed hash corresponding to exactly one retained header.
   let data = context.data

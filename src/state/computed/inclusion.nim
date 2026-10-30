@@ -29,10 +29,12 @@ type
 func error*[T](outcome: ComputedInclusionResult[T]): ComputedInclusionError =
   ## Inspect status without permitting discriminator mutation.
   outcome.status
+
 func value*[T](outcome: ComputedInclusionResult[T]): T
     {.requires: outcome.status == ComputedInclusionError.None.} =
   ## Preserve complete-success extraction under optimized compilation.
   outcome.completed
+
 proc computedInclusionSource*(included: IncludedComputedGuarantees): ComputedInclusionResult[
     ComputedGuaranteeBatch] =
   ## Share all original computed certificates and the canonical reporter union.
@@ -41,6 +43,7 @@ proc computedInclusionSource*(included: IncludedComputedGuarantees): ComputedInc
       status: ComputedInclusionError.Uninitialized)
   ComputedInclusionResult[ComputedGuaranteeBatch](status: ComputedInclusionError.None,
       completed: data.source)
+
 proc computedInclusionStage*(included: IncludedComputedGuarantees): ComputedInclusionResult[
     BlockTransitionResult] =
   ## Share the exact private successful candidate prefix, with no caller replacement tuple.
@@ -49,6 +52,7 @@ proc computedInclusionStage*(included: IncludedComputedGuarantees): ComputedIncl
       status: ComputedInclusionError.Uninitialized)
   ComputedInclusionResult[BlockTransitionResult](status: ComputedInclusionError.None,
       completed: data.staged)
+
 proc computedInclusionComponent*(included: IncludedComputedGuarantees): ComputedInclusionResult[
     GuaranteeComponent] =
   ## Retain the original candidate's immutable guarantees, independently of caller handles.
@@ -57,6 +61,7 @@ proc computedInclusionComponent*(included: IncludedComputedGuarantees): Computed
       status: ComputedInclusionError.Uninitialized)
   ComputedInclusionResult[GuaranteeComponent](status: ComputedInclusionError.None,
       completed: data.component)
+
 proc bindComputedInclusion*(source: ComputedGuaranteeBatch,
     bytes: ByteLimit): ComputedInclusionResult[IncludedComputedGuarantees] =
   ## Derive candidate authority solely from completed batch sources and compare complete canonical guarantee encodings.

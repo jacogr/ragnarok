@@ -29,15 +29,18 @@ type
 func error*[T](outcome: AccumulationProvisionStageResult[T]): AccumulationProvisionStageError =
   ## Read the selected reason without allowing retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationProvisionStageResult[T]): T {.inline,
     requires: outcome.status == AccumulationProvisionStageError.None.} =
   ## Extract only a fully bound successful owner or observation.
   outcome.completed
+
 func provisionFailure*[T](outcome: AccumulationProvisionStageResult[
     T]): AccumulationProvisionError {.inline, requires: outcome.status ==
     AccumulationProvisionStageError.ProvisionFailure.} =
   ## Inspect only the genuine selected provisionReason refusal.
   outcome.provisionReason
+
 func storeFailure*[T](outcome: AccumulationProvisionStageResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationProvisionStageError.StoreFailure.} =
   ## Inspect only the genuine selected storeReason refusal.

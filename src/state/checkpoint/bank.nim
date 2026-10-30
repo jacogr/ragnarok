@@ -34,8 +34,10 @@ type
 
 proc `=copy`*(destination: var CheckpointBank, source: CheckpointBank) {.error.}
   ## A composite bank independently rejects duplicated lock retirement obligations.
+
 proc `=dup`*(source: CheckpointBank): CheckpointBank {.error.}
   ## Actual ARC lowering must reject bank duplication even with a noncopyable child.
+
 proc `=wasMoved`*(bank: var CheckpointBank) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(bank.selector)
@@ -45,24 +47,30 @@ proc `=destroy`*(bank: CheckpointBank) =
   ## Explicit close is checked by the native owner before both managed paths retire.
   `=destroy`(bank.selector)
   `=destroy`(bank.prefix)
+
 func opened*(bank: CheckpointBank): bool =
   ## Observe lifecycle without exposing slot paths or the locking descriptor.
   bank.selector.opened
+
 func error*[T](outcome: CheckpointBankResult[T]): CheckpointBankError =
   ## Inspect the outer refusal without extracting state or a mismatched inner reason.
   outcome.status
+
 func value*[T](outcome: CheckpointBankResult[T]): T {.inline,
     requires: outcome.status == CheckpointBankError.None.} =
   ## Only fully validated selection/restoration authorizes a returned payload.
   outcome.completed
+
 func headError*[T](outcome: CheckpointBankResult[T]): CheckpointHeadError {.requires:
     outcome.status == CheckpointBankError.InvalidHead.} =
   ## Native, state and trust failures have no head-decoder diagnostic.
   outcome.headReason
+
 func checkpointError*[T](outcome: CheckpointBankResult[T]): CheckpointError {.requires:
     outcome.status == CheckpointBankError.InvalidCheckpoint.} =
   ## Retain the exact selected-file decoder refusal without exposing its candidate.
   outcome.stateReason
+
 func bankError(reason: AtomicFileError): CheckpointBankError =
   ## Exhaustive mapping preserves uncertainty and default lifecycle rather than granting success.
   case reason
@@ -73,6 +81,7 @@ func bankError(reason: AtomicFileError): CheckpointBankError =
   of AtomicFileError.LimitExceeded: CheckpointBankError.LimitExceeded # No bounded-read prefix is exposed.
   of AtomicFileError.Busy: CheckpointBankError.Busy # Cooperating namespace contention remains nonblocking.
   of AtomicFileError.PublishedUnsynced: CheckpointBankError.PublishedUnsynced # Visibility is not confirmed durability.
+
 proc openCheckpointBank*(bank: var CheckpointBank, prefix: string): CheckpointBankError =
   ## Lock prefix.head.lock before retaining independently owned slot-path bytes.
   if bank.opened: return CheckpointBankError.Busy # Live owners cannot change their namespace.
@@ -87,10 +96,12 @@ proc openCheckpointBank*(bank: var CheckpointBank, prefix: string): CheckpointBa
   for character in prefix:
     bank.prefix.add(character) # Caller mutation cannot redirect later slot reads.
   CheckpointBankError.None
+
 proc close*(bank: var CheckpointBank): CheckpointBankError =
   ## Disarm the native owner once and retain the stable lock inode for future contenders.
   bank.prefix = ""
   bankError(bank.selector.close())
+
 proc selectedHead*(bank: var CheckpointBank): CheckpointBankResult[CheckpointHead] =
   ## Inspect exactly one bounded head while holding its namespace lock; this does not authenticate its root.
   let bytes = bank.selector.read(ByteLimit(CheckpointHeadBytes))
@@ -102,10 +113,12 @@ proc selectedHead*(bank: var CheckpointBank): CheckpointBankResult[CheckpointHea
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
         headReason: decoded.error)
   CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: decoded.value)
+
 proc slotPath(bank: CheckpointBank, slot: CheckpointSlot): string =
   ## Only the validated selector can choose one of two fixed sibling names.
   if slot == CheckpointSlot.First: bank.prefix & ".0" # First generation's complete-map file.
   else: bank.prefix & ".1" # The only other canonical slot; temporary filenames are never considered.
+
 proc restoreSelected(bank: var CheckpointBank, head: CheckpointHead, expected: StateRoot,
     limits: StateStoreLimits, limit: ByteLimit): CheckpointBankResult[StateStore] =
   ## Verify exactly the captured selector and its one complete map; this helper never scans or rereads a selector.
@@ -241,6 +254,7 @@ proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
       CheckpointHead]) # Preserve inactive-owner refusal before source computation.
   let prepared = prepareFullCheckpoint(snapshot, limit)
   bank.initialize(prepared, limit)
+
 proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
     snapshot: StateStoreSnapshot, limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
   ## Existing snapshot callers retain exact refusal ordering while all publication shares detached-buffer code.

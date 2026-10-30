@@ -23,22 +23,27 @@ type
       inventoryReason: StateInventoryResult[StateInventory]
     else:
       discard # Default/invalid owners retain no usable source.
+
 func error*[T](outcome: CurrentStateResult[T]): CurrentStateError =
   ## Observe selection without granting retagging or payload access.
   outcome.status
+
 func value*[T](outcome: CurrentStateResult[T]): T {.inline, requires: outcome.status ==
     CurrentStateError.None.} =
   ## Extract complete success only under checked contracts.
   outcome.completed
+
 func manifestFailure*[T](outcome: CurrentStateResult[T]): StateManifestResult[
     ValidatedStateManifest] {.inline, requires: outcome.status ==
     CurrentStateError.ManifestFailure.} =
   ## Preserve the original mapping, opaque, codec, key and resource refusal.
   outcome.manifestReason
+
 func inventoryFailure*[T](outcome: CurrentStateResult[T]): StateInventoryResult[
     StateInventory] {.inline, requires: outcome.status == CurrentStateError.InventoryFailure.} =
   ## Preserve failed compact-fact admission without manufacturing an empty inventory.
   outcome.inventoryReason
+
 proc qualifyCurrentState*(source: CurrentGlobalSerialization, services: openArray[StateService],
     limits: StateInventoryLimits): CurrentStateResult[CurrentStateSerialization] =
   ## Borrow stable supplied declarations synchronously; existing bounded matching and capture retain detached facts only.
@@ -56,6 +61,7 @@ proc qualifyCurrentState*(source: CurrentGlobalSerialization, services: openArra
   CurrentStateResult[CurrentStateSerialization](status: CurrentStateError.None,
     completed: CurrentStateSerialization(initialized: true, globals: source,
         inventory: inventory.value))
+
 proc currentStateGlobals*(source: CurrentStateSerialization): CurrentStateResult[
     CurrentGlobalSerialization] =
   ## Retain the original update, complete globals, derived cardinalities and full child parameters.
@@ -63,6 +69,7 @@ proc currentStateGlobals*(source: CurrentStateSerialization): CurrentStateResult
     return CurrentStateResult[CurrentGlobalSerialization](status: CurrentStateError.Uninitialized)
   CurrentStateResult[CurrentGlobalSerialization](status: CurrentStateError.None,
       completed: source.globals)
+
 proc currentStateInventory*(source: CurrentStateSerialization): CurrentStateResult[StateInventory] =
   ## Return immutable compact facts tied to the exact original source; raw storage keys are deliberately not retained here.
   if not source.initialized:

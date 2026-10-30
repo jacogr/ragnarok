@@ -26,17 +26,21 @@ type
     of None: completed: T
     of QualificationFailure: qualificationReason: CollectedSuppliedResult
     else: discard # Defaults and refused copies retain no target or partial declaration authority.
+
 func error*[T](outcome: FrozenSuppliedResult[T]): FrozenSuppliedError =
   ## Observe immutable selected stages only.
   outcome.status
+
 func value*[T](outcome: FrozenSuppliedResult[T]): T {.inline, requires: outcome.status ==
     FrozenSuppliedError.None.} =
   ## Extract only a completely frozen or genuinely qualified result.
   outcome.completed
+
 func qualificationFailure*[T](outcome: FrozenSuppliedResult[T]): CollectedSuppliedResult {.inline,
     requires: outcome.status == FrozenSuppliedError.QualificationFailure.} =
   ## Preserve actual complete-state and independently bounded logical matching causes.
   outcome.qualificationReason
+
 proc freezeCollectedSupplied*(chain: ApplicationChain, plan: CollectedSuppliedPlan,
     rows: openArray[StateService], limits: SuppliedServicesLimits): FrozenSuppliedResult[
         FrozenSuppliedInput] =
@@ -96,12 +100,14 @@ proc freezeCollectedSupplied*(chain: ApplicationChain, plan: CollectedSuppliedPl
     completed: FrozenSuppliedInput(data: FrozenSuppliedData(plan: plan, rows: owned,
       info: FrozenSuppliedInfo(services: rows.len, facts: uint64(limits.facts)-facts,
           bytes: admitted-bytes))))
+
 proc frozenSuppliedInfo*(source: FrozenSuppliedInput): FrozenSuppliedResult[FrozenSuppliedInfo] =
   ## Observe copied accounting without exposing mutable backing declarations.
   let data = source.data
   if data == nil: return FrozenSuppliedResult[FrozenSuppliedInfo](
       status: FrozenSuppliedError.InvalidPlan)
   FrozenSuppliedResult[FrozenSuppliedInfo](status: FrozenSuppliedError.None, completed: data.info)
+
 proc executeFrozenSupplied*(chain: ApplicationChain,
     source: FrozenSuppliedInput): FrozenSuppliedResult[CurrentLogicalState] =
   ## Recheck the exact canonical prior, then qualify only this privately frozen target/input/policy combination.

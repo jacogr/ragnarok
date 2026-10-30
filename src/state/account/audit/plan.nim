@@ -32,17 +32,21 @@ type
       phase: AccountAuditRefusal
     else:
       discard
+
 func error*[T](outcome: AccountAuditPlanResult[T]): AccountAuditPlanError =
   ## Inspect the immutable selected alternative.
   outcome.status
+
 func value*[T](outcome: AccountAuditPlanResult[T]): T {.inline,
     requires: outcome.status == AccountAuditPlanError.None.} =
   ## No failed/default plan grants a source-bearing executable owner.
   outcome.completed
+
 func refusedPhase*[T](outcome: AccountAuditPlanResult[T]): AccountAuditRefusal {.inline,
     requires: outcome.status == AccountAuditPlanError.LimitExceeded.} =
   ## Defaults and invalid sources cannot invent a resource boundary.
   outcome.phase
+
 proc planAccountAudit*(source: StateInventory,
     limits: AccountAuditLimits): AccountAuditPlanResult[StateAccountAuditPlan] =
   ## Two bounded row passes charge all fact traversal and predicate work before payload access or primitive calls.
@@ -109,6 +113,7 @@ proc planAccountAudit*(source: StateInventory,
         preimages: uint64(limits.content.preimages)-content, contentBytes: uint64(
             limits.content.totalBytes)-bytes,
         comparisonCeiling: uint64(limits.linkage.comparisons)-comparisons)))
+
 proc accountPlanInfo*(plan: StateAccountAuditPlan): AccountAuditPlanResult[AccountAuditPlanInfo] =
   ## Copy or retain only the original immutable completed plan info.
   if plan.source.inventoryInfo.error != StateInventoryError.None:
@@ -116,12 +121,14 @@ proc accountPlanInfo*(plan: StateAccountAuditPlan): AccountAuditPlanResult[Accou
         status: AccountAuditPlanError.Uninitialized) # Default is not executable empty planning authority.
   AccountAuditPlanResult[AccountAuditPlanInfo](status: AccountAuditPlanError.None,
       completed: plan.info)
+
 proc accountPlanInventory*(plan: StateAccountAuditPlan): AccountAuditPlanResult[StateInventory] =
   ## Copy or retain only the original immutable completed plan source.
   if plan.source.inventoryInfo.error != StateInventoryError.None:
     return AccountAuditPlanResult[StateInventory](
         status: AccountAuditPlanError.Uninitialized) # Default is not executable empty planning authority.
   AccountAuditPlanResult[StateInventory](status: AccountAuditPlanError.None, completed: plan.source)
+
 proc accountPlanLimits*(plan: StateAccountAuditPlan): AccountAuditPlanResult[AccountAuditLimits] =
   ## Copy or retain only the original immutable completed plan limits.
   if plan.source.inventoryInfo.error != StateInventoryError.None:

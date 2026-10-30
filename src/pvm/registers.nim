@@ -35,10 +35,12 @@ type
 func error*(r: RegisterWriteResult): RegisterError =
   ## Inspect scalar evaluation status without authorizing either success field.
   r.status
+
 func destination*(r: RegisterWriteResult): RegisterIndex {.inline, requires: r.status ==
     RegisterError.None.} =
   ## Select success before obtaining the evaluator's bounded destination index.
   RegisterIndex(byte(r.completedIndex))
+
 func writeValue*(r: RegisterWriteResult): RegisterValue {.inline, requires: r.status ==
     RegisterError.None.} =
   ## Return a copied register-width bit pattern only for a successful evaluation.
@@ -52,6 +54,7 @@ proc applyRegisterWrite*(registers: var RegisterFile, r: RegisterWriteResult) {.
 func error*(r: RegisterResult): RegisterError =
   ## Inspect the reason without permitting result retagging.
   r.status
+
 func value*(r: RegisterResult): RegisterFile {.inline, requires: r.status == RegisterError.None.} =
   ## Select success before extracting the copied register file.
   r.completed

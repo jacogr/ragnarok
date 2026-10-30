@@ -46,12 +46,13 @@ type
 func error*[T](value: BitResult[T]): BitError =
   ## Read outcomes without granting mutable access to the private result discriminator.
   value.status
+
 func value*[T](value: BitResult[T]): T {.inline, requires: value.status == BitError.None.} =
   ## Only complete success authorizes copied values, ownership or consumed/written progress.
   value.completed
 
-# Compare address distances without overflowing endpoint sums; empty ranges need no valid pointer.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare address distances without overflowing endpoint sums; empty ranges need no valid pointer.
   # No shared byte can exist when either range is empty.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)
@@ -62,8 +63,8 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
     # Exchanging the ranges preserves the same overflow-free distance test.
     left-right < uint(bn)
 
-# A ceiling division by eight must not form count+7, which can overflow at the uint64 boundary.
 proc packedLength(count: uint64): uint64 {.raises: [].} =
+  ## A ceiling division by eight must not form count+7, which can overflow at the uint64 boundary.
   count div 8 + uint64(ord(count mod 8 != 0))
 
 proc decodeBoolean*(input: openArray[byte]): BitResult[BooleanRead] {.raises: [].} =
@@ -82,9 +83,9 @@ proc encodeBoolean*(value: bool, output: var openArray[byte]): BitResult[int] {.
   output[0] = byte(ord(value))
   BitResult[int](status: BitError.None, completed: 1)
 
-# Validate count policy, complete packed extent and canonical padding before allocation or host conversion.
 proc inspect(input: openArray[byte], count: BitCount, offset: int,
     limit: BitLimit): BitResult[Layout] {.raises: [].} =
+  ## Validate count policy, complete packed extent and canonical padding before allocation or host conversion.
   let n = uint64(count)
   # Resource policy is independent of whether the declared input bytes are present.
   if n > uint64(limit): return BitResult[Layout](status: BitError.LimitExceeded)
@@ -99,8 +100,8 @@ proc inspect(input: openArray[byte], count: BitCount, offset: int,
   BitResult[Layout](status: BitError.None,
     completed: Layout(count: count, offset: offset, length: size, consumed: offset+size))
 
-# Capture only a completely validated payload; no length discriminator or caller suffix is retained.
 proc capture(input: openArray[byte], layout: Layout): BitsRead =
+  ## Capture only a completely validated payload; no length discriminator or caller suffix is retained.
   let data = BitsData(count: layout.count, packed: newSeq[byte](layout.length))
   # Copying each payload octet severs the association with mutable caller storage.
   for i in 0..<layout.length: data.packed[i] = input[layout.offset+i]
@@ -128,9 +129,9 @@ proc decodeBits*(input: openArray[byte], limit: BitLimit): BitResult[BitsRead] =
   if checked.error != BitError.None: return BitResult[BitsRead](status: checked.error)
   BitResult[BitsRead](status: BitError.None, completed: capture(input, checked.value))
 
-# Preflight the borrowed bool sequence, complete output and whole written destination before packing any bit.
 proc encode(values: openArray[bool], count: BitCount, limit: BitLimit, variable: bool,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Preflight the borrowed bool sequence, complete output and whole written destination before packing any bit.
   # Fixed schemas require exact source cardinality rather than dropping or inventing logical bits.
   if uint64(values.len) != uint64(count): return BitResult[int](status: BitError.InvalidCount)
   # Counts are checked before calculating a packed destination size.
@@ -188,9 +189,9 @@ proc bitAt*(owner: OwnedBits, index: int): BitResult[bool] {.raises: [].} =
   BitResult[bool](status: BitError.None,
     completed: (data.packed[index div 8] and byte(1 shl (index mod 8))) != 0)
 
-# Re-emit immutable packed payload with optional framing after complete new policy/capacity/alias checks.
 proc reemit(owner: OwnedBits, count: BitCount, limit: BitLimit, variable: bool,
     output: var openArray[byte]): BitResult[int] {.raises: [].} =
+  ## Re-emit immutable packed payload with optional framing after complete new policy/capacity/alias checks.
   let data = owner.data
   # A default snapshot contains no canonical payload, including no validated empty string.
   if data == nil: return BitResult[int](status: BitError.InvalidOwner)

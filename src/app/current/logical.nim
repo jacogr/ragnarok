@@ -32,41 +32,50 @@ type
     of QualificationFailure: qualificationReason: LogicalRefreshPlanResult[CurrentLogicalRefreshPlan]
     of RefreshFailure: refreshReason: LogicalRefreshResult
     else: discard # No lifecycle/default/refused result exposes a successful prefix.
+
 func error*(outcome: CollectedLogicalResult): CollectedLogicalError =
   ## Observe the selected stage without retaining any canonical graph.
   outcome.status
+
 func value*(outcome: CollectedLogicalResult): CurrentLogicalState {.inline,
     requires: outcome.status == CollectedLogicalError.None.} =
   ## Only complete current and original raw-key matching grants logical success.
   outcome.completed
+
 func preparationFailure*(outcome: CollectedLogicalResult): CurrentBlockInputResult {.inline,
     requires: outcome.status == CollectedLogicalError.PreparationFailure.} =
   ## Preserve the genuine receiver failure, including ancestor demand or codec reasons.
   outcome.preparationReason
+
 func identityFailure*(outcome: CollectedLogicalResult): CurrentIdentityResult[
     PreservedCurrentIdentities] {.inline, requires: outcome.status ==
         CollectedLogicalError.IdentityFailure.} =
   ## Preserve exact physical/view mismatch and new or missing identity reasons.
   outcome.identityReason
+
 func requestFailure*(outcome: CollectedLogicalResult): CurrentRequestKeyResult[
     CurrentRequestKeys] {.inline, requires: outcome.status ==
         CollectedLogicalError.RequestFailure.} =
   ## Preserve actual bounded request key derivation or backend failure.
   outcome.requestReason
+
 func reconstructionFailure*(outcome: CollectedLogicalResult): CurrentRefreshPlanResult[
     CurrentRefreshPlan] {.inline, requires: outcome.status ==
         CollectedLogicalError.ReconstructionFailure.} =
   ## Preserve actual value extent and independent reconstruction admission reasons.
   outcome.reconstructionReason
+
 func qualificationFailure*(outcome: CollectedLogicalResult): LogicalRefreshPlanResult[
     CurrentLogicalRefreshPlan] {.inline, requires: outcome.status ==
         CollectedLogicalError.QualificationFailure.} =
   ## Preserve profile/global and complete-map qualification policy failures.
   outcome.qualificationReason
+
 func refreshFailure*(outcome: CollectedLogicalResult): LogicalRefreshResult {.inline,
     requires: outcome.status == CollectedLogicalError.RefreshFailure.} =
   ## Preserve actual reconstruction, complete matching and retained-key capture failures.
   outcome.refreshReason
+
 proc collectedUpdate(chain: ApplicationChain, completion: PreparationCompletion):
     CollectedLogicalError =
   ## Reject non-current receipts before extraction and stale updates before full logical traversal.
@@ -87,21 +96,26 @@ type
     case successful: bool
     of true: completed: CollectedLogicalPlan
     of false: refused: CollectedLogicalResult
+
 func error*(outcome: CollectedLogicalPlanResult): CollectedLogicalError =
   ## Preserve the original stage vocabulary for both source alternatives and every preparation failure.
   if outcome.successful: CollectedLogicalError.None else: outcome.refused.error
+
 func value*(outcome: CollectedLogicalPlanResult): CollectedLogicalPlan {.inline,
     requires: outcome.successful.} =
   ## Only complete preparation grants an immutable retry plan.
   outcome.completed
+
 func failure*(outcome: CollectedLogicalPlanResult): CollectedLogicalResult {.inline,
     requires: not outcome.successful.} =
   ## Retain original lifecycle, identity, request, reconstruction and qualification failure alternatives.
   outcome.refused
+
 proc refusedPlan(outcome: CollectedLogicalResult): CollectedLogicalPlanResult {.requires: outcome.error !=
     CollectedLogicalError.None.} =
   ## A failed original stage cannot be retagged as an executable plan.
   CollectedLogicalPlanResult(successful: false, refused: outcome)
+
 proc planIdentities(binding: CurrentIdentityResult[PreservedCurrentIdentities],
     limits: CollectedLogicalLimits): CollectedLogicalPlanResult =
   ## Admit and freeze identity/key/reconstruction/current qualification once; actual payload matching remains execution.
@@ -122,6 +136,7 @@ proc planIdentities(binding: CurrentIdentityResult[PreservedCurrentIdentities],
         qualificationReason: qualification))
   CollectedLogicalPlanResult(successful: true, completed: CollectedLogicalPlan(initialized: true,
     update: binding.value.identityUpdate.value, prepared: qualification.value))
+
 proc planCollectedLogical*(chain: ApplicationChain, completion: PreparationCompletion,
     source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalPlanResult =
   ## Stage only a genuine collected receipt against its still-selected exact canonical parent; no later policy/source substitution is accepted.
@@ -133,6 +148,7 @@ proc planCollectedLogical*(chain: ApplicationChain, completion: PreparationCompl
     return refusedPlan(CollectedLogicalResult(status: reason)) # Refused receipts never touch original source aliases.
   planIdentities(preserveCurrentIdentities(source, completion.currentValue.value,
       limits.identities), limits)
+
 proc planCollectedLogical*(chain: ApplicationChain, completion: PreparationCompletion,
     source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalPlanResult =
   ## Stage only a genuine collected receipt against its still-selected exact canonical parent; no later policy/source substitution is accepted.
@@ -144,6 +160,7 @@ proc planCollectedLogical*(chain: ApplicationChain, completion: PreparationCompl
     return refusedPlan(CollectedLogicalResult(status: reason)) # Refused receipts never touch original source aliases.
   planIdentities(preserveCurrentIdentities(source, completion.currentValue.value,
       limits.identities), limits)
+
 proc executeCollectedLogical*(chain: ApplicationChain,
     plan: CollectedLogicalPlan): CollectedLogicalResult =
   ## Matching and raw-key revalidation use frozen preparation only after the exact canonical parent is checked again.
@@ -156,12 +173,14 @@ proc executeCollectedLogical*(chain: ApplicationChain,
     return CollectedLogicalResult(status: CollectedLogicalError.RefreshFailure,
         refreshReason: refreshed)
   CollectedLogicalResult(status: CollectedLogicalError.None, completed: refreshed.value)
+
 proc refreshCollectedLogical*(chain: ApplicationChain, completion: PreparationCompletion,
     source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalResult =
   ## Preserve one-shot behavior through the same staged preparation/execution path and original typed failures.
   let planned = planCollectedLogical(chain, completion, source, limits)
   if planned.error != CollectedLogicalError.None: return planned.failure
   executeCollectedLogical(chain, planned.value)
+
 proc refreshCollectedLogical*(chain: ApplicationChain, completion: PreparationCompletion,
     source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalResult =
   ## Preserve one-shot behavior through the same staged preparation/execution path and original typed failures.

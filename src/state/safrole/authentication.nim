@@ -34,6 +34,7 @@ type
 func error*(outcome: SafroleAuthResult): SafroleAuthError =
   ## Read the reason without allowing callers to manufacture success.
   outcome.status
+
 func value*(outcome: SafroleAuthResult): SafroleAuthentication {.inline,
     requires: outcome.status == SafroleAuthError.None.} =
   ## Extract verified entropy and its retained exact header only after both signatures and schedule binding pass.
@@ -44,23 +45,23 @@ func safroleAuthFailure*(reason: SafroleAuthError): SafroleAuthResult {.requires
   ## Context adapters can preserve a failure reason, but cannot manufacture success without authenticated data.
   SafroleAuthResult(status: reason)
 
-## Preserve policy/native extent errors while rejecting malformed serialized stage state.
 func codecError(reason: StateComponentError): SafroleAuthError =
+  ## Preserve policy/native extent errors while rejecting malformed serialized stage state.
   case reason
   of StateComponentError.InvalidConfig: SafroleAuthError.InvalidConfig # Caller profile is not a chain definition.
   of StateComponentError.LimitExceeded: SafroleAuthError.LimitExceeded # Resource refusal is not an invalid signature.
   of StateComponentError.LengthOverflow: SafroleAuthError.LengthOverflow # No unchecked native extent narrowing.
   else: SafroleAuthError.InvalidState # Never fabricate default pending keys or a schedule.
 
-## Distinguish contained native/backend refusal from invalid proof/key encodings or a false verification.
 func proofError(reason: BsError, invalid: SafroleAuthError): SafroleAuthError =
+  ## Distinguish contained native/backend refusal from invalid proof/key encodings or a false verification.
   if reason in [BsError.BackendFailure, BsError.BackendPanic]:
     SafroleAuthError.BackendFailure # Contained primitive failure is not evidence that the submitted proof is invalid.
   else:
     invalid # A well-formed or malformed untrusted proof/key that does not verify cannot publish entropy.
 
-## Use exact ASCII token bytes without a dollar, count, terminator or implicit prehash.
 proc context(domain: string, seed: array[32, byte], ticketed: bool, attempt: byte): seq[byte] =
+  ## Use exact ASCII token bytes without a dollar, count, terminator or implicit prehash.
   result = newSeq[byte](domain.len+32+(if ticketed: 1 else: 0))
   for i, ch in domain: result[i] = byte(ch) # Copy only the literal token bytes.
   for i in 0..<32: result[domain.len+i] = seed[i] # Entropy history/output is an exact fixed word.

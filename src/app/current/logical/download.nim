@@ -55,21 +55,25 @@ proc initCurrentLogicalDownloadPolicy*(parent: SelectedLogicalParent,
   ## Retain explicit configured complete declarations; actual physical/view/Parameters binding is checked against the later genuine update.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Configured,
       mode: LogicalDownloadMode.PreserveIdentities, parent: parent, limits: limits)
+
 proc initCurrentLogicalDownloadPolicy*(prior: CurrentLogicalState,
     limits: CurrentLogicalDownloadLimits): CurrentLogicalDownloadPolicy =
   ## Continue from the actual previous completed logical owner after its deferred adoption has been consumed.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Completed,
       mode: LogicalDownloadMode.PreserveIdentities, prior: prior, limits: limits)
+
 proc initCurrentLogicalDownloadPolicy*(parent: SelectedLogicalParent,
     limits: LogicalContinuationLimits): CurrentLogicalDownloadPolicy =
   ## Explicitly opt into producer namespace evidence while freezing the original configured source and every continuation budget before any native lease.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Configured,
     mode: LogicalDownloadMode.ContinueNamespaces, parent: parent, continuation: limits)
+
 proc initCurrentLogicalDownloadPolicy*(prior: CurrentLogicalState,
     limits: LogicalContinuationLimits): CurrentLogicalDownloadPolicy =
   ## Reuse a genuinely completed logical owner under explicit bounded namespace continuation; no source-derived resource defaults are inferred.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Completed,
     mode: LogicalDownloadMode.ContinueNamespaces, prior: prior, continuation: limits)
+
 proc initCurrentLogicalDownloadPolicy*(source: CurrentLogicalDownloadPolicy,
     limits: LogicalContinuationLimits): CurrentLogicalDownloadPolicy =
   ## Explicitly select namespace continuation over an already retained configured/completed source without reopening or substituting its private provenance.
@@ -79,6 +83,7 @@ proc initCurrentLogicalDownloadPolicy*(source: CurrentLogicalDownloadPolicy,
   of LogicalDownloadOrigin.Completed: initCurrentLogicalDownloadPolicy(source.prior,
       limits) # Keep the exact prior completed owner.
   else: default(CurrentLogicalDownloadPolicy) # An invalid source cannot become enabled by supplying budgets.
+
 proc continueCurrentLogicalDownloadPolicy*(policy: CurrentLogicalDownloadPolicy,
     prior: CurrentLogicalState): CurrentLogicalDownloadPolicy =
   ## Advance only the source under the exact previously captured budgets; invalid defaults cannot become enabled policies.
@@ -88,41 +93,50 @@ proc continueCurrentLogicalDownloadPolicy*(policy: CurrentLogicalDownloadPolicy,
     return initCurrentLogicalDownloadPolicy(prior,
         policy.continuation) # Advance source while retaining the originally frozen mode and budgets.
   initCurrentLogicalDownloadPolicy(prior, policy.limits)
+
 func error*(outcome: CurrentLogicalDownloadResult): CurrentLogicalDownloadError =
   ## Observe only the immutable selected stage.
   outcome.status
+
 func value*(outcome: CurrentLogicalDownloadResult): CurrentLogicalState {.inline,
     requires: outcome.status == CurrentLogicalDownloadError.None.} =
   ## Full successful qualification alone exposes a logical owner.
   outcome.completed
+
 func identityFailure*(outcome: CurrentLogicalDownloadResult): CurrentIdentityResult[
     PreservedCurrentIdentities] {.inline, requires: outcome.status ==
         CurrentLogicalDownloadError.IdentityFailure.} =
   ## Preserve the actual original physical/view/Parameters/namespace refusal.
   outcome.identityReason
+
 func requestKeyFailure*(outcome: CurrentLogicalDownloadResult): CurrentRequestKeyResult[
     CurrentRequestKeys] {.inline, requires: outcome.status ==
         CurrentLogicalDownloadError.RequestKeyFailure.} =
   ## Preserve the actual failed request derivation without any partial companion.
   outcome.requestReason
+
 func reconstructionFailure*(outcome: CurrentLogicalDownloadResult): CurrentRefreshPlanResult[
     CurrentRefreshPlan] {.inline, requires: outcome.status ==
         CurrentLogicalDownloadError.ReconstructionFailure.} =
   ## Preserve the exact original reconstruction admission boundary.
   outcome.reconstructionReason
+
 func logicalPlanFailure*(outcome: CurrentLogicalDownloadResult): LogicalRefreshPlanResult[
     CurrentLogicalRefreshPlan] {.inline, requires: outcome.status ==
         CurrentLogicalDownloadError.LogicalPlanFailure.} =
   ## Preserve exact complete qualification policy or component refusal.
   outcome.planReason
+
 func refreshFailure*(outcome: CurrentLogicalDownloadResult): LogicalRefreshResult {.inline,
     requires: outcome.status == CurrentLogicalDownloadError.RefreshFailure.} =
   ## Preserve the actual reconstruction/matching failure without a successful output prefix.
   outcome.refreshReason
+
 func continuationFailure*(outcome: CurrentLogicalDownloadResult): LogicalContinuationResult {.inline,
     requires: outcome.status == CurrentLogicalDownloadError.ContinuationFailure.} =
   ## Preserve the exact failed namespace stage without exposing any successful prefix.
   outcome.continuationReason
+
 proc qualifyCurrentDownload*(policy: CurrentLogicalDownloadPolicy,
     update: PreparedCurrentChainUpdate): CurrentLogicalDownloadResult =
   ## Run only after matching worker collection on the open host gate; every stage consumes its original successful predecessor.

@@ -120,63 +120,79 @@ type
 func error*[T](value: RecordResult[T]): RecordError =
   ## Outcomes are read-only; complete success alone grants values, retained owners or progress.
   value.status
+
 func value*[T](value: RecordResult[T]): T {.inline, requires: value.status == RecordError.None.} =
   ## Default and rejected operations cannot expose fabricated complete records.
   value.completed
+
 func successfulOperandOutput*(payload: seq[byte]): OperandOutput =
   ## Construct a success source whose payload is borrowed only during synchronous encoding.
   OperandOutput(outputKind: WorkKind.Success, payloadValues: payload)
+
 func failedOperandOutput*(kind: WorkKind): OperandOutput {.requires: kind != WorkKind.Success.} =
   ## A work error is a valid source alternative, never a success without its payload.
   OperandOutput(outputKind: kind)
+
 func kind*(value: OperandOutput): WorkKind =
   ## Source work tags cannot be retagged independently of their payload.
   value.outputKind
+
 proc editOperandPayload*(value: var OperandOutput): var seq[byte] {.requires: value.outputKind ==
     WorkKind.Success.} =
   ## Source payload edits are explicit and require the selected success alternative.
   value.payloadValues
+
 func operandPayloadCopies*(value: OperandOutput): seq[byte] {.requires: value.outputKind ==
     WorkKind.Success.} =
   ## Source copies are independent of the stable sequence used by alias preflight.
   value.payloadValues
+
 func kind*(value: OperandOutputInfo): WorkKind =
   ## Metadata exposes a read-only work tag with a success-only copied byte length.
   value.outputKind
+
 func length*(value: OperandOutputInfo): int {.requires: value.outputKind == WorkKind.Success.} =
   ## Error work alternatives contain no payload length to mistake for empty success.
   value.byteLength
+
 func operandSource*(value: AccumulationOperand): AccumulationSource =
   ## Explicit source constructors keep tag and selected descriptor together.
   AccumulationSource(inputKind: AccumulationKind.Operand, operandValue: value)
+
 func transferSource*(value: DeferredTransfer): AccumulationSource =
   ## Transfers own fixed values and use their existing outer tag one.
   AccumulationSource(inputKind: AccumulationKind.Transfer, transferValue: value)
+
 func kind*(value: AccumulationSource): AccumulationKind =
   ## Source union identity is read-only; selected fields are guarded copies.
   value.inputKind
+
 func operand*(value: AccumulationSource): AccumulationOperand {.requires: value.inputKind ==
     AccumulationKind.Operand.} =
   ## Copy the selected source operand; encoding itself still uses the original private descriptor.
   value.operandValue
+
 func transfer*(value: AccumulationSource): DeferredTransfer {.requires: value.inputKind ==
     AccumulationKind.Transfer.} =
   ## Copy only the selected fixed source transfer.
   value.transferValue
+
 func kind*(value: AccumulationValue): AccumulationKind =
   ## Decoded union tags cannot be independently changed to authorize an inactive value.
   value.inputKind
+
 func operand*(value: AccumulationValue): OwnedOperand {.requires: value.inputKind ==
     AccumulationKind.Operand.} =
   ## Retain only the selected immutable decoded operand.
   value.operandOwner
+
 func transfer*(value: AccumulationValue): DeferredTransfer {.requires: value.inputKind ==
     AccumulationKind.Transfer.} =
   ## Copy only the selected decoded transfer; no backing source buffer is retained.
   value.transferValue
 
-# Preserve child composite wire errors without publishing child values, spans or partial progress.
 proc convert(reason: CompositeError): RecordError =
+  ## Preserve child composite wire errors without publishing child values, spans or partial progress.
   case reason
   of CompositeError.Truncated: RecordError.Truncated # Child input is incomplete.
   of CompositeError.NonCanonical: RecordError.NonCanonical # Count/tag natural is overlong.
@@ -185,16 +201,16 @@ proc convert(reason: CompositeError): RecordError =
   of CompositeError.LengthOverflow: RecordError.LengthOverflow # Host extent cannot be represented.
   else: RecordError.InvalidConfig # Other statuses are impossible on this no-write child decoding path.
 
-# Preserve bounded byte framing failures from the final authorization trace without leaking its borrowed span.
 proc convert(reason: ContainerError): RecordError =
+  ## Preserve bounded byte framing failures from the final authorization trace without leaking its borrowed span.
   case reason
   of ContainerError.Truncated: RecordError.Truncated # Count or payload bytes are missing.
   of ContainerError.NonCanonical: RecordError.NonCanonical # Blob count is overlong.
   of ContainerError.LimitExceeded: RecordError.LimitExceeded # Trace or remaining aggregate limit is exceeded.
   else: RecordError.InvalidConfig # No other bounded-byte read status is expected here.
 
-# Compare address distances without overflowing pointer endpoint sums or inspecting empty-range pointers.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
+  ## Compare address distances without overflowing pointer endpoint sums or inspecting empty-range pointers.
   # Empty ranges cannot share a written byte.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)
@@ -205,39 +221,39 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
     # Exchanging the ranges preserves the same safe intersection test.
     left-right < uint(bn)
 
-# Copy a fully proved fixed byte field into independent value storage.
 proc fixed[N: static[int]](input: openArray[byte], start: int): array[N, byte] =
+  ## Copy a fully proved fixed byte field into independent value storage.
   result = default(array[N, byte])
   # Callers prove complete field presence before any byte access or this bounded loop.
   for i in 0..<N: result[i] = input[start+i]
 
-# Read an already proved fixed unsigned field through the existing scalar codec.
 proc number(input: openArray[byte], start, width: int): uint64 =
+  ## Read an already proved fixed unsigned field through the existing scalar codec.
   uint64(decodeFixed(input.toOpenArray(start, start+width-1), ByteWidth(width)).value)
 
-# Commit a previously sized fixed scalar, reusing the canonical little-endian primitive encoder.
 proc put(value: uint64, width: int, output: var openArray[byte], cursor: var int) =
+  ## Commit a previously sized fixed scalar, reusing the canonical little-endian primitive encoder.
   let encoded = encodeFixed(FixedUnsigned(value), ByteWidth(width))
   # All callers use domain-bounded E2/E4/E8 values and preflight the complete destination.
   for i in 0..<width: output[cursor+i] = encoded.encoded.bytes[i]
   cursor += width
 
-# Commit complete already-proved fixed or borrowed bytes after whole-parent source/capacity/alias preflight.
 proc put(bytes: openArray[byte], output: var openArray[byte], cursor: var int) =
+  ## Commit complete already-proved fixed or borrowed bytes after whole-parent source/capacity/alias preflight.
   # A zero-byte payload emits nothing and never needs an element address.
   for value in bytes:
     output[cursor] = value
     inc cursor
 
-# Commit a general natural for operand gas, tags or variable byte counts without an E8 substitution.
 proc putNatural(value: uint64, output: var openArray[byte], cursor: var int) =
+  ## Commit a general natural for operand gas, tags or variable byte counts without an E8 substitution.
   let encoded = natural.encode(JamNatural(value))
   # Canonical scalar bytes fit the fully measured destination.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len
 
-# Read a canonical general natural while exposing no progress on incomplete or overlong input.
 proc readNatural(input: openArray[byte], cursor: var int): RecordResult[uint64] =
+  ## Read a canonical general natural while exposing no progress on incomplete or overlong input.
   let parsed = natural.decode(input.toOpenArray(cursor, input.high))
   # Prefix framing is checked before count/tag policy or host conversions.
   if not parsed.ok:
@@ -249,11 +265,12 @@ proc readNatural(input: openArray[byte], cursor: var int): RecordResult[uint64] 
   cursor += parsed.consumed
   RecordResult[uint64](status: RecordError.None, completed: uint64(parsed.value))
 
-# Validate configured core bounds independently of input and actual active-validator membership.
-proc valid(config: AvailabilityConfig): bool = uint64(config.cores) >= 2 and uint64(config.cores) <= 341
+proc valid(config: AvailabilityConfig): bool =
+  ## Validate configured core bounds independently of input and actual active-validator membership.
+  uint64(config.cores) >= 2 and uint64(config.cores) <= 341
 
-# Apply the same GP valcount domain as reports, with the caller's extra configured core ceiling.
 proc valid(spec: AvailabilitySpec, config: AvailabilityConfig): bool =
+  ## Apply the same GP valcount domain as reports, with the caller's extra configured core ceiling.
   let shards = uint16(spec.erasureShards)
   shards >= 6 and shards <= 3*uint64(config.cores) and shards mod 3 == 0
 
@@ -340,8 +357,8 @@ proc encodeTransfer*(value: DeferredTransfer, maxBytes: ByteLimit,
   put(uint64(value.gas), 8, output, cursor)
   RecordResult[int](status: RecordError.None, completed: cursor)
 
-# Scan a complete operand with private coordinates, applying payload/whole-byte bounds before any snapshot allocation.
 proc scanOperand(input: openArray[byte], limits: OperandLimits): RecordResult[OperandLayout] =
+  ## Scan a complete operand with private coordinates, applying payload/whole-byte bounds before any snapshot allocation.
   var cursor = 0
   let tag = readNatural(input, cursor)
   # The outer operand discriminator is canonical natural zero, not a second work-result tag.
@@ -404,16 +421,16 @@ proc decodeOperand*(input: openArray[byte], limits: OperandLimits): RecordResult
   RecordResult[OperandRead](status: RecordError.None,
     completed: OperandRead(owner: OwnedOperand(data: data), consumed: data.wire.len))
 
-# Grow complete output size only after proving host arithmetic and caller serialized-byte policy.
 proc grow(total: var int, amount: int, limits: OperandLimits): RecordError =
+  ## Grow complete output size only after proving host arithmetic and caller serialized-byte policy.
   # Subtraction avoids overflowing a sum while measuring adversarially large source sequences.
   if amount > high(int)-total: return RecordError.LengthOverflow
   total += amount
   if uint64(total) > uint64(limits.maxBytes): return RecordError.LimitExceeded # All prefixes count toward this budget.
   RecordError.None
 
-# Measure every source field and aggregate payload before capacity, alias checks or committing any output byte.
 proc measure(value: AccumulationOperand, limits: OperandLimits): RecordResult[int] =
+  ## Measure every source field and aggregate payload before capacity, alias checks or committing any output byte.
   var remaining = uint64(limits.totalBlobBytes)
   var total = 129
   if uint64(total) > uint64(limits.maxBytes): return RecordResult[int](
@@ -445,8 +462,8 @@ proc measure(value: AccumulationOperand, limits: OperandLimits): RecordResult[in
       status: error) # Entire trace extent must fit before writing the first tag.
   RecordResult[int](status: RecordError.None, completed: total)
 
-# Check all borrowed source storage against the whole written destination, including cross-field/header overlaps.
 proc aliases(value: AccumulationOperand, output: var openArray[byte], total: int): bool =
+  ## Check all borrowed source storage against the whole written destination, including cross-field/header overlaps.
   if overlaps(unsafeAddr value, sizeof(value), addr output[0],
       total): return true # Protect variant/sequence descriptors and all fixed fields.
   if value.output.kind == WorkKind.Success and value.output.payloadValues.len > 0:
@@ -493,8 +510,8 @@ proc operandInfo*(owner: OwnedOperand): RecordResult[OperandInfo] =
       status: RecordError.InvalidOwner) # Defaults contain no validated frame.
   RecordResult[OperandInfo](status: RecordError.None, completed: data.layout.info)
 
-# Copy an owner-bound private interval atomically; only validated internal coordinates can select its bytes.
 proc extract(owner: OwnedOperand, span: BlobSpan, output: var openArray[byte]): RecordResult[int] =
+  ## Copy an owner-bound private interval atomically; only validated internal coordinates can select its bytes.
   let data = owner.data
   assert data != nil # Internal extraction requires a validated retained owner.
   if output.len < span.length: return RecordResult[int](

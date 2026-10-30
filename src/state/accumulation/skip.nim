@@ -40,6 +40,7 @@ type
 func error*[T](outcome: AccumulationSkipResult[T]): AccumulationSkipError =
   ## Inspect a refusal without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationSkipResult[T]): T {.inline,
     requires: outcome.status == AccumulationSkipError.None.} =
   ## Extract selected success under supported compiler/runtime contracts, including optimized builds.

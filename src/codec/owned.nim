@@ -66,13 +66,16 @@ type
 func error*[T](value: OwnedResult[T]): OwnershipError =
   ## Read an outcome without permitting callers to mutate its discriminator.
   value.status
+
 func value*[T](value: OwnedResult[T]): T {.inline, requires: value.status == OwnershipError.None.} =
   ## Return copied metadata or a retained opaque owner only after successful completion.
   value.completed
+
 func ownedFailure*[T](reason: OwnershipError): OwnedResult[T] {.requires: reason !=
     OwnershipError.None.} =
   ## Sibling adapters may report failures, but cannot label missing data as None/success.
   OwnedResult[T](status: reason)
+
 func ownedSuccess*[T](value: T): OwnedResult[T] =
   ## Sibling adapters explicitly report completed values; this builder alone does not validate an owner.
   OwnedResult[T](status: OwnershipError.None,
@@ -81,25 +84,30 @@ func ownedSuccess*[T](value: T): OwnedResult[T] =
 func present*(value: OwnedOptionalInfo): bool =
   ## Read optional metadata without allowing presence to be changed.
   value.isPresent
+
 func length*(value: OwnedOptionalInfo): int {.inline,
     requires: value.isPresent.} =
   ## Only present optional metadata has a length; bytes remain accessible solely through the owner.
   value.payloadLength
+
 func kind*(value: OwnedWorkInfo): WorkKind =
   ## Read a copied work tag without exposing a writable discriminator.
   value.outputKind
+
 func length*(value: OwnedWorkInfo): int {.inline, requires: value.outputKind == WorkKind.Success.} =
   ## Work errors have no payload length, independently of a successful outer metadata query.
   value.payloadLength
+
 func successfulOwnedWorkInfo*(length: int): OwnedWorkInfo {.requires: length >= 0.} =
   ## Sibling report adapters may construct successful length-only metadata after validating a snapshot.
   OwnedWorkInfo(outputKind: WorkKind.Success, payloadLength: length)
+
 func failedOwnedWorkInfo*(kind: WorkKind): OwnedWorkInfo {.requires: kind != WorkKind.Success.} =
   ## Payload-free work metadata may not manufacture Success, which requires an explicit length.
   OwnedWorkInfo(outputKind: kind)
 
-# Convert composite wire failures without conflating an uninitialized result with success.
 proc ownershipError(error: CompositeError): OwnershipError =
+  ## Convert composite wire failures without conflating an uninitialized result with success.
   case error
   of None: OwnershipError.None # The complete frame validated.
   of Uninitialized: OwnershipError.Uninitialized # No validated result exists.
@@ -113,6 +121,7 @@ proc ownershipError(error: CompositeError): OwnershipError =
   of InvalidSpan: OwnershipError.InvalidSpan # A borrowed descriptor is invalid.
 
 proc ownershipError(error: ContainerError): OwnershipError =
+  ## Translate byte-container refusals into ownership errors without inventing a valid span.
   case error
   of None: OwnershipError.None # Byte framing validated.
   of Uninitialized: OwnershipError.Uninitialized # No validated result exists.
@@ -121,9 +130,9 @@ proc ownershipError(error: ContainerError): OwnershipError =
   of LimitExceeded: OwnershipError.LimitExceeded # The blob exceeds its policy.
   else: OwnershipError.InvalidSpan # Reject impossible byte-decoder statuses explicitly.
 
-# Validate a complete prefix before copying; record allocation is bounded by policy and wire extent.
 proc capture(input: openArray[byte], kind: OwnedKind, limit: ByteLimit,
              limits: PreimageLimits): OwnedResult[OwnedFrame] =
+  ## Validate a complete prefix before copying; record allocation is bounded by policy and wire extent.
   var data = FrameData(kind: kind)
   var consumed = 0
   # Select one exact schema; every branch validates before exposing or retaining payload bytes.
@@ -235,8 +244,8 @@ proc ownedOptionalInfo*(frame: OwnedFrame): OwnedResult[OwnedOptionalInfo] =
   OwnedResult[OwnedOptionalInfo](status: OwnershipError.None,
       completed: OwnedOptionalInfo(isPresent: true, payloadLength: data.blob.length))
 
-# Translate private work metadata to a value without a source-buffer descriptor.
 proc workInfo(data: FrameData): OwnedWorkInfo =
+  ## Translate private work metadata to a value without a source-buffer descriptor.
   # Only successful work output contains a payload length.
   if data.workKind == WorkKind.Success: return OwnedWorkInfo(outputKind: WorkKind.Success,
       payloadLength: data.blob.length)

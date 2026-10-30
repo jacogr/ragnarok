@@ -17,6 +17,7 @@ type PagedApplicationPolicy* = object ## Native streaming and resident export st
   contextBytes*: ByteLimit
   native*: FullPagedNativeConfig
   transport*: PagedStateLimits
+
 proc pagedApplicationPolicy*(chain: StorageChainId, root: StateRoot,
     limits: JournalLimits): PagedApplicationPolicy =
   ## Tighten the existing application dataset/export/context controls with explicit paged workspace and operation ceilings.

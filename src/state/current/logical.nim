@@ -25,18 +25,22 @@ type
       logicalReason: SuppliedLogicalResult[SuppliedLogicalInventory]
     else:
       discard # No default or failed result grants source/profile/key authority.
+
 func error*[T](outcome: CurrentLogicalResult[T]): CurrentLogicalError =
   ## Observe selected immutable alternatives only.
   outcome.status
+
 func value*[T](outcome: CurrentLogicalResult[T]): T {.inline, requires: outcome.status ==
     CurrentLogicalError.None.} =
   ## Extract only complete initialized source-bound logical evidence.
   outcome.completed
+
 func logicalFailure*[T](outcome: CurrentLogicalResult[T]): SuppliedLogicalResult[
     SuppliedLogicalInventory] {.inline, requires: outcome.status ==
     CurrentLogicalError.LogicalFailure.} =
   ## Preserve the original failed supplied key/inventory/matching stage without a successful prefix.
   outcome.logicalReason
+
 proc captureCurrentLogicalState*(source: CurrentStateSerialization, services: openArray[
     StateService], limits: SuppliedLogicalLimits): CurrentLogicalResult[CurrentLogicalState] =
   ## Revalidate stable supplied declarations against the original current inventory's exact physical source, never an equal-root replacement.
@@ -49,6 +53,7 @@ proc captureCurrentLogicalState*(source: CurrentStateSerialization, services: op
         logicalReason: logical) # Full matching binds the new compact capture to the original physical snapshot.
   CurrentLogicalResult[CurrentLogicalState](status: CurrentLogicalError.None,
     completed: CurrentLogicalState(initialized: true, source: source, logical: logical.value))
+
 proc currentLogicalSource*(source: CurrentLogicalState): CurrentLogicalResult[
     CurrentStateSerialization] =
   ## Retain original producer/profile/full-Parameters provenance and its original compact capture.
@@ -57,6 +62,7 @@ proc currentLogicalSource*(source: CurrentLogicalState): CurrentLogicalResult[
         status: CurrentLogicalError.Uninitialized)
   CurrentLogicalResult[CurrentStateSerialization](status: CurrentLogicalError.None,
       completed: source.source)
+
 proc currentLogicalInventory*(source: CurrentLogicalState): CurrentLogicalResult[
     SuppliedLogicalInventory] =
   ## Retain the independently revalidated raw-key companion on the same exact physical snapshot.
@@ -64,6 +70,7 @@ proc currentLogicalInventory*(source: CurrentLogicalState): CurrentLogicalResult
     return CurrentLogicalResult[SuppliedLogicalInventory](status: CurrentLogicalError.Uninitialized)
   CurrentLogicalResult[SuppliedLogicalInventory](status: CurrentLogicalError.None,
       completed: source.logical)
+
 proc currentLogicalUpdate*(source: CurrentLogicalState): CurrentLogicalResult[
     PreparedCurrentChainUpdate] =
   ## Retain the exact genuine producer without copying its ordered view or accepting a replacement snapshot.
@@ -72,6 +79,7 @@ proc currentLogicalUpdate*(source: CurrentLogicalState): CurrentLogicalResult[
         status: CurrentLogicalError.Uninitialized)
   CurrentLogicalResult[PreparedCurrentChainUpdate](status: CurrentLogicalError.None,
       completed: source.source.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value)
+
 proc currentLogicalContext*(source: CurrentLogicalState): CurrentLogicalResult[
     BlockSnapshotContext] =
   ## Copy fixed original child/profile/state/Parameters context without a heavy child/index/view copy.
@@ -79,6 +87,7 @@ proc currentLogicalContext*(source: CurrentLogicalState): CurrentLogicalResult[
     return CurrentLogicalResult[BlockSnapshotContext](status: CurrentLogicalError.Uninitialized)
   CurrentLogicalResult[BlockSnapshotContext](status: CurrentLogicalError.None,
       completed: source.source.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value.currentUpdateChildContext)
+
 proc currentLogicalViewInfo*(source: CurrentLogicalState): CurrentLogicalResult[
     ChainViewRetentionInfo] =
   ## Observe cached whole-view retention before consumers admit heavy selected-view copying.

@@ -32,8 +32,10 @@ type
 proc `=copy`*(destination: var AncestorPeer, source: AncestorPeer) {.error:
     "AncestorPeer owns transport and stable callback addresses".}
   ## Composite native owners require their own explicit copy contract.
+
 proc `=dup`*(source: AncestorPeer): AncestorPeer {.error.}
   ## Moving an active peer would invalidate native callback addresses; explicit close precedes owner retirement.
+
 proc `=wasMoved`*(peer: var AncestorPeer) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(peer.transport)
@@ -59,13 +61,16 @@ proc `=destroy`*(peer: AncestorPeer) =
   `=destroy`(peer.transport)
   `=destroy`(peer.receiver)
   `=destroy`(peer.route)
+
 func stage*(peer: AncestorPeer): AncestorPeerStage =
   ## Observe host progress without touching captured raw bytes.
   peer.state
+
 func failure*(peer: AncestorPeer): AncestorPeerError {.requires: peer.state ==
     AncestorPeerStage.Failed.} =
   ## Only terminal failures expose a selected host reason.
   peer.reason
+
 func framingError*(peer: AncestorPeer): AncestorReceiveError {.requires:
     peer.state == AncestorPeerStage.Failed and peer.reason == AncestorPeerError.FramingFailure.} =
   ## A failed native response preserves the original bounded receiver reason.

@@ -26,32 +26,40 @@ type
     of ProofFailure: proofCause: StateProofError # Preserve state verifier refusals.
     of ViewFailure: viewCause: ProofViewError    # Preserve ordinary partial-view policy.
     else: discard                                # Plain refusals and defaults contain no authority.
+
 func error*[T](outcome: PagedProofViewResult[T]): PagedProofViewError =
   ## Inspect the selected extraction, state-verification or view-capture stage.
   outcome.status
+
 func value*[T](outcome: PagedProofViewResult[T]): T {.inline, requires: outcome.status ==
     PagedProofViewError.None.} =
   ## Success alone exposes the complete requested immutable partial evidence view.
   outcome.completed
+
 func nativeFailure*[T](outcome: PagedProofViewResult[T]): PagedNativeResult[bool] {.requires:
     outcome.status == PagedProofViewError.NativeFailure.} =
   ## Retain original file/stream/proof causes instead of reclassifying corruption as unavailable evidence.
   outcome.nativeCause
+
 func proofError*[T](outcome: PagedProofViewResult[T]): StateProofError {.requires:
     outcome.status == PagedProofViewError.ProofFailure.} =
   ## State proof refusal cannot expose a successfully verified prefix.
   outcome.proofCause
+
 func viewError*[T](outcome: PagedProofViewResult[T]): ProofViewError {.requires:
     outcome.status == PagedProofViewError.ViewFailure.} =
   ## Sorted-view policy failures remain separate from native proof integrity.
   outcome.viewCause
+
 func refused[T](reason: PagedProofViewError): PagedProofViewResult[T] =
   ## Plain policy/root/missing-evidence refusals retain no view or native owner.
   PagedProofViewResult[T](status: reason)
+
 func nativeFailed[T, U](outcome: PagedNativeResult[U]): PagedProofViewResult[T] {.requires:
     outcome.error != PagedNativeError.None.} =
   ## Selected native failure conversion never fabricates successful proof authority.
   PagedProofViewResult[T](status: PagedProofViewError.NativeFailure, nativeCause: outcome.failure)
+
 proc compareKey(a, b: StateKey): int =
   ## Duplicate-query preflight sorts fixed identities without touching any proof or value payload.
   let left = array[31, byte](a)
@@ -61,6 +69,7 @@ proc compareKey(a, b: StateKey): int =
     if left[index] < right[index]: return -1 # The first unequal octet decides order.
     if left[index] > right[index]: return 1 # Equal prefixes continue to the next octet.
   0
+
 proc readPagedProofView*(reader: var PagedReader, expected: StateRoot,
     queries: openArray[StateKey], limits: PagedProofViewLimits): PagedProofViewResult[ProofView] =
   ## Stage every requested witness privately; immutable state ProofView construction follows complete native extraction and re-verification.

@@ -35,25 +35,30 @@ type
 func error*[T](outcome: StateProofResult[T]): StateProofError =
   ## Read a reason without authorizing extraction of incomplete or invalid lookup evidence.
   outcome.status
+
 func value*[T](outcome: StateProofResult[T]): T {.inline,
     requires: outcome.status == StateProofError.None.} =
   ## Only a selected success grants access to its immutable completed lookup.
   outcome.completed
+
 proc root*(lookup: VerifiedStateLookup): StateRoot {.requires: lookup.owner != nil.} =
   ## Return the exact trusted-root argument, never a commitment calculated from partial state.
   let owner = lookup.owner
   assert owner != nil
   owner.root
+
 proc key*(lookup: VerifiedStateLookup): StateKey {.requires: lookup.owner != nil.} =
   ## Bind retained evidence to its exact original serialized query key.
   let owner = lookup.owner
   assert owner != nil
   owner.key
+
 proc kind*(lookup: VerifiedStateLookup): StateLookupKind {.requires: lookup.owner != nil.} =
   ## Successful absence is distinct from an incomplete proof and a present empty value.
   let owner = lookup.owner
   assert owner != nil
   owner.kind
+
 proc bytes*(lookup: VerifiedStateLookup): seq[byte] {.requires: lookup.owner != nil and
     lookup.owner.kind == StateLookupKind.Present.} =
   ## Copy only authenticated present bytes; an absent result has no value storage to read.
@@ -67,17 +72,20 @@ func one(key: StateKey, depth: int): bool =
   ## Callers prove depth<248 before reading a query's MSB-first direction bit.
   let raw = array[31, byte](key)
   (raw[depth div 8] and byte(128 shr (depth mod 8))) != 0
+
 func sharesPrefix(left, right: StateKey, depth: int): bool =
   ## A terminal singleton must belong to every already traversed query partition.
   for bit in 0..<depth:
     if one(left, bit) != one(right, bit): return false # Full-key absence cannot use a leaf outside the path.
   true
+
 func equalDigest(left, right: array[32, byte], partial: bool): bool =
   ## Only a left edge discards the high bit; root and right identities remain complete.
   for index in 0..<32:
     let mask = if partial and index == 0: 127'u8 else: 255'u8
     if (left[index] and mask) != (right[index] and mask): return false
   true
+
 proc absent(root: StateRoot, key: StateKey, rawBytes: int): StateProofResult[VerifiedStateLookup] =
   ## Unused payloads are noncanonical; absence owns only its trusted binding and outcome.
   if rawBytes != 0:

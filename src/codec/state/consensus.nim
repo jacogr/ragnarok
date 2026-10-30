@@ -67,33 +67,39 @@ type
 func error*[T](value: SafroleStateResult[T]): StateComponentError =
   ## Read only the reason until the caller has selected successful completion.
   value.status
+
 func value*[T](value: SafroleStateResult[T]): T {.inline, requires: value.status ==
     StateComponentError.None.} =
   ## No default/failed chapter result may expose an owner, entry, metadata, record or cursor.
   value.completed
+
 func kind*(source: SealerSchedule): SealerKind =
   ## Tags are read-only; default source schedules retain the existing empty ticket alternative.
   source.mode
+
 func ticketSchedule*(values: seq[WinningTicket]): SealerSchedule =
   ## Borrow caller ticket storage synchronously during encoding; tag and selected storage are constructed together.
   SealerSchedule(mode: Tickets, ticketValues: values)
+
 func keySchedule*(values: seq[StateBsKey]): SealerSchedule =
   ## Borrow caller key storage synchronously during encoding without allowing caller retagging.
   SealerSchedule(mode: Keys, keyValues: values)
+
 proc tickets*(source: SealerSchedule): seq[WinningTicket] {.requires: source.mode ==
     SealerKind.Tickets.} =
   ## Inspect an independent ticket sequence copy only from the active source alternative.
   result = newSeq[WinningTicket](source.ticketValues.len)
   # Copy fixed records so inspecting/editing returned values cannot modify the original source.
   for i in 0..<result.len: result[i] = source.ticketValues[i]
+
 proc keys*(source: SealerSchedule): seq[StateBsKey] {.requires: source.mode == SealerKind.Keys.} =
   ## Inspect an independent key sequence copy only from the active source alternative.
   result = newSeq[StateBsKey](source.keyValues.len)
   # Each copied fixed key remains independent of caller/source backing sequences.
   for i in 0..<result.len: result[i] = source.keyValues[i]
 
-## Extend a bounded parent extent without unchecked multiplication, addition or native narrowing.
 proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): StateComponentError =
+  ## Extend a bounded parent extent without unchecked multiplication, addition or native narrowing.
   if count > uint64((high(int)-cursor) div width):
     return StateComponentError.LengthOverflow # Prove the complete fixed-stride extent before multiplication.
   cursor += int(count)*width
@@ -101,16 +107,16 @@ proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): StateCo
     return StateComponentError.LimitExceeded # Every count, discriminator and fixed field consumes the parent ceiling.
   StateComponentError.None
 
-## Positive epoch cardinality must fit both schedule wire and typed sequence indexing before any allocation.
 proc validate(config: SafroleStateConfig): StateComponentError =
+  ## Positive epoch cardinality must fit both schedule wire and typed sequence indexing before any allocation.
   if uint64(config.epochSlots) == 0:
     return StateComponentError.InvalidConfig # A fixed sealer schedule cannot have a zero-length epoch.
   if uint64(config.epochSlots) > uint64(high(int) div sizeof(WinningTicket)):
     return StateComponentError.LengthOverflow # Ticket storage bounds cover the narrower fallback-key storage too.
   StateComponentError.None
 
-## Read one canonical accumulator count without allocating or publishing partial parser progress.
 proc count(input: openArray[byte]): SafroleStateResult[tuple[value: uint64, size: int]] =
+  ## Read one canonical accumulator count without allocating or publishing partial parser progress.
   let parsed = natural.decode(input)
   if not parsed.ok:
     # Preserve primitive framing failures before interpreting population/resource constraints.
@@ -123,8 +129,8 @@ proc count(input: openArray[byte]): SafroleStateResult[tuple[value: uint64, size
   SafroleStateResult[tuple[value: uint64, size: int]](status: StateComponentError.None,
     completed: (uint64(parsed.value), int(parsed.consumed)))
 
-## Validate a whole borrowed chapter before creating any child or parent owner.
 proc scan(input: openArray[byte], config: SafroleStateConfig): SafroleStateResult[Layout] =
+  ## Validate a whole borrowed chapter before creating any child or parent owner.
   let valid = validate(config)
   if valid != StateComponentError.None: return SafroleStateResult[Layout](
       status: valid) # Configuration precedes traversal.
@@ -168,14 +174,14 @@ proc scan(input: openArray[byte], config: SafroleStateConfig): SafroleStateResul
   layout.consumed = cursor
   SafroleStateResult[Layout](status: StateComponentError.None, completed: layout)
 
-## Copy a fixed field after complete extent validation, retaining no input alias.
 proc fixed[N: static[int]](input: openArray[byte], offset: int): array[N, byte] =
+  ## Copy a fixed field after complete extent validation, retaining no input alias.
   result = default(array[N, byte])
   # Callers prove the complete selected field before copying its octets.
   for i in 0..<N: result[i] = input[offset+i]
 
-## Read one complete ticket into a fixed independent value after whole-parent preflight.
 proc ticket(input: openArray[byte], offset: int): WinningTicket =
+  ## Read one complete ticket into a fixed independent value after whole-parent preflight.
   WinningTicket(id: WinningTicketId(fixed[32](input, offset)), attempt: TicketAttempt(input[offset+32]))
 
 proc decodeSafroleState*(input: openArray[byte], config: SafroleStateConfig): SafroleStateResult[
@@ -210,15 +216,15 @@ proc decodeSafroleState*(input: openArray[byte], config: SafroleStateConfig): Sa
     completed: SafroleStateRead(snapshot: SafroleStateSnapshot(data: data),
         consumed: layout.consumed))
 
-## Copy bytes into a privately allocated and completely preflighted payload.
 proc put(input: openArray[byte], output: var seq[byte], cursor: var int) =
+  ## Copy bytes into a privately allocated and completely preflighted payload.
   # Whole-parent sizing establishes every destination access.
   for b in input:
     output[cursor] = b
     inc cursor
 
-## Commit C.2's fixed ticket encoding without using the proof-bearing extrinsic ticket schema.
 proc putTicket(value: WinningTicket, output: var seq[byte], cursor: var int) =
+  ## Commit C.2's fixed ticket encoding without using the proof-bearing extrinsic ticket schema.
   put(array[32, byte](value.id), output, cursor)
   output[cursor] = byte(value.attempt)
   inc cursor

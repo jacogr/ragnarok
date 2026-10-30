@@ -30,10 +30,12 @@ type
 func error*(outcome: AccumulationPublicationResult): AccumulationPublicationError =
   ## Inspect the selected reason without exposing mutable tags.
   outcome.status
+
 func value*(outcome: AccumulationPublicationResult): StateStoreSnapshot {.inline,
     requires: outcome.status == AccumulationPublicationError.None.} =
   ## Extract only the exact successfully adopted snapshot under checked optimized contracts.
   outcome.completed
+
 func stateError*(outcome: AccumulationPublicationResult): StateStoreError {.inline,
     requires: outcome.status == AccumulationPublicationError.StateFailure.} =
   ## Inspect only a selected target initialization or private fork refusal.

@@ -25,6 +25,7 @@ type
 func error*[T](outcome: CheckpointResult[T]): CheckpointError =
   ## Inspect the reason without selecting or exposing the payload.
   outcome.status
+
 func value*[T](outcome: CheckpointResult[T]): T {.inline,
     requires: outcome.status == CheckpointError.None.} =
   ## Successful output is independently owned; default/refused alternatives cannot be extracted.

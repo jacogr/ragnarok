@@ -41,19 +41,20 @@ type
 func error*[T](value: ServiceValueResult[T]): ServiceValueError =
   ## Read-only reasons never authorize retained keys, raw bytes or completed copy progress.
   value.status
+
 func value*[T](value: ServiceValueResult[T]): T
     {.inline, requires: value.status == ServiceValueError.None.} =
   ## Public payloads and internal scratch extents require successful result selection.
   value.completed
 
-## Prove fixed-prefix addition for a nonnegative native key length before scratch allocation.
 proc storageExtent(length: int): ServiceValueResult[int] =
+  ## Prove fixed-prefix addition for a nonnegative native key length before scratch allocation.
   if length > high(int)-4:
     return ServiceValueResult[int](status: ServiceValueError.LengthOverflow) # Never wrap a native scratch extent.
   ServiceValueResult[int](status: ServiceValueError.None, completed: length+4)
 
-## Preserve the maintained state-key constructor's policy/backend failure without exporting unrelated node statuses.
 proc keyError(error: StateLayoutError): ServiceValueError =
+  ## Preserve the maintained state-key constructor's policy/backend failure without exporting unrelated node statuses.
   case error
   of StateLayoutError.LimitExceeded: ServiceValueError.LimitExceeded # Key policy failed before hashing.
   else: ServiceValueError.BackendFailure # A key is never fabricated after native hash failure.
@@ -90,8 +91,8 @@ proc servicePreimageKey*(service: ServiceIndex, hash: ServicePreimageHash,
         derived.error)) # Preserve maintained native hash failure.
   ServiceValueResult[StateKey](status: ServiceValueError.None, completed: derived.value)
 
-## Copy a complete raw value after callers have proved policy and key derivation, without a blob-length prefix.
 proc entry(key: StateKey, value: openArray[byte]): StateEntry =
+  ## Copy a complete raw value after callers have proved policy and key derivation, without a blob-length prefix.
   result = StateEntry(key: key, value: newSeq[byte](value.len))
   for i in 0..<value.len: result.value[i] = value[
       i] # Fresh output never aliases caller input or retained owner bytes.
@@ -142,8 +143,8 @@ proc serviceValueInfo*(owner: ServiceValueSnapshot): ServiceValueResult[ServiceV
     completed: ServiceValueInfo(service: data.service, key: data.key,
         length: data.bytes.len))
 
-## Check address differences rather than overflowing end pointers when guarding a native destination.
 proc overlaps(owner: ServiceValueData, output: var openArray[byte]): bool =
+  ## Check address differences rather than overflowing end pointers when guarding a native destination.
   if owner.bytes.len == 0 or output.len == 0: return false # Empty copies have no address to inspect.
   let source = cast[uint](unsafeAddr owner.bytes[0])
   let destination = cast[uint](addr output[0])

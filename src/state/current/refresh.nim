@@ -25,21 +25,26 @@ type
       requestReason: RequestError
     else:
       discard # No partially refreshed service array escapes any refused stage.
+
 func error*(outcome: CurrentRefreshResult): CurrentRefreshError =
   ## Observe immutable selected stage without retagging mutable output as successful.
   outcome.status
+
 func value*(outcome: CurrentRefreshResult): seq[StateService] {.inline, requires: outcome.status ==
     CurrentRefreshError.None.} =
   ## Complete detached output remains ordinary supplied data, never a root or producer certificate.
   outcome.completed
+
 func metadataError*(outcome: CurrentRefreshResult): ServiceMetadataError {.inline,
     requires: outcome.status == CurrentRefreshError.MetadataFailure.} =
   ## Preserve only the actual failed exact metadata decoder's reason.
   outcome.metadataReason
+
 func requestError*(outcome: CurrentRefreshResult): RequestError {.inline,
     requires: outcome.status == CurrentRefreshError.RequestFailure.} =
   ## Preserve only the actual failed tagged history decoder's reason.
   outcome.requestReason
+
 proc executeCurrentRefresh*(plan: CurrentRefreshPlan): CurrentRefreshResult =
   ## Accept only frozen original/target/policies; whole plan admission already bounds every output descriptor, raw key, payload and temporary wire.
   template fail(reason: CurrentRefreshError) =

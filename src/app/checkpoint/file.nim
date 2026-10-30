@@ -25,22 +25,27 @@ type
       checkpointReason: CheckpointError
     else:
       discard # Native/default/context failures retain only their outer reason.
+
 func error*[T](outcome: ApplicationCheckpointFileResult[T]): ApplicationCheckpointFileError =
   ## Inspect precise native/context status without exposing private alternatives.
   outcome.status
+
 func value*[T](outcome: ApplicationCheckpointFileResult[T]): T {.inline, requires: outcome.status ==
     ApplicationCheckpointFileError.None.} =
   ## Publication uncertainty and failed restoration cannot supply a success receipt or complete map.
   outcome.completed
+
 func identityError*[T](outcome: ApplicationCheckpointFileResult[
     T]): ApplicationCheckpointIdentityError {.inline, requires: outcome.status ==
     ApplicationCheckpointFileError.IdentityFailure.} =
   ## Only actual failed capture/identity decoding supplies this typed cause.
   outcome.identityReason
+
 func checkpointError*[T](outcome: ApplicationCheckpointFileResult[T]): CheckpointError {.inline,
     requires: outcome.status == ApplicationCheckpointFileError.CheckpointFailure.} =
   ## Only actual complete-map decoding supplies this typed cause.
   outcome.checkpointReason
+
 func toApplicationCheckpointFileError*(error: AtomicFileError): ApplicationCheckpointFileError =
   ## Exhaustive mapping preserves native uncertainty and locking distinctions for the owning facade.
   case error
@@ -51,6 +56,7 @@ func toApplicationCheckpointFileError*(error: AtomicFileError): ApplicationCheck
   of AtomicFileError.LimitExceeded: ApplicationCheckpointFileError.LimitExceeded
   of AtomicFileError.PublishedUnsynced: ApplicationCheckpointFileError.PublishedUnsynced
   of AtomicFileError.Busy: ApplicationCheckpointFileError.Busy
+
 proc refused(prepared: PreparedApplicationCheckpoint): ApplicationCheckpointFileResult[
     ApplicationCheckpointIdentity] =
   ## Translate only preparation reasons; accidental internal success translation fails closed.
@@ -71,6 +77,7 @@ proc refused(prepared: PreparedApplicationCheckpoint): ApplicationCheckpointFile
         status: ApplicationCheckpointFileError.ContextMismatch)
   else:
     default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]) # Defaults or an invalid internal success call never become successful file publication.
+
 proc saveApplicationCheckpoint*(path: string, prepared: PreparedApplicationCheckpoint,
     limit: ByteLimit): ApplicationCheckpointFileResult[ApplicationCheckpointIdentity] =
   ## Publish identity and complete map in one existing durable atomic replacement; no separate metadata window exists.
@@ -82,11 +89,13 @@ proc saveApplicationCheckpoint*(path: string, prepared: PreparedApplicationCheck
         published)) # Possibly visible but unsynchronized publication remains payload-free.
   ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
       status: ApplicationCheckpointFileError.None, completed: prepared.identity)
+
 proc saveApplicationCheckpoint*(path: string, owner: ApplicationChain,
     limit: ByteLimit): ApplicationCheckpointFileResult[ApplicationCheckpointIdentity] =
   ## Explicit synchronous source preparation retires all graph borrows before the native file replacement begins.
   var prepared = prepareApplicationCheckpoint(owner, limit)
   saveApplicationCheckpoint(path, prepared, limit)
+
 proc restored(bytes: BoundedFileResult, expected: ApplicationCheckpointIdentity,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[StateStore] =
   ## A bounded regular file must reach true EOF and checked close before codec-owned state allocation.
@@ -109,6 +118,7 @@ proc restored(bytes: BoundedFileResult, expected: ApplicationCheckpointIdentity,
     ApplicationCheckpointFileResult[StateStore](status: ApplicationCheckpointFileError.ContextMismatch)
   of ApplicationCheckpointError.Uninitialized:
     default(ApplicationCheckpointFileResult[StateStore]) # An uninitialized internal decoder result cannot grant restored state.
+
 proc loadApplicationCheckpoint*(path: string, expected: ApplicationCheckpointIdentity,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[StateStore] =
   ## Missing independent context refuses before opening any path; file metadata is never promoted into trust.
@@ -129,6 +139,7 @@ proc saveApplicationCheckpoint*(writer: var AtomicFileWriter,
         status: toApplicationCheckpointFileError(published))
   ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
       status: ApplicationCheckpointFileError.None, completed: prepared.identity)
+
 proc loadApplicationCheckpoint*(writer: var AtomicFileWriter,
     expected: ApplicationCheckpointIdentity,
 
@@ -159,12 +170,14 @@ proc verified(loaded: ApplicationCheckpointFileResult[StateStore],
   else:
     ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
         status: loaded.error) # Native/budget/context refusals grant no verified context.
+
 proc verifyApplicationCheckpoint*(path: string, expected: ApplicationCheckpointIdentity,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[
         ApplicationCheckpointIdentity] =
   ## Verify bounded complete bytes against independent trust, retiring every decoded graph before returning scalar context.
   let loaded = loadApplicationCheckpoint(path, expected, limits, limit)
   verified(loaded, expected)
+
 proc verifyApplicationCheckpoint*(writer: var AtomicFileWriter,
     expected: ApplicationCheckpointIdentity,
 

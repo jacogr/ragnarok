@@ -22,10 +22,12 @@ type
 func error*(outcome: TraceImportResult): TraceImportError =
   ## Observe the immutable selected stage without authorizing extraction.
   outcome.status
+
 func value*(outcome: TraceImportResult): PreparedCurrentChainUpdate {.inline,
     requires: outcome.status == TraceImportError.None.} =
   ## Return only a genuine current candidate whose entire advertised successor matched.
   outcome.completed
+
 func candidateFailure*(outcome: TraceImportResult): CurrentCandidateResult {.inline,
     requires: outcome.status == TraceImportError.CandidateFailure.} =
   ## Preserve the actual failed admission/execution stage without a usable prepared prefix.

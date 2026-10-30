@@ -31,13 +31,14 @@ type
 func error*(outcome: ValidatorRotationResult): ValidatorRotationError =
   ## Inspect a reason without publishing roster handles or allowing result mutation.
   outcome.status
+
 func value*(outcome: ValidatorRotationResult): ValidatorRotation {.inline,
     requires: outcome.status == ValidatorRotationError.None.} =
   ## Require successful selection before returning the complete immutable roster-handle group.
   outcome.completed
 
-## Convert existing codec failures without treating bad owners or policy refusals as empty validator sets.
 func codecError(reason: StateComponentError): ValidatorRotationError =
+  ## Convert existing codec failures without treating bad owners or policy refusals as empty validator sets.
   case reason
   of StateComponentError.None: ValidatorRotationError.None # Complete existing codec success.
   of StateComponentError.InvalidConfig: ValidatorRotationError.InvalidConfig # Caller chooses a valid profile.
@@ -45,15 +46,15 @@ func codecError(reason: StateComponentError): ValidatorRotationError =
   of StateComponentError.LengthOverflow: ValidatorRotationError.LengthOverflow # No unsafe native extent conversion.
   else: ValidatorRotationError.InvalidState # Bad populations, handles or framing cannot be state.
 
-## Compare fixed identity octets lexicographically; no curve validation or account semantics are implied.
 func compare(a, b: array[32, byte]): int =
+  ## Compare fixed identity octets lexicographically; no curve validation or account semantics are implied.
   for i in 0..<32:
     if a[i] < b[i]: return -1 # First smaller octet sorts before the other identity.
     if a[i] > b[i]: return 1 # First larger octet sorts after the other identity.
   0 # Full equality denotes exactly one offender identity.
 
-## Binary-search the caller's already canonical posterior offender set, without retaining borrowed bytes.
 proc excluded(key: StateEdKey, offenders: openArray[OffenderKey]): bool =
+  ## Binary-search the caller's already canonical posterior offender set, without retaining borrowed bytes.
   var first = 0
   var last = offenders.len
   while first < last:

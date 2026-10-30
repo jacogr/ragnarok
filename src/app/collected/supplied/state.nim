@@ -16,23 +16,28 @@ type
     of StateFailure: stateReason: CurrentStateResult[CurrentStateSerialization]
     of LogicalFailure: logicalReason: CurrentLogicalResult[CurrentLogicalState]
     else: discard # Defaults and refused original-source selection carry no payload.
+
 func error*(outcome: CollectedSuppliedResult): CollectedSuppliedError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*(outcome: CollectedSuppliedResult): CurrentLogicalState {.inline,
     requires: outcome.status == CollectedSuppliedError.None.} =
   ## Retain only whole actual current qualification and detached supplied logical identities.
   outcome.completed
+
 func stateFailure*(outcome: CollectedSuppliedResult): CurrentStateResult[
     CurrentStateSerialization] {.inline, requires: outcome.status ==
     CollectedSuppliedError.StateFailure.} =
   ## Preserve exact complete matching, compact inventory and backend causes.
   outcome.stateReason
+
 func logicalFailure*(outcome: CollectedSuppliedResult): CurrentLogicalResult[
     CurrentLogicalState] {.inline, requires: outcome.status ==
     CollectedSuppliedError.LogicalFailure.} =
   ## Preserve independently bounded original raw-key capture and complete revalidation failures.
   outcome.logicalReason
+
 proc executeCollectedSupplied*(chain: ApplicationChain, plan: CollectedSuppliedPlan,
     declarations: openArray[StateService]): CollectedSuppliedResult =
   ## Stable borrowed declarations must match the entire actual target; no original-parent identity relation is inferred.

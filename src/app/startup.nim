@@ -15,13 +15,16 @@ import ../codec/bounded
 proc generateKey(pem: ptr byte, capacity: csize_t, length: ptr csize_t,
     publicKey: ptr byte): cint {.importc: "rq_identity_key", cdecl, header: "cert_fields.h".}
   ## Borrow fixed caller buffers only during bundled Ed25519 generation.
+
 proc generateCertificate(key: ptr byte, length: csize_t, dns: cstring, days: cint,
     pem: ptr byte, capacity: csize_t, written: ptr csize_t): cint {.
     importc: "rq_identity_cert", cdecl, header: "cert_fields.h".}
   ## TLS signs the caller's Nim-derived JAM identity name without owning paths or protocol policy.
+
 proc clear(bytes: ptr byte, length: csize_t) {.importc: "rq_identity_clear", cdecl,
     header: "cert_fields.h".}
   ## Erase private PEM scratch on every completion path.
+
 proc effectiveUid(): uint32 {.importc: "geteuid", cdecl, header: "<unistd.h>".}
   ## Persistent private identity directories must belong to the running account.
 

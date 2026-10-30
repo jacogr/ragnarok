@@ -39,10 +39,12 @@ type
 func error*[T](outcome: ComputedRecentResult[T]): ComputedRecentError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedRecentResult[T]): T
     {.requires: outcome.status == ComputedRecentError.None.} =
   ## Preserve checked success extraction in optimized execution.
   outcome.completed
+
 proc computedRecentSource*(recent: RecentComputedReport): ComputedRecentResult[
     StateBoundComputedReport] =
   ## Retain exact original computation and admitted state instead of a substitute report/header.
@@ -51,18 +53,21 @@ proc computedRecentSource*(recent: RecentComputedReport): ComputedRecentResult[
       status: ComputedRecentError.Uninitialized)
   ComputedRecentResult[StateBoundComputedReport](status: ComputedRecentError.None,
       completed: data.source)
+
 proc computedRecentHistory*(recent: RecentComputedReport): ComputedRecentResult[HistorySnapshot] =
   ## Share only the complete corrected immutable history, leaving original committed C3 untouched.
   let data = recent.data
   if data == nil: return ComputedRecentResult[HistorySnapshot](
       status: ComputedRecentError.Uninitialized)
   ComputedRecentResult[HistorySnapshot](status: ComputedRecentError.None, completed: data.history)
+
 proc computedRecentAnchor*(recent: RecentComputedReport): ComputedRecentResult[HistoryBlockInfo] =
   ## Copy the single matched record; fields from different records cannot be spliced into authority.
   let data = recent.data
   if data == nil: return ComputedRecentResult[HistoryBlockInfo](
       status: ComputedRecentError.Uninitialized)
   ComputedRecentResult[HistoryBlockInfo](status: ComputedRecentError.None, completed: data.anchor)
+
 proc checkComputedRecentAnchor*(source: StateBoundComputedReport,
     config: HistoryConfig): ComputedRecentResult[RecentComputedReport] =
   ## Preflight original state/profile, correct only its latest root, then match all four claimed fields together.

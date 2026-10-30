@@ -42,8 +42,10 @@ type
 proc `=copy`*(destination: var DevnetNetwork, source: DevnetNetwork) {.error:
     "DevnetNetwork owns stable native callback addresses".}
   ## Neither endpoint nor its per-stream routing can be duplicated.
+
 proc `=dup`*(source: DevnetNetwork): DevnetNetwork {.error.}
   ## Sequence retention must not introduce an implicit exclusive-owner copy.
+
 proc `=wasMoved`*(owner: var DevnetNetwork) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(owner.incoming)
@@ -79,6 +81,7 @@ proc serverVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cd
   for index in 0..<6:
     if validPeer(cast[ptr byte](der), length, owner.peers[index]): return 1
   0
+
 proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Each dial pins one exact expected peer rather than trusting an arbitrary certificate.
   let owner = cast[ptr DevnetNetwork](user)
@@ -251,6 +254,7 @@ proc closeRequest*(owner: var DevnetNetwork) =
   owner.dialed = false
   owner.opened = false
   owner.client = NativeStream(nil)
+
 proc close*(owner: var DevnetNetwork) =
   ## Retire both endpoint engines before callback metadata and catalog storage leave scope.
   owner.closeRequest()
@@ -263,6 +267,7 @@ proc close*(owner: var DevnetNetwork) =
   owner.announcementVersion = 0
   owner.discovery = false
   owner.active = false
+
 proc open*(owner: var DevnetNetwork, port: uint16, cert, key, alpn: string,
     peers: array[6, array[32, byte]]): bool =
   ## Stable stack ownership begins before any TLS/native callback can observe the endpoint.
@@ -274,6 +279,7 @@ proc open*(owner: var DevnetNetwork, port: uint16, cert, key, alpn: string,
     owner.close()
     return false # Setup refusal retires all partially acquired resources.
   true
+
 proc publish*(owner: var DevnetNetwork, parent: array[32, byte], bytes: seq[byte]): bool =
   ## Host-only publication follows complete validation/adoption; finite canonical history serves catch-up.
   if bytes.len == 0 or bytes.len > MaxBlock or owner.catalog.len >= 64: return false
@@ -281,6 +287,7 @@ proc publish*(owner: var DevnetNetwork, parent: array[32, byte], bytes: seq[byte
     if owner.catalog[index].parent == parent: return false # No ambiguous child for one canonical parent.
   owner.catalog.add(ServedBlock(parent: parent, bytes: bytes))
   true
+
 proc request*(owner: var DevnetNetwork, port: uint16, expected: array[32, byte],
     parent: array[32, byte], cert, key, alpn: string): bool =
   ## Serial dialing bounds resources to one outstanding peer/request per node.
@@ -302,6 +309,7 @@ proc request*(owner: var DevnetNetwork, port: uint16, expected: array[32, byte],
     owner.closeRequest()
     return false
   true
+
 proc poll*(owner: var DevnetNetwork): bool =
   ## Both engines progress with nonblocking bounded work; no consensus execution occurs in callbacks.
   if not pollTransport(owner.incoming, 0): return false
@@ -318,9 +326,11 @@ proc poll*(owner: var DevnetNetwork): bool =
       owner.opened = true
       openStream(owner.outgoing) # One stream opens only after TLS authentication.
   true
+
 func finished*(owner: DevnetNetwork): bool =
   ## Both peer failure and actual FIN return control to the bounded host retry loop.
   owner.complete or owner.failed
+
 proc take*(owner: var DevnetNetwork, bytes: var seq[byte]): bool =
   ## Copy a single exact framed block or an empty response; refusal never returns a partial payload.
   bytes = @[]
@@ -345,6 +355,7 @@ proc enableAnnouncements*(owner: var DevnetNetwork, local: AnnouncementHandshake
   owner.announcementLimits = limits
   owner.discovery = true
   AnnouncementError.None
+
 proc publishAnnouncement*(owner: var DevnetNetwork, header: OwnedHeader,
     finalized: AnnouncedBlock): AnnouncementError =
   ## Host-only publication follows actual durable admission; retain bytes/scalars rather than canonical aliases.

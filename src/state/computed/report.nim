@@ -43,16 +43,19 @@ type
 func error*[T](outcome: ComputedReportResult[T]): ComputedReportError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedReportResult[T]): T
     {.requires: outcome.status == ComputedReportError.None.} =
   ## Extract only a complete successful value.
   outcome.completed
+
 proc computedReportInfo*(report: ComputedWorkReport): ComputedReportResult[ComputedReportInfo] =
   ## Copy fixed report/resource facts without exposing retained canonical storage.
   let data = report.data
   if data == nil: return ComputedReportResult[ComputedReportInfo](
       status: ComputedReportError.Uninitialized)
   ComputedReportResult[ComputedReportInfo](status: ComputedReportError.None, completed: data.info)
+
 proc computedReportSource*(report: ComputedWorkReport): ComputedReportResult[
     AvailabilityCommitment] =
   ## Retain the exact original execution/availability chain rather than accepting later replacements.
@@ -61,6 +64,7 @@ proc computedReportSource*(report: ComputedWorkReport): ComputedReportResult[
       status: ComputedReportError.Uninitialized)
   ComputedReportResult[AvailabilityCommitment](status: ComputedReportError.None,
       completed: data.source)
+
 proc computedReportBytes*(report: ComputedWorkReport): ComputedReportResult[seq[byte]] =
   ## Return a complete independent canonical byte copy; borrowed decoding belongs to the caller's copy.
   let data = report.data
@@ -68,6 +72,7 @@ proc computedReportBytes*(report: ComputedWorkReport): ComputedReportResult[seq[
   var copied = newSeq[byte](data.wire.len)
   for index in 0..<copied.len: copied[index] = data.wire[index]
   ComputedReportResult[seq[byte]](status: ComputedReportError.None, completed: copied)
+
 proc prepareComputedReport*(source: AvailabilityCommitment, limit: ByteLimit): ComputedReportResult[
     ComputedWorkReport] =
   ## Derive fixed metadata and preflight all retained/transient bytes before payload copies or encoding.

@@ -20,9 +20,11 @@ proc hexadecimal(bytes: openArray[byte]): string {.requires: bytes.len <= high(i
   for index, octet in bytes:
     result[index*2] = digits[int(octet shr 4)]
     result[index*2+1] = digits[int(octet and 15)]
+
 func nibble(character: char): byte =
   ## Validated canonical hash characters have exactly one interpretation.
   if character <= '9': byte(ord(character)-ord('0')) else: byte(ord(character)-ord('a')+10)
+
 proc runHistoricalQuery*(options: Options): HistoryResult[JsonValue] {.raises.} =
   ## Return exact selected data or a typed unavailable/pruned/IO refusal; publication of an export is explicitly requested.
   if not options.valid or options.argumentCount != 1 or options.argument(1) != "history":

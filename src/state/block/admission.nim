@@ -56,21 +56,26 @@ type
 func error*(outcome: BlockAdmissionResult): BlockAdmissionError =
   ## Inspect admission refusal without granting retagging or access to an invalid binding.
   outcome.status
+
 func value*(outcome: BlockAdmissionResult): BoundBlock {.inline,
     requires: outcome.status == BlockAdmissionError.None.} =
   ## Retain the completed binding only after selecting success.
   outcome.completed
+
 func error*(outcome: BlockSafroleResult): BlockSafroleError =
   ## Inspect composed stage status without extracting an unselected reason.
   outcome.status
+
 func value*(outcome: BlockSafroleResult): BlockSafroleUpdate {.inline,
     requires: outcome.status == BlockSafroleError.None.} =
   ## Extract complete composed success only.
   outcome.completed
+
 func admissionError*(outcome: BlockSafroleResult): BlockAdmissionError {.inline,
     requires: outcome.status == BlockSafroleError.AdmissionFailure.} =
   ## Read the exact admission cause only after selecting that failed stage.
   outcome.admissionReason
+
 func safroleError*(outcome: BlockSafroleResult): SafroleTransitionResult {.inline,
     requires: outcome.status == BlockSafroleError.SafroleFailure.} =
   ## Read the existing typed Safrole failure only after selecting its refusal alternative.
@@ -81,16 +86,19 @@ proc admittedBlock*(binding: BoundBlock): OwnedBlock {.requires: binding.data !=
   let data = binding.data
   assert data != nil # Bind the checked ARC owner once before extraction.
   data.candidate
+
 proc admittedHeader*(binding: BoundBlock): OwnedHeader {.requires: binding.data != nil.} =
   ## Retain the exact header that was extracted from this block, never an independently supplied candidate.
   let data = binding.data
   assert data != nil # Preserve the owner throughout the copied handle access.
   data.header
+
 proc admittedParent*(binding: BoundBlock): OwnedHeader {.requires: binding.data != nil.} =
   ## Retain the parent header whose complete sealed serialization matched the candidate's parent identity.
   let data = binding.data
   assert data != nil # A default binding cannot substitute for genesis context.
   data.parent
+
 proc admittedState*(binding: BoundBlock): StateStoreSnapshot {.requires: binding.data != nil.} =
   ## Retain the exact complete-map snapshot whose commitment and chronology passed the selected admission boundary.
   let data = binding.data
@@ -168,6 +176,7 @@ proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
     state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
   ## Ordinary parent/state capture retains its exact clock pairing and every GP commitment predicate.
   validateCommitments(candidate, parent, state, config, false)
+
 proc validateFuzzSeedCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
     state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
   ## Explicit test-seed admission preserves both independent chronology checks and all commitments; it grants no chain publication authority.

@@ -66,12 +66,15 @@ type
 
 proc `=copy`*(destination: var BlockDownload, source: BlockDownload) {.error: "BlockDownload owns reception".}
   ## Composite ownership is explicit even though BlockInput already refuses copying.
+
 proc `=dup`*(source: BlockDownload): BlockDownload {.error.}
   ## The nested receiver and worker borrow have exactly one stable owner.
+
 proc requirePreparationRetired(download: BlockDownload) {.requires:
     download.pending.status != BlockDownloadStage.Preparing.} =
   ## Destruction cannot release input/history still borrowed by the Services worker.
   discard
+
 proc `=wasMoved`*(download: var BlockDownload) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(download.next)
@@ -85,6 +88,7 @@ proc `=destroy`*(download: BlockDownload) =
   `=destroy`(download.pending)
   `=destroy`(download.input)
   `=destroy`(download.ticket)
+
 proc `==`*(left, right: BlockDownloadId): bool {.borrow.}
   ## Compare only generations from this receiver's lifetime.
 
@@ -129,6 +133,7 @@ func workerError*(reason: BlockDownloadFailure): PreparationError {.inline,
     requires: reason.status == BlockDownloadError.WorkerFailure.} =
   ## Inspect only an actual worker admission refusal.
   reason.workerReason
+
 func handoffError*(reason: BlockDownloadFailure): AccumulationEnqueueError {.inline,
     requires: reason.status == BlockDownloadError.HandoffFailure.} =
   ## Preserve only an actual host enqueue refusal after execution has retired.

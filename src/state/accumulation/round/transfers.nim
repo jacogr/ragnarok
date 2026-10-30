@@ -31,6 +31,7 @@ type
 func error*[T](outcome: AccumulationRoundTransferResult[T]): AccumulationRoundTransferError =
   ## Inspect the selected reason without exposing mutable result storage.
   outcome.status
+
 func value*[T](outcome: AccumulationRoundTransferResult[T]): T {.inline,
     requires: outcome.status == AccumulationRoundTransferError.None.} =
   ## Extract complete selected success under optimized native contracts.

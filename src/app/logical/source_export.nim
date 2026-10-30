@@ -25,13 +25,16 @@ type
     case status: LogicalSourceExportError
     of None: completed: T
     else: discard # Default and failed exports contain no partial text or usable plan.
+
 func error*[T](outcome: LogicalSourceExportResult[T]): LogicalSourceExportError =
   ## Read the immutable selected stage only.
   outcome.status
+
 func value*[T](outcome: LogicalSourceExportResult[T]): T {.inline, requires: outcome.status ==
     LogicalSourceExportError.None.} =
   ## Extract only complete successful export observations/plans/text.
   outcome.completed
+
 func decimalWidth(value: uint32): uint64 =
   ## Count canonical decimal digits without allocating a temporary string.
   var remaining = value
@@ -39,6 +42,7 @@ func decimalWidth(value: uint32): uint64 =
   while remaining >= 10:
     remaining = remaining div 10
     inc result # The fixed E4 domain needs at most ten digits.
+
 proc planLogicalSourceExport*(source: CurrentLogicalState,
     limits: LogicalSourceExportLimits): LogicalSourceExportResult[LogicalSourceExportPlan] =
   ## Admit every row and all text/raw-key scratch storage before copying a key, allocating output or hashing any payload.
@@ -84,6 +88,7 @@ proc planLogicalSourceExport*(source: CurrentLogicalState,
     completed: LogicalSourceExportPlan(initialized: true, source: original.value,
       info: LogicalSourceExportInfo(services: info.services, facts: int(info.facts), bytes: output,
           copyBytes: output+scratch)))
+
 proc logicalSourceExportInfo*(plan: LogicalSourceExportPlan): LogicalSourceExportResult[
     LogicalSourceExportInfo] =
   ## Copy exact admitted text/traversal/scratch accounting without materializing identities or values.
@@ -91,11 +96,13 @@ proc logicalSourceExportInfo*(plan: LogicalSourceExportPlan): LogicalSourceExpor
       status: LogicalSourceExportError.InvalidPlan)
   LogicalSourceExportResult[LogicalSourceExportInfo](status: LogicalSourceExportError.None,
       completed: plan.info)
+
 proc putText(output: var string, offset: var int, text: string) =
   ## Fill only preflighted fixed text segments; no growing concatenation or fallback syntax is used.
   for character in text:
     output[offset] = character
     inc offset
+
 proc putDecimal(output: var string, offset: var int, value: uint32) =
   ## Encode one canonical E4-domain decimal using a fixed stack buffer and no heap temporary.
   var digits = default(array[10, char])
@@ -110,6 +117,7 @@ proc putDecimal(output: var string, offset: var int, value: uint32) =
     dec count
     output[offset] = digits[count]
     inc offset
+
 proc putHex(output: var string, offset: var int, bytes: openArray[byte]) =
   ## Encode preflighted raw identities only; immutable source values never pass through this routine.
   const digits = "0123456789abcdef"
@@ -117,6 +125,7 @@ proc putHex(output: var string, offset: var int, bytes: openArray[byte]) =
     output[offset] = digits[int(octet shr 4)]
     output[offset+1] = digits[int(octet and 15)]
     offset += 2
+
 proc executeLogicalSourceExport*(plan: LogicalSourceExportPlan): LogicalSourceExportResult[string] =
   ## Materialize one exact detached text from the frozen original identities; execution accepts no replacement source or limits.
   if not plan.initialized: return LogicalSourceExportResult[string](

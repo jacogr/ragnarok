@@ -31,10 +31,12 @@ type
 func error*[T](outcome: ErasureLayoutResult[T]): ErasureLayoutError =
   ## Inspect the selected reason without exposing writable variant tags.
   outcome.status
+
 func value*[T](outcome: ErasureLayoutResult[T]): T
     {.requires: outcome.status == ErasureLayoutError.None.} =
   ## Extract only a complete successful value.
   outcome.completed
+
 proc erasureGeometry*(length: BundleLength, shards: ErasureShards): ErasureLayoutResult[
     ErasureGeometry] =
   ## Apply pinned valcount and greatest-divisor geometry without allocating or narrowing lengths.
@@ -53,18 +55,21 @@ proc erasureGeometry*(length: BundleLength, shards: ErasureShards): ErasureLayou
     completed: ErasureGeometry(shards: shards, originalShards: original, stripeBytes: stripe,
       bundleChunkBytes: chunk, segmentChunkBytes: 4104 div original,
       paddedBytes: padded, paddingBytes: padded-bytes, encodedBytes: chunk*count))
+
 proc layoutInfo*(layout: ErasureLayout): ErasureLayoutResult[ErasureGeometry] =
   ## Copy fixed geometry only from completed source-bound preparation.
   let data = layout.data
   if data == nil: return ErasureLayoutResult[ErasureGeometry](
       status: ErasureLayoutError.Uninitialized)
   ErasureLayoutResult[ErasureGeometry](status: ErasureLayoutError.None, completed: data.geometry)
+
 proc layoutSource*(layout: ErasureLayout): ErasureLayoutResult[AuditableBundle] =
   ## Retain the exact original bundle rather than accepting later detached byte/identity tuples.
   let data = layout.data
   if data == nil: return ErasureLayoutResult[AuditableBundle](
       status: ErasureLayoutError.Uninitialized)
   ErasureLayoutResult[AuditableBundle](status: ErasureLayoutError.None, completed: data.source)
+
 proc originalChunk*(layout: ErasureLayout, index: OriginalShardIndex): ErasureLayoutResult[seq[byte]] =
   ## Copy one contiguous systematic chunk; parity positions have no successful value in this layer.
   let data = layout.data
@@ -77,6 +82,7 @@ proc originalChunk*(layout: ErasureLayout, index: OriginalShardIndex): ErasureLa
   var copied = newSeq[byte](count)
   for position in 0..<count: copied[position] = data.padded[first+position]
   ErasureLayoutResult[seq[byte]](status: ErasureLayoutError.None, completed: copied)
+
 proc prepareErasureLayout*(source: AuditableBundle, shards: ErasureShards,
     limit: ByteLimit): ErasureLayoutResult[ErasureLayout] =
   ## Preflight the entire padded buffer before copying bytes from the exact original executed bundle.

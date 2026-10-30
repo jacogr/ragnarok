@@ -30,6 +30,7 @@ type
 func error*[T](outcome: AccumulationMachineResult[T]): AccumulationMachineError =
   ## Inspect the outcome without granting mutable access to its discriminator.
   outcome.status
+
 func value*[T](outcome: AccumulationMachineResult[T]): T {.inline,
     requires: outcome.status == AccumulationMachineError.None.} =
   ## Retain selected success under compiler and runtime result contracts.
@@ -64,15 +65,15 @@ proc machineHeapBounds*(prepared: PreparedAccumulationMachine): AccumulationMach
   AccumulationMachineResult[AccumulationHeapBounds](status: AccumulationMachineError.None,
     completed: data.heap)
 
-# Decode an E3 field only after the standard initializer proves exact envelope framing and extents.
 func envelopeField(code: openArray[byte], offset: int): uint64 =
+  ## Decode an E3 field only after the standard initializer proves exact envelope framing and extents.
   result = 0
   for index in 0..<3:
     # The successful initializer guarantees these fixed header positions exist; shifts fit uint64.
     result = result or (uint64(code[offset+index]) shl (index*8))
 
-# E3 lengths are at most 2^24-1, so adding 65535 and zone rounding cannot overflow uint64.
 func envelopeHeapBounds(code: openArray[byte]): AccumulationHeapBounds =
+  ## E3 lengths are at most 2^24-1, so adding 65535 and zone rounding cannot overflow uint64.
   let readOnly = envelopeField(code, 0)
   let stack = envelopeField(code, 8)
   let roZones = (readOnly+65535) div 65536

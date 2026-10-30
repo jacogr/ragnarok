@@ -53,37 +53,46 @@ type
 func error*[T](value: StateLayoutResult[T]): StateLayoutError =
   ## Failure reasons remain readable without authorizing any completed key, node, metadata or progress.
   value.status
+
 func value*[T](value: StateLayoutResult[T]): T {.inline, requires: value.status ==
     StateLayoutError.None.} =
   ## Completed fields require the selected success alternative in optimized builds too.
   value.completed
+
 func kind*(node: StateNodeInfo): StateNodeKind =
   ## Metadata tags are read-only; default metadata is the existing all-zero branch.
   node.nodeKind
+
 func left*(node: StateNodeInfo): LeftChildCommitment {.inline, requires: node.nodeKind ==
     StateNodeKind.Branch.} =
   ## Return an independent left copy only from its selected Branch alternative.
   node.branchLeft
+
 func right*(node: StateNodeInfo): StateNodeHash {.inline, requires: node.nodeKind ==
     StateNodeKind.Branch.} =
   ## Return an independent right copy only from its selected Branch alternative.
   node.branchRight
+
 func embeddedKey*(node: StateNodeInfo): StateKey {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
   ## Return an independent embeddedKey copy only from its selected EmbeddedLeaf alternative.
   node.inlineKey
+
 func length*(node: StateNodeInfo): EmbeddedLength {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
   ## Return an independent length copy only from its selected EmbeddedLeaf alternative.
   node.inlineLength
+
 func embedded*(node: StateNodeInfo): array[32, byte] {.inline, requires: node.nodeKind ==
     StateNodeKind.EmbeddedLeaf.} =
   ## Return an independent embedded copy only from its selected EmbeddedLeaf alternative.
   node.inlineBytes
+
 func hashedKey*(node: StateNodeInfo): StateKey {.inline, requires: node.nodeKind ==
     StateNodeKind.HashedLeaf.} =
   ## Return an independent hashedKey copy only from its selected HashedLeaf alternative.
   node.regularKey
+
 func valueHash*(node: StateNodeInfo): StateValueHash {.inline, requires: node.nodeKind ==
     StateNodeKind.HashedLeaf.} =
   ## Return an independent valueHash copy only from its selected HashedLeaf alternative.
@@ -92,10 +101,12 @@ func valueHash*(node: StateNodeInfo): StateValueHash {.inline, requires: node.no
 func branchNodeInfo*(left: LeftChildCommitment, right: StateNodeHash): StateNodeInfo =
   ## Construct copied branch source metadata; encodeStateNode validates its partial commitment before emission.
   StateNodeInfo(nodeKind: Branch, branchLeft: left, branchRight: right)
+
 func embeddedNodeInfo*(key: StateKey, length: EmbeddedLength, bytes: array[32,
     byte]): StateNodeInfo =
   ## Construct copied embedded source metadata; encodeStateNode validates length and every unused padding byte.
   StateNodeInfo(nodeKind: EmbeddedLeaf, inlineKey: key, inlineLength: length, inlineBytes: bytes)
+
 func hashedNodeInfo*(key: StateKey, hash: StateValueHash): StateNodeInfo =
   ## Construct copied regular source metadata without claiming possession of the long value's preimage.
   StateNodeInfo(nodeKind: HashedLeaf, regularKey: key, regularHash: hash)

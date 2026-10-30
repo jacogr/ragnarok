@@ -42,13 +42,14 @@ type
 func error*[T](value: OutputLogResult[T]): OutputLogError =
   ## Failure reasons are read-only and never authorize payload or progress access.
   value.status
+
 func value*[T](value: OutputLogResult[T]): T
     {.inline, requires: value.status == OutputLogError.None.} =
   ## Complete public payloads and private extent proofs require successful selection.
   value.completed
 
-## Bound announced counts, native wire/storage extents and whole-parent policy before access/allocation.
 proc extent(count: uint64, prefix: int, config: OutputLogConfig): OutputLogResult[int] =
+  ## Bound announced counts, native wire/storage extents and whole-parent policy before access/allocation.
   if count > uint64(config.items):
     return OutputLogResult[int](status: OutputLogError.LimitExceeded) # Caller item policy precedes native extent checks.
   if count > uint64((high(int)-prefix) div 36) or count > uint64(high(int) div sizeof(

@@ -125,23 +125,29 @@ const
 func error*[T](value: PackageResult[T]): PackageError =
   ## Read a generic outcome without exposing its private discriminator for mutation.
   value.status
+
 func value*[T](value: PackageResult[T]): T {.inline, requires: value.status == PackageError.None.} =
   ## Only complete operations expose application values, retained owners or progress.
   value.completed
+
 func kind*(value: ImportReference): ImportKind =
   ## Read the selected nominal import role without allowing safe-code retagging.
   value.referenceKind
+
 func root*(value: ImportReference): SegmentRoot {.inline, requires: value.referenceKind ==
     ImportKind.Root.} =
   ## Direct-root access requires the corresponding selected identity domain; returned bytes are copied.
   value.rootIdentity
+
 func package*(value: ImportReference): PackageHash {.inline, requires: value.referenceKind ==
     ImportKind.Package.} =
   ## Package-reference access requires a dependency identity; returned bytes are independent copies.
   value.packageIdentity
+
 func rootImport*(root: SegmentRoot, index: ImportIndex): ImportReference =
   ## Construct a direct-root source; the encoder still validates the supplied fifteen-bit index domain.
   ImportReference(referenceKind: ImportKind.Root, rootIdentity: root, index: index)
+
 func packageImport*(package: PackageHash, index: ImportIndex): ImportReference =
   ## Construct a package dependency source without implicitly converting a segment-root identity.
   ImportReference(referenceKind: ImportKind.Package, packageIdentity: package, index: index)
@@ -151,24 +157,24 @@ proc fullPackageConfig*(maxBytes: ByteLimit): PackageConfig {.raises: [].} =
   PackageConfig(refineGas: Gas(5_000_000_000'u64), accumulateGas: Gas(10_000_000),
       maxBytes: maxBytes)
 
-# Zero gas ceilings cannot admit even a zero-gas package under the strict normative inequalities.
 proc validConfig(config: PackageConfig): bool {.raises: [].} =
+  ## Zero gas ceilings cannot admit even a zero-gas package under the strict normative inequalities.
   uint64(config.refineGas) > 0 and uint64(config.accumulateGas) > 0
 
-# Read previously extent-checked E2/E4/E8 scalar octets without a narrowing conversion.
 proc scalar(input: openArray[byte], start, width: int): uint64 {.raises: [].} =
+  ## Read previously extent-checked E2/E4/E8 scalar octets without a narrowing conversion.
   result = 0
   # Every shift stays within the declared eight-byte maximum.
   for i in 0..<width: result = result or (uint64(input[start+i]) shl (8*i))
 
-# Copy fixed identity encodings into owned arrays after their enclosing extent is proved.
 proc fixed[N: static[int]](input: openArray[byte], start: int): array[N, byte] {.raises: [].} =
+  ## Copy fixed identity encodings into owned arrays after their enclosing extent is proved.
   result = default(array[N, byte])
   # No input pointer escapes this exact-byte value copy.
   for i in 0..<N: result[i] = input[start+i]
 
-# Compare package identities lexicographically for canonical prerequisite ordering.
 proc less(a, b: PackageHash): bool {.raises: [].} =
+  ## Compare package identities lexicographically for canonical prerequisite ordering.
   # The first unequal octet decides ordering; equal complete identities are duplicates.
   for i in 0..<32:
     # Equal prefixes require another byte.
@@ -176,9 +182,9 @@ proc less(a, b: PackageHash): bool {.raises: [].} =
       return a.bytes[i] < b.bytes[i]
   false
 
-# Prove remaining-input extent by division before multiplying an attacker-selected count.
 proc extent(input: openArray[byte], cursor, count, stride: int,
     limit: ByteLimit): PackageError {.raises: [].} =
+  ## Prove remaining-input extent by division before multiplying an attacker-selected count.
   # Private cursors always remain within the original input, including its one-past endpoint.
   if count > (input.len-cursor) div stride:
     return PackageError.Truncated
@@ -187,9 +193,9 @@ proc extent(input: openArray[byte], cursor, count, stride: int,
     return PackageError.LimitExceeded
   PackageError.None
 
-# Read a bounded canonical natural, keeping partial cursor updates private on failure.
 proc number(input: openArray[byte], cursor: var int, ceiling: int,
     limit: ByteLimit): PackageResult[int] {.raises: [].} =
+  ## Read a bounded canonical natural, keeping partial cursor updates private on failure.
   let parsed = natural.decode(input.toOpenArray(cursor, input.high))
   # Incomplete and overlong encodings remain distinct typed failures.
   if not parsed.ok:
@@ -201,8 +207,8 @@ proc number(input: openArray[byte], cursor: var int, ceiling: int,
     return PackageResult[int](status: PackageError.LimitExceeded)
   PackageResult[int](status: PackageError.None, completed: int(uint64(parsed.value)))
 
-# Validate canonical prerequisite sets before exposing or serializing a context.
 proc contextSize(value: RefinementContext): PackageResult[int] {.raises: [].} =
+  ## Validate canonical prerequisite sets before exposing or serializing a context.
   # The fixed array must not be indexed using an invalid active count.
   if value.prerequisiteCount < 0 or value.prerequisiteCount > 8:
     return PackageResult[int](status: PackageError.LimitExceeded)
@@ -246,27 +252,27 @@ proc decodeRefinementContext*(input: openArray[byte]): PackageResult[ContextRead
   PackageResult[ContextRead](status: PackageError.None, completed: ContextRead(value: value,
       consumed: cursor))
 
-# Write a previously measured scalar; every caller proves destination capacity and exact field width.
 proc putScalar(value: uint64, width: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Write a previously measured scalar; every caller proves destination capacity and exact field width.
   # E2/E4/E8 fields are always little-endian, independent of compact count encoding.
   for i in 0..<width:
     output[cursor] = byte((value shr (8*i)) and 255)
     inc cursor
 
-# Commit previously validated exact bytes into a proved destination extent.
 proc put(bytes: openArray[byte], output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit previously validated exact bytes into a proved destination extent.
   # No write occurs through this helper until the complete operation passes preflight.
   for octet in bytes:
     output[cursor] = octet
     inc cursor
 
-# Commit only the active canonical prefix of a bounded general natural count.
 proc putNumber(value: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit only the active canonical prefix of a bounded general natural count.
   let encoded = natural.encode(JamNatural(value))
   put(encoded.bytes.toOpenArray(0, int(encoded.len)-1), output, cursor)
 
-# Compare address distances without computing potentially overflowing end addresses.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare address distances without computing potentially overflowing end addresses.
   # Empty ranges borrow no accessible element address.
   if an == 0 or bn == 0:
     return false
@@ -275,8 +281,8 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
   if left <= right: right-left < uint(an) # Measure using the lower source's extent.
   else: left-right < uint(bn) # Reverse the relevant extent for a lower destination.
 
-# Commit a context after independent source validation and whole-operation alias/capacity checks.
 proc putContext(value: RefinementContext, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit a context after independent source validation and whole-operation alias/capacity checks.
   put(value.anchor.bytes, output, cursor)
   putScalar(uint32(value.anchorSlot), 4, output, cursor)
   put(value.stateRoot.bytes, output, cursor)
@@ -320,8 +326,8 @@ proc decodeImportReference*(input: openArray[byte]): PackageResult[ImportRead] {
     return PackageResult[ImportRead](status: PackageError.None, completed: ImportRead(consumed: 34,
       value: packageImport(PackageHash(bytes: fixed[32](input, 0)), index)))
 
-# Write a preflighted import using its nominal selected identity and packed E2 selector.
 proc putImport(value: ImportReference, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Write a preflighted import using its nominal selected identity and packed E2 selector.
   case value.kind
   of ImportKind.Root:
     put(value.root.bytes, output, cursor) # Clear selector retains the direct segment-root identity.
@@ -354,9 +360,9 @@ proc decodeExtrinsicCommitment*(input: openArray[byte]): PackageResult[Commitmen
     value: ExtrinsicCommitment(hash: ExtrinsicHash(fixed[32](input, 0)), length: ExtrinsicLength(
         scalar(input, 32, 4)))))
 
-# Write one previously validated fixed input commitment without checking preimage availability.
 proc putCommitment(value: ExtrinsicCommitment, output: var openArray[byte],
     cursor: var int) {.raises: [].} =
+  ## Write one previously validated fixed input commitment without checking preimage availability.
   put(array[32, byte](value.hash), output, cursor)
   putScalar(uint32(value.length), 4, output, cursor)
 
@@ -372,9 +378,9 @@ proc encodeExtrinsicCommitment*(value: ExtrinsicCommitment, output: var openArra
   putCommitment(value, output, cursor)
   PackageResult[int](status: PackageError.None, completed: cursor)
 
-# Add nonnegative resources by subtraction before addition, preserving strict gas ceilings without overflow.
 proc charge(state: var Budget, imports, exports, extrinsics, bytes: int, refineGas,
     accumulateGas: uint64, config: PackageConfig): PackageError {.raises: [].} =
+  ## Add nonnegative resources by subtraction before addition, preserving strict gas ceilings without overflow.
   # Subtract each bounded count before addition; excessive input never changes the counters.
   if imports > 3072-state.imports or exports > 3072-state.exports:
     return PackageError.LimitExceeded
@@ -398,8 +404,8 @@ proc charge(state: var Budget, imports, exports, extrinsics, bytes: int, refineG
   state.accumulateGas += accumulateGas
   PackageError.None
 
-# Count distinct package references once across all items, separately from explicit prerequisite count.
 proc dependency(state: var Budget, reference: ImportReference): PackageError {.raises: [].} =
+  ## Count distinct package references once across all items, separately from explicit prerequisite count.
   # Direct segment roots do not require a package lookup and consume no dependency slots.
   if reference.kind == ImportKind.Root:
     return PackageError.None
@@ -415,9 +421,9 @@ proc dependency(state: var Budget, reference: ImportReference): PackageError {.r
   inc state.dependencyCount
   PackageError.None
 
-# Scan one item into fixed private metadata without allocating payload/import/extrinsic collections.
 proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
     state: var Budget): PackageResult[ItemLayout] {.raises: [].} =
+  ## Scan one item into fixed private metadata without allocating payload/import/extrinsic collections.
   var layout: ItemLayout = default(ItemLayout)
   layout.start = cursor
   let checked = extent(input, cursor, 1, 54, config.maxBytes)
@@ -490,9 +496,9 @@ proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
   layout.info.consumed = cursor-layout.start
   PackageResult[ItemLayout](status: PackageError.None, completed: layout)
 
-# Validate every typed item field and aggregate cost before capacity checks or serialization.
 proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): PackageResult[
     int] {.raises: [].} =
+  ## Validate every typed item field and aggregate cost before capacity checks or serialization.
   # These ceilings prove all later host arithmetic and loops before reading nested sources.
   if value.payload.len > MaxBundleBytes or value.imports.len > 3072 or value.extrinsics.len > 128 or
       uint64(value.exports) > 3072:
@@ -526,8 +532,8 @@ proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): Pac
       int(natural.encode(JamNatural(value.extrinsics.len)).len)+36*value.extrinsics.len
   PackageResult[int](status: PackageError.None, completed: required)
 
-# Commit an item only after every source, aggregate, capacity and alias check for the whole operation.
 proc putItem(value: WorkItem, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit an item only after every source, aggregate, capacity and alias check for the whole operation.
   putScalar(uint32(value.service), 4, output, cursor)
   put(array[32, byte](value.codeHash), output, cursor)
   putScalar(uint64(value.refineGas), 8, output, cursor)
@@ -542,8 +548,8 @@ proc putItem(value: WorkItem, output: var openArray[byte], cursor: var int) {.ra
   # No hashing, preimage lookup or sequence reordering occurs during commit.
   for commitment in value.extrinsics: putCommitment(commitment, output, cursor)
 
-# Reject overlap against the entire destination, including later nested sources and earlier output fields.
 proc itemAlias(value: WorkItem, output: var openArray[byte], required: int): bool {.raises: [].} =
+  ## Reject overlap against the entire destination, including later nested sources and earlier output fields.
   # Every source sequence was bounded during measureItem before its byte extent is computed.
   template aliases(items: untyped): bool =
     items.len > 0 and overlaps(unsafeAddr items[0], items.len*sizeof(items[0]), addr output[0], required)
@@ -575,8 +581,8 @@ proc encodeWorkItem*(value: WorkItem, config: PackageConfig, output: var openArr
   assert cursor == measured.value
   measured
 
-# Capture only validated bytes; no caller pointer or mutable sequence remains in the immutable owner.
 proc capture(input: openArray[byte], layout: Layout): PackageData {.raises: [].} =
+  ## Capture only validated bytes; no caller pointer or mutable sequence remains in the immutable owner.
   result = PackageData(layout: layout, wire: newSeq[byte](layout.info.consumed))
   # Copy the consumed prefix, excluding unrelated trailing bytes.
   for i in 0..<result.wire.len: result.wire[i] = input[i]
@@ -736,8 +742,8 @@ proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageR
   PackageResult[PackageRead](status: PackageError.None,
     completed: PackageRead(owner: OwnedWorkPackage(data: capture(input, layout)), consumed: cursor))
 
-# Select private retained item coordinates only through their original parent snapshot.
 proc selected(owner: OwnedWorkItem): PackageResult[ItemLayout] {.raises: [].} =
+  ## Select private retained item coordinates only through their original parent snapshot.
   # Defaults carry no validated bytes.
   let data = owner.data
   if data == nil:
@@ -804,9 +810,9 @@ proc extrinsicAt*(owner: OwnedWorkItem, index: int): PackageResult[ExtrinsicComm
   assert parsed.error == PackageError.None
   PackageResult[ExtrinsicCommitment](status: PackageError.None, completed: parsed.value.value)
 
-# Copy one prevalidated private byte interval atomically; offsets never cross the public boundary.
 proc copy(data: PackageData, start, length: int, output: var openArray[byte]): PackageResult[
     int] {.raises: [].} =
+  ## Copy one prevalidated private byte interval atomically; offsets never cross the public boundary.
   # Complete destination before any write.
   if output.len < length:
     return PackageResult[int](status: PackageError.OutputTooSmall)

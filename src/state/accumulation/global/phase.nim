@@ -51,10 +51,12 @@ type
 func error*[T](outcome: AccumulationGlobalPhaseResult[T]): AccumulationGlobalPhaseError =
   ## Inspect only the selected reason without allowing retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationGlobalPhaseResult[T]): T {.inline,
     requires: outcome.status == AccumulationGlobalPhaseError.None.} =
   ## Extract complete immutable ownership only after success.
   outcome.completed
+
 proc prepareAccumulationGlobalPhase*(provisions: PreparedAccumulationProvisionPhase,
     limits: AccumulationGlobalPhaseLimits): AccumulationGlobalPhaseResult[
         PreparedAccumulationGlobalPhase] =

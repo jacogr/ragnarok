@@ -43,16 +43,18 @@ type
 func error*(value: DigestResult): CompositeError =
   ## Read the reason without permitting callers to retag a failure as success.
   value.status
+
 func value*(value: DigestResult): WorkDigest {.inline, requires: value.status ==
     CompositeError.None.} =
   ## A failed digest cannot expose default hashes, service identity or nested work output.
   value.decodedValue
+
 func consumed*(value: DigestResult): int {.inline, requires: value.status == CompositeError.None.} =
   ## Only a complete digest prefix can advance the caller's cursor.
   value.byteConsumed
 
-# Compare pointer differences without overflowing endpoint addition; empty spans never overlap.
 proc digestAlias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [].} =
+  ## Compare pointer differences without overflowing endpoint addition; empty spans never overlap.
   # Empty borrowed/written spans have no bytes in common.
   if alen == 0 or blen == 0: return false
   let left = cast[uint](a)
@@ -61,8 +63,8 @@ proc digestAlias(a: pointer, alen: int, b: pointer, blen: int): bool {.raises: [
   if left <= right: right - left < uint(alen)
   else: left - right < uint(blen) # Reverse the spans when the destination begins first.
 
-# Gather metrics in normative order without treating their nominal public types as interchangeable.
 proc metrics(load: RefineLoad): array[5, uint64] {.raises: [].} =
+  ## Gather metrics in normative order without treating their nominal public types as interchangeable.
   [uint64(load.gasUsed), uint64(load.imports), uint64(load.extrinsicCount),
    uint64(load.extrinsicSize), uint64(load.exports)]
 

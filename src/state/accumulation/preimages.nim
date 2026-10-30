@@ -42,10 +42,12 @@ type
 func error*[T](outcome: AccumulationPreimageResult[T]): AccumulationPreimageError =
   ## Inspect the selected reason without exposing writable tags.
   outcome.status
+
 func value*[T](outcome: AccumulationPreimageResult[T]): T {.inline,
     requires: outcome.status == AccumulationPreimageError.None.} =
   ## Extract only a selected complete success under checked optimized builds.
   outcome.completed
+
 func preimageError*[T](outcome: AccumulationPreimageResult[T]): PreimageTransitionError {.inline,
     requires: outcome.status == AccumulationPreimageError.PreimageFailure.} =
   ## Inspect only a genuine atomic fulfillment refusal.

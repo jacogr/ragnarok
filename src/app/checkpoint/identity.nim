@@ -28,32 +28,40 @@ type
       completed: ApplicationCheckpointIdentity
     else:
       discard # Default or mismatched context carries only its refusal.
+
 func ready*(identity: ApplicationCheckpointIdentity): bool =
   ## Initialization is separate from valid zero-valued roots or timeslots.
   identity.initialized
+
 func error*(outcome: ApplicationCheckpointIdentityResult): ApplicationCheckpointIdentityError =
   ## Inspect refusal without extracting or changing a binding.
   outcome.status
+
 func value*(outcome: ApplicationCheckpointIdentityResult): ApplicationCheckpointIdentity {.inline,
     requires: outcome.status == ApplicationCheckpointIdentityError.None.} =
   ## Failed/default captures cannot expose scalar context for publication.
   outcome.completed
+
 func blockHash*(identity: ApplicationCheckpointIdentity): BlockHash {.inline,
     requires: identity.initialized.} =
   ## The exact sealed-header identity differs from both prior and posterior state roots.
   identity.blockIdentity
+
 func stateRoot*(identity: ApplicationCheckpointIdentity): StateRoot {.inline,
     requires: identity.initialized.} =
   ## This is the selected complete posterior map root, never the header's prior-state field.
   identity.stateCommitment
+
 func slot*(identity: ApplicationCheckpointIdentity): ApplicationCheckpointSlot {.inline,
     requires: identity.initialized.} =
   ## Preserve the selected header/map time without granting disk-generation authority.
   identity.timeslot
+
 func parameters*(identity: ApplicationCheckpointIdentity): Parameters {.inline,
     requires: identity.initialized.} =
   ## Copy the complete immutable scalar tuple, including fields unrelated to Merklization.
   identity.configuration
+
 proc sameApplicationCheckpoint*(left, right: ApplicationCheckpointIdentity): bool =
   ## Root equality alone cannot substitute for exact block, time and complete profile agreement; defaults never match.
   if not left.ready or not right.ready: return false # Zero-filled metadata is not an initialized checkpoint context.
@@ -61,6 +69,7 @@ proc sameApplicationCheckpoint*(left, right: ApplicationCheckpointIdentity): boo
     array[32, byte](left.stateCommitment) == array[32, byte](right.stateCommitment) and
     uint32(left.timeslot) == uint32(right.timeslot) and
     left.configuration.encodeParameters == right.configuration.encodeParameters
+
 proc captureApplicationCheckpointIdentity*(chain: ApplicationChain): ApplicationCheckpointIdentityResult =
   ## Capture from the private canonical pair, proving exact immutable map ownership before retaining only scalars.
   let selected = chain.chainView.bestBlock
@@ -89,13 +98,16 @@ type ApplicationCheckpointEncodingResult* = object ## Failed/default encoding ha
     completed: seq[byte]
   else:
     discard # No failure can masquerade as a complete encoded identity.
+
 func error*(outcome: ApplicationCheckpointEncodingResult): ApplicationCheckpointIdentityError =
   ## Inspect encoding refusal without extracting private bytes.
   outcome.status
+
 func value*(outcome: ApplicationCheckpointEncodingResult): seq[byte] {.inline,
     requires: outcome.status == ApplicationCheckpointIdentityError.None.} =
   ## Only fully encoded and checksummed metadata is exposed as independently owned bytes.
   outcome.completed
+
 proc encodeApplicationCheckpointIdentity*(identity: ApplicationCheckpointIdentity,
     limit: ByteLimit): ApplicationCheckpointEncodingResult =
   ## Prove the fixed allocation ceiling before copying exact scalar fields or invoking the maintained hash primitive.
@@ -126,6 +138,7 @@ proc encodeApplicationCheckpointIdentity*(identity: ApplicationCheckpointIdentit
         index] # Integrity covers the entire versioned scalar tuple, not external authority.
   ApplicationCheckpointEncodingResult(status: ApplicationCheckpointIdentityError.None,
       completed: bytes)
+
 proc decodeApplicationCheckpointIdentity*(bytes: openArray[byte],
     limit: ByteLimit): ApplicationCheckpointIdentityResult =
   ## Decode one exact local representation; initialized metadata remains untrusted until compared with independent caller context.

@@ -41,22 +41,29 @@ type
 
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Open only a local-domain stream descriptor.
+
 proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
   ## Native bind borrows the initialized pathname only during this syscall.
+
 proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
   ## Listen only after the private socket permissions have been installed.
+
 proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
   ## Admit at most one connection per dispatcher turn.
+
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Read at most the remaining bounded request capacity.
+
 proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
   ## Preserve partial write offsets until the one response drains.
+
 proc effectiveUid(): uint32 {.importc: "geteuid", header: "<unistd.h>".}
   ## The parent directory must belong to this effective OS user.
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Process identity is available only through the management schema.
 let
@@ -83,8 +90,10 @@ proc removeSocket(server: ManagementServer) =
 
 proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.error: "ManagementServer owns sockets".}
   ## Copying an aggregate must not duplicate native ownership.
+
 proc `=dup`*(source: ManagementServer): ManagementServer {.error.}
   ## Implicit duplication is forbidden as well as assignment copies.
+
 proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false

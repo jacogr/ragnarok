@@ -75,6 +75,7 @@ type
 func error*[T](r: ProgramResult[T]): ProgramError =
   ## Inspect status without exposing a mutable discriminator.
   r.status
+
 func value*[T](r: ProgramResult[T]): T {.inline, requires: r.status == ProgramError.None.} =
   ## Extract a copied value only after establishing complete success.
   r.completed
@@ -94,35 +95,45 @@ func instructionTargetStartsBlock*(decoded: ProgramResult[Instruction]): bool {.
 func aIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
   ## Widen a bounded scalar coordinate without losing its array-index proof.
   int(slots.aSlot)
+
 func bIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
   ## Read the second bounded coordinate; default copied coordinates are ordinary zero indices.
   int(slots.bSlot)
+
 func dIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
   ## Read the decoded destination coordinate without exposing mutable backing.
   int(slots.dSlot)
+
 func destinationIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
   ## Read the arithmetic destination; non-register instructions/default copied coordinates report zero, never a write authorization.
   int(slots.writeSlot)
+
 func instructionRegisters*(decoded: ProgramResult[Instruction]): RegisterSlots {.inline,
     requires: decoded.status == ProgramError.None.} =
   ## Only a genuine successful decode binds A/B/D and arithmetic-destination coordinates to immutable operand values.
   decoded.completed.registerSlots
+
 func instructionMemoryOperands*(decoded: ProgramResult[Instruction]): MemoryOperands {.inline,
     requires: decoded.status == ProgramError.None.} =
   ## Only a genuine successful decode supplies immutable width, signedness and operand roles; raw copies cannot rebind them.
   decoded.completed.memoryOperands
+
 func width*(operands: MemoryOperands): byte {.inline.} =
   ## Report the decoded byte width; zero denotes a non-memory/default fact, never permission to access bytes.
   operands.widthValue
+
 func isLoad*(operands: MemoryOperands): bool {.inline.} =
   ## Loads write their decoded A only after complete memory preflight succeeds.
   operands.loadingValue
+
 func isSigned*(operands: MemoryOperands): bool {.inline.} =
   ## Only byte/halfword/word loads request explicit high-bit extension.
   operands.signedValue
+
 func base*(operands: MemoryOperands): MemoryBase {.inline.} =
   ## Select the original address register without reclassifying an opcode during execution.
   operands.baseValue
+
 func usesImmediate*(operands: MemoryOperands): bool {.inline.} =
   ## Immediate stores read Y; register stores read original A.
   operands.immediateValue
@@ -173,12 +184,12 @@ func terminatesBlock*(opcode: byte): bool =
   ## Exact set T; a host call suspends execution but does not terminate a basic block.
   opcode in {0'u8, 1'u8, 40'u8, 50'u8, 80'u8..90'u8, 170'u8..175'u8, 180'u8}
 
-# Read a known in-range logical mask bit; callers establish the extent first.
 func marked(bytes: openArray[byte], maskOffset, index: int): bool =
+  ## Read a known in-range logical mask bit; callers establish the extent first.
   (bytes[maskOffset + index div 8] and (1'u8 shl (index mod 8))) != 0
 
-# Infinite one-bit suffix and the 24-byte cap define skip even at the final instruction.
 func distance(bytes: openArray[byte], maskOffset, length, index: int): range[0..24] =
+  ## Infinite one-bit suffix and the 24-byte cap define skip even at the final instruction.
   result = 0
   # Subtraction keeps the boundary check safe without constructing an overflowing endpoint.
   while result < 24 and result < length - index - 1:
@@ -325,27 +336,27 @@ proc jumpTarget*(program: Program, index: JumpIndex): ProgramResult[CodeAddress]
       target = target or (uint64(data.bytes[offset + i]) shl (8 * i))
   ProgramResult[CodeAddress](status: ProgramError.None, completed: CodeAddress(target))
 
-# Read the GP infinite zero suffix, including operands that cross another marked instruction.
 func codeByte(data: ProgramData, index: uint64): byte =
+  ## Read the GP infinite zero suffix, including operands that cross another marked instruction.
   # The suffix is semantic zero padding, not an out-of-bounds memory read.
   if index >= uint64(data.codeLength): return 0
   data.bytes[data.codeOffset + int(index)]
 
-# Fixed-width little endian operand read; at most eight bytes and no shift by 64.
 func unsignedOperand(data: ProgramData, start: uint64, width: int): uint64 =
+  ## Fixed-width little endian operand read; at most eight bytes and no shift by 64.
   result = 0
   # Width and start come from bounded operand equations, never unvalidated blob lengths.
   for i in 0..<width: result = result or (uint64(codeByte(data, start + uint64(i))) shl (8 * i))
 
-# Sign extension is expressed in unsigned bits, avoiding signed conversion overflow.
 func extended(data: ProgramData, start: uint64, width: int): uint64 =
+  ## Sign extension is expressed in unsigned bits, avoiding signed conversion overflow.
   result = unsignedOperand(data, start, width)
   # Empty immediates are zero and full-width immediates need no extension.
   if width > 0 and width < 8 and (result and (1'u64 shl (8 * width - 1))) != 0:
     result = result or (high(uint64) shl (8 * width))
 
-# Signed offsets are at most four bytes; subtraction in int64 preserves negative destinations.
 func offsetOperand(data: ProgramData, start: uint64, width: int): int64 =
+  ## Signed offsets are at most four bytes; subtraction in int64 preserves negative destinations.
   let raw = unsignedOperand(data, start, width)
   result = int64(raw)
   # Unlike register immediates, offsets are mathematical signed displacements, not wrapped PCs.

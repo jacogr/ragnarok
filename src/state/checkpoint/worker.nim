@@ -65,39 +65,50 @@ proc `=wasMoved`*(worker: var CheckpointWorker) {.nodestroy, inline,
   `=wasMoved`(worker.prepared)
   `=wasMoved`(worker.bank)
   `=wasMoved`(worker.identity)
+
 proc `=copy`*(destination: var CheckpointWorker, source: CheckpointWorker) {.error.}
   ## Thread synchronization and the private bank's lock have one composite owner.
+
 proc `=dup`*(source: CheckpointWorker): CheckpointWorker {.error.}
   ## Actual ARC lowering must independently reject composite worker duplication.
+
 proc requireClosed(worker: CheckpointWorker) {.requires: not worker.started.} =
   ## A live native thread cannot outlive its stable owner address or private bank.
   discard
+
 proc `=destroy`*(worker: CheckpointWorker) =
   ## Explicit joined close ends every worker borrow before host-owned buffers and bank paths retire.
   requireClosed(worker)
   `=destroy`(worker.prepared)
   `=destroy`(worker.bank)
   `=destroy`(worker.identity)
+
 func error*(admission: CheckpointAdmission): CheckpointWorkerError =
   ## Observe refusal without granting access to an unowned staged slot.
   admission.status
+
 func value*(admission: CheckpointAdmission): CheckpointTicket {.inline,
     requires: admission.status == CheckpointWorkerError.None.} =
   ## Only successful admission grants the host a ticket.
   admission.ticket
+
 func kind*(completion: CheckpointCompletion): CheckpointCompletionKind =
   ## Default and cancelled work remain distinct from an actual typed bank outcome.
   completion.status
+
 func value*(completion: CheckpointCompletion): CheckpointBankResult[CheckpointHead] {.inline,
     requires: completion.status == CheckpointCompletionKind.Completed.} =
   ## Callers must also check the returned bank outcome before extracting a committed head.
   completion.outcome
+
 func completion*(shutdown: CheckpointShutdown): CheckpointCompletion =
   ## Preserve a possibly committed operation even when native retirement separately fails.
   shutdown.finished
+
 func retirementError*(shutdown: CheckpointShutdown): CheckpointBankError =
   ## None confirms actual idempotent/native close; default shutdown reports Uninitialized.
   shutdown.retirement
+
 proc execute(worker: ptr CheckpointWorker) =
   ## Entire filesystem/metadata activations retire before the thread publishes Done.
   case worker.operation
@@ -112,6 +123,7 @@ proc execute(worker: ptr CheckpointWorker) =
   of CheckpointRequest.Verify:
     worker.outcome = worker.bank.verify(worker.trustedRoot, worker.restoreLimits,
         worker.limit) # All decoded bytes and complete-map ARC owners retire on this thread before Done.
+
 proc run(raw: pointer) =
   ## A condition-driven single thread performs only ordered bank I/O, with no canonical adoption or dispatcher callbacks.
   let worker = cast[ptr CheckpointWorker](raw)
@@ -127,6 +139,7 @@ proc run(raw: pointer) =
     execute(worker)
     acquire(worker.lock)
     worker.phase = CheckpointWorkerPhase.Done # No stack-local buffer/path alias remains active when the host can collect.
+
 proc start*(worker: var CheckpointWorker, prefix: string): CheckpointBankError {.raises.} =
   ## Startup acquires the private cooperative bank before starting one thread at the owner's final address.
   if worker.started: return CheckpointBankError.Busy # Repeated startup cannot replace live synchronization state.
@@ -155,12 +168,14 @@ proc start*(worker: var CheckpointWorker, prefix: string): CheckpointBankError {
   worker.identity = WorkerIdentity(marker: 1) # Fresh host-only identity makes restart generations unambiguous.
   worker.started = true
   CheckpointBankError.None
+
 proc phase*(worker: var CheckpointWorker): CheckpointWorkerPhase =
   ## Host polling reads scalar state only; it never accesses the worker's exclusive buffer or native bank paths.
   if not worker.started: return CheckpointWorkerPhase.Idle
   acquire(worker.lock)
   result = worker.phase
   release(worker.lock)
+
 proc stage*(worker: var CheckpointWorker, prepared: var PreparedCheckpoint,
     operation: CheckpointOperation, expected: CheckpointHead,
         limit: ByteLimit): CheckpointAdmission =
@@ -191,6 +206,7 @@ proc stage*(worker: var CheckpointWorker, prepared: var PreparedCheckpoint,
   worker.phase = CheckpointWorkerPhase.Staged
   CheckpointAdmission(status: CheckpointWorkerError.None,
     ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+
 proc stageHead*(worker: var CheckpointWorker): CheckpointAdmission =
   ## Stage one bounded selector read without touching the filesystem or borrowing a complete state graph.
   if not worker.started: return CheckpointAdmission(status: CheckpointWorkerError.Closed)
@@ -212,6 +228,7 @@ proc stageHead*(worker: var CheckpointWorker): CheckpointAdmission =
   worker.phase = CheckpointWorkerPhase.Staged
   CheckpointAdmission(status: CheckpointWorkerError.None,
     ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+
 proc stageVerification*(worker: var CheckpointWorker, expected: StateRoot,
     limits: StateStoreLimits, limit: ByteLimit): CheckpointAdmission =
   ## Admit independent root trust and scalar recovery budgets without reading disk or retaining a caller's complete map.
@@ -234,10 +251,12 @@ proc stageVerification*(worker: var CheckpointWorker, expected: StateRoot,
   worker.phase = CheckpointWorkerPhase.Staged
   CheckpointAdmission(status: CheckpointWorkerError.None,
     ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+
 func matches(worker: CheckpointWorker, ticket: CheckpointTicket): bool =
   ## Host-only identity comparison runs under the lock and grants no authority to idle or zero-generation tickets.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
       worker.next and worker.phase != CheckpointWorkerPhase.Idle
+
 proc begin*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   ## The explicit staged-to-running transition permits host policy checks before any file I/O begins.
   if not worker.started: return false
@@ -248,6 +267,7 @@ proc begin*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   worker.phase = CheckpointWorkerPhase.Running
   signal(worker.changed)
   true
+
 proc cancel*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   ## Cancel only a matching staged request before dispatch; already dispatched or completed publication is never hidden.
   if not worker.started: return false # Closed/default workers own no cancellable slot.
@@ -259,6 +279,7 @@ proc cancel*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   worker.cancelled = true
   worker.phase = CheckpointWorkerPhase.Done # Keep capacity occupied until explicit matching collection or joined close.
   true
+
 proc peek*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCompletion =
   ## Inspect only a matching Done receipt without releasing its private buffer or acknowledgement capacity.
   if not worker.started: return default(CheckpointCompletion) # Closed/default owners have no observable receipt.
@@ -268,6 +289,7 @@ proc peek*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCo
     return default(CheckpointCompletion) # Foreign/stale/not-ready tickets expose no result.
   if worker.cancelled: return CheckpointCompletion(status: CheckpointCompletionKind.Cancelled)
   CheckpointCompletion(status: CheckpointCompletionKind.Completed, outcome: worker.outcome)
+
 proc retry*(worker: var CheckpointWorker, ticket: CheckpointTicket,
     expected: CheckpointHead): CheckpointAdmission =
   ## Restage only an exact stale-head refusal with the same sole buffer and explicit new expectation; uncertain/successful writes cannot retry implicitly.
@@ -288,6 +310,7 @@ proc retry*(worker: var CheckpointWorker, ticket: CheckpointTicket,
   worker.phase = CheckpointWorkerPhase.Staged # Explicit begin remains required before any new I/O.
   CheckpointAdmission(status: CheckpointWorkerError.None,
     ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+
 proc collect*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
   if not worker.started: return default(CheckpointCompletion)
@@ -305,6 +328,7 @@ proc collect*(worker: var CheckpointWorker, ticket: CheckpointTicket): Checkpoin
   worker.expected = default(CheckpointHead)
   worker.cancelled = false
   worker.phase = CheckpointWorkerPhase.Idle
+
 proc close*(worker: var CheckpointWorker): CheckpointShutdown =
   ## Join before retiring the private buffer/bank; never label an already completed publication as cancelled.
   result = default(CheckpointShutdown) # Initialize the whole aggregate before assigning its independent completion and retirement fields.

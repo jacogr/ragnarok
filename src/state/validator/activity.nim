@@ -61,10 +61,12 @@ type
 func error*[T](outcome: ValidatorActivityResult[T]): ValidatorActivityError =
   ## Inspect the immutable selected reason.
   outcome.status
+
 func value*[T](outcome: ValidatorActivityResult[T]): T {.inline,
     requires: outcome.status == ValidatorActivityError.None.} =
   ## Extract only complete success in checked optimized builds.
   outcome.completed
+
 func populations(current, previous, active, preimages, assurances, reporters: int,
     tickets: uint64, config: ValidatorActivityConfig): bool =
   ## Bound each typed population and reporter-key comparisons before copying or allocating.
@@ -76,6 +78,7 @@ func populations(current, previous, active, preimages, assurances, reporters: in
     uint64(reporters) <= uint64(config.reporters) and reporters <= high(int) div sizeof(
         StateEdKey) and
     uint64(reporters) <= uint64(config.reporterWork) div uint64(active)
+
 proc add(target: var ValidatorCounter, amount: uint64): bool =
   ## Prove the E4 sum in a wider domain before changing private scratch.
   if amount > uint64(high(uint32))-uint64(uint32(target)): return false # Never wrap or clamp a natural statistic.
@@ -168,6 +171,7 @@ proc validatorActivityInfo*(plan: PreparedValidatorActivity): ValidatorActivityR
       status: ValidatorActivityError.Uninitialized)
   ValidatorActivityResult[ValidatorActivityInfo](status: ValidatorActivityError.None,
       completed: data.info)
+
 proc validatorActivitySource*(plan: PreparedValidatorActivity): ValidatorActivityResult[
     AdmittedReports] =
   ## Retain the exact signed source graph independently of caller handles.
@@ -176,6 +180,7 @@ proc validatorActivitySource*(plan: PreparedValidatorActivity): ValidatorActivit
       status: ValidatorActivityError.Uninitialized)
   ValidatorActivityResult[AdmittedReports](status: ValidatorActivityError.None,
       completed: data.source)
+
 proc validatorActivityAt*(plan: PreparedValidatorActivity, epoch: StatisticsEpoch,
     index: StatisticsValidatorIndex): ValidatorActivityResult[ValidatorActivity] =
   ## Copy a fixed row after validating the nominal epoch and full-width ordinal.

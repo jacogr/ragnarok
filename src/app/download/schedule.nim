@@ -45,21 +45,26 @@ type
 proc `=copy`*(destination: var DownloadSchedule, source: DownloadSchedule) {.
     error: "DownloadSchedule owns attempt selection".}
   ## A copied plan could authorize duplicate attempts against the same host peer set.
+
 proc `=dup`*(source: DownloadSchedule): DownloadSchedule {.error.}
   ## Retaining a schedule requires its original owner; immutable attempt certificates remain copyable.
+
 proc `==`*(left, right: DownloadPeerId): bool {.borrow.}
   ## Local peer identities occupy their own domain.
 
 func error*(selection: DownloadSelection): DownloadScheduleError =
   ## Defaults/refusals do not authorize opening a native stream.
   selection.status
+
 func value*(selection: DownloadSelection): DownloadAttempt {.inline,
     requires: selection.status == DownloadScheduleError.None.} =
   ## Extract only a successful lease, never a waiting or failed selection.
   selection.selected
+
 func valid*(attempt: DownloadAttempt): bool =
   ## An absent lease never identifies an active attempt.
   attempt.owner != nil
+
 proc peer*(attempt: DownloadAttempt): DownloadPeerId {.inline, requires: attempt.owner != nil.} =
   ## Read the immutable selected peer, without granting acknowledgement authority to an integer.
   let owner = attempt.owner
@@ -68,6 +73,7 @@ proc peer*(attempt: DownloadAttempt): DownloadPeerId {.inline, requires: attempt
   else:
     assert false, "absent download attempt" # Preserve guarded extraction even without caller contract inference.
     DownloadPeerId(0)
+
 func busy*(schedule: DownloadSchedule): bool =
   ## The host holds this lease through native teardown, preparation backpressure and adoption.
   schedule.active != nil

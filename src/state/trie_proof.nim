@@ -35,17 +35,21 @@ type
 func error*[T](outcome: StateProofResult[T]): StateProofError =
   ## Inspect a reason without authorizing extraction.
   outcome.status
+
 func value*[T](outcome: StateProofResult[T]): T {.inline,
     requires: outcome.status == StateProofError.None.} =
   ## Require explicit success even in optimized checked builds.
   outcome.completed
+
 func valid*(proof: StateProof): bool =
   ## Structural capture alone never establishes commitment or membership.
   proof.data != nil
+
 func len*(proof: StateProof): int =
   ## Defaults have no captured nodes and cannot become empty-trie evidence.
   let data = proof.data
   if data == nil: 0 else: data.nodes.len
+
 proc nodeAt*(proof: StateProof, index: int): StateProofResult[EncodedStateNode] =
   ## Copy one fixed node, with invalid owner/index refusal instead of silent defaults.
   let data = proof.data
@@ -55,6 +59,7 @@ proc nodeAt*(proof: StateProof, index: int): StateProofResult[EncodedStateNode] 
     return StateProofResult[EncodedStateNode](status: StateProofError.InvalidIndex)
   StateProofResult[EncodedStateNode](status: StateProofError.None,
     completed: data.nodes[index])
+
 proc suppliedValue*(proof: StateProof): StateProofResult[seq[byte]] =
   ## Return detached unverified bytes; callers must not interpret them as authenticated state.
   let data = proof.data
@@ -64,6 +69,7 @@ proc suppliedValue*(proof: StateProof): StateProofResult[seq[byte]] =
   for i in 0..<data.value.len:
     copied[i] = data.value[i] # No mutable backing storage escapes the immutable owner.
   StateProofResult[seq[byte]](status: StateProofError.None, completed: copied)
+
 proc captureStateProof*(nodes: openArray[EncodedStateNode], supplied: openArray[byte],
     limits: StateProofLimits): StateProofResult[StateProof] =
   ## Bound and validate every canonical node before publishing one immutable witness.
@@ -96,18 +102,23 @@ proc captureStateProof*(nodes: openArray[EncodedStateNode], supplied: openArray[
 func valid*(lookup: VerifiedStateLookup): bool =
   ## A default lookup never grants access, even if all-zero identities were supplied elsewhere.
   lookup.proof.valid
+
 func present*(lookup: VerifiedStateLookup): bool {.requires: lookup.valid.} =
   ## Presence distinguishes a present-empty value from authenticated absence.
   lookup.found
+
 func root*(lookup: VerifiedStateLookup): StateRoot {.requires: lookup.valid.} =
   ## Preserve complete root identity rather than exposing a partial child commitment.
   lookup.rootIdentity
+
 func key*(lookup: VerifiedStateLookup): StateKey {.requires: lookup.valid.} =
   ## Lookup authority is restricted to the exact requested serialized key.
   lookup.keyIdentity
+
 proc bytes*(lookup: VerifiedStateLookup): seq[byte] {.requires: lookup.valid and lookup.present.} =
   ## Return detached authenticated bytes only for a present value.
   lookup.proof.suppliedValue.value
+
 proc copySlice*(lookup: VerifiedStateLookup, offset, length: uint64,
     limit: ByteLimit): StateProofResult[seq[byte]] =
   ## Copy only an admitted authenticated interval without materializing the whole value; default, proven absence, range and local byte refusal remain distinct.
@@ -126,6 +137,7 @@ proc copySlice*(lookup: VerifiedStateLookup, offset, length: uint64,
   for i in 0..<copied.len:
     copied[i] = data.value[int(offset)+i] # Admitted coordinates fit the original native value; no mutable source storage escapes.
   StateProofResult[seq[byte]](status: StateProofError.None, completed: copied)
+
 proc sameVerifiedLookup*(left, right: VerifiedStateLookup): StateProofResult[bool] =
   ## Compare exact authenticated root/key/presence/value facts without copying payloads, hashing or requiring identical raw witnesses.
   if not left.valid or not right.valid:
@@ -144,10 +156,12 @@ proc sameVerifiedLookup*(left, right: VerifiedStateLookup): StateProofResult[boo
         return StateProofResult[bool](status: StateProofError.None,
             completed: false) # Different payloads never coalesce merely because their length agrees.
   StateProofResult[bool](status: StateProofError.None, completed: true)
+
 func bit(key: StateKey, depth: int): bool =
   ## Internal callers prove 0..247 before selecting an MSB-first key bit.
   let bytes = array[31, byte](key)
   (bytes[depth div 8] and byte(128 shr (depth mod 8))) != 0
+
 proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateKey,
     limits: StateProofLimits): StateProofResult[VerifiedStateLookup] =
   ## Check a complete membership path against caller trust; no supplied root travels inside the proof.
@@ -222,6 +236,7 @@ type
   ProofKey = object ## Fixed private identities retain only indices into synchronously borrowed entries.
     key: StateKey
     index: int
+
 func compare(left, right: ProofKey): int =
   ## Lexicographic key order agrees with MSB-first trie partitions.
   let a = array[31, byte](left.key)
@@ -231,6 +246,7 @@ func compare(left, right: ProofKey): int =
     if a[i] < b[i]: return -1
     if a[i] > b[i]: return 1
   0
+
 func partition(keys: seq[ProofKey], first, stop, depth: int): int =
   ## Locate the first one bit in a sorted range sharing all preceding bits.
   var low = first
@@ -241,6 +257,7 @@ func partition(keys: seq[ProofKey], first, stop, depth: int): int =
     if keys[middle].key.bit(depth): high = middle
     else: low = middle + 1
   low
+
 proc planProof(keys: seq[ProofKey], first, stop, depth: int, selected: bool,
     query: StateKey, limits: StateTrieLimits, proofLimits: StateProofLimits,
     used: var uint64, pathNodes: var int, valueIndex: var int): StateProofError =
@@ -265,6 +282,7 @@ proc planProof(keys: seq[ProofKey], first, stop, depth: int, selected: bool,
   if leftError != StateProofError.None: return leftError
   planProof(keys, middle, stop, depth+1, selected and right,
     query, limits, proofLimits, used, pathNodes, valueIndex)
+
 proc buildProof(entries: openArray[StateEntry], keys: seq[ProofKey], first, stop,
     depth: int, selected: bool, query: StateKey, perValue: ByteLimit,
     path: var seq[EncodedStateNode]): StateProofResult[StateNodeHash] =
@@ -299,6 +317,7 @@ proc buildProof(entries: openArray[StateEntry], keys: seq[ProofKey], first, stop
   if hashed.error != StateLayoutError.None:
     return StateProofResult[StateNodeHash](status: StateProofError.BackendFailure)
   StateProofResult[StateNodeHash](status: StateProofError.None, completed: hashed.value)
+
 proc prepareProofKeys(entries: openArray[StateEntry], mapLimits: StateTrieLimits): StateProofResult[
     seq[ProofKey]] =
   ## Share complete-map preflight without copying values or performing cryptographic work.
@@ -323,6 +342,7 @@ proc prepareProofKeys(entries: openArray[StateEntry], mapLimits: StateTrieLimits
     if compare(keys[i-1], keys[i]) == 0:
       return StateProofResult[seq[ProofKey]](status: StateProofError.DuplicateKey)
   StateProofResult[seq[ProofKey]](status: StateProofError.None, completed: keys)
+
 proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
     mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
   ## Generate from one complete borrowed map; quotas and duplicate keys refuse before hashing.
@@ -363,13 +383,16 @@ type
     lookups: seq[VerifiedStateLookup]
   VerifiedStateProofBatch* = object ## Publication is all-or-neither, including duplicate requested keys.
     data: nil VerifiedBatchData
+
 func len*(batch: VerifiedStateProofBatch): int =
   ## Defaults have no results; an explicit successful empty batch is independently initialized.
   let data = batch.data
   if data == nil: 0 else: data.lookups.len
+
 func valid*(batch: VerifiedStateProofBatch): bool =
   ## Distinguish a valid empty batch from an uninitialized owner.
   batch.data != nil
+
 proc lookupAt*(batch: VerifiedStateProofBatch, index: int): StateProofResult[VerifiedStateLookup] =
   ## An ordinal is interpreted only against its exact retained batch owner.
   let data = batch.data
@@ -378,6 +401,7 @@ proc lookupAt*(batch: VerifiedStateProofBatch, index: int): StateProofResult[Ver
   if index < 0 or index >= data.lookups.len:
     return proofFailure[VerifiedStateLookup](StateProofError.InvalidIndex)
   StateProofResult[VerifiedStateLookup](status: StateProofError.None, completed: data.lookups[index])
+
 proc verifyStateProofs*(queries: openArray[StateProofQuery], expectedRoot: StateRoot,
     limits: StateProofLimits, aggregate: StateProofBatchLimits): StateProofResult[
         VerifiedStateProofBatch] =
@@ -415,13 +439,16 @@ type
     queries: seq[StateProofQuery]
   StateProofSet* = object ## Generated paths preserve repeated keys and independent proof ownership.
     data: nil ProofSetData
+
 func valid*(proofs: StateProofSet): bool =
   ## An explicit empty set differs from a default owner.
   proofs.data != nil
+
 func len*(proofs: StateProofSet): int =
   ## Defaults expose no entries.
   let data = proofs.data
   if data == nil: 0 else: data.queries.len
+
 proc queryAt*(proofs: StateProofSet, index: int): StateProofResult[StateProofQuery] =
   ## Return one copied query bound to the selected generated set ordinal.
   let data = proofs.data
@@ -429,6 +456,7 @@ proc queryAt*(proofs: StateProofSet, index: int): StateProofResult[StateProofQue
   if index < 0 or index >= data.queries.len:
     return proofFailure[StateProofQuery](StateProofError.InvalidIndex)
   StateProofResult[StateProofQuery](status: StateProofError.None, completed: data.queries[index])
+
 proc generateStateProofs*(entries: openArray[StateEntry], queries: openArray[StateKey],
     mapLimits: StateTrieLimits, limits: StateProofLimits,
     aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
@@ -543,6 +571,7 @@ proc byteLength*(lookup: VerifiedStateLookup): int {.requires: lookup.valid and 
 func witness*(lookup: VerifiedStateLookup): StateProof {.requires: lookup.valid.} =
   ## Export the immutable raw witness; another consumer still supplies independent root/key authority.
   lookup.proof
+
 proc suppliedByteLength*(proof: StateProof): StateProofResult[int] =
   ## Inspect unverified transport size without allocating a detached value copy.
   let data = proof.data

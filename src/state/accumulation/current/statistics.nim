@@ -39,18 +39,22 @@ func error*[T](outcome: CurrentAccumulationStatisticsResult[
     T]): CurrentAccumulationStatisticsError =
   ## Inspect the selected reason without permitting mutation.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationStatisticsResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationStatisticsError.None.} =
   ## Extract only complete selected ownership or fixed observations.
   outcome.completed
+
 proc charge(total: var uint64, count, ceiling: uint64): bool =
   ## Prove mathematical count/gas addition against an explicit unsigned ceiling before updating it.
   if total > ceiling or count > ceiling-total: return false # No wrapped statistic can pass as a smaller valid activity value.
   total += count
   true
+
 func compareService(left, right: ServiceStatisticsEntry): int =
   ## Canonical dictionary order depends only on numeric service identity, never provider/entry arrival.
   cmp(uint32(left.service), uint32(right.service))
+
 proc prepareCurrentAccumulationStatistics*(source: CompletedCurrentAccumulationSequence,
     limits: CurrentAccumulationStatisticsLimits): CurrentAccumulationStatisticsResult[
         PreparedCurrentAccumulationStatistics] =

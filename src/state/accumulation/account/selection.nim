@@ -60,10 +60,12 @@ type
 func error*[T](outcome: AccumulationAccountSelectionResult[T]): AccumulationAccountSelectionError =
   ## Inspect the reason without granting result mutation.
   outcome.status
+
 func value*[T](outcome: AccumulationAccountSelectionResult[T]): T {.inline,
     requires: outcome.status == AccumulationAccountSelectionError.None.} =
   ## Extract only complete selected success under checked optimized contracts.
   outcome.completed
+
 proc metadata(state: StateStoreSnapshot, service: ServiceIndex): AccumulationAccountSelectionResult[
     ServiceMetadata] =
   ## Preserve selected absence separately from malformed metadata and require exact canonical width.
@@ -264,6 +266,7 @@ proc accountSelectionInfo*(plan: PreparedAccumulationAccountSelection): Accumula
       status: AccumulationAccountSelectionError.Uninitialized) # No fabricated empty certificate.
   AccumulationAccountSelectionResult[AccumulationAccountSelectionInfo](
       status: AccumulationAccountSelectionError.None, completed: data.info)
+
 proc accountSelectionSource*(plan: PreparedAccumulationAccountSelection): AccumulationAccountSelectionResult[
     PreparedAccumulationAnnulment] =
   ## Retain the exact conflict decisions which authorized every selected row.
@@ -272,6 +275,7 @@ proc accountSelectionSource*(plan: PreparedAccumulationAccountSelection): Accumu
       status: AccumulationAccountSelectionError.Uninitialized) # Defaults retain no source certificate.
   AccumulationAccountSelectionResult[PreparedAccumulationAnnulment](
       status: AccumulationAccountSelectionError.None, completed: data.source)
+
 proc selectedRow(plan: PreparedAccumulationAccountSelection,
     index: AccumulationAccountSelectionIndex): AccumulationAccountSelectionResult[AccountRow] =
   ## Guard full-width ordinals before narrowing and return only independent immutable-handle copies.
@@ -282,6 +286,7 @@ proc selectedRow(plan: PreparedAccumulationAccountSelection,
       status: AccumulationAccountSelectionError.InvalidIndex) # Upper-half ordinals cannot wrap into selected rows.
   AccumulationAccountSelectionResult[AccountRow](status: AccumulationAccountSelectionError.None,
       completed: data.rows[int(uint64(index))])
+
 proc selectedAccountAt*(plan: PreparedAccumulationAccountSelection,
     index: AccumulationAccountSelectionIndex): AccumulationAccountSelectionResult[
     AccumulationAccountSelectionEntry] =
@@ -291,6 +296,7 @@ proc selectedAccountAt*(plan: PreparedAccumulationAccountSelection,
       AccumulationAccountSelectionEntry](status: row.error) # Preserve default/bounds refusal.
   AccumulationAccountSelectionResult[AccumulationAccountSelectionEntry](
       status: AccumulationAccountSelectionError.None, completed: row.value.entry)
+
 proc selectedAccountSnapshotAt*(plan: PreparedAccumulationAccountSelection,
     index: AccumulationAccountSelectionIndex): AccumulationAccountSelectionResult[
     StateStoreSnapshot] =
@@ -300,6 +306,7 @@ proc selectedAccountSnapshotAt*(plan: PreparedAccumulationAccountSelection,
       StateStoreSnapshot](status: row.error) # No map payload on refusal.
   AccumulationAccountSelectionResult[StateStoreSnapshot](
       status: AccumulationAccountSelectionError.None, completed: row.value.accounts)
+
 proc selectedAccountMetadataAt*(plan: PreparedAccumulationAccountSelection,
     index: AccumulationAccountSelectionIndex): AccumulationAccountSelectionResult[ServiceMetadata] =
   ## Copy actual selected metadata; deletion has a typed absent result, never zero metadata.
@@ -310,6 +317,7 @@ proc selectedAccountMetadataAt*(plan: PreparedAccumulationAccountSelection,
       status: AccumulationAccountSelectionError.NoAccount) # Deleted accounts carry no successful value.
   AccumulationAccountSelectionResult[ServiceMetadata](
       status: AccumulationAccountSelectionError.None, completed: row.value.metadata)
+
 proc selectedAccountOutcomeAt*(plan: PreparedAccumulationAccountSelection,
     index: AccumulationAccountSelectionIndex): AccumulationAccountSelectionResult[
     AccumulationOutcome] =

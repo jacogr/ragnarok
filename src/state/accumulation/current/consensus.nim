@@ -43,10 +43,12 @@ type
 func error*[T](outcome: CurrentAccumulationConsensusResult[T]): CurrentAccumulationConsensusError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationConsensusResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationConsensusError.None.} =
   ## Extract only complete success in checked optimized builds.
   outcome.completed
+
 func stateError*[T](outcome: CurrentAccumulationConsensusResult[T]): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationConsensusError.StateFailure.} =
   ## Inspect only a genuine selected complete-map lookup or publication refusal.

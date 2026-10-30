@@ -36,10 +36,12 @@ type
 func error*[T](outcome: ExtrinsicInputsResult[T]): ExtrinsicInputsError =
   ## Inspect the reason without a writable tag.
   outcome.status
+
 func value*[T](outcome: ExtrinsicInputsResult[T]): T
     {.requires: outcome.status == ExtrinsicInputsError.None.} =
   ## Extract only a complete successful alternative.
   outcome.completed
+
 proc extrinsicInputsInfo*(verified: VerifiedExtrinsics): ExtrinsicInputsResult[
     ExtrinsicInputsInfo] =
   ## Copy fixed geometry and accounting without exposing retained mutable storage.
@@ -48,6 +50,7 @@ proc extrinsicInputsInfo*(verified: VerifiedExtrinsics): ExtrinsicInputsResult[
       status: ExtrinsicInputsError.Uninitialized)
   ExtrinsicInputsResult[ExtrinsicInputsInfo](status: ExtrinsicInputsError.None,
       completed: data.info)
+
 proc extrinsicInputsPackage*(verified: VerifiedExtrinsics): ExtrinsicInputsResult[
     OwnedWorkPackage] =
   ## Retain the original manifest; a later consumer must derive its package from this owner.
@@ -56,6 +59,7 @@ proc extrinsicInputsPackage*(verified: VerifiedExtrinsics): ExtrinsicInputsResul
       status: ExtrinsicInputsError.Uninitialized)
   ExtrinsicInputsResult[OwnedWorkPackage](status: ExtrinsicInputsError.None,
       completed: data.package)
+
 proc extrinsicInput*(verified: VerifiedExtrinsics, item: FetchItemIndex,
     index: ExtrinsicInputIndex): ExtrinsicInputsResult[seq[byte]] =
   ## Check full-width ordinals before narrowing, then return an independent byte copy.
@@ -70,6 +74,7 @@ proc extrinsicInput*(verified: VerifiedExtrinsics, item: FetchItemIndex,
   var copied = newSeq[byte](source.len)
   for offset in 0..<source.len: copied[offset] = source[offset] # No borrowed descriptor escapes.
   ExtrinsicInputsResult[seq[byte]](status: ExtrinsicInputsError.None, completed: copied)
+
 proc verifyExtrinsicInputs*(package: OwnedWorkPackage, rows: openArray[seq[seq[byte]]],
     limits: ExtrinsicInputsLimits): ExtrinsicInputsResult[VerifiedExtrinsics] =
   ## Borrow stable tables synchronously; preflight all geometry and budgets before hashing or copying.

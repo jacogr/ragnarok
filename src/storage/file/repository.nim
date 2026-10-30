@@ -40,11 +40,14 @@ type
 
 proc `=copy`*(destination: var FileRepository, source: FileRepository) {.error.}
   ## A file descriptor and its cooperative lock may have only one retirement owner.
+
 proc `=dup`*(source: FileRepository): FileRepository {.error.}
   ## Actual ARC lowering must reject implicit duplication of the composite resource.
+
 proc requireClosed(repository: FileRepository) {.requires: not repository.active.} =
   ## Explicit close is required while native errors can still be handled by the caller.
   discard
+
 proc `=wasMoved`*(repository: var FileRepository) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(repository.managed)
@@ -75,36 +78,45 @@ let wouldBlock {.importc: "EWOULDBLOCK", header: "<errno.h>".}: cint
 let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
 let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
+
 proc closeNative(fd: cint): cint {.importc: "close", cdecl, header: "<unistd.h>".}
   ## Retire a descriptor once through its SDK declaration; even EINTR must never cause a retry.
+
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The real variadic SDK declaration supplies the platform-correct mode ABI.
+
 proc lockNative(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Standard advisory inode locking arbitrates cooperating processes without waiting.
+
 proc lock(fd, operation: cint): cint =
   ## Retry only interrupted operations on the same descriptor; the existing nonblocking flags are unchanged.
   while true:
     let status = lockNative(fd, operation)
     if status == 0 or posix.errno() != interrupted: return status
     # Busy and permanent refusal return immediately; an interrupted unlock still owns this live descriptor.
+
 proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Synchronize explicit file/directory descriptors without changing their namespace.
 
 func error*[T](outcome: FileResult[T]): FileError =
   ## Read the outer publication/lifecycle reason alone.
   outcome.status
+
 func value*[T](outcome: FileResult[T]): T {.inline, requires: outcome.status == FileError.None.} =
   ## Extract only successful publication, retained reads or explicit synchronization receipts.
   outcome.completed
+
 func batchFailure*[T](outcome: FileResult[T]): RepositoryResult[RepositoryView] {.requires:
     outcome.status == FileError.InvalidBatch.} =
   ## Preserve an actual failed in-memory preparation without granting its candidate.
   outcome.batchReason
+
 func frameError*[T](outcome: FileResult[T]): FrameError {.requires: outcome.status ==
     FileError.InvalidFrame.} =
   ## Observe only a selected journal encoding failure.
   outcome.frameReason
+
 proc synchronize(fd: cint): cint =
   ## Retry an interrupted barrier on the same live descriptor; permanent refusal remains uncertain IO.
   while true:
@@ -121,9 +133,11 @@ proc managedOutcome[T](outcome: ManagedResult[T]): FileResult[T] =
   of FileError.InvalidFrame: FileResult[T](status: FileError.InvalidFrame,
       frameReason: outcome.frameError)
   else: FileResult[T](status: outcome.error)
+
 func opened*(repository: FileRepository): bool =
   ## Inspect lifecycle without exposing descriptors or a mutable memory publication handle.
   repository.active
+
 proc parent(path: string): string =
   ## Resolve the actual parent before opening stable descriptors for the synchronous operation.
   var slash = -1
@@ -132,15 +146,18 @@ proc parent(path: string): string =
   if slash < 0: return "." # Bare names use the caller's current directory at open time.
   if slash == 0: return "/"
   path[0..<slash]
+
 proc validPath(path: string): bool =
   ## Refuse empty/C-truncated identities before any native filesystem operation.
   if path.len == 0: return false
   for character in path:
     if character == char(0): return false
   true
+
 proc writeNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "write", cdecl,
     header: "<unistd.h>".}
   ## SDK-header binding preserves signed-long ssize_t results and bounded size_t input extents.
+
 proc writeAll(fd: cint, bytes: openArray[byte]): bool =
   ## Bound each write by actual remaining bytes; zero progress or native refusal terminates.
   var offset = 0
@@ -151,9 +168,11 @@ proc writeAll(fd: cint, bytes: openArray[byte]): bool =
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
+
 proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "read", cdecl,
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
+
 proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
   ## Actual reads decide the extent; bounded regular metadata seeds one directly filled buffer.
   let maximum = min(uint64(limit), uint64(high(int)))
@@ -192,15 +211,18 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
     if uint64(count) > remaining: return FileResult[seq[byte]](status: FileError.LimitExceeded)
     for i in 0..<count: bytes.add(buffer[i])
   FileResult[seq[byte]](status: FileError.None, completed: bytes)
+
 proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Supported native Linux/macOS SDKs use 64-bit off_t; host-bounded extents are proved before conversion.
+
 proc truncateFile(fd: cint, extent: int64): cint =
   ## Retry only EINTR on the same already-authorized extent; repeating that truncation is idempotent.
   while true:
     let status = truncateNative(fd, extent)
     if status == 0 or posix.errno() != interrupted: return status
     # No new generation/root or extent can be chosen while this native owner holds the lease.
+
 proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
   ## Admit only an incomplete final frame, never a complete corrupt frame or oversized length attack.
   let remaining = bytes.len-offset
@@ -320,25 +342,30 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
   descriptor = -1
   directory = -1
   FileError.None
+
 proc initializeFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Explicitly create an absent full-state journal; existing files are never reset or converted.
   acquire(repository, path, chain, limits, true, schema = schema)
+
 proc openFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Strictly reopen every complete frame with the independently selected chain and new ceilings.
   acquire(repository, path, chain, limits, false, schema = schema)
+
 proc recoverFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, expectedGeneration: RepositoryGeneration,
         expectedRoot: StateRoot, schema = StorageSchema.FullNodesV1): FileError =
   ## Explicitly truncate only an incomplete final append after independently verifying its exact durable prefix.
   acquire(repository, path, chain, limits, false, true, expectedGeneration, expectedRoot, schema)
+
 proc snapshot*(repository: FileRepository): FileResult[RepositoryView] =
   ## Uncertain/partial publication requires reopening or explicit recovery before new reads.
   if repository.managedMode: return managedOutcome(repository.managed.snapshot)
   if not repository.active: return FileResult[RepositoryView](status: FileError.Uninitialized)
   if repository.poisoned: return FileResult[RepositoryView](status: FileError.RecoveryRequired)
   FileResult[RepositoryView](status: FileError.None, completed: repository.memory.snapshot.value)
+
 proc close*(repository: var FileRepository): FileError =
   ## Disarm native ownership once and never retry potentially reused descriptors.
   if repository.managedMode:
@@ -357,6 +384,7 @@ proc close*(repository: var FileRepository): FileError =
   let parentRetired = closeNative(directory)
   if released != 0 or retired != 0 or parentRetired != 0: return FileError.IoFailure
   FileError.None
+
 proc publish*(repository: var FileRepository, expected: RepositoryView,
     batch: TrieExport, context: openArray[byte] = []): FileResult[RepositoryView] =
   ## Prepare privately, bound physical growth, append/sync, then adopt the exact prepared view.
@@ -425,12 +453,14 @@ proc chainIdentity*(repository: FileRepository): FileResult[StorageChainId] =
   let selected = repository.snapshot
   if selected.error != FileError.None: return FileResult[StorageChainId](status: selected.error)
   FileResult[StorageChainId](status: FileError.None, completed: repository.chain)
+
 proc storageSchema*(repository: FileRepository): FileResult[StorageSchema] =
   ## Preserve the source's explicitly selected schema across source-preserving migration.
   if not repository.active: return FileResult[StorageSchema](status: FileError.Uninitialized)
   let selected = repository.snapshot
   if selected.error != FileError.None: return FileResult[StorageSchema](status: selected.error)
   FileResult[StorageSchema](status: FileError.None, completed: repository.schema)
+
 proc adoptManaged(repository: var FileRepository, chain: StorageChainId, limits: ManagedLimits,
     schema: StorageSchema) =
   ## Only an already successful managed acquisition grants this facade's scalar lifecycle metadata.
@@ -441,6 +471,7 @@ proc adoptManaged(repository: var FileRepository, chain: StorageChainId, limits:
   repository.managedMode = true
   repository.poisoned = false
   repository.active = true
+
 proc initializeManagedFileRepository*(repository: var FileRepository, path: string,
     chain: StorageChainId, selection: RepositorySelection, context: openArray[byte],
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
@@ -451,6 +482,7 @@ proc initializeManagedFileRepository*(repository: var FileRepository, path: stri
   if reason != FileError.None: return reason
   adoptManaged(repository, chain, limits, schema)
   FileError.None
+
 proc openManagedFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Explicit layout selection never guesses or automatically migrates an existing file.
@@ -459,6 +491,7 @@ proc openManagedFileRepository*(repository: var FileRepository, path: string, ch
   if reason != FileError.None: return reason
   adoptManaged(repository, chain, limits, schema)
   FileError.None
+
 proc recoverManagedFileRepository*(repository: var FileRepository, path: string,
     chain: StorageChainId, limits: ManagedLimits, expectedGeneration: RepositoryGeneration,
         expectedRoot: StateRoot,
@@ -470,6 +503,7 @@ proc recoverManagedFileRepository*(repository: var FileRepository, path: string,
   if reason != FileError.None: return reason
   adoptManaged(repository, chain, limits, schema)
   FileError.None
+
 proc compact*(repository: var FileRepository, expected: RepositoryView,
     roots: openArray[StateRoot]): FileResult[ManagedCompaction] =
   ## Only explicitly selected managed owners support online physical replacement.
@@ -477,6 +511,7 @@ proc compact*(repository: var FileRepository, expected: RepositoryView,
   if not repository.managedMode: return FileResult[ManagedCompaction](
       status: FileError.UnsupportedLayout)
   managedOutcome(repository.managed.compact(expected, roots))
+
 proc managedUsage*(repository: FileRepository): FileResult[ManagedUsage] =
   ## Selected-file extents are available only for an explicitly acquired managed layout.
   if not repository.active: return default(FileResult[ManagedUsage])
@@ -489,6 +524,7 @@ proc discardManagedStaging*(repository: var FileRepository): FileError =
   if not repository.active: return FileError.Uninitialized
   if not repository.managedMode: return FileError.UnsupportedLayout
   repository.managed.discardManagedStaging
+
 proc cleanupRetiredEpoch*(repository: var FileRepository, epoch: ManagedEpoch): FileError =
   ## Explicitly retire one earlier managed pair without scanning or changing the selected revision.
   if not repository.active: return FileError.Uninitialized

@@ -95,8 +95,8 @@ proc quote*(text: string): string =
   ## Compatibility helper for callers needing a quoted JSON string.
   $json(text)
 
-# Decode bounded, unprefixed hex atomically; an empty value is valid only for state values.
 proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
+  ## Decode bounded, unprefixed hex atomically; an empty value is valid only for state values.
   if text.len mod 2 != 0 or text.len div 2 > maximum: return false # Bound before allocation.
   var bytes = newSeq[byte](text.len div 2)
   # Each pair has exactly two hexadecimal digits, excluding prefixes and separators.
@@ -159,8 +159,8 @@ proc configuredGenesis*(text: string, parameters: Parameters,
     i = values[i].next
   captureGenesis(wire, entries, parameters, limits)
 
-# JIP-2 hash strings are canonical padded Base64, preserving exactly 32 bytes.
 proc validHash(text: string): bool =
+  ## JIP-2 hash strings are canonical padded Base64, preserving exactly 32 bytes.
   if text.len != 44 or text[43] != '=': return false # Exact shape bounds decoder work.
   for i in 0..<43:
     if text[i] notin {'A'..'Z', 'a'..'z', '0'..'9', '+',
@@ -168,8 +168,8 @@ proc validHash(text: string): bool =
   let decoded = base64.decode(text)
   decoded.len == 32 and base64.encode(decoded) == text
 
-# Decode canonical padded Base64, including the empty blob, with a pre-allocation byte ceiling.
 proc decodeBlob(text: string, maximum: int, output: var seq[byte]): bool =
+  ## Decode canonical padded Base64, including the empty blob, with a pre-allocation byte ceiling.
   if text.len mod 4 != 0 or text.len > ((maximum + 2) div 3) * 4:
     return false # Bound work before calling the standard decoder.
   var padding = 0
@@ -185,8 +185,8 @@ proc decodeBlob(text: string, maximum: int, output: var seq[byte]): bool =
   for i in 0..<decoded.len: output[i] = byte(decoded[i]) # Publish only complete, validated bytes.
   true
 
-# Parse a JSON integer token without signed conversion, floating point or overflow.
 proc serviceNumber(token: JsonToken, output: var uint32): bool =
+  ## Parse a JSON integer token without signed conversion, floating point or overflow.
   if token.kind != numberValue or token.text.len == 0: return false # IDs require an integer token.
   var number = 0'u32
   # Before each multiply/add, prove the next unsigned-32-bit result remains representable.
@@ -198,25 +198,26 @@ proc serviceNumber(token: JsonToken, output: var uint32): bool =
   output = number
   true
 
-# Parse only the protocol request-length domain; service IDs retain the full unsigned E4 range.
 proc requestLengthNumber(token: JsonToken, output: var uint32): bool =
+  ## Parse only the protocol request-length domain; service IDs retain the full unsigned E4 range.
   var length = 0'u32
   if not serviceNumber(token, length) or length >= high(uint32) - 1:
     return false # Reject reserved selectors before block lookup, hashing or subscription allocation.
   output = length
   true
 
-# Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
 proc descriptor(value: Genesis): JsonValue =
+  ## Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
     ("slot", json(value.slot))])
 
-## Attach one complete value to a block descriptor without splicing serialized object text.
 proc descriptor(value: RpcLightHeader): JsonValue =
+  ## Attach one complete value to a block descriptor without splicing serialized object text.
   ## Trusted light header metadata needs no complete-map provider or state recomputation.
   if not value.valid: return jsonNull() # An unavailable retained header grants no descriptor.
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.identity.blockHash)))),
     ("slot", json(uint64(value.identity.slot)))])
+
 proc lightHeader(head: RpcLightHead, hash: string): RpcLightHeader =
   ## A bounded retained header window contains metadata only, never historical complete state or inferred proofs.
   if not head.valid: return default(RpcLightHeader) # No implicit configured genesis/current fallback.
@@ -225,6 +226,7 @@ proc lightHeader(head: RpcLightHead, hash: string): RpcLightHeader =
     let selected = head.headerAt(index)
     if base64.encode(array[32, byte](selected.identity.blockHash)) == hash: return selected
   default(RpcLightHeader)
+
 proc lightHeadObject(head: RpcLightHead, disk: bool): JsonValue =
   ## Describe current independent trust and local fact coverage without claiming complete state or finality.
   if not head.valid: return jsonNull() # Default metadata never impersonates a zero root.
@@ -238,7 +240,9 @@ proc lightHeadObject(head: RpcLightHead, disk: bool): JsonValue =
       ("cores", json(uint64(profile.cores))), ("authorValidators", json(uint64(
           profile.authorValidators))),
       ("epochSlots", json(uint64(profile.epochSlots)))]))])
+
 proc descriptorValue(value: Genesis, payload: JsonValue): JsonValue =
+  ## Wrap a response value with the selected block hash and slot descriptor.
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
     ("slot", json(value.slot)), ("value", payload)])
 
@@ -267,8 +271,8 @@ proc configuredParameters*(text: string): ParameterResult =
   if not found: return default(ParameterResult)
   decodeParametersHex(encoded)
 
-## Resolve a canonical wire identity through the provider; wire validation never leaks into chain code.
 proc resolveBlock(chain: ChainView, text: string, parent = false): GenesisResult =
+  ## Resolve a canonical wire identity through the provider; wire validation never leaks into chain code.
   var bytes: seq[byte] = @[]
   if not decodeBlob(text, 32, bytes) or bytes.len != 32:
     return unavailableGenesis() # Defensive rejection keeps the typed lookup independent of caller validation.
@@ -279,9 +283,9 @@ proc resolveBlock(chain: ChainView, text: string, parent = false): GenesisResult
     return chain.parentOf(BlockHash(identity)) # Parent descriptors require retained provider evidence.
   chain.blockAt(BlockHash(identity))
 
-# Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
-# Captured C(8)/C(4) supply population, erasure geometry and ticket attempts; missing state uses zero.
 proc parameterObject(parameters: Parameters, genesis: GenesisResult): JsonValue =
+  ## Map the immutable GP fetch tuple to JIP-2 V1 without machine signed/float conversions.
+  ## Captured C(8)/C(4) supply population, erasure geometry and ticket attempts; missing state uses zero.
   const Names: array[Parameter, string] = [
     "deposit_per_item", "deposit_per_byte", "deposit_per_account", "core_count",
     "min_turnaround_period", "epoch_period", "max_accumulate_gas", "max_is_authorized_gas",
@@ -308,23 +312,23 @@ proc parameterObject(parameters: Parameters, genesis: GenesisResult): JsonValue 
   fields.add("segment_piece_count", json(pieces))
   jsonObject([("V1", json(fields))])
 
-## Build a response envelope; id is one validated scalar from the strict request parser.
 proc success(id: string, value: JsonValue): string =
+  ## Build a response envelope; id is one validated scalar from the strict request parser.
   $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)), ("result", value)])
 
-## Construct an error using a validated ID, numeric code and escaped message.
 proc error(id: string, code: int, message: string): string =
+  ## Construct an error using a validated ID, numeric code and escaped message.
   $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)),
     ("error", jsonObject([("code", json(code)), ("message", json(message))]))])
 
-## Include the unavailable resource identity in a complete error object.
 proc unavailable(id: string, code: int, message, hash: string): string =
+  ## Include the unavailable resource identity in a complete error object.
   $jsonObject([("jsonrpc", json("2.0")), ("id", trustedJson(id)),
     ("error", jsonObject([("code", json(code)), ("message", json(message)),
       ("data", json(hash))]))])
 
-## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
 proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
+  ## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
   session.pending[session.pendingCount] = SubscriptionUpdate(identity: identity, text: text)
   inc session.pendingCount
   session.pendingBytes += text.len
@@ -380,6 +384,7 @@ proc completeStateProofImport*(session: var RpcSession, request: RpcProofRequest
   session.enqueueUpdate(SubscriptionId(0), message)
   discard session.proofRequests.finish(request)
   true
+
 proc importControl(values: seq[JsonToken], parameters: int, id: string,
     session: var RpcSession): string =
   ## Canonical bounded Base64 decoding copies untrusted evidence only; cryptographic authentication belongs to the existing CPU worker.
@@ -402,6 +407,7 @@ proc importControl(values: seq[JsonToken], parameters: int, id: string,
   if admitted.error != RpcProofError.None: return error(id, 0,
       "State proof request capacity unavailable") # No partial wire or request identity escapes failed admission.
   success(id, json(admitted.value.id))
+
 proc proofControl(values: seq[JsonToken], parameters: int, methodName, id: string,
     session: var RpcSession): string =
   ## Validate complete selectors and cancellation before changing the tentative session.
@@ -444,8 +450,8 @@ proc proofControl(values: seq[JsonToken], parameters: int, methodName, id: strin
     return error(id, 0, "State proof request capacity unavailable")
   success(id, json(admitted.value.id))
 
-## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
+  ## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
   let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock"
     elif kind == SubscriptionKind.FinalizedBlock: "subscribeFinalizedBlock"
     elif kind == SubscriptionKind.Statistics: "subscribeStatistics"
@@ -461,17 +467,17 @@ proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure
   $jsonObject([("jsonrpc", json("2.0")), ("method", json(methodName)),
     ("params", json(params))])
 
-## Encode validated C(13) once per publication/session; failures never expose a partial result.
 proc statisticsUpdate(head: BlockSnapshot): string =
+  ## Encode validated C(13) once per publication/session; failures never expose a partial result.
   let found = statistics.statistics(head, ByteLimit(MaxBlobReplyBytes))
   if found.error != StatisticsReadError.None:
     return "" # Missing, malformed and oversized statistics all terminate this subscription family.
   $descriptorValue(head, json(base64.encode(found.value.bytes)))
 
-## Encode a validated account, storage value or hash-verified preimage; missing is null, while present empty remains a Blob.
-## The private key is borrowed only for the synchronous read; no state map or value owner is retained.
 proc serviceUpdate(head: BlockSnapshot, service: ServiceIndex, kind: SubscriptionKind,
     key: openArray[byte], hash: ServicePreimageHash): string =
+  ## Encode a validated account, storage value or hash-verified preimage; missing is null, while present empty remains a Blob.
+  ## The private key is borrowed only for the synchronous read; no state map or value owner is retained.
   let found = if kind == SubscriptionKind.ServiceValue:
     services.serviceValue(head, service, key, ByteLimit(MaxBlobReplyBytes))
     elif kind == SubscriptionKind.ServicePreimage:
@@ -486,8 +492,8 @@ proc serviceUpdate(head: BlockSnapshot, service: ServiceIndex, kind: Subscriptio
     return "" # Missing is a valid update; malformed, unsupported or unreadable records are failures.
   $descriptorValue(head, value)
 
-## Serialize a validated fixed history as a JIP-2 slot array, preserving full uint32 values.
 proc requestSlots(history: RequestHistory): JsonValue =
+  ## Serialize a validated fixed history as a JIP-2 slot array, preserving full uint32 values.
   var slots = JsonArray()
   case history.state
   of RequestState.Requested: discard # A requested but unprovided preimage has no timestamps.
@@ -502,9 +508,9 @@ proc requestSlots(history: RequestHistory): JsonValue =
     slots.add(json(uint32(history.restoredAt)))
   json(slots)
 
-## Read one fixed request history; absence is null and malformed or ambiguous state is a failure.
 proc requestUpdate(head: BlockSnapshot, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): string =
+  ## Read one fixed request history; absence is null and malformed or ambiguous state is a failure.
   let found = services.serviceRequest(head, service, hash, length)
   var value = jsonNull()
   if found.error == ServiceReadError.None:
@@ -576,10 +582,10 @@ proc nextUpdate*(session: var RpcSession): string =
     session.pending[index] = session.pending[index + 1] # Shift at most fifteen owned string handles.
   session.pending[session.pendingCount] = default(SubscriptionUpdate) # Release the vacated tail's ownership.
 
-## Validate subscription calls and family-specific cancellation; failed calls leave tables unchanged.
-## Initial snapshots, boolean cancellation and terminal-error removal are documented local policies.
 proc chainSubscription(values: seq[JsonToken], parameters: int, methodName, id: string,
     info: ClientInfo, session: var RpcSession): string =
+  ## Validate subscription calls and family-specific cancellation; failed calls leave tables unchanged.
+  ## Initial snapshots, boolean cancellation and terminal-error removal are documented local policies.
   if parameters >= 0 and values[parameters].kind != arrayValue:
     return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
   let kind = if methodName in ["subscribeStatistics",
@@ -688,9 +694,9 @@ proc chainSubscription(values: seq[JsonToken], parameters: int, methodName, id: 
     session.pendingCount = kept
   success(id, json(found))
 
-## Snapshot connection-local subscription usage without draining queues or retaining selectors.
-## Pending bytes count serialized notification JSON only, excluding transport output and WS framing.
 proc subscriptionUsage(session: RpcSession): JsonValue =
+  ## Snapshot connection-local subscription usage without draining queues or retaining selectors.
+  ## Pending bytes count serialized notification JSON only, excluding transport output and WS framing.
   var best = 0
   var finalized = 0
   for item in session.active:
@@ -726,8 +732,8 @@ proc chainStateInfo(view: ChainView): JsonValue =
       ("maxRetainedBlocks", json(MaxRetainedBlocks)), ("oldestBlock", descriptor(oldest.value)),
       ("finalizedOutsideHistory", json(separate))]))])
 
-# Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
 proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValue =
+  ## Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
   if info.light.valid:
     # Advertise only implemented light metadata/proof capabilities; complete-map/finality subscriptions are distinct unavailable contracts.
     var methods = JsonArray()
@@ -792,9 +798,9 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
           MaxSubscriptionUpdates)),
       ("maxPendingBytes", json(MaxSubscriptionQueueBytes)), ("subscriptionState", usage)]))])
 
-# Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
 proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowance: int,
     session: var RpcSession, stateful: bool): string =
+  ## Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
   if values[start].kind != objectValue: return error("null", -32600, "Invalid Request")
   var id = "null"
   var hasId, version, methodFound, invalid = false
@@ -1107,8 +1113,8 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
         session))
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
-# Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
 proc requestId(values: seq[JsonToken], start: int): string =
+  ## Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
   result = "null"
   if values[start].kind != objectValue: return # Invalid nonobjects have a small null-ID error.
   var i = start + 1
@@ -1122,9 +1128,9 @@ proc requestId(values: seq[JsonToken], start: int): string =
       else: result = "null" # Null and invalid ID types cannot require a longer reservation.
     i = values[i].next
 
-# Bound every method's final response, including fixed methods appearing after large blob results.
 proc dispatch(values: seq[JsonToken], start: int, info: ClientInfo, session: var RpcSession,
     stateful: bool, allowance = MaxReplyBytes): string =
+  ## Bound every method's final response, including fixed methods appearing after large blob results.
   var candidate = session # Fixed arrays and immutable strings isolate tentative subscription changes.
   result = dispatchImpl(values, start, info, allowance, candidate, stateful)
   if result.len > allowance:
@@ -1132,8 +1138,8 @@ proc dispatch(values: seq[JsonToken], start: int, info: ClientInfo, session: var
   else:
     session = candidate # Commit only after the subscription reply fits; no inaccessible phantom IDs.
 
-# Parse and execute one whole message atomically; empty output means a notification-only message.
 proc respondImpl(text: string, info: ClientInfo, session: var RpcSession, stateful: bool): string =
+  ## Parse and execute one whole message atomically; empty output means a notification-only message.
   if text.len == 0 or text.len > MaxMessage or not validUtf8(text): return error("null", -32700, "Parse error")
   var values: seq[JsonToken] = @[]
   if not parseValues(text, values): return error("null", -32700, "Parse error")

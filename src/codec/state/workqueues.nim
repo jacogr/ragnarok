@@ -66,13 +66,14 @@ type
 func error*[T](value: WorkQueueResult[T]): WorkQueueError =
   ## Failure reasons are read-only and cannot authorize values, child handles or progress.
   value.status
+
 func value*[T](value: WorkQueueResult[T]): T {.inline, requires: value.status ==
     WorkQueueError.None.} =
   ## Complete public payloads and private scalar/layout proofs require successful selection.
   value.completed
 
-## Validate positive epoch/native descriptor bounds and supported report profile before traversal.
 proc validate(config: WorkQueueConfig): WorkQueueError =
+  ## Validate positive epoch/native descriptor bounds and supported report profile before traversal.
   if uint64(config.epochSlots) == 0 or uint64(config.cores) < 2 or uint64(config.cores) > 341:
     return WorkQueueError.InvalidConfig # Zero rings and unsupported chain profiles cannot authorize work.
   if uint64(config.epochSlots) > uint64(high(int) div sizeof(ReadyRow)):
@@ -81,8 +82,8 @@ proc validate(config: WorkQueueConfig): WorkQueueError =
     return WorkQueueError.LimitExceeded # Every fixed slot needs at least its variable row's count byte.
   WorkQueueError.None
 
-## Check multiplication/addition before extending a private parent extent or accessing its bytes.
 proc grow(cursor: var int, count: uint64, width: int, config: WorkQueueConfig): WorkQueueError =
+  ## Check multiplication/addition before extending a private parent extent or accessing its bytes.
   if count > uint64((high(int)-cursor) div width):
     return WorkQueueError.LengthOverflow # No native arithmetic wrap.
   cursor += int(count)*width
@@ -90,9 +91,9 @@ proc grow(cursor: var int, count: uint64, width: int, config: WorkQueueConfig): 
     return WorkQueueError.LimitExceeded # All framing and payload bytes consume one parent budget.
   WorkQueueError.None
 
-## Bound each row and aggregate typed storage before loops or input-derived allocation.
 proc chargeItems(count: uint64, width: int, config: WorkQueueConfig,
     total: var uint64): WorkQueueError =
+  ## Bound each row and aggregate typed storage before loops or input-derived allocation.
   if count > uint64(config.perSlot) or count > uint64(config.totalItems)-total:
     return WorkQueueError.LimitExceeded # Subtract remaining aggregate policy rather than overflowing an addition.
   if count > uint64(high(int) div width) or count > uint64(high(int))-total:
@@ -100,8 +101,8 @@ proc chargeItems(count: uint64, width: int, config: WorkQueueConfig,
   total += count
   WorkQueueError.None
 
-## Dependency policy is independent of report count and accumulated-history count policy.
 proc chargeDependencies(count: uint64, config: WorkQueueConfig, total: var uint64): WorkQueueError =
+  ## Dependency policy is independent of report count and accumulated-history count policy.
   if count > uint64(config.perDependencies) or count > uint64(config.totalDependencies)-total:
     return WorkQueueError.LimitExceeded # Bound expensive dependency traversal before reading hashes.
   if count > uint64(high(int) div sizeof(PackageHash)) or count > uint64(high(int))-total:
@@ -109,8 +110,8 @@ proc chargeDependencies(count: uint64, config: WorkQueueConfig, total: var uint6
   total += count
   WorkQueueError.None
 
-## Read a canonical row/dependency count into private parser state, retaining no partial public cursor.
 proc readCount(input: openArray[byte], cursor: var int, config: WorkQueueConfig): WorkQueueResult[uint64] =
+  ## Read a canonical row/dependency count into private parser state, retaining no partial public cursor.
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
@@ -122,21 +123,21 @@ proc readCount(input: openArray[byte], cursor: var int, config: WorkQueueConfig)
     return WorkQueueResult[uint64](status: error) # Count bytes consume parent budget too.
   WorkQueueResult[uint64](status: WorkQueueError.None, completed: uint64(parsed.value))
 
-## Strict octet order is independent of host endian order and rejects equal complete identities.
 proc less(a, b: PackageHash): bool =
+  ## Strict octet order is independent of host endian order and rejects equal complete identities.
   for i in 0..<32:
     if a.bytes[i] != b.bytes[i]:
       return a.bytes[i] < b.bytes[i] # First differing byte decides canonical order.
   false
 
-## Copy one prevalidated hash without retaining its input coordinates.
 proc fixed(input: openArray[byte], offset: int): PackageHash =
+  ## Copy one prevalidated hash without retaining its input coordinates.
   result = default(PackageHash)
   for i in 0..<32: result.bytes[i] = input[offset+i] # Caller proves the complete hash set before this access.
 
-## Validate a full bounded fixed-hash set before reading or capturing any of its members.
 proc scanHashes(input: openArray[byte], cursor: var int, count: uint64,
     config: WorkQueueConfig): WorkQueueError =
+  ## Validate a full bounded fixed-hash set before reading or capturing any of its members.
   let start = cursor
   let error = grow(cursor, count, 32, config)
   if error != WorkQueueError.None:
@@ -148,8 +149,8 @@ proc scanHashes(input: openArray[byte], cursor: var int, count: uint64,
       return WorkQueueError.NonCanonical # Duplicate/descending members invalidate the complete parent.
   WorkQueueError.None
 
-## Preserve nested work-report framing causes without leaking unrelated destination/span errors.
 proc reportError(error: CompositeError): WorkQueueError =
+  ## Preserve nested work-report framing causes without leaking unrelated destination/span errors.
   case error
   of CompositeError.Truncated: WorkQueueError.Truncated # A required nested field is absent.
   of CompositeError.NonCanonical: WorkQueueError.NonCanonical # A child count/set/map has alternate framing.
@@ -158,8 +159,8 @@ proc reportError(error: CompositeError): WorkQueueError =
   of CompositeError.InvalidTag: WorkQueueError.InvalidTag # Unknown nested work-output tag.
   else: WorkQueueError.InvalidReport # No unexpected child status can authorize a default report.
 
-## Scan either fixed ring completely without input-derived allocations or captured child owners.
 proc scan(input: openArray[byte], config: WorkQueueConfig, ready: bool): WorkQueueResult[Layout] =
+  ## Scan either fixed ring completely without input-derived allocations or captured child owners.
   let valid = validate(config)
   if valid != WorkQueueError.None:
     return WorkQueueResult[Layout](status: valid) # Invalid configuration precedes input traversal.
@@ -248,26 +249,26 @@ proc decodeAccumulatedState*(input: openArray[byte], config: WorkQueueConfig): W
     completed: WorkQueueRead[AccumulatedSnapshot](snapshot: AccumulatedSnapshot(data: data),
         consumed: checked.value.consumed))
 
-## Source hash sets must already be strictly ordered; never repair a caller's duplicates/disorder.
 proc ordered(values: openArray[PackageHash]): bool =
+  ## Source hash sets must already be strictly ordered; never repair a caller's duplicates/disorder.
   for i in 1..<values.len:
     if not less(values[i-1], values[i]):
       return false # Even late disorder rejects the whole entry.
   true
 
-## Charge a source count's canonical framing before any selected row/payload validation.
 proc countBytes(cursor: var int, count: int, config: WorkQueueConfig): WorkQueueError =
+  ## Charge a source count's canonical framing before any selected row/payload validation.
   grow(cursor, uint64(natural.encode(JamNatural(count)).len), 1, config)
 
-## Write a previously sized canonical count to the fresh independent parent output.
 proc putCount(output: var seq[byte], cursor: var int, count: int) =
+  ## Write a previously sized canonical count to the fresh independent parent output.
   let encoded = natural.encode(JamNatural(count))
   for i in 0..<encoded.len:
     output[cursor] = encoded.bytes[i] # Whole-source preflight proved destination extent.
     inc cursor
 
-## Write a validated fixed source set without a per-hash length discriminator.
 proc putHashes(output: var seq[byte], cursor: var int, values: openArray[PackageHash]) =
+  ## Write a validated fixed source set without a per-hash length discriminator.
   for value in values:
     for b in value.bytes:
       output[cursor] = b # Destination is fresh and cannot alias retained report storage or source arrays.

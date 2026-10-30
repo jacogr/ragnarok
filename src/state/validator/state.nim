@@ -31,21 +31,22 @@ type
 func error*(outcome: ValidatorStateResult): ValidatorStateError =
   ## Inspect a reason without exposing state or permitting retagging.
   outcome.status
+
 func value*(outcome: ValidatorStateResult): StateStoreSnapshot {.inline,
     requires: outcome.status == ValidatorStateError.None.} =
   ## Extract only a successfully published immutable working-store snapshot.
   outcome.completed
 
-## Preserve actionable codec policy failures while rejecting missing structural validity.
 func codecError(reason: StateComponentError): ValidatorStateError =
+  ## Preserve actionable codec policy failures while rejecting missing structural validity.
   case reason
   of StateComponentError.InvalidConfig: ValidatorStateError.InvalidConfig # Invalid caller profile.
   of StateComponentError.LimitExceeded: ValidatorStateError.LimitExceeded # Explicit local work policy.
   of StateComponentError.LengthOverflow: ValidatorStateError.LengthOverflow # No unsafe native narrowing.
   else: ValidatorStateError.InvalidState # No malformed/default chapter can become a roster.
 
-## Translate complete-map errors without replacing a missing value with fabricated genesis state.
 func storeError(reason: StateStoreError): ValidatorStateError =
+  ## Translate complete-map errors without replacing a missing value with fabricated genesis state.
   case reason
   of StateStoreError.Uninitialized: ValidatorStateError.Uninitialized # Default store has no state.
   of StateStoreError.MissingKey: ValidatorStateError.MissingState # Every required chapter must exist.
@@ -54,8 +55,8 @@ func storeError(reason: StateStoreError): ValidatorStateError =
   of StateStoreError.BackendFailure: ValidatorStateError.BackendFailure # Hash refusal publishes nothing.
   else: ValidatorStateError.InvalidState # Other store errors cannot describe this fixed valid batch.
 
-## Preserve planner failures; this stage never treats a rejected plan as an unchanged successful block.
 func planError(reason: ValidatorRotationError): ValidatorStateError =
+  ## Preserve planner failures; this stage never treats a rejected plan as an unchanged successful block.
   case reason
   of ValidatorRotationError.InvalidConfig: ValidatorStateError.InvalidConfig # Invalid profile/epoch.
   of ValidatorRotationError.InvalidSlot: ValidatorStateError.InvalidSlot # Strict forward slot ordering.
@@ -64,8 +65,8 @@ func planError(reason: ValidatorRotationError): ValidatorStateError =
   of ValidatorRotationError.LengthOverflow: ValidatorStateError.LengthOverflow # Native extent refusal.
   else: ValidatorStateError.InvalidState # Default/bad source owners have no usable posterior plan.
 
-## Copy a codec-validated bounded roster into caller-private records, never exporting retained storage.
 proc records(owner: ValidatorStateSnapshot): seq[StateValidator] =
+  ## Copy a codec-validated bounded roster into caller-private records, never exporting retained storage.
   result = newSeq[StateValidator](validatorCount(owner).value)
   for i in 0..<result.len:
     result[i] = validatorAt(owner, StateValidatorIndex(uint64(i))).value # Stable owner-bound fixed copy.

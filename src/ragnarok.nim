@@ -30,8 +30,8 @@ proc writeFailure(logger: var Logger, message: string) =
   close(logger)
   stderr.writeLine(message)
 
-# CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =
+  ## CLI entry point returns through all normal ARC/native teardown before process exit.
   var logger = default(Logger)
   var shutdownWriter = default(LogWriter)
   try:

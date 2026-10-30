@@ -28,32 +28,40 @@ type
       fileReason: AtomicFileError
     else:
       discard # Header/limit/native failures expose no partially trusted input.
+
 func ready*(trust: TrustedApplicationCheckpoint): bool =
   ## Default zero-filled context cannot activate recovery.
   trust.initialized
+
 func identity*(trust: TrustedApplicationCheckpoint): ApplicationCheckpointIdentity {.inline,
     requires: trust.initialized.} =
   ## Return only fixed copied context; sealed bytes remain private.
   trust.context
+
 func sealedHeaderLength*(trust: TrustedApplicationCheckpoint): int =
   ## Observe bounded transport size without exposing private wire storage or granting a default owner authority.
   if trust.initialized: trust.sealed.len else: 0
+
 proc copySealedHeader*(trust: TrustedApplicationCheckpoint, output: var openArray[byte]): bool =
   ## Copy into independent caller storage only after full capacity admission; defaults/short buffers leave output unchanged.
   if not trust.initialized or output.len < trust.sealed.len: return false
   for index, octet in trust.sealed: output[index] = octet # Capture already detached this immutable wire from the original caller.
   true
+
 func error*(outcome: CheckpointTrustResult): CheckpointTrustError =
   ## Observe capture refusal without payload extraction.
   outcome.status
+
 func value*(outcome: CheckpointTrustResult): TrustedApplicationCheckpoint {.inline,
     requires: outcome.status == CheckpointTrustError.None.} =
   ## Failed/default capture never grants operator authority.
   outcome.completed
+
 func identityError*(outcome: CheckpointTrustResult): ApplicationCheckpointIdentityError {.inline,
     requires: outcome.status == CheckpointTrustError.IdentityFailure.} =
   ## Preserve only actual canonical identity decoding errors.
   outcome.identityReason
+
 proc captureHeader(context: ApplicationCheckpointIdentity,
     sealedHeader: openArray[byte]): CheckpointTrustResult =
   ## Both input paths validate identity once and share the exact bounded hash/copy boundary.
@@ -70,6 +78,7 @@ proc captureHeader(context: ApplicationCheckpointIdentity,
   CheckpointTrustResult(status: CheckpointTrustError.None,
     completed: TrustedApplicationCheckpoint(initialized: true, context: context,
         sealed: owned))
+
 proc captureCheckpointTrust*(identityBytes, sealedHeader: openArray[byte],
     limit: ByteLimit): CheckpointTrustResult =
   ## The caller explicitly selects these bytes as trusted; do not pass metadata extracted from an untrusted checkpoint.
@@ -84,10 +93,12 @@ proc captureCheckpointTrust*(identityBytes, sealedHeader: openArray[byte],
     return CheckpointTrustResult(status: CheckpointTrustError.IdentityFailure,
       identityReason: context.error)
   captureHeader(context.value, sealedHeader)
+
 proc decodeTrustedCheckpoint*(bytes: openArray[byte], trust: TrustedApplicationCheckpoint,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationRecoveryResult =
   ## Borrow exact captured inputs synchronously; a default owner reaches recovery's MissingTrust gate first.
   decodeRecoveryCheckpoint(bytes, trust.sealed, trust.context, limits, limit)
+
 proc loadTrustedCheckpoint*(path: string, trust: TrustedApplicationCheckpoint,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationRecoveryResult =
   ## File recovery cannot reread or substitute trusted identity/header bytes after capture.
@@ -97,6 +108,7 @@ func fileError*(outcome: CheckpointTrustResult): AtomicFileError {.inline,
     requires: outcome.status == CheckpointTrustError.FileFailure.} =
   ## Preserve only an actual independently selected input-file refusal.
   outcome.fileReason
+
 proc loadCheckpointTrust*(identityPath, headerPath: string,
     limit: ByteLimit): CheckpointTrustResult =
   ## Startup reads fixed canonical identity first, then one bounded header; neither path is the checkpoint being restored.

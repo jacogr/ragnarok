@@ -58,33 +58,42 @@ type
 proc `=copy`*(destination: var CurrentSync, source: CurrentSync) {.error:
     "CurrentSync owns stable callbacks and an exclusive Services borrow".}
   ## Copying would duplicate callback addresses and canonical receipt consumption.
+
 proc `=dup`*(source: CurrentSync): CurrentSync {.error.}
   ## Composite ownership is explicit even when a nested dispatcher is already non-copyable.
 
 func stage*(progress: CurrentSyncProgress): CurrentSyncStage =
   ## Defaults and closed hosts carry no readiness.
   progress.status
+
 func localHead*(progress: CurrentSyncProgress): AnnouncedBlock =
   ## This scalar is descriptive; only the host's validated startup/adoption can change it.
   progress.local
+
 func hasTarget*(progress: CurrentSyncProgress): bool =
   ## Missing live evidence has no extractable target.
   progress.targetKnown
+
 func target*(progress: CurrentSyncProgress): AnnouncedBlock {.requires: progress.targetKnown.} =
   ## A peer target remains untrusted even when its hash is reached locally.
   progress.target
+
 func adoptedBlocks*(progress: CurrentSyncProgress): uint64 =
   ## Count installed children, independently of their possibly sparse slot numbers.
   progress.adopted
+
 func liveSources*(progress: CurrentSyncProgress): int =
   ## Count fresh authenticated sources with nonempty target evidence.
   progress.sources
+
 func fullReady*(progress: CurrentSyncProgress): bool =
   ## This copied observation is only current as of its producing host tick.
   progress.status == CurrentSyncStage.CaughtUp
+
 func lightReady*(progress: CurrentSyncProgress): bool =
   ## Full execution provides no independent light trust certificate.
   false
+
 func progress*(sync: CurrentSync): CurrentSyncProgress =
   ## Copy fixed metadata only; canonical graphs and callbacks stay with their owners.
   sync.progress
@@ -144,6 +153,7 @@ proc configure*(sync: var CurrentSync, owner: var Services, peers: seq[DownloadP
     now: CurrentDownloadLoopTick): CurrentSyncError =
   ## Raw current operation preserves the existing full-state admission gates.
   sync.configure(owner, peers, older, limits, now, default(CurrentLogicalDownloadPolicy), false)
+
 proc configure*(sync: var CurrentSync, owner: var Services, peers: seq[DownloadPeerId],
     older: seq[OwnedHeader], limits: CurrentSyncLimits, now: CurrentDownloadLoopTick,
     logical: CurrentLogicalDownloadPolicy): CurrentSyncError =
@@ -313,13 +323,16 @@ proc close*(sync: var CurrentSync) =
 proc ancestorDemand*(sync: CurrentSync): CurrentDownloadSessionResult[ReportLookupDemand] =
   ## Only the dispatcher's genuinely suspended current input can authorize acquisition.
   sync.dispatcher.ancestorDemand
+
 proc ancestorRemaining*(sync: CurrentSync, now: CurrentDownloadLoopTick): uint64 =
   ## Retain the original attempt deadline across all bounded acquisition rounds.
   sync.dispatcher.ancestorRemaining(now)
+
 proc ancestors*(sync: CurrentSync): seq[OwnedHeader] =
   ## Caller uses this bounded immutable context only while workers and child peers are retired.
   result = @[]
   for ancestor in sync.older: result.add(ancestor)
+
 proc resumeAncestors*(sync: var CurrentSync, older: seq[OwnedHeader],
     now: CurrentDownloadLoopTick): CurrentSyncError =
   ## The dispatcher validates the complete replacement before the suspended input resumes.

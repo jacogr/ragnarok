@@ -28,21 +28,22 @@ type
 func error*(outcome: SealerScheduleResult): SealerScheduleError =
   ## Inspect a read-only reason without granting access to candidate storage or retagging.
   outcome.status
+
 func value*(outcome: SealerScheduleResult): SafroleStateSnapshot {.inline,
     requires: outcome.status == SealerScheduleError.None.} =
   ## Extract the immutable candidate only after selecting successful schedule construction.
   outcome.completed
 
-## Preserve policy/extent failures; other codec reasons identify invalid serialized input.
 func codecError(reason: StateComponentError): SealerScheduleError =
+  ## Preserve policy/extent failures; other codec reasons identify invalid serialized input.
   case reason
   of StateComponentError.InvalidConfig: SealerScheduleError.InvalidConfig # Caller policy cannot describe a chain.
   of StateComponentError.LimitExceeded: SealerScheduleError.LimitExceeded # Local ceiling is not a protocol rejection.
   of StateComponentError.LengthOverflow: SealerScheduleError.LengthOverflow # No unchecked native allocation/narrowing.
   else: SealerScheduleError.InvalidState # Missing/truncated/invalid values cannot become an empty contest.
 
-## Validate strict identifier order without sorting, deduplication or attempt-based tie breaking.
 proc canonical(owner: SafroleStateSnapshot, count: int): bool =
+  ## Validate strict identifier order without sorting, deduplication or attempt-based tie breaking.
   for i in 1..<count:
     let left = array[32, byte](accumulatedTicketAt(owner, SafroleStateIndex(uint64(i-1))).value.id)
     let right = array[32, byte](accumulatedTicketAt(owner, SafroleStateIndex(uint64(i))).value.id)

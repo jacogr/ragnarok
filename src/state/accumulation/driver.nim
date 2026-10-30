@@ -49,41 +49,50 @@ type
 func stoppedKind*(source: StoppedAccumulation): StoppedAccumulationKind =
   ## Inspect initialized terminal provenance without permitting retagging.
   source.selection
+
 func stoppedContinuation*(source: StoppedAccumulation): CompletedAccumulationContinuation {.inline,
     requires: source.selection == StoppedAccumulationKind.Continuation.} =
   ## Retain only a genuinely stopped first continuation, compatible with existing finalization.
   source.continuation
+
 func stoppedReentry*(source: StoppedAccumulation): CompletedAccumulationReentry {.inline,
     requires: source.selection == StoppedAccumulationKind.Reentry.} =
   ## Retain only a genuinely stopped reentry and its acyclic completed history.
   source.reentry
+
 func error*(outcome: AccumulationDriverResult): AccumulationDriverError =
   ## Inspect the selected reason without exposing writable variant storage.
   outcome.status
+
 func value*(outcome: AccumulationDriverResult): StoppedAccumulation {.inline,
     requires: outcome.status == AccumulationDriverError.None.} =
   ## Extract only selected complete success; depth exhaustion never authorizes this accessor.
   outcome.completed
+
 func selectionFailure*(outcome: AccumulationDriverResult):
     AccumulationContinuationResult[PreparedAccumulationContinuation] {.inline,
     requires: outcome.status == AccumulationDriverError.SelectionFailure.} =
   ## Inspect the actual failed prefix selection, including the outgoing-transfer gate.
   outcome.selectionReason
+
 func inputFailure*(outcome: AccumulationDriverResult):
     AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs] {.inline,
     requires: outcome.status == AccumulationDriverError.InputFailure.} =
   ## Inspect actual selected-range/input/private batch refusal with its existing guarded children.
   outcome.inputReason
+
 func continuationFailure*(outcome: AccumulationDriverResult):
     AccumulationLaterRunnerResult[CompletedAccumulationContinuation] {.inline,
     requires: outcome.status == AccumulationDriverError.ContinuationFailure.} =
   ## Retain the failed continuation runner result, including engine and batch/provision reasons.
   outcome.continuationReason
+
 func reentryPreparationFailure*(outcome: AccumulationDriverResult):
     AccumulationReentryResult[PreparedAccumulationReentry] {.inline,
     requires: outcome.status == AccumulationDriverError.ReentryPreparationFailure.} =
   ## Retain the actual refused next-entry preparation without an earlier successful state.
   outcome.preparationReason
+
 func reentryExecutionFailure*(outcome: AccumulationDriverResult):
     AccumulationLaterRunnerResult[CompletedAccumulationReentry] {.inline,
     requires: outcome.status == AccumulationDriverError.ReentryExecutionFailure.} =

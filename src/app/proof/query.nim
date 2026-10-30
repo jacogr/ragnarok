@@ -49,21 +49,26 @@ type
       viewReason: ProofViewError
     else:
       discard                   # Default and admission refusals have reasons alone.
+
 func error*[T](outcome: ProofQueryResult[T]): ProofQueryError =
   ## Read a reason without authorizing payload access.
   outcome.status
+
 func value*[T](outcome: ProofQueryResult[T]): T {.inline, requires: outcome.status ==
     ProofQueryError.None.} =
   ## Select only successful immutable payloads in checked optimized builds.
   outcome.completed
+
 func proofError*[T](outcome: ProofQueryResult[T]): StateProofError {.requires: outcome.status ==
     ProofQueryError.ProofFailure.} =
   ## Preserve precise generation/authentication failure without exposing a response prefix.
   outcome.proofReason
+
 func serviceError*[T](outcome: ProofQueryResult[T]): ServiceProofError {.requires: outcome.status ==
     ProofQueryError.ServiceFailure.} =
   ## Inspect only an actual semantic-view/encoding refusal.
   outcome.serviceReason
+
 func viewError*[T](outcome: ProofQueryResult[T]): ProofViewError {.requires:
     outcome.status == ProofQueryError.ViewFailure.} =
   ## Generic planned-view failures retain their exact reason without exposing a response prefix.
@@ -72,6 +77,7 @@ func viewError*[T](outcome: ProofQueryResult[T]): ProofViewError {.requires:
 func valid*(query: ProofQuery): bool =
   ## Default requests grant neither selected-state access nor work authority.
   query.data != nil
+
 proc blockHash*(query: ProofQuery): BlockHash {.requires: query.data != nil.} =
   ## Retain exact selected block identity independently of transport framing.
   let data = query.data
@@ -79,6 +85,7 @@ proc blockHash*(query: ProofQuery): BlockHash {.requires: query.data != nil.} =
   case data.source
   of QuerySourceKind.Full: data.selected.value.blockHash
   of QuerySourceKind.Light: data.partial.current.value.identity.blockHash # Trusted metadata is independent of partial fact coverage.
+
 proc stateRoot*(query: ProofQuery): StateRoot {.requires: query.data != nil.} =
   ## The selected posterior commitment never substitutes its header's prior-state root.
   let data = query.data
@@ -86,11 +93,13 @@ proc stateRoot*(query: ProofQuery): StateRoot {.requires: query.data != nil.} =
   case data.source
   of QuerySourceKind.Full: data.selected.value.stateRoot
   of QuerySourceKind.Light: data.partial.stateRoot # A partial mapping never recomputes the complete JAM state root.
+
 proc estimatedHashes*(query: ProofQuery): ProofHashLimit {.requires: query.data != nil.} =
   ## Expose the conservative admission bound, not a measured backend counter.
   let data = query.data
   assert data != nil
   data.hashes
+
 proc captureProofQueryImpl(selected: BlockSnapshotResult, plan: StateProofPlan,
     limits: ProofQueryLimits, serviceCompatibility: bool): ProofQueryResult[ProofQuery] =
   ## Inspect cached complete-map counts and fixed plan metadata before allocation or hash work.
@@ -131,6 +140,7 @@ proc captureProofQuery*(selected: BlockSnapshotResult, plan: StateProofPlan,
     limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
   ## Generic global/service requests keep exact planned-view failure reasons.
   captureProofQueryImpl(selected, plan, limits, false)
+
 proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
     limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
   ## Preserve legacy service-result spelling while using the same detached generic plan owner.
@@ -157,10 +167,12 @@ proc captureLightQuery(head: LightApplicationHead, plan: StateProofPlan,
     completed: ProofQuery(data: QueryData(source: QuerySourceKind.Light, partial: head,
       plan: detached.value, limits: limits, hashes: ProofHashLimit(0),
           serviceCompatibility: serviceCompatibility)))
+
 proc captureProofQuery*(head: LightApplicationHead, plan: StateProofPlan,
     limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
   ## Project only already verified retained facts under independently trusted current metadata.
   captureLightQuery(head, plan, limits, false)
+
 proc captureProofQuery*(head: LightApplicationHead, plan: ServiceProofPlan,
     limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
   ## Preserve the established service error spelling while retaining a distinct partial source.
@@ -173,23 +185,28 @@ type
     wire: seq[byte]
   ProofResponse* = object ## Explicit identities describe the response; callers still select trust independently.
     data: nil ResponseData
+
 func valid*(response: ProofResponse): bool =
   ## A default response never impersonates a successful empty envelope.
   response.data != nil
+
 proc blockHash*(response: ProofResponse): BlockHash {.requires: response.data != nil.} =
   ## Return fixed selected identity after successful response selection.
   let data = response.data
   assert data != nil
   data.identity
+
 proc stateRoot*(response: ProofResponse): StateRoot {.requires: response.data != nil.} =
   ## Preserve the posterior root used for generation and local verification.
   let data = response.data
   assert data != nil
   data.root
+
 func byteLength*(response: ProofResponse): int =
   ## Fixed metadata inspection allocates no wire copy; defaults have no bytes.
   let data = response.data
   if data == nil: 0 else: data.wire.len
+
 proc bytes*(response: ProofResponse, limit: ByteLimit): ProofQueryResult[seq[byte]] =
   ## Apply the consumer's own copy budget before returning detached mutable bytes.
   let data = response.data
@@ -200,6 +217,7 @@ proc bytes*(response: ProofResponse, limit: ByteLimit): ProofQueryResult[seq[byt
   var copied = newSeq[byte](data.wire.len)
   for i in 0..<copied.len: copied[i] = data.wire[i]
   ProofQueryResult[seq[byte]](status: ProofQueryError.None, completed: copied)
+
 proc viewFailure(data: QueryData, reason: ProofViewError): ProofQueryResult[ProofResponse] =
   ## Generic callers retain view errors; existing service callers keep their established typed alternatives.
   if not data.serviceCompatibility:
@@ -242,6 +260,7 @@ proc executeLightQuery(data: QueryData): ProofQueryResult[ProofResponse] {.requi
   ProofQueryResult[ProofResponse](status: ProofQueryError.None,
     completed: ProofResponse(data: ResponseData(identity: data.partial.current.value.identity.blockHash,
       root: data.partial.stateRoot, wire: encoded.value)))
+
 proc executeProofQuery*(query: ProofQuery): ProofQueryResult[ProofResponse] =
   ## Run bounded complete-map generation/authentication or verified partial projection, then encode outside dispatcher callbacks.
   let data = query.data

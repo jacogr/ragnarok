@@ -9,28 +9,42 @@ when defined(ragnarokBrowser):
   import ./rpc
   import ../app/cli/defaults as cli_defaults
 
-  # Browser bindings touch textContent only; backend strings never become executable HTML.
   proc text(id, value: string) {.importjs: "document.getElementById(#).textContent = #".}
+    ## Browser bindings touch textContent only; backend strings never become executable HTML.
+
   proc disabled(id: string, value: bool) {.importjs: "document.getElementById(#).disabled = #".}
+    ## Set a browser control's disabled state by its element identity.
+
   proc input(id: string): string {.importjs: "document.getElementById(#).value".}
+    ## Read the current text value of the selected browser input.
+
   proc clicked(id: string, action: Action) {.importjs: "document.getElementById(#).addEventListener('click', #)".}
+    ## Register the supplied action for click events on the selected browser control.
+
   proc defaultEndpoint(port: string): string {.importjs: "'ws://' + location.hostname + ':' + # + '/'".}
+    ## Build the page-host WebSocket endpoint using the configured RPC port.
+
   proc inputValue(id, value: string) {.importjs: "document.getElementById(#).value = #".}
+    ## Replace the selected browser input's text value.
+
   proc formatted(message: string): string {.importjs: """
     ((s) => { try { return JSON.stringify(JSON.parse(s), null, 2); } catch (_) { return s; } })(#)
   """.}
+    ## Pretty-print valid JSON for display, preserving the original text when parsing fails.
+
   proc field(message, name: string): string {.importjs: """
     ((s, key) => { try { const value = JSON.parse(s).result[key];
       return typeof value === 'string' || typeof value === 'number' ? String(value) : '—';
     } catch (_) { return '—'; } })(#, #)
   """.}
+    ## Read a printable scalar result field, using a placeholder for absent or invalid values.
 
   var initialized {.threadvar.}: bool
   var connected {.threadvar.}: bool
   var responses {.threadvar.}: int
 
-  # One-shot results are independent of every other outstanding call or subscription stream.
   proc infoReply(identity: int, status: RpcStatus, message: string) =
+    ## One-shot results are independent of every other outstanding call or subscription stream.
     case status
     of RpcStatus.Success:
       text("response", formatted(message))
@@ -48,30 +62,33 @@ when defined(ragnarokBrowser):
     else:
       discard # Connection lifecycle owns disconnect/error display after settling pending calls.
 
-  # Refresh can run while earlier calls or subscription updates are in flight.
   proc requestInfo() =
+    ## Refresh can run while earlier calls or subscription updates are in flight.
     if not connected: return
     let identity = call("ragnarok_clientInfo", "[]", infoReply)
     if connected:
       text("status", (if identity != 0: "Reading client info…" else: "Too many pending requests"))
 
-  # Connection callbacks own only DOM state; rpc.nim retires all request and stream callbacks.
   proc opened() =
+    ## Connection callbacks own only DOM state; rpc.nim retires all request and stream callbacks.
     connected = true
     disabled("refresh", false)
     text("status", "Connected")
     requestInfo()
 
   proc closed(status: RpcStatus) =
+    ## Mark the UI disconnected and disable refresh after socket closure or connection failure.
     connected = false
     disabled("refresh", true)
     text("status", (if status == RpcStatus.ConnectionClosed: "Disconnected" else: "Connection failed"))
 
   proc disconnect() =
+    ## Close the RPC connection and reset the displayed connection state.
     closeRpc()
     closed(RpcStatus.ConnectionClosed)
 
   proc connect() =
+    ## Replace the old connection after bounded endpoint validation and update its UI status.
     disconnect() # A replacement socket starts with no outstanding calls or subscriptions.
     let endpoint = input("endpoint")
     if endpoint.len == 0 or endpoint.len > 1024:

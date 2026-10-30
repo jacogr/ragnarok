@@ -18,17 +18,21 @@ type
     case hasCompletion: bool
     of true: completed: OffloadCompletion
     of false: discard
+
 func ready*(value: OffloadPollResult): bool =
   ## Select readiness without permitting forged completions or public discriminator mutation.
   value.hasCompletion
+
 func completion*(value: OffloadPollResult): OffloadCompletion {.inline,
     requires: value.hasCompletion.} =
   ## A pending/default poll has no readable completion; callers must establish readiness first.
   value.completed
-# Compare/print only job generations; implicit integer conversion remains forbidden.
+
 proc `==`*(a, b: JobId): bool {.borrow.}
-# Diagnostic printing preserves the generation without permitting implicit integer conversion.
+  ## Compare/print only job generations; implicit integer conversion remains forbidden.
+
 proc `$`*(id: JobId): string {.borrow.}
+  ## Diagnostic printing preserves the generation without permitting implicit integer conversion.
 when OffloadEnabled:
   import std/[os, strutils, locks, monotimes, times, rawthreads, syncio, envvars, assertions]
   import std/posix/posix
@@ -61,20 +65,23 @@ when OffloadEnabled:
       held, stopping, setupFailed: bool
       last: array[7, int]
       gate: string
-  # Mutexes, worker handles and borrowed stack pointers have exactly one stable pool owner.
+
   proc `=copy`*(destination: var OffloadPool, source: OffloadPool) {.error: "OffloadPool owns joined workers".}
+    ## Mutexes, worker handles and borrowed stack pointers have exactly one stable pool owner.
   # Flush complete bounded public markers immediately; native I/O buffering must not hide live worker state.
   template progress() {.varargs.} =
     for field in unpack(): stdout.write(field) # Only the I/O thread emits these diagnostics.
     stdout.write('\n')
     stdout.flushFile()
-  # Selftest polling owns no network dispatcher; POSIX sleep yields without adding any worker.
+
   proc pause() =
+    ## Selftest polling owns no network dispatcher; POSIX sleep yields without adding any worker.
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 2_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Interrupted sleeps return to the selftest's monotonic deadline.
-  # Create and destroy the Rust setup on this worker; neither owner nor allocator crosses threads.
+
   proc worker(raw: pointer) =
+    ## Create and destroy the Rust setup on this worker; neither owner nor allocator crosses threads.
     let pool = cast[ptr OffloadPool](raw) # The stack-stable pool outlives both joined workers.
     let setup = newSetup(pool.capacity)
     acquire(pool.lock)
@@ -127,6 +134,7 @@ when OffloadEnabled:
         pool.slots[index].outcome = outcome
         pool.slots[index].phase = Done # Uncollected completion still occupies capacity.
       release(pool.lock)
+
   proc startPool*(pool: var OffloadPool): bool {.raises.} =
     ## Read one trusted harness fixture before starting threads. Network bytes never choose this file/domain.
     let wire = readFile(getEnv("RAGNAROK_OFFLOAD_FIXTURE"))
@@ -168,11 +176,13 @@ when OffloadEnabled:
       release(pool.lock)
       for i in 0..<2: join(pool.workers[i]) # Both worker-owned Rust setups retire before the shared mutex.
       deinitCond(pool.changed); deinitLock(pool.lock) # Failed setup retires successful siblings too.
+
   proc busyPool*(pool: var OffloadPool): int {.raises: [].} =
     ## Count actual crypto activity under the same mutex; held/queued jobs are deliberately excluded.
     acquire(pool.lock)
     result = pool.busy
     release(pool.lock)
+
   proc stopPool*(pool: var OffloadPool) =
     ## Stop admission, cancel queued/completed work, unblock test holds, and join before releasing mutexes.
     acquire(pool.lock)
@@ -187,6 +197,7 @@ when OffloadEnabled:
     for i in 0..<2: join(pool.workers[i]) # Both worker-owned Rust setups retire before the shared mutex.
     deinitCond(pool.changed); deinitLock(pool.lock)
     progress "OFFLOAD_JOINED 2" # Every Rust setup and worker has retired before the pool owner.
+
   proc submitPool*(pool: var OffloadPool, invalid: bool): JobId {.raises: [].} =
     ## Admission copies a temporary value into a free slot; zero is the explicit rejected generation.
     acquire(pool.lock)
@@ -204,6 +215,7 @@ when OffloadEnabled:
         signal(pool.changed)
         return slot.id
     JobId(0) # Queued, running and uncollected completions all count toward the four-slot cap.
+
   proc cancelPool*(pool: var OffloadPool, id: JobId) {.raises: [].} =
     ## Cancel by generation; a reused stream or slot can never cancel another job.
     if id == JobId(0): return # Streams without an admitted job own no pool resource.
@@ -216,6 +228,7 @@ when OffloadEnabled:
         if slot.phase == Running: slot.cancelled = true # Retain original bytes until FFI completion.
         else: slot[] = Slot() # Queued/done work has no active borrower.
         return
+
   proc collectPool*(pool: var OffloadPool): OffloadPollResult {.raises: [].} =
     ## Poll a bounded completion on the I/O thread; workers never touch networking or diagnostics.
     acquire(pool.lock)
@@ -228,6 +241,7 @@ when OffloadEnabled:
         slot[] = Slot() # Capacity becomes reusable only after collecting/discarding the result.
         return
     OffloadPollResult() # No completion means no default success is observable.
+
   proc tickPool*(pool: var OffloadPool) =
     ## Observe held versus actual Rust execution separately, and release only the explicit test barrier.
     let held = pool.gate.len > 0 and not fileExists(pool.gate)
@@ -252,13 +266,31 @@ when OffloadEnabled:
 else:
   # Ordinary peers do not link Rust or create workers; this inert type keeps the CLI layout simple.
   type OffloadPool* = object
-  proc startPool*(pool: var OffloadPool): bool = false # Explicit mode is unavailable in ordinary builds.
-  proc stopPool*(pool: var OffloadPool) = discard # An inert owner has no native resource.
-  proc submitPool*(pool: var OffloadPool, invalid: bool): JobId {.raises: [].} = JobId(
+
+  proc startPool*(pool: var OffloadPool): bool =
+    ## Refuse worker-pool startup when native offload support is not compiled in.
+    false # Explicit mode is unavailable in ordinary builds.
+
+  proc stopPool*(pool: var OffloadPool) =
+    ## Leave the disabled pool inert; it owns no worker or native resource.
+    discard # An inert owner has no native resource.
+
+  proc submitPool*(pool: var OffloadPool, invalid: bool): JobId {.raises: [].} =
+    ## Reject offload admission with the invalid job identity in builds without a pool.
+    JobId(
       0) # Admission always rejects.
-  proc cancelPool*(pool: var OffloadPool, id: JobId) {.raises: [].} = discard # No retained jobs.
-  proc collectPool*(pool: var OffloadPool): OffloadPollResult {.raises: [].} = OffloadPollResult() # No fabricated completion.
-  proc tickPool*(pool: var OffloadPool) = discard # No worker diagnostics.
+
+  proc cancelPool*(pool: var OffloadPool, id: JobId) {.raises: [].} =
+    ## Leave the disabled pool unchanged because it retains no jobs.
+    discard # No retained jobs.
+
+  proc collectPool*(pool: var OffloadPool): OffloadPollResult {.raises: [].} =
+    ## Return no completion when native offload support is unavailable.
+    OffloadPollResult() # No fabricated completion.
+
+  proc tickPool*(pool: var OffloadPool) =
+    ## Perform no worker diagnostics for the disabled pool.
+    discard # No worker diagnostics.
 
 when not OffloadEnabled:
   proc busyPool*(pool: var OffloadPool): int {.raises: [].} =
@@ -266,13 +298,14 @@ when not OffloadEnabled:
     0
 
 when OffloadEnabled:
-  # Inspect completion capacity without consuming a result; used only by the bounded ownership selftest.
   proc phaseCount(pool: var OffloadPool, phase: Phase): int =
+    ## Inspect completion capacity without consuming a result; used only by the bounded ownership selftest.
     result = 0
     acquire(pool.lock)
     for slot in pool.slots:
       if slot.phase == phase: inc result # Observe ownership without consuming or releasing a job.
     release(pool.lock)
+
   proc offloadSelfTest*() {.raises.} =
     ## Exercise default result safety, completed capacity and collection before any QUIC engine exists.
     var pool = default(OffloadPool)
@@ -314,6 +347,7 @@ when OffloadEnabled:
     assert not collectPool(pool).ready
     progress "OFFLOAD_EXHAUSTED"
     progress "OFFLOAD_SELFTEST 4"
+
   proc offloadHeldShutdownTest*() {.raises.} =
     ## Exercise join with two held running owners plus two queued owners, before any FFI borrow begins.
     var pool = default(OffloadPool)

@@ -13,8 +13,8 @@ const MaxChainBytes* = 8 * 1024 * 1024
 # Full-profile epoch markers exceed 64 KiB; keep a bounded allowance for larger validator sets.
 const MaxHeaderBytes* = 256 * 1024
 
-# Decode an exact bounded hex field atomically; empty output means invalid, never a valid field here.
 proc hexBytes(text: string, maximum: int): seq[byte] =
+  ## Decode an exact bounded hex field atomically; empty output means invalid, never a valid field here.
   result = @[]
   # Both supported fields must be nonempty and have a complete pair per byte.
   if text.len == 0 or text.len mod 2 != 0 or text.len div 2 > maximum: return

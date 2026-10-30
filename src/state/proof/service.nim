@@ -28,10 +28,12 @@ type
 func error*[T](outcome: ServiceProofResult[T]): ServiceProofError =
   ## Inspect a reason without authorizing payload access.
   outcome.status
+
 func value*[T](outcome: ServiceProofResult[T]): T {.inline,
     requires: outcome.status == ServiceProofError.None.} =
   ## Extract only explicitly successful typed reads in checked optimized builds.
   outcome.completed
+
 func viewReason(reason: ProofViewError): ServiceProofError =
   ## Exact lookup has no malformed-value interpretation; preserve absent evidence separately.
   case reason
@@ -179,18 +181,22 @@ func planReason(reason: ProofPlanError): ServiceProofError =
 func toStateProofPlan*(plan: ServiceProofPlan): StateProofPlan =
   ## Expose only immutable root-free requested identities; a default semantic plan stays invalid.
   plan.plan
+
 func valid*(plan: ServiceProofPlan): bool =
   ## Defaults cannot silently request an empty successful read.
   plan.plan.valid
+
 func len*(plan: ServiceProofPlan): int =
   ## The retained query count is scalar-only and never copies canonical state.
   plan.plan.len
+
 proc keyAt*(plan: ServiceProofPlan, index: int): ServiceProofResult[StateKey] =
   ## Preserve typed service ordinal errors while returning fixed copied key bytes.
   let selected = plan.plan.keyAt(index)
   if selected.error != ProofPlanError.None:
     return ServiceProofResult[StateKey](status: planReason(selected.error))
   ServiceProofResult[StateKey](status: ServiceProofError.None, completed: selected.value)
+
 func comparePlanKey(left, right: StateKey): int =
   ## Canonical byte order matches partial-view enumeration independently of semantic selectors.
   let a = array[31, byte](left)
@@ -200,6 +206,7 @@ func comparePlanKey(left, right: StateKey): int =
     if a[i] < b[i]: return -1
     if a[i] > b[i]: return 1
   0
+
 proc capturePlan(keys: openArray[StateKey], limit: ElementLimit): ServiceProofResult[
     ServiceProofPlan] =
   ## Semantic constructors share generic count, allocation, canonical-order and duplicate checks.

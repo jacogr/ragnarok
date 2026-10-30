@@ -31,13 +31,14 @@ type
 func error*[T](outcome: EntropyTransitionResult[T]): EntropyTransitionError =
   ## Read a failure reason without exposing payload storage or permitting retagging.
   outcome.status
+
 func value*[T](outcome: EntropyTransitionResult[T]): T {.inline,
     requires: outcome.status == EntropyTransitionError.None.} =
   ## Require selected success before returning fixed values or an immutable committed snapshot.
   outcome.completed
 
-## Preserve atomic-store reasons; no missing/default state can become fabricated entropy.
 func storeError(reason: StateStoreError): EntropyTransitionError =
+  ## Preserve atomic-store reasons; no missing/default state can become fabricated entropy.
   case reason
   of StateStoreError.None: EntropyTransitionError.None # Complete store success only.
   of StateStoreError.Uninitialized: EntropyTransitionError.Uninitialized # Default handles are not genesis state.

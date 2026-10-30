@@ -72,6 +72,7 @@ type
 func error*[T](value: StateCompositionResult[T]): StateCompositionError =
   ## Failure reasons are read-only and cannot authorize chapter bytes, whole mappings or roots.
   value.status
+
 func value*[T](value: StateCompositionResult[T]): T
     {.inline, requires: value.status == StateCompositionError.None.} =
   ## Complete public payloads require successful selection before any retained data is exposed.
@@ -81,26 +82,27 @@ func `[]`*(chapters: StateChapters, chapter: StateChapterId): StateChapterSnapsh
     {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} =
   ## Select one retained chapter handle through its nominal identity; default slots remain missing owners.
   chapters.slots[ord(chapter)-1]
+
 proc `[]=`*(chapters: var StateChapters, chapter: StateChapterId, value: StateChapterSnapshot)
     {.inline, requires: ord(chapter) >= 1 and ord(chapter) <= 16.} =
   ## Replace a caller-owned chapter slot without exposing the immutable capture's private bytes.
   chapters.slots[ord(
         chapter)-1] = value
 
-## Reject unsupported shared profiles before any decoder traverses caller input.
 proc valid*(profile: StateProfile): bool =
+  ## Reject unsupported shared profiles before any decoder traverses caller input.
   ## Check structural cardinality/clock domains only; no cross-chapter validity or chain authority is inferred.
   validConfig(AssuranceConfig(cores: profile.cores, validators: profile.current)) and
     validConfig(AssuranceConfig(cores: profile.cores, validators: profile.previous)) and
     uint64(profile.epochSlots) > 0
 
-## Captures may use different resource ceilings, but must describe identical chain cardinalities.
 proc same(a, b: StateProfile): bool =
+  ## Captures may use different resource ceilings, but must describe identical chain cardinalities.
   uint64(a.cores) == uint64(b.cores) and uint64(a.current) == uint64(b.current) and
     uint64(a.previous) == uint64(b.previous) and uint64(a.epochSlots) == uint64(b.epochSlots)
 
-## Preserve shared AuthorizationError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: AuthorizationError): StateCompositionError =
+  ## Preserve shared AuthorizationError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of AuthorizationError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of AuthorizationError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -108,8 +110,8 @@ proc reason(error: AuthorizationError): StateCompositionError =
   of AuthorizationError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared HistoryError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: HistoryError): StateCompositionError =
+  ## Preserve shared HistoryError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of HistoryError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of HistoryError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -117,8 +119,8 @@ proc reason(error: HistoryError): StateCompositionError =
   of HistoryError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared StateComponentError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: StateComponentError): StateCompositionError =
+  ## Preserve shared StateComponentError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of StateComponentError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of StateComponentError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -126,8 +128,8 @@ proc reason(error: StateComponentError): StateCompositionError =
   of StateComponentError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared DisputeStateError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: DisputeStateError): StateCompositionError =
+  ## Preserve shared DisputeStateError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of DisputeStateError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of DisputeStateError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -135,8 +137,8 @@ proc reason(error: DisputeStateError): StateCompositionError =
   of DisputeStateError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared AvailabilityError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: AvailabilityError): StateCompositionError =
+  ## Preserve shared AvailabilityError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of AvailabilityError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of AvailabilityError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -144,8 +146,8 @@ proc reason(error: AvailabilityError): StateCompositionError =
   of AvailabilityError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared PrivilegeError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: PrivilegeError): StateCompositionError =
+  ## Preserve shared PrivilegeError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of PrivilegeError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of PrivilegeError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -153,8 +155,8 @@ proc reason(error: PrivilegeError): StateCompositionError =
   of PrivilegeError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared ActivityError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: ActivityError): StateCompositionError =
+  ## Preserve shared ActivityError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of ActivityError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of ActivityError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -162,8 +164,8 @@ proc reason(error: ActivityError): StateCompositionError =
   of ActivityError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared WorkQueueError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: WorkQueueError): StateCompositionError =
+  ## Preserve shared WorkQueueError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of WorkQueueError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of WorkQueueError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -171,8 +173,8 @@ proc reason(error: WorkQueueError): StateCompositionError =
   of WorkQueueError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared OutputLogError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: OutputLogError): StateCompositionError =
+  ## Preserve shared OutputLogError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of OutputLogError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of OutputLogError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -180,8 +182,8 @@ proc reason(error: OutputLogError): StateCompositionError =
   of OutputLogError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared StateTrieError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: StateTrieError): StateCompositionError =
+  ## Preserve shared StateTrieError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of StateTrieError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of StateTrieError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
@@ -189,24 +191,24 @@ proc reason(error: StateTrieError): StateCompositionError =
   of StateTrieError.DuplicateKey: StateCompositionError.DuplicateKey # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared ServiceMetadataError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: ServiceMetadataError): StateCompositionError =
+  ## Preserve shared ServiceMetadataError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of ServiceMetadataError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of ServiceMetadataError.Truncated: StateCompositionError.Truncated # Retain the child failure category.
   of ServiceMetadataError.NonCanonical: StateCompositionError.NonCanonical # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared ServiceValueError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: ServiceValueError): StateCompositionError =
+  ## Preserve shared ServiceValueError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of ServiceValueError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of ServiceValueError.LengthOverflow: StateCompositionError.LengthOverflow # Retain the child failure category.
   of ServiceValueError.BackendFailure: StateCompositionError.BackendFailure # Retain the child failure category.
   else: StateCompositionError.InvalidComponent # No unrecognized child status can authorize a component.
 
-## Preserve shared RequestError failures explicitly; remaining child schema errors invalidate this component.
 proc reason(error: RequestError): StateCompositionError =
+  ## Preserve shared RequestError failures explicitly; remaining child schema errors invalidate this component.
   case error
   of RequestError.LimitExceeded: StateCompositionError.LimitExceeded # Retain the child failure category.
   of RequestError.Truncated: StateCompositionError.Truncated # Retain the child failure category.
@@ -341,9 +343,9 @@ proc captureStateChapter*(chapter: StateChapterId, input: openArray[byte], profi
   StateCompositionResult[StateChapterSnapshot](status: StateCompositionError.None,
     completed: StateChapterSnapshot(data: data))
 
-## Charge one complete entry without overflow before output allocation or key hashing.
 proc charge(size: uint64, limits: StateTrieLimits, count,
     total: var uint64): StateCompositionError =
+  ## Charge one complete entry without overflow before output allocation or key hashing.
   if count >= uint64(limits.items) or count >= uint64(high(int) div sizeof(StateEntry)):
     return StateCompositionError.LimitExceeded # Bound descriptor work before incrementing.
   if size > uint64(limits.perValue) or size > uint64(limits.totalValueBytes)-total:
@@ -352,8 +354,8 @@ proc charge(size: uint64, limits: StateTrieLimits, count,
   total += size
   StateCompositionError.None
 
-## Count encoded request bytes without allocating, hashing or weakening the existing four-shape union.
 proc historySize(history: RequestHistory): uint64 =
+  ## Count encoded request bytes without allocating, hashing or weakening the existing four-shape union.
   1'u64+4'u64*uint64(ord(history.state))
 
 proc composeState*(chapters: StateChapters,

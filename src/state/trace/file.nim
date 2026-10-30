@@ -21,18 +21,22 @@ type
 func error*(outcome: TraceFileResult): TraceFileError =
   ## Observe only the selected immutable completion stage.
   outcome.status
+
 func value*(outcome: TraceFileResult): TraceStep {.inline,
     requires: outcome.status == TraceFileError.None.} =
   ## Extract only a complete exact-file owner or completed publication's original owner.
   outcome.completed
+
 func fileFailure*(outcome: TraceFileResult): AtomicFileError {.inline,
     requires: outcome.status == TraceFileError.FileFailure.} =
   ## Preserve native path/read/close/publication outcomes, including visible-but-unsynced failure.
   outcome.fileReason
+
 func decodeFailure*(outcome: TraceFileResult): TraceStepResult[TraceStep] {.inline,
     requires: outcome.status == TraceFileError.DecodeFailure.} =
   ## Retain the actual failed field/root reason without exposing a usable prefix.
   outcome.decodeReason
+
 func encodeFailure*(outcome: TraceFileResult): TraceStepError {.inline,
     requires: outcome.status == TraceFileError.EncodeFailure.} =
   ## Preserve default-owner and output-ceiling refusal before opening a publication target.

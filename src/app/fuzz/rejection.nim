@@ -14,6 +14,7 @@ import ../../state/report/[admission as report_admission, policy as report_polic
     packages as report_packages, assignments as report_assignments, anchors as report_anchors]
 import ../../state/guarantee_credentials
 import ../../crypto/assurance_context
+
 proc consensusReportFailure[T](failure: ReportAdmissionResult[T]): bool =
   ## A missing lookup ancestor is a local context failure, not evidence that the block violates consensus.
   case failure.error
@@ -36,6 +37,7 @@ proc consensusReportFailure[T](failure: ReportAdmissionResult[T]): bool =
     failure.assignmentError in {ReportAssignmentError.InactiveCore,
         ReportAssignmentError.OccupiedCore}
   else: false # Structural context, budgets, backend and unclassified refusals cannot manufacture an Error reply.
+
 proc consensusBlockFailure(failure: BlockTransitionResult): bool =
   ## Each whitelist names protocol comparisons on the incoming block, excluding parent-state/configuration failures.
   case failure.error
@@ -77,6 +79,7 @@ proc consensusBlockFailure(failure: BlockTransitionResult): bool =
         AvailabilityTransitionError.InvalidIndex,
         AvailabilityTransitionError.UnassignedCore}
   else: false # Defaults and success are never rejections.
+
 proc consensusFuzzRejection*(failure: CurrentCandidateResult): bool =
   ## Conservative classification of genuine failed candidates grants no authority from disconnected enum values.
   case failure.error

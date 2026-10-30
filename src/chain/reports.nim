@@ -28,13 +28,14 @@ type
 func error*(value: ReportReadResult): ReportReadError =
   ## Inspect the reason without permitting callers to retag the result.
   value.status
+
 func value*(value: ReportReadResult): OwnedReport {.requires: value.status ==
     ReportReadError.None.} =
   ## Retain the immutable report only after selecting successful lookup.
   value.completed
 
-## Hash one immutable canonical report and apply the reply budget only to a matching identity.
 proc matchReport(report: OwnedReport, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
+  ## Hash one immutable canonical report and apply the reply budget only to a matching identity.
   let metadata = ownedReportInfo(report)
   if metadata.error != OwnershipError.None:
     return ReportReadResult(status: ReportReadError.Malformed) # Require a validated retained report.
@@ -51,9 +52,9 @@ proc matchReport(report: OwnedReport, hash: WorkReportHash, limit: ByteLimit): R
     return ReportReadResult(status: ReportReadError.None, completed: report)
   ReportReadResult(status: ReportReadError.Missing)
 
-## Search complete bounded C(10) assignments using the actual C(8) validator roster.
-## Absence means this node has no retained report; unknown reports are never fetched or fabricated.
 proc availabilityReport(view: Genesis, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
+  ## Search complete bounded C(10) assignments using the actual C(8) validator roster.
+  ## Absence means this node has no retained report; unknown reports are never fetched or fabricated.
   let found = view.lookup(chapterKey(StateChapter(10)))
   if found.error == StateStoreError.Uninitialized:
     return ReportReadResult(status: ReportReadError.Uninitialized) # Default genesis contains no state.
@@ -100,9 +101,9 @@ proc availabilityReport(view: Genesis, hash: WorkReportHash, limit: ByteLimit): 
         return matched # Success and refusal terminate lookup; only a different identity continues.
   ReportReadResult(status: ReportReadError.Missing)
 
-## Search C(14) using the epoch length retained with this exact genesis snapshot.
-## Complete-ring preflight precedes matching, including all dependency sets and trailing rows.
 proc readyReport(view: Genesis, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
+  ## Search C(14) using the epoch length retained with this exact genesis snapshot.
+  ## Complete-ring preflight precedes matching, including all dependency sets and trailing rows.
   let found = view.lookup(chapterKey(StateChapter(14)))
   if found.error == StateStoreError.MissingKey:
     return ReportReadResult(status: ReportReadError.Missing) # An absent ready queue supplies no reports.

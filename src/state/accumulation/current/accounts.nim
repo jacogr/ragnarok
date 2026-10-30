@@ -38,20 +38,24 @@ type
 func error*[T](outcome: CurrentAccumulationAccountResult[T]): CurrentAccumulationAccountError =
   ## Inspect only the selected reason without permitting mutation.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationAccountResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationAccountError.None.} =
   ## Extract complete selected successor ownership only after success.
   outcome.completed
+
 func projectionFailure*[T](outcome: CurrentAccumulationAccountResult[T]): AccumulationAccountResult[
     AccumulationAccountProjection] {.inline,
 
 requires: outcome.status == CurrentAccumulationAccountError.ProjectionFailure.} =
   ## Retain only the actual failed pure projector and its strict metadata/policy reason.
   outcome.projectionReason
+
 func stateFailure*[T](outcome: CurrentAccumulationAccountResult[T]): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationAccountError.StateFailure.} =
   ## Inspect only the actual private-fork/Merkle refusal.
   outcome.stateReason
+
 proc prepareCurrentAccumulationAccounts*(statistics: PreparedCurrentAccumulationStatistics,
     config: AccumulationAccountConfig): CurrentAccumulationAccountResult[
         PreparedCurrentAccumulationAccounts] =

@@ -56,15 +56,18 @@ type
 func error*[T](outcome: AccumulationCoverageResult[T]): AccumulationCoverageError =
   ## Inspect a refusal without granting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationCoverageResult[T]): T {.inline,
     requires: outcome.status == AccumulationCoverageError.None.} =
   ## Extract only complete selected success under optimized checked contracts.
   outcome.completed
+
 proc spend(draft: var CoverageDraft): AccumulationCoverageError =
   ## Charge provider/group/final-coverage inspection before access.
   if draft.checks >= uint64(draft.limits.checks): return AccumulationCoverageError.LimitExceeded # No work after quota exhaustion.
   inc draft.checks
   AccumulationCoverageError.None
+
 proc capture(draft: var CoverageDraft, row: CoverageRow): AccumulationCoverageError =
   ## Place one genuine provider into its own canonical input row, checking uniqueness and actual gas before addition.
   for index in 0..<draft.rows.len:
@@ -80,6 +83,7 @@ proc capture(draft: var CoverageDraft, row: CoverageRow): AccumulationCoverageEr
     draft.rows[index] = row # The private row carries only genuine matching proof handles.
     return AccumulationCoverageError.None
   AccumulationCoverageError.SourceMismatch # An extra unknown service cannot silently disappear from coverage.
+
 proc prepareAccumulationCoverage*(source: PreparedAccumulationAnnulment,
     skipped: openArray[SkippedAccumulation], absent: openArray[AbsentAccumulation],
         slot: HeaderSlot,
@@ -175,6 +179,7 @@ proc coverageInfo*(plan: PreparedAccumulationCoverage): AccumulationCoverageResu
       status: AccumulationCoverageError.Uninitialized) # No default empty coverage.
   AccumulationCoverageResult[AccumulationCoverageInfo](status: AccumulationCoverageError.None,
       completed: data.info)
+
 proc coverageAnnulment*(plan: PreparedAccumulationCoverage): AccumulationCoverageResult[
     PreparedAccumulationAnnulment] =
   ## Retain the exact original/selected conflict certificate behind coverage and gas accounting.
@@ -183,6 +188,7 @@ proc coverageAnnulment*(plan: PreparedAccumulationCoverage): AccumulationCoverag
       status: AccumulationCoverageError.Uninitialized) # No substitute original source.
   AccumulationCoverageResult[PreparedAccumulationAnnulment](status: AccumulationCoverageError.None,
       completed: data.source)
+
 proc checkedRow(plan: PreparedAccumulationCoverage,
     index: AccumulationCoverageIndex): AccumulationCoverageResult[CoverageRow] =
   ## Validate the retained owner and full-width position before any kind-specific proof extraction.
@@ -193,6 +199,7 @@ proc checkedRow(plan: PreparedAccumulationCoverage,
       status: AccumulationCoverageError.InvalidIndex) # Upper bits cannot alias a valid input row.
   AccumulationCoverageResult[CoverageRow](status: AccumulationCoverageError.None,
       completed: data.rows[int(uint64(index))])
+
 proc coverageRowAt*(plan: PreparedAccumulationCoverage,
     index: AccumulationCoverageIndex): AccumulationCoverageResult[AccumulationCoverageRow] =
   ## Copy this canonical input row's actual service/kind/gas observations.
@@ -201,6 +208,7 @@ proc coverageRowAt*(plan: PreparedAccumulationCoverage,
       AccumulationCoverageRow](status: row.error) # No inactive observation payload.
   AccumulationCoverageResult[AccumulationCoverageRow](status: AccumulationCoverageError.None,
       completed: row.value.info)
+
 proc coverageOriginalAt*(plan: PreparedAccumulationCoverage,
     index: AccumulationCoverageIndex): AccumulationCoverageResult[AccumulationOutcome] =
   ## Retain an actual ORIGINAL execution, including one later annulled; selected state belongs to coverageAnnulment.
@@ -212,6 +220,7 @@ proc coverageOriginalAt*(plan: PreparedAccumulationCoverage,
       status: AccumulationCoverageError.KindMismatch) # Non-execution proofs cannot expose inactive raw outcomes.
   AccumulationCoverageResult[AccumulationOutcome](status: AccumulationCoverageError.None,
       completed: row.value.original)
+
 proc coverageSkippedAt*(plan: PreparedAccumulationCoverage,
     index: AccumulationCoverageIndex): AccumulationCoverageResult[SkippedAccumulation] =
   ## Retain only the genuine code-unavailable completion at this input position.
@@ -223,6 +232,7 @@ proc coverageSkippedAt*(plan: PreparedAccumulationCoverage,
       status: AccumulationCoverageError.KindMismatch) # Execution and absence have different proof domains.
   AccumulationCoverageResult[SkippedAccumulation](status: AccumulationCoverageError.None,
       completed: row.value.skipped)
+
 proc coverageAbsentAt*(plan: PreparedAccumulationCoverage,
     index: AccumulationCoverageIndex): AccumulationCoverageResult[AbsentAccumulation] =
   ## Retain only an actual no-credit absent-account proof at this input position.

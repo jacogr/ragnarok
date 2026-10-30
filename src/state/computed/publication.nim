@@ -30,14 +30,17 @@ type
 func error*[T](outcome: ComputedPublicationResult[T]): ComputedPublicationError =
   ## Observe reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedPublicationResult[T]): T
     {.requires: outcome.status == ComputedPublicationError.None.} =
   ## Preserve successful extraction under optimized compilation.
   outcome.completed
+
 func storeError*[T](outcome: ComputedPublicationResult[T]): StateStoreError
     {.requires: outcome.status == ComputedPublicationError.StoreFailure.} =
   ## Inspect only the actual selected atomic-store refusal.
   outcome.storeReason
+
 proc computedSuccessorSource*(successor: ComputedReportSuccessor): ComputedPublicationResult[
     AdmittedComputedReports] =
   ## Share exact original admission/computation authority; copied metadata cannot replace it.
@@ -46,6 +49,7 @@ proc computedSuccessorSource*(successor: ComputedReportSuccessor): ComputedPubli
       status: ComputedPublicationError.Uninitialized)
   ComputedPublicationResult[AdmittedComputedReports](status: ComputedPublicationError.None,
       completed: data.source)
+
 proc computedSuccessorSnapshot*(successor: ComputedReportSuccessor): ComputedPublicationResult[
     StateStoreSnapshot] =
   ## Share the complete immutable map hashed during preparation, independently of caller mutable handles.
@@ -54,6 +58,7 @@ proc computedSuccessorSnapshot*(successor: ComputedReportSuccessor): ComputedPub
       status: ComputedPublicationError.Uninitialized)
   ComputedPublicationResult[StateStoreSnapshot](status: ComputedPublicationError.None,
       completed: data.snapshot)
+
 proc prepareComputedPublication*(source: AdmittedComputedReports,
     bytes: ByteLimit): ComputedPublicationResult[ComputedReportSuccessor] =
   ## Preflight the exact retained chapter, then hash its write on a private fork of the genuine staged prefix.
@@ -82,6 +87,7 @@ proc prepareComputedPublication*(source: AdmittedComputedReports,
   ComputedPublicationResult[ComputedReportSuccessor](status: ComputedPublicationError.None,
     completed: ComputedReportSuccessor(data: ComputedPublicationData(source: source,
         snapshot: updated.value)))
+
 proc publishComputedReports*(state: var StateStore,
     successor: ComputedReportSuccessor): ComputedPublicationResult[StateStoreSnapshot] =
   ## Check exact original parent identity and replace the canonical receiver once; preparation already completed all hashing.

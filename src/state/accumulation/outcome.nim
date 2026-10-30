@@ -42,6 +42,7 @@ type
 func error*[T](outcome: AccumulationOutcomeResult[T]): AccumulationOutcomeError =
   ## Inspect status without granting mutation or result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationOutcomeResult[T]): T {.inline,
     requires: outcome.status == AccumulationOutcomeError.None.} =
   ## Retain complete selected success under checked optimized result contracts.

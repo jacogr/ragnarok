@@ -53,6 +53,7 @@ type
 func error*[T](value: RequestResult[T]): RequestError =
   ## Read-only reasons never authorize a default history, key or completed progress.
   value.status
+
 func value*[T](value: RequestResult[T]): T
     {.inline, requires: value.status == RequestError.None.} =
   ## Complete public payloads and private extent proofs require successful selection.
@@ -61,47 +62,57 @@ func value*[T](value: RequestResult[T]): T
 func requestedHistory*(): RequestHistory =
   ## Construct the valid zero-slot Requested shape without any inactive timestamp payload.
   RequestHistory(mode: Requested)
+
 func availableHistory*(since: RequestSlot): RequestHistory =
   ## Construct the one-slot Available shape, preserving the full unsigned supplied-at value.
   RequestHistory(mode: Available,
     sinceSlot: since)
+
 func unavailableHistory*(availableFrom, unavailableFrom: RequestSlot): RequestHistory =
   ## Construct the two-slot Unavailable shape in supplied order, without chronology validation.
   RequestHistory(mode: Unavailable, availableSlot: availableFrom, unavailableSlot: unavailableFrom)
+
 func reavailableHistory*(originalFrom, removedAt, restoredAt: RequestSlot): RequestHistory =
   ## Construct the three-slot Reavailable shape without sorting or repairing its source timeslots.
   RequestHistory(mode: Reavailable, originalSlot: originalFrom, removedSlot: removedAt,
       restoredSlot: restoredAt)
+
 func state*(history: RequestHistory): RequestState =
   ## Inspect the read-only shape; callers cannot retag a history or manufacture inactive fields.
   history.mode
+
 func since*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Available.} =
   ## Extract a fixed copied since timestamp only from the selected Available alternative.
   history.sinceSlot
+
 func availableFrom*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Unavailable.} =
   ## Extract a fixed copied availableFrom timestamp only from the selected Unavailable alternative.
   history.availableSlot
+
 func unavailableFrom*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Unavailable.} =
   ## Extract a fixed copied unavailableFrom timestamp only from the selected Unavailable alternative.
   history.unavailableSlot
+
 func originalFrom*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Reavailable.} =
   ## Extract a fixed copied originalFrom timestamp only from the selected Reavailable alternative.
   history.originalSlot
+
 func removedAt*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Reavailable.} =
   ## Extract a fixed copied removedAt timestamp only from the selected Reavailable alternative.
   history.removedSlot
+
 func restoredAt*(history: RequestHistory): RequestSlot
     {.inline, requires: history.mode == RequestState.Reavailable.} =
   ## Extract a fixed copied restoredAt timestamp only from the selected Reavailable alternative.
   history.restoredSlot
 
-## Project each tagged source alternative into a private fixed array only for sizing and final commit.
 proc fields(value: RequestHistory): Fields =
+  ## Project each tagged source alternative into a private fixed array only for sizing and final commit.
   result = default(Fields)
   case value.state
   of RequestState.Requested: discard # Empty requested state needs only its count byte.
@@ -118,8 +129,8 @@ proc fields(value: RequestHistory): Fields =
     result.slots[1] = value.removedAt
     result.slots[2] = value.restoredAt
 
-## Protocol count precedes caller item/byte policy; accepted counts bound all native arithmetic to thirteen bytes.
 proc extent(count: uint64, config: RequestHistoryConfig): RequestResult[int] =
+  ## Protocol count precedes caller item/byte policy; accepted counts bound all native arithmetic to thirteen bytes.
   if count > 3:
     return RequestResult[int](status: RequestError.InvalidCount) # Never allocate or guess a fourth history mode.
   if count > uint64(config.items):

@@ -34,10 +34,12 @@ type
 func error*[T](outcome: AnnouncementResult[T]): AnnouncementError =
   ## Observe status without granting a successful payload.
   outcome.status
+
 func value*[T](outcome: AnnouncementResult[T]): T {.inline,
     requires: outcome.status == AnnouncementError.None.} =
   ## Return only the complete checked message, never a partially decoded prefix.
   outcome.completed
+
 proc valid*(limits: AnnouncementLimits): bool =
   ## Hard caps bound allocation and callback work even if local configuration is malformed.
   uint64(limits.leaves) > 0 and uint64(limits.leaves) <= 64 and
@@ -45,12 +47,15 @@ proc valid*(limits: AnnouncementLimits): bool =
     uint64(limits.header.maxBytes) > 0 and uint64(limits.header.maxBytes) <= 1048540 and
     uint64(limits.header.epochSlots) > 0 and assurances.validConfig(AssuranceConfig(
       cores: limits.header.cores, validators: limits.header.authorValidators))
+
 func `==`*(a, b: AnnouncedHeaderHash): bool =
   ## Equality compares all claimed identity bytes without granting canonical authority.
   array[32, byte](a) == array[32, byte](b)
+
 func `==`*(a, b: AnnouncedBlock): bool =
   ## Target identity requires both exact sealed-header hash and JAM slot.
   a.hash == b.hash and uint32(a.slot) == uint32(b.slot)
+
 proc readBlock(input: openArray[byte], offset: int): AnnouncedBlock =
   ## Callers prove a complete 36-byte record before borrowing any fixed field.
   result = default(AnnouncedBlock)
@@ -60,10 +65,12 @@ proc readBlock(input: openArray[byte], offset: int): AnnouncedBlock =
   var slot = 0'u32
   for index in 0..<4: slot = slot or (uint32(input[offset + 32 + index]) shl (8 * index))
   result.slot = HeaderSlot(slot)
+
 proc writeBlock(output: var seq[byte], value: AnnouncedBlock) =
   ## Encode a local copied claim only after the complete message size was admitted.
   for octet in array[32, byte](value.hash): output.add(octet)
   for index in 0..<4: output.add(byte((uint32(value.slot) shr (8 * index)) and 255))
+
 proc decodeHandshake*(input: openArray[byte], limits: AnnouncementLimits):
     AnnouncementResult[AnnouncementHandshake] =
   ## Decode an exact UP0 handshake body; message E4 framing is handled by the stream reader.
@@ -98,6 +105,7 @@ proc decodeHandshake*(input: openArray[byte], limits: AnnouncementLimits):
     leaves.add(leaf)
   AnnouncementResult[AnnouncementHandshake](status: AnnouncementError.None,
     completed: AnnouncementHandshake(finalized: finalized, leaves: leaves))
+
 proc encodeHandshake*(message: AnnouncementHandshake, limits: AnnouncementLimits):
     AnnouncementResult[seq[byte]] =
   ## Encode the canonical GP compact leaf count, validating the same bounds as the decoder.
@@ -116,6 +124,7 @@ proc encodeHandshake*(message: AnnouncementHandshake, limits: AnnouncementLimits
   if checked.error != AnnouncementError.None:
     return AnnouncementResult[seq[byte]](status: checked.error)
   AnnouncementResult[seq[byte]](status: AnnouncementError.None, completed: output)
+
 proc decodeAnnouncement*(input: openArray[byte], limits: AnnouncementLimits):
     AnnouncementResult[BlockAnnouncement] =
   ## Decode one complete header plus Final; do not adopt the block or trust the finality claim.
@@ -180,16 +189,20 @@ proc configure*(reader: var AnnouncementReader, maximum: ByteLimit): Announcemen
   reader = AnnouncementReader(maximum: int(uint64(maximum)), configured: true,
     failure: AnnouncementError.None)
   AnnouncementError.None
+
 func error*(reader: AnnouncementReader): AnnouncementError =
   ## A default reader is uninitialized, not an empty successful stream.
   if reader.configured: reader.failure else: AnnouncementError.Uninitialized
+
 func ready*(reader: AnnouncementReader): bool =
   ## Complete framing is required before a handshake or announcement decoder can inspect its body.
   reader.configured and reader.failure == AnnouncementError.None and reader.complete
+
 func remaining*(reader: AnnouncementReader): int =
   ## Native reads must stop at this exact frame boundary, leaving coalesced messages in QUIC storage.
   if not reader.configured or reader.failure != AnnouncementError.None or reader.complete: return 0
   if reader.prefix < 4: 4 - reader.prefix else: reader.expected - reader.body.len
+
 proc feed*(reader: var AnnouncementReader, input: openArray[byte]): AnnouncementError =
   ## Copy at most one proven remaining extent; invalid lengths latch failure until stream retirement.
   if reader.error != AnnouncementError.None: return reader.error
@@ -213,12 +226,14 @@ proc feed*(reader: var AnnouncementReader, input: openArray[byte]): Announcement
     for value in input: reader.body.add(value)
     reader.complete = reader.body.len == reader.expected
   reader.failure
+
 proc message*(reader: AnnouncementReader): AnnouncementResult[seq[byte]] =
   ## Return an owned copy of one bounded message only after its complete extent is available.
   if reader.error != AnnouncementError.None:
     return AnnouncementResult[seq[byte]](status: reader.error)
   if not reader.ready: return AnnouncementResult[seq[byte]](status: AnnouncementError.Truncated)
   AnnouncementResult[seq[byte]](status: AnnouncementError.None, completed: reader.body)
+
 proc consume*(reader: var AnnouncementReader): AnnouncementError =
   ## Acknowledge an exact complete body while retaining the admitted per-stream resource ceiling.
   if not reader.ready: return AnnouncementError.Busy

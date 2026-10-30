@@ -100,64 +100,83 @@ type
 func error*[T](outcome: PagedStreamResult[T]): PagedStreamError =
   ## Inspect only the selected refusal reason.
   outcome.status
+
 func value*[T](outcome: PagedStreamResult[T]): T {.inline,
     requires: outcome.status == PagedStreamError.None.} =
   ## A complete success is required before any result payload access.
   outcome.completed
+
 func proofError*[T](outcome: PagedStreamResult[T]): StateProofError {.requires:
     outcome.status == PagedStreamError.ProofFailure.} =
   ## Preserve only the selected proof cause, never an inactive failure field.
   outcome.proofCause
+
 func initialized*(artifact: CheckedPagedArtifact): bool =
   ## Default metadata has no complete-admission authority.
   artifact.ready
+
 func manifest*(artifact: CheckedPagedArtifact): PagedManifest {.requires: artifact.ready.} =
   ## Return local byte selection metadata without native publication authority.
   artifact.selected
+
 func header*(artifact: CheckedPagedArtifact): PagedHeader {.requires: artifact.ready.} =
   ## Return the exact checked root/chain/count/physical-position binding.
   artifact.header
+
 func counts*(artifact: CheckedPagedArtifact): PagedStreamCounts {.requires: artifact.ready.} =
   ## Report actual successful operation counts, with proof-node/value work separate from local page hashing.
   artifact.used
+
 func verified*(lookup: PagedLookup): VerifiedStateLookup {.requires: lookup.ready.} =
   ## Retain independently owned authenticated presence/absence after synchronous IO ends.
   lookup.checked
+
 func counts*(lookup: PagedLookup): PagedStreamCounts {.requires: lookup.ready.} =
   ## Inspect successful lookup work without retaining any source callbacks.
   lookup.used
+
 func ioCalls*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Include actual extent queries, exact reads and append attempts.
   counts.calls
+
 func producerCalls*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count requested items and explicit end markers in both producer passes.
   counts.producers
+
 func pageHashes*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count local page/tree/stream-binding hash invocations, excluding separately bounded proof cryptography.
   counts.hashes
+
 func proofs*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count complete proof-verifier invocations.
   counts.proofs
+
 func nodes*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count submitted proof nodes independently of local layout hashes.
   counts.nodes
+
 func readBytes*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count exact callback input extents, including digest-path traffic.
   counts.read
+
 func writeBytes*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count append extents; no rewrite or sparse reservation exists in this engine.
   counts.written
+
 func valueBytes*(counts: PagedStreamCounts): uint64 {.requires: counts.ready.} =
   ## Count raw value bytes submitted for proof verification across all passes.
   counts.values
+
 proc fail(work: var Work, reason: PagedStreamError) =
   ## Preserve the first refusal even during later no-op cleanup/control flow.
   if work.status == PagedStreamError.None: work.status = reason
+
 func refused[T](work: Work): PagedStreamResult[T] =
   ## Selected proof failures retain only their typed cause; all other failures contain only a reason.
   if work.status == PagedStreamError.ProofFailure:
     return PagedStreamResult[T](status: PagedStreamError.ProofFailure, proofCause: work.proofCause)
   PagedStreamResult[T](status: work.status)
+
 func codecReason(reason: PagedCodecError): PagedStreamError =
   ## Keep format/identity/provider distinctions without exposing codec success payloads after failure.
   case reason
@@ -172,11 +191,13 @@ func codecReason(reason: PagedCodecError): PagedStreamError =
   of PagedCodecError.BackendFailure: PagedStreamError.BackendFailure
 type CounterKind {.pure.} = enum ## Private work channels prevent aliasing the aggregate owner and one of its fields.
   IOCall, ProducerCall, PageHash, Proof, ProofNode, ReadByte, WriteByte, ValueByte
+
 proc increment(used: var uint64, amount, maximum: uint64): bool =
   ## Prove each quota addition before evaluating it; immutable ceilings are detached from mutable counters.
   if used > maximum or amount > maximum-used: return false
   used += amount
   true
+
 proc charge(work: var Work, kind: CounterKind, amount: uint64): bool =
   ## A named channel keeps mutation in one owner and preserves first-error behavior without aliased parameters.
   if work.status != PagedStreamError.None: return false
@@ -193,11 +214,13 @@ proc charge(work: var Work, kind: CounterKind, amount: uint64): bool =
     of CounterKind.ValueByte: increment(work.used.values, amount, uint64(limits.valueBytes))
   if not admitted: work.fail(PagedStreamError.LimitExceeded)
   admitted
+
 func validatePagedContextSize*(size: uint64, limit: ByteLimit): PagedStreamError =
   ## Explicit physical context presence is separate from proof, dataset and working-space budgets.
   if (size == 0) != (uint64(limit) == 0): return PagedStreamError.UnsupportedPolicy # No V1/V2 fallback.
   if size > uint64(limit): return PagedStreamError.LimitExceeded # Check the independent opaque context ceiling.
   PagedStreamError.None
+
 func initWork(limits: PagedStreamLimits): Work =
   ## Reserve fixed scratch before callbacks; this first buffered engine supports exactly zero or one cache slot.
   result = Work(status: PagedStreamError.None, limits: limits, used: PagedStreamCounts(ready: true))
@@ -205,6 +228,7 @@ func initWork(limits: PagedStreamLimits): Work =
     result.status = PagedStreamError.LimitExceeded
   elif uint64(limits.cachePages) > 1:
     result.status = PagedStreamError.UnsupportedPolicy
+
 proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work: var Work): bool =
   ## All-or-failure borrowed reads are charged before dispatch; the callback retains neither view nor output.
   if work.status != PagedStreamError.None: return false
@@ -218,6 +242,7 @@ proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work
     work.fail(PagedStreamError.IOFailure)
     return false
   true
+
 proc checkExtent(io: PagedInput, expected: uint64, work: var Work): bool =
   ## Check actual EOF before and after successful validation/lookup; native identity is the wrapper's duty.
   if work.status != PagedStreamError.None: return false
@@ -230,6 +255,7 @@ proc checkExtent(io: PagedInput, expected: uint64, work: var Work): bool =
   if not callback(actual): work.fail(PagedStreamError.IOFailure)
   elif actual != expected: work.fail(PagedStreamError.ChangedInput)
   work.status == PagedStreamError.None
+
 proc appendExact(io: PagedOutput, bytes: openArray[byte], work: var Work): bool =
   ## Append only canonical prefixes; uncertain writes never yield a completed artifact or get rolled back.
   if work.status != PagedStreamError.None: return false
@@ -243,9 +269,11 @@ proc appendExact(io: PagedOutput, bytes: openArray[byte], work: var Work): bool 
     work.fail(PagedStreamError.IOFailure)
     return false
   true
+
 proc hashBudget(work: var Work, count = 1'u64): bool =
   ## Local layout hashes have their own explicit work channel, separate from proof nodes/value verification.
   work.charge(CounterKind.PageHash, count)
+
 proc fetch(io: PagedInput, shape: PagedGeometry, root: PagedDigest, page: uint64,
     cache: var PageCache, work: var Work): bool =
   ## Never install unverified pages. Every miss authenticates to the captured complete tree root.
@@ -274,6 +302,7 @@ proc fetch(io: PagedInput, shape: PagedGeometry, root: PagedDigest, page: uint64
   cache.ordinal = page
   cache.valid = uint64(work.limits.cachePages) == 1
   true
+
 proc authenticated(io: PagedInput, shape: PagedGeometry, root: PagedDigest, offset: uint64,
     output: var openArray[byte], cache: var PageCache, work: var Work): bool =
   ## Bounded page windows cover exact requested data bytes; no digest-tree bytes masquerade as payload.
@@ -293,6 +322,7 @@ proc authenticated(io: PagedInput, shape: PagedGeometry, root: PagedDigest, offs
     for index in 0..<take: output[written+index] = cache.bytes[inside+index]
     written += take
   true
+
 proc proofExtent(proof: StateProof, work: var Work): uint64 =
   ## Bound transport plus simultaneous owned verified value before allocation, encoding or proof hashing.
   result = 0
@@ -308,11 +338,13 @@ proc proofExtent(proof: StateProof, work: var Work): uint64 =
     work.fail(PagedStreamError.LimitExceeded)
     return
   41+nodes*64+values
+
 proc chargeProof(nodes, values: uint64, work: var Work): bool =
   ## Aggregate proof quotas precede proof buffer allocation and cryptographic work.
   if not work.charge(CounterKind.Proof, 1): return false
   if not work.charge(CounterKind.ProofNode, nodes): return false
   work.charge(CounterKind.ValueByte, values)
+
 proc checkProof(root: StateRoot, key: StateKey, proof: StateProof,
     work: var Work): PagedStreamResult[VerifiedStateLookup] =
   ## Callers preflight memory/quotas before this verifier; temporary owners retire before the next proof.
@@ -328,6 +360,7 @@ proc checkProof(root: StateRoot, key: StateKey, proof: StateProof,
     work.fail(PagedStreamError.ProofFailure)
     work.proofCause = checked.error
   refused[VerifiedStateLookup](work)
+
 proc loadEvidence(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: PagedDescriptor,
     cache: var PageCache, work: var Work): PagedStreamResult[LoadedProof] =
   ## Authenticate framing before allocation, then reconstruct and verify just one bounded proof/value.
@@ -366,6 +399,7 @@ proc loadEvidence(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: P
   PagedStreamResult[LoadedProof](status: PagedStreamError.None,
     completed: LoadedProof(checked: verified.value, record: LightStateProof(key: row.key,
         proof: proof)))
+
 proc loadProof(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: PagedDescriptor,
     cache: var PageCache, work: var Work): PagedStreamResult[VerifiedStateLookup] =
   ## Ordinary admission retires raw evidence before allocating its separate canonical replay transport.
@@ -373,6 +407,7 @@ proc loadProof(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: Page
   if loaded.error != PagedStreamError.None: return refused[VerifiedStateLookup](work)
   PagedStreamResult[VerifiedStateLookup](status: PagedStreamError.None,
       completed: loaded.value.checked)
+
 proc zeroRange(io: PagedInput, shape: PagedGeometry, tree: PagedDigest, start, stop: uint64,
     cache: var PageCache, work: var Work): bool =
   ## Padding has at most one logical page; every inspected byte must also authenticate to the captured root.
@@ -389,6 +424,7 @@ proc zeroRange(io: PagedInput, shape: PagedGeometry, tree: PagedDigest, start, s
         work.fail(PagedStreamError.InvalidFormat)
         return false
   true
+
 proc treeDigest(io: PagedOutput, mode: TreeMode, shape: PagedGeometry, slot: var uint64,
     digest: PagedDigest, work: var Work): bool =
   ## Visit every stored leaf/internal digest in canonical postorder without a resident tree.
@@ -407,6 +443,7 @@ proc treeDigest(io: PagedOutput, mode: TreeMode, shape: PagedGeometry, slot: var
       return false
   inc slot
   true
+
 proc bindContext(previous, leaf: PagedDigest, work: var Work): PagedDigest =
   ## Constant-size context equality folds already authenticated physical leaf digests, independently of proof transport.
   const Domain = "RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n"
@@ -421,6 +458,7 @@ proc bindContext(previous, leaf: PagedDigest, work: var Work): PagedDigest =
   let hashed = blake2b256(raw)
   if hashed.error != CryptoError.None: work.fail(PagedStreamError.BackendFailure) # Preserve provider refusal.
   else: result = PagedDigest(array[32, byte](hashed.value)) # Only complete hash success advances the equality fingerprint.
+
 proc walkTree(io: PagedOutput, mode: TreeMode, shape: PagedGeometry,
     work: var Work): PagedStreamResult[PagedDigest] =
   ## A fixed carry stack emits/checks all postorder bytes and domain-separated padding leaves.
@@ -468,6 +506,7 @@ proc walkTree(io: PagedOutput, mode: TreeMode, shape: PagedGeometry,
     root = current
     inc ordinal
   PagedStreamResult[PagedDigest](status: PagedStreamError.None, completed: root)
+
 proc bindRecord(previous: PagedDigest, bytes: openArray[byte], work: var Work): PagedDigest =
   ## Constant-size chained fingerprints bind the two canonical producer passes without retaining their records.
   result = default(PagedDigest)
@@ -485,6 +524,7 @@ proc bindRecord(previous: PagedDigest, bytes: openArray[byte], work: var Work): 
   let combined = blake2b256(raw)
   if combined.error != CryptoError.None: work.fail(PagedStreamError.BackendFailure)
   else: result = PagedDigest(array[32, byte](combined.value))
+
 proc inspect(io: PagedInput, selected: PagedManifest, work: var Work): PagedStreamResult[
     CheckedPagedArtifact] =
   ## Strict complete admission authenticates each proof scan byte, then checks every tree slot and actual EOF.
@@ -556,6 +596,7 @@ proc inspect(io: PagedInput, selected: PagedManifest, work: var Work): PagedStre
   PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.None,
     completed: CheckedPagedArtifact(ready: true, selected: selected, header: header,
       policy: work.limits, used: work.used, stream: binding, contextRoot: work.contextRoot))
+
 proc validatePagedArtifact*(io: PagedInput, selected: PagedManifest,
     limits: PagedStreamLimits): PagedStreamResult[CheckedPagedArtifact] =
   ## Borrow callbacks synchronously and return only complete metadata, never a native sealed owner or partial image.
@@ -564,6 +605,7 @@ proc validatePagedArtifact*(io: PagedInput, selected: PagedManifest,
   var work = initWork(limits)
   if work.status != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
   inspect(io, selected, work)
+
 func compare(a, b: StateKey): int =
   ## Canonical full serialized-key ordering is shared by binary search and the producer contract.
   let left = array[31, byte](a)
@@ -572,6 +614,7 @@ func compare(a, b: StateKey): int =
     if left[index] < right[index]: return -1
     if left[index] > right[index]: return 1
   0
+
 proc locateProof(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
     budget: PagedWorkLimits): PagedStreamResult[LocatedProof] =
   ## Authenticate binary-search pages and one proof against captured roots, with actual EOF checked before success/UnknownKey.
@@ -619,6 +662,7 @@ proc locateProof(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey
   if not io.checkExtent(selected.byteLength, work): return refused[LocatedProof](work)
   work.fail(PagedStreamError.UnknownKey)
   refused[LocatedProof](work)
+
 func failed[T, U](outcome: PagedStreamResult[U]): PagedStreamResult[T] {.requires:
     outcome.status != PagedStreamError.None.} =
   ## Changing successful representation preserves only the selected failure and optional proof cause.
@@ -626,6 +670,7 @@ func failed[T, U](outcome: PagedStreamResult[U]): PagedStreamResult[T] {.require
     return PagedStreamResult[T](status: PagedStreamError.ProofFailure,
         proofCause: outcome.proofCause)
   PagedStreamResult[T](status: outcome.status)
+
 proc lookupPaged*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
     budget: PagedWorkLimits): PagedStreamResult[PagedLookup] =
   ## Ordinary lookups retain only verified values; unused raw proof bytes retire before returning.
@@ -634,6 +679,7 @@ proc lookupPaged*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKe
   PagedStreamResult[PagedLookup](status: PagedStreamError.None,
     completed: PagedLookup(ready: true, checked: located.value.loaded.checked,
         used: located.value.used))
+
 proc lookupPagedProof*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
     budget: PagedWorkLimits): PagedStreamResult[PagedProofLookup] =
   ## Capture raw evidence only after the identical authenticated/verified lookup and final EOF checks.
@@ -642,6 +688,7 @@ proc lookupPagedProof*(artifact: CheckedPagedArtifact, io: PagedInput, query: St
   PagedStreamResult[PagedProofLookup](status: PagedStreamError.None,
     completed: PagedProofLookup(ready: true, record: located.value.loaded.record,
         used: located.value.used))
+
 proc proof*(captured: PagedProofLookup): LightStateProof {.requires: captured.ready.} =
   ## Detach mutable transport while respecting the existing two-node-array/two-value workspace reservation.
   var nodes = newSeq[EncodedStateNode](captured.record.proof.nodes.len)
@@ -649,12 +696,15 @@ proc proof*(captured: PagedProofLookup): LightStateProof {.requires: captured.re
   for index in 0..<nodes.len: nodes[index] = captured.record.proof.nodes[index] # Fixed canonical node copies.
   for index in 0..<value.len: value[index] = captured.record.proof.value[index] # No private mutable bytes escape.
   LightStateProof(key: captured.record.key, proof: StateProof(nodes: nodes, value: value))
+
 func counts*(captured: PagedProofLookup): PagedStreamCounts {.requires: captured.ready.} =
   ## Report successful proof extraction work without retaining source IO or native lifetime.
   captured.used
+
 proc put(output: var seq[byte], offset: int, number: uint64, width = 8) =
   ## One-proof preflight proves every fixed numeric write and complete detached transport extent.
   for index in 0..<width: output[offset+index] = byte((number shr (8*index)) and 255)
+
 proc encode(record: LightStateProof, size: uint64): seq[byte] =
   ## At most one bounded proof transport exists, after its temporary verified lookup has retired.
   result = newSeq[byte](int(size))
@@ -669,6 +719,7 @@ proc encode(record: LightStateProof, size: uint64): seq[byte] =
     for index in 0..<64: result[cursor+index] = raw[index]
     cursor += 64
   for index, octet in record.proof.value: result[cursor+index] = octet
+
 proc next(producer: PagedProducer, pass: int, ordinal: uint64, output: var LightStateProof,
     work: var Work): PagedProducerStep =
   ## Explicit end markers and producer failures cannot be mistaken for successful empty proofs.
@@ -676,6 +727,7 @@ proc next(producer: PagedProducer, pass: int, ordinal: uint64, output: var Light
   if not work.charge(CounterKind.ProducerCall, 1): return
   result = producer(pass, ordinal, output)
   if result == PagedProducerStep.Failed: work.fail(PagedStreamError.ProducerFailure)
+
 proc producerPass(io: PagedOutput, producer: PagedProducer, pass: int, header: PagedHeader,
     work: var Work): PagedDigest =
   ## Verify and fingerprint strictly sorted replayable evidence; index precedes payload with no whole-batch staging.
@@ -724,12 +776,14 @@ proc producerPass(io: PagedOutput, producer: PagedProducer, pass: int, header: P
     return
   let finished = scan.finish
   if finished != PagedCodecError.None: work.fail(codecReason(finished))
+
 proc padding(io: PagedOutput, extent: uint64, work: var Work): bool =
   ## Append only the final canonical zero fragment of an index/payload page, never reserve sparse space.
   let size = int((4096-extent mod 4096) mod 4096)
   var zeros = default(array[PagedPageBytes, byte])
   if size == 0: return true
   io.appendExact(zeros.toOpenArray(0, size-1), work)
+
 proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: PagedHeader,
     limits: PagedStreamLimits, context: openArray[byte] = []): PagedStreamResult[
         CheckedPagedArtifact] =
@@ -861,20 +915,25 @@ func samePagedKnowledge*(a, b: CheckedPagedArtifact): bool =
 func initialized*(context: PagedContext): bool =
   ## A default owner grants no authenticated opaque light context.
   context.ready
+
 func manifest*(context: PagedContext): PagedManifest {.requires: context.ready.} =
   ## Bind retained context to the exact admitted physical selection, not merely its JAM root.
   context.selected
+
 func byteLength*(context: PagedContext): int {.requires: context.ready.} =
   ## Scalar length allows application preflight without exposing mutable private backing.
   context.payload.len
+
 proc bytes*(context: PagedContext): seq[byte] {.requires: context.ready.} =
   ## Return detached mutable transport while retaining no native descriptor, pin or callback.
   result = newSeq[byte](context.payload.len)
   for index in 0..<result.len: result[index] = context.payload[
       index] # Every output octet owns its independent backing.
+
 func counts*(context: PagedContext): PagedStreamCounts {.requires: context.ready.} =
   ## Only complete success exposes passive successful work counters.
   context.used
+
 proc contextBudget(inherited, requested: PagedWorkLimits): PagedWorkLimits =
   ## Per-call context work can only tighten every captured admission channel.
   PagedWorkLimits(ioCalls: ElementLimit(min(uint64(inherited.ioCalls), uint64(requested.ioCalls))),
@@ -886,6 +945,7 @@ proc contextBudget(inherited, requested: PagedWorkLimits): PagedWorkLimits =
     readBytes: ByteLimit(min(uint64(inherited.readBytes), uint64(requested.readBytes))),
     writeBytes: ByteLimit(min(uint64(inherited.writeBytes), uint64(requested.writeBytes))),
     valueBytes: ByteLimit(min(uint64(inherited.valueBytes), uint64(requested.valueBytes))))
+
 proc readPagedContext*(io: PagedInput, checked: CheckedPagedArtifact,
     budget: PagedWorkLimits): PagedStreamResult[PagedContext] =
   ## Authenticate one opaque context privately; root/head trust and state proof interpretation remain application responsibilities.
@@ -921,19 +981,24 @@ proc readPagedContext*(io: PagedInput, checked: CheckedPagedArtifact,
 func initialized*(inventory: PagedQueryInventory): bool =
   ## A valid empty inventory is distinct from the default owner.
   inventory.ready
+
 func len*(inventory: PagedQueryInventory): int =
   ## Length observation grants no source or deletion authority.
   inventory.queries.len
+
 func manifest*(inventory: PagedQueryInventory): PagedManifest {.requires: inventory.ready.} =
   ## Passive metadata binds every captured key to one exact admitted physical selection.
   inventory.selected
+
 func counts*(inventory: PagedQueryInventory): PagedStreamCounts {.requires: inventory.ready.} =
   ## Complete success alone exposes cumulative inventory work counters.
   inventory.used
+
 proc keys*(inventory: PagedQueryInventory): seq[StateKey] {.requires: inventory.ready.} =
   ## Copy fixed identities into detached caller transport without exposing private storage.
   result = newSeq[StateKey](inventory.queries.len)
   for index in 0..<result.len: result[index] = inventory.queries[index] # Each fixed key owns its bytes.
+
 proc readPagedQueries*(io: PagedInput, checked: CheckedPagedArtifact,
     maximum: ElementLimit, budget: PagedWorkLimits): PagedStreamResult[PagedQueryInventory] =
   ## Authenticate every index row under one cumulative budget and return all keys or no prefix.

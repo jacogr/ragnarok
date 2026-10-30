@@ -62,28 +62,33 @@ func error*[T](outcome: AccumulationContinuationInputResult[
     T]): AccumulationContinuationInputError =
   ## Inspect the selected reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationContinuationInputResult[T]): T {.inline,
     requires: outcome.status == AccumulationContinuationInputError.None.} =
   ## Extract complete selected success under checked optimized contracts.
   outcome.completed
+
 func operandError*[T](outcome: AccumulationContinuationInputResult[
     T]): AccumulationOperandError {.inline,
 
 requires: outcome.status == AccumulationContinuationInputError.OperandFailure.} =
   ## Inspect only an actual selected-range materialization refusal.
   outcome.operandReason
+
 func inputError*[T](outcome: AccumulationContinuationInputResult[
     T]): AccumulationInputError {.inline,
 
 requires: outcome.status == AccumulationContinuationInputError.InputFailure.} =
   ## Inspect only an actual service-input grouping refusal.
   outcome.inputReason
+
 func serviceError*[T](outcome: AccumulationContinuationInputResult[
     T]): AccumulationServiceError {.inline,
 
 requires: outcome.status == AccumulationContinuationInputError.ServiceFailure.} =
   ## Inspect only the selected service-resolution refusal.
   outcome.serviceReason
+
 func batchFailure*[T](outcome: AccumulationContinuationInputResult[T]): AccumulationBatchResult[
     StateStoreSnapshot] {.inline,
 
@@ -117,6 +122,7 @@ proc continuationInputs*(owner: PreparedAccumulationContinuationInputs): Accumul
         status: AccumulationContinuationInputError.Uninitialized) # Defaults are not initialized empty input sets.
   AccumulationContinuationInputResult[PreparedAccumulationInputs](
       status: AccumulationContinuationInputError.None, completed: data.inputs)
+
 proc continuationState*(owner: PreparedAccumulationContinuationInputs): AccumulationContinuationInputResult[
     StateStoreSnapshot] =
   ## Retain the actual complete post-batch map; no root is recomputed from a partial service view.
@@ -126,6 +132,7 @@ proc continuationState*(owner: PreparedAccumulationContinuationInputs): Accumula
         status: AccumulationContinuationInputError.Uninitialized) # No default snapshot authorizes a continuation.
   AccumulationContinuationInputResult[StateStoreSnapshot](
       status: AccumulationContinuationInputError.None, completed: data.state)
+
 proc continuationPlan*(owner: PreparedAccumulationContinuationInputs): AccumulationContinuationInputResult[
     PreparedAccumulationContinuation] =
   ## Retain the exact selected-range plan and its admitted completed source.

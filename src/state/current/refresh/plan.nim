@@ -37,17 +37,21 @@ type
       phase: CurrentRefreshRefusal
     else:
       discard # Every successful plan requires complete whole-output admission.
+
 func error*[T](outcome: CurrentRefreshPlanResult[T]): CurrentRefreshPlanError =
   ## Inspect immutable selected stage only.
   outcome.status
+
 func value*[T](outcome: CurrentRefreshPlanResult[T]): T {.inline, requires: outcome.status ==
     CurrentRefreshPlanError.None.} =
   ## Only whole successful plans expose original sources, quotas or copied accounting.
   outcome.completed
+
 func refusedPhase*[T](outcome: CurrentRefreshPlanResult[T]): CurrentRefreshRefusal {.inline,
     requires: outcome.status == CurrentRefreshPlanError.LimitExceeded.} =
   ## Only an actual resource refusal names its failed policy boundary.
   outcome.phase
+
 proc planCurrentRefresh*(source: CurrentRequestKeys,
     limits: CurrentRefreshLimits): CurrentRefreshPlanResult[CurrentRefreshPlan] =
   ## Inspect fixed original facts and actual successor cached value extents; all output/temporary bytes precede allocation, copying and decoding.
@@ -133,12 +137,14 @@ proc planCurrentRefresh*(source: CurrentRequestKeys,
   info.wireBytes = wireBudget-wire
   CurrentRefreshPlanResult[CurrentRefreshPlan](status: CurrentRefreshPlanError.None,
     completed: CurrentRefreshPlan(initialized: true, source: source, limits: limits, info: info))
+
 proc refreshPlanSource*(source: CurrentRefreshPlan): CurrentRefreshPlanResult[CurrentRequestKeys] =
   ## Retain only the original immutable cached identities and genuine actual target.
   if not source.initialized: return CurrentRefreshPlanResult[CurrentRequestKeys](
       status: CurrentRefreshPlanError.Uninitialized)
   CurrentRefreshPlanResult[CurrentRequestKeys](status: CurrentRefreshPlanError.None,
       completed: source.source)
+
 proc refreshPlanLimits*(source: CurrentRefreshPlan): CurrentRefreshPlanResult[
     CurrentRefreshLimits] =
   ## Return detached fixed policies; mutating this value never changes an existing plan's quotas.
@@ -146,6 +152,7 @@ proc refreshPlanLimits*(source: CurrentRefreshPlan): CurrentRefreshPlanResult[
       status: CurrentRefreshPlanError.Uninitialized)
   CurrentRefreshPlanResult[CurrentRefreshLimits](status: CurrentRefreshPlanError.None,
       completed: source.limits)
+
 proc refreshPlanInfo*(source: CurrentRefreshPlan): CurrentRefreshPlanResult[CurrentRefreshInfo] =
   ## Copy exact whole-output accounting without exporting arrays or construction authority.
   if not source.initialized: return CurrentRefreshPlanResult[CurrentRefreshInfo](

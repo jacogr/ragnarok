@@ -38,22 +38,26 @@ type
 func error*[T](outcome: ImportInputsResult[T]): ImportInputsError =
   ## Inspect a reason without a writable discriminator.
   outcome.status
+
 func value*[T](outcome: ImportInputsResult[T]): T
     {.requires: outcome.status == ImportInputsError.None.} =
   ## Extract only a fully selected successful value.
   outcome.completed
+
 proc importInputsInfo*(inputs: VerifiedImportInputs): ImportInputsResult[ImportInputsInfo] =
   ## Copy fixed accounting without exposing retained descriptors.
   let data = inputs.data
   if data == nil: return ImportInputsResult[ImportInputsInfo](
       status: ImportInputsError.Uninitialized)
   ImportInputsResult[ImportInputsInfo](status: ImportInputsError.None, completed: data.info)
+
 proc importInputsExtrinsics*(inputs: VerifiedImportInputs): ImportInputsResult[VerifiedExtrinsics] =
   ## Retain the original verified extrinsics and their original package, never a caller replacement.
   let data = inputs.data
   if data == nil: return ImportInputsResult[VerifiedExtrinsics](
       status: ImportInputsError.Uninitialized)
   ImportInputsResult[VerifiedExtrinsics](status: ImportInputsError.None, completed: data.extrinsics)
+
 proc importInputsLookup*(inputs: VerifiedImportInputs): ImportInputsResult[seq[SegmentLookup]] =
   ## Copy the complete exact dictionary; fixed hash records cannot alias retained storage.
   let data = inputs.data
@@ -63,6 +67,7 @@ proc importInputsLookup*(inputs: VerifiedImportInputs): ImportInputsResult[seq[S
   for index in 0..<copied.len: copied[index] = data.lookup[
       index] # Each returned sequence owns independent storage.
   ImportInputsResult[seq[SegmentLookup]](status: ImportInputsError.None, completed: copied)
+
 proc importInput*(inputs: VerifiedImportInputs, item: FetchItemIndex,
     index: ImportInputIndex): ImportInputsResult[VerifiedImport] =
   ## Check complete nominal ordinals before narrowing and retain only the originally matched leaf owner.
@@ -74,12 +79,14 @@ proc importInput*(inputs: VerifiedImportInputs, item: FetchItemIndex,
     return ImportInputsResult[VerifiedImport](status: ImportInputsError.InvalidIndex)
   ImportInputsResult[VerifiedImport](status: ImportInputsError.None,
     completed: data.rows[int(uint64(item))][int(uint64(index))])
+
 proc less(a, b: PackageHash): bool =
   ## Compare dictionary keys lexicographically by wire bytes without native endian conversions.
   for index in 0..<32:
     # The first differing byte decides order; equality must reject a duplicate key.
     if a.bytes[index] != b.bytes[index]: return a.bytes[index] < b.bytes[index]
   false
+
 proc bindImportInputs*(extrinsics: VerifiedExtrinsics, rows: openArray[seq[VerifiedImport]],
     lookup: openArray[SegmentLookup], limits: ImportInputsLimits): ImportInputsResult[
         VerifiedImportInputs] =

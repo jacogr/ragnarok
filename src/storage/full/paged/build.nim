@@ -47,51 +47,65 @@ type
     filled: int
   Channel {.pure.} = enum ## Independent finite counters are charged before dispatch.
     Producer, IO, Hash, Read, Write
+
 func error*(outcome: FullPagedBuildResult): FullPagedBuildError =
   ## Inspect only the selected authoring outcome.
   outcome.status
+
 func value*(outcome: FullPagedBuildResult): FullPagedBuildReceipt {.requires:
     outcome.status == FullPagedBuildError.None.} =
   ## Extract complete checked metadata only after final graph admission succeeds.
   outcome.completed
+
 func checked*(receipt: FullPagedBuildReceipt): CheckedFullPagedArtifact =
   ## Default receipts expose only default uninitialized metadata, never graph authority.
   receipt.checked
+
 func producerCalls*(receipt: FullPagedBuildReceipt): uint64 =
   ## Passive counters grant no producer replay or native selection authority.
   receipt.calls
+
 func ioCalls*(receipt: FullPagedBuildReceipt): uint64 =
   ## Include output append, construction reads and exact extent checks.
   receipt.io
+
 func hashes*(receipt: FullPagedBuildReceipt): uint64 =
   ## Include record, replay fingerprint and full local digest operations during construction.
   receipt.hashes
+
 func readBytes*(receipt: FullPagedBuildReceipt): uint64 =
   ## Count exact construction reads separately from final graph admission.
   receipt.read
+
 func writeBytes*(receipt: FullPagedBuildReceipt): uint64 =
   ## Count every appended byte through the final stored tree root.
   receipt.written
+
 func codecError*(outcome: FullPagedBuildResult): FullPagedError {.requires:
     outcome.status == FullPagedBuildError.CodecFailure.} =
   ## Selected codec refusal never reads inactive graph diagnostics.
   outcome.codecCause
+
 func graphError*(outcome: FullPagedBuildResult): FullPagedStreamError {.requires:
     outcome.status == FullPagedBuildError.GraphFailure.} =
   ## Failed complete admission supplies no partially checked artifact.
   outcome.graphCause
+
 func graphCodecError*(outcome: FullPagedBuildResult): FullPagedError {.requires:
     outcome.status == FullPagedBuildError.GraphFailure.} =
   ## Non-codec graph failures preserve Uninitialized here without conferring any authority.
   outcome.graphCodec
+
 proc fail(work: var Build, reason: FullPagedBuildError) =
   ## Later cleanup or counter refusals cannot erase the first failure.
   if work.status == FullPagedBuildError.None: work.status = reason
+
 proc increment(used: var uint64, amount, limit: uint64): bool =
   ## Subtraction proves native wrapping addition safe before evaluation.
   if used > limit or amount > limit-used: return false
   used += amount
   true
+
 proc charge(work: var Build, channel: Channel, amount: uint64): bool =
   ## No callback or hash begins after a policy refusal.
   if work.status != FullPagedBuildError.None: return false
@@ -104,28 +118,33 @@ proc charge(work: var Build, channel: Channel, amount: uint64): bool =
     of Channel.Write: increment(work.written, amount, uint64(limits.writeBytes))
   if not admitted: work.fail(FullPagedBuildError.LimitExceeded)
   admitted
+
 proc codec(work: var Build, reason: FullPagedError): bool =
   ## Preserve exact selected shape/hash/provider failures.
   if reason != FullPagedError.None and work.status == FullPagedBuildError.None:
     work.status = FullPagedBuildError.CodecFailure
     work.codecCause = reason
   work.status == FullPagedBuildError.None
+
 func refused(work: Build): FullPagedBuildResult =
   ## A forensic prefix is never a successful construction result.
   if work.status == FullPagedBuildError.CodecFailure:
     return FullPagedBuildResult(status: FullPagedBuildError.CodecFailure,
         codecCause: work.codecCause)
   FullPagedBuildResult(status: work.status)
+
 proc admitAppend(output: PagedOutput, size: uint64, work: var Build): bool =
   ## Validate the callback and charge exact IO/byte budgets before borrowing any page contents.
   if output.append == nil:
     work.fail(FullPagedBuildError.Uninitialized)
     return false
   work.charge(Channel.IO, 1) and work.charge(Channel.Write, size)
+
 proc completeAppend(succeeded: bool, work: var Build): bool =
   ## Record callback failure only after its input borrow ends; preserve partial-write uncertainty.
   if not succeeded: work.fail(FullPagedBuildError.IOFailure)
   work.status == FullPagedBuildError.None
+
 proc appendRaw(output: PagedOutput, bytes: openArray[byte], work: var Build): bool =
   ## Positive completion means every input byte appended; caller callbacks own partial-write uncertainty.
   if not output.admitAppend(uint64(bytes.len), work): return false
@@ -133,6 +152,7 @@ proc appendRaw(output: PagedOutput, bytes: openArray[byte], work: var Build): bo
   assert callback != nil # Admission checked the immutable callback before consuming any output.
   let succeeded = callback(bytes)
   completeAppend(succeeded, work)
+
 proc flush(output: PagedOutput, work: var Build): bool =
   ## Canonical zero padding fills only the final suffix of one page, then retires its contents.
   if work.filled == 0: return work.status == FullPagedBuildError.None
@@ -144,6 +164,7 @@ proc flush(output: PagedOutput, work: var Build): bool =
   if not completeAppend(succeeded, work): return false
   work.filled = 0
   true
+
 proc appendPaged(output: PagedOutput, bytes: openArray[byte], work: var Build): bool =
   ## Stream arbitrary bounded records through one page without a dataset-sized payload buffer.
   var cursor = 0
@@ -155,6 +176,7 @@ proc appendPaged(output: PagedOutput, bytes: openArray[byte], work: var Build): 
     cursor += count
     if work.filled == 4096 and not output.flush(work): return false
   work.status == FullPagedBuildError.None
+
 proc checkExtent(input: PagedInput, expected: uint64, work: var Build): bool =
   ## Construction requires an initially empty real output and an exact final artifact EOF.
   let callback = input.extent
@@ -166,6 +188,7 @@ proc checkExtent(input: PagedInput, expected: uint64, work: var Build): bool =
   if not callback(actual): work.fail(FullPagedBuildError.IOFailure)
   elif actual != expected: work.fail(FullPagedBuildError.ChangedInput)
   work.status == FullPagedBuildError.None
+
 proc emitTree(output: PagedOutput, shape: PagedGeometry, first, width: uint64,
     work: var Build): FullPagedDigest =
   ## Postorder generation rereads only completed body pages; recursion is bounded by checked geometry.
@@ -201,6 +224,7 @@ proc emitTree(output: PagedOutput, shape: PagedGeometry, first, width: uint64,
     if not work.codec(hashed.error): return
     result = hashed.value
   discard output.appendRaw(array[32, byte](result), work)
+
 proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Build): FullPagedDigest =
   ## Replay binds complete canonical physical bytes, including the masked physical-left bit.
   result = default(FullPagedDigest)
@@ -217,6 +241,7 @@ proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Build): 
     discard work.codec(FullPagedError.BackendFailure)
     return
   result = FullPagedDigest(array[32, byte](hashed.value))
+
 proc buildFullPaged*(output: PagedOutput, scratch: FullPagedScratch,
     producer: nil FullPagedProducer, header: FullPagedHeader,
     limits: FullPagedBuildLimits, context: openArray[byte] = []): FullPagedBuildResult =

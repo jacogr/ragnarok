@@ -42,6 +42,7 @@ type
 func error*[T](value: IntegrationResult[T]): IntegrationError =
   ## Read only the reason; defaults/backend failures cannot be retagged as successful integration values.
   value.status
+
 func value*[T](value: IntegrationResult[T]): T {.inline, requires: value.status ==
     IntegrationError.None.} =
   ## Only successful integration results carry a key, snapshot, child owner or completed byte count.

@@ -33,8 +33,10 @@ when defined(macosx):
       bycopy.} = object
     ## Native task_info writes the complete header-defined object; only resident_size is inspected.
     resident_size: uint64
+
   proc currentTask(): cuint {.importc: "mach_task_self", header: "<mach/mach.h>".}
     ## Resolve the current process task without a foreign process handle.
+
   proc taskInfo(task: cuint, kind: cint, output: pointer,
       count: ptr cuint): cint {.importc: "task_info", header: "<mach/mach.h>".}
     ## Mach returns current resident bytes, rather than the lifetime peak from getrusage.
@@ -46,8 +48,10 @@ else:
 
 proc `=copy`*(destination: var ResourceSampler, source: ResourceSampler) {.error: "ResourceSampler owns a directory stream".}
   ## Copying would duplicate native stream cleanup authority.
+
 proc `=dup`*(source: ResourceSampler): ResourceSampler {.error.}
   ## Implicit aggregate duplication is prohibited too.
+
 proc `=wasMoved`*(sampler: var ResourceSampler) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   # The native stream is opaque; its default value is the public closed sentinel on each OS.

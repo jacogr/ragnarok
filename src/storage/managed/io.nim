@@ -27,22 +27,28 @@ type
     active, poisoned: bool
     size: uint64
     limit: ByteLimit
+
 func opened*(directory: ManagedDirectory): bool =
   ## Inspect lifecycle without exporting the shared native lease state.
   let state = directory.data
   state != nil and state.active
+
 proc nativeDescriptor(directory: ManagedDirectory): cint {.requires: directory.opened.} =
   ## Borrow a scalar descriptor only for the immediate synchronous native operation.
   let state = directory.data
   assert state != nil
   state.descriptor
+
 proc `=copy`*(destination: var ManagedDirectory, source: ManagedDirectory) {.error.}
   ## Native directory/lock retirement has one owner.
+
 proc `=dup`*(source: ManagedDirectory): ManagedDirectory {.error.}
   ## Actual lowering rejects hidden composite resource duplication.
+
 proc requireClosed(directory: ManagedDirectory) {.requires: not directory.opened.} =
   ## Explicit retirement keeps native close failures observable.
   discard
+
 proc `=wasMoved`*(directory: var ManagedDirectory) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(directory.data)
@@ -61,27 +67,35 @@ let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
 let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
 let missing {.importc: "ENOENT", header: "<errno.h>".}: cint
+
 proc closeNative(fd: cint): cint {.importc: "close", cdecl, header: "<unistd.h>".}
   ## Retire a descriptor once through its SDK declaration; even EINTR must never cause a retry.
+
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## SDK variadic open preserves platform mode promotion.
+
 proc openAt(directory: cint, path: cstring, flags, mode: cint): cint {.importc: "openat", cdecl,
     header: "<fcntl.h>".}
   ## Resolve every managed child against the held directory, never a repeated parent pathname.
+
 proc makeDirectory(path: cstring, mode: cint): cint {.importc: "mkdir", cdecl,
     header: "<sys/stat.h>".}
   ## Exclusively create one private managed namespace.
+
 proc lockNative(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Cooperating processes arbitrate through one persistent inode, without waiting.
+
 proc lockFile(fd, operation: cint): cint =
   ## Retry only interrupted operations on the same descriptor; the existing nonblocking flags are unchanged.
   while true:
     let status = lockNative(fd, operation)
     if status == 0 or posix.errno() != interrupted: return status
     # Busy and permanent refusal return immediately; an interrupted unlock still owns this live descriptor.
+
 proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Report both data and namespace durability barriers explicitly.
+
 proc syncFile(fd: cint): cint =
   ## Retry an interrupted barrier on the same live descriptor; permanent refusal remains uncertain IO.
   while true:
@@ -92,18 +106,22 @@ proc syncFile(fd: cint): cint =
 proc unlinkAt(directory: cint, path: cstring, flags: cint): cint {.importc: "unlinkat", cdecl,
     header: "<unistd.h>".}
   ## Remove only a proved owned child name without following symlinks.
+
 func error*[T](outcome: ManagedIoResult[T]): FileError =
   ## Observe the shared typed native refusal without exposing result storage.
   outcome.status
+
 func value*[T](outcome: ManagedIoResult[T]): T {.inline, requires: outcome.status ==
     FileError.None.} =
   ## Extract only complete successful IO bytes or canonical names.
   outcome.completed
+
 proc takeValue*[T](outcome: var ManagedIoResult[T]): T {.inline, requires: outcome.status ==
     FileError.None.} =
   ## Transfer a successful payload without copying; the consumed source becomes explicitly uninitialized.
   result = move(outcome.completed)
   outcome = ManagedIoResult[T](status: FileError.Uninitialized)
+
 proc managedFileName*(kind: ManagedFileKind, epoch: ManagedEpoch): ManagedIoResult[string] =
   ## Derive canonical lowercase hexadecimal epoch names; CURRENT has no variable path component.
   if kind == ManagedFileKind.Current:
@@ -117,9 +135,11 @@ proc managedFileName*(kind: ManagedFileKind, epoch: ManagedEpoch): ManagedIoResu
   if kind == ManagedFileKind.Snapshot: name.add(".bin")
   else: name.add(".wal")
   ManagedIoResult[string](status: FileError.None, completed: name)
+
 proc writeNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "write", cdecl,
     header: "<unistd.h>".}
   ## SDK-header binding preserves signed-long ssize_t results and nonnegative size_t input extents.
+
 proc writeAll(fd: cint, bytes: openArray[byte]): bool =
   ## Bound each native write by the actual remaining borrowed extent.
   var offset = 0
@@ -130,9 +150,11 @@ proc writeAll(fd: cint, bytes: openArray[byte]): bool =
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
+
 proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "read", cdecl,
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
+
 proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
   ## Seed bounded capacity from the held regular inode; actual reads decide growth, shrink and EOF.
   let maximum = min(uint64(limit), uint64(high(int)))
@@ -172,10 +194,12 @@ proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
       return ManagedIoResult[seq[byte]](status: FileError.LimitExceeded)
     for index in 0..<count: bytes.add(buffer[index])
   ManagedIoResult[seq[byte]](status: FileError.None, completed: bytes)
+
 proc regular(fd: cint): bool =
   ## Refuse FIFOs/directories/devices even when nonblocking open itself succeeds.
   var metadata = default(Stat)
   posix.fstat(fd, metadata) == 0 and S_ISREG(metadata.st_mode)
+
 proc parent(path: string): string =
   ## Select the original parent for anchoring exclusive directory creation.
   var slash = -1
@@ -184,6 +208,7 @@ proc parent(path: string): string =
   if slash < 0: return "."
   if slash == 0: return "/"
   path[0..<slash]
+
 proc acquire(directory: var ManagedDirectory, path: string, create: bool): FileError =
   ## Adopt no native resources until shape, lock and creation namespace barriers all succeed.
   if directory.opened: return FileError.Busy
@@ -229,12 +254,15 @@ proc acquire(directory: var ManagedDirectory, path: string, create: bool): FileE
   descriptor = -1
   lockDescriptor = -1
   FileError.None
+
 proc initializeManagedDirectory*(directory: var ManagedDirectory, path: string): FileError =
   ## Exclusively create a missing directory and stable LOCK; failed bootstrap leaves forensic files.
   acquire(directory, path, true)
+
 proc openManagedDirectory*(directory: var ManagedDirectory, path: string): FileError =
   ## Existing directories require their original regular LOCK file; no creation/fallback occurs.
   acquire(directory, path, false)
+
 proc close*(directory: var ManagedDirectory): FileError =
   ## Refuse lock retirement while any journal still owns a live lease.
   let state = directory.data
@@ -251,11 +279,13 @@ proc close*(directory: var ManagedDirectory): FileError =
   let retired = closeNative(descriptor)
   if released != 0 or lockRetired != 0 or retired != 0: return FileError.IoFailure
   FileError.None
+
 proc synchronize*(directory: ManagedDirectory): FileError =
   ## Confirm all already published entries under the stable held namespace.
   if not directory.opened: return FileError.Uninitialized
   if syncFile(directory.nativeDescriptor) != 0: return FileError.IoFailure
   FileError.None
+
 proc readManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch: ManagedEpoch,
     limit: ByteLimit): ManagedIoResult[seq[byte]] =
   ## Read only a canonical regular child relative to the held directory and refuse symlink aliases.
@@ -274,6 +304,7 @@ proc readManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch:
   descriptor = -1
   if closeNative(closing) != 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   loaded
+
 proc createManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch: ManagedEpoch,
     bytes: openArray[byte], limit: ByteLimit): FileError =
   ## Stage one exclusive immutable snapshot or journal prefix, syncing data before its directory entry.
@@ -295,6 +326,7 @@ proc createManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoc
   descriptor = -1
   if closeNative(closing) != 0: return FileError.IoFailure
   directory.synchronize
+
 proc removeManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind,
     epoch: ManagedEpoch): FileError =
   ## Remove only an explicitly unselected epoch child; CURRENT and LOCK are never reclamation targets.
@@ -316,11 +348,14 @@ proc removeManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind,
 
 proc `=copy`*(destination: var ManagedJournal, source: ManagedJournal) {.error.}
   ## One native append descriptor has exactly one retirement owner.
+
 proc `=dup`*(source: ManagedJournal): ManagedJournal {.error.}
   ## Lowering must reject hidden duplication of a live directory lease.
+
 proc requireClosed(journal: ManagedJournal) {.requires: not journal.active.} =
   ## Explicit close releases the directory lease before its parent lock may retire.
   discard
+
 proc `=wasMoved`*(journal: var ManagedJournal) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   journal.active = false
@@ -333,21 +368,26 @@ proc `=destroy`*(journal: ManagedJournal) =
   ## A managed append descriptor may not outlive its observable close protocol.
   requireClosed(journal)
   `=destroy`(journal.state)
+
 proc renameAt(sourceDirectory: cint, source: cstring, targetDirectory: cint,
     target: cstring): cint {.importc: "renameat", cdecl, header: "<stdio.h>".}
   ## Atomic CURRENT replacement stays within the exact held namespace.
+
 proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Only a separately trusted complete-prefix boundary may request truncation.
+
 proc truncateFile(fd: cint, extent: int64): cint =
   ## Retry only EINTR on the same already-authorized extent; repeating that truncation is idempotent.
   while true:
     let status = truncateNative(fd, extent)
     if status == 0 or posix.errno() != interrupted: return status
     # No new generation/root or extent can be chosen while this native owner holds the lease.
+
 func opened*(journal: ManagedJournal): bool =
   ## Inspect descriptor lifetime independently from a potentially poisoned append result.
   journal.active
+
 proc close*(journal: var ManagedJournal): FileError =
   ## Disarm one descriptor and release exactly one stable directory lease without retrying close.
   if not journal.active: return FileError.Uninitialized
@@ -360,6 +400,7 @@ proc close*(journal: var ManagedJournal): FileError =
   dec state.journals
   if closeNative(descriptor) != 0: return FileError.IoFailure
   FileError.None
+
 proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
     epoch: ManagedEpoch, limit: ByteLimit): ManagedIoResult[seq[byte]] =
   ## Read the exact append inode once, then retain its directory lock lease after anchoring existing bytes.
@@ -390,6 +431,7 @@ proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirector
   inc state.journals
   descriptor = -1
   loaded
+
 proc moveManagedJournal*(destination: var ManagedJournal, source: var ManagedJournal): FileError =
   ## Transfer an existing lease/descriptor into a closed slot without duplicating or retiring it.
   if destination.active: return FileError.Busy
@@ -404,11 +446,13 @@ proc moveManagedJournal*(destination: var ManagedJournal, source: var ManagedJou
   source.descriptor = -1
   source.state = nil
   FileError.None
+
 proc managedJournalBytes*(journal: ManagedJournal): ManagedIoResult[uint64] =
   ## Fresh observations refuse after any uncertain append until a new owner reopens the bytes.
   if not journal.active: return ManagedIoResult[uint64](status: FileError.Uninitialized)
   if journal.poisoned: return ManagedIoResult[uint64](status: FileError.RecoveryRequired)
   ManagedIoResult[uint64](status: FileError.None, completed: journal.size)
+
 proc appendManagedJournal*(journal: var ManagedJournal, bytes: openArray[byte]): FileError =
   ## Append only after remaining-capacity checks, then synchronize before reporting durability.
   if not journal.active: return FileError.Uninitialized
@@ -423,6 +467,7 @@ proc appendManagedJournal*(journal: var ManagedJournal, bytes: openArray[byte]):
     journal.poisoned = true
     return FileError.PublishedUnsynced
   FileError.None
+
 proc truncateManagedJournal*(journal: var ManagedJournal, extent: uint64): FileError =
   ## Low-level explicit repair requires caller-verified prefix authority; it never chooses a rollback point.
   if not journal.active: return FileError.Uninitialized
@@ -437,6 +482,7 @@ proc truncateManagedJournal*(journal: var ManagedJournal, extent: uint64): FileE
     journal.poisoned = true
     return FileError.PublishedUnsynced
   FileError.None
+
 proc discardManagedPending*(directory: ManagedDirectory): FileError =
   ## The caller must first validate CURRENT before discarding its never-selected fixed staging file.
   if not directory.opened: return FileError.Uninitialized
@@ -451,6 +497,7 @@ proc discardManagedPending*(directory: ManagedDirectory): FileError =
   if not valid or retired != 0: return FileError.IoFailure
   if unlinkAt(directory.nativeDescriptor, name.toCString(), 0) != 0: return FileError.IoFailure
   directory.synchronize
+
 proc replaceManagedManifest*(directory: ManagedDirectory, bytes: openArray[byte],
     limit: ByteLimit): FileError =
   ## Stage/sync a complete candidate, atomically replace CURRENT, then synchronize the held directory.
@@ -478,6 +525,7 @@ proc replaceManagedManifest*(directory: ManagedDirectory, bytes: openArray[byte]
 proc seekNative(fd: cint, offset: int64, origin: cint): int64 {.importc: "lseek", cdecl,
     header: "<unistd.h>".}
   ## A private synchronous journal inspection rewinds its held regular inode; O_APPEND still governs later writes.
+
 proc sameJournal(directory: ManagedDirectory, epoch: ManagedEpoch,
     journal: ManagedJournal): FileError =
   ## The selected name must still resolve to the held inode with its original bounded extent, not an equal-byte replacement.
@@ -498,6 +546,7 @@ proc sameJournal(directory: ManagedDirectory, epoch: ManagedEpoch,
       uint64(selected.st_size) != journal.size or uint64(held.st_size) != journal.size:
     return FileError.RecoveryMismatch
   FileError.None
+
 proc attachManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
     epoch: ManagedEpoch, limit: ByteLimit): FileError =
   ## Retain one bounded regular append inode without allocating or reading its entire encoded log; callers still authenticate its format.
@@ -533,6 +582,7 @@ proc attachManagedJournal*(journal: var ManagedJournal, directory: ManagedDirect
   inc state.journals
   descriptor = -1
   FileError.None
+
 proc readManagedJournalRange*(journal: var ManagedJournal, directory: ManagedDirectory,
     epoch: ManagedEpoch, offset: uint64, output: var openArray[byte]): ManagedIoResult[int] =
   ## Fill at most the caller-owned bounded window from the held inode; uncertainty poisons the journal and leaves output unspecified.
@@ -623,6 +673,7 @@ proc checkNamedPrefix(directory: ManagedDirectory, name: var string,
     # A possible interrupted write contains only the exact canonical bytes already trusted by the caller.
     if bytes[index] != expected[index]: return FileError.RecoveryMismatch
   FileError.None
+
 proc validateManagedFilePrefix*(directory: ManagedDirectory, kind: ManagedFileKind,
     epoch: ManagedEpoch, expected: openArray[byte], limit: ByteLimit): FileError =
   ## Check only an explicit unselected epoch child; matching a prefix alone grants no publication or deletion authority.
@@ -632,6 +683,7 @@ proc validateManagedFilePrefix*(directory: ManagedDirectory, kind: ManagedFileKi
   if named.error != FileError.None: return named.error
   var name = named.value
   checkNamedPrefix(directory, name, expected, limit)
+
 proc validateManagedPendingPrefix*(directory: ManagedDirectory,
     expected: openArray[byte], limit: ByteLimit): FileError =
   ## Check only fixed CURRENT.next without interpreting its partial transport as selected authority.

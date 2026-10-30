@@ -44,12 +44,13 @@ when defined(ragnarokBrowser):
   var onOpened {.threadvar.}: nil Action
   var onClosed {.threadvar.}: nil CloseHandler
 
-  # Browser objects stay in the host; old sockets lose callbacks before a replacement can open.
   proc stopSocket() {.importjs: """
     (() => { const s = globalThis.ragnarokRpcSocket; globalThis.ragnarokRpcSocket = null;
       if (s) { s.onopen = s.onmessage = s.onclose = s.onerror = null; s.close(); }
     })()
   """.}
+    ## Browser objects stay in the host; old sockets lose callbacks before a replacement can open.
+
   proc openSocket(url: string, opened, closed, failed: Action,
       message: Message): bool {.importjs: """
     ((url, opened, closed, failed, message) => { try {
@@ -66,37 +67,55 @@ when defined(ragnarokBrowser):
       return true;
     } catch (_) { return false; } })(#, #, #, #, #)
   """.}
+    ## Open a validated WebSocket URL and dispatch events only while that socket remains selected.
+
   proc sendSocket(message: string): bool {.importjs: """
     ((message) => { const s = globalThis.ragnarokRpcSocket;
       if (!s || s.readyState !== WebSocket.OPEN) return false;
       try { s.send(message); return true; } catch (_) { return false; }
     })(#)
   """.}
-  proc now(): float64 {.importjs: "performance.now()".}
-  proc later(action: Action): int {.importjs: "setTimeout(#, 25)".}
-  proc cancel(timer: int) {.importjs: "clearTimeout(#)".}
+    ## Send through the selected open socket, returning false on closure or transport failure.
 
-  # Scalar extraction is strict; unknown/malformed messages cannot consume a pending request.
+  proc now(): float64 {.importjs: "performance.now()".}
+    ## Read the browser's monotonic clock for request and subscription deadlines.
+
+  proc later(action: Action): int {.importjs: "setTimeout(#, 25)".}
+    ## Schedule the next timeout scan after a short browser timer delay.
+
+  proc cancel(timer: int) {.importjs: "clearTimeout(#)".}
+    ## Cancel the browser timer identified by the supplied handle.
+
   proc replyId(message: string): int {.importjs: """
     ((s) => { try { const d = JSON.parse(s);
       return d && !Array.isArray(d) && d.jsonrpc === '2.0' && Number.isInteger(d.id) &&
         d.id > 0 && d.id <= 2147483647 ? d.id : 0;
     } catch (_) { return 0; } })(#)
   """.}
+    ## Scalar extraction is strict; unknown/malformed messages cannot consume a pending request.
+
   proc validReply(message: string): bool {.importjs: """
     ((s) => { try { const d = JSON.parse(s), own = k => Object.prototype.hasOwnProperty.call(d, k);
       return !own('method') && (own('result') !== own('error')) && (!own('error') ||
         (d.error && Number.isInteger(d.error.code) && typeof d.error.message === 'string'));
     } catch (_) { return false; } })(#)
   """.}
+    ## Require exactly one result/error field and reject method-bearing or malformed error replies.
+
   proc succeeded(message: string): bool {.importjs:
     "Object.prototype.hasOwnProperty.call(JSON.parse(#), 'result')".}
+    ## Inspect whether a previously validated reply carries a result field.
+
   proc subscriptionResult(message: string): uint32 {.importjs: """
     ((s) => { const id = JSON.parse(s).result;
       return Number.isInteger(id) && id > 0 && id <= 4294967295 ? id : 0; })(#)
   """.}
+    ## Extract a positive uint32 subscription identity, returning zero for invalid results.
+
   proc unsubscribeResult(message: string): bool {.importjs:
     "typeof JSON.parse(#).result === 'boolean'".}
+    ## Check that a reply result has the required boolean unsubscribe representation.
+
   proc notificationId(message: string): uint32 {.importjs: """
     ((s) => { try { const d = JSON.parse(s), p = d.params;
       if (!d || Array.isArray(d) || d.jsonrpc !== '2.0' || 'id' in d || typeof d.method !== 'string' ||
@@ -106,9 +125,15 @@ when defined(ragnarokBrowser):
         own('result') !== own('error') && (!own('error') || typeof p.error === 'string') ? p.subscription : 0;
     } catch (_) { return 0; } })(#)
   """.}
+    ## Validate notification framing and extract its positive subscription identity, or zero.
+
   proc notificationMethod(message: string): string {.importjs: "JSON.parse(#).method".}
+    ## Read the method selector from a previously validated notification.
+
   proc terminal(message: string): bool {.importjs:
     "Object.prototype.hasOwnProperty.call(JSON.parse(#).params, 'error')".}
+    ## Inspect whether validated notification parameters carry a terminal error.
+
   proc requestText(id: int, methodName, parameters: string): string {.importjs: """
     ((id, method, text) => { try { const params = JSON.parse(text);
       if (!Array.isArray(params)) return '';
@@ -116,9 +141,10 @@ when defined(ragnarokBrowser):
       return new TextEncoder().encode(value).length <= 16384 ? value : '';
     } catch (_) { return ''; } })(#, #, #)
   """.}
+    ## Encode a bounded JSON-RPC request with array parameters, refusing invalid or oversized text.
 
-  # Clear owned records in place, including callback borrows and retained method strings.
   proc clearRequest(index: int) =
+    ## Clear owned records in place, including callback borrows and retained method strings.
     requests[index].id = 0
     requests[index].deadline = 0
     requests[index].kind = RequestKind.Call
@@ -128,22 +154,23 @@ when defined(ragnarokBrowser):
     requests[index].subscription = 0
 
   proc clearSubscription(index: int) =
+    ## Release a subscription slot's identity, method text and callback borrow in place.
     subscriptions[index].id = 0
     subscriptions[index].methodName = ""
     subscriptions[index].update = nil
 
-  # Empty slots contain nullable callbacks; occupied records validate these before invocation.
   proc deliver(callback: nil ReplyHandler, identity: int, status: RpcStatus, message: string) =
+    ## Empty slots contain nullable callbacks; occupied records validate these before invocation.
     if callback != nil: callback(identity, status,
         message) # Nullable storage never becomes an unchecked indirect call.
 
-  # Streams always carry their selector, including local termination without a JSON envelope.
   proc publish(callback: nil UpdateHandler, identity: uint32, status: RpcStatus, message: string) =
+    ## Streams always carry their selector, including local termination without a JSON envelope.
     if callback != nil: callback(identity, status,
         message) # Shared handlers can distinguish simultaneous streams.
 
-  # Detach all state before callbacks; callbacks may open another connection without losing its records.
   proc retire(reason: RpcStatus) =
+    ## Detach all state before callbacks; callbacks may open another connection without losing its records.
     stopSocket()
     connected = false
     if generation == 2_147_483_647: generation = 0 # Avoid target integer wrap.
@@ -168,8 +195,8 @@ when defined(ragnarokBrowser):
     ## Disconnect explicitly, retiring every pending request and active subscription once.
     retire(RpcStatus.ConnectionClosed)
 
-  # One bounded deadline sweep serves independent calls; ambiguous subscription timeouts retire the socket.
   proc tick() =
+    ## One bounded deadline sweep serves independent calls; ambiguous subscription timeouts retire the socket.
     timer = 0
     let epoch = generation
     let instant = now()
@@ -188,9 +215,9 @@ when defined(ragnarokBrowser):
         if timer == 0: timer = later(tick) # A reentrant callback may already have scheduled the sweep.
         return
 
-  # Reserve capacity for active and not-yet-acknowledged subscriptions before sending any request.
   proc beginRequest(kind: RequestKind, methodName, parameters: string, reply: ReplyHandler,
       update: nil UpdateHandler, subscription: uint32, timeoutMs: int): int =
+    ## Reserve capacity for active and not-yet-acknowledged subscriptions before sending any request.
     if not connected or methodName.len == 0 or methodName.len > 128 or parameters.len > 16384 or
         timeoutMs < 1 or timeoutMs > 60000 or nextId == 2_147_483_647: return 0
     var slot = -1
@@ -239,8 +266,8 @@ when defined(ragnarokBrowser):
             nil, subscription, timeoutMs)
     0 # Unknown/local-retired IDs cannot be unsubscribed accidentally.
 
-  # Acknowledgements settle one request; notifications never consume an unrelated request or its deadline.
   proc received(message: string) =
+    ## Acknowledgements settle one request; notifications never consume an unrelated request or its deadline.
     let id = replyId(message)
     if id != 0:
       for i in 0..<MaxPendingRequests:
@@ -291,13 +318,18 @@ when defined(ragnarokBrowser):
         publish(callback, identity, (if ended: RpcStatus.RemoteError else: RpcStatus.Success), message)
         return
 
-  # Socket callbacks have no captures and are detached on every retirement/replacement path.
   proc opened() =
+    ## Socket callbacks have no captures and are detached on every retirement/replacement path.
     connected = true
     if onOpened != nil: onOpened() # A ready callback can immediately issue multiple independent requests.
 
-  proc socketClosed() = retire(RpcStatus.ConnectionClosed)
-  proc failed() = retire(RpcStatus.TransportError)
+  proc socketClosed() =
+    ## Retire the selected connection and its callbacks with the connection-closed status.
+    retire(RpcStatus.ConnectionClosed)
+
+  proc failed() =
+    ## Retire the selected connection and its callbacks with the transport-failure status.
+    retire(RpcStatus.TransportError)
 
   proc openRpc*(url: string, ready: Action, closed: CloseHandler): bool =
     ## Replace the page's connection; ready may call/subscribe, while every old request/stream retires.

@@ -60,19 +60,20 @@ type
 func error*[T](outcome: AccumulationOperandResult[T]): AccumulationOperandError =
   ## Inspect a reason without permitting external retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationOperandResult[T]): T {.inline,
     requires: outcome.status == AccumulationOperandError.None.} =
   ## Extract complete selected success only; callers must inspect error first.
   outcome.completed
 
-## Prove each sum against its ceiling before addition; integer wrapping is never a size proof.
 func charge(total: var uint64, amount, maximum: uint64): bool =
+  ## Prove each sum against its ceiling before addition; integer wrapping is never a size proof.
   if amount > maximum-total: return false # Previous charges establish total <= maximum.
   total += amount
   true
 
-## Numeric service order is deterministic; the explicit traversal ordinal preserves all intra-service order.
 func compareDescriptor(a, b: Descriptor): int =
+  ## Numeric service order is deterministic; the explicit traversal ordinal preserves all intra-service order.
   if uint32(a.service) < uint32(b.service): return -1 # Lower service IDs form earlier groups.
   if uint32(a.service) > uint32(b.service): return 1 # Higher service IDs form later groups.
   if a.order < b.order: return -1 # Earlier report/digest remains first for this service.
@@ -143,10 +144,10 @@ proc serviceOperandAt*(plan: PreparedAccumulationOperands, service: OperandServi
   AccumulationOperandResult[OwnedOperand](status: AccumulationOperandError.None,
     completed: group.operands[int(uint64(index))])
 
-# Prepare one bounded original-queue range; the public prefix wrapper supplies start zero.
 proc prepareOperandRange(queue: AccumulationQueuePlan, start: AccumulationReportStart,
     prefix: AccumulationReportPrefix, config: AccumulationOperandConfig): AccumulationOperandResult[
         PreparedAccumulationOperands] =
+  ## Prepare one bounded original-queue range; the public prefix wrapper supplies start zero.
   # Refuse without publishing partially materialized groups or range provenance.
   template fail(reason: AccumulationOperandError) =
     return AccumulationOperandResult[PreparedAccumulationOperands](status: reason)

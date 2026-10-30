@@ -59,6 +59,7 @@ type
 func error*[T](outcome: AccumulationServiceResult[T]): AccumulationServiceError =
   ## Inspect a reason without permitting retagging or mutable access.
   outcome.status
+
 func value*[T](outcome: AccumulationServiceResult[T]): T {.inline,
     requires: outcome.status == AccumulationServiceError.None.} =
   ## Extract selected success under compiler and runtime contracts.

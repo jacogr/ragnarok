@@ -16,11 +16,14 @@ type AtomicFileWriter* = object ## Own one lock descriptor and copied destinatio
 
 proc `=copy`*(destination: var AtomicFileWriter, source: AtomicFileWriter) {.error.}
   ## Two handles must not claim the same descriptor/unlock obligation.
+
 proc `=dup`*(source: AtomicFileWriter): AtomicFileWriter {.error.}
   ## Explicit composite exclusivity survives actual ARC ownership lowering.
+
 proc requireClosed(writer: AtomicFileWriter) {.requires: not writer.active.} =
   ## Forgetting explicit retirement cannot silently leak a live publication lock.
   discard
+
 proc `=wasMoved`*(writer: var AtomicFileWriter) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   writer.active = false
@@ -38,15 +41,18 @@ let nonblocking {.importc: "LOCK_NB", header: "<sys/file.h>".}: cint
 let unlock {.importc: "LOCK_UN", header: "<sys/file.h>".}: cint
 let wouldBlock {.importc: "EWOULDBLOCK", header: "<errno.h>".}: cint
 let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
+
 proc openLock(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The real variadic SDK declaration places mode correctly on Darwin ARM64; do not use a fixed-arity libc prototype.
+
 proc lock(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Standard OS advisory locks arbitrate independently opened descriptors without blocking the caller.
 
 func opened*(writer: AtomicFileWriter): bool =
   ## Observe only native ownership, without exposing its descriptor or destination storage.
   writer.active
+
 proc openAtomicFileWriter*(writer: var AtomicFileWriter, path: string): AtomicFileError =
   ## Acquire the stable sibling lock before owning a copied destination; failure leaves an inactive owner unchanged.
   if writer.active: return AtomicFileError.Busy # A live owner cannot silently change its publication namespace.
@@ -73,6 +79,7 @@ proc openAtomicFileWriter*(writer: var AtomicFileWriter, path: string): AtomicFi
   writer.descriptor = descriptor
   writer.active = true
   AtomicFileError.None
+
 proc close*(writer: var AtomicFileWriter): AtomicFileError =
   ## Idempotently unlock/close once; never unlink the lock inode or retry a possibly reused descriptor.
   if not writer.active: return AtomicFileError.None
@@ -84,11 +91,13 @@ proc close*(writer: var AtomicFileWriter): AtomicFileError =
   let closed = posix.close(descriptor)
   if released != 0 or closed != 0: return AtomicFileError.IoFailure # The caller must handle an OS retirement error conservatively.
   AtomicFileError.None
+
 proc replace*(writer: var AtomicFileWriter, bytes: openArray[byte],
     limit: ByteLimit): AtomicFileError =
   ## Publish exact raw bytes only while the cooperative namespace lock is active.
   if not writer.active: return AtomicFileError.Uninitialized # No inactive owner authorizes I/O.
   replaceAtomicFile(writer.path, bytes, limit)
+
 proc read*(writer: var AtomicFileWriter, limit: ByteLimit): BoundedFileResult =
   ## Return owned bounded EOF bytes without imposing a state/control-record schema.
   if not writer.active: return default(BoundedFileResult) # Default/closed reads expose no successful prefix.

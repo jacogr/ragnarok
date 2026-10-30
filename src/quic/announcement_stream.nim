@@ -28,19 +28,24 @@ type
 proc active*(route: AnnouncementRoute): bool =
   ## A reset, EOF or native close immediately revokes formerly known leaves.
   route.stream != NativeStream(nil) and route.known and not route.failed
+
 func handle*(route: AnnouncementRoute): NativeStream =
   ## Parent callback routing compares the borrowed handle only during its native lifetime.
   route.stream
+
 func failed*(route: AnnouncementRoute): bool =
   ## A failed stream cannot silently retain an eligible target until transport teardown.
   route.failed
+
 func available*(snapshot: PeerAnnouncementSnapshot): bool =
   ## Only a live authenticated parent may expose a route's completed remote handshake.
   snapshot.available
+
 func value*(snapshot: PeerAnnouncementSnapshot): PeerAnnouncements {.inline,
     requires: snapshot.available.} =
   ## The returned data is still an untrusted peer claim rather than adoption authority.
   snapshot.captured
+
 proc snapshot*(route: AnnouncementRoute): PeerAnnouncementSnapshot =
   ## Copied remote metadata is exposed only while this exact persistent stream is usable.
   if not route.active: return default(PeerAnnouncementSnapshot)
@@ -55,6 +60,7 @@ proc framed(body: seq[byte], initiator: bool): seq[byte] =
   if initiator: result.add(0)
   for index in 0..<4: result.add(byte((uint64(body.len) shr (8 * index)) and 255))
   for value in body: result.add(value)
+
 proc bindStream*(route: var AnnouncementRoute, stream: NativeStream, initiator: bool,
     local: AnnouncementHandshake, limits: AnnouncementLimits): AnnouncementError =
   ## Install every byte owner before enabling callbacks; the acceptor first checks the kind byte.
@@ -70,15 +76,18 @@ proc bindStream*(route: var AnnouncementRoute, stream: NativeStream, initiator: 
   wantRead(stream, 1)
   wantWrite(stream, 1)
   AnnouncementError.None
+
 proc revoke(route: var AnnouncementRoute) =
   ## Forget source claims without touching an already-reset or closing native handle.
   route.failed = true
   route.known = false
   route.remote = default(PeerAnnouncements)
+
 proc refuse(route: var AnnouncementRoute) =
   ## Reset only this persistent stream; the parent keeps any unrelated CE request alive.
   route.revoke()
   if route.stream != NativeStream(nil): streamAbort(route.stream)
+
 proc acceptKind*(route: var AnnouncementRoute, kind: byte): AnnouncementError =
   ## A multiplexing acceptor may consume the one stream-kind byte before binding this UP0 route.
   if route.stream == NativeStream(nil): return AnnouncementError.InvalidStream
@@ -88,6 +97,7 @@ proc acceptKind*(route: var AnnouncementRoute, kind: byte): AnnouncementError =
     return AnnouncementError.InvalidStream # An already consumed foreign kind cannot enter UP0 framing.
   route.kindNeeded = false
   AnnouncementError.None
+
 proc acceptMessage(route: var AnnouncementRoute): bool =
   ## Commit one whole decoded message atomically; invalid claims retain no partial target set.
   let message = route.reader.message
@@ -118,6 +128,7 @@ proc acceptMessage(route: var AnnouncementRoute): bool =
   if route.remote.sequence == high(uint64): return false
   inc route.remote.sequence
   route.reader.consume() == AnnouncementError.None
+
 proc event*(route: var AnnouncementRoute, stream: NativeStream, event: cint): bool =
   ## Handle at most one bounded read/write chunk or one complete message per native event.
   if stream == NativeStream(nil) or stream != route.stream: return false
@@ -165,6 +176,7 @@ proc event*(route: var AnnouncementRoute, stream: NativeStream, event: cint): bo
     wantWrite(stream, 0) # A peer reset is already terminal; never reset it recursively.
   else: discard # Unrelated native event kinds cannot fabricate a target observation.
   true
+
 proc process*(route: var AnnouncementRoute) =
   ## Decode/hash at most one complete detached message outside native callbacks, then resume reads.
   if route.stream != NativeStream(nil) and not route.failed and route.reader.ready:

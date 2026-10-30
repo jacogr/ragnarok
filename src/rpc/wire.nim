@@ -23,8 +23,8 @@ proc frame*(payload: string, opcode = 1): string =
     result.add(char(126)); result.add(char(payload.len shr 8)); result.add(char(payload.len and 255))
   result.add(payload)
 
-# Match a case-insensitive comma-delimited HTTP token without accepting substring matches.
 proc hasToken(value, expected: string): bool =
+  ## Match a case-insensitive comma-delimited HTTP token without accepting substring matches.
   for token in value.split(','): # Header token lists may contain surrounding OWS.
     if token.strip().toLowerAscii() == expected: return true
   false
@@ -94,15 +94,19 @@ type
 func status*(value: FrameResult): FrameStatus =
   ## Read the outcome before selecting success-only accessors.
   value.state
+
 func payload*(value: FrameResult): string {.requires: value.state == complete.} =
   ## Return an owned payload copy only after a complete frame has been established.
   value.body
+
 func opcode*(value: FrameResult): int {.requires: value.state == complete.} =
   ## Return the validated opcode on successful parsing.
   value.operation
+
 func consumed*(value: FrameResult): int {.requires: value.state == complete.} =
   ## Return consumed bytes only for a complete frame.
   value.length
+
 func final*(value: FrameResult): bool {.requires: value.state == complete.} =
   ## Report FIN only after complete frame validation.
   value.finished

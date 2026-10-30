@@ -27,20 +27,37 @@ type
     connections: array[MaxConnections, Connection]
 
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
+  ## Create a native socket descriptor using the requested address family and protocol.
+
 proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
+  ## Bind the descriptor to the borrowed socket address, returning the native status.
+
 proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
+  ## Enable incoming connections with the requested native listen backlog.
+
 proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
+  ## Accept one incoming connection without retaining the optional peer-address pointers.
+
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
+  ## Read socket bytes into the caller-owned buffer and return the native byte count or error.
+
 proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
+  ## Send from a borrowed byte buffer and return the native byte count or error.
+
 proc setOption(fd, level, option: cint, value: pointer,
     size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
+  ## Apply one native socket option from the borrowed option-value buffer.
+
 proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
     header: "<arpa/inet.h>".}
+  ## Parse an IP address into caller-owned native storage using the selected address family.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
+  ## Convert a host-order port to the native network byte order.
 let
   GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
   SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
@@ -54,8 +71,10 @@ else:
 
 proc `=copy`*(destination: var McpServer, source: McpServer) {.error: "MCP server owns sockets".}
   ## Descriptor ownership cannot be copied.
+
 proc `=dup`*(source: McpServer): McpServer {.error.}
   ## Implicit duplication cannot duplicate descriptor retirement.
+
 proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false
@@ -92,6 +111,7 @@ func enabled*(server: McpServer): bool =
   server.opened
 
 proc nonblocking(fd: cint): bool =
+  ## Enable nonblocking I/O and close-on-exec; refuse failed descriptor or socket setup.
   let flags = fcntl(fd, F_GETFL, 0)
   let descriptorFlags = fcntl(fd, GetFd, 0)
   if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or

@@ -30,21 +30,22 @@ type
 func error*(outcome: TicketAdmissionResult): TicketAdmissionError =
   ## Read only a reason without exposing or retagging candidate state.
   outcome.status
+
 func value*(outcome: TicketAdmissionResult): SafroleStateSnapshot {.inline,
     requires: outcome.status == TicketAdmissionError.None.} =
   ## Extract an immutable candidate only after checking successful batch admission.
   outcome.completed
 
-## Preserve codec configuration/extent policy failures; other errors denote malformed C(4).
 func codecError(reason: StateComponentError): TicketAdmissionError =
+  ## Preserve codec configuration/extent policy failures; other errors denote malformed C(4).
   case reason
   of StateComponentError.InvalidConfig: TicketAdmissionError.InvalidConfig # Explicit caller configuration failure.
   of StateComponentError.LimitExceeded: TicketAdmissionError.LimitExceeded # Independent local byte/count ceiling.
   of StateComponentError.LengthOverflow: TicketAdmissionError.LengthOverflow # No unchecked narrowing/allocation.
   else: TicketAdmissionError.InvalidState # Default/malformed state is never an empty accumulator.
 
-## Compare identifier octets lexicographically; attempts never break identifier ties.
 func compare(a, b: WinningTicketId): int =
+  ## Compare identifier octets lexicographically; attempts never break identifier ties.
   let left = array[32, byte](a)
   let right = array[32, byte](b)
   for i in 0..<32:
@@ -52,8 +53,8 @@ func compare(a, b: WinningTicketId): int =
     if left[i] > right[i]: return 1 # Higher scores are evicted first at saturation.
   0 # Equality is a duplicate identifier even if attempts differ.
 
-## Binary-search an already canonical accumulator without sorting or mutating its records.
 func contains(values: openArray[WinningTicket], key: WinningTicketId): bool =
+  ## Binary-search an already canonical accumulator without sorting or mutating its records.
   var first = 0
   var last = values.len
   while first < last:

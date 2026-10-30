@@ -31,19 +31,23 @@ type
 func error*[T](outcome: TraceStepResult[T]): TraceStepError =
   ## Observe the selected immutable stage without authorizing extraction.
   outcome.status
+
 func value*[T](outcome: TraceStepResult[T]): T {.inline,
     requires: outcome.status == TraceStepError.None.} =
   ## Extract only complete successful owners, copied bytes or scalar observations.
   outcome.completed
+
 func stateFailure*[T](outcome: TraceStepResult[T]): TraceStateError {.inline,
     requires: outcome.status in {TraceStepError.PreStateFailure,
         TraceStepError.PostStateFailure}.} =
   ## Preserve the actual failing RawState reason without exposing either child.
   outcome.stateReason
+
 func blockFailure*[T](outcome: TraceStepResult[T]): FrameResult[BlockRead] {.inline,
     requires: outcome.status == TraceStepError.BlockFailure.} =
   ## Preserve the original failed block frame and its guarded nested component reason.
   outcome.frameReason
+
 func fail[T](reason: TraceStepError): TraceStepResult[T] =
   ## Plain resource/default refusals cannot carry a completed composition.
   TraceStepResult[T](status: reason)
@@ -94,21 +98,25 @@ proc traceStepBytes*(step: TraceStep): TraceStepResult[int] =
   let data = step.data
   if data == nil: return fail[int](TraceStepError.InvalidOwner)
   TraceStepResult[int](status: TraceStepError.None, completed: data.consumed)
+
 proc tracePreState*(step: TraceStep): TraceStepResult[TraceState] =
   ## Retain the original exact pre-state owner, including its record order and recomputed opaque map.
   let data = step.data
   if data == nil: return fail[TraceState](TraceStepError.InvalidOwner)
   TraceStepResult[TraceState](status: TraceStepError.None, completed: data.before)
+
 proc traceBlock*(step: TraceStep): TraceStepResult[OwnedBlock] =
   ## Retain the complete schema-qualified block and the structural configuration under which it was captured.
   let data = step.data
   if data == nil: return fail[OwnedBlock](TraceStepError.InvalidOwner)
   TraceStepResult[OwnedBlock](status: TraceStepError.None, completed: data.body)
+
 proc tracePostState*(step: TraceStep): TraceStepResult[TraceState] =
   ## Retain the original complete post-state without claiming that the block produced it.
   let data = step.data
   if data == nil: return fail[TraceState](TraceStepError.InvalidOwner)
   TraceStepResult[TraceState](status: TraceStepError.None, completed: data.after)
+
 proc copyTraceStep*(step: TraceStep, bytes: ByteLimit): TraceStepResult[seq[byte]] =
   ## Preflight total output before copying any child; detached bytes preserve the exact captured field order.
   let data = step.data

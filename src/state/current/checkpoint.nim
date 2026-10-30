@@ -32,17 +32,21 @@ type
       encodingReason: CheckpointError
     else:
       discard # Default, invalid owner and absence/resource refusals expose no prefix or fabricated identity.
+
 func error*[T](outcome: CurrentCheckpointResult[T]): CurrentCheckpointError =
   ## Inspect the selected immutable reason.
   outcome.status
+
 func value*[T](outcome: CurrentCheckpointResult[T]): T {.inline, requires: outcome.status ==
     CurrentCheckpointError.None.} =
   ## Default/refused observations or exports cannot authorize extraction.
   outcome.completed
+
 func encodingError*[T](outcome: CurrentCheckpointResult[T]): CheckpointError {.inline,
     requires: outcome.status == CurrentCheckpointError.EncodingFailure.} =
   ## Preserve the original existing checkpoint encoder's exact resource/source refusal.
   outcome.encodingReason
+
 proc captureCurrentUpdateCheckpoint*(source: PreparedCurrentChainUpdate,
     limit: ByteLimit): CurrentCheckpointResult[CurrentUpdateCheckpoint] =
   ## Operate only on a stable host-owned graph before enqueue or after collection/join; no new worker lease is created or released.
@@ -62,6 +66,7 @@ proc captureCurrentUpdateCheckpoint*(source: PreparedCurrentChainUpdate,
   CurrentCheckpointResult[CurrentUpdateCheckpoint](status: CurrentCheckpointError.None,
     completed: CurrentUpdateCheckpoint(data: CurrentCheckpointData(source: source, info: info,
         wire: encoded.value)))
+
 proc currentCheckpointInfo*(captured: CurrentUpdateCheckpoint): CurrentCheckpointResult[
     CurrentCheckpointInfo] =
   ## Return copied fixed observations from an initialized retained certificate.
@@ -71,6 +76,7 @@ proc currentCheckpointInfo*(captured: CurrentUpdateCheckpoint): CurrentCheckpoin
         status: CurrentCheckpointError.Uninitialized)
   CurrentCheckpointResult[CurrentCheckpointInfo](status: CurrentCheckpointError.None,
       completed: data.info)
+
 proc currentCheckpointSource*(captured: CurrentUpdateCheckpoint): CurrentCheckpointResult[
     PreparedCurrentChainUpdate] =
   ## Retain the exact authenticated producer owner; equal-root maps cannot replace this provenance.
@@ -80,6 +86,7 @@ proc currentCheckpointSource*(captured: CurrentUpdateCheckpoint): CurrentCheckpo
         status: CurrentCheckpointError.Uninitialized)
   CurrentCheckpointResult[PreparedCurrentChainUpdate](status: CurrentCheckpointError.None,
       completed: data.source)
+
 proc copyCurrentCheckpoint*(captured: CurrentUpdateCheckpoint,
     limit: ByteLimit): CurrentCheckpointResult[seq[byte]] =
   ## Preflight a fresh independently owned byte copy; callers cannot mutate retained checkpoint bytes.
@@ -91,6 +98,7 @@ proc copyCurrentCheckpoint*(captured: CurrentUpdateCheckpoint,
   var output = newSeq[byte](data.wire.len)
   for i in 0..<output.len: output[i] = data.wire[i] # The admitted exact extent bounds every copy.
   CurrentCheckpointResult[seq[byte]](status: CurrentCheckpointError.None, completed: output)
+
 proc currentCheckpointFinalized*(captured: CurrentUpdateCheckpoint): CurrentCheckpointResult[BlockHash] =
   ## Preserve the retained view's explicit finality or genuine absence; C15/C16 completion never finalizes the child.
   let data = captured.data
