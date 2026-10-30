@@ -4,7 +4,9 @@
 ## Preserve GP-PVM-004's Gray Paper execution witness alongside the approved JAM preparation check.
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 
 proc witness(code: openArray[byte], terminalPc: uint64) =
   ## The legal load prefix must survive runtime panic for every structurally valid final terminator.

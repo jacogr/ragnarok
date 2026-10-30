@@ -8,7 +8,9 @@ import ../../lib/logging
 
 import ../../chain/parameters
 import ../../codec/[bounded, c2_records]
-import ../../pvm/[initialize, machine, step, gas, host_fetch]
+import ../../pvm/[initialize, machine, step]
+import ../../pvm/gas/gas
+import ../../pvm/host/fetch as host_fetch
 import ./[round as accumulation_round, inputs as accumulation_inputs, queue as accumulation_queue]
 import ../report/admission as report_admission
 import "../block/transition" as block_transition

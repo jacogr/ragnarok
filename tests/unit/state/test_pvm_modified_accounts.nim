@@ -16,7 +16,9 @@ import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
     invocation as accumulation_invocation, machine as accumulation_machine,
     outcome as accumulation_outcome, inputs as accumulation_inputs]
 import ../../../src/state/store
-import ../../../src/pvm/[machine, step, gas, host_fetch]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/crypto/primitives
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
     accumulation_batch_context, arc_evidence]

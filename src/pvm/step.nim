@@ -4,7 +4,9 @@
 ## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
 ## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
 import std/assertions
-import ./[program, machine, registers, gas, gas_plan, gas_memo, backend]
+import ./[program, machine, registers]
+import ./gas/[gas, plan as gas_plan, memo as gas_memo]
+import ./backend
 export backend
 when defined(polkavmRuntime):
   import std/algorithm

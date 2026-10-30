@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_output_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, gas, step, output]
+import ../../../src/pvm/[program, machine, initialize]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/[step, output]
 import ../../support/arc_evidence
 
 # An original minimal standard envelope runs jump_ind through the initialized return-address register.

@@ -7,7 +7,8 @@ import std/[assertions, cmdline]
 import ../../src/state/refinement/[bootstrap as refinement_bootstrap,
     dispatch as refinement_dispatch, lookup as refinement_lookup]
 import ../../src/state/store
-import ../../src/pvm/[host_fetch, refinement_exports]
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/refinement_exports
 import ../../src/chain/parameters
 import ../../src/codec/bounded
 import ../../src/codec/work/[package as work_package, report as work_report]

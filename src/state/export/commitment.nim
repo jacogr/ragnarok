@@ -7,7 +7,7 @@
 import ../../codec/[bounded, natural]
 import ../../codec/work/[digest as work_digest, report as work_report]
 import ../../crypto/primitives
-import ../../pvm/host_fetch
+import ../../pvm/host/fetch as host_fetch
 import ../report/identity as report_identity
 import ../authorized_refinement
 import ../refinement/[digest as refinement_digest, report as refinement_report]

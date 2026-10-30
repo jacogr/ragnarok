@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Source-preparation interface refusal leaves ordinary plan and stream ownership unchanged.
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 import ../../../src/pvm/internal/handler_stream
 
 type PreviousFlatError {.pure.} = enum

@@ -4,7 +4,9 @@
 ## Frozen mixed loops retain full CPU/memory snapshots through host replacement, permission faults and paid reentry.
 # @@Verification={"arc": "pvm_host_memory_reentry_reference_arc_release"}
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 type

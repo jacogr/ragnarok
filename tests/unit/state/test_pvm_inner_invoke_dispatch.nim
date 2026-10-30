@@ -7,7 +7,9 @@
 import std/[assertions, syncio]
 import ../../../src/state/refinement/[bootstrap as refinement_bootstrap,
     dispatch as refinement_dispatch, outcome as refinement_outcome]
-import ../../../src/pvm/[inner_machines, machine, program, step, gas, refinement_exports]
+import ../../../src/pvm/[inner_machines, machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/refinement_exports
 import ../../../src/codec/composite
 import ../../../src/codec/work/digest as work_digest
 import ../../support/[pvm_refinement_outcome, pvm_inner_lifecycle, pvm_inner_invoke, arc_evidence]

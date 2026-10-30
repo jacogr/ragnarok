@@ -9,7 +9,8 @@ import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[trie as state_trie, safrole as state_safrole]
 import ../../../src/codec/assurances
-import ../../../src/pvm/[initialize, machine, step, gas]
+import ../../../src/pvm/[initialize, machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/[later_runner as accumulation_later_runner,
     runner as accumulation_runner, round as accumulation_round, execution as accumulation_execution,
     continuation as accumulation_continuation]

@@ -11,7 +11,8 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     service_values as state_service_values, requests as state_requests, trie as state_trie]
 import ../../../src/codec/work/report as work_report
-import ../../../src/pvm/[machine, program, step, gas]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
 import ../../support/arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

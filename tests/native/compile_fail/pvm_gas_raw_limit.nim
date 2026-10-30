@@ -6,5 +6,6 @@
 
 # @@Verification={"group": "nominal", "expected": "[3] expected: GasCycleLimit but got: uint64", "early": ["blockGas(", "[3] expected: GasCycleLimit but got: uint64"]}
 
-import ../../../src/pvm/[program, gas]
+import ../../../src/pvm/program
+import ../../../src/pvm/gas/gas
 discard blockGas(default(Program), CodeAddress(0), 100'u64)

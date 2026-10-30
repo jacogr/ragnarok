@@ -8,7 +8,8 @@ import std/[assertions, syncio]
 import ../../../src/state/refinement/[report as refinement_report,
     bootstrap as refinement_bootstrap, outcome as refinement_outcome,
     dispatch as refinement_dispatch]
-import ../../../src/pvm/[host_fetch, refinement_exports, output, step, initialize, machine]
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[refinement_exports, output, step, initialize, machine]
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/work/[package as work_package, digest as work_digest,
     report as work_report]

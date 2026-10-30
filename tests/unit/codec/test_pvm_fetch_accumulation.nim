@@ -10,7 +10,10 @@ import std/[assertions, syncio]
 import ../../../src/codec/[c2_records, bounded, composite]
 import ../../../src/codec/work/[digest as work_digest, package as work_package]
 import ../../../src/chain/parameters
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
 # Generous per-record bounds are independent of the aggregate capture budget.

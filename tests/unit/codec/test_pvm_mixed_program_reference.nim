@@ -4,7 +4,9 @@
 ## Complete GP-derived guest loops compare memory, host replies, branches and exact gas boundaries.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 
 type HostContext = object ## Synchronous test hosts own only scalar expectations and callback progress.
   calls, iterations, initial, address, budget, price: uint64

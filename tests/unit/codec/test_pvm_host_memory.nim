@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_host_memory_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step, output]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/[step, output]
 import ../../support/arc_evidence
 
 # Build three consecutive pages with independent address-derived bytes and configurable middle access.

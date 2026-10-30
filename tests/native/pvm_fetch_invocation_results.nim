@@ -5,7 +5,7 @@
 
 import std/cmdline
 import ../../src/state/accumulation/[fetch as accumulation_fetch, inputs as accumulation_inputs]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 # Dynamic selection keeps default refusal observable as a runtime contract check.

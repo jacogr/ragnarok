@@ -17,7 +17,9 @@ import ../../src/codec/state/[privileges as state_privileges, workqueues as stat
     accounts as state_accounts, service_values as state_service_values,
     authorization as state_authorization, safrole as state_safrole, layout as state_layout,
     trie as state_trie]
-import ../../src/pvm/[initialize, machine, program, step, host_fetch, gas]
+import ../../src/pvm/[initialize, machine, program, step]
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/gas/gas
 import ../../src/crypto/primitives
 import ../../src/chain/parameters
 import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision,

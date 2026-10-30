@@ -5,7 +5,9 @@
 ## Each invocation attempts exactly one forbidden result or metadata access.
 
 import std/[assertions, cmdline]
-import ../../src/pvm/[program, machine, initialize, gas, step]
+import ../../src/pvm/[program, machine, initialize]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 let selection = paramStr(1)
 let accessor = paramStr(2)
 let source = initializeMachine([0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0,

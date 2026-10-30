@@ -8,7 +8,11 @@ import std/assertions
 import ../../src/state/refinement/[bootstrap as refinement_bootstrap, outcome as refinement_outcome,
     dispatch as refinement_dispatch]
 import ../../src/state/store
-import ../../src/pvm/[machine, program, initialize, gas, step, host_fetch, refinement_exports, output]
+import ../../src/pvm/[machine, program, initialize]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/[refinement_exports, output]
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
     requests as state_requests, trie as state_trie]

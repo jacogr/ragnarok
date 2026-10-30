@@ -6,7 +6,7 @@
 
 import ../codec/composite
 import ../codec/work/[digest as work_digest, report as work_report]
-import ../pvm/host_fetch
+import ../pvm/host/fetch as host_fetch
 import ./authorization/invocation as authorization_invocation
 import ./refinement/[report as refinement_report, dispatch as refinement_dispatch,
     digest as refinement_digest]

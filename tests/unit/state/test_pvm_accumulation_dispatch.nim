@@ -16,7 +16,10 @@ import ../../../src/codec/state/outputs as state_outputs
 import ../../../src/codec/[assurances, composite]
 import ../../../src/codec/state/[authorization as state_authorization, safrole as state_safrole,
     privileges as state_privileges, layout as state_layout, trie as state_trie]
-import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
+import ../../../src/pvm/[initialize, program, machine]
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/step
+import ../../../src/pvm/gas/gas
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
 ## Prepare an actual bound service with ecalli at PC 5 and a dynamic return at PC 7.

@@ -16,7 +16,9 @@ import ../../src/codec/[bounded, composite, header, report_owned]
 import ../../src/codec/work/[report as work_report, digest as work_digest]
 import ../../src/codec/state/workqueues as state_workqueues
 import ../../src/codec/c2_records
-import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../src/pvm/[initialize, machine, program, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 import ./[accumulation_execution_context, report_context, pvm_accumulation_context,
     accumulation_batch_context, pvm_accumulation_provision]
 

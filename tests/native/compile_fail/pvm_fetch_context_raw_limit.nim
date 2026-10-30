@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: FetchTraceLimit"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 
 # Isolate the nominal capture budget from unrelated procedure overload diagnostics.
 type Input = object

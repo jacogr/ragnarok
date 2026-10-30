@@ -5,7 +5,8 @@
 ## Exposes bounded append responses and copied segment access; no invocation authentication or publication.
 
 import std/assertions
-import ./[machine, step, host_fetch]
+import ./[machine, step]
+import ./host/fetch as host_fetch
 import ../codec/bounded
 import ../codec/work/digest as work_digest
 

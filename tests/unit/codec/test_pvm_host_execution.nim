@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_host_execution_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 # Plain value context records synchronous callback order without hidden global state or pointers.

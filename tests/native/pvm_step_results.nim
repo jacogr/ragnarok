@@ -5,7 +5,9 @@
 ## The executable selects a failure by command-line argument and attempts forbidden result access.
 
 import std/[cmdline, assertions]
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 let selection = paramStr(1)
 var outcome = default(StepResult)
 # Runtime selection prevents constant folding from substituting a different rejection mechanism.

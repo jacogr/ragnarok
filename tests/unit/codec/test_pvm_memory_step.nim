@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_memory_step_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 # Literal instruction-table inventory; widths and signedness are independent test expectations.

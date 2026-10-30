@@ -8,7 +8,10 @@ import std/[assertions, syncio]
 import ../../../src/state/refinement/[bootstrap as refinement_bootstrap,
     dispatch as refinement_dispatch]
 import ../../../src/state/store
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch, refinement_exports, output]
+import ../../../src/pvm/[initialize, machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[refinement_exports, output]
 import ../../../src/chain/parameters
 import ../../../src/crypto/primitives
 import ../../../src/codec/[bounded, composite, natural]

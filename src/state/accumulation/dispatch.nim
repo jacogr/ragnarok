@@ -9,7 +9,9 @@
 import ../../lib/logging
 
 import ../../chain/parameters
-import ../../pvm/[machine, step, gas, host_gas, host_log, host_fetch, host_heap]
+import ../../pvm/[machine, step]
+import ../../pvm/gas/gas
+import ../../pvm/host/[gas as host_gas, log as host_log, fetch as host_fetch, heap as host_heap]
 import ../../codec/state/outputs as state_outputs
 import ../../codec/composite
 import ../../codec/state/[layout as state_layout, accounts as state_accounts,

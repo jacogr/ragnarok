@@ -4,7 +4,9 @@
 ## Measure only execution of independently specified PVM workloads; validate outside the timed region.
 
 import std/[assertions, syncio, envvars, monotimes]
-import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../src/pvm/step
 
 type HostContext = object ## Plain host progress is included in both embeddings' execution time.
   calls: uint64

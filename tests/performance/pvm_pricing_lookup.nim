@@ -4,7 +4,8 @@
 ## Measure exact-start pricing lookups with genuine owners, known prices and invalid-start controls.
 ## Samples include the cold first memo query; the Python runner retains all rows and summarizes warm samples separately.
 import std/[assertions, syncio, monotimes]
-import ../../src/pvm/[program, gas, gas_plan, gas_memo]
+import ../../src/pvm/program
+import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 let parsed = decodeProgram([0'u8, 0, 3, 0, 0, 0, 7], CodeAddress(0), ProgramByteLimit(7),
     JumpCountLimit(0))
 assert parsed.error == ProgramError.None

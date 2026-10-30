@@ -6,7 +6,7 @@
 import std/[assertions, cmdline]
 import ../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
 import ../../src/codec/bounded
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../support/[pvm_work_digests, pvm_report_results, pvm_refinement_outcome]
 
 proc check(outcome: RefinementDigestResult[RefinementDigests], reason: RefinementDigestError) =

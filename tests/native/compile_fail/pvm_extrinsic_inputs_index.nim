@@ -6,5 +6,5 @@
 # @@Verification={"group": "nominal", "expected": "ExtrinsicInputIndex", "early": ["extrinsicInput(", "[3] expected: ExtrinsicInputIndex but got: FetchItemIndex"]}
 
 import ../../../src/state/extrinsic_inputs
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 discard extrinsicInput(default(VerifiedExtrinsics), FetchItemIndex(0), FetchItemIndex(0))

@@ -10,5 +10,5 @@ import ../../../src/state/computed/[links as computed_links, guarantee as comput
 import ../../../src/state/report/identity as report_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/work/report as work_report
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 discard prepareComputedLinks(default(ComputedWorkReport), [], ElementLimit(1))

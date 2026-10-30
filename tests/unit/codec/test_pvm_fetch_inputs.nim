@@ -9,7 +9,10 @@
 import std/[assertions, syncio]
 import ../../../src/codec/work/package as work_package
 import ../../../src/codec/bounded
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
 # Fixed-size test segments distinguish each row and entry, including the last octet.

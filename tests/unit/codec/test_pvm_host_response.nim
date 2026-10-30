@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_host_response_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, gas, step, output]
+import ../../../src/pvm/[program, machine, initialize]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/[step, output]
 import ../../support/arc_evidence
 
 # Original code executes unlikely, ecalli 7, then jump_ind through initial r0 to halt.

@@ -13,7 +13,7 @@ import "../../src/state/import/inputs" as import_inputs
 import "../../src/state/import/justification" as import_justification
 import ../../src/codec/bounded
 import ../../src/codec/work/[package as work_package, report as work_report]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/chain/parameters
 import ./[pvm_export_erasure, pvm_input_refinement, pvm_report_results, pvm_refinement_outcome,
   pvm_extrinsic_inputs, pvm_import_inputs]

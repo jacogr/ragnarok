@@ -4,7 +4,9 @@
 ## Invocation-local decoded operands and prices survive collisions, capacity pressure and host resumptions without crossing programs or callback nesting.
 # @@Verification={"arc": "pvm_execution_cache_arc_release"}
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 type

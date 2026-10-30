@@ -7,7 +7,8 @@
 import ../../codec/[bounded, composite]
 import ../../codec/work/[package as work_package, digest as work_digest, report as work_report]
 import ../../chain/parameters
-import ../../pvm/[host_fetch, refinement_exports]
+import ../../pvm/host/fetch as host_fetch
+import ../../pvm/refinement_exports
 import ../store
 import ./[bootstrap as refinement_bootstrap, outcome as refinement_outcome,
     dispatch as refinement_dispatch]

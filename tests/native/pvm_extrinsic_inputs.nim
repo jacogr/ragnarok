@@ -4,7 +4,7 @@
 ## Optimized failed-result guards with a real successful authentication control.
 
 import std/[assertions, cmdline]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/state/extrinsic_inputs
 import ../support/pvm_extrinsic_inputs
 

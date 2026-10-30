@@ -23,7 +23,9 @@ import ../../../src/codec/state/[accounts as state_accounts, privileges as state
     outputs as state_outputs, safrole as state_safrole, layout as state_layout]
 import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
-import ../../../src/pvm/[initialize, program, machine, step, gas, host_fetch]
+import ../../../src/pvm/[initialize, program, machine, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,
   pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}

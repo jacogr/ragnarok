@@ -6,6 +6,7 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/[program, gas]
+import ../../../src/pvm/program
+import ../../../src/pvm/gas/gas
 let r = default(GasResult)
 discard r.completed

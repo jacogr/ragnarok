@@ -7,7 +7,10 @@
 # @@Verification={"arc": "pvm_gas_domain_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step, host_gas]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/gas as host_gas
 import ../../support/arc_evidence
 
 proc unexpected(calls: var int, suspension: StepOutcome): HostResponse {.raises: [].} =

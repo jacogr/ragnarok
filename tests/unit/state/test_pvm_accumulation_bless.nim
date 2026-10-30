@@ -14,7 +14,9 @@ import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
     machine as accumulation_machine, invocation as accumulation_invocation,
     outcome as accumulation_outcome]
 import ../../../src/state/store
-import ../../../src/pvm/[machine, program, step, gas, host_fetch]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
 
 ## Refuse only the first Merklization hash after authentic fixture construction.

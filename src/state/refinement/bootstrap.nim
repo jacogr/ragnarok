@@ -9,7 +9,9 @@ import ../../codec/work/[package as work_package, digest as work_digest, report 
 import ../../codec/state/service_values as state_service_values
 import ../../crypto/primitives
 import ../../chain/parameters
-import ../../pvm/[machine, program, initialize, host_fetch, refinement_exports]
+import ../../pvm/[machine, program, initialize]
+import ../../pvm/host/fetch as host_fetch
+import ../../pvm/refinement_exports
 import ../store
 import ./[lookup as refinement_lookup, dispatch as refinement_dispatch]
 

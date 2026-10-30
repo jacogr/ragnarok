@@ -3,7 +3,8 @@
 
 ## Failed/default plan and child/price queries carry no selectable payload; valid mode owns genuine complete prices.
 import std/[assertions, cmdline, syncio]
-import ../../src/pvm/[program, gas, gas_plan]
+import ../../src/pvm/program
+import ../../src/pvm/gas/[gas, plan as gas_plan]
 let mode = paramStr(1)
 let owner = decodeProgram([0'u8, 0, 2, 0, 0, 3], CodeAddress(0), ProgramByteLimit(32),
     JumpCountLimit(0)).value

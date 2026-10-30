@@ -13,7 +13,7 @@ evaluates all 85 register-only instruction mutations against a copied register f
 see [the register semantics contract](../../spec/pvm-registers.md). The internal
 `src/pvm/internal/register_ops.nim` module shares typed arithmetic between that
 guarded public evaluator and private charged dispatch, with copied scalar outputs
-and no retained execution state. `src/pvm/gas.nim`
+and no retained execution state. `src/pvm/gas/gas.nim`
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
 [the gas contract](../../spec/pvm-gas.md) records independent witnesses and approved
 PolkaVM wrapped branch-target pricing. `src/pvm/step.nim` now charges whole blocks and

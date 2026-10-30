@@ -11,7 +11,11 @@ import ../../../src/state/store
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/work/[package as work_package, digest as work_digest,
     report as work_report]
-import ../../../src/pvm/[program, machine, step, gas, initialize, host_fetch, output]
+import ../../../src/pvm/[program, machine, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/initialize
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/output
 import ../../../src/chain/parameters
 # Invocation names coexist with the existing state codec domain.
 import ../../../src/codec/state/authorization as state_authorization

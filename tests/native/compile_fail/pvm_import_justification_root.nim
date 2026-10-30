@@ -7,5 +7,5 @@
 
 import "../../../src/state/import/justification" as import_justification
 import ../../../src/codec/work/[package as work_package, report as work_report]
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 discard verifyImportSegment(PackageHash(), ImportIndex(0), default(FetchSegment), [], default(ImportJustificationLimits))

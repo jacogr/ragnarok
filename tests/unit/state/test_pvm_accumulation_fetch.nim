@@ -12,7 +12,10 @@ import ../../../src/state/accumulation/[machine as accumulation_machine,
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, c2_records]
 import ../../../src/codec/state/safrole as state_safrole
-import ../../../src/pvm/[initialize, program, machine, host_fetch, step, gas]
+import ../../../src/pvm/[initialize, program, machine]
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/step
+import ../../../src/pvm/gas/gas
 import ../../support/[pvm_accumulation_context, arc_evidence]
 
 ## Test-only provider refusal verifies setup never rehashes or reauthenticates prepared state.

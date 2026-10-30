@@ -6,5 +6,5 @@
 # @@Verification={"group": "nominal", "expected": "ReportLookupIndex", "early": ["identityLookupAt(", "[2] expected: ReportLookupIndex but got: FetchItemIndex"]}
 
 import ../../../src/state/report/identity as report_identity
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 discard identityLookupAt(default(ReportIdentity), FetchItemIndex(0))

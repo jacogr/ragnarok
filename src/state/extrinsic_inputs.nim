@@ -7,7 +7,7 @@
 import ../codec/bounded
 import ../codec/work/package as work_package
 import ../crypto/primitives
-import ../pvm/host_fetch
+import ../pvm/host/fetch as host_fetch
 
 type
   ExtrinsicInputsError* {.pure.} = enum ## Refusals retain no partially authenticated table.

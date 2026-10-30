@@ -8,7 +8,9 @@ import ../../lib/logging
 import ../../chain/parameters
 import ../../codec/[bounded, composite, header]
 import ../../codec/state/safrole as state_safrole
-import ../../pvm/[initialize, machine, step, gas, host_fetch]
+import ../../pvm/[initialize, machine, step]
+import ../../pvm/gas/gas
+import ../../pvm/host/fetch as host_fetch
 import ./[inputs as accumulation_inputs, service as accumulation_service,
     invocation as accumulation_invocation, context as accumulation_context,
     machine as accumulation_machine, dispatch as accumulation_dispatch,

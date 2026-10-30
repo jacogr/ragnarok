@@ -5,7 +5,9 @@
 
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, c2_records]
-import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../src/pvm/[initialize, machine, program, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/state/accumulation/[runner as accumulation_runner,
     invocation as accumulation_invocation]
 import ./[accumulation_execution_context, pvm_accumulation_context, accumulation_batch_context]

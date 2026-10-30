@@ -6,5 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: ExecutionStepLimit but got: GasCycleLimit", "early": ["execute(", "[2] expected: ExecutionStepLimit but got: GasCycleLimit"]}
 
-import ../../../src/pvm/[machine, gas, step]
+import ../../../src/pvm/machine
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 discard execute(default(Machine), GasCycleLimit(1), ExecutionStepLimit(1))

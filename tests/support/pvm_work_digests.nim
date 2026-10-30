@@ -7,7 +7,7 @@ import std/assertions
 import ../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/work/[package as work_package, digest as work_digest, report as work_report]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ./pvm_report_results
 
 proc digestLimits*(): RefinementDigestLimits =

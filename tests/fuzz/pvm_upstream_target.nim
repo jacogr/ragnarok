@@ -3,7 +3,9 @@
 
 ## Replay bounded public-API JamV1 observations from the pinned upstream VM generator.
 import std/[assertions, syncio]
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 const UpstreamFrameBytes* = 249+8192+16384 ## Fixed CPU observations, bounded code and two page snapshots.
 
 func word(data: openArray[byte], at, width: int): uint64 =

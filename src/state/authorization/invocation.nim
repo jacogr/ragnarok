@@ -11,7 +11,10 @@ import ../../codec/work/[package as work_package, digest as work_digest, report 
 import ../../codec/state/service_values as state_service_values
 import ../../chain/parameters
 import ../../crypto/primitives
-import ../../pvm/[machine, program, initialize, step, gas, output, host_gas, host_log, host_heap, host_fetch]
+import ../../pvm/[machine, program, initialize, step]
+import ../../pvm/gas/gas
+import ../../pvm/output
+import ../../pvm/host/[gas as host_gas, log as host_log, heap as host_heap, fetch as host_fetch]
 import ../store
 import ../refinement/lookup as refinement_lookup
 

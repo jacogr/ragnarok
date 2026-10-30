@@ -5,7 +5,8 @@
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/state/outputs as state_outputs
-import ../../src/pvm/[machine, step, gas]
+import ../../src/pvm/[machine, step]
+import ../../src/pvm/gas/gas
 import ../../src/state/accumulation/current/round as accumulation_current_round
 import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
     provisions as accumulation_provisions, annulled_outputs as accumulation_annulled_outputs,

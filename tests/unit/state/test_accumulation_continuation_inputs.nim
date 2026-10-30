@@ -19,7 +19,9 @@ import ../../../src/codec/c2_records
 import ../../../src/codec/state/[workqueues as state_workqueues, safrole as state_safrole,
     service_values as state_service_values, trie as state_trie, layout as state_layout]
 import ../../../src/crypto/primitives
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../../src/pvm/[initialize, machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[accumulation_execution_context, accumulation_batch_context,
   pvm_accumulation_context, pvm_accumulation_provision, accumulation_provision_integration,
   report_context, accumulation_transfer_continuation, arc_evidence]

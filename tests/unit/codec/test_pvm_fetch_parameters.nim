@@ -10,7 +10,10 @@ import std/[assertions, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/work/package as work_package
 import ../../../src/codec/bounded
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
 # Literal GP 0.8.0 values and wire octets are independent of the production width table/encoder.

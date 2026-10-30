@@ -8,7 +8,7 @@ import ../../../src/codec/composite
 import ../../../src/codec/state/accounts as state_accounts
 import ../../../src/codec/c2_records
 import ../../../src/chain/parameters
-import ../../../src/pvm/gas
+import ../../../src/pvm/gas/gas
 
 discard prepareAccumulationTransfer(default(AccumulationEffects), AccumulationTransferDestination(
     99), TransferBalance(5), Gas(9), default(TransferMemo), default(Parameters), AccountSlot(0),

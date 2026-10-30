@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_execution_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 # Encode original short instruction partitions with no dynamic table; operands are never marked as code.

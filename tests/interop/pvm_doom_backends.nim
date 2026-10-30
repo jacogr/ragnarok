@@ -4,7 +4,9 @@
 ## Run a bounded continuing DOOM sequence through the real CLI-selected prepared backend and host API.
 import std/[assertions, syncio, envvars, cmdline]
 import ../../src/app/options
-import ../../src/pvm/[program, machine, gas, gas_plan, step, artifact]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/[gas, plan as gas_plan]
+import ../../src/pvm/[step, artifact]
 
 
 type

@@ -6,6 +6,8 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/pvm/[machine, gas, step]
+import ../../../src/pvm/machine
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 let r = default(StepResult)
 discard r.completed

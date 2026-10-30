@@ -4,7 +4,9 @@
 ## Two-stage cross-page environment repair preserves prepaid gas, atomic stores and old owners.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 
 proc word(data: string, at, width: int): uint64 =
   ## Decode fixed test fields only after the enclosing record extent is validated.

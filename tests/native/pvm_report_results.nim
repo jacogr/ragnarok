@@ -7,7 +7,7 @@ import std/[assertions, cmdline]
 import ../../src/state/refinement/[report as refinement_report, bootstrap as refinement_bootstrap,
     outcome as refinement_outcome]
 import ../../src/codec/bounded
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../support/[pvm_report_results, pvm_refinement_outcome]
 
 proc check(outcome: RefinementReportResult[RefinedPackage], reason: RefinementReportError) =

@@ -5,7 +5,7 @@
 
 import ../../codec/bounded
 import ../../codec/work/[digest as work_digest, report as work_report]
-import ../../pvm/host_fetch
+import ../../pvm/host/fetch as host_fetch
 import ../bundle_erasure
 import ../erasure/[layout as erasure_layout, words as erasure_words]
 import ../[auditable_bundle, input_refinement]

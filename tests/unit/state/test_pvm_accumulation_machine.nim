@@ -9,7 +9,8 @@
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[machine as accumulation_machine,
     invocation as accumulation_invocation, service as accumulation_service]
-import ../../../src/pvm/[initialize, program, machine, step, gas]
+import ../../../src/pvm/[initialize, program, machine, step]
+import ../../../src/pvm/gas/gas
 import ../../support/[pvm_accumulation_context, arc_evidence]
 
 ## Test-only provider refusal proves initialization uses the existing immutable bootstrap without rehashing.

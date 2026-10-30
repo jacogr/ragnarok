@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Frozen full-state benchmark with the same decoded-fact/reset boundary as the historical local control.
 import std/[assertions, syncio, envvars]
-import ../../src/pvm/[program, machine, gas]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/handler_stream
 import ../../src/pvm/step as oracle
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}

@@ -5,7 +5,7 @@
 ## Exposes gasHostResponse and unknownHostResponse for trusted host dispatchers. Neither owns context
 ## nor performs external effects; responses retain immutable memory and copied registers.
 
-import ./[machine, step]
+import ../[machine, step]
 
 # Subtract a fixed, bounded protocol cost without signed narrowing or unsigned underflow.
 # Underfunding drains the complete unsigned balance to zero.

@@ -7,7 +7,9 @@ import std/[assertions, cmdline]
 import ../../src/state/authorization/invocation as authorization_invocation
 import ../../src/state/refinement/lookup as refinement_lookup
 import ../../src/codec/bounded
-import ../../src/pvm/[initialize, host_fetch, step, output, machine]
+import ../../src/pvm/initialize
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/[step, output, machine]
 import ../support/[pvm_authorization_invoke, pvm_refinement_outcome]
 
 proc check(outcome: AuthorizationInvocationResult[AuthorizationInvocation],

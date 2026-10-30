@@ -5,7 +5,7 @@
 ## Independent commitments, ordered geometry, immutable ownership, exact policies and ARC release.
 
 import std/[assertions, syncio]
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/state/extrinsic_inputs
 import ../../../src/codec/bounded
 import ../../../src/codec/work/package as work_package

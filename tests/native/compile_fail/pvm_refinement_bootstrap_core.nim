@@ -7,7 +7,7 @@
 
 import ../../../src/state/refinement/bootstrap as refinement_bootstrap
 import ../../../src/state/store
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/codec/work/package as work_package
 import ../../../src/chain/parameters
 discard prepareRefinementBootstrap(default(StateStoreSnapshot), default(OwnedWorkPackage),

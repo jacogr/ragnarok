@@ -14,7 +14,8 @@ import ../../../src/state/store
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/work/[digest as work_digest, package as work_package,
     report as work_report]
-import ../../../src/pvm/[host_fetch, refinement_exports]
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/refinement_exports
 import ../../../src/chain/parameters
 import ../../support/[pvm_authorized_refinement, pvm_report_results, pvm_refinement_outcome, arc_evidence]
 
