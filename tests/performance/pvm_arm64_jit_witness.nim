@@ -1712,6 +1712,45 @@ for layout in 0..<8:
         storeControls+=2
 echo "ARM_STORE_FALLBACK_CONTROL_CASES,", storeControls
 
+let checkedTailProgram = owner([@[149'u8, 0x22, 1], @[120'u8, 0x02, 0],
+    @[149'u8, 0x33, 1], @[149'u8, 0x44, 1], @[172'u8, 0x12, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+let checkedTailPlan = newFlatPlan(checkedTailProgram, GasCycleLimit(100000))
+let checkedTailPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+var checkedTailRegisters = default(RegisterFile)
+checkedTailRegisters[0] = RegisterValue(65536)
+checkedTailRegisters[1] = RegisterValue(20)
+let checkedTailInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: checkedTailRegisters)
+var checkedTailFrame = newFlatFrame(checkedTailPlan, [checkedTailPage], checkedTailInfo)
+verifyControl(checkedTailFrame, checkedTailProgram, checkedTailInfo, 120, [checkedTailPage])
+# The second invocation also exercises the same retained stream after native promotion.
+verifyControl(checkedTailFrame, checkedTailProgram, checkedTailInfo, 120, [checkedTailPage])
+when defined(pvmArm64Jit):
+  when defined(pvmArm64JitRefuse):
+    assert flatArmControlStatistics(checkedTailFrame)[0] == 0
+  else:
+    # The suffix must be positively promoted before testing the cached checked-prefix handoff.
+    assert flatArmControlStatistics(checkedTailFrame)[0] > 0
+var checkedTailCases = 0
+for layout in 0..<3:
+  var pages: seq[PageImage] = @[]
+  if layout != 2:
+    var page = checkedTailPage
+    if layout == 1: page.access = PageAccess.ReadOnly
+    pages.add(page)
+  assert replaceFlatMemoryChecked(checkedTailFrame, pages, checkedTailInfo) == FlatError.None
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 4, 5, 1000]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 99, 100, 101]:
+        # Retained native code must preserve store effects, faults, paid state and every partial reservation.
+        var input = checkedTailInfo
+        input.gas = MachineGas(gas)
+        input.blockCharged = paid
+        verifyControl(checkedTailFrame, checkedTailProgram, input, budget, pages)
+        inc checkedTailCases
+echo "ARM_CHECKED_TAIL_CONTROL_CASES,", checkedTailCases
+
 
 var secondStoreControls = 0
 let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],
