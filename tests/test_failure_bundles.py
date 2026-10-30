@@ -58,6 +58,42 @@ class FailureBundles(unittest.TestCase):
                         self.assertEqual(identities, [c['identity'] for c in FAILURE_SUITES[name]['cases']])
                     self.assertEqual(sum(report[n+'_build']['elapsed_seconds'] for n in members), 3)
 
+    def test_repeated_measurements_start_with_private_empty_caches(self):
+        """Repeated runs keep prior evidence without advertising warm intermediates as cold."""
+        from measure_failure_bundles import measure
+        members = build_units(FAILURE_SUITES)[('bundle', 'pvm-core')]
+        diagnostics = '\n'.join(case['diagnostic'] for group in members
+                                for case in FAILURE_SUITES[group]['cases'])+' [AssertionDefect]'
+        observations = []
+        def command(checks, arguments, name, **options):
+            """Mark actual planned cache paths while refusing every compiler/guest process."""
+            if arguments[1] == 'c':
+                cache = Path(next(str(arg).removeprefix('--nimcache:') for arg in arguments
+                                  if str(arg).startswith('--nimcache:')))
+                marker = cache/'inert-cache-witness'
+                observations[-1].setdefault(checks.folder, marker.exists())
+                cache.mkdir(parents=True, exist_ok=True)
+                marker.write_text('previous build')
+                return dict(exit_code=0, elapsed_seconds=1, output='')
+            positive = arguments[1] in ('negative', 'valid')
+            return dict(exit_code=0 if positive else 1, elapsed_seconds=0,
+                        output='' if positive else diagnostics)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(NativeChecks, 'command', command), \
+             patch('subprocess.Popen', side_effect=AssertionError('Unmocked native process')), \
+             patch('failure_checks.announce'):
+            for _ in range(2):
+                # Leave all prior markers in place so path reuse fails the next observation.
+                observations.append({})
+                rows = measure(Path('/inert/compiler'), Path(temporary), {}, members)
+                self.assertEqual(len(rows), 4)
+                self.assertTrue(all(row['cache'] == 'fresh-private-intermediates' for row in rows))
+            for invocation in observations:
+                self.assertEqual(len(invocation), 4)
+                self.assertFalse(any(invocation.values()))
+            self.assertFalse(set(observations[0]) & set(observations[1]))
+            self.assertTrue(all(folder.is_dir() for invocation in observations for folder in invocation))
+
     def test_real_consumers_keep_ui_and_specialized_libraries(self):
         """Source-derived preparation keeps UI consumers safe while avoiding model tools and unused engines."""
         self.assertIn('ui-assets', preparation_targets())

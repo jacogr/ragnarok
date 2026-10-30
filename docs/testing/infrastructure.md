@@ -235,7 +235,9 @@ receipts count compiler time once. To measure the pilot in CI, dispatch the work
 `contract_measure_bundles=true` (also included in explicit PR `ci:full` requests); the shard owning `pvm-core` performs two counterbalanced pairs
 of standalone versus bundled builds using fresh private intermediate caches, identical checked
 flags and the same rejection/positive-control workload. The optional measurement adds work and
-does not replace scheduled checks. Logs and complete evidence remain in the Contract artifacts.
+does not replace scheduled checks. Each invocation allocates a new private measurement tree, retaining earlier logs and caches for
+audit while preventing them from warming a repeated measurement. Logs and complete evidence
+remain in the Contract artifacts.
 Do not infer aggregate CI savings from this small pilot or mix its cold-cache measurements with
 ordinary shard totals.
 

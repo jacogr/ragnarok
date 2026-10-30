@@ -3,17 +3,22 @@
 
 """Measure opt-in Contract bundles against their standalone fixtures in independent cold caches."""
 from pathlib import Path
+from tempfile import mkdtemp
 from native_checks import NativeChecks
 from failure_checks import FAILURE_SUITES, run_failure_suite, run_failure_suites, case_details
 
 
 def measure(compiler, folder, libraries, members):
     """Use two counterbalanced orderings, exact negative probes and original positive fixture modes."""
+    # Atomically allocate a new owned tree on every invocation; retain it for report/log inspection.
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    invocation = Path(mkdtemp(prefix='invocation-', dir=folder))
     passes = []
     for repeat, ordering in enumerate((('standalone', 'bundled'), ('bundled', 'standalone'))):
         for mode in ordering:
-            workspace = Path(folder)/('pair-'+str(repeat))/mode
-            workspace.mkdir(parents=True, exist_ok=True)
+            workspace = invocation/('pair-'+str(repeat))/mode
+            workspace.mkdir(parents=True)
             checks = NativeChecks(workspace, reuse_builds=True, lto=False)
             report = {group: [] for group in members}
             binaries = {}
