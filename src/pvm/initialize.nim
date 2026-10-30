@@ -15,6 +15,10 @@ type
     program*: ProgramByteLimit
     jumps*: JumpCountLimit
     pages*: PageLimit
+  InitializationCode* = object ## Explicit single-entry decode cache; caller owns its bounded sequential worker lifetime.
+    source: Program
+    bytes: ProgramByteLimit
+    jumps: JumpCountLimit
   InitializationError* {.pure.} = enum ## No failed/default result contains a machine, memory or partially decoded input.
     Uninitialized, None, InvalidEnvelope, ArgumentsTooLarge, LimitExceeded, InvalidProgram
   InitializationResult* = object ## Private discriminated storage publishes only completely initialized executable snapshots.
@@ -63,7 +67,8 @@ proc region(pages: var seq[PageImage], start, size: uint64, access: PageAccess,
     pages.add(page)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
-    gas: MachineGas, limits: InitializationLimits): InitializationResult =
+    gas: MachineGas, limits: InitializationLimits,
+        retained: var InitializationCode): InitializationResult =
   ## Apply standard Y framing/layout, validate the embedded program and entry, then capture a CPU.
   ## Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
   # Argument admissibility is a protocol bound, separate from caller allocation policy.
@@ -101,14 +106,23 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   # Check the complete allocation, including zero pages, before building any page image.
   if pageCount > uint64(uint32(limits.pages)):
     return InitializationResult(status: InitializationError.LimitExceeded)
-  let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
-    limits.program, limits.jumps)
-  # Program policy exhaustion is local; malformed code or an invalid entry is separately rejected.
-  if decoded.error == ProgramError.LimitExceeded:
-    return InitializationResult(status: InitializationError.LimitExceeded)
-  elif decoded.error != ProgramError.None:
-    # Standard Y itself does not validate code; this executable-machine adapter deliberately does.
-    return InitializationResult(status: InitializationError.InvalidProgram)
+  let reuse = uint64(retained.bytes) == uint64(limits.program) and
+      uint64(retained.jumps) == uint64(limits.jumps) and isJamProgram(retained.source) and
+      matchesProgramEncoding(retained.source, input.toOpenArray(codeOffset, input.len - 1))
+  var source = retained.source
+  if reuse:
+    # Prior admission proves the exact encoding under identical parse limits; entry remains invocation-specific.
+    if instructionOpcode(source, entry).error != ProgramError.None:
+      return InitializationResult(status: InitializationError.InvalidProgram)
+  else:
+    let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
+        limits.program, limits.jumps)
+    if decoded.error == ProgramError.LimitExceeded:
+      return InitializationResult(status: InitializationError.LimitExceeded)
+    if decoded.error != ProgramError.None:
+      return InitializationResult(status: InitializationError.InvalidProgram)
+    source = decoded.value # Replace the one retained source only after complete successful admission.
+    retained = InitializationCode(source: source, bytes: limits.program, jumps: limits.jumps)
   var pages = newSeqOfCap[PageImage](int(pageCount))
   region(pages, 65536, roSize, PageAccess.ReadOnly, input, 11, int(readOnlyLength))
   region(pages, 131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,
@@ -123,7 +137,13 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   registers[1] = RegisterValue(0xfefe0000'u64)
   registers[7] = RegisterValue(0xfeff0000'u64)
   registers[8] = RegisterValue(uint64(arguments.len))
-  let captured = captureMachine(decoded.value, memory.value, MachineInfo(pc: entry, gas: gas,
+  let captured = captureMachine(source, memory.value, MachineInfo(pc: entry, gas: gas,
     blockCharged: false, registers: registers))
   assert captured.error == MachineError.None
   InitializationResult(status: InitializationError.None, completed: captured.value)
+
+proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
+    gas: MachineGas, limits: InitializationLimits): InitializationResult =
+  ## Ordinary one-shot initialization owns no reusable worker cache after returning its immutable machine.
+  var retained = default(InitializationCode)
+  initializeMachine(input, arguments, entry, gas, limits, retained)

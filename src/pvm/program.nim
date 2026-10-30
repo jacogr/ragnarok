@@ -304,6 +304,14 @@ func isJamProgram*(program: Program): bool =
   let data = program.data
   data != nil and data.profile == DecodeProfile.Jam
 
+func matchesProgramEncoding*(program: Program, input: openArray[byte]): bool =
+  ## Compare exact captured bytes without allocating; matching bytes alone do not confer another owner's identity.
+  let data = program.data
+  if data == nil or data.bytes.len != input.len: return false
+  for index in 0..<input.len:
+    if data.bytes[index] != input[index]: return false # Retain framing, declared counts and bitmap, not normalized semantics alone.
+  true
+
 proc programBytes*(program: Program): ProgramResult[seq[byte]] =
   ## Copy the complete captured wire encoding for an optional public runtime adapter.
   let data = program.data
