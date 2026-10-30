@@ -40,4 +40,8 @@ and [infrastructure](../docs/testing/infrastructure.md) when changing the harnes
 
 Run only affected local checks; `make unit SUITE=<name>` selects one native suite. Preserve
 complete CI verification, exact diagnostics, output/link/fixture contracts and fresh ARC evidence.
-Do not add tests that merely mirror reversible, low-impact edits.
+Do not add tests that merely mirror code or configuration layout. Follow the
+[Python testing guidance](../docs/testing/adding-tests.md#python-reference-and-tooling-tests):
+assert observable behavior and complete configured coverage, not comments, display names, job order,
+YAML anchor spelling or internal call sequences. Keep independent literal/provenance witnesses and
+strict failure, cleanup, archive-safety and fresh-evidence checks.

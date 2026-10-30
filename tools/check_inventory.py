@@ -16,16 +16,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Match the workflow's explicit family matrix against the source-owned plan before provisioning.
 def validate_e2e_groups(workflow):
-    """Reject missing, duplicate, reordered or unknown CI families without executing native work."""
+    """Reject missing, duplicate or unknown CI families without constraining job presentation."""
     from e2e_checks import PLAN
     from test_mcp_interop import CI_GROUP
     section = re.search(r'^  e2e:\n(.*?)(?=^  [\w-]+:|\Z)', workflow, re.MULTILINE | re.DOTALL)
     groups = () if section is None else tuple(re.findall(
-        r'^          - \{group: ([a-z_]+), name: [^}\n]+\}$', section[1], re.MULTILINE))
+        r'^\s*-\s*\{group:\s*([a-z_]+)(?:,|\})', section[1], re.MULTILINE))
     # The official SDK driver owns its isolated dependencies and evidence outside the native plan.
-    expected = tuple(sorted((*PLAN.groups(), CI_GROUP)))
-    if not groups or groups != expected:
-        raise ValueError('E2E matrix must contain each declared group once in lexical order')
+    expected = set((*PLAN.groups(), CI_GROUP))
+    if set(groups) != expected or len(groups) != len(expected):
+        raise ValueError('E2E matrix must contain each declared group once')
 
 
 # Resolve local inventories only; pinned dependency trees retain their existing setup/provenance checks.

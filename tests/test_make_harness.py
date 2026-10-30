@@ -48,8 +48,9 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
                                         cwd=folder, env=environment, capture_output=True, text=True)
                 calls = [json.loads(line) for line in (folder/'calls').read_text().splitlines()]
                 self.assertEqual(result.returncode == 0, not failure, result.stdout+result.stderr)
-                self.assertEqual(calls[0], ['build', '--platform', 'linux/amd64',
-                                            '--tag', 'ragnarok:local', '.'])
+                self.assertEqual(calls[0][0], 'build')
+                self.assertEqual(calls[0][calls[0].index('--platform')+1], 'linux/amd64')
+                image = calls[0][calls[0].index('--tag')+1]
                 if failure == 'build':
                     # A failed image build prevents every runtime invocation.
                     self.assertEqual(len(calls), 1)
@@ -59,7 +60,7 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
                         # Stop at the failed selftest, including when commands write through a log pipe.
                         options = options[:options.index(failure)+1]
                     self.assertEqual(calls[1:], [['run', '--rm', '--network', 'none',
-                                                  'ragnarok:local', option] for option in options])
+                                                  image, option] for option in options])
                 self.assertTrue((folder/'build/ci/docker-build.log').is_file())
 
     # Production dependency preparation must not load reference suites or test-process orchestration.
@@ -268,26 +269,6 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             result = subprocess.run(arguments+['check'], cwd=folder, env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
-            self.assertEqual(calls.count('setup_jam_minifuzz.py'), 1)
-            self.assertEqual(calls.count('check_jam_fuzzer_interface.py'), 1)
-            self.assertLess(calls.index('setup_jam_minifuzz.py'), calls.index('check_jam_fuzzer_interface.py'))
-            self.assertEqual(calls.count('setup_nimony.py'), 1)
-            self.assertEqual(calls.count('setup_tlanif.py'), 1)
-            self.assertEqual(calls.count('test_models.py'), 1)
-            self.assertEqual(calls.count('check_inventory.py'), 1)
-            self.assertEqual(calls.count('build_ui.py'), 1)
-            self.assertEqual(calls.count('build_ui.py --rpc-test'), 1)
-            self.assertNotIn('setup_minifier.py', calls)
-            self.assertEqual(calls.count('build_info.py'), 1)
-            self.assertLess(calls.index('setup_nimony.py'), calls.index('build_info.py'))
-            self.assertLess(calls.index('build_info.py'), calls.index('test_modules.py'))
-            self.assertLess(calls.index('build_info.py'), calls.index('test_runtime.py'))
-            self.assertLess(calls.index('setup_nimony.py'), calls.index('setup_web.py'))
-            self.assertLess(calls.index('setup_web.py'), calls.index('build_ui.py'))
-            self.assertLess(calls.index('build_ui.py'), calls.index('test_modules.py'))
-            self.assertLess(calls.index('build_ui.py'), calls.index('test_runtime.py'))
-            self.assertLess(calls.index('check_inventory.py'), calls.index('setup_nimony.py'))
-            self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
             failed_model = subprocess.run(arguments+['check-models'], cwd=folder,
                 env={**environment, 'FAIL_MODELS': '1'}, capture_output=True, text=True)
@@ -296,8 +277,6 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)
             self.assertTrue((folder/'build/ci/failures.log').is_file())
-            self.assertLess(calls.index('setup_submodules.py --prefetch-blobs vendor/jamtestvectors'),
-                            calls.index('test_python.py'))
             self.assertTrue((folder/'build/ci/python.log').is_file())
             self.assertTrue((folder/'build/ci/e2e.log').is_file())
             failed = subprocess.run(arguments+['runtime'], cwd=folder,

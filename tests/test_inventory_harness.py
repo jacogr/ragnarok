@@ -31,6 +31,11 @@ class InventoryPreflight(unittest.TestCase):
         rows = list(re.finditer(r'^          - \{group: ([a-z_]+), name: [^\n]+\}\n',
                                job_section(workflow, 'e2e'), re.MULTILINE))
         self.assertTrue(rows)
+        # Reordering or relabeling jobs cannot change coverage and must not fail preflight.
+        original = ''.join(match[0] for match in rows)
+        moved = ''.join(match[0] for match in reversed(rows))
+        validate_e2e_groups(workflow.replace(original, moved))
+        validate_e2e_groups(re.sub(r', name: [^}\n]+', '', workflow))
         for match in rows:
             row, group = match.group(0), match.group(1)
             for replacement in ('', row+row, row.replace('group: '+group, 'group: unknown')):

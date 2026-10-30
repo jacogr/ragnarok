@@ -107,7 +107,7 @@ def family_section(text, job, group, name=None, context=None):
     request = event_context() if context is None else context
     family = next(row for row in selected_families(text, job, request)
                   if row['group'] == group and (name is None or row['name'] == name))
-    context = dict(request, matrix=dict(family=family, os=re.search(r'&ubuntu-x86-version ([\w.-]+)', text).group(1)))
+    context = dict(request, matrix=dict(family=family))
     header, steps = section.split('    steps:\n', 1)
     kept = []
     for step in re.findall(r'^      - .*?(?=^      - |\Z)', steps, re.MULTILINE | re.DOTALL):

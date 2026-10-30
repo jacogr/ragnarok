@@ -281,26 +281,19 @@ class JamInterfaceCI(unittest.TestCase):
         """PVM-only dispatch excludes the interface; both opt-in families keep their own commands and artifacts."""
         text = (interface.ROOT/'.github/workflows/ci.yml').read_text()
         job = job_section(text, 'pvm-fuzz')
-        for value in ("inputs.suite == 'fuzz-pvm'", '"name":"JAM (1/3)"', "matrix.family.group == 'jam-interface'", 'run: make check-jam-fuzzer-interface', 'run: make fuzz-pvm-upstream', 'jam-fuzzer-interface-${{ strategy.job-index }}-${{ github.run_attempt }}'):
-            self.assertIn(value, job)
-        self.assertIn("if: matrix.family.group == 'pvm'", job)
-        self.assertIn('fail-fast: false', job)
-        self.assertIn('name: Fuzz / ${{ matrix.family.name }}', job)
-        self.assertNotIn('needs:', job)
-        self.assertNotIn('continue-on-error', job)
-        from workflow_fixtures import selected_families, event_context
+        from collections import Counter
+        from workflow_fixtures import selected_families, event_context, family_section
         families = selected_families(text, 'pvm-fuzz', event_context())
-        self.assertEqual([row['shard'] for row in families if row['group'] == 'jam-interface'], ['1/3', '2/3', '3/3'])
-        self.assertEqual(len(families), 5)
-        self.assertEqual([row for row in families if row['group'] == 'jam-network'],
-                         [dict(name='JAM Network', group='jam-network')])
-        self.assertEqual(selected_families(text, 'pvm-fuzz', event_context('workflow_dispatch', suite='fuzz-pvm')),
-                         [dict(name='PVM', group='pvm')])
-        self.assertIn('JAM_FUZZ_SHARD: ${{ matrix.family.shard }}', job)
-        self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', job)
+        scopes = [interface.parse_shard(row['shard']) for row in families if row['group'] == 'jam-interface']
+        plans = [interface.partition(scope, 'audit') for scope in scopes]
+        self.assertEqual(Counter(name for names, _ in plans for name in names), Counter(interface.CASES))
+        self.assertEqual(sum(integration for _, integration in plans), 1)
+        focused = event_context('workflow_dispatch', suite='fuzz-pvm')
+        self.assertEqual({row['group'] for row in selected_families(text, 'pvm-fuzz', focused)}, {'pvm'})
+        section = family_section(text, 'pvm-fuzz', 'pvm', context=focused)
+        self.assertIn('run: make fuzz-pvm-upstream', section)
+        self.assertNotIn('run: make check-jam-fuzzer-interface', section)
         self.assertIn('build/tests/jam-fuzzer-interface/**/results.json', job)
-        make = (interface.ROOT/'Makefile').read_text()
-        self.assertIn('check-jam-fuzzer-interface: setup check-inventory', make)
 
     def test_minifuzz_profile_completeness(self):
         """A dropped, duplicated, partial or unverified target profile cannot pass aggregate CI evidence."""

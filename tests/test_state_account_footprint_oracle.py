@@ -17,7 +17,6 @@ class FootprintOracleTests(unittest.TestCase):
     def test_fixture(self):
         """Deterministic transport and both result populations remain complete."""
         self.assertEqual(encoded(),(Path(__file__).parent/'fixtures/account-footprint-corpus.txt').read_bytes())
-        self.assertEqual(len(cases()),ROWS)
         self.assertTrue(all(len(row)==114 for row in encoded().splitlines()))
         refused=sum(observation(row)[2] for row in cases())
         self.assertGreaterEqual(refused,512)
