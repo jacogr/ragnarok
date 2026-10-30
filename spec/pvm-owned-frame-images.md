@@ -29,8 +29,24 @@ and checks the original immutable pages plus a prior copied observation. Its1000
 covers retirement. Existing stream regions/hosts, complete memory/permission/fault controls and
 native/refused execution cover consuming construction, host replacement and snapshot lifetimes.
 
-Baseline is checkpoint head `0933eec54ca04a5fa46fe8084630d98122d3271a`. Inspect generated ownership
+Baseline is corrected checkpoint head `7060c57ce205c8d3cbacebc3597f463759a47bf2`. Inspect generated ownership
 lowering and compare matching checked ARC/Clang/ThinLTO builds on ARM, with construction/public
 invocation costs included in their own measurements. Local macOS ARM measurements are authorized
 for early feedback; final native qualification remains in CI. Results are pending; no speedup is
 claimed from removing source-level copies alone.
+
+## Local ARM early feedback
+
+The prior cohort's frozen `pvm_final_memory.nim` driver at `fc8e18db` was reused without changing
+its scenarios or validation. Matched macOS ARM checked ARC/Clang/ThinLTO builds compared the
+corrected checkpoint parent with owned images at `2fbded1710504096d1fd57ea304c941614641d13`,
+using identical canonical source paths, three warmups and ten measured samples in both orders.
+All312 matrix rows per process and full CPU/memory/retained-snapshot controls passed. Live entry
+bytes remained equal, as expected: the removed temporaries already retired before that observation.
+
+Across all six scenarios and64–4096 mapped pages, entry CPU time fell29–44% and the measured
+public-call-plus-retirement lifecycle fell28–41%. The one-page case is too small for a useful
+entry-speed claim. These bounded small-guest observations establish an entry-copy benefit locally;
+DOOM init/tick raw CPU and our-time/PolkaVM-interpreted ratios remain the application decision,
+with matching ARM CI qualification pending. Raw local scripts, samples, compiler/build arguments
+and source/driver identities are retained under `build/pvm-owned-images/measure/`.
