@@ -9,8 +9,9 @@ requested backend and prints it in the retained log. Initialization failure is a
 failure, never a fallback to the interpreter. Production Nim and corpus expectations
 are unchanged.
 
-PolkaVM remains at `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; Gray Paper 0.8.0
-remains primary at `07f041dabd073f9018b418e9ee72e79dd2185401`. Existing Rust and
+Current PolkaVM is `acff91f0df4494b576471feb0c031066ab7406df`; the pinned Gray Paper
+remains primary. The [stack-clamp qualification](pvm-polkavm-stack-clamp.md) records
+the exact upgrade from the original `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` evidence. Existing Rust and
 transitive lock identities remain unchanged. The source manifest additionally records
 the inspected backend/API/platform files at that same revision. Source evidence is
 `src/lib.rs` (compiler target configuration), `config.rs` (`BackendKind::is_supported`),

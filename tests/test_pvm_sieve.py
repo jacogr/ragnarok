@@ -38,6 +38,38 @@ class SieveBenchmarkTests(unittest.TestCase):
         self.assertEqual(provenance['artifact_sha256'],
                          '70519567c4eb3eb0c04ff27b819cc25b95beadfe970d714d45a50aba7f2de43d')
 
+    def test_frozen_guest_generation_is_distinct_from_current_runtime(self):
+        """All four original artifacts retain their exact generation pin and consumed-source commitments."""
+        pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+        self.assertEqual(pins['guest_artifact_commit'],'69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa')
+        self.assertNotEqual(pins['guest_artifact_commit'],pins['commit'])
+        for guest in ('sieve','minimal','memset','pinky'):
+            # The complete frozen family and both current/original source tables must validate together.
+            with self.subTest(guest=guest):
+                provenance=benchmark.verify_fixture(ROOT/'tests/fixtures',ROOT/'vendor/polkavm',guest)
+                self.assertEqual(provenance['polkavm_commit'],pins['guest_artifact_commit'])
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            (root/'spec').mkdir()
+            for generation in (None,'0'*40,pins['commit']):
+                # Missing, unknown and current-runtime-only origins cannot relabel an old guest artifact.
+                changed=dict(pins)
+                if generation is None:
+                    changed.pop('guest_artifact_commit')
+                else:
+                    changed['guest_artifact_commit']=generation
+                (root/'spec/polkavm-pins.json').write_text(json.dumps(changed))
+                with self.subTest(generation=generation),patch.object(benchmark,'ROOT',root):
+                    with self.assertRaisesRegex(ValueError,'provenance pin mismatch'):
+                        benchmark.verify_fixture(ROOT/'tests/fixtures')
+            changed=deepcopy(pins)
+            changed['source_sha256']['guest-programs/bench-common.rs']='0'*64
+            (root/'spec/polkavm-pins.json').write_text(json.dumps(changed))
+            with patch.object(benchmark,'ROOT',root):
+                # The correct original guest hash cannot overwrite a contradictory current source pin.
+                with self.assertRaisesRegex(ValueError,'Changed upstream source'):
+                    benchmark.verify_fixture(ROOT/'tests/fixtures',ROOT/'vendor/polkavm')
+
     def test_changed_and_missing_fixture_members(self):
         """Every declared member, including attribution and lock metadata, is mandatory."""
         with tempfile.TemporaryDirectory() as temporary:

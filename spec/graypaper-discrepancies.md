@@ -51,6 +51,9 @@ Reviewed on2026-10-21 against Gray Paper0.8.0
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
 Source digests are recorded in [protocol pins](pins.json) and
 [PolkaVM pins](polkavm-pins.json). Links below identify immutable source revisions.
+Current optional runtime/reference sources advance through the separately scoped
+[stack-clamp qualification](pvm-polkavm-stack-clamp.md); original observations, fixture
+provenance and approved exceptions below are not relabeled as new measurements.
 
 Each finding keeps a stable ID, classification, minimal input, competing results,
 source evidence, local disposition and fixture coverage. Distinguish source-derived

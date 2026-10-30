@@ -7,7 +7,7 @@ type PvmBackend* {.pure.} = enum
   Jit = "jit", Interpreted = "interpreted", PolkaInterpreted = "polkavm-interpreted",
       PolkaCompiled = "polkavm-compiled", Compiled = "compiled"
 
-const PolkaVmRevision* = "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa"
+const PolkaVmRevision* = "acff91f0df4494b576471feb0c031066ab7406df"
   ## Loaded optional bridges must match the pristine pinned public runtime.
 
 const DefaultPvmBackend* = PvmBackend.Jit
