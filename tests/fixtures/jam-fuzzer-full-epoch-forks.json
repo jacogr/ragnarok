@@ -3,7 +3,7 @@
   "chains": 3,
   "transitions": 9,
   "sibling_imports": 3,
-  "epoch_guests_sha256": "a90d1fd342d6e28b02e70e5d49c90361398796e83c760e6c49271fc82f68a02c",
+  "epoch_guests_sha256": "be5e11056a9ddeda2e41bf87d5249c3a037a3fd5323f399a691ef6306d158efb",
   "successor_roots": [
     [
       "3dc664867f29f9a30a1017ca69ca2c1c5f1357ccf2bd5728f2f00eb268ae1499",

@@ -3,7 +3,7 @@
   "chains": 2,
   "transitions": 6,
   "submitted_per_chain": 20,
-  "ticket_input_sha256": "23194fd6a6cd3c89a721cfb3512ef84733501e80d7550cb7fd57d5ec4653ff9e",
+  "ticket_input_sha256": "9133b85d3b3accc7e7a2ec545c7fd5a2e5896810904712a35bf9c7b2a2e04578",
   "successor_roots": [
     [
       "d54d3d6d3233fc8212ab9dfd85899885464147ebbd10352754220207fa38625b",
