@@ -680,3 +680,10 @@ check-pvm-whole-pinky: check-inventory
 
 check-pvm-whole-sieve: check-inventory
 	$(PYTHON) tools/pvm_whole_sieve.py
+
+.PHONY: check-pvm-whole-width check-pvm-whole-width-compare
+check-pvm-whole-width: check-inventory
+	$(PYTHON) tools/pvm_whole_width.py
+
+check-pvm-whole-width-compare: check-inventory
+	$(PYTHON) tools/pvm_whole_width.py --compare --correctness "$(PVM_WHOLE_WIDTH_CORRECTNESS)" --review "$(PVM_WHOLE_WIDTH_REVIEW)"
