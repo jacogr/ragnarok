@@ -36,7 +36,7 @@ production path exists; it does not assert all normative behavior has been verif
 | Required connectivity | Development mesh and preferred/fallback dialing in `session.nim` | Previous/current/next validator union, metadata IPv6/LE port, duplicate arbitration, bounded builder slots and live epoch changes |
 | Epoch transitions | No general validator-set lifecycle | Finalized first block plus elapsed-slot threshold; preserve old connectivity until both conditions hold |
 | UP/CE lifecycle | Per-stream bounded owners, cancellation and retirement | UP initiator restriction and greatest-ID replacement; concurrent CE isolation; both FINs before success; rejection/cancellation mapping |
-| E4 messages | CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
+| E4 messages | Shared bounded `messages.nim` codec, CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
 | Grid | No general validator gossip scheduler | Pinned grid neighbors and forwarding with duplicate suppression |
 | UP0 block announcement | `announcements.nim`, `announcement_stream.nim`, current sync and Tiny routes | Complete handshake/announcement rules, greatest-ID handling, finality/leaves validation and actual peer exchanges |
 | CE128 block request | `ancestor/`, `block/download/`, `current/block/download/`, `devnet.nim` | Both directions, maximum count, canonical/finalizable response selection and request rejection |
@@ -55,8 +55,8 @@ production path exists; it does not assert all normative behavior has been verif
 | CE141 assurances | No runtime route | Anchor/bitfield/signature, validator-role authentication, epoch-sensitive recipient sets and slot timing |
 | CE142 preimage announcement | No runtime route | Service/hash/length, on-chain request lookup, CE143 followup, possession-based grid gossip and connection lifetime |
 | CE143 preimage request | `protocol.nim`, `session.nim`, `integration.nim` development workload | Replace fixture-bank-only service with state-backed requested preimages; retain digest integration as test workload and validate hash on receipt |
-| CE144 audit announcement | No runtime handler | Batched header/validator/intent/96-byte proof, authenticated initial/later intent, derived cores/tranche, duplicate intent suppression; no announcement for negative-judgment-triggered audits |
-| CE145 judgments | No runtime handler | Batched epoch/validator/validity/report/signature, inline invalid guarantee before hash/signature,2/3 distinct guarantors, authenticated judgment gossip, report retrieval and audit triggers |
+| CE144 audit announcement | `audits.nim` structural batch codec; no runtime handler | Batched header/validator/intent/96-byte proof, authenticated initial/later intent, derived cores/tranche, duplicate intent suppression; no announcement for negative-judgment-triggered audits |
+| CE145 judgments | `audits.nim` structural batch codec; no runtime handler | Batched epoch/validator/validity/report/signature, inline invalid guarantee before hash/signature,2/3 distinct guarantors, authenticated judgment gossip, report retrieval and audit triggers |
 
 ## Planned review units and acceptance
 
@@ -76,3 +76,6 @@ production path exists; it does not assert all normative behavior has been verif
 Supporting fixtures must bind the exact specification revision and compare against independent
 wire expectations. Final compatibility requires every inventory row to be supported by retained
 runtime evidence; unresolved normative ambiguities must be documented with focused witnesses.
+
+The shared framing and audit codec contracts are recorded in [message codecs](jamnp-messages.md).
+Their tests establish structural behavior only; runtime/authentication requirements remain open.
