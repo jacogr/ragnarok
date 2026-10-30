@@ -88,7 +88,7 @@ when defined(ragnarokBrowser):
     closed(RpcStatus.ConnectionClosed)
 
   proc connect() =
-    ## Replace the old connection after bounded endpoint validation and update its UI status.
+    ## Retire the old connection, then validate the endpoint and open it while updating UI status.
     disconnect() # A replacement socket starts with no outstanding calls or subscriptions.
     let endpoint = input("endpoint")
     if endpoint.len == 0 or endpoint.len > 1024:

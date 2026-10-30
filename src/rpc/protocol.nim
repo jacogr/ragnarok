@@ -212,7 +212,7 @@ proc descriptor(value: Genesis): JsonValue =
     ("slot", json(value.slot))])
 
 proc descriptor(value: RpcLightHeader): JsonValue =
-  ## Attach one complete value to a block descriptor without splicing serialized object text.
+  ## Render the retained light header's hash and slot, returning null when unavailable.
   ## Trusted light header metadata needs no complete-map provider or state recomputation.
   if not value.valid: return jsonNull() # An unavailable retained header grants no descriptor.
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.identity.blockHash)))),
