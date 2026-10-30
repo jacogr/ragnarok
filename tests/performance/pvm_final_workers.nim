@@ -120,6 +120,9 @@ proc measuredAccumulation(selected: AccumulationFixtureSource, worker: Execution
       program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))
   let before = cpuNs()
   var admitted = admitAccumulation(selected)
+  # The real guest caller preflights contexts before initialization and still captures fresh dispatch contexts.
+  var initialContexts = prepareAccumulationContexts(admitted, contextConfig)
+  assert initialContexts.error == AccumulationContextError.None
   var initialized = initializeAccumulationMachine(admitted, limits, worker)
   result.prepare = cpuNs()-before
   assert initialized.error == AccumulationMachineError.None
@@ -145,6 +148,7 @@ proc measuredAccumulation(selected: AccumulationFixtureSource, worker: Execution
   let retirement = cpuNs()
   completed = default(AccumulationDispatchResult)
   initialized = default(AccumulationMachineResult[PreparedAccumulationMachine])
+  initialContexts = default(AccumulationContextResult[PreparedAccumulationContexts])
   admitted = default(PreparedAccumulationInvocation)
   result.retire = cpuNs()-retirement
 
