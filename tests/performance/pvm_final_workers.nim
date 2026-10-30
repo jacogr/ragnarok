@@ -306,7 +306,8 @@ proc main() =
           assert actualPages == originalPages # All initialized bytes and permissions remain literal no-store inputs.
           if call == 0: firstRam = memory
           assert firstRam.pageImage(PageIndex(48)).value.bytes[0] == 81
-          assert memory.pageImage(PageIndex(48)).value.bytes[0] == (if call mod 2 == 0: 81 else: 91)
+          assert memory.pageImage(PageIndex(48)).value.bytes[0] == (if call mod 2 ==
+              0: 81'u8 else: 91'u8)
           let retirement = cpuNs()
           completed = default(AccumulationDispatchResult)
           initialized = default(AccumulationMachineResult[PreparedAccumulationMachine])

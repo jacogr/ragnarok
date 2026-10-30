@@ -218,6 +218,20 @@ def main():
             (BUILD/(role+'-sources.json')).write_text(json.dumps(sources,indent=2)+'\n')
             with tarfile.open(BUILD/(role+'-sources.tar.gz'),'w:gz') as archive:
                 archive.add(canonical,arcname='snapshot')
+            if role == 'landed':
+                # Diagnose both independent driver surfaces before repeating any linked native build.
+                preflight = []
+                for name in DRIVERS:
+                    family = 'memory' if 'memory' in name else 'worker'
+                    defines = native_defines()+(['pvmWorkerCandidate'] if family == 'worker' else [])
+                    args = [compiler,'check','--mm:arc','--cc:clang','-d:release','--opt:speed',
+                        '--boundchecks:on','--nimcache:'+str(BUILD/('semantic-'+family)),
+                        *['-d:'+x for x in defines],canonical/'tests/performance'/name]
+                    preflight.append(checks.command(args,family+'-semantic',timeout=180))
+                report['semantic_preflight'] = [{k:v for k,v in row.items() if k != 'output'} for row in preflight]
+                failed = [row for row in preflight if row['exit_code'] != 0]
+                if failed:
+                    raise RuntimeError('Driver semantic preflight failed:\n'+'\n'.join(row['output'][:4000] for row in failed))
             binaries[role] = {}
             for name in DRIVERS:
                 family = 'memory' if 'memory' in name else 'worker'
