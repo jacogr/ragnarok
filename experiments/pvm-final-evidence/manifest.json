@@ -1,0 +1,70 @@
+{
+  "status": "Experimental preservation only; no adoption or new execution",
+  "frozen_landed_source": "4a29188758026f062e2b970b96df2665d8764d4e",
+  "published_machinery": {
+    "codex/pvm-final-evidence-ci": {
+      "head": "fc8e18dba63f727fe26da1c701d9077fceef2b19",
+      "entrypoints": [
+        "tools/pvm_final_lifecycle_ci.py",
+        "tests/performance/pvm_final_workers.nim",
+        "tests/performance/pvm_final_memory.nim",
+        ".github/workflows/ci.yml: final-evidence"
+      ]
+    },
+    "codex/pvm-worker-integration-ci": {
+      "head": "36dcdf4685e9e06fa706e91c45bd1f19de97f152",
+      "entrypoint": ".github/workflows/ci.yml: worker-integration",
+      "run": 41081321989
+    },
+    "codex/pvm-final-lifecycle-ci": {
+      "head": "5db2ec3cca15ab9917979866333032d28d124894",
+      "status": "Superseded prototype; qualification failed before timing; not performance evidence",
+      "run": 41056362897
+    }
+  },
+  "preserved_helpers": {
+    "audit_final_cohort.py": {
+      "original_sha256": "df6e1b7a5f33f4e109da7872caca42582e9397246ad7a3acba4067003f436674",
+      "preserved_sha256": "7c5b81519209b35c34d96115cc7f230fce3d5f89a67c74a56669e848feba97fb"
+    },
+    "analyze_final_cohort.py": {
+      "original_sha256": "7a3267384f39127737eaefd4a09c718bc700ec7164332b92f084a6753eb58aa8",
+      "preserved_sha256": "366312803ed94f828500e6ebed4595e24a2a17faa567d848e0cb0175d05306a5"
+    }
+  },
+  "commands_from_repo_root": {
+    "audit_existing_original_artifacts": "python3 experiments/pvm-final-evidence/audit_final_cohort.py",
+    "summarize_existing_original_artifacts": "python3 experiments/pvm-final-evidence/analyze_final_cohort.py",
+    "historical_native_reproduction_CI_only_not_requested": "gh workflow run ci.yml --ref codex/pvm-final-evidence-ci -f suite=final-evidence"
+  },
+  "retained_evidence": {
+    "path": "/Users/jacogr/Projects/jacogr/ragnarok-pvm-int/build/pvm-final-push-coordinator/final-evidence-41095176325",
+    "ci": "https://github.com/jacogr/ragnarok/actions/runs/41095176325",
+    "files": [
+      "report.html",
+      "summary.json",
+      "integrity-proof.json",
+      "pre-admission-history.json",
+      "entry-copy-proof.json",
+      "worker-measured.csv",
+      "memory-measured.csv",
+      "constructor-measured.csv",
+      "x86_64-results.json",
+      "arm64-results.json",
+      "pvm-final-evidence-x86_64-1.zip",
+      "pvm-final-evidence-arm64-1.zip"
+    ],
+    "original_zip_sha256": {
+      "x86_64": "ed11e10f3f9cef7a932130f6ab40c0a9db1d1636cb0bf030ea97f830cfa0369c",
+      "arm64": "3ca1d83f304f1b45d98d808dbc4b9946eba9a29bb23f2fba4e873a1405f0d8bf"
+    }
+  },
+  "scope_limits": [
+    "Helpers retain their original frozen-run logic and paths; only license headers were added. They were not executed during preservation.",
+    "Native cohort reproduction is CI-only on the original fc8e18db branch. This preservation branch adds files and intentionally does not satisfy that original four-file source-diff gate.",
+    "Future reuse requires a new explicit frozen protocol/source contract; merely editing run IDs or assuming broader qualification is invalid.",
+    "One admitted forward/reverse cohort per CPU; process CPU, 3 warmups plus 10 measured samples. Cold memory diagnostics are non-additive; allocation readings are managed live bytes, not total allocation/peak/RSS.",
+    "Original cohorts and ten pre-admission archives remain local; generated C, binaries, raw observations and caches are not committed."
+  ],
+  "unfinished_at_stop": "Final source/scope review was clear; independent raw-artifact audit had no final verdict recorded. Entry-copy transfer was inspected only, never implemented/adopted/measured. No unfinished runtime source diff."
+}

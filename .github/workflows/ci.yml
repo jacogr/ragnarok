@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full, final-evidence]
         default: full
         required: true
       contract_measure_bundles:
@@ -896,3 +896,45 @@ jobs:
             build/tests/jam-network/*.log
             build/tests/jam-network/*.json
             build/tests/jam-network/summary.md
+
+  # Private frozen cohort; all ordinary verification routes remain byte-for-byte unchanged.
+  final-evidence:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'final-evidence' }}
+    name: Final interpreter evidence / ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            arch: x86_64
+          - os: ubuntu-26.04-arm
+            arch: arm64
+    env:
+      PVM_CI_SYSTEM: Linux
+      PVM_CI_ARCH: ${{ matrix.arch }}
+      # This PVM-only cohort imports no UI; the pinned minifier has no Linux ARM64 asset.
+      UI_MINIFY: "0"
+    steps:
+      - *checkout
+      - *python
+      - name: Fetch the exact frozen landed source
+        run: git fetch --no-tags --depth=1 origin 4a29188758026f062e2b970b96df2665d8764d4e
+      - name: Provision pinned build dependencies
+        run: make setup
+      - name: Verify discovered source contracts
+        run: make check-inventory
+      - name: One frozen same-image lifecycle and memory cohort
+        run: python3 tools/pvm_final_lifecycle_ci.py
+      - name: Retain complete source, image, state and measurement evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-final-evidence-${{ matrix.arch }}-${{ github.run_attempt }}
+          retention-days: 30
+          compression-level: 6
+          if-no-files-found: warn
+          path: |
+            build/tests/pvm-final-lifecycle/
+            build/ci/
