@@ -34,21 +34,35 @@ execution group/rank, required resources and any historical evidence key/filenam
 at its definition and its consumers in their own requirements; no runner dispatch or pipeline-list
 edit is needed. See [infrastructure](infrastructure.md) for lifecycle and evidence details.
 
+Compiler Guards are selective protection against documented compiler regressions, distinct
+ownership/borrowing/lowering hazards, and material application admission or safety regressions.
+A new feature does **not** automatically need private-field, accessor, nominal-pair or
+invalid-constant fixtures. Do not add exhaustive language-rule matrices or move those matrices
+into another suite or scheduled job. Normal runtime misuse belongs in the separate Contract
+suite; ordinary feature behavior belongs in unit/integration tests.
+
+Each proposed Guard must name its distinct mechanism or explain the concrete unsafe consumer
+behavior it prevents. “The compiler might have bugs” and restating a language rule are insufficient.
+For a compiler regression, link the original defect/reproduction; for an application boundary,
+identify what unauthenticated, incomplete, dangling or multiply owned state would otherwise reach
+the consumer. Prefer one focused witness per mechanism to copies for every owner or pipeline stage.
+See the [reviewed retained set](../../spec/compiler-guards-review-2026-10-30.md).
+
 Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
 
 ```nim
-# @@Verification={"group": "privacy", "expected": "privateField"}
+# @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <ScalarOwner>","build_name":"nimony-scalar-copy","rationale":"Scalar-only owners previously bypassed unavailable copy/dup hooks without a destructor.","reference":"spec/nimony-nightly-2026-10-21.md"}
 ```
 
-Groups are `privacy`, `nominal`, `contracts`, `schemas` and `ownership_compile`. Expected diagnostics
-keep the runner's group-specific meaning: private member, nominal mismatch, violated precondition,
-unsupported schema domain, or exact ownership-lowering error. Nominal `early` pairs retain the call
-and positional diagnostic; `expected: … but got: …` declarations require this pair so they cannot
-select the legacy field-mismatch predicate. Ownership declarations require a unique `build_name`; `offload: true`
-retains the enabled proof-pool ABI/define. New rejection behavior may need an explicit predicate
-in the guard runner; declaring a filename alone never makes an arbitrary compilation error pass.
-Do not add fixture identities to a central registry or a new sidecar file. Discovery rejects missing
-or invalid declarations before setup, and report checks reject missing, duplicate or failed results.
+Supported groups are `nominal` (a justified admission boundary), `schemas` (closed canonical
+scalar admission), and `ownership_compile` (actual lowering). Every declaration requires a
+nonempty `rationale` and `reference` to the defect/reproduction or affected consumer. Nominal
+checks require an `early` pair containing the exact callee and positional mismatch. Ownership
+checks require a unique `build_name`; `offload: true` retains the proof pool's enabled ABI/define.
+Preserve exact rejection diagnostics: a different compiler error or a successful compile cannot
+pass. Add predicate tests for any new diagnostic mechanism. Fixture discovery, not a central name
+list or sidecar registration, owns scheduling; report completeness checks require the exact set
+of expected identities, without missing, duplicate, substituted or failed rows.
 
 ## Runtime failures and independent corpora
 

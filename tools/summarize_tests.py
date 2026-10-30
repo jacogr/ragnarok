@@ -121,8 +121,8 @@ def summarize(report, kind):
         # Compiler rejections have their own verdict and inventory, never inferred from a unit result.
         lines = ['## Compiler rejection guards', '', '**Status: '+report['status']+'**', '',
                  '| Group | Passed | Total |', '| --- | --- | --- |']
-        for key in ('privacy', 'nominal', 'contracts', 'schemas', 'ownership_compile'):
-            # Failed checks remain visible within their original diagnostic family.
+        for key in ('nominal', 'schemas', 'ownership_compile'):
+            # Focused admission and ownership checks retain separate verdicts.
             rows = report[key]
             lines.append('| '+key+' | '+str(sum(row['passed'] for row in rows))+' | '+str(len(rows))+' |')
     elif kind == 'python':

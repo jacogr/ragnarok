@@ -19,14 +19,17 @@ no declaration. Duplicate, malformed, late and unknown declarations fail preflig
 still clears selected evidence before execution and requires fresh numeric observations with the
 original cycle/schema counts and allocation-baseline checks; absence never counts as success.
 
-Compiler-rejection fixtures are discovered under `tests/native/compile_fail/`. Each source owns
-one required header declaration identifying its group and exact expected diagnostic. The validated
-category views retain the existing privacy, nominal, contract, schema and ownership predicates.
-Nominal declarations may include the ordered `early` call/positional diagnostic pair. Ownership
-checks retain explicit lowering build names and the proof pool's enabled native profile. Missing
-metadata and unsupported fields/profiles fail before setup; discovering a file never substitutes
-a generic compiler error for its intended rejection. Fixture sources and their loader are hashed
-in guard and runtime provenance.
+Compiler-rejection fixtures are discovered under `tests/native/compile_fail/`. Each retained
+fixture declares a distinct defect or safety `rationale`, a `reference` to its reproduction or
+consumer, its group and exact expected diagnostic. The remaining predicates cover selected
+admission mismatches, a closed canonical scalar schema, and ownership/lowering hazards.
+Nominal admission checks require an ordered callee/argument diagnostic pair; ownership checks
+retain explicit lowering names and the proof pool's enabled native ABI. Broad privacy/nominal
+matrices and invalid-constant precondition checks are intentionally absent. See the
+[selection policy](adding-tests.md) before adding a Guard. Missing metadata or unsupported
+profiles fail before setup; an unrelated compiler failure never substitutes for the intended
+rejection. Reports retain per-fixture rationales/references and require exact identity coverage.
+Fixture sources and their loader remain in shared provenance.
 
 Semantic rejection checks use fresh per-invocation worker caches. Each bounded worker checks a
 contiguous lexical batch serially; concurrent workers never share a writable cache. A successful

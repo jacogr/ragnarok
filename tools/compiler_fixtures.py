@@ -16,7 +16,7 @@ def load_compiler_fixtures(folder):
     """Return name-sorted fixture records; fail on missing/invalid metadata, names or build profiles."""
     folder = Path(folder)
     records = {}
-    groups = {'privacy', 'nominal', 'contracts', 'schemas', 'ownership_compile'}
+    groups = {'nominal', 'schemas', 'ownership_compile'}
     build_names = set()
     for source in sorted(folder.rglob('*.nim')):
         # Rejections have one stable CLI/report identity, with helpers kept outside this directory.
@@ -26,9 +26,9 @@ def load_compiler_fixtures(folder):
         group = record.get('group')
         if not isinstance(group, str) or group not in groups:
             raise ValueError('Invalid compiler fixture group: '+str(source))
-        allowed = {'group', 'expected'}
+        allowed = {'group', 'expected', 'rationale', 'reference'}
         if group == 'nominal':
-            # Some nominal diagnostics additionally identify the exact call and argument position.
+            # Admission diagnostics identify the exact call and argument position.
             allowed.add('early')
         if group == 'ownership_compile':
             # Composite owner checks require lowering, with the proof pool's real native ABI and define.
@@ -36,9 +36,13 @@ def load_compiler_fixtures(folder):
         if (set(record) - allowed or not {'group', 'expected'} <= set(record)
                 or not isinstance(record['expected'], str) or not record['expected'].strip()):
             raise ValueError('Invalid compiler fixture expectations: '+str(source))
-        if group == 'nominal' and record['expected'].startswith('expected: ') and 'early' not in record:
-            # Positional expected/got output cannot use the legacy field-mismatch predicate.
-            raise ValueError('Positional nominal diagnostic requires early call/position: '+str(source))
+        # A rejection must identify distinct protection, not merely repeat a language rule.
+        for field in ('rationale', 'reference'):
+            if not isinstance(record.get(field), str) or not record[field].strip():
+                raise ValueError('Compiler fixture requires '+field+': '+str(source))
+        if group == 'nominal' and 'early' not in record:
+            # Admission checks name the exact callee and wrong argument, not a generic type failure.
+            raise ValueError('Nominal admission diagnostic requires early call/position: '+str(source))
         if 'early' in record:
             # Positional diagnostics are ordered records, never arbitrary compiler arguments.
             early = record['early']
@@ -60,9 +64,7 @@ def load_compiler_fixtures(folder):
 
 COMPILER_FIXTURES = load_compiler_fixtures(Path(__file__).resolve().parents[1]/'tests/native/compile_fail')
 # Views preserve the runner's diagnostic predicates while removing separately maintained name lists.
-PRIVATE = {name: record['expected'] for name, record in COMPILER_FIXTURES.items() if record['group'] == 'privacy'}
 NOMINAL = {name: record['expected'] for name, record in COMPILER_FIXTURES.items() if record['group'] == 'nominal'}
-CONTRACTS = {name: record['expected'] for name, record in COMPILER_FIXTURES.items() if record['group'] == 'contracts'}
 EARLY_NOMINAL = {name: tuple(record['early']) for name, record in COMPILER_FIXTURES.items() if 'early' in record}
 SCHEMAS = {name: record['expected'] for name, record in COMPILER_FIXTURES.items() if record['group'] == 'schemas'}
 OWNERSHIP = {name: record for name, record in COMPILER_FIXTURES.items() if record['group'] == 'ownership_compile'}

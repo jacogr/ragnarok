@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copy a context-held pricing handle before borrowing that context mutably; direct input/storage aliasing is rejected.
-# @@Verification={"build_name": "pvm-gas-memo-context-alias", "expected": "mutable argument aliases with immutable parameter", "group": "ownership_compile"}
+# @@Verification={"build_name":"pvm-gas-memo-context-alias","expected":"mutable argument aliases with immutable parameter","group":"ownership_compile","rationale":"The host callback replaces its mutable context memo while executeWithHost borrows that same memo for metering; alias acceptance would invalidate the active gas-policy borrow.","reference":"src/pvm/step.nim"}
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, memo as gas_memo]
 import ../../../src/pvm/step

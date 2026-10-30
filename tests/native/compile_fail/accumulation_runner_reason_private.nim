@@ -1,9 +1,0 @@
-# Copyright (c) 2026 Ragnarök contributors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "privacy", "expected": "status"}
-
-## Runner discriminators and payloads remain private.
-
-import ../../../src/state/accumulation/runner as accumulation_runner
-var outcome: AccumulationRunnerResult
-discard outcome.status

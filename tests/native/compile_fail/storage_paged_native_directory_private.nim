@@ -1,8 +1,0 @@
-# Copyright (c) 2026 Ragnarök contributors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-
-## Private directory state cannot forge a native resource or successful receipt.
-# @@Verification={"group":"privacy","expected":"data"}
-import ../../../src/storage/paged/io as paged_io
-let outcome = default(PagedDirectory)
-discard outcome.data

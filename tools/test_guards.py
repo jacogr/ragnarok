@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Run compiler contract, privacy, nominal, schema and ownership rejection checks independently.
+"""Run focused compiler regressions, ownership hazards and application admission checks.
 
 Exposes compile_rejections, run and passed plus a CLI that writes compiler-rejection evidence.
 """
@@ -21,25 +21,20 @@ from native_checks import NativeChecks, ROOT, announce
 from runtime_provenance import runtime_sources
 from native_tests import unit_jobs
 from setup_nimony import cache_directory
-from compiler_fixtures import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL, SCHEMAS, OWNERSHIP
+from compiler_fixtures import COMPILER_FIXTURES, NOMINAL, EARLY_NOMINAL, SCHEMAS, OWNERSHIP
 
 BUILD = ROOT/'build/tests/guards'
 checks = NativeChecks(BUILD, reuse_builds=True)
 command, build = checks.command, checks.build
-COUNTS = dict(privacy=len(PRIVATE), nominal=len(NOMINAL), contracts=len(CONTRACTS),
-              schemas=len(SCHEMAS), ownership_compile=len(OWNERSHIP))
+GROUPS = dict(nominal=NOMINAL, schemas=SCHEMAS, ownership_compile=OWNERSHIP)
+COUNTS = {group: len(fixtures) for group, fixtures in GROUPS.items()}
 
 
 # Missing, duplicated or failed checks cannot be replaced by a successful sibling group.
 def passed(report):
-    return all(len(report.get(key, [])) == count
-               and len({row['name'] for row in report[key]}) == count
-               and all(row['passed'] for row in report[key]) for key, count in COUNTS.items())
-
-
-def private_module_member(output, member):
-    """Require the exact named module-privacy error; hints, other names and unrelated failures cannot pass."""
-    return "Error: undeclared identifier in module: '"+member+"'" in output
+    return all(len(report.get(key, [])) == len(fixtures)
+               and {row['name'] for row in report[key]} == set(fixtures)
+               and all(row['passed'] for row in report[key]) for key, fixtures in GROUPS.items())
 
 
 # Each worker serializes a private cache; successful initialization enables normal import reuse.
@@ -85,19 +80,15 @@ def compile_rejections(compiler, expectations):
 
 # Keep the original diagnostics and lowering checks in this group's private workspace.
 def run(compiler, bs_library, report):
-    # Closed family checks and direct static scalar contracts reject unsupported schemas before execution.
+    rejection_started = time.monotonic()
+    # Closed scalar admission rejects mutable referenced payloads before execution.
     for name, domain in SCHEMAS.items():
         result = command([compiler, 'check', '--mm:arc', '--cc:clang',
                           f'--nimcache:{cache_directory(compiler, BUILD, name)}', ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        if name.startswith('scalar_collection_'):
-            # Constant-invalid direct helper calls fail at the supported precondition during compilation.
-            rejected = ('Error: contract violated:' in result['output']
-                        and '0 <= '+domain+' and '+domain+' <= 8' in result['output'])
-        else:
-            # No unsupported mutable schema or E width can instantiate a collection decoder.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'does not match constraint' in result['output'] and domain in result['output']
-                        and 'decodeVariableSet(' in result['output'])
+        # Mutable referenced scalars must not enter the closed canonical collection decoder.
+        rejected = ('Error: Type mismatch at [position]' in result['output']
+                    and 'does not match constraint' in result['output'] and domain in result['output']
+                    and 'decodeVariableSet(' in result['output'])
         passed = result['exit_code'] != 0 and rejected
         report['schemas'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
@@ -109,141 +100,19 @@ def run(compiler, bs_library, report):
             options = dict(native_libraries=(bs_library,), defines=('offload',))
         compiled, _ = build(compiler, ROOT/f'tests/native/compile_fail/{name}.nim',
                             profile['build_name'], **options)
-        rejected = compiled['exit_code'] != 0 and profile['expected'] in compiled['output']
+        rejected = (compiled['exit_code'] != 0
+                    and any('Error:' in line and profile['expected'] in line
+                            for line in compiled['output'].splitlines()))
         report['ownership_compile'].append(dict(name=name, passed=rejected, check=compiled))
         announce(name, rejected)
-    # Compile-time proven contract violations are recorded separately from runtime guards and privacy/schema rejections.
-    rejection_started = time.monotonic()
+    # Keep exact call/position diagnostics for authenticated/complete-source admission boundaries.
     report['compiler_rejection_jobs'] = unit_jobs()
-    for name, sentinel, result in compile_rejections(compiler, CONTRACTS):
-        passed = result['exit_code'] != 0 and 'Error: contract violated: '+sentinel in result['output']
-        report['contracts'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
-    # Raw storage, retagging, success forgery and writing the public reason must all fail compilation.
-    for name, member, result in compile_rejections(compiler, PRIVATE):
-        if name == 'private_collection_commit':
-            # Generic concept support must never export the unchecked writer.
-            rejected = "undeclared identifier: 'put'" in result['output']
-        elif name.startswith('session_'):
-            # Moving the implementation into a module must not export raw owners or callback/buffer helpers.
-            rejected = private_module_member(result['output'], member)
-        elif name == 'wrong_owner_pool':
-            # The second argument must be an index, never a replacement source buffer.
-            rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
-        else:
-            # Every raw-state bypass must fail for its private/read-only member.
-            rejected = ('undeclared field' in result['output'] or 'cannot assign' in result['output']
-                        or 'cannot be assigned' in result['output']
-                        or private_module_member(result['output'], member))
-        passed = result['exit_code'] != 0 and member in result['output'] and rejected
-        report['privacy'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
-    # Report and assurance identity, index and configuration domains must remain statically distinct under Nimony.
     for name, member, result in compile_rejections(compiler, NOMINAL):
-        if name == 'bs_key_as_setup':
-            # Scalar owners cannot select the allocator/domain of a native ring setup.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and 'commitRing(' in result['output'] and member in result['output']
-        elif name in EARLY_NOMINAL:
-            # Require the intended domain rejection, not unrelated syntax, initialization or import failures.
-            call, diagnostic = EARLY_NOMINAL[name]
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and call in result['output'] and diagnostic in result['output']
-        elif name in ('state_key_as_hash', 'state_partial_as_hash', 'state_value_as_node_hash', 'state_root_as_node'):
-            # A key, truncated left commitment or value hash cannot fill a complete child-hash argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'encodeStateBranch(' in result['output']
-                        and '[1] expected: StateNodeHash but got: '+member in result['output'])
-        elif name in ('composition_service_as_entry', 'composition_service_as_chapter_index'):
-            # Service identities cannot address a whole-map entry or the fixed nominal chapter container.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
-        elif name in ('request_length_as_slot', 'request_slot_as_length'):
-            # Slot and advertised-length domains stay distinct through safe source constructors and key derivation.
-            call, position, actual = (('availableHistory(', 1, 'RequestLength') if name == 'request_length_as_slot'
-                                      else ('serviceRequestKey(', 3, 'RequestSlot'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and f'[{position}] expected: {member} but got: {actual}' in result['output'])
-        elif name in ('service_value_code_as_preimage', 'service_value_hash_as_key'):
-            # Equal-purpose hashes and final trie keys retain distinct nominal identities and widths.
-            call, position, actual = (('servicePreimageKey(', 2, 'CodeHash') if name == 'service_value_code_as_preimage'
-                                      else ('captureServiceValue(', 2, 'ServicePreimageHash'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and f'[{position}] expected: {member} but got: {actual}' in result['output'])
-        elif name == 'output_service_as_index':
-            # Protocol service identities cannot address a retained sequence position.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'outputLogAt(' in result['output']
-                        and '[2] expected: '+member+' but got: ServiceIndex' in result['output'])
-        elif name.startswith('workqueue_'):
-            # Nominal row/item/hash positions and owner kinds cannot be substituted.
-            rejected = 'Error: Type mismatch at [position]' in result['output'] and member in result['output']
-        elif name == 'statistics_gas_as_counter':
-            # A nominal natural gas value cannot fill an E4 validator array element, even for small numeric values.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and '[3] expected: ValidatorCounter but got: '+member in result['output'])
-        elif name == 'statistics_service_as_core':
-            # Service dictionary ordinals cannot select core statistics.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'coreActivityAt(' in result['output']
-                        and '[2] expected: StatisticsCoreIndex but got: '+member in result['output'])
-        elif name == 'privilege_entry_as_core':
-            # Always-accumulate dictionary ordinals cannot select a core assigner.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'privilegeAssignerAt(' in result['output']
-                        and '[2] expected: PrivilegeCoreIndex but got: '+member in result['output'])
-        elif name in ('assignment_guarantee_slot', 'assignment_validator_as_core'):
-            # Guarantee evaluation time and guarantor indices cannot fill registration/core domains.
-            call, position, expected = (('presentAssignment(', 2, 'AssignmentSlot') if name == 'assignment_guarantee_slot'
-                                        else ('availabilityAt(', 2, 'AssignmentCoreIndex'))
-            rejected = ('Error: Type mismatch at [position]' in result['output'] and call in result['output']
-                        and '['+str(position)+'] expected: '+expected+' but got: '+member in result['output'])
-        elif name == 'history_block_as_peak':
-            # Recent block ordinals cannot select an MMR belt peak.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'historyPeakAt(' in result['output']
-                        and '[2] expected: HistoryPeakIndex but got: '+member in result['output'])
-        elif name == 'state_bytes_as_dispute_index':
-            # Byte budgets cannot substitute for ordinals in the offender set.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'stateOffenderAt(' in result['output']
-                        and '[2] expected: DisputeStateIndex but got: '+member in result['output'])
-        elif name == 'state_validator_as_slot':
-            # Pending validator ordinals cannot fill the distinct schedule-slot argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'sealerTicketAt(' in result['output']
-                        and '[2] expected: SafroleStateIndex but got: '+member in result['output'])
-        elif name == 'auth_core_as_position':
-            # Core ordinals cannot fill the distinct per-row hash-position argument.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'authorizerAt(' in result['output']
-                        and '[3] expected: AuthorizationIndex but got: '+member in result['output'])
-        elif name == 'state_entropy_as_time':
-            # Fixed entropy words cannot fill the E4 timeslot argument despite both being copied values.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'timeEntry(' in result['output']
-                        and '[1] expected: StateTime but got: '+member in result['output'])
-        elif name == 'swapped_import_identity':
-            # The typed factory rejection prints generic ReportHash without its static domain; require its exact call/position.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and 'rootImport(' in result['output'] and member in result['output'])
-        elif name in ('raw_bit_count', 'swapped_bit_limit', 'raw_collection_count',
-                      'swapped_collection_schema', 'dictionary_as_set'):
-
-            # The second parameter must retain its logical-bit domain, independently of array-view diagnostics.
-            call = dict(raw_bit_count='decodeFixedBits(', swapped_bit_limit='decodeBits(',
-                        raw_collection_count='decodeSet(', swapped_collection_schema='encodeOwnedVariableSet(',
-                        dictionary_as_set='setCount(')[name]
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and call in result['output'] and member in result['output'])
-        elif name in ('unsigned_as_full_header', 'block_as_extrinsic'):
-            # Sealed output accepts only the full owner type, never a signing-only retained view.
-            rejected = ('Error: Type mismatch at [position]' in result['output']
-                        and ('extrinsicInfo(' if name == 'block_as_extrinsic' else 'encodeOwnedHeader(') in result['output']
-                        and member in result['output'])
-        else:
-            # Other nominal fields provide precise got/wanted domain names.
-            rejected = 'Error: type mismatch: '+member in result['output']
-        passed = result['exit_code'] != 0 and rejected
-        report['nominal'].append(dict(name=name, passed=passed, check=result))
-        announce(name, passed)
+        call, diagnostic = EARLY_NOMINAL[name]
+        rejected = (result['exit_code'] != 0 and 'Error: Type mismatch at [position]' in result['output']
+                    and member in result['output'] and call in result['output'] and diagnostic in result['output'])
+        report['nominal'].append(dict(name=name, passed=rejected, check=result))
+        announce(name, rejected)
     report['compiler_rejections_elapsed_seconds'] = round(time.monotonic()-rejection_started, 6)
 
 
@@ -256,6 +125,8 @@ def main():
     (BUILD/'results.json').unlink(missing_ok=True)
     started = time.monotonic()
     report = dict(status='failed', **{key: [] for key in COUNTS},
+                  protections={name: dict(rationale=record['rationale'], reference=record['reference'])
+                               for name, record in COMPILER_FIXTURES.items()},
                   environment=dict(system=platform.system(), machine=platform.machine(),
                                    python=platform.python_version()))
     try:

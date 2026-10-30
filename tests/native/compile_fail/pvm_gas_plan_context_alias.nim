@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copy a context-held pricing handle before borrowing that context mutably; direct input/storage aliasing is rejected.
-# @@Verification={"build_name": "pvm-gas-plan-context-alias", "expected": "mutable argument aliases with immutable parameter", "group": "ownership_compile"}
+# @@Verification={"build_name":"pvm-gas-plan-context-alias","expected":"mutable argument aliases with immutable parameter","group":"ownership_compile","rationale":"The host callback replaces its mutable context plan while executeWithHost borrows that plan for prepared gas charging; alias acceptance would invalidate execution policy during reentry.","reference":"src/pvm/step.nim"}
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, plan as gas_plan]
 import ../../../src/pvm/step

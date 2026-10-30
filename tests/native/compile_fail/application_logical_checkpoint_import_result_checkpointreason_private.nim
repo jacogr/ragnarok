@@ -1,9 +1,0 @@
-# Copyright (c) 2026 Ragnarök contributors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-
-# @@Verification={"group": "privacy", "expected": "checkpointReason"}
-
-## Source, policies and tagged payload storage remain private and cannot be substituted externally.
-import "../../../src/app/logical/checkpoint/import" as logical_checkpoint_import
-let source = default(LogicalCheckpointImportResult[int])
-discard source.checkpointReason

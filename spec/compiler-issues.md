@@ -36,3 +36,19 @@ Preserve each row's own last-tested identity rather than silently refreshing his
   Local raw receipts are under ignored `build/ci/qualified-declared/`; the portable evidence is
   preserved in the tracked draft. The October 28 archive is retested; Linux runtime and regression bisect remain
   unchecked. No runtime/library/pin patch is involved.
+
+## Retained ownership rejection regressions
+
+The [October 21 qualification](nimony-nightly-2026-10-21.md) records old-pin acceptance of
+scalar-only prohibited copies and array-to-sequence conversion of the live callback owner.
+It also records the sequence-element copy/dup reproductions for
+[Nimony #2737](https://github.com/nim-lang/nimony/issues/2737) and
+[fix d53097d392](https://github.com/nim-lang/nimony/commit/d53097d39240a33c8c63db6423b62a1c27b8adc8).
+The later archive qualification in that same record verifies both sequence rejections and retains
+a successful explicit-move unit control. The focused Guards preserve all four mechanisms:
+`nimony_scalar_copy`, `nimony_sequence_copy`, `nimony_sequence_copy_dup`, and
+`application_download_stream_array_copy`. Their exact unavailable-hook diagnostics require actual
+lowering. These are recorded fixed regressions, not newly discovered outstanding compiler bugs.
+See the [Guards selection audit](compiler-guards-review-2026-10-30.md) for retained consumer hazards
+and the separation from routine language-rule checks. Historical last-tested receipts above are
+unchanged; the cleanup's current-pin native results are reported separately.

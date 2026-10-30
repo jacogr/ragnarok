@@ -13,7 +13,7 @@ Python-only registration and provenance preflight used before every CI workload.
 | `check-python` | One Python reference, tooling and provenance discovery | `build/tests/python/` |
 | `check-unit` | Discovered native suites and independent corpora | `build/tests/runtime/` |
 | `check-failures` | Every declared runtime behavior/contract family and store positive controls | `build/tests/failures/` |
-| `check-guards` | Compiler contract, privacy, nominal, schema and ownership rejection probes | `build/tests/guards/` |
+| `check-guards` | Focused compiler regressions, ownership hazards and application admission boundaries | `build/tests/guards/` |
 | `check-e2e` | Peer-entry selftests and live networking/resource scenarios | `build/tests/e2e/` |
 
 **Model verification** runs as a separate step within **Build / Tooling** on master pushes

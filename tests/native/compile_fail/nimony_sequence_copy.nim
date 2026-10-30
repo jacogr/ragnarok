@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sequence ownership hooks must propagate the element's copy prohibition.
-# @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <seq[SequenceOwner]>","build_name":"nimony-sequence-copy"}
+# @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <seq[SequenceOwner]>","build_name":"nimony-sequence-copy","rationale":"Derived sequence duplication used to ignore an element error copy hook and corrupt retained owner values; cover the implicit derived-dup path (Nimony #2737).","reference":"spec/nimony-nightly-2026-10-21.md"}
 import std/syncio
 type SequenceOwner = object ## A scalar-only exclusive element requires no artificial destructor.
   token: int

@@ -46,3 +46,8 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
 Keep independent Python references and orchestration; application assertions stay in native Nim.
 Preserve standalone setup, strict failure status, group separation and fresh provenance/evidence.
 Do not add duplicate build entry points or launch Python discovery from native/E2E groups.
+
+Compiler Guards are selective, not a language conformance matrix. Require a concrete defect or
+safety rationale and reference in each rejection fixture; keep exact diagnostics and lowering
+profiles. Do not generate privacy/nominal permutations for every new API. Runtime Contract
+coverage remains separate. Follow `docs/testing/adding-tests.md` for the selection policy.
