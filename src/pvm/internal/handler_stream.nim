@@ -1394,9 +1394,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
-proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo,
+proc buildFlatFrame(plan: FlatPlan, images: var seq[PageImage], info: MachineInfo,
     memory: Memory): FlatFrame =
-  ## Own checked private region copies without borrowing caller byte storage; arbitrary fragmented layouts retain a genuine slow preflight owner.
+  ## Consume private admitted images after constructing resident regions; caller storage never enters this helper.
   assert plan != nil
   # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
   assert images.len <= high(int) div sizeof(PageImage)
@@ -1410,8 +1410,7 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory, sourceImages: newSeqOfCap[PageImage](
-        images.len),
+    compiledForPc: @[], sourceMemory: memory, sourceImages: @[],
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
         stack: @[], extra: @[],
     remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
@@ -1432,7 +1431,6 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     let image = images[first]
     if image.access == PageAccess.Inaccessible:
       # Inaccessible pages retain their original snapshot metadata without authorizing a private byte region.
-      result.sourceImages.add(image)
       inc first
       continue
     var after = first+1
@@ -1446,14 +1444,13 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
     for page in first..<after:
       # The complete private extent is allocated once; each proven page copies exactly its original bytes.
-      result.sourceImages.add(images[page])
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
       copyMem(addr region.bytes[offset], unsafeAddr images[page].bytes[0], 4096)
     regions.add(region)
     first = after
-  # A refused growth must never publish a truncated source snapshot, including for a valid empty mapping.
-  assert result.sourceImages.len == images.len
+  # Every input page, including inaccessible/empty mappings, remains owned without a second image-array copy.
+  result.sourceImages = move(images)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
@@ -1488,7 +1485,11 @@ proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: Machi
   let memory = captureMemory(images, plan.limits.pages)
   if memory.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
-  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, images, info, memory.value))
+  var retained = newSeq[PageImage](images.len)
+  for page in 0..<images.len:
+    # Public borrowed inputs stay unchanged; only this private array is transferred into the frame.
+    retained[page] = images[page]
+  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory.value))
 
 proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
   ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
@@ -2789,10 +2790,11 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
   if count.error != MachineError.None: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
   if uint32(count.value) > uint32(plan.limits.pages):
     return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
-  let images = memoryImages(memory)
+  var images = memoryImages(memory)
   if images.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
-  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, images.value, info, memory))
+  var retained = machine.takeValue(images)
+  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
 
 proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.StepError =
   ## Complete and lazy policy owners must match the exact immutable program before any execution.
