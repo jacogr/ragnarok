@@ -169,17 +169,25 @@ def main():
             ['reverse','retained','worker'],['reverse','one-shot','worker']],
         case_order='forward ascending, reverse descending; three warmups per row/case',
         timings='process CPU nanoseconds; identical ELF for all modes of each family')
-    scopes = dict(worker='Actual refinement bootstrap or accumulation service/invocation admission + initialize + invocation/dispatch + normalized output/CPU consumption + complete call-local ARC retirement, plus worker construction/retirement. Complete immutable fixture/state and prepared batch-input manufacture, full retained-state qualification, file I/O and diagnostics excluded. Per-call accumulation service/code/seed admission remains inside initialization clocks. This is bounded small-guest caller-pipeline throughput, not complete package/block processing.',
+    scopes = dict(worker='Actual refinement bootstrap or accumulation service/invocation admission + initialize + invocation/dispatch + normalized output/CPU consumption + complete call-local ARC retirement, plus worker construction/retirement. Complete immutable fixture/state, fixed parameters/context policy and prepared batch-input manufacture, full retained-state qualification, file I/O and diagnostics excluded. Per-call accumulation service/code/seed admission remains inside initialization clocks. This is bounded small-guest caller-pipeline throughput, not complete package/block processing.',
         worker_phases='Initialization, dispatch and explicit owner reset are diagnostic subsets; E2E also includes local normalization, constant assertions and remaining procedure cleanup. Same timing/proof overhead in both modes.',
         memory='Prepared public invocation through final publication and separate complete result/context reset; full CPU/RAM/host snapshot validation and I/O outside clocks. Initial immutable RAM capture and code/plan preparation excluded.',
-        components='One flat frame per row: entry, guest execution, host publication, host immutable one-byte write, resumption and final publication. Component-frame/temporary teardown is not assigned to a component.',
+        components='Separate cold-stream diagnostic: each frame begins with empty handlers and no restored prepared stream; unlike public HostContext, it does not retain both host snapshots. Not an additive decomposition of the warm public prepared series. One flat frame per row: entry, guest execution, host publication, host immutable one-byte write, resumption and final publication. Component-frame/temporary teardown is not assigned to a component.',
         bytes='Live managed bytes at explicit owner points, not total allocated bytes/count, peak allocator usage or RSS. No global allocation hooks or private runtime patches.',
         preparation='Constructor-return CPU and a complete constructor/metadata/retirement CPU lifetime; three warmups and ten samples. Live managed bytes measured while the prepared owner exists. This excludes Program parsing and native compilation.',
         limitations='One fixed shared-host cohort per architecture. CPU clocks omit scheduler waiting; cache/allocator state is warm after controls. Literal small guests and 0/1 dirty page, not a general workload or broad speedup claim. One-shot preparation counts are unavailable (-1); retained counts are actual public worker diagnostics.')
+    columns = dict(worker=['case','sample','initialize_ns_64','dispatch_ns_64','owner_reset_ns_64',
+        'worker_create_retire_ns','pipeline_lifecycle_ns_64','live_worker_managed_bytes',
+        'actual_preparations','actual_hits','result_checksum'],
+        memory=['mapped_pages','case','sample','prepared_public_ns_8','result_context_retire_ns_8',
+        'cold_frame_entry_ns','cold_execution_ns','cold_host_publication_ns','cold_host_write_ns',
+        'cold_resume_ns','cold_final_publication_ns','live_frame_entry_managed_bytes'],
+        preparation=['sample','constructor_return_ns','constructor_metadata_retirement_ns',
+                     'live_prepared_managed_bytes','code_bytes','decoded_instructions'])
     report = dict(status='running', frozen_source=LANDED, host=host_identity(), cohort=cohort,
-                  scopes=scopes, builds=[], controls=[], processes=[])
+                  scopes=scopes, columns=columns, builds=[], controls=[], processes=[])
     destination = BUILD/'results.json'
-    (BUILD/'prespecified-cohort.json').write_text(json.dumps(dict(source=LANDED, cohort=cohort, scopes=scopes), indent=2)+'\n')
+    (BUILD/'prespecified-cohort.json').write_text(json.dumps(dict(source=LANDED, cohort=cohort, scopes=scopes, columns=columns), indent=2)+'\n')
     try:
         report['rust'] = pinned_rust()
         compiler, _ = installed()
@@ -243,7 +251,8 @@ def main():
         for family in ('worker','memory'):
             env = dict(os.environ,PVM_FINAL_ASSERT='1',PVM_FINAL_ROLE='one-shot',PVM_FINAL_OUTPUT=str(BUILD))
             row = checks.command([binaries['landed'][family]],family+'-assert',environment=env,timeout=60)
-            if row['exit_code'] == 0 or 'final ' not in row['output']:
+            expected = 'final worker checks enabled' if family == 'worker' else 'final lifecycle checks enabled'
+            if row['exit_code'] == 0 or expected not in row['output']:
                 raise ValueError('Assertion control did not fail genuinely')
             row.pop('output');report['controls'].append(row)
         for order,role,family in cohort['process_order']:

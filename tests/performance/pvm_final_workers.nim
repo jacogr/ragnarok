@@ -7,10 +7,12 @@ import ../../src/pvm/[program, machine, step, initialize]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/host/fetch as host_fetch
 import ../../src/pvm/refinement_exports
-import ../../src/state/refinement/[bootstrap as refinement_bootstrap, outcome as refinement_outcome]
+import ../../src/state/refinement/[bootstrap as refinement_bootstrap, outcome as refinement_outcome,
+    dispatch as refinement_dispatch]
 import ../../src/state/accumulation/[machine as accumulation_machine,
     dispatch as accumulation_dispatch, invocation as accumulation_invocation,
-    service as accumulation_service]
+    service as accumulation_service, context as accumulation_context]
+import ../../src/chain/parameters
 import ../../src/codec/[bounded, composite, c2_records]
 import ../../src/codec/work/report as work_report
 import ../support/[pvm_refinement_outcome, pvm_accumulation_context, pvm_accumulation_program]
@@ -18,13 +20,22 @@ import ../../src/pvm/worker
 
 proc cpuNs(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
 
+proc saveFile(path, data: string) =
+  ## Artifact I/O is outside clocks; failure must terminate instead of sealing partial evidence.
+  try:
+    writeFile(path, data)
+  except:
+    echo "FINAL_IO_FAILURE,", path
+    quit 2
+
+
 proc persistMachine(machine: Machine, name: string) =
   ## Full canonical CPU words and all mapped identities/permissions/bytes remain independently auditable.
   let cpu = machine.machineInfo.value
   var words = $uint64(cpu.pc) & "," & $uint64(cpu.gas) & "," & $uint64(cpu.gasDeficit) & "," &
       $cpu.blockCharged
   for value in cpu.registers: words.add("," & $uint64(value))
-  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".cpu", words & "\n")
+  saveFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".cpu", words & "\n")
   let images = memoryImages(machine.memoryOf.value).value
   var bytes = newStringOfCap(images.len*4101)
   for page in 0..<images.len:
@@ -32,7 +43,7 @@ proc persistMachine(machine: Machine, name: string) =
     for octet in 0..<4: bytes.add(char(byte((uint32(image.index) shr (octet*8)) and 255)))
     bytes.add(char(if image.access == PageAccess.ReadOnly: 1 else: 2))
     for value in image.bytes: bytes.add(char(value))
-  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", bytes)
+  saveFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", bytes)
 
 proc preparationMetrics(source: Program): array[4, int64] =
   ## Keep all temporary prepared handles inside one lifetime before checking ARC retirement from its caller.
@@ -58,7 +69,7 @@ proc preparationProbe(source: Program, name: string) =
     assert getOccupiedMem() == occupied
     rows.add($sample & "," & $observed[0] & "," & $lifetime & "," & $observed[1] & "," &
         $observed[2] & "," & $observed[3] & "\n")
-  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".preparation", rows)
+  saveFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".preparation", rows)
 
 
 type CallMetrics = object
@@ -67,7 +78,7 @@ type CallMetrics = object
   checksum: uint64
 
 proc measuredRefinement(selected: RefinementFixtureSource, worker: ExecutionWorker,
-    second: bool): CallMetrics =
+    second: bool, inputs: RefinementInputs, policy: RefinementInvocationLimits): CallMetrics =
   ## Actual public bootstrap/invocation, normalized output consumption and complete call-local retirement.
   result = default(CallMetrics)
   let before = cpuNs()
@@ -75,11 +86,8 @@ proc measuredRefinement(selected: RefinementFixtureSource, worker: ExecutionWork
       FetchItemIndex(0), CoreIndex(5), selected.parameters, selected.limits, worker)
   result.prepare = cpuNs()-before
   assert initialized.error == RefinementBootstrapError.None
-  var policy = refinementLimits()
-  policy.steps = ExecutionStepLimit(128)
-  policy.backend = PvmBackend.Interpreted
   let invoke = cpuNs()
-  var completed = runRefinementInvocation(initialized.value, [], refinementInputs(),
+  var completed = runRefinementInvocation(initialized.value, [], inputs,
       ExportOffset(0), policy, worker)
   result.invoke = cpuNs()-invoke
   assert completed.error == RefinementInvocationError.None
@@ -105,7 +113,7 @@ proc admitAccumulation(selected: AccumulationFixtureSource): PreparedAccumulatio
   invocation.value
 
 proc measuredAccumulation(selected: AccumulationFixtureSource, worker: ExecutionWorker,
-    alternate: bool): CallMetrics =
+    alternate: bool, parameters: Parameters, contextConfig: AccumulationContextConfig): CallMetrics =
   ## Actual public initialization/dispatch and full terminal CPU consumption, with no escaping RAM/context owner.
   result = default(CallMetrics)
   let limits = InitializationLimits(envelope: InitializationByteLimit(4096),
@@ -118,9 +126,9 @@ proc measuredAccumulation(selected: AccumulationFixtureSource, worker: Execution
   let fetch = FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
       operand: OperandLimits(maxBytes: ByteLimit(132)))
   let invoke = cpuNs()
-  var completed = executeAccumulationMachine(initialized.value, pvmParameters(), fetch,
+  var completed = executeAccumulationMachine(initialized.value, parameters, fetch,
       MemoryByteLimit(0), ExecutionStepLimit(128), HostCallLimit(4), GasCycleLimit(1000),
-      pvmContextConfig(), backend = PvmBackend.Interpreted, worker = worker)
+      contextConfig, backend = PvmBackend.Interpreted, worker = worker)
   result.invoke = cpuNs()-invoke
   assert completed.error == AccumulationDispatchError.None and completed.value.exit == StepExit.Halt
   assert completed.value.backend == PvmBackend.Interpreted
@@ -173,6 +181,13 @@ proc main() =
   let missedRefinement = refinementFixtureSource(alternateRefinement, writable = @[31'u8, 32, 33])
   let missedAccumulation = pvmBootstrapSource(guestEnvelope(alternateAccumulation, @[91'u8]), 10000,
       includeContexts = true)
+  # Immutable parameter/input/policy fixtures are manufactured once, outside all measured calls.
+  let capturedParameters = pvmParameters()
+  let capturedContext = pvmContextConfig()
+  let capturedInputs = refinementInputs()
+  var capturedPolicy = refinementLimits()
+  capturedPolicy.steps = ExecutionStepLimit(128)
+  capturedPolicy.backend = PvmBackend.Interpreted
   let retained = getEnv("PVM_FINAL_ROLE") == "retained"
   when not defined(pvmWorkerCandidate): assert not retained
   if getEnv("PVM_FINAL_ASSERT") == "1": assert false, "final worker checks enabled"
@@ -216,10 +231,10 @@ proc main() =
           policy.backend = PvmBackend.Interpreted
           let invokeStart = cpuNs()
           when defined(pvmWorkerCandidate):
-            var completed = runRefinementInvocation(initialized.value, [], refinementInputs(),
+            var completed = runRefinementInvocation(initialized.value, [], capturedInputs,
                 ExportOffset(0), policy, worker)
           else:
-            var completed = runRefinementInvocation(initialized.value, [], refinementInputs(),
+            var completed = runRefinementInvocation(initialized.value, [], capturedInputs,
                 ExportOffset(0), policy)
           invokeNs += cpuNs()-invokeStart
           assert completed.error == RefinementInvocationError.None
@@ -232,7 +247,7 @@ proc main() =
             persistMachine(initialized.value.bootstrapMachine.value, name & "-initial")
             var output = $uint64(completed.value.refinementInfo.value.gasUsed) & "\n"
             for value in bytes: output.add(char(value))
-            writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".normalized", output)
+            saveFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".normalized", output)
           if call == 0: earlier = completed.value
           assert earlier.refinementOutput.value == @[21'u8, 22, 23]
           let retirement = cpuNs()
@@ -265,13 +280,13 @@ proc main() =
               operand: OperandLimits(maxBytes: ByteLimit(132)))
           let invokeStart = cpuNs()
           when defined(pvmWorkerCandidate):
-            var completed = executeAccumulationMachine(initialized.value, pvmParameters(), fetch,
+            var completed = executeAccumulationMachine(initialized.value, capturedParameters, fetch,
                 MemoryByteLimit(0), ExecutionStepLimit(128), HostCallLimit(4), GasCycleLimit(1000),
-                pvmContextConfig(), backend = PvmBackend.Interpreted, worker = worker)
+                capturedContext, backend = PvmBackend.Interpreted, worker = worker)
           else:
-            var completed = executeAccumulationMachine(initialized.value, pvmParameters(), fetch,
+            var completed = executeAccumulationMachine(initialized.value, capturedParameters, fetch,
                 MemoryByteLimit(0), ExecutionStepLimit(128), HostCallLimit(4), GasCycleLimit(1000),
-                pvmContextConfig(), backend = PvmBackend.Interpreted)
+                capturedContext, backend = PvmBackend.Interpreted)
           invokeNs += cpuNs()-invokeStart
           assert completed.error == AccumulationDispatchError.None and completed.value.exit == StepExit.Halt
           assert completed.value.backend == PvmBackend.Interpreted
@@ -335,7 +350,7 @@ proc main() =
           let selected = if not second: firstRefinement elif family <
               2: otherRefinement else: missedRefinement
           let before = cpuNs()
-          let observed = measuredRefinement(selected, worker, second)
+          let observed = measuredRefinement(selected, worker, second, capturedInputs, capturedPolicy)
           lifecycleNs += cpuNs()-before
           prepareNs += observed.prepare
           invokeNs += observed.invoke
@@ -346,7 +361,8 @@ proc main() =
           let selected = if not second: firstAccumulation elif family <
               2: otherAccumulation else: missedAccumulation
           let before = cpuNs()
-          let observed = measuredAccumulation(selected, worker, family >= 2 and second)
+          let observed = measuredAccumulation(selected, worker, family >= 2 and second,
+              capturedParameters, capturedContext)
           lifecycleNs += cpuNs()-before
           prepareNs += observed.prepare
           invokeNs += observed.invoke

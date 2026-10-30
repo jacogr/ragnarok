@@ -9,6 +9,15 @@ import ../../src/pvm/internal/handler_stream
 
 proc cpuNs(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
 
+proc saveFile(path, data: string) =
+  ## Artifact I/O is outside clocks; failure must terminate instead of sealing partial evidence.
+  try:
+    writeFile(path, data)
+  except:
+    echo "FINAL_IO_FAILURE,", path
+    quit 2
+
+
 type HostContext = object
   ## Every callback observation remains owned independently until invocation retirement.
   calls: int
@@ -65,7 +74,7 @@ proc persist(memory: Memory, name: string) =
     for octet in 0..<4: data.add(char(byte((ordinal shr (octet*8)) and 255)))
     data.add(char(if image.access == PageAccess.ReadOnly: 1 else: 2))
     for octet in image.bytes: data.add(char(octet))
-  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", data)
+  saveFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", data)
 
 proc components(plan: FlatPlan, memory: Memory, cpu: MachineInfo, count: int,
     dirty, write, readOnly, noHost: bool): array[7, int64] =
