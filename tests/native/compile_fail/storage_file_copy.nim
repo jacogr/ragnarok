@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copying the composite file descriptor/lock owner must fail actual ARC lowering.
-# @@Verification={"group":"ownership_compile","build_name":"storage-file-copy","expected":"'=dup' is not available for type <FileRepository>"}
+# @@Verification={"group":"ownership_compile","build_name":"storage-file-copy","expected":"'=dup' is not available for type <FileRepository>","rationale":"Returning a borrowed repository owner would duplicate descriptor retirement authority; a second close can close an unrelated descriptor after OS descriptor reuse.","reference":"src/storage/file/repository.nim"}
 import ../../../src/storage/file/repository as file_repository
 proc duplicated(source: FileRepository): FileRepository =
   ## Returning a borrowed source requires forbidden ownership duplication.

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Array-to-sequence construction cannot bypass the native callback owner's copy prohibition.
-# @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <BlockDownloadStream>", "build_name": "application-download-stream-array-copy"}
+# @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <BlockDownloadStream>","build_name":"application-download-stream-array-copy","rationale":"Array-to-sequence conversion used to copy the live callback owner, duplicating callback retirement authority while the original stream remained live.","reference":"spec/nimony-nightly-2026-10-21.md"}
 
 import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 var original = default(BlockDownloadStream)

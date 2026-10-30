@@ -29,7 +29,10 @@ and [infrastructure](../docs/testing/infrastructure.md) when changing the harnes
   logs and summary. E2E owns peer-entry selftests and live peer/service/resilience/soak/offload work;
   unit checks own component suites and independent corpora;
   `check-failures` owns runtime assertion/contract probes and their positive controls;
-  compiler guards own all contract/privacy/nominal/schema/ownership rejection checks.
+  compiler Guards retain only documented compiler regressions, distinct ownership hazards and
+  material application safety/admission boundaries. Do not add routine private-field, accessor,
+  nominal-substitution or invalid-constant matrices. Each Guard needs a source-local rationale
+  and reference; preserve exact diagnostic rejection. See `docs/testing/adding-tests.md`.
 
 - Keep rolling suite/probe totals out of `README.md`, `AGENTS.md` and shared testing guides.
   Maintain coverage in source-owned verification plans and report observed totals in verification

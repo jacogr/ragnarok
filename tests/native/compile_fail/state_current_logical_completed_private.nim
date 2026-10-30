@@ -1,9 +1,0 @@
-# Copyright (c) 2026 Ragnarök contributors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-
-# @@Verification={"group": "privacy", "expected": "completed"}
-
-## Logical current provenance and tagged payloads remain private.
-import ../../../src/state/current/logical as current_logical
-var owner = default(CurrentLogicalResult[CurrentLogicalState])
-discard owner.completed
