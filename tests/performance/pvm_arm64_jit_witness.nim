@@ -1867,6 +1867,50 @@ for layout in 0..<4:
         inc dirtyLoopCases
 echo "ARM_DIRTY_LOOP_CONTROL_CASES,", dirtyLoopCases
 
+when defined(pvmArm64Jit):
+  # A separate shift register permits native four-byte stores after the first checked page touch.
+  when defined(pvmArmDirtyLoopOwnerReceipt):
+    let wordOwnerBefore = armDirtyLoopArenaDestroyed()
+  block:
+    let program = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
+        @[149'u8, 0x00, 1], @[149'u8, 0x44, 8],
+        @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    let plan = newFlatPlan(program, GasCycleLimit(100000))
+    let page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+        registers: default(RegisterFile))
+    info.registers[0] = RegisterValue(65536)
+    info.registers[1] = RegisterValue(0x12345678)
+    info.registers[2] = RegisterValue(0xa5)
+    info.registers[3] = RegisterValue(65552)
+    var frame = newFlatFrame(plan, [page], info)
+    for warm in 0..<6:
+      verifyControl(frame, program, info, 100, [page])
+    let groups = flatArmDirtyWordGroups(frame)
+    when defined(pvmArm64JitRefuse):
+      assert groups == 0
+    else:
+      assert groups > 0, "native word store did not execute after the first touch"
+    echo "ARM_WORD_GROUPS,", groups
+    when defined(pvmArmDirtyLoopOwnerReceipt):
+      var moved = takeFlatStream(frame)
+      var successor = newFlatFrame(plan, [page], info)
+      restoreFlatStream(successor, moved)
+      let beforeMove = flatArmDirtyWordGroups(successor)
+      verifyControl(successor, program, info, 100, [page])
+      when defined(pvmArm64JitRefuse):
+        assert flatArmDirtyWordGroups(successor) == 0
+      else:
+        assert flatArmDirtyWordGroups(successor) > beforeMove,
+            "moved native word image was not reused"
+      echo "ARM_WORD_OWNER,1"
+  when defined(pvmArmDirtyLoopOwnerReceipt):
+    when defined(pvmArm64JitRefuse):
+      assert armDirtyLoopArenaDestroyed() == wordOwnerBefore
+    else:
+      assert armDirtyLoopArenaDestroyed() == wordOwnerBefore+1,
+          "native word owner teardown mismatch"
+
 
 var secondStoreControls = 0
 let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],

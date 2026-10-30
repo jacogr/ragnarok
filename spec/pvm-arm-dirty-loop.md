@@ -82,3 +82,33 @@ negative verdicts separate. It does not accelerate clean-page first touches, mal
 fragmented stores, priced/paid/partial entries, or any other opcode shape; those retain the
 checked path. Qualify the exact Linux head before claiming an application gain, and requalify
 the actual composition if the dirty-index stack merges before this PR completes.
+
+## Follow-on four-byte native groups
+
+The checked word-loop layer at `59dfedfd2115d449ede9c642dd51f97e520e3726` supplies the
+sealed five-role proof. The ARM native loop can group four original byte iterations when its
+branch has the self-loop on the unequal arm, all role registers are distinct, twenty source
+attempts and four charges remain, the shift is a multiple of 32, and the full-width base
+can advance four times without wrapping or meeting the bound early. The effective 32-bit
+address must be aligned, inside one writable descriptor and page, and already dirty. All
+conditions are checked on the current invocation before writing. A failed word preflight
+continues in the original native byte loop; its existing checked fallback still handles a
+failed byte preflight. A successful group writes the low 32 source bits in little-endian
+order, publishes the final byte register, advances base by four and shift by 32, subtracts
+four original charges and twenty attempts, and counts four completed blocks. The native
+cache retains only sealed role coordinates and a cumulative group count, never frame or
+memory pointers.
+
+On macOS ARM64 with the pinned checked-release ARC/Clang ThinLTO profile, the composed
+`59df...` baseline and native candidate passed a 1,616-case independent single-step
+private witness, existing native and forced-refusal witnesses, and complete-state public
+DOOM controls. The native witness observed five groups after first touch and checked owner
+move, reuse and teardown. Replacing only the generated four-byte store with a NOP made the
+full-state byte comparison fail. Five paired 13-sample DOOM tick CPU ratios were 0.91229,
+0.91655, 0.91279, 0.91149 and 0.91263 (median 0.91263); the direct stream executed
+255,728 word groups. Init had zero groups and median ratio 1.0021. Three paired microguest
+controls had zero groups and matching native code bytes/counters: Pinky median 0.9960,
+long sieve 1.0102 and minimal-100000 1.0168. Those last two are preliminary upward costs
+for Linux qualification, not accepted as neutral. The minimal-1000 timings were too short
+and noisy for a verdict. Local logs and source identities are retained under ignored
+`build/ci/arm-word-batch-prototype/`; exact-head Linux ARM qualification remains pending.

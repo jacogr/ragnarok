@@ -72,6 +72,20 @@ def dirty_loop_witness(output, mode):
     owner_count = lines.count('ARM_DIRTY_LOOP_OWNER,1')
     if owner_count != (0 if mode == 'interpreted' else 1):
         raise ValueError('Missing active dirty-loop owner lifetime witness')
+    word_owner = lines.count('ARM_WORD_OWNER,1')
+    if word_owner != (0 if mode == 'interpreted' else 1):
+        raise ValueError('Missing native word-loop owner lifetime witness')
+    word_groups = [line.split(',') for line in lines if line.startswith('ARM_WORD_GROUPS,')]
+    if mode == 'interpreted':
+        if word_groups: raise ValueError('Interpreted witness claimed native word groups')
+    else:
+        if (len(word_groups) != 1 or len(word_groups[0]) != 2 or
+                not word_groups[0][1].isascii() or not word_groups[0][1].isdecimal() or
+                int(word_groups[0][1]) >= 2**63):
+            raise ValueError('Missing or malformed native word-group receipt')
+        groups = int(word_groups[0][1])
+        if (mode == 'native' and groups == 0) or (mode == 'refused' and groups != 0):
+            raise ValueError('Native word-group activity disagrees with execution mode')
     loops = [line.split(',') for line in lines if line.startswith('ARM_DIRTY_LOOP,')]
     if mode != 'native':
         if loops: raise ValueError('Checked or refused execution entered dirty-loop code')

@@ -1984,6 +1984,30 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let no = branch.y
     (yes == header and no != header) or (no == header and yes != header)
 
+  func flatArmWordShape(f: FlatFrame, header: uint32): ArmDirtyWordShape =
+    ## Only sealed, disjoint source roles authorize a word candidate; every value remains invocation-local.
+    let prefix = f.arguments[int(header+1)]
+    let store = f.arguments[int(header+2)]
+    let baseStep = f.arguments[int(header+3)]
+    let shiftStep = f.arguments[int(header+4)]
+    let branch = f.arguments[int(header+5)]
+    let source = prefix.slots.aIndex
+    let shift = prefix.slots.bIndex
+    let destination = prefix.slots.destinationIndex
+    let base = store.slots.bIndex
+    let bound = branch.slots.bIndex
+    let roles = [source, shift, destination, base, bound]
+    for i in 0..<5:
+      for j in i+1..<5:
+        if roles[i] == roles[j]: return default(ArmDirtyWordShape)
+    if uint32(branch.x shr 32) != header or store.slots.aIndex != destination or
+        baseStep.slots.aIndex != base or baseStep.slots.bIndex != base or baseStep.x != 1 or
+        shiftStep.slots.aIndex != shift or shiftStep.slots.bIndex != shift or shiftStep.x != 8 or
+        branch.slots.aIndex != base:
+      return default(ArmDirtyWordShape)
+    ArmDirtyWordShape(enabled: true, source: source, shift: shift, destination: destination,
+      base: base, bound: bound)
+
   proc flatArmDirtyLoop(f: var FlatFrame, offset: uint32): uint32 =
     ## Every failed native guard returns the unstarted charged header with prior whole blocks published.
     let jit = f.armJit
@@ -2039,8 +2063,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let charge = f.arguments[int(offset)]
     let item = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
         yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+    let word = flatArmWordShape(f, offset)
     let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
-        uint32(store.args.x and 0xffffffff'u64))
+        uint32(store.args.x and 0xffffffff'u64), word)
     jit.compilationNs+=armClock()-before
     f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
     destination
@@ -2324,6 +2349,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: default(array[3, uint64])
     else: armDirtyLoopStatistics(jit)
+
+  proc flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
+    let jit = f.armJit
+    if jit == nil: 0'u64
+    else: armDirtyWordGroups(jit)
 
   proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
     ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.
