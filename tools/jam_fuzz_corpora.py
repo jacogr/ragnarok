@@ -880,6 +880,6 @@ def jam_fuzzer_wire_corpus(compiler, report, checks, libraries):
     return run_corpus(checks.build,checks.command,compiler,
         ROOT/'tests/native/jam_fuzzer_wire_driver.nim','jam-fuzzer-wire',source,requests,expected,
         'jam-fuzzer-wire-corpus',metadata=dict(**evidence,
-            reference='pinned known JAM historical message bytes; independent current structural framing and complete opaque maps; no STF campaign execution'),
+            reference='pinned known JAM versioned message bytes; independent current structural framing and complete opaque maps; no STF campaign execution'),
         crypto_library=libraries['crypto'])
 

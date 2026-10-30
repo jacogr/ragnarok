@@ -1,7 +1,7 @@
 # Nonempty guests through the JAM fuzzer interface
 
 Authority remains GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and the
-unchanged davxy fuzz-v1 pin `acd4b2da310ff25226c4d41b918712578483fd2c`.
+unchanged davxy fuzz-v1 pin `3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae`.
 This increment executes the existing independently authored report/guest STF
 references through the actual fuzz backend. It introduces no generated campaign,
 upstream fixture change or relaxed GP predicate.

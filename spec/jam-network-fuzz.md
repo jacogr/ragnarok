@@ -2,7 +2,7 @@
 
 Authority: GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, with the explicit
 experimental preset proposed in https://github.com/jam-conformance/jam-fuzzing/issues/215.
-The conformance protocol remains pinned at `acd4b2da310ff25226c4d41b918712578483fd2c`.
+The conformance protocol remains pinned at `3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae`.
 No dependency, historical fixture or protocol encoding pin changes are authorized here.
 
 Scope: accept `JAM_FUZZ_SPEC=fuzz`, require its complete Appendix B tuple, package

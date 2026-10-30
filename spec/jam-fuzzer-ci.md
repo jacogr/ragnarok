@@ -3,8 +3,9 @@
 The opt-in `Fuzz / JAM` matrix entry runs
 `make check-jam-fuzzer-interface`. It validates the native implementation of the
 pinned jam-conformance/jam-fuzzing fuzz-v1 interface at
-`acd4b2da310ff25226c4d41b918712578483fd2c` against GP
-`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Pins and upstream fixtures are unchanged.
+`3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae` against GP
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. The fuzzer schema and minifuzz script retain their prior bytes; published GP0.8.0
+examples are qualified separately by the wire corpus.
 
 The standalone command provisions its own native dependencies through Make, then
 selects the source-owned `jam_fuzzer_` corpus declarations and the registered

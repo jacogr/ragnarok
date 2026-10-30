@@ -1,7 +1,7 @@
 # JAM fuzzer-v1 session boundary
 
 Authority is the pinned jam-conformance/jam-fuzzing revision
-acd4b2da310ff25226c4d41b918712578483fd2c, fuzz-proto/README.md connection,
+3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae, fuzz-proto/README.md connection,
 message response, error and session-lifetime rules, and fuzz-v1.asn feature bits.
 The existing current Gray Paper pin and Tiny structural profile remain unchanged.
 
