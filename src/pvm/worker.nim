@@ -25,8 +25,7 @@ func initialized*(worker: ExecutionWorker): bool =
 proc workerInfo*(worker: ExecutionWorker): PreparationResult[PreparedCacheInfo] =
   ## Inspect actual retained preparation occupancy; an unprepared/busy worker cannot fabricate zero activity.
   let data = worker.data
-  if data == nil: return PreparationResult[PreparedCacheInfo](
-      status: PreparationError.InvalidProgram)
+  if data == nil: return preparedCacheInfo(default(PreparedProgramCache))
   preparedCacheInfo(data.prepared)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
