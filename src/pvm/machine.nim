@@ -100,6 +100,11 @@ func value*[T](r: MachineResult[T]): T {.inline, requires: r.status == MachineEr
   ## A successful result alone grants access to its copied payload.
   r.completed
 
+proc takeValue*[T](r: var MachineResult[T]): T {.inline, requires: r.status == MachineError.None.} =
+  ## Transfer one successful owned payload without copying; consumed results no longer carry success authority.
+  result = move(r.completed)
+  r = MachineResult[T](status: MachineError.Uninitialized)
+
 func faultPage*[T](r: MachineResult[T]): PageAddress {.inline, requires: r.status ==
     MachineError.Fault.} =
   ## A page address is meaningful only for a guest Fault, never for API failures or panic.

@@ -72,6 +72,16 @@ proc captureCycle() =
     for index in 0..<4096: images[side].bytes[index] = byteAt(side*4096+index)
   assert captureMemory(images, PageLimit(2)).error == MachineError.LimitExceeded
   let captured = captureMemory(images, PageLimit(3)).value
+  var observation = memoryImages(captured)
+  assert observation.error == MachineError.None
+  let copied = observation.value
+  var transferred = takeValue(observation)
+  assert observation.error == MachineError.Uninitialized and transferred.len == 3
+  for side in 0..<transferred.len:
+    # Transferring a copied observation never transfers the immutable source's chunks or earlier copies.
+    transferred[side].bytes[0] = transferred[side].bytes[0] xor 255'u8
+    let retained = pageImage(captured, images[side].index).value
+    assert retained.bytes[0] == byteAt(side*4096) and copied[side].bytes[0] == retained.bytes[0]
   for side in 0..<3:
     let ordinal = images[side].index
     let access = images[side].access
