@@ -59,6 +59,15 @@ class NativeRequirementsHarness(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_requirements(records)
 
+    def test_inner_preparation_receipt_is_a_fixed_profile(self):
+        """The copied inner-owner receipt is explicit; arbitrary compiler switches stay rejected."""
+        records = deepcopy(NATIVE_REQUIREMENTS)
+        self.assertEqual(records['pvm_inner_invoke']['defines'], ['pvmInnerPreparedReceipt'])
+        validate_requirements(records)
+        records['pvm_inner_invoke']['defines'] = ['pvmInnerPreparedReceipt=off']
+        with self.assertRaisesRegex(ValueError, 'Invalid native defines'):
+            validate_requirements(records)
+
     def test_explicit_jit_profiles_keep_headers_and_refusal_paired(self):
         """Both fixed JIT profiles require their own selector/header; arbitrary and mixed flags still fail."""
         for profile in ('pvmArm64Jit', 'pvmX86Jit'):

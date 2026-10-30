@@ -1,5 +1,7 @@
 {
-  "defines": [],
+  "defines": [
+    "pvmInnerPreparedReceipt"
+  ],
   "directory": "codec",
   "includes": [],
   "libraries": [],
