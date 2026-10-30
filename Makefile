@@ -694,3 +694,10 @@ check-pvm-whole-fault-pc: check-inventory
 
 check-pvm-whole-fault-pc-compare: check-inventory
 	$(PYTHON) tools/pvm_whole_fault_pc.py --compare --correctness "$(PVM_WHOLE_FAULT_PC_CORRECTNESS)" --review "$(PVM_WHOLE_FAULT_PC_REVIEW)"
+
+.PHONY: check-pvm-whole-read-cache check-pvm-whole-read-cache-compare
+check-pvm-whole-read-cache: check-inventory
+	$(PYTHON) tools/pvm_whole_read_cache.py
+
+check-pvm-whole-read-cache-compare: check-inventory
+	$(PYTHON) tools/pvm_whole_read_cache.py --compare --correctness "$(PVM_WHOLE_READ_CACHE_CORRECTNESS)" --review "$(PVM_WHOLE_READ_CACHE_REVIEW)"
