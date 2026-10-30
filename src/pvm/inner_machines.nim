@@ -31,12 +31,18 @@ type
     moduleHandle*: InnerModuleHandle
     executionComplete: bool
     backendValue: PvmBackend
+  InnerCode = ref object ## One invocation-local module shares only exclusive prepared code across its instances and snapshots.
+    prepared: PreparationResult[PreparedProgram]
+    when defined(pvmInnerPreparedReceipt):
+      preparations: uint64 # CI-only positive proof that raw segments reuse the same lazy construction.
   ModuleData = object ## Immutable program capture retained by its published handle or live instances.
     handle: uint64
+    code: InnerCode
     program: Program
     size: uint64
   InnerData = ref object ## One immutable program/memory pair has no back-reference to its map.
     info: InnerMachineInfo
+    code: InnerCode
     size: uint64
     id: uint64
   MapData = ref object ## Sorted immutable slots are bounded by 63, independently of full-width guest IDs.
@@ -186,7 +192,8 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
   for moduleIndex in 0..<data.modules.len:
     let item = data.modules[moduleIndex]
     modules.add(item) # Copy the catalogue descriptor; immutable program owners stay shared.
-  modules.add(ModuleData(handle: handle, program: parsed.value, size: retainedSize))
+  modules.add(ModuleData(handle: handle, code: InnerCode(), program: parsed.value,
+      size: retainedSize))
   transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
     bytes: data.bytes+retainedSize, limits: data.limits))
   transition.response.registers[7] = RegisterValue(handle)
@@ -232,11 +239,13 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
   let handle = uint64(registers[7])
   var found = false
   var program = default(Program)
+  var code: nil InnerCode = nil
   var size = 0'u64
   for moduleIndex in 0..<data.modules.len:
     let item = data.modules[moduleIndex]
     if item.handle == handle:
       program = item.program
+      code = item.code
       size = item.size
       found = true
       break # The catalogue contains at most one module with this handle.
@@ -255,7 +264,7 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
   for index in 0..<at: slots.add(data.slots[index]) # Preserve the sorted prefix without mutable aliases.
   slots.add(InnerData(info: InnerMachineInfo(program: program,
     memory: captureMemory([], data.limits.pages).value, pc: entry, blockCharged: false,
-    moduleHandle: InnerModuleHandle(handle)), size: size, id: uint64(at)))
+    moduleHandle: InnerModuleHandle(handle)), code: code, size: size, id: uint64(at)))
   for index in at..<data.slots.len: slots.add(data.slots[index]) # Retain every independent existing instance.
   transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
     bytes: data.bytes, limits: data.limits))
@@ -399,7 +408,7 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
     if slot.id == id:
       var info = slot.info
       info.memory = changed.value # Replace RAM alone; code, PC and block-charged flag retain original provenance.
-      slots.add(InnerData(info: info, size: slot.size, id: slot.id))
+      slots.add(InnerData(info: info, code: slot.code, size: slot.size, id: slot.id))
     else:
       slots.add(slot) # Other machines remain shared immutable owners.
   transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
@@ -478,7 +487,7 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
       if slot.id == id:
         var info = slot.info
         info.memory = written.value
-        slots.add(InnerData(info: info, size: slot.size,
+        slots.add(InnerData(info: info, code: slot.code, size: slot.size,
             id: slot.id)) # Poke replaces only the selected RAM snapshot.
       else:
         slots.add(slot) # Unselected machines share their untouched immutable owners.
@@ -551,7 +560,33 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
     MachineInfo(pc: source.pc, gas: MachineGas(requested), gasDeficit: GasDeficit(0),
       blockCharged: source.blockCharged, registers: innerRegisters))
   if initial.error != MachineError.None: fail(InnerMachineError.InvalidContext)
-  let evaluated = execute(initial.value, data.limits.steps, data.limits.cycles, data.limits.backend)
+  # The module's exact source and the map's immutable policy bind one cache; no CPU, RAM or callback enters it.
+  var code: nil InnerCode = nil
+  for slotIndex in 0..<data.slots.len:
+    let slot = data.slots[slotIndex]
+    if slot.id == id:
+      code = slot.code
+      break # The earlier full-width lookup already proved one exact selected instance.
+  if code == nil: fail(InnerMachineError.InvalidContext)
+  if code.prepared.error == PreparationError.Uninitialized:
+    # Defer admission until the first affordable, valid invocation, preserving lifecycle-host refusal order.
+    code.prepared = newPreparedProgram(source.program, defaultPreparedLimits(data.limits.cycles),
+        data.limits.backend)
+    when defined(pvmInnerPreparedReceipt): inc code.preparations
+  if code.prepared.error != PreparationError.None:
+    # Preserve the convenience execution API's exact optional-backend refusal mapping.
+    let reason = case code.prepared.error
+      of PreparationError.BackendNotBuilt: StepError.BackendNotBuilt
+      of PreparationError.BackendUnavailable: StepError.BackendUnavailable
+      of PreparationError.BackendProgramUnsupported: StepError.BackendProgramUnsupported
+      of PreparationError.BackendRevisionMismatch: StepError.BackendRevisionMismatch
+      of PreparationError.BackendCapabilityUnsupported: StepError.BackendCapabilityUnsupported
+      of PreparationError.BackendFailure: StepError.BackendFailure
+      else: StepError.InvalidPreparedProgram
+    code.prepared = default(PreparationResult[PreparedProgram]) # A transient preparation refusal may be retried.
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
+        reason: reason)
+  let evaluated = execute(initial.value, data.limits.steps, code.prepared.value)
   if evaluated.error != StepError.None:
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
       reason: evaluated.error) # No tentative frame, nested state or refund escapes a local engine refusal.
@@ -595,7 +630,7 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   var slots = newSeqOfCap[InnerData](data.slots.len)
   for slotIndex in 0..<data.slots.len:
     let slot = data.slots[slotIndex]
-    if slot.id == id: slots.add(InnerData(info: info, size: slot.size,
+    if slot.id == id: slots.add(InnerData(info: info, code: slot.code, size: slot.size,
         id: slot.id)) # RAM/PC/flag share one completed segment certificate.
     else: slots.add(slot) # Retain all other machines unchanged.
   transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
@@ -604,3 +639,16 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   transition.response.gas = MachineGas(reserved+uint64(
       cpu.gas)) # cpu.gas<=requested proves refund cannot overflow or mint caller gas.
   done()
+
+when defined(pvmInnerPreparedReceipt):
+  proc innerPreparationCount*(machines: InnerMachines, id: InnerMachineId): InnerMachineResult[uint64] =
+    ## CI-only copied receipt; no prepared handle or mutable cache identity escapes the invocation-local map.
+    let data = machines.data
+    if data == nil: return InnerMachineResult[uint64](status: InnerMachineError.InvalidContext)
+    if uint64(id) < 63:
+      for slotIndex in 0..<data.slots.len:
+        let slot = data.slots[slotIndex]
+        if slot.id == uint64(id):
+          return InnerMachineResult[uint64](status: InnerMachineError.None,
+              completed: slot.code.preparations)
+    InnerMachineResult[uint64](status: InnerMachineError.Missing)

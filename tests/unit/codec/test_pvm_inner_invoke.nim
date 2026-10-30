@@ -16,6 +16,40 @@ proc run(map: InnerMachines, memory = invokeMemory(), args = invokeArgs(), credi
 proc price(map: InnerMachines): uint64 =
   ## Block pricing is independently verified by its own suite; host fee/refund/frame expectations remain literal.
   uint64(blockGas(map.innerMachine(InnerMachineId(0)).value.program, CodeAddress(0), GasCycleLimit(1000)).value)
+# The original map and every successor share code work, while all visible machine state stays immutable.
+let cold = invokeMachines()
+assert cold.innerPreparationCount(InnerMachineId(0)).value == 0
+let unaffordable = run(cold, credit = 0)
+assert unaffordable.error == InnerMachineError.None
+assert cold.innerPreparationCount(InnerMachineId(0)).value == 0
+let coldMemory = invokeMemory()
+let firstWarm = run(cold, coldMemory).value
+assert cold.innerPreparationCount(InnerMachineId(0)).value == 1
+let secondWarm = run(cold, coldMemory).value
+assert cold.innerPreparationCount(InnerMachineId(0)).value == 1
+assert invokeFrame(firstWarm.response.memory) == invokeFrame(secondWarm.response.memory)
+assert invokeFrame(coldMemory)[0] == 100
+assert not cold.innerMachine(InnerMachineId(0)).value.executed
+# A second instance of one module reuses its code; removing the catalogue preserves live code ownership.
+var instanceArgs = innerRegisters()
+instanceArgs[7] = RegisterValue(0)
+instanceArgs[8] = RegisterValue(0)
+let siblings = createInnerMachine(cold, MachineGas(10000), instanceArgs, coldMemory).value.machines
+assert siblings.innerPreparationCount(InnerMachineId(1)).value == 1
+let siblingRun = run(siblings, coldMemory, invokeArgs(id = 1)).value
+assert siblingRun.machines.innerPreparationCount(InnerMachineId(1)).value == 1
+assert not siblings.innerMachine(InnerMachineId(1)).value.executed
+var removedArgs = default(RegisterFile)
+removedArgs[7] = RegisterValue(1)
+let removed = expungeInnerMachine(siblings, MachineGas(10000), removedArgs,
+    coldMemory).value.machines
+let afterRemoval = run(removed, coldMemory).value
+assert afterRemoval.machines.innerPreparationCount(InnerMachineId(0)).value == 1
+# Equal independently compiled bytes retain a separate module/cache identity.
+let unrelated = invokeMachines()
+assert unrelated.innerPreparationCount(InnerMachineId(0)).value == 0
+assert run(unrelated).error == InnerMachineError.None
+assert unrelated.innerPreparationCount(InnerMachineId(0)).value == 1
 let source = invokeMachines()
 let memory = invokeMemory()
 let halted = run(source, memory).value
@@ -72,10 +106,12 @@ let hostBlob = invokeBlob([@[10'u8, 13], @[50'u8, 0]])
 let hostSource = invokeMachines(hostBlob)
 let hosted = run(hostSource, invokeMemory(hostBlob)).value
 assert uint64(hosted.response.registers[7]) == 3 and uint64(hosted.response.registers[8]) == 13
+assert hostSource.innerPreparationCount(InnerMachineId(0)).value == 1
 let suspended = hosted.machines.innerMachine(InnerMachineId(0)).value
 assert uint64(suspended.pc) == 2 and suspended.blockCharged
 assert uint64(hostSource.innerMachine(InnerMachineId(0)).value.pc) == 0
 let resumed = run(hosted.machines, hosted.response.memory).value
+assert hostSource.innerPreparationCount(InnerMachineId(0)).value == 1
 assert uint64(resumed.response.registers[7]) == 0
 assert uint64(resumed.response.gas) == 9032 # Resume retains the charged flag; the block is not priced twice.
 assert invokeFrame(resumed.response.memory)[0] == invokeFrame(hosted.response.memory)[0]

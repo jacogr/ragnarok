@@ -52,3 +52,20 @@ macOS results; exact-head Linux CI remains independent.
 Next: work-package report result integration. Complete refinement still requires
 remaining bootstrap/authenticated-input gates and report policy. M1 framing is complete;
 full state serialization and whole-block parity remain open.
+
+## Retained module execution code
+
+Each invocation-local compiled module owns one lazy `PreparedProgram` cache, shared by its
+instances and their immutable map ancestors. The exact `Program`, selected backend and gas-cycle
+policy are fixed by module capture and the map's immutable limits. Admission occurs only after
+invoke affordability, frame and identity checks. A failed admission remains retryable and retains
+no prepared owner. Stream/native resource limits remain finite and cumulative over that module's
+lifetime; no global cache, eviction or cross-source reuse is introduced.
+
+CPU, registers, RAM, gas, attempts and callback state remain invocation-local. Removing a catalogue
+entry retains code while instances or independently retained snapshots still own it. The last owner
+releases the prepared cache through ARC. All page and poke successors retain the same code identity.
+`pvm_inner_invoke` uses a CI-only construction receipt to prove lazy admission, repeated invocation,
+sibling reuse, catalogue removal and independent equal-byte module isolation, alongside its existing
+literal gas/PC/host/fault/repair/refund, snapshot and ARC lifetime witnesses. Backend application and
+owner-policy suites retain independent native/forced-interpreted controls.
