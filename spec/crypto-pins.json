@@ -22,7 +22,7 @@
   "rust_primitives": {
     "manifest": "native/bandersnatch/Cargo.toml",
     "lock": "native/bandersnatch/Cargo.lock",
-    "lock_sha256": "45b3c6eec149d04649243caaec739c6fdc2b259f4fa7146f2f0748b939f12848",
+    "lock_sha256": "56c77a8c3ab198f840358cbf600cd08f1a4d8f46795990b8de678932c99f4082",
     "blake2": "0.10.6",
     "sha3": "0.10.9",
     "ed25519-zebra": "4.2.0",

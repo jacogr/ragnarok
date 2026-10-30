@@ -1,7 +1,7 @@
 {
   "chains": 3,
   "expected_sha256": "371a80e062fa88e9d3499022843327f7bfce19889e65a47fa538c692bf1ca9c7",
-  "full_profile_sha256": "e350274c66c071c6629e7fbc493d7d3d23a16bfb598e78e8a3c1a2ae74474edb",
+  "full_profile_sha256": "c88625bdb93a2f8f3f070b265c9e3f7fcc59398e3ab617c685737e8360cadcfd",
   "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
   "guest_gas": {
     "checkpoint-panic": 2754,
@@ -26,7 +26,7 @@
       "54eb694241cfb2cbf71e12ac84f2b31acac4164a186444b4fe9e9bb4aa3ff536"
     ]
   ],
-  "ring_input_sha256": "9176cf961b12c866b66c773e4e04fa1207c8f2f5a0c6ebae12be3021fa968c5f",
+  "ring_input_sha256": "fea68f55850cabc3d7026775591e54c4353b487e59b8301cf6dfb5f510a06416",
   "sibling_imports": 3,
   "successor_roots": [
     [

@@ -2,7 +2,7 @@
 
 [Native bridges](../README.md) · [Nim adapter](../../src/bandersnatch/README.md)
 
-This folder implements the narrow synchronous primitive ABI for the pinned ark-vrf 0.6.0
+This folder implements the narrow synchronous primitive ABI for the pinned ark-vrf 0.6.1
 Draft 35 Thin v1/RingVRF profile.
 
 | Path | Contents |
