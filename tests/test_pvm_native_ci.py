@@ -99,21 +99,27 @@ class PolicyQualificationTests(unittest.TestCase):
 
 
 class QualificationTests(unittest.TestCase):
-    def witness_receipt(self, native, *, region='ARM_SELF_REGION_CASES,1920\n'):
+    def witness_receipt(self, native, *, refused=False, region='ARM_SELF_REGION_CASES,1920\n'):
         """Model mandatory controls, with positive native counters only in the supported profile."""
         counts = (64896, 507, 24843) if native else (0, 0, 0)
+        assert not (native and refused)
         return ('TRANSFER_STATS,1,2\n' if native else 'TRANSFER_STATS,0,0\n') + (
             f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
             f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
             f'ARM_LOAD_WIDTH_LITERAL_CASES,{counts[2]}\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
+            'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
+            'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
+            ('ARM_DIRTY_LOOP_OWNER,1\n' if native or refused else '') +
+            ('ARM_DIRTY_LOOP,2,16,1\n' if native else '') +
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
 
-    def check(self, native, receipt=None, build_error=False, region_receipt=None):
+    def check(self, native, receipt=None, build_error=False, region_receipt=None,
+              refused_receipt=None):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
         ordinary = self.witness_receipt(native)
-        refused = self.witness_receipt(False)
+        refused = self.witness_receipt(False, refused=True)
         class Checks:
             folder=Path('/tmp/pvm-ci-test')
             builds=[]
@@ -130,7 +136,7 @@ class QualificationTests(unittest.TestCase):
                 elif name=='witness-run':
                     output=receipt if receipt is not None else ordinary
                 elif name=='witness-refused-run':
-                    output=refused
+                    output=refused_receipt if refused_receipt is not None else refused
                 elif name.startswith('region-refusal'):
                     positive=native and name=='region-refusal-run'
                     output=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+(','+'0,1,2,1' if positive else ',0,0,0,0')+'\n'
@@ -148,10 +154,14 @@ class QualificationTests(unittest.TestCase):
         for native in (True,False):
             rows,builds=self.check(native)
             self.assertEqual(len(rows),11)
+            self.assertEqual(rows[1]['dirty_loop'],
+                             dict(calls=2, blocks=16, declines=1) if native else None)
+            self.assertIsNone(rows[2]['dirty_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
-            self.assertEqual(witness,['pvmArm64Jit'] if native else [])
+            self.assertEqual(witness,['pvmArm64Jit','pvmArmDirtyLoopOwnerReceipt'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
+            self.assertIn('pvmArmDirtyLoopOwnerReceipt',refused)
 
     def test_candidate_local_native_receipts_are_mandatory(self):
         """Missing, checked-only or reordered ownership cases cannot count as actual ARM coverage."""
@@ -189,6 +199,9 @@ class QualificationTests(unittest.TestCase):
             ('ARM_LOAD_WIDTH_LITERAL_CASES',24843,'guarded-load width'),
             ('ARM_STORE_FALLBACK_CONTROL_CASES',43904,'checked-store source'),
             ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
+            ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'dirty-loop boundary'),
+            ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
+            ('ARM_DIRTY_LOOP_OWNER',1,'dirty-loop owner'),
             ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
         )
         complete = self.witness_receipt(True)
@@ -199,6 +212,26 @@ class QualificationTests(unittest.TestCase):
             for replacement in ('',f'{marker},{count-1}\n'):
                 with self.subTest(marker=marker,replacement=replacement),self.assertRaisesRegex(ValueError,reason):
                     self.check(True,complete.replace(line,replacement))
+
+    def test_dirty_loop_receipts_are_mode_specific(self):
+        """The active loop, owner and refusal receipts must match the declared native mode."""
+        complete = self.witness_receipt(True)
+        loop = 'ARM_DIRTY_LOOP,2,16,1\n'
+        for replacement, reason in (
+            ('', 'call/block/decline'),
+            ('ARM_DIRTY_LOOP,2,2,1\n', 'resident execution'),
+            ('ARM_DIRTY_LOOP,2,16,0\n', 'resident execution'),
+            (loop + loop, 'call/block/decline'),
+        ):
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError, reason):
+                self.check(True, complete.replace(loop, replacement))
+        refused = self.witness_receipt(False, refused=True)
+        with self.assertRaisesRegex(ValueError, 'dirty-loop owner'):
+            self.check(True, refused_receipt=refused.replace('ARM_DIRTY_LOOP_OWNER,1\n', ''))
+        with self.assertRaisesRegex(ValueError, 'entered dirty-loop code'):
+            self.check(True, refused_receipt=refused + loop)
+        with self.assertRaisesRegex(ValueError, 'dirty-loop owner'):
+            self.check(False, receipt=self.witness_receipt(False) + 'ARM_DIRTY_LOOP_OWNER,1\n')
 
 
 if __name__=='__main__':
