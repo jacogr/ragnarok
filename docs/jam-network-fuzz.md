@@ -87,7 +87,7 @@ A ready target is not a generated campaign pass. Results retain
 successful minifuzz exit can satisfy a live campaign verdict.
 
 A compatible GP0.8 `polkajam-fuzz` engine is still required. At the pinned upstream
-revision `acd4b2da310ff25226c4d41b918712578483fd2c`, both `scripts/target.py`
+revision `3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae`, both `scripts/target.py`
 and `scripts/fuzz-workflow.py` restrict `--spec` to Tiny/Full. Issue215's launcher
 support must be available before the standard network workflow can select Fuzz.
 No upstream files or dependency pins are patched here.

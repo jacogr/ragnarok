@@ -1,7 +1,7 @@
 # Native JAM fuzzer-v1 wire boundary
 
-Authority is the unchanged pinned jam-conformance/jam-fuzzing commit
-acd4b2da310ff25226c4d41b918712578483fd2c, specifically
+Authority is the pinned jam-conformance/jam-fuzzing commit
+3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae, specifically
 fuzz-proto/fuzz-v1.asn and fuzz-proto/README.md. The Gray Paper remains the JAM
 protocol authority; the tooling pin does not establish exact GP compatibility.
 
@@ -34,17 +34,22 @@ prefix extents and source/output-limit refusals never grant a successful frame.
 A socket server, session transitions and authenticated block import are later
 layers; this module opens no listeners and installs no chain state.
 
-The source-owned corpus uses all878 exact binary/JSON messages from the pinned
-known examples, retaining every source SHA-256. Independent current-profile
-header/block references select581 structural successes and297 typed refusals:
-five historical Initialize headers and292 historical blocks. The accepted
-State witness also compares the entire independent canonical checkpoint and
-recomputed root, not just message kind. All seven discriminants have upstream
-witnesses. The published deliberately faulty example remains an intentionally
-faulty historical session, not a golden STF chain.
+The source-owned corpus uses all1276 exact binary/JSON messages from the pinned
+known examples, retaining every source SHA-256 and per-version outcomes. Independent
+current-Tiny references select959 structural successes and317 typed refusals.
+The retained GP0.7.0/0.7.2 outcomes are unchanged (581 successes,297 refusals).
+The398 new GP0.8.0 messages add378 successes and20 refusals: both Initialize
+headers declare sentinel author65535, outside the current Tiny author domain;
+18 ImportBlock inputs fail current structural checks (validator/credential/count,
+header-author or canonical-order checks). Their bytes are preserved and limits
+are not widened to admit them. These sessions therefore cannot be claimed as
+successful replay against our target.
 
-These numbers describe codec outcomes. They are not passes of the GP0.7.0/
-0.7.2 sessions or a GP0.8 fuzz campaign. Native unit witnesses separately cover
+The accepted State witness also compares the entire independent canonical checkpoint
+and recomputed root. All seven discriminants have upstream witnesses. The deliberately
+faulty historical session remains intentionally faulty, not a golden STF chain.
+These numbers describe codec outcomes, not execution of published sessions or a live
+GP0.8/current-gp-next fuzz campaign. Native unit witnesses separately cover
 valid current-profile Header/Block composition, all kinds, absent/wrong-kind
 owners, zero and nonempty ancestry, immutable copies, compact/UTF-8 failures,
 duplicate keys and exact frame/output boundaries. Private-field guards, pinned

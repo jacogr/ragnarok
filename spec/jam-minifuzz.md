@@ -1,10 +1,11 @@
 # Pinned upstream minifuzz interoperability
 
 Scope: execute the unchanged minifuzz script from conformance commit
-`acd4b2da310ff25226c4d41b918712578483fd2c` against actual `serve-fuzz`
+`3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae` against actual `serve-fuzz`
 with independently calculated whole-map traces under GP
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. GP, VRF, vectors, historical
-fixtures and the conformance pin remain unchanged. This is fixed-trace upstream
+fixtures remain unchanged by this tooling layer. The selected minifuzz script is
+byte-identical to the previous conformance pin. This is fixed-trace upstream
 tool interoperability, not a generated campaign or cross-client STF comparison.
 
 `jam-minifuzz-pins.json` binds upstream jam-types-py0.8 source, its codec and
