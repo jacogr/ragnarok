@@ -16,7 +16,7 @@ The paired mode was qualified by [ARM run 41097353591](https://github.com/jacogr
 at candidate `7043e4f78aed883e667f8b8f9652b8f2a1a61a7d` against exact master
 `4a29188758026f062e2b970b96df2665d8764d4e`, pinned Nimony
 `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, checked release/ARC/Clang ThinLTO, on one
-Linux ARM64 runner. Its application artifact SHA-256 is
+Linux ARM64 runner. Its `tests/pvm-arm64-applications/results.json` SHA-256 is
 `eb792d5f4cc304850b49439e9aa5a8bdff0016b7a73e02524b732b0e5f0f9fee`. The sealed report
 passed 20 fresh builds, 84 measured processes, 138 positive/refusal controls, equal images for
 each policy pair, and complete CPU/register/gas/page/source and ordered host-event checks. The
