@@ -71,3 +71,9 @@ these source/behavior witnesses alone are not evidence of application throughput
 The application fixture's literal independent block price is101 (test-only pinned GP table
 simulation), and gas host0 separately costs48. Refinement uses149 gas; accumulation finishes
 with9851 from10000, exact terminal PC/paid state, and all13 independently expected registers.
+
+The application suite also reuses a native indirect-load leaf across two distinct writable RAM
+snapshots. Literal load values81/91 and complete expected registers expose stale frame-pointer
+capture. Supported ARM64 must execute at least10 native source operations across two calls (four
+pure operations alone account for8), proving the read itself ran natively both times. Independent
+GP pricing102 plus host48 leaves9850 gas. Forced interpretation requires zero native operations.

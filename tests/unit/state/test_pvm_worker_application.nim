@@ -12,7 +12,7 @@ import ../../../src/state/refinement/[bootstrap as refinement_bootstrap,
     outcome as refinement_outcome]
 import ../../../src/state/accumulation/[machine as accumulation_machine,
     dispatch as accumulation_dispatch]
-import ../../../src/codec/[bounded, composite]
+import ../../../src/codec/[bounded, composite, c2_records]
 import ../../support/[pvm_refinement_outcome, pvm_accumulation_context, pvm_accumulation_program]
 
 proc refinementWitness(selected: PvmBackend) =
@@ -112,8 +112,50 @@ proc accumulationWitness(selected: PvmBackend) =
   assert uint64(actual.gas) == 9851 and uint64(actual.gasDeficit) == 0
   assert uint64(actual.pc) == 0 and actual.blockCharged
 
+proc nativeMemoryWitness(selected: PvmBackend) =
+  ## A native indirect read plus four pure suffix operations must use each invocation's own RAM descriptor.
+  let worker = newExecutionWorker()
+  let code = @[registerImmediate(11, 196608), @[124'u8, 185], @[51'u8, 3, 7],
+      @[51'u8, 4, 8], @[51'u8, 5, 9], @[51'u8, 6, 10], @[10'u8, 0], @[50'u8, 0]]
+  let first = guestProgram(code, writable = @[81'u8], worker = worker)
+  let second = guestProgram(code, writable = @[91'u8], worker = worker)
+  let fetch = FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
+      operand: OperandLimits(maxBytes: ByteLimit(132)))
+  let original = executeAccumulationMachine(first, pvmParameters(), fetch, MemoryByteLimit(0),
+      ExecutionStepLimit(32), HostCallLimit(4), GasCycleLimit(1000), pvmContextConfig(),
+      backend = selected, worker = worker)
+  assert original.error == AccumulationDispatchError.None and original.value.exit == StepExit.Halt
+  let current = executeAccumulationMachine(second, pvmParameters(), fetch, MemoryByteLimit(0),
+      ExecutionStepLimit(32), HostCallLimit(4), GasCycleLimit(1000), pvmContextConfig(),
+      backend = selected, worker = worker)
+  assert current.error == AccumulationDispatchError.None and current.value.exit == StepExit.Halt
+  assert uint64(original.value.machine.machineInfo.value.registers[9]) == 81
+  let cpu = current.value.machine.machineInfo.value
+  var expectedRegisters = second.accumulationMachine.value.machineInfo.value.registers
+  expectedRegisters[3] = RegisterValue(7)
+  expectedRegisters[4] = RegisterValue(8)
+  expectedRegisters[5] = RegisterValue(9)
+  expectedRegisters[6] = RegisterValue(10)
+  expectedRegisters[7] = RegisterValue(9850)
+  expectedRegisters[9] = RegisterValue(91)
+  expectedRegisters[11] = RegisterValue(196608)
+  assert cpu.registers == expectedRegisters
+  assert uint64(cpu.gas) == 9850 and uint64(cpu.gasDeficit) == 0 # Independent GP102 plus host48.
+  assert uint64(cpu.pc) == 0 and cpu.blockCharged
+  assert original.value.machine.memoryOf.value.pageImage(PageIndex(48)).value.bytes[0] == 81
+  assert current.value.machine.memoryOf.value.pageImage(PageIndex(48)).value.bytes[0] == 91
+  let observed = workerInfo(worker).value
+  assert observed.preparations == 1 and observed.hits == 1
+  if selected == PvmBackend.Interpreted: assert observed.prepared.nativeOperations == 0
+  when defined(arm64) and (defined(linux) or defined(macosx)):
+    if selected == PvmBackend.Jit:
+      # Four pure operations alone can account for only8;10 proves the indirect read ran natively in both calls.
+      assert observed.prepared.nativeOperations >= 10
+
 refinementWitness(PvmBackend.Interpreted)
 refinementWitness(PvmBackend.Jit)
 accumulationWitness(PvmBackend.Interpreted)
 accumulationWitness(PvmBackend.Jit)
+nativeMemoryWitness(PvmBackend.Interpreted)
+nativeMemoryWitness(PvmBackend.Jit)
 echo "PVM worker application passed"
