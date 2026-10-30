@@ -58,3 +58,46 @@ sizes; keep every outlier. No universal5% cutoff: assess modest benefits, resour
 correctness and transfer consistency honestly. No repeat, capacity sweep, tuning or production/JIT
 gain claim. Both arms gasOFF, old pin69e5 and production8bcb held, no gas/default/quota changes.
 Original SDK/sysroot/registry completeness limitations and unisolated final destruction remain.
+
+## Final sole-cohort outcome
+
+Independent source/correctness and final retained-data audits pass at measured source
+`6af1af10dd070ae7a7217c82c45874d395d18fb5`. The single104-process208-call pair retains80 owners/
+160 calls after the fixed discards. Results SHA256:
+`fc7c470fead81cfa4cf7d999c2a4c52bec97eada27b639936976cdb40ac289fd`.
+Consumed-source archive SHA256:
+`65ba8315abc970b3d80ae201fcc7c6d900122511dee440766e6bbba577d1ca05`.
+Final independent receipt SHA256:
+`ff0744c9cddcc8bbc8f225c791bb8e3f38e86fc5766343c6c07714bf22ce6c06`.
+
+| Workload | CPU medians | CPU means | Elapsed means/medians | Paired observations |
+|---|---:|---:|---:|---|
+| Pinky |8.879–10.020% better|8.755–10.102% better|same direction, about8.7–10.3% better|10/10 wins in every cell|
+| Sieve |0.725–1.024% worse|0.798–1.003% worse|same direction, about0.7–1.2% worse|1,1,1,1 /3,3,0,0 wins|
+
+**Discard as a general improvement under the original cross-workload rule; preserve the research
+variant and evidence.** The compact6ac baseline remains accepted. This assessment uses no universal
+5%cutoff: the limitation is consistent regression in the other workload. The same directions remain
+in full-process CPU/elapsed distributions, including preparation, checks and cleanup. No repeat,
+capacity sweep, tuning, default or production/JIT promotion follows this final bounded experiment.
+
+The deterministic cache work is substantial:608,867 backup hits+4,196 full admissions replace
+Pinky's613,063 original full load misses;57,455+43,268 replace sieve's100,723. All original checked
+callback totals, native guest image sizes and memory semantics remain. Typed page-owner retention
+can therefore avoid real duplicate preflight within one execution session, but this cache policy
+has a workload-dependent tradeoff. No cache/ARC/compiler-layout component has been isolated as the
+cause of the sieve regression. The production entry/checkpoint costs in the architecture report
+are separate from this closed standalone caller and remain with their owning implementation lanes.
+
+Resource costs remain explicit:536 additional writer-field bytes before allocator rounding and
+64reference clears per snapshot. Host executable files grow16,600/16,584 bytes; actual host text
+sections grow3,328/3,120 bytes. The generated guest images grow by zero bytes. Publication clocks
+are coarse and do not explain the invocation regression. All CPU/elapsed distributions, means,
+medians, min/max, pairs, lifecycle values, four cold builds and host-image identities are retained.
+
+Evidence lives under `build/pvm-whole-read-cache-compare-6af1af10-1793361600164158000/`, including
+`summary.md`, immutable `results.json`, `practical-assessment.json`, `all-retained-statistics.json`,
+`lifecycle-statistics.json`, `whole-process-statistics.json`, `build-and-host-resources.json`, and
+complete byte-preserved `independent-actual/` with `independent-preservation.json`. The prior compact
+baseline's original failed threshold and later qualified code-size retention remain unchanged.
+This outcome record changes documentation only; no further native execution or CI was needed.
