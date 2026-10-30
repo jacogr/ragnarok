@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -113,6 +113,26 @@ class NimonyCISafeguards(unittest.TestCase):
         profile=section.split('- name: Profile paired ARM invocation boundaries',1)[1].split('- name:',1)[0]
         condition=re.search(r'if: \$\{\{ (.+) \}\}',profile).group(1)
         self.assertFalse(expression(condition,context))
+
+    def test_arm_check_runs_native_gates_without_performance_collection(self):
+        """Explicit native-only ARM qualification reuses the same runner and keeps every correctness/refusal gate."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        context=event_context('workflow_dispatch',suite='jit-arm-check')
+        context['matrix']=dict(family=dict(group='arm64'))
+        self.assertTrue(expression(job_condition(text,'pvm-comparison'),context))
+        self.assertEqual(selected_families(text,'pvm-comparison',context),
+                         [dict(name='Linux ARM64',group='arm64',os='ubuntu-26.04-arm')])
+        section=job_section(text,'pvm-comparison')
+        for name, expected in [('Qualify PVM on the native Linux architecture', True),
+                ('Compare public ARM64 JIT and checked interpreters', False),
+                ('Calibrate ARM collection without guest rebuilds', False),
+                ('Profile paired ARM invocation boundaries', False)]:
+            # A new explicit dispatch mode must not silently request a full guest timing/profile cohort.
+            step=section.split('- name: '+name,1)[1].split('- name:',1)[0]
+            condition=re.search(r'if: \$\{\{ (.+) \}\}',step).group(1)
+            self.assertEqual(expression(condition,context),expected,name)
+        self.assertIn('build/tests/pvm-native/region-refusal\n',section)
+        self.assertIn('build/tests/pvm-native/region-refusal-forced\n',section)
 
     def test_arm_calibration_reuses_one_job_without_guest_work(self):
         """Profiler repair controls select ARM alone and skip native guest qualification/comparison steps."""

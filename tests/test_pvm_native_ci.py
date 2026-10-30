@@ -110,7 +110,7 @@ class QualificationTests(unittest.TestCase):
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
 
-    def check(self, native, receipt=None, build_error=False):
+    def check(self, native, receipt=None, build_error=False, region_receipt=None):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
         ordinary = self.witness_receipt(native)
         refused = self.witness_receipt(False)
@@ -131,6 +131,12 @@ class QualificationTests(unittest.TestCase):
                     output=receipt if receipt is not None else ordinary
                 elif name=='witness-refused-run':
                     output=refused
+                elif name.startswith('region-refusal'):
+                    positive=native and name=='region-refusal-run'
+                    output=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+(','+'0,1,2,1' if positive else ',0,0,0,0')+'\n'
+                                   for order in ('0,0','0,1','1,1'))
+                    if name=='region-refusal-run' and region_receipt is not None:
+                        output=region_receipt
                 elif '-move-run' in name:
                     output='0\n0\n'
                 return dict(exit_code=0,output=output)
@@ -141,11 +147,21 @@ class QualificationTests(unittest.TestCase):
         """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
-            self.assertEqual(len(rows),9)
+            self.assertEqual(len(rows),11)
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
+
+    def test_candidate_local_native_receipts_are_mandatory(self):
+        """Missing, checked-only or reordered ownership cases cannot count as actual ARM coverage."""
+        zero=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+',0,0,0,0\n'
+                     for order in ('0,0','0,1','1,1'))
+        reordered=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+',0,1,2,1\n'
+                          for order in ('1,1','0,1','0,0'))
+        for raw in ('', zero, reordered, zero+zero):
+            with self.subTest(receipt=raw), self.assertRaisesRegex(ValueError,'candidate-local'):
+                self.check(True,region_receipt=raw)
 
     def test_no_native_execution_and_compiler_failure(self):
         """Zero, missing or duplicate native counters and failed compilation never qualify the runner."""
