@@ -273,7 +273,7 @@ def run(args):
         for arm,guest,source,defines in specs:
             start=time.monotonic_ns();before=resource.getrusage(resource.RUSAGE_CHILDREN)
             row,binary=checks.build(compiler,source,arm+'-'+guest,defines=defines,
-                cflags=['-I'+str(folder if arm!='baseline' else ROOT/'tests/performance')])
+                cflags=['-I'+str(folder)])
             after=resource.getrusage(resource.RUSAGE_CHILDREN);row['process_elapsed_ns']=time.monotonic_ns()-start
             row['process_cpu_ns']=round(((after.ru_utime+after.ru_stime)-(before.ru_utime+before.ru_stime))*1e9)
             report['builds'].append(row);save()

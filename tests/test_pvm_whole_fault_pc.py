@@ -67,6 +67,7 @@ class WholeFaultPcTests(unittest.TestCase):
         """All104 owners must describe identical source-site counts in both arms, independently of timing."""
         rows=[dict(guest=g,order=o,sample=s,arm=a,discarded=s<3,run=dict(output=output(g,a)),measured=h.parse(output(g,a),g,a)) for g,o,s,a in h.matrix()]
         self.assertEqual(len(h.summarize(rows)),4)
+        self.assertIn("cflags=['-I'+str(folder)]",(h.ROOT/'tools/pvm_whole_fault_pc.py').read_text())
         rows[1]['run']['output']=output('pinky','fast',101);rows[1]['measured']=h.parse(rows[1]['run']['output'],'pinky','fast')
         with self.assertRaises(ValueError):h.summarize(rows)
 
