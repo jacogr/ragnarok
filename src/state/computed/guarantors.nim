@@ -39,10 +39,12 @@ type
 func error*[T](outcome: ComputedGuarantorResult[T]): ComputedGuarantorError =
   ## Inspect the reason without writable successful selection.
   outcome.status
+
 func value*[T](outcome: ComputedGuarantorResult[T]): T
     {.requires: outcome.status == ComputedGuarantorError.None.} =
   ## Preserve extraction contracts under optimized compilation.
   outcome.completed
+
 proc computedGuarantorSource*(context: ComputedGuarantors): ComputedGuarantorResult[
     RosterEligibleComputedReport] =
   ## Retain exact original computed and authenticated population eligibility provenance.
@@ -51,6 +53,7 @@ proc computedGuarantorSource*(context: ComputedGuarantors): ComputedGuarantorRes
       status: ComputedGuarantorError.Uninitialized)
   ComputedGuarantorResult[RosterEligibleComputedReport](status: ComputedGuarantorError.None,
       completed: data.source)
+
 proc computedGuarantorAt*(context: ComputedGuarantors, slot: GuaranteeSlot,
     index: GuarantorIndex): ComputedGuarantorResult[GuarantorAssignment] =
   ## Check evaluation-slot freshness, selected roster position, computed core and non-null identity without new hashes.
@@ -67,6 +70,7 @@ proc computedGuarantorAt*(context: ComputedGuarantors, slot: GuaranteeSlot,
     fail(ComputedGuarantorError.IneligibleValidator) # Phi-null or originally null identities cannot supply an eligible key.
   ComputedGuarantorResult[GuarantorAssignment](status: ComputedGuarantorError.None,
       completed: selected.value)
+
 proc prepareComputedGuarantors*(source: RosterEligibleComputedReport,
     limits: ComputedGuarantorLimits): ComputedGuarantorResult[ComputedGuarantors] =
   ## Preflight all original profile/decoder budgets and retain only the complete real posterior assignment plan.

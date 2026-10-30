@@ -77,12 +77,15 @@ type
 proc `=copy`*(destination: var CurrentBlockDownload,
     source: CurrentBlockDownload) {.error: "CurrentBlockDownload owns reception".}
   ## Composite ownership is explicit even though CurrentBlockInput already refuses copying.
+
 proc `=dup`*(source: CurrentBlockDownload): CurrentBlockDownload {.error.}
   ## The nested receiver and worker borrow have exactly one stable owner.
+
 proc requirePreparationRetired(download: CurrentBlockDownload) {.requires:
     download.pending.status != CurrentBlockDownloadStage.Preparing.} =
   ## Destruction cannot release input/history still borrowed by the Services worker.
   discard
+
 proc `=wasMoved`*(download: var CurrentBlockDownload) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(download.next)
@@ -98,6 +101,7 @@ proc `=destroy`*(download: CurrentBlockDownload) =
   `=destroy`(download.input)
   `=destroy`(download.ticket)
   `=destroy`(download.logicalResult)
+
 proc `==`*(left, right: CurrentBlockDownloadId): bool {.borrow.}
   ## Compare only generations from this receiver's lifetime.
 
@@ -142,6 +146,7 @@ func workerError*(reason: CurrentBlockDownloadFailure): PreparationError {.inlin
     requires: reason.status == CurrentBlockDownloadError.WorkerFailure.} =
   ## Inspect only an actual worker admission refusal.
   reason.workerReason
+
 func handoffError*(reason: CurrentBlockDownloadFailure): CurrentHandoffAdmission {.inline,
     requires: reason.status == CurrentBlockDownloadError.HandoffFailure.} =
   ## Preserve only an actual host enqueue refusal after execution has retired.
@@ -151,6 +156,7 @@ func logicalFailure*(reason: CurrentBlockDownloadFailure): CurrentLogicalDownloa
     requires: reason.status == CurrentBlockDownloadError.LogicalFailure.} =
   ## Only an actual failed post-collection qualification exposes its exact State stage.
   reason.logicalReason
+
 func logicalCompletion*(download: CurrentBlockDownload): CurrentLogicalDownloadResult {.inline,
     requires: download.stage == CurrentBlockDownloadStage.Idle.} =
   ## Observe the qualified result only after successful enqueue; default/nonlogical generations expose Uninitialized.

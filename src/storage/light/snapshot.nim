@@ -64,57 +64,70 @@ type
     offset: int
     nodes: int
     size: int
+
 func error*[T](outcome: LightSnapshotResult[T]): LightSnapshotError =
   ## Inspect only a completed operation's reason.
   outcome.status
+
 func value*[T](outcome: LightSnapshotResult[T]): T {.inline,
     requires: outcome.status == LightSnapshotError.None.} =
   ## Defaults and failures cannot authorize snapshot/cache extraction.
   outcome.completed
+
 func proofError*[T](outcome: LightSnapshotResult[T]): LightCacheError {.requires:
     outcome.status == LightSnapshotError.ProofFailure.} =
   ## Preserve the exact selected proof-admission failure without exposing its private scratch.
   outcome.proofReason
+
 func initialized*(snapshot: PreparedLightSnapshot): bool =
   ## Safely distinguish a default handle before selecting any guarded metadata or bytes.
   snapshot.owner != nil
+
 proc chainId*(snapshot: PreparedLightSnapshot): StorageChainId {.requires: snapshot.owner != nil.} =
   ## Return the explicit chain binding, not an independently authenticated identity.
   let owner = snapshot.owner
   assert owner != nil
   owner.chain
+
 proc root*(snapshot: PreparedLightSnapshot): StateRoot {.requires: snapshot.owner != nil.} =
   ## Return the caller-supplied complete-root binding, never a root calculated from partial cache state.
   let owner = snapshot.owner
   assert owner != nil
   owner.root
+
 proc limits*(snapshot: PreparedLightSnapshot): LightSnapshotLimits {.requires: snapshot.owner != nil.} =
   ## Copy the exact policy under which all private bytes and cached lookups were validated.
   let owner = snapshot.owner
   assert owner != nil
   owner.limits
+
 proc cache*(snapshot: PreparedLightSnapshot): LightStateCache {.requires: snapshot.owner != nil.} =
   ## Retain immutable admitted lookup state independently of the encoded image's lifetime.
   let owner = snapshot.owner
   assert owner != nil
   owner.cache
+
 proc checksum*(snapshot: PreparedLightSnapshot): StorageChecksum {.requires: snapshot.owner != nil.} =
   ## Read copied corruption-detection metadata without granting root provenance.
   let owner = snapshot.owner
   assert owner != nil
   owner.checksum
+
 proc byteLength*(snapshot: PreparedLightSnapshot): int {.requires: snapshot.owner != nil.} =
   ## Inspect the complete canonical image extent without copying bytes.
   let owner = snapshot.owner
   assert owner != nil
   owner.encoded.len
+
 proc encodedView(owner: nil SnapshotData): lent seq[byte] {.requires: owner != nil.} =
   ## A checked parameter borrow retains its provenance through the prepared handle's nullable owner field.
   assert owner != nil
   owner.encoded
+
 proc encodedBytes*(snapshot: PreparedLightSnapshot): lent seq[byte] {.requires: snapshot.owner != nil.} =
   ## Borrow immutable canonical bytes for an immediate operation; the snapshot owner must outlive the view.
   encodedView(snapshot.owner)
+
 proc bytes*(snapshot: PreparedLightSnapshot): seq[byte] {.requires: snapshot.owner != nil.} =
   ## Copy canonical output; no mutable backing storage can change a prepared image's authority.
   let owner = snapshot.owner
@@ -122,6 +135,7 @@ proc bytes*(snapshot: PreparedLightSnapshot): seq[byte] {.requires: snapshot.own
   result = newSeq[byte](owner.encoded.len)
   for index in 0..<owner.encoded.len: result[index] = owner.encoded[
       index] # Keep the immutable owner retained during indexed reads.
+
 func compareKey(left, right: StateKey): int =
   ## Canonical ordering uses every serialized query-key octet.
   let a = array[31, byte](left)
@@ -130,21 +144,26 @@ func compareKey(left, right: StateKey): int =
     if a[index] < b[index]: return -1
     if a[index] > b[index]: return 1
   0
+
 proc compareIndex(left, right: KeyIndex): int =
   ## Sort identities only; borrowed node/value buffers stay untouched.
   compareKey(left.key, right.key)
+
 func number(input: openArray[byte], offset: int, width = 8): uint64 =
   ## Callers prove the exact two/eight-byte field before any access or shift.
   result = 0
   for index in 0..<width: result = result or (uint64(input[offset+index]) shl (index*8))
+
 proc putNumber(output: var seq[byte], offset: int, value: uint64, width = 8) =
   ## Complete output preflight proves every fixed little-endian field.
   for index in 0..<width: output[offset+index] = byte((value shr (index*8)) and 255)
+
 func readKey(input: openArray[byte], offset: int): StateKey =
   ## Shape preflight proves a complete fixed query identity.
   var raw = default(array[31, byte])
   for index in 0..<31: raw[index] = input[offset+index]
   StateKey(raw)
+
 proc prove*(snapshot: PreparedLightSnapshot, key: StateKey,
     limits: LightProofReadLimits): LightSnapshotResult[StateProof] =
   ## Copy retained authenticated evidence without hashing; unknown keys never become absence proofs.
@@ -184,14 +203,17 @@ proc prove*(snapshot: PreparedLightSnapshot, key: StateKey,
     cursor += nodeBytes+int(size) # Proven body extents allow constant work to skip unselected payloads.
   LightSnapshotResult[StateProof](status: LightSnapshotError.ProofFailure,
       proofReason: LightCacheError.UnknownKey)
+
 proc grow(size: var uint64, amount, maximum: uint64): bool =
   ## Prove both file policy and host addressing before addition or later narrowing.
   if size > maximum or amount > maximum-size: return false
   size += amount
   true
+
 proc compareRead(left, right: ProofReadIndex): int =
   ## Sort query identities while preserving each caller-requested output position.
   compareKey(left.key, right.key)
+
 proc planProofs(owner: nil SnapshotData, keys: openArray[StateKey],
     limits: LightProofBatchLimits): LightSnapshotResult[seq[ProofReadIndex]] =
   ## Bound sorted query spans without allocating proof payload, for batch reads and exact selective exports.
@@ -247,6 +269,7 @@ proc planProofs(owner: nil SnapshotData, keys: openArray[StateKey],
       inc slot
     cursor += nodeBytes+int(size) # Each canonical entry is examined once, independent of request order.
   LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.None, completed: ordered)
+
 proc prove*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey],
     limits: LightProofBatchLimits): LightSnapshotResult[seq[LightStateProof]] =
   ## Preflight all requested evidence in one scan, then detach complete proofs in caller order without hashing.
@@ -274,28 +297,35 @@ proc prove*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey],
     for index in 0..<entry.size: value[index] = owner.encoded[offset+index]
     output[entry.index] = LightStateProof(key: entry.key, proof: StateProof(nodes: nodes, value: value))
   LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.None, completed: output)
+
 func initialized*(cursor: LightProofCursor): bool =
   ## Default cursors have no position or authenticated image authority.
   cursor.owner != nil
+
 proc finished*(cursor: LightProofCursor): bool {.requires: cursor.owner != nil.} =
   ## Inspect terminal position without reading another entry or copying retained bytes.
   let owner = cursor.owner
   assert owner != nil
   cursor.offset == owner.encoded.len-32
+
 proc root*(cursor: LightProofCursor): StateRoot {.requires: cursor.owner != nil.} =
   ## Return the original independently chosen complete-root binding of this immutable traversal.
   let owner = cursor.owner
   assert owner != nil
   owner.root
+
 proc len*(page: LightProofPage): int {.requires: page.ready.} =
   ## Default pages cannot expose a successful empty prefix.
   page.evidence.len
+
 proc proofs*(page: LightProofPage): seq[LightStateProof] {.requires: page.ready.} =
   ## Return independently mutable evidence without exposing the page's retained buffers.
   page.evidence
+
 proc nextCursor*(page: LightProofPage): LightProofCursor {.requires: page.ready.} =
   ## Retain the immutable continuation; retrying the original cursor reproduces the same page.
   page.continuation
+
 proc proofCursor*(snapshot: PreparedLightSnapshot): LightSnapshotResult[LightProofCursor] =
   ## Start canonical evidence traversal without materializing keys or copying the image.
   let owner = snapshot.owner
@@ -303,6 +333,7 @@ proc proofCursor*(snapshot: PreparedLightSnapshot): LightSnapshotResult[LightPro
       status: LightSnapshotError.Uninitialized)
   LightSnapshotResult[LightProofCursor](status: LightSnapshotError.None,
       completed: LightProofCursor(owner: owner, offset: HeaderBytes))
+
 proc readPage*(cursor: LightProofCursor,
     limits: LightProofPageLimits): LightSnapshotResult[LightProofPage] =
   ## Select the largest bounded canonical prefix, then copy its proofs; a nonterminal success always advances.
@@ -356,6 +387,7 @@ proc readPage*(cursor: LightProofCursor,
   LightSnapshotResult[LightProofPage](status: LightSnapshotError.None,
     completed: LightProofPage(ready: true, evidence: evidence,
       continuation: LightProofCursor(owner: owner, offset: scan)))
+
 proc prepareLightSnapshot*(chain: StorageChainId, root: StateRoot,
     proofs: openArray[LightStateProof], limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =
@@ -419,6 +451,7 @@ proc prepareLightSnapshot*(chain: StorageChainId, root: StateRoot,
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
     completed: PreparedLightSnapshot(owner: SnapshotData(chain: chain, root: root, limits: limits,
       encoded: output, cache: admitted.value, checksum: StorageChecksum(checksum))))
+
 proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[LightStateCache] =
   ## File metadata/checksum cannot establish trust: every bounded proof is checked against the independent expected root.
@@ -482,6 +515,7 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     if input[stop+index] != checksum[index]: return LightSnapshotResult[LightStateCache](
         status: LightSnapshotError.ChecksumMismatch)
   cursor = HeaderBytes
+
   proc readProof(index: int): LightStateProof {.closure.} =
     ## The synchronous constructor calls each index once; complete shape preflight proves every cursor and allocation extent.
     assert index >= 0 and index < int(count)
@@ -517,6 +551,7 @@ proc ownedSnapshot(encoded: sink seq[byte], chain: StorageChainId, root: StateRo
   for index in 0..<32: checksum[index] = encoded[encoded.len-32+index]
   PreparedLightSnapshot(owner: SnapshotData(chain: chain, root: root, limits: limits,
     encoded: encoded, cache: cache, checksum: StorageChecksum(checksum)))
+
 proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =
@@ -531,6 +566,7 @@ proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId
   for index, octet in input: encoded[index] = octet
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
     completed: ownedSnapshot(encoded, expectedChain, expectedRoot, limits, decoded.value))
+
 proc takeLightSnapshot*(input: var seq[byte], expectedChain: StorageChainId,
     expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =
@@ -602,9 +638,11 @@ type
   EntrySource = object ## A merge cursor borrows either a trusted encoded entry or an incoming transport index.
     offset, index: int
     extent, valueBytes: uint64
+
 proc compareEdit(left, right: EditIndex): int =
   ## One canonical order detects conflicts across both operation lists before any proof hashing.
   compareKey(left.key, right.key)
+
 proc nextSource(encoded: openArray[byte], ordered: openArray[EditIndex],
     old: var int, fresh: var int, source: var EntrySource): bool =
   ## Scan canonical evidence and unique sorted edits, skipping only explicitly forgotten query identities.
@@ -634,6 +672,7 @@ proc nextSource(encoded: openArray[byte], ordered: openArray[EditIndex],
       inc fresh
       if change.kind == EditKind.Admit: return true # Equal-key admission replaces evidence; forgetting emits nothing.
   false
+
 proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
     keys: openArray[StateKey]): LightSnapshotResult[PreparedLightSnapshot] =
   ## Preflight the final canonical set before proof hashing or output allocation; old proof bytes need no revalidation.
@@ -741,14 +780,17 @@ proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
     completed: PreparedLightSnapshot(owner: SnapshotData(chain: owner.chain, root: owner.root,
       limits: policy, encoded: output, cache: admitted.value, checksum: StorageChecksum(checksum))))
+
 proc admit*(snapshot: PreparedLightSnapshot, updates: openArray[
     LightStateProof]): LightSnapshotResult[PreparedLightSnapshot] =
   ## Retain old evidence and authenticate only the incoming unique-key batch at the original complete root.
   edit(snapshot, updates, [])
+
 proc forget*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey]): LightSnapshotResult[
     PreparedLightSnapshot] =
   ## Forget local evidence without inventing authenticated absence or discarding the independently expected root.
   edit(snapshot, [], keys)
+
 proc update*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof],
     forgottenKeys: openArray[StateKey]): LightSnapshotResult[PreparedLightSnapshot] =
   ## Validate one disjoint combined batch and prepare its final canonical image without exposing intermediate knowledge.
@@ -765,19 +807,24 @@ type
   RetentionEntry = object ## Fixed private candidate descriptors carry only canonical identities and exact logical/encoded charges.
     key: StateKey
     bytes, values: uint64
+
 func initialized*(plan: LightRetentionPlan): bool =
   ## A default plan safely reports its missing completed planning result.
   plan.ready
+
 func len*(plan: LightRetentionPlan): int {.requires: plan.ready.} =
   ## Count only completed deterministic removal choices.
   plan.removed.len
+
 proc forgottenKeys*(plan: LightRetentionPlan): seq[StateKey] {.requires: plan.ready.} =
   ## Return an independently mutable copy; a plan retains no source image or native lease.
   result = newSeq[StateKey](plan.removed.len)
   for index in 0..<plan.removed.len: result[index] = plan.removed[index]
+
 func retentionFailure(reason: LightSnapshotError): LightSnapshotResult[LightRetentionPlan] =
   ## Refusal carries no successful removal prefix.
   LightSnapshotResult[LightRetentionPlan](status: reason)
+
 proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof],
     limits: LightRetentionLimits): LightSnapshotResult[LightRetentionPlan] =
   ## Predict exact final charges without crypto; protect incoming queries and choose only bounded canonical old-query removals.
@@ -854,6 +901,7 @@ proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[Ligh
   for index in 0..<removed: keys[index] = candidates[index].key
   LightSnapshotResult[LightRetentionPlan](status: LightSnapshotError.None,
     completed: LightRetentionPlan(ready: true, removed: move(keys)))
+
 proc admitRetained*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof],
     limits: LightRetentionLimits): LightSnapshotResult[PreparedLightSnapshot] =
   ## Verify incoming evidence and publish one immutable replacement at the original root/policy; no eviction prefix escapes on failure.

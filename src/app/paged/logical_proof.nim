@@ -39,26 +39,32 @@ type
     of PlanFailure: planReason: ProofPlanError
     of QueryFailure: queryReason: LogicalProofResult
     else: discard # Only successful immutable plans/pages grant subsequent access.
+
 func error*[T](outcome: LogicalProofPageResult[T]): LogicalProofPageError =
   ## Inspect the selected stage without exposing its tagged payload.
   outcome.status
+
 func value*[T](outcome: LogicalProofPageResult[T]): T {.inline, requires: outcome.status ==
     LogicalProofPageError.None.} =
   ## Extract only successful pages, observations or executable queries.
   outcome.completed
+
 func fullFailure*[T](outcome: LogicalProofPageResult[T]): FullLogicalProofResult[
     FullLogicalProofPlan] {.inline, requires: outcome.status ==
     LogicalProofPageError.FullFailure.} =
   ## Preserve original whole-map selector refusal without inventing a partial plan.
   outcome.fullReason
+
 func planError*[T](outcome: LogicalProofPageResult[T]): ProofPlanError {.inline,
     requires: outcome.status == LogicalProofPageError.PlanFailure.} =
   ## Preserve the existing immutable per-page selector capture's refusal.
   outcome.planReason
+
 func queryFailure*[T](outcome: LogicalProofPageResult[T]): LogicalProofResult {.inline,
     requires: outcome.status == LogicalProofPageError.QueryFailure.} =
   ## Preserve original selected-view and nested proof work refusal.
   outcome.queryReason
+
 proc planLogicalProofPages*(source: CurrentLogicalState, fullLimits: FullLogicalProofLimits,
     pageLimits: LogicalProofPageLimits): LogicalProofPageResult[LogicalProofPages] =
   ## Admit the whole immutable selector and worst-case page key copies before any page can be requested; planning performs no cryptography.
@@ -82,6 +88,7 @@ proc planLogicalProofPages*(source: CurrentLogicalState, fullLimits: FullLogical
   LogicalProofPageResult[LogicalProofPages](status: LogicalProofPageError.None,
     completed: LogicalProofPages(initialized: true, full: full.value,
       info: LogicalProofPagesInfo(pages: count, keys: info.keys, pageKeys: width, root: info.root)))
+
 proc logicalProofPagesInfo*(plan: LogicalProofPages): LogicalProofPageResult[
     LogicalProofPagesInfo] =
   ## Return cached deterministic coverage without exposing mutable cursors.
@@ -89,6 +96,7 @@ proc logicalProofPagesInfo*(plan: LogicalProofPages): LogicalProofPageResult[
       status: LogicalProofPageError.InvalidPlan)
   LogicalProofPageResult[LogicalProofPagesInfo](status: LogicalProofPageError.None,
       completed: plan.info)
+
 proc logicalProofPageAt*(plan: LogicalProofPages, index: LogicalProofPageIndex): LogicalProofPageResult[
     LogicalProofPage] =
   ## Capture one admitted page in arbitrary caller order without changing the original plan, root or another page.
@@ -111,23 +119,27 @@ proc logicalProofPageAt*(plan: LogicalProofPages, index: LogicalProofPageIndex):
       keys: captured.value,
       info: LogicalProofPageInfo(index: index, pages: plan.info.pages, offset: offset, keys: count,
           totalKeys: plan.info.keys, root: plan.info.root)))
+
 proc logicalProofPageInfo*(page: LogicalProofPage): LogicalProofPageResult[LogicalProofPageInfo] =
   ## Retain fixed original-root range observations, never received-response completeness authority.
   if not page.initialized: return LogicalProofPageResult[LogicalProofPageInfo](
       status: LogicalProofPageError.InvalidPlan)
   LogicalProofPageResult[LogicalProofPageInfo](status: LogicalProofPageError.None,
       completed: page.info)
+
 proc logicalProofPageSource*(page: LogicalProofPage): LogicalProofPageResult[CurrentLogicalState] =
   ## Retain the original logical producer for existing managed submission outside native graph leases.
   if not page.initialized: return LogicalProofPageResult[CurrentLogicalState](
       status: LogicalProofPageError.InvalidPlan)
   LogicalProofPageResult[CurrentLogicalState](status: LogicalProofPageError.None,
       completed: page.source)
+
 proc logicalProofPageKeys*(page: LogicalProofPage): LogicalProofPageResult[StateProofPlan] =
   ## Retain the immutable exact page selector for planned response verification and existing workers.
   if not page.initialized: return LogicalProofPageResult[StateProofPlan](
       status: LogicalProofPageError.InvalidPlan)
   LogicalProofPageResult[StateProofPlan](status: LogicalProofPageError.None, completed: page.keys)
+
 proc captureLogicalProofPageQuery*(page: LogicalProofPage,
     limits: LogicalProofLimits): LogicalProofPageResult[ProofQuery] =
   ## Apply independent existing full-map/view/path/wire/hash policies to this page without accepting a substituted source or selector.

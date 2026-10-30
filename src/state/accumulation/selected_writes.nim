@@ -46,15 +46,18 @@ type
 func error*[T](outcome: SelectedAccountWriteResult[T]): SelectedAccountWriteError =
   ## Inspect refusal without allowing retagging.
   outcome.status
+
 func value*[T](outcome: SelectedAccountWriteResult[T]): T {.inline,
     requires: outcome.status == SelectedAccountWriteError.None.} =
   ## Extract only complete success under optimized checked contracts.
   outcome.completed
+
 proc spend(draft: var WriteDraft): SelectedAccountWriteError =
   ## Charge each selected row, inspected fact, final lookup and physical-key comparison before access.
   if draft.checks >= uint64(draft.limits.checks): return SelectedAccountWriteError.LimitExceeded # No work after quota exhaustion.
   inc draft.checks
   SelectedAccountWriteError.None
+
 proc captureKey(draft: var WriteDraft, service: ServiceIndex, key: StateKey,
     snapshot: StateStoreSnapshot): SelectedAccountWriteError =
   ## Copy only the final selected value or genuine absence for one trusted physical fact.
@@ -80,6 +83,7 @@ proc captureKey(draft: var WriteDraft, service: ServiceIndex, key: StateKey,
     return SelectedAccountWriteError.InvalidState # Invalid/default snapshots cannot authorize deletions.
   draft.rows.add(WriteRow(service: service, write: write))
   SelectedAccountWriteError.None
+
 proc captureFacts(draft: var WriteDraft, service: ServiceIndex, context: AccumulationEffectContext,
     snapshot: StateStoreSnapshot, requireMetadata: bool): SelectedAccountWriteError =
   ## Filter enabled complete physical facts by this selected logical account, preserving final source ownership.
@@ -104,6 +108,7 @@ proc captureFacts(draft: var WriteDraft, service: ServiceIndex, context: Accumul
   if requireMetadata and not metadata:
     return SelectedAccountWriteError.IncompleteFacts # A birth/deletion cannot be certified solely by other account keys.
   SelectedAccountWriteError.None
+
 proc prepareSelectedAccountWrites*(prior: PreparedAccumulationAccountSelection,
     created: PreparedAccumulationCreationUnion, limits: SelectedAccountWriteLimits): SelectedAccountWriteResult[
         PreparedSelectedAccountWrites] =
@@ -173,6 +178,7 @@ proc selectedWritesInfo*(plan: PreparedSelectedAccountWrites): SelectedAccountWr
       status: SelectedAccountWriteError.Uninitialized) # No fabricated empty plan.
   SelectedAccountWriteResult[SelectedAccountWriteInfo](status: SelectedAccountWriteError.None,
       completed: data.info)
+
 proc selectedWritesPriorSource*(plan: PreparedSelectedAccountWrites): SelectedAccountWriteResult[
     PreparedAccumulationAccountSelection] =
   ## Retain the exact prior-account selection certificate, including any certified skipped credits.
@@ -181,6 +187,7 @@ proc selectedWritesPriorSource*(plan: PreparedSelectedAccountWrites): SelectedAc
       status: SelectedAccountWriteError.Uninitialized) # No substitute M source.
   SelectedAccountWriteResult[PreparedAccumulationAccountSelection](
       status: SelectedAccountWriteError.None, completed: data.prior)
+
 proc selectedWritesNewSource*(plan: PreparedSelectedAccountWrites): SelectedAccountWriteResult[
     PreparedAccumulationCreationUnion] =
   ## Retain the exact new-account union and its collision/cancellation proof.
@@ -189,6 +196,7 @@ proc selectedWritesNewSource*(plan: PreparedSelectedAccountWrites): SelectedAcco
       status: SelectedAccountWriteError.Uninitialized) # No substitute n source.
   SelectedAccountWriteResult[PreparedAccumulationCreationUnion](
       status: SelectedAccountWriteError.None, completed: data.created)
+
 proc selectedWriteAt*(plan: PreparedSelectedAccountWrites,
     index: AccumulationSelectedWriteIndex): SelectedAccountWriteResult[StateWrite] =
   ## Return a fresh final descriptor buffer; callers cannot mutate retained physical values.

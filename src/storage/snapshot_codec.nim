@@ -35,46 +35,57 @@ type
     of RecordFailure: recordReason: RecordError
     of RepositoryFailure: repositoryReason: RepositoryError
     else: discard
+
 func error*[T](outcome: SnapshotResult[T]): SnapshotError =
   ## Observe only the selected codec reason.
   outcome.status
+
 func value*[T](outcome: SnapshotResult[T]): T {.inline, requires: outcome.status ==
     SnapshotError.None.} =
   ## Extract bytes or restored owners only after complete admission.
   outcome.completed
+
 proc takeValue*[T](outcome: var SnapshotResult[T]): T {.inline,
     requires: outcome.status == SnapshotError.None.} =
   ## Transfer admitted bytes/owners once; the consumed result retains no success payload or authority.
   result = move(outcome.completed)
   outcome = SnapshotResult[T](status: SnapshotError.Uninitialized)
+
 func recordError*[T](outcome: SnapshotResult[T]): RecordError {.requires: outcome.status ==
     SnapshotError.RecordFailure.} =
   ## Preserve a selected physical record refusal without returning decoded prefixes.
   outcome.recordReason
+
 func repositoryError*[T](outcome: SnapshotResult[T]): RepositoryError {.requires: outcome.status ==
     SnapshotError.RepositoryFailure.} =
   ## Inspect only a selected complete-graph failure.
   outcome.repositoryReason
+
 proc putNumber(output: var seq[byte], offset: int, number: uint64) =
   ## Exact output preflight proves each little-endian E8 field.
   for index in 0..<8: output[offset+index] = byte((number shr (8*index)) and 255)
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Fixed header/extent checks precede every read.
   result = 0
   for index in 0..<8: result = result or (uint64(input[offset+index]) shl (8*index))
+
 proc putHash(output: var seq[byte], offset: int, hash: array[32, byte]) =
   ## Copy a fixed identity only inside the preflighted output extent.
   for index in 0..<32: output[offset+index] = hash[index]
+
 func readHash(input: openArray[byte], offset: int): array[32, byte] =
   ## Copy one proved complete scalar identity.
   result = default(array[32, byte])
   for index in 0..<32: result[index] = input[offset+index]
+
 proc physicalLimits(limits: SnapshotLimits, bytes: ByteLimit): RecordLimits =
   ## Snapshot union budgets do not alter ordinary batch policy or complete-state graph ceilings.
   result = limits.repository.codec
   result.records = TrieExportLimits(records: TrieNodeLimit(uint64(limits.repository.records)),
     valueBytes: limits.repository.valueBytes)
   result.encoded = bytes
+
 proc compareSnapshotRoot(left, right: StateRoot): int =
   ## Detached root identities retain the canonical complete-byte order of the existing snapshot domain.
   let a = array[32, byte](left)
@@ -153,6 +164,7 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   putHash(output, output.len-32, checksum)
   SnapshotResult[SnapshotEncoding](status: SnapshotError.None,
     completed: SnapshotEncoding(bytes: output, checksum: StorageChecksum(checksum)))
+
 proc decodeRepositorySnapshot*(input: openArray[byte], chain: StorageChainId,
     schema: StorageSchema, limits: SnapshotLimits): SnapshotResult[RepositorySnapshot] =
   ## Preflight all borrowed extents, verify integrity, then admit every declared complete graph.

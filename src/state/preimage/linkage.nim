@@ -26,21 +26,26 @@ type
       ordinal: InventoryPreimageIndex
     else:
       discard
+
 func error*[T](outcome: PreimageLinkageResult[T]): PreimageLinkageError =
   ## Inspect the immutable failure or success alternative.
   outcome.status
+
 func value*[T](outcome: PreimageLinkageResult[T]): T {.inline,
     requires: outcome.status == PreimageLinkageError.None.} =
   ## Extract only a whole-inventory linkage certificate.
   outcome.completed
+
 func failedService*[T](outcome: PreimageLinkageResult[T]): ServiceIndex {.inline,
     requires: outcome.status == PreimageLinkageError.MissingRequest.} =
   ## Only a genuinely unmatched preimage identifies a service failure.
   outcome.service
+
 func failedPreimage*[T](outcome: PreimageLinkageResult[T]): InventoryPreimageIndex {.inline,
     requires: outcome.status == PreimageLinkageError.MissingRequest.} =
   ## The ordinal remains in the failed service's original preimage order.
   outcome.ordinal
+
 proc auditPreimageLinkage*(source: StateInventory,
     limits: PreimageLinkageLimits): PreimageLinkageResult[CheckedPreimageLinkage] =
   ## Preflight complete worst-case search work before checking any request association.
@@ -87,6 +92,7 @@ proc auditPreimageLinkage*(source: StateInventory,
     completed: CheckedPreimageLinkage(source: source,
       info: PreimageLinkageInfo(preimages: uint64(limits.preimages)-preimages,
           comparisons: comparisons)))
+
 proc linkageInfo*(checked: CheckedPreimageLinkage): PreimageLinkageResult[PreimageLinkageInfo] =
   ## Copy completed matching work without exposing mutable certificate state.
   if checked.source.inventoryInfo.error != StateInventoryError.None:
@@ -94,6 +100,7 @@ proc linkageInfo*(checked: CheckedPreimageLinkage): PreimageLinkageResult[Preima
         status: PreimageLinkageError.Uninitialized) # Default certificate.
   PreimageLinkageResult[PreimageLinkageInfo](status: PreimageLinkageError.None,
       completed: checked.info)
+
 proc linkageInventory*(checked: CheckedPreimageLinkage): PreimageLinkageResult[StateInventory] =
   ## Retain the exact input owner for later same-source composition of independent predicates.
   if checked.source.inventoryInfo.error != StateInventoryError.None:

@@ -127,11 +127,11 @@ proc finalAccumulationParent*(plan: PreparedFinalAccumulation):
   AccumulationFinalizationResult[StateStoreSnapshot](status: AccumulationFinalizationError.None,
     completed: admission.value.reportBlockStage.value.value.admitted.admittedState)
 
-# Only genuine stopped sources call this helper with their exact prior and bounded collected outputs.
 proc finalize(prior: StateStoreSnapshot, collected: AccumulationOutputsResult[
     PreparedAccumulationOutputs], processed: AccumulationReportPrefix, pending: int,
         remaining: Gas):
     AccumulationFinalizationResult[PreparedFinalAccumulation] =
+  ## Only genuine stopped sources call this helper with their exact prior and bounded collected outputs.
   if collected.error != AccumulationOutputsError.None:
     return AccumulationFinalizationResult[PreparedFinalAccumulation](
       status: AccumulationFinalizationError.OutputFailure,

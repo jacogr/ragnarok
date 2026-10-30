@@ -45,16 +45,19 @@ func error*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationTerminalProvisionError =
   ## Inspect only the selected reason; no mutable discriminator escapes.
   outcome.status
+
 func value*[T](outcome: AccumulationTerminalProvisionResult[T]): T {.inline,
     requires: outcome.status == AccumulationTerminalProvisionError.None.} =
   ## Extract only the successful alternative.
   outcome.completed
+
 func normalizationError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationOutcomeError {.inline,
 
 requires: outcome.status == AccumulationTerminalProvisionError.NormalizationFailure.} =
   ## Preserve the exact terminal normalization refusal without exposing any earlier selected outcome.
   outcome.normalizationReason
+
 func provisionError*[T](outcome: AccumulationTerminalProvisionResult[
     T]): AccumulationProvisionError {.inline,
 

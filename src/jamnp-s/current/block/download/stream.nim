@@ -45,9 +45,11 @@ proc `=wasMoved`*(route: var CurrentDownloadStream) {.nodestroy, inline.} =
 proc `=destroy`*(route: CurrentDownloadStream) =
   ## Verify explicit callback retirement; destruction must never call through a borrowed native handle.
   assert route.handle == NativeStream(nil), "CurrentDownloadStream must receive native close before destruction"
+
 proc `=copy`*(destination: var CurrentDownloadStream, source: CurrentDownloadStream) {.
     error: "CurrentDownloadStream owns a native callback binding".}
   ## Duplicating a borrowed native handle would duplicate cancellation and write offsets.
+
 proc `=dup`*(source: CurrentDownloadStream): CurrentDownloadStream {.error.}
   ## Scalar-only bindings also require an explicit duplication ban in the pinned compiler.
 

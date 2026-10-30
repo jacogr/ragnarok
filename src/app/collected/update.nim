@@ -14,17 +14,21 @@ type
     of None: completed: PreparedCurrentChainUpdate
     of PreparationFailure: preparationReason: CurrentBlockInputResult
     else: discard # Defaults, cancellation and stale receipts grant no source prefix.
+
 func error*(outcome: CollectedUpdateResult): CollectedUpdateError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*(outcome: CollectedUpdateResult): PreparedCurrentChainUpdate {.inline,
     requires: outcome.status == CollectedUpdateError.None.} =
   ## Retain the actual authenticated update after exact physical/full-view admission.
   outcome.completed
+
 func preparationFailure*(outcome: CollectedUpdateResult): CurrentBlockInputResult {.inline,
     requires: outcome.status == CollectedUpdateError.PreparationFailure.} =
   ## Preserve the original failed receiver and its typed nested cause or ancestor demand.
   outcome.preparationReason
+
 proc captureCollectedUpdate*(chain: ApplicationChain,
     completion: PreparationCompletion): CollectedUpdateResult =
   ## Caller keeps the canonical host gate open; non-current receipts refuse before current extraction or canonical inspection.

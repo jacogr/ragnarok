@@ -60,38 +60,46 @@ type
       logicalReason: ParentLogicalResult[SelectedLogicalParent]
     else:
       discard # Plain lexical/resource/default errors retain no successful source prefix.
+
 func error*[T](outcome: CurrentLogicalStartupResult[T]): CurrentLogicalStartupError =
   ## Inspect the immutable selected startup stage.
   outcome.status
+
 func value*[T](outcome: CurrentLogicalStartupResult[T]): T {.inline,
     requires: outcome.status == CurrentLogicalStartupError.None.} =
   ## Extract only complete parsed declarations or a genuinely qualified source policy.
   outcome.completed
+
 func sourceFailure*[T](outcome: CurrentLogicalStartupResult[T]): ServiceReadError {.inline,
     requires: outcome.status == CurrentLogicalStartupError.SourceFailure.} =
   ## Preserve actual missing/malformed/backend service reads without treating absence as empty bytes.
   outcome.sourceReason
+
 func profileFailure*[T](outcome: CurrentLogicalStartupResult[T]): ParentProfileResult[
     SelectedParentProfile] {.inline,
 
 requires: outcome.status == CurrentLogicalStartupError.ProfileFailure.} =
   ## Preserve original selected-view/previous-roster refusal.
   outcome.profileReason
+
 func globalsFailure*[T](outcome: CurrentLogicalStartupResult[T]): ParentGlobalsResult[
     SelectedParentGlobals] {.inline,
 
 requires: outcome.status == CurrentLogicalStartupError.GlobalsFailure.} =
   ## Preserve actual all-global qualification failure.
   outcome.globalsReason
+
 func logicalFailure*[T](outcome: CurrentLogicalStartupResult[T]): ParentLogicalResult[
     SelectedLogicalParent] {.inline,
 
 requires: outcome.status == CurrentLogicalStartupError.LogicalFailure.} =
   ## Preserve exact complete-map matching/capture refusal, including omitted or duplicate namespace identities.
   outcome.logicalReason
+
 func fail[T](reason: CurrentLogicalStartupError): CurrentLogicalStartupResult[T] =
   ## Construct only a payload-free refusal.
   CurrentLogicalStartupResult[T](status: reason)
+
 proc decimal(text: string, maximum: uint64, value: var uint64): bool =
   ## Canonical decimal parsing checks each multiply/add before conversion; reserved request lengths are excluded by the caller's maximum.
   value = 0
@@ -102,11 +110,13 @@ proc decimal(text: string, maximum: uint64, value: var uint64): bool =
     if digit > maximum or value > (maximum-digit) div 10: return false
     value = value*10+digit
   true
+
 func nibble(character: char): int =
   ## Lowercase hexadecimal has one canonical representation; no uppercase or prefix fallback.
   if character in {'0'..'9'}: ord(character)-ord('0')
   elif character in {'a'..'f'}: ord(character)-ord('a')+10
   else: -1
+
 proc decodeCurrentLogicalDeclarations*(text: string,
     limits: SuppliedServicesLimits): CurrentLogicalStartupResult[CurrentLogicalDeclarations] =
   ## Count/admit the whole fixed row array before allocation, then decode explicit identities without any state lookup or hashing.
@@ -206,6 +216,7 @@ proc decodeCurrentLogicalDeclarations*(text: string,
   let data = DeclarationData(rows: rows, services: services, bytes: min(uint64(limits.bytes),
       uint64(high(int)))-remaining)
   CurrentLogicalStartupResult[Output](status: CurrentLogicalStartupError.None, completed: Output(data: data))
+
 proc loadCurrentLogicalDeclarations*(path: string,
     limits: SuppliedServicesLimits): CurrentLogicalStartupResult[
         CurrentLogicalDeclarations] {.raises.} =
@@ -223,6 +234,7 @@ proc loadCurrentLogicalDeclarations*(path: string,
       CurrentLogicalStartupError.LimitExceeded)
   text.setLen(count)
   decodeCurrentLogicalDeclarations(text, limits)
+
 proc sourceValue(source: StateStoreSnapshot, key: StateKey, perValue: ByteLimit,
     available: var uint64): CurrentLogicalStartupResult[StateValue] =
   ## Admit the immutable cached extent before any payload copy; primitive read failure and absence remain typed.
@@ -236,6 +248,7 @@ proc sourceValue(source: StateStoreSnapshot, key: StateKey, perValue: ByteLimit,
   available-=size
   CurrentLogicalStartupResult[StateValue](status: CurrentLogicalStartupError.None,
       completed: found.value)
+
 proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogicalDeclarations,
     limits: CurrentLogicalStartupLimits): CurrentLogicalStartupResult[
         CurrentLogicalDownloadPolicy] =

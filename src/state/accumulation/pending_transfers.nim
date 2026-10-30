@@ -44,10 +44,12 @@ type
 func error*[T](outcome: PendingTransferResult[T]): PendingTransferError =
   ## Inspect a reason without exposing inactive success or nested-failure storage.
   outcome.status
+
 func value*[T](outcome: PendingTransferResult[T]): T {.inline,
     requires: outcome.status == PendingTransferError.None.} =
   ## Extract only an actual selected success, including checked optimized builds.
   outcome.completed
+
 func partitionError*[T](outcome: PendingTransferResult[T]): TransferPartitionError {.inline,
     requires: outcome.status == PendingTransferError.PartitionFailure.} =
   ## Inspect only the reason of an actual nested partition refusal.
@@ -62,6 +64,7 @@ proc pendingTransferInfo*(plan: PreparedPendingTransfers): PendingTransferResult
         status: PendingTransferError.Uninitialized) # No default successful empty queue.
   PendingTransferResult[PendingTransferInfo](status: PendingTransferError.None,
       completed: data.info)
+
 proc pendingTransferAt*(plan: PreparedPendingTransfers,
     index: PendingTransferIndex): PendingTransferResult[DeferredTransfer] =
   ## Copy a complete fixed pending record after bounding the full nominal ordinal.
@@ -74,6 +77,7 @@ proc pendingTransferAt*(plan: PreparedPendingTransfers,
         status: PendingTransferError.InvalidIndex) # Bound before native narrowing.
   PendingTransferResult[DeferredTransfer](status: PendingTransferError.None, completed: data.values[
       int(uint64(index))])
+
 proc pendingOutgoing*(plan: PreparedPendingTransfers): PendingTransferResult[
     PreparedAccumulationTransfers] =
   ## Retain the exact newly emitted producer collection; carried records never masquerade as a new refund source.
@@ -83,6 +87,7 @@ proc pendingOutgoing*(plan: PreparedPendingTransfers): PendingTransferResult[
         status: PendingTransferError.Uninitialized) # No substitute outgoing owner.
   PendingTransferResult[PreparedAccumulationTransfers](status: PendingTransferError.None,
       completed: data.outgoing)
+
 proc pendingPreviousPartition*(plan: PreparedPendingTransfers): PendingTransferResult[
     PreparedTransferPartition] =
   ## Retain the actual carried source; first entries report NoPrevious instead of inventing an empty partition.
@@ -168,6 +173,7 @@ proc prepareInitialPendingTransfers*(outgoing: PreparedAccumulationTransfers, bu
     limits: PendingTransferLimits): PendingTransferResult[PreparedPendingTransfers] =
   ## Prepare the first queue from genuine outgoing values, their actual usage and an explicit prior budget.
   preparePending(outgoing, default(PreparedTransferPartition), false, budget, limits)
+
 proc prepareCarriedPendingTransfers*(previous: PreparedTransferPartition,
     outgoing: PreparedAccumulationTransfers,
 
@@ -175,6 +181,7 @@ budget: Gas, limits: PendingTransferLimits): PendingTransferResult[
         PreparedPendingTransfers] =
   ## Queue prior held values before new output without restoring their paid gas twice.
   preparePending(outgoing, previous, true, budget, limits)
+
 proc partitionPendingTransfers*(plan: PreparedPendingTransfers, prior: StateStoreSnapshot,
     active: openArray[ServiceIndex], limits: TransferPartitionLimits): PendingTransferResult[
         PreparedTransferPartition] =

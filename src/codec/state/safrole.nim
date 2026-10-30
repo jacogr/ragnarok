@@ -59,19 +59,20 @@ func nullValidator*(): StateValidator =
 func error*[T](value: StateComponentResult[T]): StateComponentError =
   ## Failure reasons are readable without granting access to a value, owner or consumed progress.
   value.status
+
 func value*[T](value: StateComponentResult[T]): T {.inline, requires: value.status ==
     StateComponentError.None.} =
   ## Every completed payload requires successful selection in optimized builds too.
   value.completed
 
-## Copy fixed protocol fields from an already validated byte extent.
 proc fixed[N: static[int]](input: openArray[byte], offset: int): array[N, byte] =
+  ## Copy fixed protocol fields from an already validated byte extent.
   result = default(array[N, byte])
   # Every caller has checked the complete component before entering this loop.
   for i in 0..<N: result[i] = input[offset+i]
 
-## Copy a complete fixed field into a privately allocated entry payload.
 proc put(input: openArray[byte], output: var seq[byte], cursor: var int) =
+  ## Copy a complete fixed field into a privately allocated entry payload.
   # Allocation and total extent were established before the first write.
   for b in input:
     output[cursor] = b
@@ -113,8 +114,8 @@ proc decodeStateTime*(input: openArray[byte]): StateComponentResult[StateCompone
   StateComponentResult[StateComponentRead[StateTime]](status: StateComponentError.None,
     completed: StateComponentRead[StateTime](value: StateTime(value), consumed: 4))
 
-## Validate population, resource and native extents before allocation or count conversion.
 proc extent(count: uint64, prefix: int, config: ValidatorStateConfig): StateComponentResult[int] =
+  ## Validate population, resource and native extents before allocation or count conversion.
   if uint64(config.cores) < 2:
     return StateComponentResult[int](status: StateComponentError.InvalidConfig) # No allowed population exists below two cores.
   if count < 6 or count mod 3 != 0 or count div 3 > uint64(config.cores):

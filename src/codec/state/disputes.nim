@@ -51,22 +51,23 @@ type
 func error*[T](value: DisputeStateResult[T]): DisputeStateError =
   ## Read-only failure reasons do not authorize data or partial progress.
   value.status
+
 func value*[T](value: DisputeStateResult[T]): T {.inline, requires: value.status ==
     DisputeStateError.None.} =
   ## Success-only public and internal payloads retain their contract in checked optimized builds.
   value.completed
 
-## Strict lexicographic octet order agrees with GP sequence ordering and canonical fixed-octet sets.
 proc less(a, b: array[32, byte]): bool =
+  ## Strict lexicographic octet order agrees with GP sequence ordering and canonical fixed-octet sets.
   # The first differing octet determines order; complete equality is a duplicate.
   for i in 0..<32:
     if a[i] < b[i]: return true # Earlier octets belong before the next identity.
     elif a[i] > b[i]: return false # Descending values cannot enter the canonical set.
   false
 
-## Check a complete row's count and resource extent before narrowing or allocating typed storage.
 proc charge(count: uint64, prefix: int, config: DisputeStateConfig,
             total: var uint64, cursor: var int): DisputeStateError =
+  ## Check a complete row's count and resource extent before narrowing or allocating typed storage.
   if count > uint64(config.perSet) or count > uint64(config.totalItems)-total:
     return DisputeStateError.LimitExceeded # Each repeated count is charged without aggregate overflow.
   if prefix > high(int)-cursor:
@@ -79,14 +80,14 @@ proc charge(count: uint64, prefix: int, config: DisputeStateConfig,
     return DisputeStateError.LimitExceeded # Count prefixes consume the same parent byte budget as identities.
   DisputeStateError.None
 
-## Copy an already validated fixed source identity, retaining no borrowed storage.
 proc fixed(input: openArray[byte], offset: int): array[32, byte] =
+  ## Copy an already validated fixed source identity, retaining no borrowed storage.
   result = default(array[32, byte])
   # The caller proved the whole selected set's payload before any field access.
   for i in 0..<32: result[i] = input[offset+i]
 
-## Validate every canonical count, complete set and strict order before constructing any parent owner.
 proc scan(input: openArray[byte], config: DisputeStateConfig): DisputeStateResult[Layout] =
+  ## Validate every canonical count, complete set and strict order before constructing any parent owner.
   var layout = default(Layout)
   var cursor = 0
   var total = 0'u64

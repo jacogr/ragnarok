@@ -23,13 +23,14 @@ type
 func error*(outcome: SealerStateResult): SealerScheduleError =
   ## Read the publication reason without permitting result retagging.
   outcome.status
+
 func value*(outcome: SealerStateResult): StateStoreSnapshot {.inline,
     requires: outcome.status == SealerScheduleError.None.} =
   ## Extract the immutable map only after selecting successful publication.
   outcome.completed
 
-## Preserve store resource/backend reasons and distinguish absent chapters from default handles.
 func storeError(reason: StateStoreError): SealerScheduleError =
+  ## Preserve store resource/backend reasons and distinguish absent chapters from default handles.
   case reason
   of StateStoreError.Uninitialized: SealerScheduleError.Uninitialized # Default snapshots cannot supply a parent.
   of StateStoreError.MissingKey: SealerScheduleError.MissingState # Missing chapters are never synthesized.
@@ -38,8 +39,8 @@ func storeError(reason: StateStoreError): SealerScheduleError =
   of StateStoreError.BackendFailure: SealerScheduleError.BackendFailure # Refused commitment hashes publish nothing.
   else: SealerScheduleError.InvalidState # Other failures cannot describe the fixed one-entry batch.
 
-## Re-encode a candidate already validated under this exact policy, copying only bounded owned fields.
 proc candidateEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): SafroleStateResult[StateEntry] =
+  ## Re-encode a candidate already validated under this exact policy, copying only bounded owned fields.
   let info = safroleInfo(owner).value
   var source = SafroleState(pending: newSeq[StateValidator](info.validators), root: info.root,
     schedule: ticketSchedule(@[]), accumulator: newSeq[WinningTicket](info.accumulated))

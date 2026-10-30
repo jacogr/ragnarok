@@ -18,17 +18,21 @@ type
     of None: completed: StateStore
     of StoreFailure: storeReason: StateStoreError
     else: discard # Only recomputed expected-root equality grants complete-map ownership.
+
 func error*(outcome: ProofStateImportResult): ProofStateImportError =
   ## Observe immutable conversion stages without granting their candidate storage.
   outcome.status
+
 func value*(outcome: ProofStateImportResult): StateStore {.inline, requires: outcome.status ==
     ProofStateImportError.None.} =
   ## Extract only an independently owned complete map authenticated against the caller's expected root.
   outcome.completed
+
 func storeFailure*(outcome: ProofStateImportResult): StateStoreError {.inline,
     requires: outcome.status == ProofStateImportError.StoreFailure.} =
   ## Preserve exact complete-store node/resource/backend refusal separately from local copy admission.
   outcome.storeReason
+
 proc importProofState*(source: ProofView, expected: StateRoot,
     limits: ProofStateImportLimits): ProofStateImportResult =
   ## Never infer completeness from witness count or a view's own root; rebuild all present facts and compare to an independently supplied complete commitment.

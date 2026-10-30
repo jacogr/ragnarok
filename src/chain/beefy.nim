@@ -23,6 +23,7 @@ type
 func error*(value: BeefyReadResult): BeefyReadError =
   ## Inspect the selected outcome without exposing a writable discriminator.
   value.status
+
 func value*(value: BeefyReadResult): HistorySuperPeak {.requires: value.status ==
     BeefyReadError.None.} =
   ## Extract a copied commitment only after selecting success.

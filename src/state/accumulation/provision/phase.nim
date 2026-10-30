@@ -33,20 +33,24 @@ type
 func error*[T](outcome: AccumulationProvisionPhaseResult[T]): AccumulationProvisionPhaseError =
   ## Inspect the selected alternative without granting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationProvisionPhaseResult[T]): T {.inline,
     requires: outcome.status == AccumulationProvisionPhaseError.None.} =
   ## Extract complete phase ownership only after selected success.
   outcome.completed
+
 func provisionFailure*[T](outcome: AccumulationProvisionPhaseResult[
     T]): AccumulationProvisionError {.inline,
 
 requires: outcome.status == AccumulationProvisionPhaseError.ProvisionFailure.} =
   ## Inspect only the actual union/fulfillment refusal.
   outcome.provisionReason
+
 func storeFailure*[T](outcome: AccumulationProvisionPhaseResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationProvisionPhaseError.StoreFailure.} =
   ## Inspect only the actual private-fork refusal.
   outcome.storeReason
+
 proc prepareAccumulationProvisionPhase*(accounts: PreparedAccumulationAccountPhase,
     limits: AccumulationProvisionUnionLimits): AccumulationProvisionPhaseResult[
         PreparedAccumulationProvisionPhase] =

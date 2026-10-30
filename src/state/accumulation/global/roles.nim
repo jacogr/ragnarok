@@ -41,10 +41,12 @@ type
 func error*[T](outcome: AccumulationGlobalRoleResult[T]): AccumulationGlobalRoleError =
   ## Inspect the reason without granting result mutation.
   outcome.status
+
 func value*[T](outcome: AccumulationGlobalRoleResult[T]): T {.inline,
     requires: outcome.status == AccumulationGlobalRoleError.None.} =
   ## Extract only complete selected success under checked optimized contracts.
   outcome.completed
+
 func codecError(reason: PrivilegeError): AccumulationGlobalRoleError =
   ## Preserve caller-policy refusal separately from malformed complete source state.
   if reason in {PrivilegeError.LimitExceeded, PrivilegeError.LengthOverflow}:
@@ -52,10 +54,12 @@ func codecError(reason: PrivilegeError): AccumulationGlobalRoleError =
   if reason == PrivilegeError.InvalidConfig:
     return AccumulationGlobalRoleError.InvalidConfig # Caller chain dimensions remain an explicit authority.
   AccumulationGlobalRoleError.MalformedState
+
 func chooseRole(original, manager, owner: ServiceIndex): ServiceIndex =
   ## Exact accpar R: original owner's handoff survives only when the manager left that role unchanged.
   if uint32(manager) == uint32(original): owner
   else: manager # A changed original-manager choice wins independent of outcome order.
+
 proc findProducer(source: PreparedAccumulationAnnulment, service: ServiceIndex,
     work: var uint64, ceiling: ElementLimit): AccumulationGlobalRoleResult[int] =
   ## Search only genuine unique original producers; canceled/missing owners become prior identity.
@@ -68,6 +72,7 @@ proc findProducer(source: PreparedAccumulationAnnulment, service: ServiceIndex,
       return AccumulationGlobalRoleResult[int](status: AccumulationGlobalRoleError.None,
         completed: (if decision.annulled: -1 else: index)) # N contributes no selected global producer.
   AccumulationGlobalRoleResult[int](status: AccumulationGlobalRoleError.None, completed: -1)
+
 proc selectedPrivileges(source: PreparedAccumulationAnnulment, index: int,
     prior: PrivilegeSnapshot): PrivilegeSnapshot =
   ## Private validated producer indices choose actual selected roles; identity never fabricates a context.
@@ -187,6 +192,7 @@ proc globalRolesInfo*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobal
       status: AccumulationGlobalRoleError.Uninitialized) # No default role projection.
   AccumulationGlobalRoleResult[AccumulationGlobalRoleInfo](status: AccumulationGlobalRoleError.None,
       completed: data.info)
+
 proc globalRolesSource*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[
     PreparedAccumulationAnnulment] =
   ## Retain the exact genuine conflict certificate behind all authority choices.
@@ -195,6 +201,7 @@ proc globalRolesSource*(plan: PreparedAccumulationGlobalRoles): AccumulationGlob
       status: AccumulationGlobalRoleError.Uninitialized) # No fabricated source.
   AccumulationGlobalRoleResult[PreparedAccumulationAnnulment](
       status: AccumulationGlobalRoleError.None, completed: data.source)
+
 proc globalRolesPrivileges*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[
     PrivilegeSnapshot] =
   ## Retain immutable merged privileges; callers cannot mutate shared dictionary/assigner storage.
@@ -203,6 +210,7 @@ proc globalRolesPrivileges*(plan: PreparedAccumulationGlobalRoles): Accumulation
       status: AccumulationGlobalRoleError.Uninitialized) # No default manager or empty allowance set.
   AccumulationGlobalRoleResult[PrivilegeSnapshot](status: AccumulationGlobalRoleError.None,
       completed: data.roles)
+
 proc globalRolesEntry*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[StateEntry] =
   ## Return fresh canonical C(12) bytes; this never publishes state or exposes the retained byte buffer.
   let data = plan.data
@@ -213,6 +221,7 @@ proc globalRolesEntry*(plan: PreparedAccumulationGlobalRoles): AccumulationGloba
       index] # Frozen factory bounds prove both copy extents.
   AccumulationGlobalRoleResult[StateEntry](status: AccumulationGlobalRoleError.None,
       completed: entry)
+
 proc producer(data: GlobalRolesData, index: int): AccumulationGlobalRoleResult[
     AccumulationOutcome] =
   ## Private validated indices retain an actual nonannulled original outcome; negative means prior identity.
@@ -221,6 +230,7 @@ proc producer(data: GlobalRolesData, index: int): AccumulationGlobalRoleResult[
   let original = data.source.annulmentOriginalOutcomeAt(AccumulationAnnulmentIndex(uint64(index))).value
   AccumulationGlobalRoleResult[AccumulationOutcome](status: AccumulationGlobalRoleError.None,
       completed: original)
+
 proc globalManagerOutcome*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[
     AccumulationOutcome] =
   ## Only the original manager's surviving context supplies manager and allowances.
@@ -228,6 +238,7 @@ proc globalManagerOutcome*(plan: PreparedAccumulationGlobalRoles): AccumulationG
   if data == nil: return AccumulationGlobalRoleResult[AccumulationOutcome](
       status: AccumulationGlobalRoleError.Uninitialized) # No default original manager.
   producer(data, data.manager)
+
 proc globalDelegatorOutcome*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[
     AccumulationOutcome] =
   ## Original delegator supplies staging, even after the manager selects a new delegate.
@@ -235,6 +246,7 @@ proc globalDelegatorOutcome*(plan: PreparedAccumulationGlobalRoles): Accumulatio
   if data == nil: return AccumulationGlobalRoleResult[AccumulationOutcome](
       status: AccumulationGlobalRoleError.Uninitialized) # No default staging source.
   producer(data, data.delegator)
+
 proc globalRegistrarOutcome*(plan: PreparedAccumulationGlobalRoles): AccumulationGlobalRoleResult[
     AccumulationOutcome] =
   ## Retain only the original registrar's surviving role context.
@@ -242,6 +254,7 @@ proc globalRegistrarOutcome*(plan: PreparedAccumulationGlobalRoles): Accumulatio
   if data == nil: return AccumulationGlobalRoleResult[AccumulationOutcome](
       status: AccumulationGlobalRoleError.Uninitialized) # No fabricated registrar source.
   producer(data, data.registrar)
+
 proc globalAssignerOutcomeAt*(plan: PreparedAccumulationGlobalRoles,
     core: PrivilegeCoreIndex): AccumulationGlobalRoleResult[AccumulationOutcome] =
   ## Original per-core assigner supplies that queue row; full-width positions refuse before narrowing.

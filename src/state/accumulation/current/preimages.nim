@@ -40,10 +40,12 @@ type
 func error*[T](outcome: CurrentAccumulationPreimageResult[T]): CurrentAccumulationPreimageError =
   ## Inspect the selected reason without exposing writable tags.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationPreimageResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationPreimageError.None.} =
   ## Extract only a selected complete success under checked optimized builds.
   outcome.completed
+
 func preimageError*[T](outcome: CurrentAccumulationPreimageResult[
     T]): PreimageTransitionError {.inline,
 

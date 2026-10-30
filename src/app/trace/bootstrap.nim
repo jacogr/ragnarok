@@ -29,18 +29,22 @@ type
 func error*(outcome: TraceBootstrapResult): TraceBootstrapError =
   ## Read the immutable selected stage without extracting an unrelated payload.
   outcome.status
+
 func value*(outcome: TraceBootstrapResult): ApplicationChain {.inline,
     requires: outcome.status == TraceBootstrapError.None.} =
   ## Extract only a new chain bound to externally configured identity and full Parameters.
   outcome.completed
+
 func captureFailure*(outcome: TraceBootstrapResult): GenesisError {.inline,
     requires: outcome.status == TraceBootstrapError.CaptureFailure.} =
   ## Preserve actual structural/profile capture refusal.
   outcome.captureReason
+
 func finalizationFailure*(outcome: TraceBootstrapResult): ViewFinalizeError {.inline,
     requires: outcome.status == TraceBootstrapError.FinalizationFailure.} =
   ## Preserve a genuine initial-view refusal without publishing a partially selected chain.
   outcome.finalizationReason
+
 func chainFailure*(outcome: TraceBootstrapResult): ApplicationChainResult[
     ApplicationChain] {.inline, requires: outcome.status == TraceBootstrapError.ChainFailure.} =
   ## Retain only the actual failed application initializer and its guarded nested reason.

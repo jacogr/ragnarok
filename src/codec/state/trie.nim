@@ -41,13 +41,14 @@ type
 func error*[T](value: StateTrieResult[T]): StateTrieError =
   ## Read failure reasons without granting access to a completed root, child identity or counts.
   value.status
+
 func value*[T](value: StateTrieResult[T]): T {.inline, requires: value.status ==
     StateTrieError.None.} =
   ## Every public/private success payload requires explicit successful selection in optimized builds.
   value.completed
 
-## Compare fixed keys lexicographically, which agrees with MSB-first bit order.
 proc compare(a, b: KeyIndex): int =
+  ## Compare fixed keys lexicographically, which agrees with MSB-first bit order.
   let left = array[31, byte](a.key)
   let right = array[31, byte](b.key)
   # Stop at the first differing octet; equal keys are rejected before topology traversal.
@@ -56,8 +57,8 @@ proc compare(a, b: KeyIndex): int =
     elif left[i] > right[i]: return 1 # Later one bits belong to the right subtree.
   0
 
-## Locate the zero/one partition within a sorted range sharing all preceding key bits.
 proc split(keys: seq[KeyIndex], first, stop, depth: int): int =
+  ## Locate the zero/one partition within a sorted range sharing all preceding key bits.
   var lo = first
   var hi = stop
   # Binary search avoids rescanning long shared prefixes and uses overflow-safe midpoint arithmetic.
@@ -70,9 +71,9 @@ proc split(keys: seq[KeyIndex], first, stop, depth: int): int =
       hi = mid # One-bit entries follow the split.
   lo
 
-## Preflight exact topology before cryptographic work; unary branches are real committed nodes.
 proc countNodes(keys: seq[KeyIndex], first, stop, depth: int,
                 limit: TrieNodeLimit, used: var uint64): StateTrieError =
+  ## Preflight exact topology before cryptographic work; unary branches are real committed nodes.
   if first == stop: return StateTrieError.None # Empty children are zero hashes, not nodes.
   if used >= uint64(limit): return StateTrieError.LimitExceeded # Check before increment, including uint64 maximum.
   inc used
@@ -83,9 +84,9 @@ proc countNodes(keys: seq[KeyIndex], first, stop, depth: int,
   if left != StateTrieError.None: return left # Stop without hashing after a resource failure.
   countNodes(keys, middle, stop, depth+1, limit, used)
 
-## Hash the preflighted topology using canonical raw node encodings and complete child identities.
 proc commit(entries: openArray[StateEntry], keys: seq[KeyIndex], first, stop, depth: int,
             perValue: ByteLimit): StateTrieResult[StateNodeHash] =
+  ## Hash the preflighted topology using canonical raw node encodings and complete child identities.
   if first == stop:
     # The empty dictionary identity is all zeroes, never Blake2b(empty).
     return StateTrieResult[StateNodeHash](status: StateTrieError.None, completed: StateNodeHash(

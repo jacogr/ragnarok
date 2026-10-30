@@ -25,37 +25,44 @@ type
       joinReason: AccountInvariantResult[CheckedAccountInvariants]
     else:
       discard
+
 func error*(outcome: AccountAuditResult): AccountAuditError =
   ## Inspect the immutable selected execution phase.
   outcome.status
+
 func value*(outcome: AccountAuditResult): CheckedAccountInvariants {.inline,
     requires: outcome.status == AccountAuditError.None.} =
   ## Failed/default execution grants neither a complete result nor an earlier successful predicate prefix.
   outcome.completed
+
 func footprintFailure*(outcome: AccountAuditResult): FootprintAuditResult[
     CheckedAccountFootprints] {.inline,
 
 requires: outcome.status == AccountAuditError.FootprintFailure.} =
   ## Preserve only the genuine failed footprint predicate/owner join.
   outcome.footprintReason
+
 func linkageFailure*(outcome: AccountAuditResult): PreimageLinkageResult[
     CheckedPreimageLinkage] {.inline,
 
 requires: outcome.status == AccountAuditError.LinkageFailure.} =
   ## Preserve only the genuine failed linkage predicate/owner join.
   outcome.linkageReason
+
 func contentFailure*(outcome: AccountAuditResult): PreimageContentResult[
     CheckedPreimageContent] {.inline,
 
 requires: outcome.status == AccountAuditError.ContentFailure.} =
   ## Preserve only the genuine failed content predicate/owner join.
   outcome.contentReason
+
 func joinFailure*(outcome: AccountAuditResult): AccountInvariantResult[
     CheckedAccountInvariants] {.inline,
 
 requires: outcome.status == AccountAuditError.JoinFailure.} =
   ## Preserve only the genuine failed join predicate/owner join.
   outcome.joinReason
+
 proc executeAccountAudit*(plan: StateAccountAuditPlan): AccountAuditResult =
   ## Use only frozen source/policies; resource admission has completed before any detached payload or content hash.
   let source = plan.accountPlanInventory

@@ -6,16 +6,26 @@ import std/assertions
 import ../[program, machine]
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
+  ## Read the native CPU-time counter used to measure x86 JIT work.
+
 proc createNative(): nil pointer {.cdecl, importc: "pvm_x86_arena_create", header: "x86_memory.h".}
+  ## Allocate one native executable arena, returning nil when allocation is unavailable.
+
 proc destroyNative(handle: nil pointer) {.cdecl, importc: "pvm_x86_arena_destroy",
     header: "x86_memory.h".}
+  ## Release the native arena and its executable-memory ownership.
+
 proc publishNative(handle: nil pointer, bytes: pointer, length: uint32): int32 {.cdecl,
     importc: "pvm_x86_arena_publish", header: "x86_memory.h".}
+  ## Publish the supplied machine-code bytes through the native arena permission boundary.
+
 proc callNative(handle: nil pointer, offset: uint32, registers: pointer): cint {.cdecl,
     importc: "pvm_x86_arena_call", header: "x86_memory.h".}
+  ## Execute a published entry with a borrowed register file and return its native status.
 
 proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32 {.cdecl,
     importc: "pvm_x86_arena_next", header: "x86_memory.h".}
+  ## Execute an entry and return its next control-flow offset without retaining registers.
 
 type
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
@@ -42,7 +52,11 @@ type
     branchCalls*, headerCalls*: uint64
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
+  ## Reject copying the exclusive native executable arena owner.
+
 proc `=dup`(source: X86Arena): X86Arena {.error.}
+  ## Reject duplication of the exclusive native executable arena owner.
+
 proc `=wasMoved`(owner: var X86Arena) {.nodestroy, inline.} =
   ## Moving transfers executable authority; the source must no longer own the native allocation.
   owner.handle = nil
@@ -383,6 +397,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
 
 proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
     {.cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
+  ## Execute a published region with borrowed registers and region accounting state.
 
 proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5, uint64]): uint32 =
   ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.

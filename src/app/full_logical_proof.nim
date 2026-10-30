@@ -30,21 +30,26 @@ type
     of PlanFailure: planReason: ProofPlanError
     of QueryFailure: queryReason: LogicalProofResult
     else: discard # Refused whole-map admission cannot masquerade as a successful partial selection.
+
 func error*[T](outcome: FullLogicalProofResult[T]): FullLogicalProofError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*[T](outcome: FullLogicalProofResult[T]): T {.inline, requires: outcome.status ==
     FullLogicalProofError.None.} =
   ## Extract only complete original-source selectors, fixed observations or existing executable queries.
   outcome.completed
+
 func planError*[T](outcome: FullLogicalProofResult[T]): ProofPlanError {.inline,
     requires: outcome.status == FullLogicalProofError.PlanFailure.} =
   ## Preserve the original immutable selector capture's genuine refusal.
   outcome.planReason
+
 func queryFailure*[T](outcome: FullLogicalProofResult[T]): LogicalProofResult {.inline,
     requires: outcome.status == FullLogicalProofError.QueryFailure.} =
   ## Preserve selected-view and nested generic proof-query refusal without a default query.
   outcome.queryReason
+
 proc planFullLogicalProof*(source: CurrentLogicalState,
     limits: FullLogicalProofLimits): FullLogicalProofResult[FullLogicalProofPlan] =
   ## Admit cached whole-map counts and all pinned sorting/key storage before traversing any key or allocating selectors.
@@ -72,6 +77,7 @@ proc planFullLogicalProof*(source: CurrentLogicalState,
     completed: FullLogicalProofPlan(initialized: true, source: source, keys: captured.value,
       info: FullLogicalProofInfo(keys: committed.entries, bytes: (count*2+count div 2)*uint64(
           sizeof(StateKey)), root: committed.root)))
+
 proc fullLogicalProofInfo*(plan: FullLogicalProofPlan): FullLogicalProofResult[
     FullLogicalProofInfo] =
   ## Copy cached selector work/commitment observations without retaining mutable key arrays.
@@ -79,6 +85,7 @@ proc fullLogicalProofInfo*(plan: FullLogicalProofPlan): FullLogicalProofResult[
       status: FullLogicalProofError.InvalidPlan)
   FullLogicalProofResult[FullLogicalProofInfo](status: FullLogicalProofError.None,
       completed: plan.info)
+
 proc fullLogicalProofSource*(plan: FullLogicalProofPlan): FullLogicalProofResult[
     CurrentLogicalState] =
   ## Retain only the original source whose complete key set was admitted.
@@ -86,11 +93,13 @@ proc fullLogicalProofSource*(plan: FullLogicalProofPlan): FullLogicalProofResult
       status: FullLogicalProofError.InvalidPlan)
   FullLogicalProofResult[CurrentLogicalState](status: FullLogicalProofError.None,
       completed: plan.source)
+
 proc fullLogicalProofKeys*(plan: FullLogicalProofPlan): FullLogicalProofResult[StateProofPlan] =
   ## Retain only the admitted immutable complete selector for existing managed proof submission.
   if not plan.initialized: return FullLogicalProofResult[StateProofPlan](
       status: FullLogicalProofError.InvalidPlan)
   FullLogicalProofResult[StateProofPlan](status: FullLogicalProofError.None, completed: plan.keys)
+
 proc captureFullLogicalProofQuery*(plan: FullLogicalProofPlan,
     limits: LogicalProofLimits): FullLogicalProofResult[ProofQuery] =
   ## Existing cached view/map/path/hash/wire admission controls later proof work; no replacement source or key set is accepted.

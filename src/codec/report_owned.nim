@@ -25,8 +25,8 @@ type
     authGas*: Gas
     prerequisiteCount*, lookupCount*, digestCount*, authBytes*, consumed*: int
 
-# Preserve exact wire failures while adding the existing owner/index/allocation failure domain.
 proc reportOwnedError(error: CompositeError): OwnershipError {.raises: [].} =
+  ## Preserve exact wire failures while adding the existing owner/index/allocation failure domain.
   case error
   of Uninitialized: OwnershipError.Uninitialized # No complete report exists.
   of None: OwnershipError.None # The report validated completely.
@@ -64,9 +64,9 @@ proc ownedReportInfo*(owner: OwnedReport): OwnedResult[OwnedReportInfo] {.raises
     lookupCount: value.lookupCount, digestCount: value.digestCount,
     authBytes: value.authOutput.length, consumed: data.wire.len))
 
-# Compare storage ranges by address difference without overflowing pointer-end arithmetic.
 proc reportOwnerOverlaps(data: ReportData, output: var openArray[byte],
     length: int): bool {.raises: [].} =
+  ## Compare storage ranges by address difference without overflowing pointer-end arithmetic.
   # Empty copies use no destination address and therefore cannot alias.
   if length == 0: return false
   let a = cast[uint](unsafeAddr data.wire[0])

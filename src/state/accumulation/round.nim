@@ -52,6 +52,7 @@ type
 func error*[T](outcome: AccumulationRoundResult[T]): AccumulationRoundError =
   ## Read a reason without exposing writable discriminators.
   outcome.status
+
 func value*[T](outcome: AccumulationRoundResult[T]): T {.inline,
     requires: outcome.status == AccumulationRoundError.None.} =
   ## Extract selected success under compiler and runtime contracts.

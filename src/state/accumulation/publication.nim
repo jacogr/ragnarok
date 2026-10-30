@@ -24,20 +24,25 @@ type
     of None: completed: PreparedChainUpdate
     of ChainFailure: reason: AccumulationChainResult
     else: discard
+
 func ready*(prepared: PreparedChainUpdate): bool =
   ## Defaults cannot authorize candidate reads or publication.
   prepared.initialized
+
 func error*(outcome: ChainPreparationResult): ChainPreparationError =
   ## Observe the preparation stage alone.
   outcome.status
+
 func value*(outcome: ChainPreparationResult): PreparedChainUpdate {.inline,
     requires: outcome.status == ChainPreparationError.None.} =
   ## Only a complete private successor may leave preparation.
   outcome.completed
+
 func chainFailure*(outcome: ChainPreparationResult): AccumulationChainResult {.requires:
     outcome.status == ChainPreparationError.ChainFailure.} =
   ## Preserve only a genuine failed existing adoption, never its successful payload.
   outcome.reason
+
 proc prepareChainUpdate*(state: StateStore, view: ChainView, source: PreparedFinalAccumulation,
     limits: AccumulationCompositionLimits): ChainPreparationResult =
   ## Run the unchanged execution/capture/append coordinator on private handle copies exactly once.
@@ -49,15 +54,19 @@ proc prepareChainUpdate*(state: StateStore, view: ChainView, source: PreparedFin
   ChainPreparationResult(status: ChainPreparationError.None,
     completed: PreparedChainUpdate(initialized: true, parent: state.snapshot.value, prior: view,
       state: working, view: history, successor: applied.value))
+
 func stateSnapshot*(prepared: PreparedChainUpdate): StateStoreSnapshot {.requires: prepared.initialized.} =
   ## Retain the exact privately prepared map for durable delta export, never a writable target handle.
   prepared.successor.stateSnapshot
+
 func chainView*(prepared: PreparedChainUpdate): ChainView {.requires: prepared.initialized.} =
   ## Retain immutable ordered history and its explicit finalized owner for context encoding.
   prepared.view
+
 func child*(prepared: PreparedChainUpdate): BlockSnapshot {.requires: prepared.initialized.} =
   ## Read the exact successfully captured child without recomposition or header hashing.
   prepared.successor
+
 proc canInstallChainUpdate*(state: StateStore, view: ChainView,
     prepared: PreparedChainUpdate): bool =
   ## Check original owner, complete ordered history, profile and finality before any durable operation.
@@ -65,6 +74,7 @@ proc canInstallChainUpdate*(state: StateStore, view: ChainView,
   let current = state.snapshot
   current.error == StateStoreError.None and sameStateSnapshot(current.value, prepared.parent) and
     sameChainView(view, prepared.prior)
+
 proc installChainUpdate*(state: var StateStore, view: var ChainView,
     prepared: PreparedChainUpdate) {.requires: canInstallChainUpdate(state, view, prepared).} =
   ## Single-threaded stable owners cannot change between preflight/durability/installation.

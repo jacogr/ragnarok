@@ -49,10 +49,12 @@ type
 func error*[T](outcome: CoreActivityResult[T]): CoreActivityError =
   ## Read the selected reason without exposing mutation.
   outcome.status
+
 func value*[T](outcome: CoreActivityResult[T]): T {.inline,
     requires: outcome.status == CoreActivityError.None.} =
   ## Extract complete success under checked optimized builds.
   outcome.completed
+
 func populations(cores: CoreCount, incoming, available, assurances: int,
     config: CoreActivityConfig): bool =
   ## Bound descriptor materialization and multiplication before allocation or bit traversal.
@@ -64,6 +66,7 @@ func populations(cores: CoreCount, incoming, available, assurances: int,
     uint64(assurances) <= uint64(config.assurances) and assurances <= high(int) div sizeof(
         Assurance) and
     uint64(assurances) <= uint64(config.assuranceBits) div uint64(cores)
+
 proc add(target: var ActivityNatural, amount: uint64): bool =
   ## Prove the natural sum before modifying private scratch.
   if amount > high(uint64)-uint64(target): return false # Local representation refusal, never wrapping.
@@ -138,12 +141,14 @@ proc coreActivityInfo*(plan: PreparedCoreActivity): CoreActivityResult[CoreActiv
   if data == nil: return CoreActivityResult[CoreActivityInfo](
       status: CoreActivityError.Uninitialized)
   CoreActivityResult[CoreActivityInfo](status: CoreActivityError.None, completed: data.info)
+
 proc coreActivitySource*(plan: PreparedCoreActivity): CoreActivityResult[AdmittedReports] =
   ## Retain the exact original signed block and staged availability independently of caller handles.
   let data = plan.data
   if data == nil: return CoreActivityResult[AdmittedReports](
       status: CoreActivityError.Uninitialized)
   CoreActivityResult[AdmittedReports](status: CoreActivityError.None, completed: data.source)
+
 proc coreActivityAt*(plan: PreparedCoreActivity, index: StatisticsCoreIndex): CoreActivityResult[CoreActivity] =
   ## Copy one core tuple after a full-width nominal ordinal bound check.
   let data = plan.data

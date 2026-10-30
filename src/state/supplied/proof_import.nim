@@ -21,32 +21,39 @@ type
     of ManifestFailure: manifestReason: StateManifestResult[ValidatedStateManifest]
     of LogicalFailure: logicalReason: SuppliedLogicalResult[SuppliedLogicalInventory]
     else: discard # A refusal never leaks the restored store or an earlier typed prefix.
+
 func error*(outcome: SuppliedProofImportResult): SuppliedProofImportError =
   ## Observe the selected immutable stage without granting a candidate owner.
   outcome.status
+
 func value*(outcome: SuppliedProofImportResult): SuppliedLogicalInventory {.inline,
     requires: outcome.status == SuppliedProofImportError.None.} =
   ## Extract only complete expected-root-bound supplied serialization, never original producer or installation authority.
   outcome.completed
+
 func restorationFailure*(outcome: SuppliedProofImportResult): ProofStateImportResult {.inline,
     requires: outcome.status == SuppliedProofImportError.RestorationFailure.} =
   ## Preserve exact wrong-root, incomplete, resource and complete-store/backend refusal.
   outcome.restorationReason
+
 func globalFailure*(outcome: SuppliedProofImportResult): GlobalStateResult[
     ValidatedGlobalState] {.inline, requires: outcome.status ==
     SuppliedProofImportError.GlobalFailure.} =
   ## Preserve actual global chapter/configuration refusal without its already restored candidate map.
   outcome.globalReason
+
 func manifestFailure*(outcome: SuppliedProofImportResult): StateManifestResult[
     ValidatedStateManifest] {.inline, requires: outcome.status ==
     SuppliedProofImportError.ManifestFailure.} =
   ## Preserve exact complete-map declaration mismatch and namespace refusal.
   outcome.manifestReason
+
 func logicalFailure*(outcome: SuppliedProofImportResult): SuppliedLogicalResult[
     SuppliedLogicalInventory] {.inline, requires: outcome.status ==
     SuppliedProofImportError.LogicalFailure.} =
   ## Preserve actual compact/raw-key capture refusal without successful prefix authority.
   outcome.logicalReason
+
 proc qualifyRestored(restored: ProofStateImportResult, profile: StateProfile,
     services: openArray[StateService], globalLimits: GlobalStateLimits,
     logicalLimits: SuppliedLogicalLimits): SuppliedProofImportResult =

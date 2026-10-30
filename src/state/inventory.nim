@@ -58,16 +58,19 @@ type
 func error*[T](outcome: StateInventoryResult[T]): StateInventoryError =
   ## Read the reason without allowing retagging or payload mutation.
   outcome.status
+
 func value*[T](outcome: StateInventoryResult[T]): T {.inline,
     requires: outcome.status == StateInventoryError.None.} =
   ## Read only complete success under checked optimized contracts.
   outcome.completed
+
 func manifestFailure*[T](outcome: StateInventoryResult[T]): StateManifestResult[
     ValidatedStateManifest] {.inline,
 
 requires: outcome.status == StateInventoryError.ManifestFailure.} =
   ## Preserve the genuinely failed exact-map validation result.
   outcome.manifestReason
+
 func keyError*[T](outcome: StateInventoryResult[T]): ServiceValueError {.inline,
     requires: outcome.status == StateInventoryError.KeyFailure.} =
   ## Expose only an actual compact-fact key derivation refusal.
@@ -136,6 +139,7 @@ proc inventoryInfo*(inventory: StateInventory): StateInventoryResult[StateInvent
   if data == nil: return StateInventoryResult[StateInventoryInfo](
       status: StateInventoryError.Uninitialized) # Default owner.
   StateInventoryResult[StateInventoryInfo](status: StateInventoryError.None, completed: data.info)
+
 proc inventorySource*(inventory: StateInventory): StateInventoryResult[ValidatedStateManifest] =
   ## Retain the exact original matched source, never a recomputed replacement owner.
   let data = inventory.data
@@ -143,6 +147,7 @@ proc inventorySource*(inventory: StateInventory): StateInventoryResult[Validated
       status: StateInventoryError.Uninitialized) # Default owner.
   StateInventoryResult[ValidatedStateManifest](status: StateInventoryError.None,
       completed: data.source)
+
 proc inventoryServiceAt*(inventory: StateInventory,
     index: InventoryServiceIndex): StateInventoryResult[InventoryServiceInfo] =
   ## Copy one metadata/count row after validating the full unsigned ordinal.
@@ -153,6 +158,7 @@ proc inventoryServiceAt*(inventory: StateInventory,
       status: StateInventoryError.InvalidIndex) # No narrowing before bounds.
   StateInventoryResult[InventoryServiceInfo](status: StateInventoryError.None, completed: data.rows[
       int(uint64(index))].info)
+
 proc inventoryStorageAt*(inventory: StateInventory, service: InventoryServiceIndex,
     index: InventoryStorageIndex): StateInventoryResult[InventoryStorageFact] =
   ## Copy one owner-bound storage fact without exposing mutable arrays or accepting another ordinal domain.
@@ -166,6 +172,7 @@ proc inventoryStorageAt*(inventory: StateInventory, service: InventoryServiceInd
       status: StateInventoryError.InvalidIndex) # Full-width child bound precedes narrowing.
   StateInventoryResult[InventoryStorageFact](status: StateInventoryError.None,
     completed: data.rows[int(uint64(service))].storage[int(uint64(index))])
+
 proc inventoryPreimageAt*(inventory: StateInventory, service: InventoryServiceIndex,
     index: InventoryPreimageIndex): StateInventoryResult[InventoryPreimageFact] =
   ## Copy one owner-bound preimages fact without exposing mutable arrays or accepting another ordinal domain.
@@ -179,6 +186,7 @@ proc inventoryPreimageAt*(inventory: StateInventory, service: InventoryServiceIn
       status: StateInventoryError.InvalidIndex) # Full-width child bound precedes narrowing.
   StateInventoryResult[InventoryPreimageFact](status: StateInventoryError.None,
     completed: data.rows[int(uint64(service))].preimages[int(uint64(index))])
+
 proc inventoryRequestAt*(inventory: StateInventory, service: InventoryServiceIndex,
     index: InventoryRequestIndex): StateInventoryResult[StateRequestItem] =
   ## Copy one owner-bound requests fact without exposing mutable arrays or accepting another ordinal domain.

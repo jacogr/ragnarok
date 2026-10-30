@@ -55,18 +55,22 @@ type
 func error*[T](outcome: RecordResult[T]): RecordError =
   ## Read the precise refusal without exposing any payload.
   outcome.status
+
 func value*[T](outcome: RecordResult[T]): T {.inline,
     requires: outcome.status == RecordError.None.} =
   ## Extract only a completed locally validated transport object.
   outcome.completed
+
 func zero(hash: StateNodeHash): bool =
   ## The all-zero address is reserved for an empty physical subtree.
   array[32, byte](hash) == default(array[32, byte])
+
 proc takeValue*[T](outcome: var RecordResult[T]): T {.inline,
     requires: outcome.status == RecordError.None.} =
   ## Transfer one validated transport owner; the consumed result exposes only Uninitialized afterward.
   result = move(outcome.completed)
   outcome = RecordResult[T](status: RecordError.Uninitialized)
+
 proc compareHash(a, b: StateNodeHash): int =
   ## Lexicographic fixed identities support bounded duplicate rejection.
   let left = array[32, byte](a)
@@ -75,6 +79,7 @@ proc compareHash(a, b: StateNodeHash): int =
     if left[i] < right[i]: return -1 # First differing byte determines address order.
     if left[i] > right[i]: return 1
   0
+
 func metadata(batch: TrieExport, count: uint64, limits: RecordLimits): RecordError =
   ## Check target claims and descriptor extent independently of dependency availability.
   if batch.entries > uint64(limits.trie.items) or batch.nodes > uint64(limits.trie.nodes) or
@@ -87,12 +92,14 @@ func metadata(batch: TrieExport, count: uint64, limits: RecordLimits): RecordErr
     if batch.entries <= high(uint64) div 249 and batch.nodes > batch.entries*249:
       return RecordError.NonCanonical # Topology claims cannot exceed the full key-depth bound.
   RecordError.None
+
 proc payloadBudget(limits: RecordLimits, collection: bool): uint64 =
   ## Single-root transports retain complete-map ceilings; multi-root collections use the physical union ceiling.
   if not collection:
     min(uint64(limits.records.valueBytes), uint64(limits.trie.totalValueBytes))
   else:
     uint64(limits.records.valueBytes)
+
 proc checkMetadata(batch: TrieExport, count: uint64, limits: RecordLimits,
     collection: bool): RecordError =
   ## Count-only collections never manufacture target-root claims to reuse physical validation.
@@ -102,6 +109,7 @@ proc checkMetadata(batch: TrieExport, count: uint64, limits: RecordLimits,
     if count > uint64(limits.records.records) or count > uint64(high(int) div sizeof(TrieRecord)):
       return RecordError.LimitExceeded
     RecordError.None
+
 proc extent(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
     collection: bool): RecordResult[int] =
   ## Validate all canonical fields and arithmetic before allocating hash/sort/output buffers.
@@ -231,13 +239,16 @@ proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: 
 proc putNumber(output: var seq[byte], offset: int, number: uint64) =
   ## Callers prove eight output bytes before fixed little-endian encoding.
   for i in 0..<8: output[offset+i] = byte((number shr (8*i)) and 255)
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Callers prove eight input bytes before decoding the complete fixed-width count.
   result = 0
   for i in 0..<8: result = result or (uint64(input[offset+i]) shl (8*i))
+
 proc putHash(output: var seq[byte], offset: int, hash: array[32, byte]) =
   ## Copy one full physical identity after extent preflight.
   for i in 0..<32: output[offset+i] = hash[i]
+
 func readHash(input: openArray[byte], offset: int): array[32, byte] =
   ## Decode copied identity bytes from a caller-proved fixed extent.
   result = default(array[32, byte])
@@ -403,9 +414,11 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
 proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
   ## Preserve exact single-target metadata, record and complete-map byte ceilings.
   validateRecords(batch, batch.records, limits, false)
+
 proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[seq[byte]] =
   ## Preserve the existing single-target representation byte for byte.
   encodeRecords(batch, batch.records, limits, false)
+
 proc encodeFramedTrieExport*(batch: TrieExport, limits: RecordLimits,
     prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RecordResult[seq[byte]] =
   ## Strictly validate borrowed mutable records, then encode into one owned buffer with zero-filled reservations.
@@ -416,15 +429,19 @@ proc encodeFramedTrieExport*(batch: TrieExport, limits: RecordLimits,
 proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =
   ## Decode only the existing target-bearing domain with no collection fallback.
   decodeRecords(input, limits, false)
+
 proc validateRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordError =
   ## Validate canonical unique physical records under an explicit aggregate union budget.
   validateRecords(default(TrieExport), collection.records, limits, true)
+
 proc measureRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordResult[int] =
   ## Preflight canonical shape and exact encoded extent without hashing or allocating record/output storage.
   extent(default(TrieExport), collection.records, limits, true)
+
 proc encodeRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordResult[seq[byte]] =
   ## Borrow records directly, preflighting before any transport/output allocation.
   encodeRecords(default(TrieExport), collection.records, limits, true)
+
 proc decodeRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
     RecordCollection] =
   ## Preflight every extent before allocation/hashing; complete graphs require separate admission.

@@ -141,70 +141,90 @@ type
 func error*[T](value: HeaderResult[T]): HeaderError =
   ## Read generic outcomes without exposing a mutable result discriminator.
   value.status
+
 func value*[T](value: HeaderResult[T]): T {.inline, requires: value.status == HeaderError.None.} =
   ## Only a complete operation publishes values, retained handles or progress.
   value.completed
+
 func headerFailure*[T](reason: HeaderError): HeaderResult[T] {.requires: reason !=
     HeaderError.None.} =
   ## Sibling frame adapters may report failure; the success tag is forbidden without a value.
   HeaderResult[T](status: reason)
+
 func present*(value: EpochMarker): bool =
   ## Encoder source presence is read-only and cannot be retagged independently of its payload.
   value.isPresent
+
 func present*(value: WinnersMarker): bool =
   ## Winner source presence selects whether any ticket storage exists.
   value.isPresent
+
 func present*(value: EpochMarkerInfo): bool =
   ## Copied epoch metadata preserves validated absence independently of default owners.
   value.isPresent
+
 func present*(value: WinnersMarkerInfo): bool =
   ## Copied winner metadata has no sequence length when absent.
   value.isPresent
+
 func entropy*(value: EpochMarker): EpochEntropy {.requires: value.isPresent.} =
   ## Source entropy is copied only from a present marker.
   value.entropyValue
+
 func ticketsEntropy*(value: EpochMarker): TicketsEntropy {.requires: value.isPresent.} =
   ## Source contest entropy retains its distinct nominal domain and requires presence.
   value.ticketEntropyValue
+
 func epochValidatorCopies*(value: EpochMarker): seq[
     EpochValidator] {.requires: value.isPresent.} =
   ## Read-only source access returns a value copy; internal encoders borrow private storage directly.
   value.validatorValues
+
 proc editEpochValidators*(value: var EpochMarker): var seq[
     EpochValidator] {.requires: value.isPresent.} =
   ## Mutable encoder sources retain ordinary sequence editing through a presence-checked borrowed field.
   value.validatorValues
+
 func winnerTicketCopies*(value: WinnersMarker): seq[
     WinningTicket] {.requires: value.isPresent.} =
   ## Read-only winner source access returns a copy, never an immutable snapshot's private storage.
   value.ticketValues
+
 proc editWinnerTickets*(value: var WinnersMarker): var seq[
     WinningTicket] {.requires: value.isPresent.} =
   ## Mutable source ticket edits preserve actual source identity for later alias preflight.
   value.ticketValues
+
 func entropy*(value: EpochMarkerInfo): EpochEntropy {.requires: value.isPresent.} =
   ## Copied epoch entropy exists only in the present metadata alternative.
   value.entropyValue
+
 func ticketsEntropy*(value: EpochMarkerInfo): TicketsEntropy {.requires: value.isPresent.} =
   ## Copied contest entropy requires the same present alternative.
   value.ticketEntropyValue
+
 func validators*(value: EpochMarkerInfo): int {.requires: value.isPresent.} =
   ## Only present metadata exposes a validator cardinality.
   value.validatorCount
+
 func tickets*(value: WinnersMarkerInfo): int {.requires: value.isPresent.} =
   ## Only present metadata exposes a configured ticket count.
   value.ticketCount
+
 func absentEpoch*(): EpochMarker =
   ## Absent epoch sources contain no entropy or validator sequence.
   default(EpochMarker)
+
 func presentEpoch*(entropy: EpochEntropy, ticketsEntropy: TicketsEntropy, validators: seq[
     EpochValidator]): EpochMarker =
   ## Construct a present borrowed source; configuration/cardinality policy remains encoder preflight.
   EpochMarker(isPresent: true, entropyValue: entropy, ticketEntropyValue: ticketsEntropy,
       validatorValues: validators)
+
 func absentWinners*(): WinnersMarker =
   ## An absent winner source contains no default ticket sequence.
   default(WinnersMarker)
+
 func presentWinners*(tickets: seq[WinningTicket]): WinnersMarker =
   ## Construct a present winner source; exact configured epoch length is checked before encoding.
   WinnersMarker(isPresent: true, ticketValues: tickets)
@@ -214,27 +234,27 @@ proc fullHeaderConfig*(maxBytes: ByteLimit): HeaderConfig {.raises: [].} =
   HeaderConfig(cores: CoreCount(341), authorValidators: ValidatorCount(1023),
     epochSlots: EpochSlots(600), maxBytes: maxBytes)
 
-# Validate GP validator domains and a positive epoch length before any untrusted byte or source access.
 proc validConfig(config: HeaderConfig): bool {.raises: [].} =
+  ## Validate GP validator domains and a positive epoch length before any untrusted byte or source access.
   assurances.validConfig(AssuranceConfig(cores: config.cores,
       validators: config.authorValidators)) and
     uint64(config.epochSlots) > 0
 
-# Copy an exact owned identity/proof after its enclosing input extent has been checked.
 proc fixed[N: static[int]](input: openArray[byte], start: int): array[N, byte] {.raises: [].} =
+  ## Copy an exact owned identity/proof after its enclosing input extent has been checked.
   result = default(array[N, byte])
   # No caller pointer escapes these exact value copies.
   for i in 0..<N: result[i] = input[start+i]
 
-# Decode only previously proved E2/E4 fields in little-endian order.
 proc scalar(input: openArray[byte], start, width: int): uint32 {.raises: [].} =
+  ## Decode only previously proved E2/E4 fields in little-endian order.
   result = 0
   # Shifts stay within the maximum four-octet scalar used by this codec.
   for i in 0..<width: result = result or (uint32(input[start+i]) shl (8*i))
 
-# Prove an unsigned count's complete input extent before narrowing, multiplying or reading its bytes.
 proc extent(input: openArray[byte], cursor: int, count: uint64, stride: int,
     config: HeaderConfig): HeaderError {.raises: [].} =
+  ## Prove an unsigned count's complete input extent before narrowing, multiplying or reading its bytes.
   # Division handles even a maximal configured epoch without overflowing count times stride.
   if count > uint64((input.len-cursor) div stride):
     return HeaderError.Truncated
@@ -243,9 +263,9 @@ proc extent(input: openArray[byte], cursor: int, count: uint64, stride: int,
     return HeaderError.LimitExceeded
   HeaderError.None
 
-# Read a canonical bounded natural; partial cursor updates remain private on failure.
 proc number(input: openArray[byte], cursor: var int, ceiling: uint64,
     config: HeaderConfig): HeaderResult[int] {.raises: [].} =
+  ## Read a canonical bounded natural; partial cursor updates remain private on failure.
   let parsed = natural.decode(input.toOpenArray(cursor, input.high))
   # Preserve truncated versus overlong framing before interpreting a count.
   if not parsed.ok:
@@ -257,9 +277,9 @@ proc number(input: openArray[byte], cursor: var int, ceiling: uint64,
     return HeaderResult[int](status: HeaderError.LimitExceeded)
   HeaderResult[int](status: HeaderError.None, completed: int(uint64(parsed.value)))
 
-# Read a canonical optional marker discriminator without allocating or accepting other octet tags.
 proc tag(input: openArray[byte], cursor: var int, config: HeaderConfig): HeaderResult[
     bool] {.raises: [].} =
+  ## Read a canonical optional marker discriminator without allocating or accepting other octet tags.
   let checked = extent(input, cursor, 1, 1, config)
   # Input/budget checks precede the first discriminator byte access.
   if checked != HeaderError.None:
@@ -271,9 +291,9 @@ proc tag(input: openArray[byte], cursor: var int, config: HeaderConfig): HeaderR
   inc cursor
   HeaderResult[bool](status: HeaderError.None, completed: value == 1)
 
-# Scan a complete epoch marker into bounded metadata; key order/encodings remain opaque at this layer.
 proc scanEpoch(input: openArray[byte], cursor: var int, config: HeaderConfig,
     layout: var Layout): HeaderError {.raises: [].} =
+  ## Scan a complete epoch marker into bounded metadata; key order/encodings remain opaque at this layer.
   layout.epochStart = cursor
   let present = tag(input, cursor, config)
   # A missing/invalid marker never publishes default entropy or validator metadata.
@@ -307,9 +327,9 @@ proc scanEpoch(input: openArray[byte], cursor: var int, config: HeaderConfig,
   layout.epochLength = cursor-layout.epochStart
   HeaderError.None
 
-# Scan a complete winner marker; a present sequence has exactly configured epoch length and no count.
 proc scanWinners(input: openArray[byte], cursor: var int, config: HeaderConfig,
     layout: var Layout): HeaderError {.raises: [].} =
+  ## Scan a complete winner marker; a present sequence has exactly configured epoch length and no count.
   layout.winnersStart = cursor
   let present = tag(input, cursor, config)
   # Invalid optional framing cannot authorize any ticket metadata.
@@ -328,9 +348,9 @@ proc scanWinners(input: openArray[byte], cursor: var int, config: HeaderConfig,
   layout.winnersLength = cursor-layout.winnersStart
   HeaderError.None
 
-# Scan one unsigned/full header without input-derived allocation or mutable caller writes.
 proc scanHeader(input: openArray[byte], config: HeaderConfig, sealed: bool): HeaderResult[
     Layout] {.raises: [].} =
+  ## Scan one unsigned/full header without input-derived allocation or mutable caller writes.
   # Configuration determines structural author/epoch domains and cannot be inferred from input.
   if not validConfig(config):
     return HeaderResult[Layout](status: HeaderError.InvalidConfig)
@@ -386,8 +406,8 @@ proc scanHeader(input: openArray[byte], config: HeaderConfig, sealed: bool): Hea
   layout.consumed = cursor
   HeaderResult[Layout](status: HeaderError.None, completed: layout)
 
-# Capture only a completely scanned prefix in private immutable acyclic ARC storage.
 proc capture(input: openArray[byte], layout: Layout): HeaderData {.raises: [].} =
+  ## Capture only a completely scanned prefix in private immutable acyclic ARC storage.
   result = HeaderData(layout: layout, wire: newSeq[byte](layout.consumed))
   # Exclude unrelated trailing bytes from the snapshot and its resource accounting.
   for i in 0..<result.wire.len: result.wire[i] = input[i]
@@ -454,16 +474,16 @@ proc decodeWinningTicket*(input: openArray[byte]): HeaderResult[WinningTicketRea
     consumed: 33,
     value: WinningTicket(id: WinningTicketId(fixed[32](input, 0)), attempt: TicketAttempt(input[32]))))
 
-# Grow a measured prefix only after proving its host extent, including multiplication, cannot overflow.
 proc grow(size: var int, count, stride: int): HeaderError {.raises: [].} =
+  ## Grow a measured prefix only after proving its host extent, including multiplication, cannot overflow.
   # Counts cannot wrap an encoder capacity/alias calculation.
   if count > (high(int)-size) div stride:
     return HeaderError.LengthOverflow
   size += count*stride
   HeaderError.None
 
-# Measure/validate epoch sources without allocating, sorting or verifying opaque keys.
 proc epochSize(value: EpochMarker, config: HeaderConfig): HeaderResult[int] {.raises: [].} =
+  ## Measure/validate epoch sources without allocating, sorting or verifying opaque keys.
   var size = 1
   # Absence carries no validator sequence or entropy fields to inspect.
   if value.present:
@@ -474,8 +494,8 @@ proc epochSize(value: EpochMarker, config: HeaderConfig): HeaderResult[int] {.ra
     size += 64+int(natural.encode(JamNatural(count)).len)+64*count
   HeaderResult[int](status: HeaderError.None, completed: size)
 
-# Measure winners with exact caller epoch cardinality and safe host arithmetic.
 proc winnersSize(value: WinnersMarker, config: HeaderConfig): HeaderResult[int] {.raises: [].} =
+  ## Measure winners with exact caller epoch cardinality and safe host arithmetic.
   var size = 1
   # Present winners are fixed-length tuples, never a variable-count sequence.
   if value.present:
@@ -488,8 +508,8 @@ proc winnersSize(value: WinnersMarker, config: HeaderConfig): HeaderResult[int] 
       return HeaderResult[int](status: error)
   HeaderResult[int](status: HeaderError.None, completed: size)
 
-# Measure every unsigned source field before byte policy, capacity or output writes.
 proc unsignedSize(value: UnsignedHeader, config: HeaderConfig): HeaderResult[int] {.raises: [].} =
+  ## Measure every unsigned source field before byte policy, capacity or output writes.
   let epoch = epochSize(value.epoch, config)
   # Invalid late nested sources cannot emit a header prefix.
   if epoch.error != HeaderError.None:
@@ -516,8 +536,8 @@ proc unsignedSize(value: UnsignedHeader, config: HeaderConfig): HeaderResult[int
     return HeaderResult[int](status: suffixGrowth)
   HeaderResult[int](status: HeaderError.None, completed: size)
 
-# Compare addresses by distance so even near-address-limit buffers need no overflowing endpoint sum.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare addresses by distance so even near-address-limit buffers need no overflowing endpoint sum.
   # Empty ranges require no valid source/destination element address.
   if an == 0 or bn == 0:
     return false
@@ -526,9 +546,9 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
   if left <= right: right-left < uint(an) # The lower source address selects its own extent.
   else: left-right < uint(bn) # A lower destination reverses the relevant extent.
 
-# Reject source sequence overlap against the entire destination without overflowing typed record extents.
 proc sourceAlias[T](values: openArray[T], output: var openArray[byte],
     size: int): HeaderError {.raises: [].} =
+  ## Reject source sequence overlap against the entire destination without overflowing typed record extents.
   # Typed stride is checked independently of the wire stride.
   if values.len > high(int) div sizeof(T):
     return HeaderError.LengthOverflow
@@ -537,9 +557,9 @@ proc sourceAlias[T](values: openArray[T], output: var openArray[byte],
     return HeaderError.AliasedBuffers
   HeaderError.None
 
-# Validate complete capacity and serialized resource policy before any destination address access.
 proc destination(size: int, config: HeaderConfig, output: var openArray[
     byte]): HeaderError {.raises: [].} =
+  ## Validate complete capacity and serialized resource policy before any destination address access.
   # Caller byte budget bounds only the selected encoded prefix.
   if uint64(size) > uint64(config.maxBytes):
     return HeaderError.LimitExceeded
@@ -548,33 +568,33 @@ proc destination(size: int, config: HeaderConfig, output: var openArray[
     return HeaderError.OutputTooSmall
   HeaderError.None
 
-# Commit exact preflighted bytes; no alias, count or policy error remains possible here.
 proc put(bytes: openArray[byte], output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit exact preflighted bytes; no alias, count or policy error remains possible here.
   # Complete operation preflight proved this destination interval before invoking private commit helpers.
   for octet in bytes:
     output[cursor] = octet
     inc cursor
 
-# Commit a fixed E2/E4 scalar without compact-natural substitution or byte narrowing loss.
 proc putScalar(value: uint32, width: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit a fixed E2/E4 scalar without compact-natural substitution or byte narrowing loss.
   # Fixed widths always retain little-endian zero/high bytes alike.
   for i in 0..<width:
     output[cursor] = byte((value shr (8*i)) and 255)
     inc cursor
 
-# Commit a bounded natural count's active prefix, never its unused encoder buffer.
 proc putNumber(value: int, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit a bounded natural count's active prefix, never its unused encoder buffer.
   let encoded = natural.encode(JamNatural(value))
   put(encoded.bytes.toOpenArray(0, int(encoded.len)-1), output, cursor)
 
-# Commit one fully owned fixed winner record in identifier/E1 attempt order.
 proc putTicket(value: WinningTicket, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit one fully owned fixed winner record in identifier/E1 attempt order.
   put(array[32, byte](value.id), output, cursor)
   output[cursor] = byte(value.attempt)
   inc cursor
 
-# Commit a preflighted optional epoch tuple without reordering validators or validating points.
 proc putEpoch(value: EpochMarker, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit a preflighted optional epoch tuple without reordering validators or validating points.
   output[cursor] = byte(value.present)
   inc cursor
   # Only a present marker has the two entropy fields and a canonical natural validator count.
@@ -587,8 +607,8 @@ proc putEpoch(value: EpochMarker, output: var openArray[byte], cursor: var int) 
       put(array[32, byte](validator.bandersnatch), output, cursor)
       put(array[32, byte](validator.ed25519), output, cursor)
 
-# Commit a preflighted optional fixed-length winner tuple with no additional count discriminator.
 proc putWinners(value: WinnersMarker, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit a preflighted optional fixed-length winner tuple with no additional count discriminator.
   output[cursor] = byte(value.present)
   inc cursor
   # Ticket ordering is the caller's state-derived slot order and must never be sorted here.
@@ -596,8 +616,8 @@ proc putWinners(value: WinnersMarker, output: var openArray[byte], cursor: var i
     for ticket in value.ticketValues: putTicket(ticket, output,
         cursor) # Every ticket was measured before any write.
 
-# Commit the complete unsigned tuple, including variable offender keys after the entropy proof.
 proc putUnsigned(value: UnsignedHeader, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit the complete unsigned tuple, including variable offender keys after the entropy proof.
   put(array[32, byte](value.parent), output, cursor)
   put(array[32, byte](value.priorState), output, cursor)
   put(array[32, byte](value.extrinsics), output, cursor)
@@ -610,9 +630,9 @@ proc putUnsigned(value: UnsignedHeader, output: var openArray[byte], cursor: var
   # Preserve culprit-key then fault-key concatenation, including any cross-section duplicates.
   for key in value.offenders: put(array[32, byte](key), output, cursor)
 
-# Check all nested source storage against the whole output before commit begins.
 proc unsignedAlias(value: UnsignedHeader, output: var openArray[byte],
     size: int): HeaderError {.raises: [].} =
+  ## Check all nested source storage against the whole output before commit begins.
   # Outer fields and optional sequence descriptors must survive all writes.
   if overlaps(unsafeAddr value, sizeof(value), addr output[0], size):
     return HeaderError.AliasedBuffers
@@ -752,9 +772,9 @@ proc encodeWinningTicket*(value: WinningTicket, output: var openArray[byte]): He
   putTicket(value, output, cursor)
   HeaderResult[int](status: HeaderError.None, completed: cursor)
 
-# Copy one private retained interval without permitting any write into the owner's complete immutable wire.
 proc copy(data: HeaderData, start, size: int, output: var openArray[byte]): HeaderResult[
     int] {.raises: [].} =
+  ## Copy one private retained interval without permitting any write into the owner's complete immutable wire.
   # No partially copied owner prefix on insufficient capacity.
   if output.len < size:
     return HeaderResult[int](status: HeaderError.OutputTooSmall)

@@ -48,69 +48,85 @@ type
       requestReason: RequestIdentityHistoryError
     else:
       discard # No successful prefix survives a refused preparation.
+
 func ready*(prepared: PreparedCurrentChainUpdate): bool =
   ## A default owner cannot authorize extraction or installation.
   prepared.data != nil
+
 func error*(outcome: CurrentChainPreparationResult): CurrentChainPreparationError =
   ## Observe only the immutable selected stage.
   outcome.status
+
 func value*(outcome: CurrentChainPreparationResult): PreparedCurrentChainUpdate {.inline,
     requires: outcome.status == CurrentChainPreparationError.None.} =
   ## Only a complete private candidate may leave preparation.
   outcome.completed
+
 func chainFailure*(outcome: CurrentChainPreparationResult): CurrentAccumulationChainResult {.inline,
     requires: outcome.status == CurrentChainPreparationError.ChainFailure.} =
   ## Preserve only the actual failed current coordinator, never its successful prefix.
   outcome.reason
+
 func storageError*(outcome: CurrentChainPreparationResult): StorageHistoryError {.inline,
     requires: outcome.status == CurrentChainPreparationError.StorageHistoryFailure.} =
   ## Preserve the actual optional producer-history capture refusal without exposing its candidate chain.
   outcome.storageReason
+
 func hasStorageHistory*(prepared: PreparedCurrentChainUpdate): bool =
   ## Defaults and explicitly disabled capture grant no selected raw-storage evidence; enabled empty histories remain distinguishable.
   let data = prepared.data
   data != nil and data.storageCaptured
+
 proc currentUpdateStorageHistory*(prepared: PreparedCurrentChainUpdate): StorageHistory {.requires: prepared.hasStorageHistory.} =
   ## Retain only history captured from this exact update's genuine composition source during private preparation.
   let data = prepared.data
   assert data != nil
   data.storage
+
 proc sourceCompletedSequence(source: PreparedCurrentAccumulationConsensus): CompletedCurrentAccumulationSequence =
   ## Successful chain preparation already validated every composition owner; follow that authentic producer chain without rerunning a guest.
   let activity = source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value
   let finalization = activity.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value
   let completed = finalization.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value
   completed
+
 proc sourceStorageHistory(source: PreparedCurrentAccumulationConsensus,
     limits: StorageHistoryLimits): StorageHistoryResult[StorageHistory] =
   ## Storage and request projections share the same authentic completed producer boundary.
   captureStorageHistory(sourceCompletedSequence(source), limits)
+
 func requestHistoryError*(outcome: CurrentChainPreparationResult): RequestIdentityHistoryError {.inline,
     requires: outcome.status == CurrentChainPreparationError.RequestHistoryFailure.} =
   ## Preserve the exact selected request retention refusal without exposing a candidate chain.
   outcome.requestReason
+
 func hasRequestHistory*(prepared: PreparedCurrentChainUpdate): bool =
   ## Default/disabled updates grant no request evidence, independently of an enabled empty selected trace.
   let data = prepared.data
   data != nil and data.requestCaptured
+
 proc currentUpdateRequestHistory*(prepared: PreparedCurrentChainUpdate): RequestIdentityHistory {.requires: prepared.hasRequestHistory.} =
   ## Retain only history frozen from this update's own original consensus/composition source during private preparation.
   let data = prepared.data
   assert data != nil
   data.requests
+
 func serviceHistoryError*(outcome: CurrentChainPreparationResult): ServiceIdentityHistoryError {.inline,
     requires: outcome.status == CurrentChainPreparationError.ServiceHistoryFailure.} =
   ## Preserve only the actual selected membership retention refusal.
   outcome.serviceReason
+
 func hasServiceIdentityHistory*(prepared: PreparedCurrentChainUpdate): bool =
   ## Default and disabled updates grant no service identity evidence; enabled empty histories remain distinct.
   let data = prepared.data
   data != nil and data.serviceCaptured
+
 proc currentUpdateServiceIdentityHistory*(prepared: PreparedCurrentChainUpdate): ServiceIdentityHistory {.requires: prepared.hasServiceIdentityHistory.} =
   ## Retain only membership frozen from this exact update's original completed producer.
   let data = prepared.data
   assert data != nil
   data.services
+
 proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
     source: PreparedCurrentAccumulationConsensus, headerBytes: ByteLimit,
     storageLimits = default(StorageHistoryLimits),
@@ -155,46 +171,55 @@ proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
       prior: view, state: working, view: history, successor: applied.value,
       storageCaptured: captured, storage: storage, requestCaptured: capturedRequests,
       requests: requests, serviceCaptured: capturedServices, services: services)))
+
 proc currentUpdatePriorState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact original parent; equal roots never substitute another physical owner.
   let data = prepared.data
   assert data != nil # Public readiness and stable retained ownership discharge nullable access.
   data.parent
+
 proc currentUpdatePriorView*(prepared: PreparedCurrentChainUpdate): ChainView {.requires: prepared.data != nil.} =
   ## Copy original ordered history/full Parameters/finality only after caller retention admission.
   let data = prepared.data
   assert data != nil # Stable ownership protects the whole original selected view.
   data.prior
+
 proc currentUpdatePriorViewInfo*(prepared: PreparedCurrentChainUpdate): ChainViewRetentionInfo {.requires: prepared.data != nil.} =
   ## Allocation-free original retention facts let bounded consumers admit before copying view indexes.
   let data = prepared.data
   assert data != nil # No view or block descriptor is copied while inspecting private arrays.
   data.prior.viewRetentionInfo
+
 proc currentUpdateViewInfo*(prepared: PreparedCurrentChainUpdate): ChainViewRetentionInfo {.requires: prepared.data != nil.} =
   ## Allocation-free posterior retention facts precede any heavy current view/child extraction.
   let data = prepared.data
   assert data != nil # Read direct private view structure through one stable immutable owner.
   data.view.viewRetentionInfo
+
 proc currentUpdateState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact candidate map for durable export, never a writable target handle.
   let data = prepared.data
   assert data != nil # Stable retained ownership discharges nullable field access after the public guard.
   data.successor.stateSnapshot
+
 proc currentUpdateView*(prepared: PreparedCurrentChainUpdate): ChainView {.requires: prepared.data != nil.} =
   ## Retain complete immutable ordered history, parameters and explicit finality for context encoding.
   let data = prepared.data
   assert data != nil # Capture one stable immutable owner for the nullable proof.
   data.view
+
 proc currentUpdateChildContext*(prepared: PreparedCurrentChainUpdate): BlockSnapshotContext {.requires: prepared.data != nil.} =
   ## Copy fixed actual child facts without allocating/copying RPC key/service indexes; safe bounded consumers need no heavy child getter.
   let data = prepared.data
   assert data != nil # Genuine private preparation appends its exact successor as this selected posterior head.
   data.view.bestBlockContext
+
 proc currentUpdateChild*(prepared: PreparedCurrentChainUpdate): BlockSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact captured child without recapture or hashing.
   let data = prepared.data
   assert data != nil # The checked public precondition and stable local forbid an absent child owner.
   data.successor
+
 proc canInstallCurrentChainUpdate*(state: StateStore, view: ChainView,
     prepared: PreparedCurrentChainUpdate): bool =
   ## Check exact state ownership and complete ordered history/profile/finality before any durable operation.
@@ -203,6 +228,7 @@ proc canInstallCurrentChainUpdate*(state: StateStore, view: ChainView,
   let current = state.snapshot
   current.error == StateStoreError.None and sameStateSnapshot(current.value, data.parent) and
     sameChainView(view, data.prior)
+
 proc installCurrentChainUpdate*(state: var StateStore, view: var ChainView,
     prepared: PreparedCurrentChainUpdate) {.requires: canInstallCurrentChainUpdate(state, view, prepared).} =
   ## Single-threaded stable owners cannot change across preflight/durability/install; replacements perform no hashing or callbacks.

@@ -28,10 +28,12 @@ type
 func error*(outcome: BlockAuthorResult): BlockAuthorError =
   ## Read the selected immutable reason before extracting a block.
   outcome.status
+
 func value*(outcome: BlockAuthorResult): OwnedBlock {.inline,
     requires: outcome.status == BlockAuthorError.None.} =
   ## A block still requires normal candidate validation before canonical adoption.
   outcome.completed
+
 proc context(domain: string, seed: array[32, byte]): seq[byte] =
   ## GP tokens contain literal ASCII bytes followed by one fixed word, with no dollar or prefix.
   result = newSeq[byte](domain.len+32)

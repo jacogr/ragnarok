@@ -36,22 +36,29 @@ type
     ticket: FuzzRequest
     output: seq[byte]
     offset: int
+
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Acquire a local stream descriptor without granting ownership on failure.
+
 proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
   ## Borrow one fully initialized native pathname during bind.
+
 proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
   ## A single pending connection bounds the listener queue request.
+
 proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
   ## Admit a new connection only when the previous session has retired.
+
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Read only into an initialized bounded stack buffer.
+
 proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
   ## Preserve partial write offsets in the owned output frame.
+
 proc effectiveUid(): uint32 {.importc: "geteuid", header: "<unistd.h>".}
   ## Socket parent ownership is checked against the actual effective user.
 let
@@ -66,6 +73,7 @@ when defined(macosx):
   let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint
 else:
   let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint
+
 proc removeSocket(server: FuzzSocket) =
   ## Replacement paths and files never inherit cleanup authority from this lifetime.
   if server.bound:
@@ -74,10 +82,13 @@ proc removeSocket(server: FuzzSocket) =
     if readStatus(path.toCString(), current) == 0 and S_ISSOCK(Mode(current.st_mode)) and
         current.st_dev == server.identity.st_dev and current.st_ino == server.identity.st_ino:
       discard unlink(path.toCString()) # Exact inode ownership confines removal to the bound socket.
+
 proc `=copy`*(destination: var FuzzSocket, source: FuzzSocket) {.error.}
   ## Descriptor ownership cannot be copied between hosts.
+
 proc `=dup`*(source: FuzzSocket): FuzzSocket {.error.}
   ## Implicit duplication is also forbidden.
+
 proc `=wasMoved`*(server: var FuzzSocket) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false
@@ -102,6 +113,7 @@ proc `=destroy`*(server: FuzzSocket) =
   `=destroy`(server.session)
   `=destroy`(server.ticket)
   `=destroy`(server.output)
+
 proc disconnect*(server: var FuzzSocket) =
   ## Retire a connection and all its tickets while leaving the listener ready for a new session.
   if server.connected: discard posix.close(server.connection)
@@ -112,6 +124,7 @@ proc disconnect*(server: var FuzzSocket) =
   server.ticket = default(FuzzRequest)
   server.output = @[]
   server.offset = 0
+
 proc close*(server: var FuzzSocket) =
   ## Explicit shutdown is idempotent and uses the same inode-limited cleanup as ARC retirement.
   server.disconnect()
@@ -120,21 +133,27 @@ proc close*(server: var FuzzSocket) =
   server.opened = false
   server.bound = false
   server.config = default(FuzzSocketConfig)
+
 func connected*(server: FuzzSocket): bool =
   ## Backend state belongs to an active connection only.
   server.connected
+
 func generation*(server: FuzzSocket): uint64 =
   ## Each accepted connection gets a distinct generation; exhaustion stops further admission.
   server.generation
+
 func hasRequest*(server: FuzzSocket): bool =
   ## A pending execution ticket is distinct from partial input or an automatic handshake reply.
   server.connected and server.waiting
+
 func request*(server: FuzzSocket): FuzzRequest {.inline, requires: server.hasRequest.} =
   ## Borrow immutable request authority for execution outside the transport tick.
   server.ticket
+
 func negotiatedFeatures*(server: FuzzSocket): uint32 =
   ## The host activates optional backend behavior only after the actual handshake intersection.
   if server.connected: server.session.negotiatedFeatures else: 0'u32
+
 proc nonblocking(fd: cint): bool =
   ## Install nonblocking IO, close-on-exec and signal safety before exposing a descriptor.
   let flags = fcntl(fd, F_GETFL, 0)
@@ -146,6 +165,7 @@ proc nonblocking(fd: cint): bool =
     if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
       return false # No socket can become usable without SIGPIPE suppression.
   true
+
 proc start*(server: var FuzzSocket, config: FuzzSocketConfig): bool =
   ## Reject bad policy and existing paths before opening a bounded private listener.
   if server.opened or server.bound or config.timeoutMs <= 0 or config.timeoutMs > 3600000:
@@ -184,6 +204,7 @@ proc start*(server: var FuzzSocket, config: FuzzSocketConfig): bool =
     server.close()
     return false # Partial successful startup retires its own path and descriptor.
   true
+
 proc queue(server: var FuzzSocket, message: FuzzMessage): bool =
   ## A complete output frame is retained until every byte drains; no second reply can overwrite it.
   if server.output.len != 0: return false
@@ -192,6 +213,7 @@ proc queue(server: var FuzzSocket, message: FuzzMessage): bool =
   server.output = encoded.value
   server.offset = 0
   true
+
 proc respond*(server: var FuzzSocket, ticket: FuzzRequest, message: FuzzMessage): bool =
   ## Submit only a genuine host outcome matching the still-live ticket; internal failure uses disconnect instead.
   if not server.hasRequest: return false
@@ -202,6 +224,7 @@ proc respond*(server: var FuzzSocket, ticket: FuzzRequest, message: FuzzMessage)
   server.waiting = false
   server.ticket = default(FuzzRequest)
   true
+
 proc tick*(server: var FuzzSocket) =
   ## One bounded read/write per turn; neither partial input nor output can extend the absolute deadline.
   if not server.opened: return

@@ -25,28 +25,35 @@ type
     of None: completed: T
     of InvalidRecords: recordReason: RecordError
     else: discard
+
 func error*[T](outcome: FrameResult[T]): FrameError =
   ## Read the selected outer reason alone.
   outcome.status
+
 func value*[T](outcome: FrameResult[T]): T {.inline, requires: outcome.status == FrameError.None.} =
   ## Extract only a complete checked frame or byte buffer.
   outcome.completed
+
 proc takeValue*[T](outcome: var FrameResult[T]): T {.inline,
     requires: outcome.status == FrameError.None.} =
   ## Transfer checked bytes or replay context once; the consumed source loses its success authority.
   result = move(outcome.completed)
   outcome = FrameResult[T](status: FrameError.Uninitialized)
+
 func recordError*[T](outcome: FrameResult[T]): RecordError {.requires: outcome.status ==
     FrameError.InvalidRecords.} =
   ## Access only the selected inner physical-record refusal.
   outcome.recordReason
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Internal callers prove the complete eight-byte little-endian field.
   result = 0
   for i in 0..<8: result = result or (uint64(input[offset+i]) shl (8*i))
+
 proc putNumber(output: var seq[byte], offset: int, value: uint64) =
   ## Exact extent preflight precedes fixed numeric field writes.
   for i in 0..<8: output[offset+i] = byte((value shr (8*i)) and 255)
+
 proc journalFrameExtent*(input: openArray[byte], limit: ByteLimit): FrameResult[int] =
   ## Return the first complete frame extent without parsing later frames or trusting its content.
   if input.len < 48: return FrameResult[int](status: FrameError.InvalidFormat)
@@ -57,6 +64,7 @@ proc journalFrameExtent*(input: openArray[byte], limit: ByteLimit): FrameResult[
   let extent = size+48
   if extent > uint64(input.len): return FrameResult[int](status: FrameError.InvalidFormat)
   FrameResult[int](status: FrameError.None, completed: int(extent))
+
 proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
     context: openArray[byte], contextual: bool, contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
@@ -87,6 +95,7 @@ proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
   let checksum = array[32, byte](hashed.value)
   for i in 0..<32: output[output.len-32+i] = checksum[i]
   FrameResult[seq[byte]](status: FrameError.None, completed: output)
+
 proc inspectFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLimit,
     encoded: ByteLimit, limit: ByteLimit): FrameResult[int] =
   ## Verify exact outer consumption, bounded context/body and checksum before exposing the body offset.
@@ -113,6 +122,7 @@ proc inspectFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLi
     if input[input.len-32+i] != checksum[i]: return FrameResult[int](
         status: FrameError.ChecksumMismatch)
   FrameResult[int](status: FrameError.None, completed: prefix)
+
 proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[JournalFrame] =
   ## Detached frame decoding retains independent record validation for mutable transport callers.
@@ -136,15 +146,18 @@ proc encodeJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
   ## Preserve the existing node-only physical schema byte for byte.
   encodeFrame(generation, batch, [], false, ByteLimit(0), limits, limit)
+
 proc decodeJournalFrame*(input: openArray[byte], limits: RecordLimits,
     limit: ByteLimit): FrameResult[JournalFrame] =
   ## Node-only framing never guesses or falls back to contextual frames.
   decodeFrame(input, false, ByteLimit(0), limits, limit)
+
 proc encodeContextJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
     context: openArray[byte], contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
   ## Bind bounded application context and changed nodes to one generation and synchronization boundary.
   encodeFrame(generation, batch, context, true, contextLimit, limits, limit)
+
 proc decodeContextJournalFrame*(input: openArray[byte], contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[JournalFrame] =
   ## Explicit contextual schema checks context extents before hashing or allocating any transport bytes.
@@ -184,6 +197,7 @@ proc replayJournalFrame*(repository: var NodeRepository, expected: RepositoryVie
     input: openArray[byte], limit: ByteLimit): FrameResult[JournalReplay] =
   ## Admit exactly one contiguous node-only frame under the live repository policy; failed replay is atomic.
   replayFrame(repository, expected, input, false, ByteLimit(0), limit)
+
 proc replayContextJournalFrame*(repository: var NodeRepository, expected: RepositoryView,
     input: openArray[byte], contextLimit: ByteLimit, limit: ByteLimit): FrameResult[JournalReplay] =
   ## Explicit contextual replay owns returned context independently; it provides no chain/checkpoint authority.

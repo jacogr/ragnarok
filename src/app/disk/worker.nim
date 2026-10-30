@@ -61,6 +61,7 @@ type
     maintenanceOutcome: DiskChainResult[ManagedCompaction]
     retirementOutcome: DiskStoreResult[FullPagedReclamation]
     outcome: DiskChainResult[RepositoryGeneration]
+
 proc `=wasMoved`*(worker: var DiskPublicationWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Relocation is permitted only before startup or after joined shutdown ends every native borrow.
@@ -70,13 +71,17 @@ proc `=wasMoved`*(worker: var DiskPublicationWorker) {.nodestroy, inline,
   `=wasMoved`(worker.maintenanceOutcome)
   `=wasMoved`(worker.outcome)
   `=wasMoved`(worker.identity)
+
 proc `=copy`*(destination: var DiskPublicationWorker, source: DiskPublicationWorker) {.error.}
   ## One composite owner retires synchronization state and its fixed-address thread.
+
 proc `=dup`*(source: DiskPublicationWorker): DiskPublicationWorker {.error.}
   ## Actual ARC lowering must independently reject implicit composite duplication.
+
 proc requireClosed(worker: DiskPublicationWorker) {.requires: not worker.started.} =
   ## Destruction cannot abandon a thread borrowing host disk/publication graphs.
   discard
+
 proc `=destroy`*(worker: DiskPublicationWorker) =
   ## Explicit joined close precedes destruction of every borrowed owner and alias.
   requireClosed(worker)
@@ -86,37 +91,46 @@ proc `=destroy`*(worker: DiskPublicationWorker) =
   `=destroy`(worker.maintenanceOutcome)
   `=destroy`(worker.outcome)
   `=destroy`(worker.identity)
+
 func error*(admission: DiskPublicationAdmission): DiskWorkerError =
   ## Inspect admission without granting access to an unowned slot.
   admission.status
+
 func value*(admission: DiskPublicationAdmission): DiskPublicationTicket {.inline,
     requires: admission.status == DiskWorkerError.None.} =
   ## Successful admission alone grants retirement authority.
   admission.ticket
+
 func kind*(completion: DiskPublicationCompletion): DiskCompletionKind =
   ## Inspect lifecycle separately from the actual IO success/failure.
   completion.status
+
 func value*(completion: DiskPublicationCompletion): DiskChainResult[RepositoryGeneration] {.inline,
     requires: completion.status == DiskCompletionKind.Completed.} =
   ## Preserve the exact result, especially partial/uncertain IO failures, after all native temporaries retire.
   completion.outcome
+
 func maintenanceValue*(completion: DiskPublicationCompletion): DiskChainResult[
     ManagedCompaction] {.inline, requires: completion.status == DiskCompletionKind.Maintained.} =
   ## Preserve the actual maintenance/cleanup receipt without granting a canonical publication outcome.
   completion.maintenanceOutcome
+
 func retirementValue*(completion: DiskPublicationCompletion): DiskStoreResult[
     FullPagedReclamation] {.inline, requires: completion.status == DiskCompletionKind.Retired.} =
   ## Keep cleanup success, Busy and uncertainty separate from ordinary publication and maintenance receipts.
   completion.retirementOutcome
+
 func lightValue*(completion: DiskPublicationCompletion): LightStoreResult[
     LightStorageSnapshot] {.inline, requires: completion.status ==
         DiskCompletionKind.LightCompleted.} =
   ## A light metadata/proof publication receipt never grants a full-state execution snapshot.
   completion.lightOutcome
+
 func lightRetirementValue*(completion: DiskPublicationCompletion): LightStoreResult[
     PagedReclamation] {.inline, requires: completion.status == DiskCompletionKind.LightRetired.} =
   ## Keep actual light cleanup outcomes separate from both full-state and light core publication.
   completion.lightRetirementOutcome
+
 proc execute(worker: ptr DiskPublicationWorker) =
   ## Never touch host canonical/RPC owners; all temporary ARC aliases retire before publishing Done.
   let disk = worker.disk
@@ -151,6 +165,7 @@ proc execute(worker: ptr DiskPublicationWorker) =
     let publication = worker.publication
     assert publication != nil
     worker.outcome = commitDiskPublication(disk[], publication[]) # Every payload uses the same excluded activation and receipt lifetime.
+
 proc run(raw: pointer) =
   ## Condition-driven one-slot execution performs no network callbacks or host installation.
   let worker = cast[ptr DiskPublicationWorker](raw)
@@ -166,6 +181,7 @@ proc run(raw: pointer) =
     execute(worker)
     acquire(worker.lock)
     worker.phase = DiskWorkerPhase.Done # All operation-stack aliases have retired before host access is permitted.
+
 proc start*(worker: var DiskPublicationWorker): bool {.raises.} =
   ## Initialize at the final owner address; failed thread creation leaves no live synchronization resources.
   if worker.started: return false
@@ -198,12 +214,14 @@ proc start*(worker: var DiskPublicationWorker): bool {.raises.} =
     raise # No running borrower survives a failed start.
   worker.started = true
   true
+
 proc phase*(worker: var DiskPublicationWorker): DiskWorkerPhase =
   ## Scalar-only host observation never increments ARC counts in any leased graph.
   if not worker.started: return DiskWorkerPhase.Idle
   acquire(worker.lock)
   result = worker.phase
   release(worker.lock)
+
 proc submit*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
     publication: var PreparedDiskPublication): DiskPublicationAdmission =
   ## Borrow stable disk/publication addresses and ALL aliases exclusively until collect or joined close.
@@ -230,6 +248,7 @@ proc submit*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc submit*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
     publication: var PreparedCurrentDiskPublication): DiskPublicationAdmission =
   ## Borrow stable disk/publication addresses and ALL aliases exclusively until collect or joined close.
@@ -256,6 +275,7 @@ proc submit*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc submitMaintenance*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
     maintenance: var PreparedDiskMaintenance): DiskPublicationAdmission =
   ## Borrow all aliases exclusively in the existing one-slot thread; Busy checks precede graph access.
@@ -281,6 +301,7 @@ proc submitMaintenance*(worker: var DiskPublicationWorker, disk: var DiskStateSt
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc submitRetirement*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
     retirement: var PreparedPagedRetirement): DiskPublicationAdmission =
   ## The host borrows stable disk/job addresses exclusively until collection or joined shutdown.
@@ -306,6 +327,7 @@ proc submitRetirement*(worker: var DiskPublicationWorker, disk: var DiskStateSto
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc submit*(worker: var DiskPublicationWorker, light: var LightPagedStore,
     publication: var PreparedLightPublication): DiskPublicationAdmission =
   ## Borrow stable light owner/job addresses and every shared ARC alias exclusively through collection or joined close.
@@ -333,6 +355,7 @@ proc submit*(worker: var DiskPublicationWorker, light: var LightPagedStore,
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc submitRetirement*(worker: var DiskPublicationWorker, light: var LightPagedStore,
     retirement: var PreparedLightRetirement): DiskPublicationAdmission =
   ## Borrow stable light owner/job addresses and every shared ARC alias exclusively through collection or joined close.
@@ -360,6 +383,7 @@ proc submitRetirement*(worker: var DiskPublicationWorker, light: var LightPagedS
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+
 proc completion(worker: var DiskPublicationWorker): DiskPublicationCompletion =
   ## Only Done collection or joined Done shutdown moves the actual selected operation result once.
   if worker.operation == DiskOperation.LightPublication:
@@ -376,11 +400,13 @@ proc completion(worker: var DiskPublicationWorker): DiskPublicationCompletion =
         worker.maintenanceOutcome))
   else:
     DiskPublicationCompletion(status: DiskCompletionKind.Completed, outcome: move(worker.outcome))
+
 func matches(worker: var DiskPublicationWorker, ticket: DiskPublicationTicket): bool =
   ## Called under the lock; only the current nonidle slot grants collection authority.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
       worker.next and
     worker.phase != DiskWorkerPhase.Idle
+
 proc collect*(worker: var DiskPublicationWorker, ticket: DiskPublicationTicket): DiskPublicationCompletion =
   ## Only Done ends the graph lease; early/foreign/stale collection leaves capacity and borrowers untouched.
   if not worker.started: return default(DiskPublicationCompletion)
@@ -399,6 +425,7 @@ proc collect*(worker: var DiskPublicationWorker, ticket: DiskPublicationTicket):
   worker.retirement = nil
   worker.operation = DiskOperation.Publication
   worker.phase = DiskWorkerPhase.Idle
+
 proc close*(worker: var DiskPublicationWorker): DiskPublicationCompletion =
   ## Join before ending any graph lease; return every actual IO outcome even when shutdown raced execution.
   if not worker.started: return default(DiskPublicationCompletion)

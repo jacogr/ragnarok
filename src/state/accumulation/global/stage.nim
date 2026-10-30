@@ -41,23 +41,28 @@ type
 func error*[T](outcome: AccumulationGlobalStageResult[T]): AccumulationGlobalStageError =
   ## Read the selected reason without allowing retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationGlobalStageResult[T]): T {.inline, requires: outcome.status ==
     AccumulationGlobalStageError.None.} =
   ## Extract only a fully bound successful owner or observation.
   outcome.completed
+
 func roleFailure*[T](outcome: AccumulationGlobalStageResult[
     T]): AccumulationGlobalRoleError {.inline, requires: outcome.status ==
     AccumulationGlobalStageError.RoleFailure.} =
   ## Inspect only the genuine selected roleReason refusal.
   outcome.roleReason
+
 func queueFailure*[T](outcome: AccumulationGlobalStageResult[T]): AuthorizationError {.inline,
     requires: outcome.status == AccumulationGlobalStageError.QueueFailure.} =
   ## Inspect only the genuine selected queueReason refusal.
   outcome.queueReason
+
 func stagingFailure*[T](outcome: AccumulationGlobalStageResult[T]): StateComponentError {.inline,
     requires: outcome.status == AccumulationGlobalStageError.StagingFailure.} =
   ## Inspect only the genuine selected stagingReason refusal.
   outcome.stagingReason
+
 func storeFailure*[T](outcome: AccumulationGlobalStageResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationGlobalStageError.StoreFailure.} =
   ## Inspect only the genuine selected storeReason refusal.

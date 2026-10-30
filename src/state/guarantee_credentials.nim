@@ -47,14 +47,17 @@ type
 func error*[T](outcome: GuaranteeCredentialResult[T]): GuaranteeCredentialError =
   ## Expose the status without permitting external retagging.
   outcome.status
+
 func value*[T](outcome: GuaranteeCredentialResult[T]): T {.inline,
     requires: outcome.status == GuaranteeCredentialError.None.} =
   ## Extract only a completed operation under supported optimized-build contracts.
   outcome.completed
+
 func structureError*[T](outcome: GuaranteeCredentialResult[T]): GuaranteeError {.inline,
     requires: outcome.status == GuaranteeCredentialError.StructureFailure.} =
   ## Inspect the codec's precise refusal only when the structure-failure alternative is selected.
   outcome.structureReason
+
 func assignmentError*[T](outcome: GuaranteeCredentialResult[T]): GuarantorError {.inline,
     requires: outcome.status == GuaranteeCredentialError.AssignmentFailure.} =
   ## Inspect rotation/profile/index/slot failures only when the assignment-failure alternative is selected.
@@ -108,8 +111,8 @@ proc verifiedReporterAt*(owner: VerifiedGuaranteeCredentials,
   GuaranteeCredentialResult[StateEdKey](status: GuaranteeCredentialError.None,
       completed: data.reporters[index])
 
-## Compare exact public-key octets for set ordering; curve validity remains the maintained backend's policy.
 func compare(a, b: StateEdKey): int =
+  ## Compare exact public-key octets for set ordering; curve validity remains the maintained backend's policy.
   let left = array[32, byte](a)
   let right = array[32, byte](b)
   for i in 0..<32:
@@ -117,8 +120,8 @@ func compare(a, b: StateEdKey): int =
     if left[i] > right[i]: return 1 # First different byte establishes the larger key.
   0
 
-## Insert a verified key into bounded sorted scratch without counting duplicate identities twice.
 proc includeReporter(keys: var seq[StateEdKey], key: StateEdKey, ceiling: ElementLimit): bool =
+  ## Insert a verified key into bounded sorted scratch without counting duplicate identities twice.
   var first = 0
   var last = keys.len
   while first < last:

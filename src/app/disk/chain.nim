@@ -68,40 +68,49 @@ type
     else: discard # Canonical mismatch and default outcomes have no candidate payload.
 
 const BootstrapMagic = "RAGNAROK-DISK-BOOTSTRAP-V1\n" # Deliberately cannot decode as a canonical disk history.
+
 func error*[T](outcome: DiskChainResult[T]): DiskChainError =
   ## Observe only the selected outer stage.
   outcome.status
+
 func value*[T](outcome: DiskChainResult[T]): T {.inline,
     requires: outcome.status == DiskChainError.None.} =
   ## Access only a confirmed durable generation or fully restored canonical owner.
   outcome.completed
+
 func storeFailure*[T](outcome: DiskChainResult[T]): DiskStoreResult[StateStoreSnapshot] {.requires:
     outcome.status == DiskChainError.StoreFailure.} =
   ## Preserve the actual failed disk operation, including its typed IO uncertainty.
   outcome.storeReason
+
 func contextError*[T](outcome: DiskChainResult[T]): DiskHistoryError {.requires:
     outcome.status == DiskChainError.ContextFailure.} =
   ## Inspect only the selected bounded-history failure.
   outcome.contextReason
+
 func fileError*[T](outcome: DiskChainResult[T]): FileError {.requires:
     outcome.status == DiskChainError.FileFailure.} =
   ## Inspect only an actual context-read IO failure.
   outcome.fileReason
+
 func maintenanceFailure*[T](outcome: DiskChainResult[T]): DiskStoreResult[
     ManagedCompaction] {.requires:
     outcome.status == DiskChainError.MaintenanceFailure.} =
   ## Only an actual failed managed physical replacement exposes its guarded nested reason.
   outcome.maintenanceReason
+
 func historyError*[T](outcome: DiskChainResult[T]): HistoryError {.requires:
     outcome.status == DiskChainError.HistoryFailure.} =
   ## Historical file/codec/counter failures never expose a usable successor or ordinary IO receipt.
   outcome.historyReason
+
 proc diskSources(owner: ApplicationChain): DiskChainResult[seq[StateStoreSnapshot]] =
   ## Reuse one live validation/finality root contract across normal publication and historical policy changes.
   let sources = liveDiskSources(owner)
   if sources.error != HistoryError.None:
     return DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.CanonicalMismatch)
   DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.None, completed: sources.value)
+
 proc initializePagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: JournalLimits, replay = false): DiskChainResult[
         RepositoryGeneration] =
@@ -130,6 +139,7 @@ proc initializePagedDiskChain*(disk: var DiskStateStore, path: string, chain: St
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: initialized)
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
+
 proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: JournalLimits): DiskChainResult[RepositoryGeneration] =
   ## Exclusive creation provisions the configured rolling roots/finality, then one atomic canonical context.
@@ -166,6 +176,7 @@ proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: Storage
         storeReason: selected)
   adopted = true
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
+
 proc initializeManagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     owner: ApplicationChain, limits: ManagedLimits): DiskChainResult[RepositoryGeneration] =
   ## All rolling roots, explicit finality and canonical context are admitted before publishing one managed epoch.
@@ -188,6 +199,7 @@ proc initializeManagedDiskChain*(disk: var DiskStateStore, path: string, chain: 
         storeReason: initialized)
   assert uint64(disk.generation.value) == uint64(generation)
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
+
 proc acquireDiskChain(disk: var DiskStateStore, path: string, chain: StorageChainId,
     configuration: Parameters, policy: StateStoreLimits,
     limits: JournalLimits, managed: bool, physical: ManagedLimits, paged = false): DiskChainResult[
@@ -226,11 +238,13 @@ proc acquireDiskChain(disk: var DiskStateStore, path: string, chain: StorageChai
         checked.value) # Reclaim only already unselected files; cleanup diagnostics remain separate from canonical recovery.
   adopted = true
   DiskChainResult[ApplicationChain](status: DiskChainError.None, completed: restored.value)
+
 proc openDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     configuration: Parameters, policy: StateStoreLimits,
     limits: JournalLimits): DiskChainResult[ApplicationChain] =
   ## Existing single-file startup keeps its strict local-head and application context binding.
   acquireDiskChain(disk, path, chain, configuration, policy, limits, false, default(ManagedLimits))
+
 proc openManagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     configuration: Parameters, policy: StateStoreLimits,
     limits: ManagedLimits): DiskChainResult[ApplicationChain] =
@@ -238,11 +252,13 @@ proc openManagedDiskChain*(disk: var DiskStateStore, path: string, chain: Storag
   let journal = JournalLimits(repository: limits.repository, bytes: limits.journalBytes,
       contextBytes: limits.contextBytes)
   acquireDiskChain(disk, path, chain, configuration, policy, journal, true, limits)
+
 proc openPagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
     configuration: Parameters, policy: StateStoreLimits,
     limits: JournalLimits): DiskChainResult[ApplicationChain] =
   ## Only a completely admitted V2 local graph plus exact profile/history/finality binding yields a canonical application owner.
   acquireDiskChain(disk, path, chain, configuration, policy, limits, false, default(ManagedLimits), true)
+
 proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: ChainView,
     chain: StorageChainId, limit: ByteLimit): DiskChainResult[DiskPublicationContext] =
   ## Preflight exact canonical/disk authority and all fallible context encoding before IO begins.
@@ -304,13 +320,16 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   let captured = DiskPublicationContext(bytes: bytes, previous: selected.value,
     history: history, historical: historical.value, next: next)
   DiskChainResult[DiskPublicationContext](status: DiskChainError.None, completed: captured)
+
 func ready*(publication: PreparedDiskPublication): bool =
   ## Defaults never authorize worker publication or canonical update access.
   publication.initialized
+
 func chainUpdate*(publication: PreparedDiskPublication): PreparedChainUpdate {.requires:
     publication.initialized.} =
   ## Retain the original opaque update for host installation after a confirmed durable receipt.
   publication.update
+
 proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
     prepared: PreparedChainUpdate, chain: StorageChainId,
     limit: ByteLimit, replay = false): DiskChainResult[PreparedDiskPublication] =
@@ -338,6 +357,7 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
       update: prepared, context: context.value.bytes, previous: context.value.previous,
       history: context.value.history, historical: context.value.historical, replay: replay,
       next: context.value.next))
+
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
@@ -370,6 +390,7 @@ proc commitDiskPublication*(disk: var DiskStateStore,
   discard completePreparedHistory(disk, publication.historical,
       historical.value) # Confirmed publication survives cleanup refusal, available through disk.historyCleanupError.
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: publication.next)
+
 proc stageFailure[T](failed: DiskChainResult[T]): DiskChainResult[
     RepositoryGeneration] =
   ## Propagate only actual guarded preparation refusals without synthesizing missing variant payloads.
@@ -387,6 +408,7 @@ proc stageFailure[T](failed: DiskChainResult[T]): DiskChainResult[
     DiskChainResult[RepositoryGeneration](status: DiskChainError.GenerationOverflow)
   else:
     DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+
 proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
     prepared: PreparedChainUpdate, chain: StorageChainId,
     limit: ByteLimit): DiskChainResult[RepositoryGeneration] =
@@ -397,6 +419,7 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   if committed.error != DiskChainError.None: return committed
   owner.installPrepared(prepared) # No execution, capture or typed fallible composition remains after fsync.
   committed
+
 proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
     rpc: var rpc_server.Server, prepared: PreparedChainUpdate, chain: StorageChainId,
     limit: ByteLimit, lease: nil rpc_server.RpcChainLease = nil): DiskChainResult[
@@ -414,11 +437,13 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
 func ready*(publication: PreparedCurrentDiskPublication): bool =
   ## A default current publication never carries disk authority.
   publication.data != nil
+
 proc chainUpdate*(publication: PreparedCurrentDiskPublication): PreparedCurrentChainUpdate {.requires: publication.data != nil.} =
   ## The guarded retained update is installed only after a confirmed durable receipt.
   let data = publication.data
   assert data != nil # Retain one stable owner before nullable projection.
   data.update
+
 proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
     prepared: PreparedCurrentChainUpdate, chain: StorageChainId,
     limit: ByteLimit, replay = false): DiskChainResult[PreparedCurrentDiskPublication] =
@@ -449,6 +474,7 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
       update: prepared, context: context.value.bytes, previous: context.value.previous,
       history: context.value.history, historical: context.value.historical, replay: replay,
       next: context.value.next)))
+
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedCurrentDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
@@ -492,6 +518,7 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   if committed.error != DiskChainError.None: return committed
   owner.installPrepared(prepared) # No execution, capture or typed fallible composition remains after fsync.
   committed
+
 proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
     rpc: var rpc_server.Server, prepared: PreparedCurrentChainUpdate, chain: StorageChainId,
     limit: ByteLimit, lease: nil rpc_server.RpcChainLease = nil): DiskChainResult[
@@ -525,6 +552,7 @@ proc confirmsCurrentDiskPublication*(disk: DiskStateStore,
 func ready*(maintenance: PreparedDiskMaintenance): bool =
   ## Default/refused maintenance objects grant neither graph borrowing nor file mutation authority.
   maintenance.initialized
+
 proc prepareDiskMaintenance*(disk: DiskStateStore, owner: ApplicationChain,
     chain: StorageChainId, limit: ByteLimit): DiskChainResult[PreparedDiskMaintenance] =
   ## Capture only the current canonical rolling/finality roots after exact disk/context binding, without IO.
@@ -559,6 +587,7 @@ proc prepareDiskMaintenance*(disk: DiskStateStore, owner: ApplicationChain,
   DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.None,
     completed: PreparedDiskMaintenance(initialized: true, parent: current.value,
       generation: usage.value.generation, epoch: usage.value.epoch, context: context.value, roots: roots))
+
 proc commitDiskMaintenance*(disk: var DiskStateStore,
     maintenance: PreparedDiskMaintenance): DiskChainResult[ManagedCompaction] =
   ## Run only on the excluded storage worker/startup owner; physical replacement never installs a canonical successor.
@@ -657,6 +686,7 @@ proc retireHistoryPredecessor(disk: var DiskStateStore): HistoryError =
   if retired.error != DiskStoreError.None: return HistoryError.IoFailure
   if retired.value.retirementError != FileError.None: return HistoryError.PublishedUnsynced
   HistoryError.None
+
 proc configureDiskHistory*(disk: var DiskStateStore, owner: var ApplicationChain,
     chain: StorageChainId, policy: HistoryPolicy, limit: ByteLimit,
     recordBytes = DefaultHistoricalRecordBytes): DiskChainResult[RepositoryGeneration] =

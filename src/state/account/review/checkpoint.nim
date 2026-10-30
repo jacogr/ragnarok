@@ -37,47 +37,56 @@ type
       reviewReason: AccountReviewResult[StateAccountReview]
     else:
       discard
+
 func error*(outcome: AccountReviewCheckpointResult): AccountReviewCheckpointError =
   ## Read the immutable selected stage.
   outcome.status
+
 func value*(outcome: AccountReviewCheckpointResult): StateAccountReview {.inline,
     requires: outcome.status == AccountReviewCheckpointError.None.} =
   ## Only all completed same-source stages expose a restored account review.
   outcome.completed
+
 func checkpointFailure*(outcome: AccountReviewCheckpointResult): PlannedAccountCheckpointResult {.inline,
     requires: outcome.status == AccountReviewCheckpointError.CheckpointFailure.} =
   ## Preserve only the genuine failed checkpoint stage and its nested checked error contracts.
   outcome.checkpointReason
+
 func directoryFailure*(outcome: AccountReviewCheckpointResult): ServiceDirectoryResult[
     StateServiceDirectory] {.inline,
 
 requires: outcome.status == AccountReviewCheckpointError.DirectoryFailure.} =
   ## Preserve only the genuine failed directory stage and its nested checked error contracts.
   outcome.directoryReason
+
 func footprintFailure*(outcome: AccountReviewCheckpointResult): FootprintAuditResult[
     CheckedAccountFootprints] {.inline,
 
 requires: outcome.status == AccountReviewCheckpointError.FootprintFailure.} =
   ## Preserve only the genuine failed footprint stage and its nested checked error contracts.
   outcome.footprintReason
+
 func supervisionFailure*(outcome: AccountReviewCheckpointResult): SupervisionTableResult[
     StateSupervisionTable] {.inline,
 
 requires: outcome.status == AccountReviewCheckpointError.SupervisionFailure.} =
   ## Preserve only the genuine failed supervision stage and its nested checked error contracts.
   outcome.supervisionReason
+
 func economicsFailure*(outcome: AccountReviewCheckpointResult): EconomicsTableResult[
     StateEconomicsTable] {.inline,
 
 requires: outcome.status == AccountReviewCheckpointError.EconomicsFailure.} =
   ## Preserve only the genuine failed economics stage and its nested checked error contracts.
   outcome.economicsReason
+
 func reviewFailure*(outcome: AccountReviewCheckpointResult): AccountReviewResult[
     StateAccountReview] {.inline,
 
 requires: outcome.status == AccountReviewCheckpointError.ReviewFailure.} =
   ## Preserve only the genuine failed review stage and its nested checked error contracts.
   outcome.reviewReason
+
 proc decodeAccountReviewCheckpoint*(input: openArray[byte], expected: StateRoot,
     services: openArray[StateService], profile: StateProfile, economics: StateEconomicProfile,
     limits: AccountReviewCheckpointLimits): AccountReviewCheckpointResult =

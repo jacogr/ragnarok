@@ -47,9 +47,11 @@ type CurrentDownloadCommandOutcome* = object ## Immutable scalar diagnostics des
 func error*(outcome: CurrentDownloadCommandOutcome): CurrentDownloadCommandResult =
   ## Preserve the terminal reason independently of earlier confirmed progress.
   outcome.status
+
 func requestedBlocks*(outcome: CurrentDownloadCommandOutcome): int =
   ## Report the validated finite request; invalid/default options have zero requested work.
   outcome.requested
+
 func adoptedBlocks*(outcome: CurrentDownloadCommandOutcome): int =
   ## Count actual canonical advancement observed only after joined child teardown, including confirmed shutdown receipts.
   outcome.adopted
@@ -400,6 +402,7 @@ proc receiveContinuously(owner: var Services, options: Options, peers: seq[Downl
 
 type LogicalSourceRefreshError {.pure.} = enum ## Private file-stage status cannot grant adoption or a logical certificate.
   None, ExportFailure, IoFailure, PublishedUnsynced
+
 proc refreshLogicalSource(path: string, source: CurrentLogicalState,
     projection: SuppliedServicesLimits): LogicalSourceRefreshError =
   ## Run only after transport/Services teardown, admitting detached text plus native bytes under one explicit projection byte budget.

@@ -42,28 +42,35 @@ type
     nextEvent, lost: uint64
     firstLost, lastLost: Timestamp
 
-# OS interfaces borrow stack addresses and buffers synchronously, including failed calls.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-# Connect returns immediately because the descriptor is made nonblocking before use.
+  ## OS interfaces borrow stack addresses and buffers synchronously, including failed calls.
+
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
-# Readiness never waits and reports connection completion through SO_ERROR below.
+  ## Connect returns immediately because the descriptor is made nonblocking before use.
+
 proc poll(entries: ptr PollEntry, count: culong, timeout: cint): cint {.importc: "poll",
     header: "<poll.h>".}
-# Send copies at most the fixed queued frame prefix into the kernel.
+  ## Readiness never waits and reports connection completion through SO_ERROR below.
+
 proc sendBytes(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
-# Socket option calls expose only fixed scalar option storage.
+  ## Send copies at most the fixed queued frame prefix into the kernel.
+
 proc getOption(fd, level, option: cint, value: pointer,
     size: ptr SockLen): cint {.importc: "getsockopt", header: "<sys/socket.h>".}
-# Disable SIGPIPE per socket on BSD so a dead collector cannot terminate the peer.
+  ## Socket option calls expose only fixed scalar option storage.
+
 proc setOption(fd, level, option: cint, value: pointer,
     size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-# Parse numeric IP literals only; no DNS work occurs on the peer dispatcher.
+  ## Disable SIGPIPE per socket on BSD so a dead collector cannot terminate the peer.
+
 proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
     header: "<arpa/inet.h>".}
-# Ports are converted independently of host byte order.
+  ## Parse numeric IP literals only; no DNS work occurs on the peer dispatcher.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
+  ## Ports are converted independently of host byte order.
 
 let
   Writable {.importc: "POLLOUT", header: "<poll.h>".}: cshort
@@ -82,8 +89,9 @@ else:
   # Linux suppresses SIGPIPE on each send without changing process-wide signal handlers.
   let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint
 
-# Native ownership may move but must never copy a live socket descriptor.
 proc `=copy`*(destination: var Client, source: Client) {.error: "Telemetry Client owns one descriptor".}
+  ## Native ownership may move but must never copy a live socket descriptor.
+
 proc `=dup`*(source: Client): Client {.error.}
   ## Implicit duplication cannot duplicate native retirement authority.
 
@@ -177,8 +185,8 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   client.enabled = true
   true
 
-# Retire a failed stream and retry later with a new registration and event-ID namespace.
 proc failed(client: var Client, now: int64) =
+  ## Retire a failed stream and retry later with a new registration and event-ID namespace.
   # An established or in-progress descriptor has exactly one close on this path.
   if client.opened: discard posix.close(client.fd)
   client.opened = false
@@ -190,17 +198,17 @@ proc failed(client: var Client, now: int64) =
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Warn,
     "Telemetry collector connection unavailable; retrying in 5s")
 
-# Retain one complete bounded frame; caller must have finished the preceding frame.
 proc queue(client: var Client, bytes: openArray[byte], now: int64) =
+  ## Retain one complete bounded frame; caller must have finished the preceding frame.
   client.length = bytes.len
   client.offset = 0
   client.deadline = now + 5000
   # Encoders are internally bounded below this fixed buffer's capacity.
   for i in 0..<bytes.len: client.buffer[i] = bytes[i]
 
-# Assign one implicit ID even when a bounded buffer or disconnected collector loses the event.
-# Every frame may append behind a partial frame when the fixed buffer has room.
 proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Timestamp): EventId =
+  ## Assign one implicit ID even when a bounded buffer or disconnected collector loses the event.
+  ## Every frame may append behind a partial frame when the fixed buffer has room.
   result = EventId(client.nextEvent)
   if not client.enabled: return # Disabled instrumentation neither allocates IDs nor owns resources.
   if client.nextEvent == high(uint64):
@@ -247,8 +255,8 @@ proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
   if not client.enabled: return # Disabled clients do not allocate or consume event IDs.
   discard client.event(disconnected(timestamp, identity), now, timestamp)
 
-# Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
+  ## Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connecting to telemetry collector")
   let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
   client.fd = socket(cint(ord(family)), cint(ord(nativesocket.SOCK_STREAM)), 0)

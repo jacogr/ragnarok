@@ -86,30 +86,37 @@ type
 func error*[T](outcome: AuthorizationInvocationResult[T]): AuthorizationInvocationError =
   ## Inspect the selected alternative without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: AuthorizationInvocationResult[T]): T
     {.requires: outcome.status == AuthorizationInvocationError.None.} =
   ## Extract only complete selected success under checked optimized contracts.
   outcome.completed
+
 func lookupError*[T](outcome: AuthorizationInvocationResult[T]): HistoricalLookupError
     {.requires: outcome.status == AuthorizationInvocationError.LookupFailure.} =
   ## Inspect only historical lookup's original local refusal.
   outcome.lookupReason
+
 func initializationError*[T](outcome: AuthorizationInvocationResult[T]): InitializationError
     {.requires: outcome.status == AuthorizationInvocationError.InitializationFailure.} =
   ## Inspect only initialization's exact refusal rather than a fabricated work error.
   outcome.initializationReason
+
 func fetchError*[T](outcome: AuthorizationInvocationResult[T]): FetchError
     {.requires: outcome.status == AuthorizationInvocationError.FetchFailure.} =
   ## Inspect only fetch-environment capture failure.
   outcome.fetchReason
+
 func hostError*[T](outcome: AuthorizationInvocationResult[T]): AuthorizationHostError
     {.requires: outcome.status == AuthorizationInvocationError.HostFailure.} =
   ## Inspect only a callback's exact local refusal.
   outcome.hostReason
+
 func executionError*[T](outcome: AuthorizationInvocationResult[T]): StepError
     {.requires: outcome.status == AuthorizationInvocationError.ExecutionFailure.} =
   ## Inspect only engine budget/instruction refusal, without a terminal CPU.
   outcome.executionReason
+
 proc authorizationInfo*(invocation: AuthorizationInvocation): AuthorizationInvocationResult[
     AuthorizationInvocationInfo] =
   ## Copy normalized facts only from a complete owner.
@@ -118,6 +125,7 @@ proc authorizationInfo*(invocation: AuthorizationInvocation): AuthorizationInvoc
       status: AuthorizationInvocationError.Uninitialized)
   AuthorizationInvocationResult[AuthorizationInvocationInfo](
       status: AuthorizationInvocationError.None, completed: data.info)
+
 proc authorizationPackage*(invocation: AuthorizationInvocation): AuthorizationInvocationResult[
     OwnedWorkPackage] =
   ## Retain exactly the original package used for code selection, host capture and execution.
@@ -126,6 +134,7 @@ proc authorizationPackage*(invocation: AuthorizationInvocation): AuthorizationIn
       status: AuthorizationInvocationError.Uninitialized)
   AuthorizationInvocationResult[OwnedWorkPackage](status: AuthorizationInvocationError.None,
       completed: data.source.package)
+
 proc authorizationState*(invocation: AuthorizationInvocation): AuthorizationInvocationResult[
     StateStoreSnapshot] =
   ## Preserve the actual complete source map for later source-bound report composition.
@@ -134,6 +143,7 @@ proc authorizationState*(invocation: AuthorizationInvocation): AuthorizationInvo
       status: AuthorizationInvocationError.Uninitialized)
   AuthorizationInvocationResult[StateStoreSnapshot](status: AuthorizationInvocationError.None,
       completed: data.source.state)
+
 proc authorizationParameters*(invocation: AuthorizationInvocation): AuthorizationInvocationResult[Parameters] =
   ## Retain the original parameter snapshot rather than a caller's substitute during later composition/replay.
   let data = invocation.data
@@ -141,6 +151,7 @@ proc authorizationParameters*(invocation: AuthorizationInvocation): Authorizatio
       status: AuthorizationInvocationError.Uninitialized)
   AuthorizationInvocationResult[Parameters](status: AuthorizationInvocationError.None,
       completed: data.source.parameters)
+
 proc authorizationTrace*(invocation: AuthorizationInvocation): AuthorizationInvocationResult[seq[byte]] =
   ## Return an independent Success-only byte copy, including explicit readable/unreadable empty output.
   let data = invocation.data
@@ -165,6 +176,7 @@ proc complete(source: AuthorizationSource, kind: WorkKind, used: Gas, trace: seq
     AuthorizationData(source: source, info: info, hasTrace: false) # Work errors have no successful trace storage.
   AuthorizationInvocationResult[AuthorizationInvocation](status: AuthorizationInvocationError.None,
     completed: AuthorizationInvocation(data: data))
+
 proc dispatch(context: var AuthorizationContext, stopped: StepOutcome): HostResult[
     AuthorizationHostError] =
   ## Dispatch Psi_I's general hosts and JIP-1 logging; other IDs retain charged WHAT semantics.

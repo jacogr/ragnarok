@@ -38,26 +38,31 @@ type
 func error*(value: TicketWrite): TicketError =
   ## Read write outcomes without exposing a mutable discriminator.
   value.status
+
 func error*(value: TicketRead): TicketError =
   ## Read decode/inspection outcomes; failed/default alternatives carry no progress.
   value.status
+
 func written*(value: TicketWrite): int {.inline, requires: value.status == TicketError.None.} =
   ## Successful preflight and commit are required before observing the written prefix.
   value.byteWritten
+
 func count*(value: TicketRead): int {.inline, requires: value.status == TicketError.None.} =
   ## Only a complete validated sequence exposes its initialized record count.
   value.recordCount
+
 func consumed*(value: TicketRead): int {.inline, requires: value.status == TicketError.None.} =
   ## Failed decode/inspection cannot advance a caller's input cursor.
   value.byteConsumed
 
-# Nominal attempt equality supports fully owned record comparisons without implicit integer conversion.
 func `==`*(a, b: TicketAttempt): bool {.borrow.}
-# Proof equality compares bytes without converting proof encodings into other cryptographic roles.
-func `==`*(a, b: TicketProof): bool {.borrow.}
+  ## Nominal attempt equality supports fully owned record comparisons without implicit integer conversion.
 
-# Compare address distances without overflowing endpoints; zero-length ranges have no overlap.
+func `==`*(a, b: TicketProof): bool {.borrow.}
+  ## Proof equality compares bytes without converting proof encodings into other cryptographic roles.
+
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare address distances without overflowing endpoints; zero-length ranges have no overlap.
   # Empty typed/wire prefixes require no valid element address.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)

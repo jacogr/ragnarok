@@ -60,6 +60,7 @@ type
 func error*[T](value: CollectionResult[T]): CollectionError =
   ## Outcomes remain read-only; only complete success authorizes values, owners or progress.
   value.status
+
 func value*[T](value: CollectionResult[T]): T {.inline, requires: value.status ==
     CollectionError.None.} =
   ## Supported contracts replace unchecked raw variant-field reads on this compiler.
@@ -146,22 +147,22 @@ proc scalarLess*[N: static[int]](a, b: CollectionBytes[N]): bool =
     if a.bytes[i] != b.bytes[i]: return a.bytes[i] < b.bytes[i]
   false
 
-# Commit a previously preflighted natural into a caller destination at a proved cursor.
 proc put(value: JamNatural, output: var openArray[byte], cursor: var int) =
+  ## Commit a previously preflighted natural into a caller destination at a proved cursor.
   let encoded = natural.encode(value)
   # Canonical scalar bytes fit because parent source/capacity checks have already completed.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]
   cursor += encoded.len
 
-# Commit an already width-checked unsigned value without another failure path or source allocation.
 proc put[W: static[int]](value: CollectionUInt[W], output: var openArray[byte], cursor: var int) =
+  ## Commit an already width-checked unsigned value without another failure path or source allocation.
   let encoded = encodeFixed(value.value, ByteWidth(W))
   # Parent source validation proves the primitive success alternative and complete destination extent.
   for i in 0..<W: output[cursor+i] = encoded.encoded.bytes[i]
   cursor += W
 
-# Commit fixed bytes exactly as supplied; keys have already been checked in logical order.
 proc put[N: static[int]](value: CollectionBytes[N], output: var openArray[byte], cursor: var int) =
+  ## Commit fixed bytes exactly as supplied; keys have already been checked in logical order.
   # Copy only the schema's bytes, preserving all unrelated destination suffix capacity.
   for i in 0..<N: output[cursor+i] = value.bytes[i]
   cursor += N
@@ -210,21 +211,32 @@ proc encodeScalar*[N: static[int]](value: CollectionBytes[N], output: var openAr
 type
   CollectionScalar* = concept ## Exported checked scalar operations let Nimony verify generic callers across module boundaries.
     proc default(T: typedesc[Self]): Self
-    proc scalarMinimum(T: typedesc[Self]): int
-    proc readScalar(T: typedesc[Self], input: openArray[byte]): CollectionResult[ScalarRead[Self]]
-    proc scalarSize(value: Self): CollectionResult[int]
-    proc scalarLess(a, b: Self): bool
-    proc encodeScalar(value: Self, output: var openArray[byte]): CollectionResult[int]
+      ## Require a default scalar value for generic collection initialization.
 
-# Parent preflight already proves scalar encoding succeeds; keep cursor commits inside this module.
+    proc scalarMinimum(T: typedesc[Self]): int
+      ## Require the minimum encoded byte extent for scalar preflight.
+
+    proc readScalar(T: typedesc[Self], input: openArray[byte]): CollectionResult[ScalarRead[Self]]
+      ## Require bounded scalar decoding with its consumed byte count and typed refusal.
+
+    proc scalarSize(value: Self): CollectionResult[int]
+      ## Require checked encoded-size measurement before collection output is mutated.
+
+    proc scalarLess(a, b: Self): bool
+      ## Require scalar ordering for canonical collection comparisons.
+
+    proc encodeScalar(value: Self, output: var openArray[byte]): CollectionResult[int]
+      ## Require checked scalar encoding into the caller-owned output span.
+
 proc put[T: CollectionScalar and CollectionFamily](value: T, output: var openArray[byte],
     cursor: var int) =
+  ## Parent preflight already proves scalar encoding succeeds; keep cursor commits inside this module.
   let encoded = encodeScalar(value, output.toOpenArray(cursor, output.high))
   assert encoded.error == CollectionError.None # Whole-parent preflight establishes this complete field.
   cursor += encoded.value
 
-# Detect intersection by address distance without overflowing endpoint sums, including empty encodings.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
+  ## Detect intersection by address distance without overflowing endpoint sums, including empty encodings.
   # Empty source/destination ranges need no valid element address and cannot intersect.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)
@@ -235,8 +247,8 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
     # Exchanging the ranges preserves the same overflow-free intersection test.
     left-right < uint(bn)
 
-# Increment parent serialized extent only after checked host arithmetic and explicit byte policy.
 proc grow(cursor: var int, amount: int, limits: CollectionLimits): CollectionError =
+  ## Increment parent serialized extent only after checked host arithmetic and explicit byte policy.
   # Child sizes are nonnegative, but their sum still needs a host-int overflow proof.
   if amount > high(int)-cursor: return CollectionError.LengthOverflow
   cursor += amount
@@ -244,9 +256,9 @@ proc grow(cursor: var int, amount: int, limits: CollectionLimits): CollectionErr
   if uint64(cursor) > uint64(limits.maxBytes): return CollectionError.LimitExceeded
   CollectionError.None
 
-# Establish a canonical count, count policy, typed allocation bound and minimum payload extent without allocation.
 proc frame[T](input: openArray[byte], count: CollectionCount, variable: bool,
     stride: int, limits: CollectionLimits): CollectionResult[Layout] =
+  ## Establish a canonical count, count policy, typed allocation bound and minimum payload extent without allocation.
   var n = uint64(count)
   var offset = 0
   # Only variable sets and dictionaries carry a natural element/pair count.
@@ -277,9 +289,9 @@ proc frame[T](input: openArray[byte], count: CollectionCount, variable: bool,
   CollectionResult[Layout](status: CollectionError.None,
     completed: Layout(count: int(n), offset: offset, consumed: offset))
 
-# Scan a complete set before allocating typed snapshot storage; duplicates/descending elements are rejected, never sorted.
 proc scanSet[T: CollectionScalar and CollectionFamily](input: openArray[byte],
     count: CollectionCount, variable: bool, limits: CollectionLimits): CollectionResult[Layout] =
+  ## Scan a complete set before allocating typed snapshot storage; duplicates/descending elements are rejected, never sorted.
   let framed = frame[T](input, count, variable, scalarMinimum(T), limits)
   # Failed framing supplies no narrowed count or successful cursor.
   if framed.error != CollectionError.None: return framed
@@ -299,11 +311,11 @@ proc scanSet[T: CollectionScalar and CollectionFamily](input: openArray[byte],
     previous = parsed.value.value
   CollectionResult[Layout](status: CollectionError.None, completed: layout)
 
-# Capture value-only scalar snapshots after whole-set validation, while caller input remains stable for this call.
 proc decodeSetImpl[T: CollectionScalar and CollectionFamily](input: openArray[byte],
     count: CollectionCount, variable: bool,
 
 limits: CollectionLimits): CollectionResult[CollectionRead[OwnedSet[T]]] =
+  ## Capture value-only scalar snapshots after whole-set validation, while caller input remains stable for this call.
   let scanned = scanSet[T](input, count, variable, limits)
   # Failed/default alternatives cannot publish a parent owner or partial element count.
   if scanned.error != CollectionError.None:
@@ -328,10 +340,10 @@ proc decodeVariableSet*[T: CollectionScalar and CollectionFamily](input: openArr
   ## Decode an explicitly variable set using C.1.3's canonical natural cardinality discriminator.
   decodeSetImpl[T](input, CollectionCount(0), true, limits)
 
-# Validate every source scalar and strict logical order before capacity, aliases or the first committed byte.
 proc encodeSetImpl[T: CollectionScalar and CollectionFamily](values: openArray[T],
     count: CollectionCount, variable: bool, limits: CollectionLimits, output: var openArray[
         byte]): CollectionResult[int] =
+  ## Validate every source scalar and strict logical order before capacity, aliases or the first committed byte.
   discard scalarMinimum(T)
   # Fixed schemas cannot silently drop, duplicate or invent caller source elements.
   if uint64(values.len) != uint64(count): return CollectionResult[int](
@@ -375,11 +387,11 @@ proc encodeSetImpl[T: CollectionScalar and CollectionFamily](values: openArray[T
   for value in values: put(value, output, cursor)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
-# Encode a fixed-cardinality canonical set without adding an implicit sequence count.
 proc encodeSet*[T: CollectionScalar and CollectionFamily](values: openArray[T],
     count: CollectionCount, limits: CollectionLimits,
 
 output: var openArray[byte]): CollectionResult[int] =
+  ## Encode a fixed-cardinality canonical set without adding an implicit sequence count.
   encodeSetImpl(values, count, false, limits, output)
 
 proc encodeVariableSet*[T: CollectionScalar and CollectionFamily](values: openArray[T],
@@ -387,9 +399,9 @@ proc encodeVariableSet*[T: CollectionScalar and CollectionFamily](values: openAr
   ## Encode an explicitly variable canonical set with one natural element count.
   encodeSetImpl(values, CollectionCount(uint64(values.len)), true, limits, output)
 
-# Scan every key/value in dictionary order before allocating a retained typed record array.
 proc scanDictionary[K, V: CollectionScalar and CollectionFamily](input: openArray[byte],
     limits: CollectionLimits): CollectionResult[Layout] =
+  ## Scan every key/value in dictionary order before allocating a retained typed record array.
   let keySize = scalarMinimum(K)
   let valueSize = scalarMinimum(V)
   # Compile-time schemas still need a safe minimum-stride sum on the target host.
@@ -507,11 +519,11 @@ proc setAt*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T],
       status: CollectionError.InvalidIndex)
   CollectionResult[T](status: CollectionError.None, completed: data.values[index])
 
-# Re-emit a retained set with fixed cardinality under the caller's current policy and destination constraints.
 proc encodeOwnedSet*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T],
     count: CollectionCount, limits: CollectionLimits,
 
 output: var openArray[byte]): CollectionResult[int] =
+  ## Re-emit a retained set with fixed cardinality under the caller's current policy and destination constraints.
   let data = owner.data
   # Missing ownership must not authorize an empty source or expose a default sequence.
   if data == nil: return CollectionResult[int](status: CollectionError.InvalidOwner)

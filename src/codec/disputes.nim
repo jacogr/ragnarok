@@ -76,40 +76,42 @@ type
 func error*[T](value: DisputeResult[T]): DisputeError =
   ## Observe a generic operation's outcome without permitting safe-code retagging.
   value.status
+
 func value*[T](value: DisputeResult[T]): T {.inline, requires: value.status == DisputeError.None.} =
   ## Only complete validated operations expose application values, owners or progress.
   value.completed
+
 func disputeFailure*[T](reason: DisputeError): DisputeResult[T] {.requires: reason !=
     DisputeError.None.} =
   ## Sibling adapters can construct a failure reason, never success without a completed operation.
   DisputeResult[T](status: reason)
 
-# Both eligible populations must fit this GP 0.8.0 domain; selecting the actual epoch set is external.
 proc validConfig(config: DisputeConfig): bool {.raises: [].} =
+  ## Both eligible populations must fit this GP 0.8.0 domain; selecting the actual epoch set is external.
   uint64(config.validators) in 6'u64..1023'u64 and uint64(config.validators) mod 3 == 0
 
-# Read exact little-endian E2/E4 fields only after their enclosing extent is proved.
 proc integer(input: openArray[byte], start, width: int): uint32 {.raises: [].} =
+  ## Read exact little-endian E2/E4 fields only after their enclosing extent is proved.
   result = 0
   # Each shift stays within the explicitly bounded four-byte scalar.
   for i in 0..<width: result = result or (uint32(input[start+i]) shl (8*i))
 
-# Copy a fixed-width identity or signature without retaining a caller pointer.
 proc fixed[N: static[int]](input: openArray[byte], start: int): array[N, byte] {.raises: [].} =
+  ## Copy a fixed-width identity or signature without retaining a caller pointer.
   result = default(array[N, byte])
   # Callers prove the complete fixed extent before invoking this private helper.
   for i in 0..<N: result[i] = input[start+i]
 
-# Lexicographic byte order is the GP ordering for hashes and Ed25519 encodings.
 proc increasing(a, b: array[32, byte]): bool {.raises: [].} =
+  ## Lexicographic byte order is the GP ordering for hashes and Ed25519 encodings.
   # The first unequal octet determines order; equal identities are duplicates.
   for i in 0..<32:
     # Equal prefixes need another octet; the first difference decides the unique ordering.
     if a[i] != b[i]: return a[i] < b[i]
   false
 
-# Scan without allocation; no partially checked metadata can escape through a failed result.
 proc scan(input: openArray[byte], config: DisputeConfig): DisputeResult[Layout] {.raises: [].} =
+  ## Scan without allocation; no partially checked metadata can escape through a failed result.
   # Reject invalid caller domains before inspecting attacker bytes.
   if not validConfig(config): return DisputeResult[Layout](status: DisputeError.InvalidConfig)
   var layout: Layout = default(Layout)
@@ -208,8 +210,8 @@ proc decodeDisputes*(input: openArray[byte], config: DisputeConfig): DisputeResu
   DisputeResult[DisputesRead](status: DisputeError.None,
     completed: DisputesRead(owner: OwnedDisputes(data: data), info: parsed.value.info))
 
-# Preflight all source fields and byte arithmetic before any destination write or capacity check.
 proc measure(value: Disputes, config: DisputeConfig): DisputeResult[int] {.raises: [].} =
+  ## Preflight all source fields and byte arithmetic before any destination write or capacity check.
   # Uninitialized profiles and excessive section counts cannot authorize source traversal.
   if not validConfig(config): return DisputeResult[int](status: DisputeError.InvalidConfig)
   # Each GP section has its own sixteen-record bound.
@@ -253,8 +255,8 @@ proc measure(value: Disputes, config: DisputeConfig): DisputeResult[int] {.raise
     return DisputeResult[int](status: DisputeError.LimitExceeded)
   DisputeResult[int](status: DisputeError.None, completed: required)
 
-# Compare address distances instead of potentially overflowing end addresses.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare address distances instead of potentially overflowing end addresses.
   # Empty sources have neither an address to read nor bytes to overlap.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)

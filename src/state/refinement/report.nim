@@ -67,14 +67,17 @@ type
 func error*[T](outcome: RefinementReportResult[T]): RefinementReportError =
   ## Inspect a read-only discriminator.
   outcome.status
+
 func value*[T](outcome: RefinementReportResult[T]): T
     {.requires: outcome.status == RefinementReportError.None.} =
   ## Extract only the complete selected result.
   outcome.completed
+
 func bootstrapError*[T](outcome: RefinementReportResult[T]): RefinementBootstrapError
     {.requires: outcome.status == RefinementReportError.BootstrapFailure.} =
   ## Preserve the exact preparation refusal without inventing an invocation error.
   outcome.bootstrapReason
+
 func invocationError*[T](outcome: RefinementReportResult[T]): RefinementInvocationResult[RefinementInvocation]
     {.requires: outcome.status == RefinementReportError.InvocationFailure.} =
   ## Retain the failed invocation alternative, including its guarded host/engine/capture detail.
@@ -87,6 +90,7 @@ proc reportInfo*(report: RefinedPackage): RefinementReportResult[RefinementRepor
       status: RefinementReportError.Uninitialized)
   RefinementReportResult[RefinementReportInfo](status: RefinementReportError.None,
       completed: data.info)
+
 proc reportPackage*(report: RefinedPackage): RefinementReportResult[OwnedWorkPackage] =
   ## Retain the original immutable package for subsequent source-bound digest construction.
   let data = report.data
@@ -94,6 +98,7 @@ proc reportPackage*(report: RefinedPackage): RefinementReportResult[OwnedWorkPac
       status: RefinementReportError.Uninitialized)
   RefinementReportResult[OwnedWorkPackage](status: RefinementReportError.None,
       completed: data.package)
+
 proc reportTrace*(report: RefinedPackage): RefinementReportResult[seq[byte]] =
   ## Return an independent copy of the exact trace used for this result.
   let data = report.data
@@ -102,6 +107,7 @@ proc reportTrace*(report: RefinedPackage): RefinementReportResult[seq[byte]] =
   var copied = newSeq[byte](data.trace.len)
   for index in 0..<copied.len: copied[index] = data.trace[index] # Never expose writable retained storage.
   RefinementReportResult[seq[byte]](status: RefinementReportError.None, completed: copied)
+
 proc reportItem*(report: RefinedPackage, index: FetchItemIndex): RefinementReportResult[
     RefinedWorkItem] =
   ## Validate the full-width nominal index before narrowing to the bounded sequence extent.
@@ -112,18 +118,21 @@ proc reportItem*(report: RefinedPackage, index: FetchItemIndex): RefinementRepor
     return RefinementReportResult[RefinedWorkItem](status: RefinementReportError.InvalidIndex)
   RefinementReportResult[RefinedWorkItem](status: RefinementReportError.None, completed: data.items[
       int(uint64(index))])
+
 proc refinedInfo*(item: RefinedWorkItem): RefinementReportResult[RefinedItemInfo] =
   ## Copy normalized item facts without exposing writable result storage or source handles.
   let data = item.data
   if data == nil: return RefinementReportResult[RefinedItemInfo](
       status: RefinementReportError.Uninitialized)
   RefinementReportResult[RefinedItemInfo](status: RefinementReportError.None, completed: data.info)
+
 proc refinedSource*(item: RefinedWorkItem): RefinementReportResult[OwnedWorkItem] =
   ## Keep source extraction bound to this exact item's original owned package.
   let data = item.data
   if data == nil: return RefinementReportResult[OwnedWorkItem](
       status: RefinementReportError.Uninitialized)
   RefinementReportResult[OwnedWorkItem](status: RefinementReportError.None, completed: data.source)
+
 proc refinedOutput*(item: RefinedWorkItem): RefinementReportResult[seq[byte]] =
   ## Only final Success exposes an independent copy; rejected raw outputs never become report blobs.
   let data = item.data
@@ -134,6 +143,7 @@ proc refinedOutput*(item: RefinedWorkItem): RefinementReportResult[seq[byte]] =
   var copied = newSeq[byte](data.bytes.len)
   for index in 0..<copied.len: copied[index] = data.bytes[index] # No mutable alias to accepted bytes escapes.
   RefinementReportResult[seq[byte]](status: RefinementReportError.None, completed: copied)
+
 proc refinedSegment*(item: RefinedWorkItem, index: ExportCount): RefinementReportResult[FetchSegment] =
   ## Synthesize protocol zero replacements lazily, bounded by the original declaration rather than caller sizes.
   let data = item.data

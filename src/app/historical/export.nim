@@ -12,8 +12,10 @@ import ../../codec/bounded
 proc resolveNative(path: cstring, buffer: nil cstring): nil cstring {.importc: "realpath", cdecl,
     header: "<stdlib.h>".}
   ## A nil output requests libc-owned exact canonical bytes without guessing the platform PATH_MAX.
+
 proc freeNative(address: nil pointer) {.importc: "free", cdecl, header: "<stdlib.h>".}
   ## Every successful libc path allocation has one local retirement, including later guard refusals.
+
 proc resolved(path: string): HistoryResult[string] =
   ## Resolve existing ancestors, dot components and symbolic links while owning all returned bytes.
   var name = path
@@ -21,6 +23,7 @@ proc resolved(path: string): HistoryResult[string] =
   if native == nil: return historyFailure[string](HistoryError.IoFailure)
   defer: freeNative(cast[nil pointer](native)) # Copy before retiring the foreign allocation on every return.
   historySuccess($native)
+
 proc destination(path: string): HistoryResult[string] =
   ## A new filename needs a real existing parent; resolve that parent rather than requiring the new file to exist.
   var slash = -1
@@ -32,9 +35,11 @@ proc destination(path: string): HistoryResult[string] =
   let directory = resolved(parent)
   if directory.error != HistoryError.None: return directory
   historySuccess(directory.value & (if directory.value == "/": "" else: "/") & name)
+
 func sameFile(left, right: Stat): bool =
   ## Native device/inode identity also covers case-folding filesystems and alternative directory aliases.
   left.st_dev == right.st_dev and left.st_ino == right.st_ino
+
 proc protectedAncestor(output: string, selected, archive: Stat, hasArchive: bool): HistoryError =
   ## Walk existing parent identities without a directory listing or trusting textual canonicalization alone.
   var ancestor = output
@@ -48,9 +53,11 @@ proc protectedAncestor(output: string, selected, archive: Stat, hasArchive: bool
       return HistoryError.InvalidPolicy
     if ancestor == "/": break # Parent extents strictly decrease until the native root is checked.
   HistoryError.None
+
 func within(path, root: string): bool =
   ## Separator-aware matching protects a namespace without treating similarly prefixed siblings as children.
   path == root or path.startsWith(root & "/")
+
 proc exportHistoricalCheckpoint*(database, path: string, bytes: openArray[byte],
     limit: ByteLimit): HistoryError =
   ## Reject physical source aliases and database-owned namespaces before creating any output; occupied names fail atomically.

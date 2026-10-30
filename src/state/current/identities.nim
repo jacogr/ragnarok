@@ -47,18 +47,22 @@ type
       identity: StateKey
     else:
       discard # No failed/default identity result carries executable continuation evidence.
+
 func error*[T](outcome: CurrentIdentityResult[T]): CurrentIdentityError =
   ## Read selected immutable stage without retagging or constructing a successful owner.
   outcome.status
+
 func value*[T](outcome: CurrentIdentityResult[T]): T {.inline, requires: outcome.status ==
     CurrentIdentityError.None.} =
   ## Successful exact-original observations alone grant payload access.
   outcome.completed
+
 func refusedIdentity*[T](outcome: CurrentIdentityResult[T]): StateKey {.inline,
     requires: outcome.status == CurrentIdentityError.MissingIdentity or outcome.status ==
     CurrentIdentityError.NewIdentity.} =
   ## Copy only the first actual missing/new complete-map identity, not a logical mutation event.
   outcome.identity
+
 func compare(left, right: StateKey): int =
   ## Lexicographic order matches complete store key sorting without byte-array allocation.
   let a = array[31, byte](left)
@@ -67,6 +71,7 @@ func compare(left, right: StateKey): int =
     if a[i] < b[i]: return -1 # First differing octet fixes deterministic key order.
     if a[i] > b[i]: return 1
   0
+
 proc preserveSource(source: IdentitySource, update: PreparedCurrentChainUpdate,
     limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
   ## Check exact private configured/completed original context and all view/key work before copying or traversal; no payload copy/hash occurs.
@@ -136,6 +141,7 @@ proc preserveSource(source: IdentitySource, update: PreparedCurrentChainUpdate,
       prior: source.prior, logical: source.logical, origin: source.origin, update: update,
       info: CurrentIdentityInfo(entries: oldCount, keyChecks: uint64(limits.keys)-keys,
           viewBytes: budget-available)))
+
 proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedCurrentChainUpdate,
     limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
   ## Configured startup source remains distinct from completed current provenance, sharing only the private fixed original comparison path.
@@ -147,6 +153,7 @@ proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedC
   preserveSource(IdentitySource(origin: IdentityOrigin.Configured, parent: parent, prior: default(
       CurrentLogicalState), logical: parent.logicalParentInventory.value,
       context: profile.parentContext.value, viewInfo: profile.parentProfileInfo.value.view), update, limits)
+
 proc preserveCurrentIdentities*(prior: CurrentLogicalState, update: PreparedCurrentChainUpdate,
     limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
   ## Only a genuinely fully matched prior current source supplies its actual successor snapshot/full view/Parameters; no fabricated startup update or detached map enters.
@@ -166,6 +173,7 @@ proc preserveCurrentIdentities*(prior: CurrentLogicalState, update: PreparedCurr
       SelectedLogicalParent), prior: prior, logical: logical.value,
       context: producer.value.currentUpdateChildContext,
       viewInfo: producer.value.currentUpdateViewInfo), update, limits)
+
 proc identityParent*(source: PreservedCurrentIdentities): CurrentIdentityResult[
     SelectedLogicalParent] =
   ## Retain only the exact original complete selected logical parent.
@@ -175,6 +183,7 @@ proc identityParent*(source: PreservedCurrentIdentities): CurrentIdentityResult[
       SelectedLogicalParent](status: CurrentIdentityError.WrongSource)
   CurrentIdentityResult[SelectedLogicalParent](status: CurrentIdentityError.None,
       completed: source.parent)
+
 proc identityUpdate*(source: PreservedCurrentIdentities): CurrentIdentityResult[
     PreparedCurrentChainUpdate] =
   ## Retain genuine producer provenance without accepting replacement state/view/configuration inputs.
@@ -182,12 +191,14 @@ proc identityUpdate*(source: PreservedCurrentIdentities): CurrentIdentityResult[
       status: CurrentIdentityError.Uninitialized)
   CurrentIdentityResult[PreparedCurrentChainUpdate](status: CurrentIdentityError.None,
       completed: source.update)
+
 proc identityInfo*(source: PreservedCurrentIdentities): CurrentIdentityResult[CurrentIdentityInfo] =
   ## Copy fixed successful observations while keeping sources and discriminators private.
   if not source.initialized: return CurrentIdentityResult[CurrentIdentityInfo](
       status: CurrentIdentityError.Uninitialized)
   CurrentIdentityResult[CurrentIdentityInfo](status: CurrentIdentityError.None,
       completed: source.info)
+
 proc identityLogical*(source: PreservedCurrentIdentities): CurrentIdentityResult[
     SuppliedLogicalInventory] =
   ## Retain complete original logical identities/raw keys for bounded actual-successor refresh consumers.
@@ -195,6 +206,7 @@ proc identityLogical*(source: PreservedCurrentIdentities): CurrentIdentityResult
       status: CurrentIdentityError.Uninitialized)
   CurrentIdentityResult[SuppliedLogicalInventory](status: CurrentIdentityError.None,
       completed: source.logical)
+
 proc identityPriorCurrent*(source: PreservedCurrentIdentities): CurrentIdentityResult[
     CurrentLogicalState] =
   ## Retain only genuine completed-origin parent provenance; configured startup sources refuse distinctly without a fake current owner.

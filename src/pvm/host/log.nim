@@ -75,9 +75,11 @@ func guestLogLevel*(value: uint64): LogLevel =
 type GuestLogContext = object ## Stack-local adapter retains only the application-owned producer borrow.
   writer: LogWriter
   level: LogLevel
+
 proc sharedLog(context: var GuestLogContext, line: string) {.raises: [].} =
   ## The same bounded shared queue serves guest and ordinary application diagnostics.
   discard submitLog(context.writer, LogTarget.Pvm, context.level, line)
+
 proc logHostResponse*(gas: MachineGas, registers: RegisterFile, memory: Memory,
     writer: LogWriter): HostResponse =
   ## Explicit application policy controls logging, never the guest response or ten-gas price.

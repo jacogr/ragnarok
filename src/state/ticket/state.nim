@@ -24,13 +24,14 @@ type
 func error*(outcome: TicketStateResult): TicketAdmissionError =
   ## Inspect a reason without allowing payload access or result retagging.
   outcome.status
+
 func value*(outcome: TicketStateResult): StateStoreSnapshot {.inline,
     requires: outcome.status == TicketAdmissionError.None.} =
   ## Extract only a fully published immutable snapshot after selecting successful admission.
   outcome.completed
 
-## Preserve store resource/backend failures and distinguish absent required chapters from default stores.
 func storeError(reason: StateStoreError): TicketAdmissionError =
+  ## Preserve store resource/backend failures and distinguish absent required chapters from default stores.
   case reason
   of StateStoreError.Uninitialized: TicketAdmissionError.Uninitialized # No default store can provide stage state.
   of StateStoreError.MissingKey: TicketAdmissionError.MissingState # Missing state is never fabricated genesis data.
@@ -39,8 +40,8 @@ func storeError(reason: StateStoreError): TicketAdmissionError =
   of StateStoreError.BackendFailure: TicketAdmissionError.BackendFailure # Hash refusal publishes nothing.
   else: TicketAdmissionError.InvalidState # Other store errors cannot describe this fixed one-entry batch.
 
-## Re-encode a candidate already validated under this exact policy, copying only bounded owned fields.
 proc candidateEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): SafroleStateResult[StateEntry] =
+  ## Re-encode a candidate already validated under this exact policy, copying only bounded owned fields.
   let info = safroleInfo(owner).value
   var source = SafroleState(pending: newSeq[StateValidator](info.validators), root: info.root,
     schedule: ticketSchedule(@[]), accumulator: newSeq[WinningTicket](info.accumulated))

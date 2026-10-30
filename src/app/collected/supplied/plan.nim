@@ -27,29 +27,35 @@ type
     of ProfileFailure: profileReason: CurrentProfileResult[DerivedCurrentProfile]
     of GlobalsFailure: globalsReason: CurrentGlobalsResult[CurrentGlobalSerialization]
     else: discard # Defaults have no plan, policies or source authority.
+
 func error*[T](outcome: CollectedSuppliedPlanResult[T]): CollectedSuppliedPlanError =
   ## Observe the selected immutable stage only.
   outcome.status
+
 func value*[T](outcome: CollectedSuppliedPlanResult[T]): T {.inline,
     requires: outcome.status == CollectedSuppliedPlanError.None.} =
   ## Expose only complete original-source observations and frozen policies.
   outcome.completed
+
 func admissionFailure*[T](outcome: CollectedSuppliedPlanResult[T]): CollectedUpdateResult {.inline,
     requires: outcome.status == CollectedSuppliedPlanError.AdmissionFailure.} =
   ## Preserve actual receipt lifecycle, typed preparation refusal and stale canonical selection.
   outcome.admissionReason
+
 func profileFailure*[T](outcome: CollectedSuppliedPlanResult[T]): CurrentProfileResult[
     DerivedCurrentProfile] {.inline,
 
 requires: outcome.status == CollectedSuppliedPlanError.ProfileFailure.} =
   ## Preserve exact actual current/C9 profile and resource failures.
   outcome.profileReason
+
 func globalsFailure*[T](outcome: CollectedSuppliedPlanResult[T]): CurrentGlobalsResult[
     CurrentGlobalSerialization] {.inline,
 
 requires: outcome.status == CollectedSuppliedPlanError.GlobalsFailure.} =
   ## Preserve all-global missing, malformed and bounded codec causes.
   outcome.globalsReason
+
 proc planCollectedSupplied*(chain: ApplicationChain, receipt: PreparationCompletion,
     limits: CollectedSuppliedLimits): CollectedSuppliedPlanResult[CollectedSuppliedPlan] =
   ## Caller holds the host ARC gate open; capture only actual qualified globals, without copying or inferring supplied namespaces.
@@ -71,6 +77,7 @@ proc planCollectedSupplied*(chain: ApplicationChain, receipt: PreparationComplet
   CollectedSuppliedPlanResult[CollectedSuppliedPlan](status: CollectedSuppliedPlanError.None,
     completed: CollectedSuppliedPlan(initialized: true, update: admitted.value,
         globals: globals.value, limits: limits))
+
 proc collectedSuppliedUpdate*(plan: CollectedSuppliedPlan): CollectedSuppliedPlanResult[
     PreparedCurrentChainUpdate] =
   ## Retain only the actual admitted target; no map or detached header replacement is accepted.
@@ -79,6 +86,7 @@ proc collectedSuppliedUpdate*(plan: CollectedSuppliedPlan): CollectedSuppliedPla
         status: CollectedSuppliedPlanError.Uninitialized)
   CollectedSuppliedPlanResult[PreparedCurrentChainUpdate](status: CollectedSuppliedPlanError.None,
       completed: plan.update)
+
 proc collectedSuppliedGlobals*(plan: CollectedSuppliedPlan): CollectedSuppliedPlanResult[
     CurrentGlobalSerialization] =
   ## Retain exact target profile/global provenance without re-decoding or complete-service claims.
@@ -87,6 +95,7 @@ proc collectedSuppliedGlobals*(plan: CollectedSuppliedPlan): CollectedSuppliedPl
         status: CollectedSuppliedPlanError.Uninitialized)
   CollectedSuppliedPlanResult[CurrentGlobalSerialization](status: CollectedSuppliedPlanError.None,
       completed: plan.globals)
+
 proc collectedSuppliedLimits*(plan: CollectedSuppliedPlan): CollectedSuppliedPlanResult[
     CollectedSuppliedLimits] =
   ## Return a detached fixed policy copy; changing it cannot alter this plan.

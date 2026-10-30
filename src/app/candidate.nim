@@ -143,14 +143,17 @@ func error*(outcome: CandidateReportPreparation): ApplicationCandidateError =
   ## Preparation success grants only the report-prefix owner; error retains the original selected stage reason.
   if outcome.successful: ApplicationCandidateError.None
   else: outcome.refusal.error # Default refusal stays Uninitialized.
+
 func value*(outcome: CandidateReportPreparation): PreparedCandidateReports {.inline,
     requires: outcome.successful.} =
   ## Retain only a genuinely prepared original block context.
   outcome.prepared
+
 func failure*(outcome: CandidateReportPreparation): ApplicationCandidateResult {.inline,
     requires: not outcome.successful.} =
   ## Preserve the exact existing pipeline failure without converting a prefix into final success.
   outcome.refusal
+
 proc refusedReportPreparation(reason: ApplicationCandidateResult): CandidateReportPreparation =
   ## Internal bridge retains only a failed existing pipeline alternative.
   CandidateReportPreparation(successful: false, refusal: reason)
@@ -162,6 +165,7 @@ proc candidateLookupDemand*(prepared: PreparedCandidateReports,
   if data == nil:
     return planPreparedReportLookupDemand(default(PreparedReportAdmission), ancestors)
   planPreparedReportLookupDemand(data.reports, ancestors)
+
 proc prepareCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
     limits: ApplicationCandidateLimits): CandidateReportPreparation =
   ## Execute existing implemented stages privately with parent/header/parameters selected from this exact canonical head.
@@ -296,52 +300,65 @@ type
     case successful: bool
     of true: prepared: PreparedCurrentCandidateReports
     else: refusal: CurrentCandidateResult
+
 func error*(outcome: CurrentCandidateResult): CurrentCandidateError =
   ## Inspect the selected complete-candidate stage without mutable discriminator access.
   outcome.status
+
 func value*(outcome: CurrentCandidateResult): PreparedCurrentChainUpdate {.inline,
     requires: outcome.status == CurrentCandidateError.None.} =
   ## Extract only the exact captured current update after every state phase succeeds.
   outcome.completed
+
 func prefixFailure*(outcome: CurrentCandidateResult): ApplicationCandidateResult {.inline,
     requires: outcome.status == CurrentCandidateError.PrefixFailure.} =
   ## Preserve only the actual common admission failure; legacy execution is never invoked.
   outcome.prefixReason
+
 func reportFailure*(outcome: CurrentCandidateResult): ReportAdmissionResult[
     AdmittedReports] {.inline, requires: outcome.status == CurrentCandidateError.ReportFailure.} =
   ## Inspect only an actual report/ancestor completion refusal.
   outcome.reportReason
+
 func queueError*(outcome: CurrentCandidateResult): AccumulationQueueError {.inline,
     requires: outcome.status == CurrentCandidateError.QueueFailure.} =
   ## Inspect only an actual original queue planning refusal.
   outcome.queueReason
+
 func roundError*(outcome: CurrentCandidateResult): AccumulationRoundError {.inline,
     requires: outcome.status == CurrentCandidateError.RoundFailure.} =
   ## Inspect only an actual initial round planning refusal.
   outcome.roundReason
+
 func completionFailure*(outcome: CurrentCandidateResult): CurrentAccumulationCompletionResult {.inline,
     requires: outcome.status == CurrentCandidateError.CompletionFailure.} =
   ## Preserve the actual failed current sequence/state builder, without any successful prefix.
   outcome.completionReason
+
 func preparationFailure*(outcome: CurrentCandidateResult): CurrentChainPreparationResult {.inline,
     requires: outcome.status == CurrentCandidateError.PreparationFailure.} =
   ## Preserve the actual current state/header capture refusal.
   outcome.preparationReason
+
 func ready*(prepared: PreparedCurrentCandidateReports): bool =
   ## Default current report prefixes grant no report or execution authority.
   prepared.prefix.valid
+
 func error*(outcome: CurrentCandidatePreparation): CurrentCandidateError =
   ## Success grants a prefix only; default preparation remains an uninitialized refusal.
   if outcome.successful: CurrentCandidateError.None
   else: outcome.refusal.error # A failed preparation retains its original selected stage.
+
 func value*(outcome: CurrentCandidatePreparation): PreparedCurrentCandidateReports {.inline,
     requires: outcome.successful.} =
   ## Extract only a genuinely prepared current report prefix and its frozen local policies.
   outcome.prepared
+
 func failure*(outcome: CurrentCandidatePreparation): CurrentCandidateResult {.inline,
     requires: not outcome.successful.} =
   ## Inspect only a genuinely refused prefix preparation.
   outcome.refusal
+
 proc prepareCurrentCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
     limits: CurrentCandidateLimits): CurrentCandidatePreparation =
   ## Reuse authenticated block/report preparation without invoking the legacy execution/composition path.
@@ -352,10 +369,12 @@ proc prepareCurrentCandidateReports*(chain: ApplicationChain, candidate: OwnedBl
       status: CurrentCandidateError.PrefixFailure, prefixReason: shared.failure))
   CurrentCandidatePreparation(successful: true, prepared: PreparedCurrentCandidateReports(
     prefix: shared.value, limits: limits))
+
 proc currentCandidateLookupDemand*(prepared: PreparedCurrentCandidateReports,
     ancestors: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
   ## Original authenticated prefix supports bounded ancestor discovery without running current guests.
   candidateLookupDemand(prepared.prefix, ancestors)
+
 proc completeCurrentReports(chain: ApplicationChain,
     prepared: PreparedCurrentCandidateReports,
 
@@ -387,6 +406,7 @@ reports: ReportAdmissionResult[AdmittedReports]): CurrentCandidateResult =
     return CurrentCandidateResult(status: CurrentCandidateError.PreparationFailure,
         preparationReason: update)
   CurrentCandidateResult(status: CurrentCandidateError.None, completed: update.value)
+
 proc completeCurrentCandidateReports*(chain: ApplicationChain,
     prepared: PreparedCurrentCandidateReports, ancestors: openArray[
         OwnedHeader]): CurrentCandidateResult =
@@ -396,6 +416,7 @@ proc completeCurrentCandidateReports*(chain: ApplicationChain,
   if not sameChainView(data.original, chain.chainView):
     return CurrentCandidateResult(status: CurrentCandidateError.StateChanged) # Preserve stale-prefix failure ordering.
   completeCurrentReports(chain, prepared, completeBlockReports(data.reports, ancestors))
+
 proc prepareFuzzCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
     context: FuzzAncestry, limits: CurrentCandidateLimits): CurrentCandidateResult =
   ## A fuzz-only view and retained origin are both mandatory; all GP checks and current execution remain active.
@@ -406,6 +427,7 @@ proc prepareFuzzCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock
   let data = prepared.value.prefix.data
   if data == nil: return default(CurrentCandidateResult) # Only the actual successful prefix can complete.
   completeCurrentReports(chain, prepared.value, completeFuzzBlockReports(data.reports, context))
+
 proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
     ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits): CurrentCandidateResult =
   ## One-shot consumers use the same original prefix and current-only completion without publishing any head.
@@ -417,6 +439,7 @@ proc selectLogging*(limits: var ApplicationCandidateLimits, writer: LogWriter) =
   ## Initial and later accumulation cohorts borrow the same application-owned diagnostic sink.
   limits.execution.logging = writer
   limits.driver.execution.logging = writer
+
 proc selectLogging*(limits: var CurrentCandidateLimits, writer: LogWriter) =
   ## Current execution keeps logging outside serialized resource policy and state authority.
   limits.completion.execution.initial.guests.logging = writer

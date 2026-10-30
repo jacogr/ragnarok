@@ -42,49 +42,62 @@ type
     of IdentityFailure: identityCause: ApplicationCheckpointIdentityError
     of ViewFailure: viewCause: ProofViewError
     else: discard # Default and all refusals carry diagnostics alone.
+
 func error*[T](outcome: LightHeadResult[T]): LightHeadError =
   ## Inspect a result before extracting any selected payload or subordinate cause.
   outcome.status
+
 func value*[T](outcome: LightHeadResult[T]): T {.inline, requires: outcome.status ==
     LightHeadError.None.} =
   ## Failed/default operations never expose a usable head, header snapshot or byte prefix.
   outcome.completed
+
 func headerError*[T](outcome: LightHeadResult[T]): HeaderError {.requires: outcome.status ==
     LightHeadError.HeaderFailure.} =
   ## Preserve the actual bounded structural header refusal.
   outcome.headerCause
+
 func identityError*[T](outcome: LightHeadResult[T]): ApplicationCheckpointIdentityError {.requires: outcome.status ==
     LightHeadError.IdentityFailure.} =
   ## Preserve only an actual canonical identity decoding/encoding failure.
   outcome.identityCause
+
 func viewError*[T](outcome: LightHeadResult[T]): ProofViewError {.requires: outcome.status ==
     LightHeadError.ViewFailure.} =
   ## Missing evidence, conflicting facts and resource ceilings retain their partial-view meaning.
   outcome.viewCause
+
 func valid*(snapshot: LightHeaderSnapshot): bool =
   ## A default fixed record grants neither header nor posterior-root authority.
   snapshot.initialized
+
 func valid*(head: LightApplicationHead): bool =
   ## Initialization remains distinct from a valid empty proof collection.
   head.data != nil
+
 func len*(head: LightApplicationHead): int =
   ## Default heads retain no header window.
   let data = head.data
   if data == nil: 0 else: data.records.len
+
 func identity*(snapshot: LightHeaderSnapshot): ApplicationCheckpointIdentity {.requires: snapshot.initialized.} =
   ## Return only immutable copied identity scalars, including the independently supplied posterior root.
   snapshot.checkpoint
+
 func headerInfo*(snapshot: LightHeaderSnapshot): HeaderInfo {.requires: snapshot.initialized.} =
   ## Copied structural metadata exposes the prior root separately from the posterior identity root.
   snapshot.info
+
 func byteLength*(snapshot: LightHeaderSnapshot): int =
   ## No raw mutable header buffer escapes its private snapshot.
   snapshot.wire.len
+
 proc copyHeader*(snapshot: LightHeaderSnapshot, output: var openArray[byte]): bool =
   ## Caller storage is independent; insufficient capacity or a default record leaves it completely unchanged.
   if not snapshot.valid or output.len < snapshot.wire.len: return false # No incomplete transport or over-budget history is exposed.
   for index, octet in snapshot.wire: output[index] = octet # Complete checked capacity precedes the first copy.
   true
+
 proc headerAt*(head: LightApplicationHead, index: LightHeaderIndex): LightHeadResult[
     LightHeaderSnapshot] =
   ## Only an initialized in-range immutable record can be selected from the bounded history window.
@@ -95,6 +108,7 @@ proc headerAt*(head: LightApplicationHead, index: LightHeaderIndex): LightHeadRe
       status: LightHeadError.InvalidIndex) # Bounds precede narrowing and array access.
   LightHeadResult[LightHeaderSnapshot](status: LightHeadError.None, completed: data.records[int(
       uint32(index))])
+
 proc current*(head: LightApplicationHead): LightHeadResult[LightHeaderSnapshot] =
   ## Every constructed head has at least one independently anchored current header.
   let data = head.data
@@ -102,28 +116,34 @@ proc current*(head: LightApplicationHead): LightHeadResult[LightHeaderSnapshot] 
       status: LightHeadError.Uninitialized) # Default owners retain no usable metadata or transport.
   LightHeadResult[LightHeaderSnapshot](status: LightHeadError.None, completed: data.records[
       data.records.len-1])
+
 proc stateRoot*(head: LightApplicationHead): StateRoot {.requires: head.data != nil.} =
   ## Partial evidence never computes this root; its authority is the captured current checkpoint identity.
   let data = head.data
   assert data != nil
   data.records[data.records.len-1].checkpoint.stateRoot
+
 proc proofView*(head: LightApplicationHead): ProofView {.requires: head.data != nil.} =
   ## Return an immutable partial view; unrequested keys continue to mean MissingWitness, never absent.
   let data = head.data
   assert data != nil
   data.evidence
+
 func limitsValid(limits: LightHeadLimits): bool =
   ## At most eight nonempty sealed headers bound all record-count arithmetic independently of host int width.
   uint64(limits.headers) in 1'u64..uint64(MaxLightHeaders) and uint64(limits.headerBytes) > 0
+
 func sameProfile(left, right: HeaderConfig): bool =
   ## Resource byte caps may tighten; core/validator/epoch geometry remains independently fixed.
   let cores = uint64(left.cores) == uint64(right.cores)
   let validators = uint64(left.authorValidators) == uint64(right.authorValidators)
   let epoch = uint64(left.epochSlots) == uint64(right.epochSlots)
   cores and validators and epoch
+
 proc sameParameters(left, right: ApplicationCheckpointIdentity): bool =
   ## Fixed canonical fetch bytes compare every profile field without consulting partial state.
   left.parameters.encodeParameters == right.parameters.encodeParameters
+
 proc captureRecord(checkpoint: ApplicationCheckpointIdentity, wire: openArray[byte],
     limits: LightHeadLimits): LightHeadResult[LightHeaderSnapshot] =
   ## Private structural capture never creates operator trust from stored bytes; callers independently anchor the resulting history.
@@ -159,6 +179,7 @@ proc captureRecord(checkpoint: ApplicationCheckpointIdentity, wire: openArray[by
   for index, octet in wire: owned[index] = octet # Capture is detached from the caller and every later mutable transport.
   LightHeadResult[LightHeaderSnapshot](status: LightHeadError.None, completed: LightHeaderSnapshot(
       initialized: true, checkpoint: checkpoint, info: inspected.value, wire: owned))
+
 proc trustedRecord(trust: TrustedApplicationCheckpoint, limits: LightHeadLimits): LightHeadResult[
     LightHeaderSnapshot] =
   ## Only captured independent identity/header inputs can initialize or advance the application head.
@@ -174,6 +195,7 @@ proc trustedRecord(trust: TrustedApplicationCheckpoint, limits: LightHeadLimits)
   if not trust.copySealedHeader(wire): return LightHeadResult[LightHeaderSnapshot](
       status: LightHeadError.MissingTrust) # An independently captured current identity/header is required.
   captureRecord(trust.identity, wire, limits)
+
 proc viewFor(root: StateRoot, view: ProofView, limits: LightHeadLimits): LightHeadResult[ProofView] =
   ## Recheck inherited retained-fact quotas before adopting any partial evidence owner.
   if not view.valid: return LightHeadResult[ProofView](status: LightHeadError.ViewFailure,
@@ -186,6 +208,7 @@ proc viewFor(root: StateRoot, view: ProofView, limits: LightHeadLimits): LightHe
       status: LightHeadError.ViewFailure,
       viewCause: checked.error) # Uninitialized, foreign or over-budget evidence grants no view.
   LightHeadResult[ProofView](status: LightHeadError.None, completed: view)
+
 proc emptyView(root: StateRoot, limits: LightHeadLimits): ProofView =
   ## An explicit successful empty verified batch retains the trusted root while claiming no present or absent facts.
   let checked = verifyStateProofs([], root, default(StateProofLimits), default(StateProofBatchLimits))
@@ -193,6 +216,7 @@ proc emptyView(root: StateRoot, limits: LightHeadLimits): ProofView =
   let captured = captureProofView(checked.value, root, limits.view)
   assert captured.error == ProofViewError.None
   captured.value
+
 proc refused[T, U](outcome: LightHeadResult[U]): LightHeadResult[T] {.requires: outcome.status !=
     LightHeadError.None.} =
   ## Change only the absent success type while retaining every selected subordinate diagnostic.
@@ -204,6 +228,7 @@ proc refused[T, U](outcome: LightHeadResult[U]): LightHeadResult[T] {.requires: 
   of LightHeadError.ViewFailure: # Preserve partial-view admission semantics.
     LightHeadResult[T](status: LightHeadError.ViewFailure, viewCause: outcome.viewCause)
   else: LightHeadResult[T](status: outcome.status) # Remaining refused alternatives contain no payload.
+
 proc captureLightHead*(trust: TrustedApplicationCheckpoint, view: ProofView,
     limits: LightHeadLimits): LightHeadResult[LightApplicationHead] =
   ## Capture one trusted current header and explicitly supplied matching partial facts without constructing a complete map.
@@ -214,12 +239,14 @@ proc captureLightHead*(trust: TrustedApplicationCheckpoint, view: ProofView,
   LightHeadResult[LightApplicationHead](status: LightHeadError.None,
       completed: LightApplicationHead(data: LightHeadData(records: @[record.value],
       profile: limits.header, evidence: evidence.value)))
+
 proc captureLightHead*(trust: TrustedApplicationCheckpoint,
     limits: LightHeadLimits): LightHeadResult[LightApplicationHead] =
   ## Metadata-only initialization knows a root but no state facts, including no inferred absence.
   if not trust.ready: return LightHeadResult[LightApplicationHead](
       status: LightHeadError.MissingTrust) # An independently captured current identity/header is required.
   captureLightHead(trust, emptyView(trust.identity.stateRoot, limits), limits)
+
 proc linked(parent, child: LightHeaderSnapshot): LightHeadError =
   ## Direct ancestry permits skipped slots but never equates a child's prior root with its independently trusted posterior root.
   if not sameParameters(parent.checkpoint, child.checkpoint): return LightHeadError.ProfileMismatch # Profile geometry is fixed independently of partial evidence.
@@ -229,6 +256,7 @@ proc linked(parent, child: LightHeaderSnapshot): LightHeadError =
   if array[32, byte](child.info.unsigned.priorState) != array[32, byte](
       parent.checkpoint.stateRoot): return LightHeadError.WrongPriorRoot # The child prior root binds the parent posterior identity root.
   LightHeadError.None
+
 proc fits(records: openArray[LightHeaderSnapshot], limits: LightHeadLimits): bool =
   ## Subtraction bounds the complete retained header transport before constructing a new head or encoded context.
   if not limitsValid(limits) or uint64(records.len) > uint64(
@@ -240,6 +268,7 @@ proc fits(records: openArray[LightHeaderSnapshot], limits: LightHeadLimits): boo
         limits.headerBytes)-total: return false # No incomplete transport or over-budget history is exposed.
     total += size # Previous checks retain total <= headerBytes without wrapping.
   true
+
 proc mergeLightProofs*(head: LightApplicationHead, batch: VerifiedStateProofBatch,
     limits: LightHeadLimits): LightHeadResult[LightApplicationHead] =
   ## Add only genuinely verified matching-root facts; immutable old heads remain independently readable.
@@ -261,6 +290,7 @@ proc mergeLightProofs*(head: LightApplicationHead, batch: VerifiedStateProofBatc
   LightHeadResult[LightApplicationHead](status: LightHeadError.None,
       completed: LightApplicationHead(data: LightHeadData(records: data.records,
       profile: limits.header, evidence: merged.value)))
+
 proc advanceLightHead*(head: LightApplicationHead, trust: TrustedApplicationCheckpoint,
     view: ProofView, limits: LightHeadLimits): LightHeadResult[LightApplicationHead] =
   ## Independently trusted successor metadata binds direct ancestry and a fresh explicit proof collection under its posterior root.
@@ -285,6 +315,7 @@ proc advanceLightHead*(head: LightApplicationHead, trust: TrustedApplicationChec
   LightHeadResult[LightApplicationHead](status: LightHeadError.None,
       completed: LightApplicationHead(data: LightHeadData(records: records, profile: limits.header,
       evidence: evidence.value)))
+
 proc advanceLightHead*(head: LightApplicationHead, trust: TrustedApplicationCheckpoint,
     limits: LightHeadLimits): LightHeadResult[LightApplicationHead] =
   ## Omitted successor evidence explicitly starts unknown; facts from an old root are never implicitly carried forward.
@@ -295,13 +326,16 @@ proc advanceLightHead*(head: LightApplicationHead, trust: TrustedApplicationChec
 const
   LightHeadMagic = "RAGNAROK-LIGHT-HEAD-V1\n"
   LightHeadPrefix = LightHeadMagic.len+3 # E2 independently selected author population, then E1 bounded header count.
+
 proc put32(bytes: var seq[byte], offset: int, value: uint32) =
   ## Caller preflights the complete fixed field and full output before the first framing write.
   for index in 0..<4: bytes[offset+index] = byte((uint64(value) shr (index*8)) and 255)
+
 proc get32(bytes: openArray[byte], offset: int): uint32 =
   ## Private callers establish all four readable bytes before forming this scalar.
   result = 0
   for index in 0..<4: result = result or (uint32(bytes[offset+index]) shl (index*8))
+
 proc encodeLightHead*(head: LightApplicationHead, limit: ByteLimit): LightHeadResult[seq[byte]] =
   ## Encode only bounded header/identity history; partial proofs live separately and never become complete-map state.
   let data = head.data
@@ -345,6 +379,7 @@ proc encodeLightHead*(head: LightApplicationHead, limit: ByteLimit): LightHeadRe
       bytes[cursor] = octet
       inc cursor # Immutable private header storage cannot alias the detached output.
   LightHeadResult[seq[byte]](status: LightHeadError.None, completed: bytes)
+
 proc restoreLightHead*(bytes: openArray[byte], expected: TrustedApplicationCheckpoint,
     view: ProofView, limits: LightHeadLimits, contextBytes: ByteLimit): LightHeadResult[
         LightApplicationHead] =
@@ -417,6 +452,7 @@ proc restoreLightHead*(bytes: openArray[byte], expected: TrustedApplicationCheck
 func sameLightHead*(left, right: LightApplicationHead): bool =
   ## Exact immutable source incarnation includes partial knowledge; matching header/root alone cannot prove matching cached facts.
   left.data != nil and left.data == right.data
+
 proc headerProfile*(head: LightApplicationHead): HeaderConfig {.requires: head.data != nil.} =
   ## Configured geometry is fixed caller metadata, never inferred from partial state or advertised as verified roster contents.
   let data = head.data

@@ -18,17 +18,21 @@ type
       stateReason: StateStoreError
     else:
       discard # Default, invalid and stale publication retains reasons alone.
+
 func error*(outcome: CurrentAccumulationPublicationResult): CurrentAccumulationPublicationError =
   ## Inspect the selected immutable reason.
   outcome.status
+
 func value*(outcome: CurrentAccumulationPublicationResult): StateStoreSnapshot {.inline,
     requires: outcome.status == CurrentAccumulationPublicationError.None.} =
   ## Extract only the exact successfully adopted snapshot.
   outcome.completed
+
 func stateError*(outcome: CurrentAccumulationPublicationResult): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationPublicationError.StateFailure.} =
   ## Inspect only an actual target initialization or candidate-fork refusal.
   outcome.stateReason
+
 proc publishCurrentAccumulationState*(state: var StateStore,
     source: PreparedCurrentAccumulationConsensus): CurrentAccumulationPublicationResult =
   ## All potentially refusing checks precede the sole state-handle replacement; caller must separately coordinate any live chain view.

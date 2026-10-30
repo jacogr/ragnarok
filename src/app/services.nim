@@ -100,14 +100,17 @@ type
 func error*(admission: LogicalProofAdmission): LogicalProofAdmissionError =
   ## Observe the selected capture or managed admission stage without granting a graph lease.
   admission.status
+
 func value*(admission: LogicalProofAdmission): ProofWorkerTicket {.inline,
     requires: admission.status == LogicalProofAdmissionError.None.} =
   ## Successful submission returns the existing ticket for actual collection or joined shutdown.
   admission.ticket
+
 func captureFailure*(admission: LogicalProofAdmission): LogicalProofResult {.inline,
     requires: admission.status == LogicalProofAdmissionError.CaptureFailure.} =
   ## Keep invalid original source, view admission and nested query refusal causes unchanged.
   admission.captureReason
+
 func admissionFailure*(admission: LogicalProofAdmission): StateProofAdmission {.inline,
     requires: admission.status == LogicalProofAdmissionError.AdmissionFailure.} =
   ## Preserve original RPC pause or native-worker admission refusal without a successful ticket.
@@ -127,12 +130,15 @@ type StartupBlockAnchor* = object ## Detached independently configured full-stat
 func available*(anchor: StartupBlockAnchor): bool =
   ## Only a successful full-state startup can expose its independent configured identity.
   anchor.available
+
 func blockHash*(anchor: StartupBlockAnchor): BlockHash {.requires: anchor.available.} =
   ## Imported best-head progress never replaces this fixed original configured hash.
   anchor.hash
+
 func slot*(anchor: StartupBlockAnchor): HeaderSlot {.requires: anchor.available.} =
   ## Slot is copied from the original checkpoint, independently of later canonical imports.
   anchor.slot
+
 proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
   ## Retire temporary full graph aliases before disk restoration or native startup workers begin.
   let head = view.bestBlock
@@ -193,14 +199,17 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
 func error*(admission: StateProofAdmission): StateProofAdmissionError =
   ## Read the reason without granting a selected-state lease ticket.
   admission.status
+
 func value*(admission: StateProofAdmission): ProofWorkerTicket {.inline,
     requires: admission.status == StateProofAdmissionError.None.} =
   ## Only accepted managed work exposes its worker ticket.
   admission.ticket
+
 func queryError*(admission: StateProofAdmission): ProofQueryError {.inline,
     requires: admission.status == StateProofAdmissionError.QueryFailure.} =
   ## Capture refusals retain the exact selection/plan/budget reason.
   admission.queryReason
+
 func workerError*(admission: StateProofAdmission): ProofWorkerError {.inline,
     requires: admission.status == StateProofAdmissionError.WorkerFailure.} =
   ## Native refusal carries no successful ticket and leaves RPC available.
@@ -243,8 +252,11 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.currentAdoption)
 
 proc `=copy`*(destination: var Services, source: Services) {.error: "Application Services owns descriptors".}
+  ## Reject copying application descriptors, workers and listener lifetimes.
+
 proc `=dup`*(source: Services): Services {.error.}
   ## Composite ownership includes the stable worker and all listener lifetimes.
+
 proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
   `=destroy`(services.light)
@@ -310,6 +322,7 @@ proc finishDiskRetirement(services: var Services, completion: DiskPublicationCom
   services.publishing = false
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+
 proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCompletion) =
   ## Joined/collected maintenance ends the physical lease without changing canonical/RPC state or adoption receipts.
   services.maintenanceCompletion = completion
@@ -326,6 +339,7 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
   services.diskMaintenance = default(PreparedDiskMaintenance)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+
 proc finishCurrentDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Collection/join ends all borrows before exact receipt/context checks and canonical/RPC installation.
   if completion.kind == DiskCompletionKind.Completed:
@@ -398,6 +412,7 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
   services.diskPublication = default(PreparedDiskPublication)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+
 proc stopDiskPublication*(services: var Services) =
   ## Shutdown outside callbacks joins before any input/canonical/RPC alias can retire, preserving actual IO receipts.
   if services.light.active:
@@ -406,17 +421,21 @@ proc stopDiskPublication*(services: var Services) =
   let completion = services.diskWorker.close()
   services.finishDiskPublication(completion)
   if services.diskEnabled: services.diskFaulted = true # Explicit backend shutdown requires a fresh startup before more writes.
+
 func diskPublicationActive*(services: Services): bool =
   ## Scalar-only observation is permitted while canonical graphs remain exclusively borrowed.
   services.publishing
+
 proc diskPublicationPhase*(services: var Services): DiskWorkerPhase =
   ## Scalar-only synchronized observation grants no access to a Done job's still-leased graph.
   services.diskWorker.phase
+
 func currentDiskPreparationOutcome*(services: Services): DiskChainResult[
     PreparedCurrentDiskPublication] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Only an actual current host staging refusal is retained; default never grants publication authority.
   services.currentDiskStageOutcome
+
 func currentDiskPublicationAdmissionError*(services: Services): DiskWorkerError =
   ## Observe the actual current worker admission reason without touching any leased ARC owner.
   services.currentDiskAdmission
@@ -425,6 +444,7 @@ func diskPublicationOutcome*(services: Services): DiskChainResult[RepositoryGene
     not (services.proofing or services.preparing or services.publishing).} =
   ## Preserve the actual last IO receipt, including across close, until a later startup/job replaces it.
   services.diskCommitOutcome
+
 func diskPreparationOutcome*(services: Services): DiskChainResult[
     PreparedDiskPublication] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -509,8 +529,8 @@ proc close*(services: var Services) =
   services.chainText = ""
   services.startupAnchor = default(StartupBlockAnchor)
 
-# Read at most limit+1 bytes; empty output means missing, empty or oversized configuration.
 proc boundedFile(path: string, limit: int): string {.raises.} =
+  ## Read at most limit+1 bytes; empty output means missing, empty or oversized configuration.
   result = ""
   var file: File = nil
   if path.len == 0 or not open(file, path, fmRead): return # No implicit file/default chain.
@@ -607,10 +627,12 @@ proc diskJournalLimits(policy: StateStoreLimits): JournalLimits =
     records: TrieExportLimits(records: TrieNodeLimit(1048576), valueBytes: ByteLimit(4*1024*1024)),
     encoded: ByteLimit(64*1024*1024)), records: ElementLimit(4194304),
     valueBytes: ByteLimit(128*1024*1024)), bytes: ByteLimit(256*1024*1024), contextBytes: ByteLimit(4*1024*1024))
+
 proc managedPolicy(limits: JournalLimits): ManagedLimits =
   ## Managed files retain the same graph/physical/journal ceilings plus bounded canonical history roots.
   ManagedLimits(repository: limits.repository, roots: ElementLimit(MaxRetainedBlocks+1),
     snapshotBytes: limits.bytes, journalBytes: limits.bytes, contextBytes: limits.contextBytes)
+
 proc initializeSelectedDisk(services: var Services, path: string): DiskChainResult[
     RepositoryGeneration] =
   ## Explicit layout dispatch never resets an existing path or infers migration from its shape.
@@ -630,6 +652,7 @@ proc initializeSelectedDisk(services: var Services, path: string): DiskChainResu
   else:
     initializeDiskChain(services.disk, path, services.diskId, services.canonical,
         services.diskLimits)
+
 proc maintenanceDue(services: var Services): bool =
   ## Inspect only cached scalar usage while idle; a header-only journal never triggers repeated no-op replacement.
   if not services.diskManaged or services.diskFaulted or uint64(services.compactBytes) ==
@@ -640,6 +663,7 @@ proc maintenanceDue(services: var Services): bool =
     return false
   usage.value.journalBytes > uint64(ManagedJournalHeaderBytes) and
     usage.value.journalBytes >= uint64(services.compactBytes)
+
 proc setupDisk(services: var Services, options: Options, limits: StateStoreLimits,
     imported: bool): bool {.raises.} =
   ## Derive chain identity from the selected configured genesis; imports create exclusively and never replace a local DB.
@@ -844,6 +868,7 @@ type LightStartup = object ## Fixed configured/trusted metadata retains no compl
   policy: LightRuntimePolicy
   parameters: ParameterResult
   identity: ChainIdentity
+
 proc captureLightStartup(text: string, options: Options): LightStartup =
   ## Complete configured genesis is transient validation input only; every full-state alias retires before listeners/workers become observable.
   let parameters = configuredParameters(text)
@@ -874,6 +899,7 @@ proc captureLightStartup(text: string, options: Options): LightStartup =
       trust.value.identity.stateRoot, profile)
   LightStartup(ready: true, trust: trust.value, policy: policy, parameters: parameters,
     identity: chainIdentity(genesis))
+
 proc startLightServices(services: var Services, options: Options, role: string): bool {.raises.} =
   ## Light startup chooses distinct memory/paged ownership with independent current trust before any listener is exposed.
   if services.started or not options.valid or not options.lightMode: return false # Failed/repeated mode selection cannot disturb an existing lifetime.
@@ -911,24 +937,31 @@ proc startLightServices(services: var Services, options: Options, role: string):
   logServiceStartup(options)
   ready = true
   true
+
 proc lightHead*(services: Services): light_actor.LightRuntimeResult[LightApplicationHead] =
   ## Distinct partial-state access is gated before any shared handle copy and never returns a complete StateStore snapshot.
   services.light.head
+
 proc lightDiskPhase*(services: var Services): DiskWorkerPhase =
   ## Synchronized phase polling never copies the still-leased native outcome.
   services.light.diskPhase
+
 func lightDiskActive*(services: Services): bool =
   ## Scalar IO observation remains safe while native publication/retirement borrows partial graphs.
   services.light.diskActive
+
 func lightStorageFaulted*(services: Services): bool =
   ## Uncertain mutation outcomes disable writes without withdrawing immutable known evidence.
   services.light.storageFaulted
+
 func lightMode*(services: Services): bool =
   ## Selected active ownership remains independent of memory/disk backend choice.
   services.light.active
+
 proc lightDiskCompletion*(services: Services): DiskPublicationCompletion {.requires: not services.light.busy.} =
   ## Actual light IO outcomes survive joined shutdown; no full publication generation is fabricated.
   services.light.diskCompletion
+
 proc startConfigured(services: var Services, options: Options, role: string,
     withState: bool, limits: StateStoreLimits): bool {.raises.} =
   ## Both public startup policies share one explicit import dispatcher before any listener becomes visible.
@@ -1008,6 +1041,7 @@ proc historicalSnapshot*(services: var Services, hash: BlockHash): HistoryResult
   if owner.error != ApplicationChainError.None: return historyFailure[ApplicationChain](
       HistoryError.InvalidFormat)
   historySuccess(owner.value)
+
 proc historicalSnapshot*(services: var Services, ordinal: HistoryOrdinal): HistoryResult[
     ApplicationChain] =
   ## Local ordinal addressing is a disk-index capability; memory callers select an exact block hash.
@@ -1018,6 +1052,7 @@ proc historicalSnapshot*(services: var Services, ordinal: HistoryOrdinal): Histo
   if not services.diskEnabled: return historyFailure[ApplicationChain](HistoryError.Unavailable)
   readDiskHistoricalSnapshot(services.disk, services.canonical, services.diskId, ordinal,
     services.historyLimits, services.diskLimits.contextBytes)
+
 func historicalCleanupError*(services: Services): HistoryError =
   ## Observe actual cleanup diagnostics only when no worker can mutate the disk owner.
   if services.proofing or services.preparing or services.publishing: return HistoryError.Busy
@@ -1029,33 +1064,42 @@ proc startCheckpointExport*(services: var Services,
   ## Explicit host startup requires an active stable service owner; pending shutdown acknowledgement blocks worker restart.
   if not services.started: return ApplicationCheckpointFileError.Uninitialized
   services.checkpointExport.start(path)
+
 proc checkpointExportPhase*(services: var Services): ApplicationCheckpointWorkerPhase =
   ## Bounded scalar polling performs no serialization, canonical graph access or file I/O.
   services.checkpointExport.phase
+
 proc stageCheckpointExport*(services: var Services, prepared: var PreparedApplicationCheckpoint,
     limit: ByteLimit): ApplicationCheckpointAdmission =
   ## Stage only independent bytes, including during an execution lease; refusal preserves the caller's sole owner.
   services.checkpointExport.stage(prepared, limit)
+
 proc beginCheckpointExport*(services: var Services, ticket: ApplicationCheckpointTicket): bool =
   ## Explicit bounded dispatch authorizes a matching staged native publication.
   services.checkpointExport.begin(ticket)
+
 proc cancelCheckpointExport*(services: var Services, ticket: ApplicationCheckpointTicket): bool =
   ## Cancel only unstarted matching work; possible publication outcomes stay observable.
   services.checkpointExport.cancel(ticket)
+
 proc peekCheckpointExport*(services: var Services,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Fixed receipt observation retains acknowledgement capacity and never touches canonical state.
   services.checkpointExport.peek(ticket)
+
 proc collectCheckpointExport*(services: var Services,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Host acknowledgement retires sole bytes only after native aliases have ended.
   services.checkpointExport.collect(ticket)
+
 func checkpointShutdownPending*(services: Services): bool =
   ## A fixed actual joined receipt survives canonical/listener close and repeated aggregate cleanup.
   services.checkpointExport.shutdownPending
+
 func checkpointShutdown*(services: Services): ApplicationCheckpointShutdown =
   ## Only a retained shutdown journal grants its exact operation and retirement outcomes.
   services.checkpointExport.shutdown
+
 proc takeCheckpointShutdown*(services: var Services): ApplicationCheckpointShutdown =
   ## Explicit acknowledgement unblocks export restart without retrying or adopting a possibly published state.
   services.checkpointExport.takeShutdown()
@@ -1064,6 +1108,7 @@ proc checkpointIdentity*(services: Services): ApplicationCheckpointIdentityResul
     services.proofing or services.preparing or services.publishing).} =
   ## Capture fixed context only while canonical aliases are available; no file metadata supplies independent trust.
   captureApplicationCheckpointIdentity(services.canonical)
+
 proc prepareCheckpoint*(services: Services, limit: ByteLimit): PreparedApplicationCheckpoint {.requires: not (
     services.proofing or services.preparing or services.publishing).} =
   ## Explicit host-side serialization runs outside callbacks and before any detached I/O admission or execution lease.
@@ -1292,9 +1337,11 @@ proc beginLogicalProof*(services: var Services, source: CurrentLogicalState,
 proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.
   if services.light.active: services.light.proofPhase() else: services.proofWorker.phase
+
 proc cancelStateProof*(services: var Services, ticket: ProofWorkerTicket): bool =
   ## Cancellation requests discard without releasing graph access or bounded capacity.
   if services.light.active: services.light.cancelQuery(ticket) else: services.proofWorker.cancel(ticket)
+
 proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): ProofWorkerCompletion =
   ## Only matching Done collection retires the query and reopens canonical/RPC access together.
   if services.light.active: return services.light.collectQuery(
@@ -1369,6 +1416,7 @@ proc planCollectedSupplied*(services: Services, receipt: PreparationCompletion,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Freeze only the genuine collected target while the actual canonical host gate is open.
   collected_supplied_plan.planCollectedSupplied(services.canonical, receipt, limits)
+
 proc executeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
     declarations: openArray[StateService]): CollectedSuppliedResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1392,6 +1440,7 @@ proc planLogicalReview*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen admission may share canonical graphs, so every existing native exclusion remains checked.
   logical_review.planLogicalReview(source, limits)
+
 proc executeLogicalReview*(services: Services,
     source: LogicalReviewPlan): LogicalReviewResult[ReviewedLogicalState] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1498,6 +1547,7 @@ func startupDiskMaintenanceOutcome*(services: Services): DiskChainResult[
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retain a real pre-listener startup compaction receipt; default means no startup maintenance was due.
   services.startupMaintenance
+
 func diskMaintenanceFailed*(services: Services): bool {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Observe actual preparation/admission/IO/cleanup failure without treating joined nonexecution as rollback or failure.
@@ -1509,18 +1559,22 @@ func diskMaintenanceFailed*(services: Services): bool {.requires:
   let outcome = services.maintenanceCompletion.maintenanceValue
   if outcome.error != DiskChainError.None: return true
   outcome.value.cleanup != FileError.None
+
 func diskMaintenanceCompletion*(services: Services): DiskPublicationCompletion {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retain the exact completed or queued-not-executed maintenance receipt across joined shutdown.
   services.maintenanceCompletion
+
 func diskMaintenancePreparation*(services: Services): DiskChainResult[
     PreparedDiskMaintenance] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Preserve a refused host context/root preparation without fabricating a worker result.
   services.maintenanceStage
+
 func diskMaintenanceAdmissionError*(services: Services): DiskWorkerError =
   ## A scalar actual worker admission reason is observable without touching leased graphs.
   services.maintenanceAdmission
+
 proc stageDiskMaintenance(services: var Services): bool =
   ## Retire all temporary canonical/context aliases in this activation before outer worker submission.
   services.rpcLease = services.rpc.pauseChain()
@@ -1537,6 +1591,7 @@ proc stageDiskMaintenance(services: var Services): bool =
   services.maintenanceCompletion = default(DiskPublicationCompletion)
   services.diskMaintenance = staged.value
   true
+
 proc beginDiskMaintenance*(services: var Services): bool =
   ## Explicit host maintenance shares publication exclusion, RPC pause and one fixed-address native slot.
   if not services.started or not services.diskEnabled or not services.diskManaged or
@@ -1557,9 +1612,11 @@ proc beginDiskMaintenance*(services: var Services): bool =
   services.diskOperation = ServiceDiskOperation.Maintenance
   services.publishing = true # Every existing canonical/RPC/checkpoint gate now covers the maintenance lease too.
   true
+
 func diskRetirementCompletion*(services: Services): DiskPublicationCompletion {.requires: not services.publishing.} =
   ## Preserve actual cleanup success, Busy or failure after collection or joined shutdown; core publication receipts remain separate.
   services.retirementCompletion
+
 proc beginDiskRetirement*(services: var Services): bool =
   ## Borrow no graph until publication/preparation/proof exclusion and the RPC pause have all succeeded.
   if not services.started or not services.diskEnabled or not services.diskPaged or
@@ -1588,9 +1645,11 @@ proc beginDiskRetirement*(services: var Services): bool =
   services.diskOperation = ServiceDiskOperation.Retirement
   services.publishing = true # Existing gates cover the same one-slot graph lease through collect or joined close.
   true
+
 proc retirementDue(services: Services): bool =
   ## One retry per second bounds repeated foreign-reader pin checks; no wall-clock/protocol time enters state semantics.
   not services.retirementDelayed or (getMonoTime()-services.retirementAttempt).inMilliseconds >= 1000
+
 proc rpcProofLimits(): ProofQueryLimits =
   ## Explicit local resource ceilings bound complete-map generation, proof verification and detached wire copies.
   ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(65536), nodes: TrieNodeLimit(131071),
@@ -1760,6 +1819,7 @@ proc freezeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Capture source aliases only after every managed native graph lease has ended.
   frozen_supplied.freezeCollectedSupplied(services.canonical, plan, declarations, limits)
+
 proc executeFrozenSupplied*(services: Services, source: FrozenSuppliedInput): FrozenSuppliedResult[
     CurrentLogicalState] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1777,6 +1837,7 @@ proc planCollectedLogical*(services: Services, completion: PreparationCompletion
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retaining prepared source graphs requires every existing native lease to have ended.
   collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+
 proc executeCollectedLogical*(services: Services, plan: CollectedLogicalPlan): CollectedLogicalResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retry cannot bypass native exclusion or the frozen update's exact canonical-parent check.
@@ -1794,6 +1855,7 @@ proc planLogicalExport*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Complete export admission reads retained original source graphs only outside managed native leases.
   logical_export.planLogicalExport(source, limits)
+
 proc executeLogicalExport*(services: Services, plan: LogicalExportPlan): LogicalExportResult[seq[
     StateService]] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1838,6 +1900,7 @@ proc planLogicalSourceExport*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original raw-key graph traversal remains excluded until actual matching native collection or joined shutdown.
   logical_source_export.planLogicalSourceExport(source, limits)
+
 proc executeLogicalSourceExport*(services: Services,
     plan: LogicalSourceExportPlan): LogicalSourceExportResult[string] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1849,6 +1912,7 @@ proc continueCurrentStorage*(services: Services, parent: SelectedLogicalParent,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Keep original parent, producer history and copied declarations outside every managed graph lease until actual collection/join.
   logical_continuation.continueCurrentStorage(parent, update, limits)
+
 proc continueCurrentStorage*(services: Services, prior: CurrentLogicalState,
     update: PreparedCurrentChainUpdate, limits: StorageContinuationLimits): StorageContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1860,6 +1924,7 @@ proc continueCurrentNamespaces*(services: Services, parent: SelectedLogicalParen
     not (services.proofing or services.preparing or services.publishing).} =
   ## Read original identities and producer storage/request history only on the stable host after all matching collection/join boundaries.
   logical_continuation.continueCurrentNamespaces(parent, update, limits)
+
 proc continueCurrentNamespaces*(services: Services, prior: CurrentLogicalState,
     update: PreparedCurrentChainUpdate, limits: LogicalContinuationLimits): LogicalContinuationResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =

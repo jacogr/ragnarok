@@ -61,30 +61,36 @@ type
 func error*[T](value: AvailabilityResult[T]): AvailabilityError =
   ## Read-only failure reasons cannot authorize parent values, child handles or parser progress.
   value.status
+
 func value*[T](value: AvailabilityResult[T]): T {.inline, requires: value.status ==
     AvailabilityError.None.} =
   ## Every complete payload needs success selection in checked optimized builds too.
   value.completed
+
 func absentAssignment*(): AvailabilityAssignment =
   ## Absence contains neither a child report handle nor a registration timestamp; defaults are absent too.
   AvailabilityAssignment(isPresent: false)
+
 func presentAssignment*(guarantee: Guarantee, registered: AssignmentSlot): AvailabilityAssignment =
   ## Capture a copied full guarantee whose immutable report handle is retained independently of its source.
   AvailabilityAssignment(isPresent: true, child: guarantee, registration: registered)
+
 func present*(assignment: AvailabilityAssignment): bool =
   ## Inspect the optional alternative without allowing callers to retag its storage.
   assignment.isPresent
+
 func guarantee*(assignment: AvailabilityAssignment): Guarantee {.inline,
     requires: assignment.isPresent.} =
   ## A present assignment alone authorizes a copied guarantee and retained immutable report child.
   assignment.child
+
 func registered*(assignment: AvailabilityAssignment): AssignmentSlot {.inline,
     requires: assignment.isPresent.} =
   ## Registration zero remains distinct from an absent assignment with no readable timestamp.
   assignment.registration
 
-## Reuse the existing guarantee profile domain before indexing the fixed local scan array.
 proc validate(config: AvailabilityConfig): AvailabilityError =
+  ## Reuse the existing guarantee profile domain before indexing the fixed local scan array.
   if not assurances.validConfig(AssuranceConfig(cores: config.guarantee.cores,
       validators: config.guarantee.validators)):
     return AvailabilityError.InvalidConfig # Only the existing 2..341 core and multiple-of-three validator profiles are supported.
@@ -92,8 +98,8 @@ proc validate(config: AvailabilityConfig): AvailabilityError =
     return AvailabilityError.LimitExceeded # Every configured slot needs at least its discriminator byte.
   AvailabilityError.None
 
-## Preserve child report/credential reasons while keeping unrelated output-buffer statuses private.
 proc childError(error: GuaranteeError): AvailabilityError =
+  ## Preserve child report/credential reasons while keeping unrelated output-buffer statuses private.
   case error
   of GuaranteeError.Uninitialized: AvailabilityError.Uninitialized # No complete child was selected.
   of GuaranteeError.None: AvailabilityError.None # Child validated completely.
@@ -109,15 +115,15 @@ proc childError(error: GuaranteeError): AvailabilityError =
   of GuaranteeError.InvalidIndex: AvailabilityError.InvalidIndex # Invalid child access cannot produce a value.
   else: AvailabilityError.InvalidReport # No unrelated child status can be interpreted as a valid report.
 
-## Bound parent arithmetic and complete payload policy before committing output or captured progress.
 proc grow(cursor: var int, bytes: int, limit: ByteLimit): AvailabilityError =
+  ## Bound parent arithmetic and complete payload policy before committing output or captured progress.
   if bytes > high(int)-cursor: return AvailabilityError.LengthOverflow # Check before addition.
   cursor += bytes
   if uint64(cursor) > uint64(limit): return AvailabilityError.LimitExceeded # Tags, guarantees and registration times all count.
   AvailabilityError.None
 
-## Scan every configured optional slot and full child guarantee before allocating any owner.
 proc scan(input: openArray[byte], config: AvailabilityConfig): AvailabilityResult[Layout] =
+  ## Scan every configured optional slot and full child guarantee before allocating any owner.
   let valid = validate(config)
   if valid != AvailabilityError.None: return AvailabilityResult[Layout](
       status: valid) # Configuration precedes input access.

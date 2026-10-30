@@ -30,11 +30,14 @@ type
 
 proc `=copy`*(destination: var LightFileCache, source: LightFileCache) {.error.}
   ## Duplicating a ref-backed composite would create a second native retirement authority.
+
 proc `=dup`*(source: LightFileCache): LightFileCache {.error.}
   ## Reject hidden duplication during actual ARC lowering as well as explicit copy.
+
 proc requireClosed(owner: LightFileCache) {.requires: owner.data == nil.} =
   ## Close errors must remain observable instead of silently retiring a lock in destruction.
   discard
+
 proc `=wasMoved`*(owner: var LightFileCache) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(owner.data)
@@ -43,16 +46,20 @@ proc `=destroy`*(owner: LightFileCache) =
   ## Compiler-generated moves leave a nil sentinel; destruction of an unclosed owner is misuse.
   requireClosed(owner)
   `=destroy`(owner.data)
+
 func error*[T](outcome: LightFileResult[T]): FileError =
   ## Observe refusal without exposing private result state.
   outcome.status
+
 func value*[T](outcome: LightFileResult[T]): T {.inline,
     requires: outcome.status == FileError.None.} =
   ## Extract immutable readers or synchronization receipts only from completed operations.
   outcome.completed
+
 func opened*(owner: LightFileCache): bool =
   ## Poll lifecycle safely even for default and moved-from owners.
   owner.data != nil
+
 proc close*(owner: var LightFileCache): FileError =
   ## Release exactly one directory lease, including poisoned owners, and disarm even after native close refusal.
   let data = owner.data
@@ -60,6 +67,7 @@ proc close*(owner: var LightFileCache): FileError =
   let retired = data.directory.close
   owner.data = nil
   retired
+
 func samePolicy(left, right: LightSnapshotLimits): bool =
   ## Every scalar resource ceiling, including ordinary mutation policy, is part of preparation identity.
   uint64(left.bytes) == uint64(right.bytes) and
@@ -68,6 +76,7 @@ func samePolicy(left, right: LightSnapshotLimits): bool =
     uint64(left.cache.valueBytes) == uint64(right.cache.valueBytes) and
     uint64(left.cache.proof.nodes) == uint64(right.cache.proof.nodes) and
     uint64(left.cache.proof.valueBytes) == uint64(right.cache.proof.valueBytes)
+
 proc binding(prepared: PreparedLightSnapshot, config: LightFileConfig): FileError =
   ## Refuse unprepared, unrelated or differently bounded images before filesystem mutation.
   if not prepared.initialized: return FileError.Uninitialized
@@ -76,6 +85,7 @@ proc binding(prepared: PreparedLightSnapshot, config: LightFileConfig): FileErro
     return FileError.WrongIdentity
   if not samePolicy(prepared.limits, config.limits): return FileError.InvalidBatch
   FileError.None
+
 func decodedError(reason: LightSnapshotError): FileError =
   ## Preserve broad typed IO-domain distinctions without granting any partially decoded payload.
   case reason
@@ -84,6 +94,7 @@ func decodedError(reason: LightSnapshotError): FileError =
   of LightSnapshotError.LimitExceeded, LightSnapshotError.LengthOverflow: FileError.LimitExceeded
   of LightSnapshotError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidFrame
+
 proc readCurrent(data: FileOwner): LightFileResult[PreparedLightSnapshot] =
   ## Retain the exact fully verified selected image so later admission need not resubmit old evidence.
   var loaded = readManagedFile(data.directory, ManagedFileKind.Current, ManagedEpoch(0),
@@ -95,6 +106,7 @@ proc readCurrent(data: FileOwner): LightFileResult[PreparedLightSnapshot] =
   let reason = decodedError(restored.error)
   if reason != FileError.None: return LightFileResult[PreparedLightSnapshot](status: reason)
   LightFileResult[PreparedLightSnapshot](status: FileError.None, completed: restored.value)
+
 proc openLightFileCache*(owner: var LightFileCache, path: string,
     config: LightFileConfig): FileError =
   ## Acquire an existing namespace and verify its complete image against explicit independent expectations.
@@ -109,6 +121,7 @@ proc openLightFileCache*(owner: var LightFileCache, path: string,
   data.image = loaded.value
   owner.data = data
   FileError.None
+
 proc initializeLightFileCache*(owner: var LightFileCache, path: string, config: LightFileConfig,
     prepared: PreparedLightSnapshot): LightFileResult[StorageDurability] =
   ## Create a new private namespace only from a fully prepared image with the exact trust/policy binding.
@@ -126,12 +139,14 @@ proc initializeLightFileCache*(owner: var LightFileCache, path: string, config: 
   owner.data = data
   LightFileResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc snapshot*(owner: LightFileCache): LightFileResult[LightStateCache] =
   ## Return an immutable reader only while this owner has a confirmed selected image.
   let data = owner.data
   if data == nil: return LightFileResult[LightStateCache](status: FileError.Uninitialized)
   if data.poisoned: return LightFileResult[LightStateCache](status: FileError.RecoveryRequired)
   LightFileResult[LightStateCache](status: FileError.None, completed: data.image.cache)
+
 proc preparedSnapshot*(owner: LightFileCache): LightFileResult[PreparedLightSnapshot] =
   ## Retain selected immutable proof evidence without IO or a new durability receipt; no directory lease escapes.
   let data = owner.data
@@ -139,6 +154,7 @@ proc preparedSnapshot*(owner: LightFileCache): LightFileResult[PreparedLightSnap
   if data.poisoned: return LightFileResult[PreparedLightSnapshot](
       status: FileError.RecoveryRequired)
   LightFileResult[PreparedLightSnapshot](status: FileError.None, completed: data.image)
+
 proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): LightFileResult[
     StorageDurability] =
   ## Atomically replace the selected image only after matching its opaque preparation to the fixed owner policy.
@@ -156,6 +172,7 @@ proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): Light
   data.image = prepared
   LightFileResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc discardPending*(owner: var LightFileCache): FileError =
   ## Revalidate the selected image before explicitly removing an unselected regular staging file.
   let data = owner.data
@@ -182,6 +199,7 @@ proc admit*(owner: var LightFileCache, updates: openArray[LightStateProof]): Lig
   let reason = decodedError(edited.error)
   if reason != FileError.None: return LightFileResult[StorageDurability](status: reason)
   owner.publish(edited.value)
+
 proc forget*(owner: var LightFileCache, keys: openArray[StateKey]): LightFileResult[
     StorageDurability] =
   ## Durably drop only local evidence; the unchanged root never derives from the remaining partial cache.

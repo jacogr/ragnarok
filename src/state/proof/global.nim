@@ -30,6 +30,7 @@ type
 func error*[T](outcome: GlobalProofResult[T]): GlobalProofError =
   ## Inspect a read refusal without selecting its guarded payload.
   outcome.status
+
 func value*[T](outcome: GlobalProofResult[T]): T {.inline,
     requires: outcome.status == GlobalProofError.None.} =
   ## Return only a complete fixed value or immutable typed capture.
@@ -54,6 +55,7 @@ proc planProofChapters*(chapters: openArray[StateChapterId], limit: ElementLimit
         ProofPlanError.LimitExceeded:
       GlobalProofError.LimitExceeded else: GlobalProofError.InvalidInput))
   GlobalProofResult[StateProofPlan](status: GlobalProofError.None, completed: captured.value)
+
 proc planProofChapter*(chapter: StateChapterId, limit: ElementLimit):
     GlobalProofResult[StateProofPlan] =
   ## Request exactly one typed top-level chapter, without root or evidence authority.

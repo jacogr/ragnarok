@@ -34,26 +34,33 @@ type
 func error*[T](outcome: CheckpointHeadResult[T]): CheckpointHeadError =
   ## Observe typed refusal without touching an absent payload.
   outcome.status
+
 func value*[T](outcome: CheckpointHeadResult[T]): T {.inline,
     requires: outcome.status == CheckpointHeadError.None.} =
   ## Success guards both decoded metadata and encoded bytes in checked optimized builds.
   outcome.completed
+
 func ready*(head: CheckpointHead): bool =
   ## Default heads remain distinguishable from a deliberately initialized empty-root generation.
   head.initialized
+
 func generation*(head: CheckpointHead): CheckpointGeneration {.requires: head.initialized.} =
   ## Return the local generation without exposing writable storage.
   head.sequence
+
 func slot*(head: CheckpointHead): CheckpointSlot {.requires: head.initialized.} =
   ## Slot selection is available only on initialized metadata.
   head.selected
+
 func root*(head: CheckpointHead): StateRoot {.requires: head.initialized.} =
   ## This is a claimed complete root, not independent chain authentication.
   head.commitment
+
 func newCheckpointHead*(generation: CheckpointGeneration, slot: CheckpointSlot,
     root: StateRoot): CheckpointHead =
   ## Explicit construction preserves nominal local generation and complete-root domains.
   CheckpointHead(initialized: true, sequence: generation, selected: slot, commitment: root)
+
 func nextCheckpointHead*(head: CheckpointHead, root: StateRoot): CheckpointHeadResult[
     CheckpointHead] =
   ## Advance into the inactive slot only after proving the local counter cannot wrap.
@@ -64,6 +71,7 @@ func nextCheckpointHead*(head: CheckpointHead, root: StateRoot): CheckpointHeadR
   let selected = if head.selected == CheckpointSlot.First: CheckpointSlot.Second else: CheckpointSlot.First
   CheckpointHeadResult[CheckpointHead](status: CheckpointHeadError.None,
     completed: newCheckpointHead(CheckpointGeneration(uint64(head.sequence) + 1), selected, root))
+
 proc encodeCheckpointHead*(head: CheckpointHead, limit: ByteLimit): CheckpointHeadResult[seq[byte]] =
   ## Prove the exact fixed allocation before copying fields or invoking the maintained digest primitive.
   if not head.initialized:
@@ -87,6 +95,7 @@ proc encodeCheckpointHead*(head: CheckpointHead, limit: ByteLimit): CheckpointHe
   for index in 0..<32:
     bytes[HeadPayloadBytes + index] = checksum[index] # Integrity covers the version and every selected field.
   CheckpointHeadResult[seq[byte]](status: CheckpointHeadError.None, completed: bytes)
+
 proc decodeCheckpointHead*(bytes: openArray[byte], limit: ByteLimit): CheckpointHeadResult[
     CheckpointHead] =
   ## Borrow fixed input synchronously; no length, alternative version or invalid slot is tolerated.

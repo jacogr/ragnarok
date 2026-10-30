@@ -63,8 +63,11 @@ type
     pending: PendingCurrentBlockInput
 
 proc `=copy`*(destination: var CurrentBlockInput, source: CurrentBlockInput) {.error: "CurrentBlockInput owns mutable reception".}
+  ## Reject copying the current block receiver and its suspended preparation authority.
+
 proc `=dup`*(source: CurrentBlockInput): CurrentBlockInput {.error.}
   ## Duplication would share mutable reception and suspended-generation authority.
+
 proc `==`*(left, right: CurrentBlockInputId): bool {.borrow.}
   ## Compare local generations without accepting integer or stream identities.
 

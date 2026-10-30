@@ -31,17 +31,21 @@ type
       reason: ServiceSupervisionError
     else:
       discard
+
 func error*[T](outcome: SupervisionTableResult[T]): SupervisionTableError =
   ## Read the immutable selected alternative.
   outcome.status
+
 func value*[T](outcome: SupervisionTableResult[T]): T {.inline,
     requires: outcome.status == SupervisionTableError.None.} =
   ## No default or failed batch grants a complete source-bearing table.
   outcome.completed
+
 func resolutionError*[T](outcome: SupervisionTableResult[T]): ServiceSupervisionError {.inline,
     requires: outcome.status == SupervisionTableError.ResolutionFailure.} =
   ## Inspect only an actual failed row resolver rather than an invented default reason.
   outcome.reason
+
 proc buildSupervisionTable*(source: StateServiceDirectory,
     limits: SupervisionTableLimits): SupervisionTableResult[StateSupervisionTable] =
   ## Preflight all resolution count and retained allocation before constructing fixed output rows.
@@ -74,6 +78,7 @@ proc buildSupervisionTable*(source: StateServiceDirectory,
         1 # Preserve incarnation failure without rejecting specified fallback.
   SupervisionTableResult[StateSupervisionTable](status: SupervisionTableError.None,
     completed: StateSupervisionTable(data: SupervisionTableData(source: source, rows: rows, info: info)))
+
 proc supervisionTableInfo*(table: StateSupervisionTable): SupervisionTableResult[
     SupervisionTableInfo] =
   ## Copy completed batch accounting without exposing backing rows.
@@ -83,6 +88,7 @@ proc supervisionTableInfo*(table: StateSupervisionTable): SupervisionTableResult
         status: SupervisionTableError.Uninitialized) # No default table.
   SupervisionTableResult[SupervisionTableInfo](status: SupervisionTableError.None,
       completed: data.info)
+
 proc supervisionTableDirectory*(table: StateSupervisionTable): SupervisionTableResult[
     StateServiceDirectory] =
   ## Retain the original complete source directory for exact provenance checks.
@@ -92,6 +98,7 @@ proc supervisionTableDirectory*(table: StateSupervisionTable): SupervisionTableR
         status: SupervisionTableError.Uninitialized) # No default source.
   SupervisionTableResult[StateServiceDirectory](status: SupervisionTableError.None,
       completed: data.source)
+
 proc supervisionTableAt*(table: StateSupervisionTable,
     ordinal: InventoryServiceIndex): SupervisionTableResult[ServiceSupervisionInfo] =
   ## Original capture order selects fixed decisions only after full-width bounds validation.
@@ -104,6 +111,7 @@ proc supervisionTableAt*(table: StateSupervisionTable,
         status: SupervisionTableError.InvalidIndex) # Never narrow an unchecked original ordinal.
   SupervisionTableResult[ServiceSupervisionInfo](status: SupervisionTableError.None,
       completed: data.rows[int(uint64(ordinal))])
+
 proc supervisionFor*(table: StateSupervisionTable,
     service: ServiceIndex): SupervisionTableResult[ServiceSupervisionInfo] =
   ## Resolve a present identity through the retained complete directory and return its original-order row.

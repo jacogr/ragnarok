@@ -31,34 +31,44 @@ type
 func ready*(record: PreparedHistoricalRecord): bool =
   ## False means historical indexing is disabled for a legacy/default inline window.
   record.ready
+
 func nextCursor*(record: PreparedHistoricalRecord): HistoryCursor {.requires: record.ready.} =
   ## Copied scalar metadata is eligible for publication only after complete record staging succeeds.
   record.append.nextCursor
+
 func ready*(configuration: PreparedHistoryConfiguration): bool =
   ## Defaults never authorize context mutation, cache installation or pruning.
   configuration.ready
+
 func changed*(configuration: PreparedHistoryConfiguration): bool {.requires: configuration.ready.} =
   ## An unchanged persisted policy needs only validated metadata and no new repository generation.
   configuration.changed
+
 func reseeded*(configuration: PreparedHistoryConfiguration): bool {.requires: configuration.ready.} =
   ## Legacy inline migration stages a fresh local ordinal inventory and resets only obsolete cleanup progress.
   configuration.reseeded
+
 proc context*(configuration: PreparedHistoryConfiguration): seq[
     byte] {.requires: configuration.ready and configuration.changed.} =
   ## Copy the exact bounded successor context after all encoding/staging checks.
   configuration.context
+
 proc configuredOwner*(configuration: PreparedHistoryConfiguration): ApplicationChain {.requires: configuration.ready.} =
   ## Replace the canonical live view only after the corresponding context is confirmed durable.
   configuration.owner
+
 func generation*(configuration: PreparedHistoryConfiguration): RepositoryGeneration {.requires: configuration.ready.} =
   ## A policy change advances ordinary durability independently of historical acceptance ordinals.
   configuration.generation
+
 func selection*(configuration: PreparedHistoryConfiguration): CheckedHistorySelection {.requires: configuration.ready.} =
   ## Passive checked metadata owns no record list or native reader descriptor.
   configuration.selection
+
 func cleanupFrom*(configuration: PreparedHistoryConfiguration): HistoryCursor {.requires: configuration.ready.} =
   ## Retire only the known predecessor/staged prefix after the new cursor is confirmed.
   configuration.cleanupFrom
+
 proc historyNamespace*(disk: DiskStateStore): HistoryResult[string] =
   ## Keep archives under a deterministic sibling path while preserving the primary database writer's lease.
   if not disk.opened: return historyFailure[string](HistoryError.Uninitialized)
@@ -66,6 +76,7 @@ proc historyNamespace*(disk: DiskStateStore): HistoryResult[string] =
   if path.len == 0 or path.len > high(int)-16: return historyFailure[string](
       HistoryError.LimitExceeded)
   historySuccess(path & ".history")
+
 proc checkedDiskHistory*(disk: var DiskStateStore, owner: ApplicationChain,
     chain: StorageChainId, limit: ByteLimit,
     recordBytes = DefaultHistoricalRecordBytes): HistoryResult[CheckedHistorySelection] =
@@ -117,6 +128,7 @@ proc checkedDiskHistory*(disk: var DiskStateStore, owner: ApplicationChain,
     return historyFailure[CheckedHistorySelection](HistoryError.ChecksumMismatch)
   disk.recordHistorySelection(selected.value)
   historySuccess(selected.value)
+
 proc prepareHistoricalRecord*(previous: openArray[byte], saved: BlockSnapshotResult,
     chain: StorageChainId, limit: ByteLimit): HistoryResult[PreparedHistoricalRecord] =
   ## Host preflight computes only fixed metadata; checkpoint encoding and file IO belong to the excluded worker.
@@ -126,6 +138,7 @@ proc prepareHistoricalRecord*(previous: openArray[byte], saved: BlockSnapshotRes
   let append = prepareSnapshotHistory(context.value.historicalCursor, saved)
   if append.error != HistoryError.None: return historyFailure[PreparedHistoricalRecord](append.error)
   historySuccess(PreparedHistoricalRecord(ready: true, append: append.value, saved: saved))
+
 proc stagePreparedHistory*(disk: DiskStateStore, record: PreparedHistoricalRecord,
     recordBytes = DefaultHistoricalRecordBytes): HistoryResult[CheckedHistorySelection] =
   ## Sync immutable record/index files before any ordinary canonical publication can reference the successor.
@@ -153,6 +166,7 @@ proc stagePreparedHistory*(disk: DiskStateStore, record: PreparedHistoricalRecor
   let staged = stageHistoryEntry(files.value, record.append, encoded.value, recordBytes)
   if staged.error != HistoryError.None: return historyFailure[CheckedHistorySelection](staged.error)
   advanceCheckedHistorySelection(before, record.append, recordBytes)
+
 proc completeHistorySelection*(disk: var DiskStateStore, before: HistoryCursor,
     selected: CheckedHistorySelection, resetProgress = false): HistoryError =
   ## Confirm selection first; cleanup errors remain visible diagnostics and never revoke an accepted canonical successor.
@@ -181,11 +195,13 @@ proc completeHistorySelection*(disk: var DiskStateStore, before: HistoryCursor,
           if pruned.error != HistoryError.None: reason = pruned.error
   disk.recordHistoryCleanup(reason)
   reason
+
 proc completePreparedHistory*(disk: var DiskStateStore, record: PreparedHistoricalRecord,
     selected: CheckedHistorySelection): HistoryError =
   ## Disabled inline history has no sibling namespace or cleanup work.
   if not record.ready: return HistoryError.None
   completeHistorySelection(disk, record.append.previousCursor, selected)
+
 proc prepareHistoryConfiguration*(disk: var DiskStateStore, owner: ApplicationChain,
     chain: StorageChainId, policy: HistoryPolicy, previous: openArray[byte],
     generation: RepositoryGeneration, limit: ByteLimit,
@@ -303,6 +319,7 @@ proc readDiskHistoricalSnapshot*(disk: var DiskStateStore, owner: ApplicationCha
     return historySuccess(retained.value) # Legacy/default databases expose only the supported inline window and explicit anchor.
   readHistoricalSnapshot(selected.value, HistoryBlockHash(array[32, byte](hash)),
     owner.chainView.bestBlock.value.chainParameters, policy, recordBytes)
+
 proc readDiskHistoricalSnapshot*(disk: var DiskStateStore, owner: ApplicationChain,
     chain: StorageChainId, ordinal: HistoryOrdinal, policy: StateStoreLimits, limit: ByteLimit,
     recordBytes = DefaultHistoricalRecordBytes): HistoryResult[ApplicationChain] =

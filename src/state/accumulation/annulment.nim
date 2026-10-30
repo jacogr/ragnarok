@@ -52,6 +52,7 @@ func sameAccumulationAnnulment*(left, right: PreparedAccumulationAnnulment): boo
 func error*[T](outcome: AccumulationAnnulmentResult[T]): AccumulationAnnulmentError =
   ## Inspect the reason without granting result mutation.
   outcome.status
+
 func value*[T](outcome: AccumulationAnnulmentResult[T]): T {.inline,
     requires: outcome.status == AccumulationAnnulmentError.None.} =
   ## Extract only a complete selected success under checked optimized contracts.
@@ -194,6 +195,7 @@ proc annulmentInfo*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentR
       status: AccumulationAnnulmentError.Uninitialized) # No fabricated empty certificate.
   AccumulationAnnulmentResult[AccumulationAnnulmentInfo](status: AccumulationAnnulmentError.None,
       completed: data.info)
+
 proc annulmentPrior*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentResult[
     StateStoreSnapshot] =
   ## Retain the exact complete prior used by every effective-supervisor predicate.
@@ -202,6 +204,7 @@ proc annulmentPrior*(plan: PreparedAccumulationAnnulment): AccumulationAnnulment
       status: AccumulationAnnulmentError.Uninitialized) # Defaults carry no prior.
   AccumulationAnnulmentResult[StateStoreSnapshot](status: AccumulationAnnulmentError.None,
       completed: data.prior)
+
 proc selectedRow(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[OutcomeRow] =
   ## Guard full-width ordinals before narrowing; returned rows are independent immutable-handle copies.
@@ -212,6 +215,7 @@ proc selectedRow(plan: PreparedAccumulationAnnulment,
       status: AccumulationAnnulmentError.InvalidIndex) # Includes upper-half naturals.
   AccumulationAnnulmentResult[OutcomeRow](status: AccumulationAnnulmentError.None,
       completed: data.rows[int(uint64(index))])
+
 proc annulmentDecisionAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[AccumulationAnnulmentDecision] =
   ## Copy the selected conflict decision; mutating it cannot alter the certificate.
@@ -220,6 +224,7 @@ proc annulmentDecisionAt*(plan: PreparedAccumulationAnnulment,
       AccumulationAnnulmentDecision](status: row.error) # Preserve default/bounds refusal.
   AccumulationAnnulmentResult[AccumulationAnnulmentDecision](
       status: AccumulationAnnulmentError.None, completed: row.value.decision)
+
 proc annulmentOriginalOutcomeAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[AccumulationOutcome] =
   ## Retain original provenance and provisions explicitly; this is never a selected-state substitute.
@@ -228,6 +233,7 @@ proc annulmentOriginalOutcomeAt*(plan: PreparedAccumulationAnnulment,
       AccumulationOutcome](status: row.error) # No substituted raw execution.
   AccumulationAnnulmentResult[AccumulationOutcome](status: AccumulationAnnulmentError.None,
       completed: row.value.outcome)
+
 proc annulmentSelectedInfoAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[AccumulationOutcomeInfo] =
   ## N preserves actual gas/provisions and clears selected outgoing transfers and yield presence.
@@ -240,6 +246,7 @@ proc annulmentSelectedInfoAt*(plan: PreparedAccumulationAnnulment,
     info.hasYield = false # Other source facts remain unchanged by conflict annulment.
   AccumulationAnnulmentResult[AccumulationOutcomeInfo](status: AccumulationAnnulmentError.None,
       completed: info)
+
 proc annulmentSelectedAccountsAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[StateStoreSnapshot] =
   ## N restores the common prior; retained outcomes keep their actual terminal-selected complete account map.
@@ -249,6 +256,7 @@ proc annulmentSelectedAccountsAt*(plan: PreparedAccumulationAnnulment,
   let accounts = if row.value.decision.annulled: plan.annulmentPrior.value else: row.value.outcome.outcomeContext.value.effectAccounts.value
   AccumulationAnnulmentResult[StateStoreSnapshot](status: AccumulationAnnulmentError.None,
       completed: accounts)
+
 proc annulmentSelectedModifiedCountAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
   ## N clears modification membership without rewriting the original genuine outcome.
@@ -266,6 +274,7 @@ proc annulmentInputs*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmen
       status: AccumulationAnnulmentError.Uninitialized) # No default provenance.
   AccumulationAnnulmentResult[PreparedAccumulationInputs](status: AccumulationAnnulmentError.None,
       completed: data.inputs)
+
 proc annulmentSlot*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentResult[HeaderSlot] =
   ## Copy the shared actual invocation time; initialized empty sources have no invented slot.
   let data = plan.data
@@ -319,6 +328,7 @@ proc annulmentSelectedRequestFactCountAt*(plan: PreparedAccumulationAnnulment,
   if count.error != AccumulationEffectError.None:
     return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
   AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+
 proc annulmentSelectedRequestFactAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex, fact: AccumulationRequestFactIndex): AccumulationAnnulmentResult[
         AccumulationRequestFact] =
@@ -347,6 +357,7 @@ proc annulmentSelectedCreatedAccountFactCountAt*(plan: PreparedAccumulationAnnul
   if count.error != AccumulationEffectError.None:
     return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
   AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+
 proc annulmentSelectedCreatedAccountFactAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex, fact: AccumulationCreatedAccountIndex): AccumulationAnnulmentResult[
         AccumulationCreatedAccount] =
@@ -375,6 +386,7 @@ proc annulmentSelectedDeletedAccountFactCountAt*(plan: PreparedAccumulationAnnul
   if count.error != AccumulationEffectError.None:
     return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
   AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+
 proc annulmentSelectedDeletedAccountFactAt*(plan: PreparedAccumulationAnnulment,
     index: AccumulationAnnulmentIndex, fact: AccumulationDeletedAccountIndex): AccumulationAnnulmentResult[
         AccumulationDeletedAccount] =

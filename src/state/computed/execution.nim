@@ -26,14 +26,17 @@ type
 func error*[T](outcome: ComputedExecutionResult[T]): ComputedExecutionError =
   ## Observe selection without granting writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedExecutionResult[T]): T
     {.requires: outcome.status == ComputedExecutionError.None.} =
   ## Preserve complete-success extraction under optimized compilation.
   outcome.completed
+
 func runnerFailure*[T](outcome: ComputedExecutionResult[T]): AccumulationRunnerResult
     {.requires: outcome.status == ComputedExecutionError.RunnerFailure.} =
   ## Retain only the actual refused runner result with all its existing nested guards.
   outcome.runnerReason
+
 proc computedExecutionSource*(execution: ExecutedComputedAccumulation): ComputedExecutionResult[
     ComputedAccumulationRound] =
   ## Share exact original computed reports, published assignments, initial round and parameter authority.
@@ -42,6 +45,7 @@ proc computedExecutionSource*(execution: ExecutedComputedAccumulation): Computed
       status: ComputedExecutionError.Uninitialized)
   ComputedExecutionResult[ComputedAccumulationRound](status: ComputedExecutionError.None,
       completed: data.source)
+
 proc computedExecutionCompleted*(execution: ExecutedComputedAccumulation): ComputedExecutionResult[
     CompletedBlockAccumulation] =
   ## Share the real completed engine result; copied observations cannot replace this certificate.
@@ -50,6 +54,7 @@ proc computedExecutionCompleted*(execution: ExecutedComputedAccumulation): Compu
       status: ComputedExecutionError.Uninitialized)
   ComputedExecutionResult[CompletedBlockAccumulation](status: ComputedExecutionError.None,
       completed: data.execution)
+
 proc executeComputedAccumulation*(source: ComputedAccumulationRound,
     limits: AccumulationRunnerLimits): ComputedExecutionResult[ExecutedComputedAccumulation] =
   ## Resolve and execute every selected service under original source parameters, publishing no partial success on refusal.

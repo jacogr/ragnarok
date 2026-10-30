@@ -44,18 +44,22 @@ type
     present, linked: bool
     fact: InventoryPreimageFact
     history: RequestHistory
+
 func error*[T](outcome: CodeAvailabilityResult[T]): CodeAvailabilityError =
   ## Observe the immutable selected alternative without granting its backing owner.
   outcome.status
+
 func value*[T](outcome: CodeAvailabilityResult[T]): T {.inline, requires: outcome.status ==
     CodeAvailabilityError.None.} =
   ## Only complete successful results authorize table, info or detached code extraction.
   outcome.completed
+
 func failedService*[T](outcome: CodeAvailabilityResult[T]): ServiceIndex {.inline,
     requires: outcome.status in {CodeAvailabilityError.MissingRequest,
     CodeAvailabilityError.HashMismatch, CodeAvailabilityError.BackendFailure}.} =
   ## Only a genuine selected association or content failure identifies an offending service.
   outcome.service
+
 proc selectCode(source: StateInventory, ordinal: InventoryServiceIndex): CodeSelection =
   ## Callers first admit complete worst-case visits; select metadata's own hash and the actual blob-length request only.
   result = default(CodeSelection)
@@ -74,6 +78,7 @@ proc selectCode(source: StateInventory, ordinal: InventoryServiceIndex): CodeSel
         result.linked = true
         result.history = request.history
         break # Exact hash/actual length identity cannot be replaced by another request.
+
 proc auditCodeAvailability*(source: StateInventory, slot: RequestSlot,
     limits: CodeAvailabilityLimits): CodeAvailabilityResult[StateCodeAvailability] =
   ## Preflight the entire complete inventory before allocating descriptors, copying code or invoking content hashes.
@@ -135,6 +140,7 @@ proc auditCodeAvailability*(source: StateInventory, slot: RequestSlot,
         inc report.available # Requested and out-of-interval blobs remain observed unavailable.
   CodeAvailabilityResult[StateCodeAvailability](status: CodeAvailabilityError.None,
     completed: StateCodeAvailability(data: CodeData(source: source, rows: rows, info: report)))
+
 proc codeAvailabilityInfo*(table: StateCodeAvailability): CodeAvailabilityResult[
     CodeAvailabilityInfo] =
   ## Copy whole-source observations without exposing mutable rows or storage.
@@ -143,6 +149,7 @@ proc codeAvailabilityInfo*(table: StateCodeAvailability): CodeAvailabilityResult
       status: CodeAvailabilityError.Uninitialized)
   CodeAvailabilityResult[CodeAvailabilityInfo](status: CodeAvailabilityError.None,
       completed: data.info)
+
 proc codeAvailabilityInventory*(table: StateCodeAvailability): CodeAvailabilityResult[
     StateInventory] =
   ## Retain the exact original complete compact owner for checked predicate joins.
@@ -150,6 +157,7 @@ proc codeAvailabilityInventory*(table: StateCodeAvailability): CodeAvailabilityR
   if data == nil: return CodeAvailabilityResult[StateInventory](
       status: CodeAvailabilityError.Uninitialized)
   CodeAvailabilityResult[StateInventory](status: CodeAvailabilityError.None, completed: data.source)
+
 proc serviceCodeAt*(table: StateCodeAvailability, index: int): CodeAvailabilityResult[
     ServiceCodeInfo] =
   ## Check signed native indices before reading one copied fixed row.
@@ -159,6 +167,7 @@ proc serviceCodeAt*(table: StateCodeAvailability, index: int): CodeAvailabilityR
   if index < 0 or index >= data.rows.len: return CodeAvailabilityResult[ServiceCodeInfo](
       status: CodeAvailabilityError.InvalidIndex)
   CodeAvailabilityResult[ServiceCodeInfo](status: CodeAvailabilityError.None, completed: data.rows[index].info)
+
 proc findServiceCode*(table: StateCodeAvailability, service: ServiceIndex): CodeAvailabilityResult[int] =
   ## Search only already admitted fixed rows; absent account identity differs from an account with no stored code.
   let data = table.data
@@ -167,6 +176,7 @@ proc findServiceCode*(table: StateCodeAvailability, service: ServiceIndex): Code
     if data.rows[i].info.service == service: return CodeAvailabilityResult[int](
         status: CodeAvailabilityError.None, completed: i)
   CodeAvailabilityResult[int](status: CodeAvailabilityError.NoService)
+
 proc copyServiceCode*(table: StateCodeAvailability, index: int,
     limit: ByteLimit): CodeAvailabilityResult[seq[byte]] =
   ## Copy available code only after owner/index/state/extent checks; present-empty bytes remain distinct from absence.

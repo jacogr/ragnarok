@@ -78,33 +78,38 @@ type
 func error*[T](value: HistoryResult[T]): HistoryError =
   ## Read-only result reasons never authorize a default/failed payload or partial progress.
   value.status
+
 func value*[T](value: HistoryResult[T]): T {.inline, requires: value.status == HistoryError.None.} =
   ## Selected values retain their success precondition under checked optimized builds.
   value.completed
+
 func absentHistoryPeak*(): HistoryPeak =
   ## Construct an absent peak with no readable hash alternative; default peaks have the same meaning.
   HistoryPeak(isPresent: false)
+
 func presentHistoryPeak*(hash: HistoryPeakHash): HistoryPeak =
   ## Construct a present copied hash, including the distinct present-all-zero value.
   HistoryPeak(isPresent: true,
     peakHash: hash)
+
 func present*(peak: HistoryPeak): bool =
   ## Inspect presence without exposing a mutable discriminator.
   peak.isPresent
+
 func hash*(peak: HistoryPeak): HistoryPeakHash {.inline, requires: peak.isPresent.} =
   ## An absent source or copied peak cannot expose a fabricated hash.
   peak.peakHash
 
-## Check fixed-stride wire growth before native narrowing, multiplication and addition.
 proc grow(cursor: var int, count: uint64, width: int, limit: ByteLimit): HistoryError =
+  ## Check fixed-stride wire growth before native narrowing, multiplication and addition.
   if count > uint64((high(int)-cursor) div width):
     return HistoryError.LengthOverflow # No arithmetic overflow before sizing or access.
   cursor += int(count)*width
   if uint64(cursor) > uint64(limit): return HistoryError.LimitExceeded # Counts, tags and fixed bytes all consume the parent budget.
   HistoryError.None
 
-## Canonical natural-prefix reads return complete count/progress together or a failure-only reason.
 proc count(input: openArray[byte], cursor: int): HistoryResult[tuple[value: uint64, size: int]] =
+  ## Canonical natural-prefix reads return complete count/progress together or a failure-only reason.
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     # Distinguish missing bytes from a complete but overlong count.
@@ -117,29 +122,29 @@ proc count(input: openArray[byte], cursor: int): HistoryResult[tuple[value: uint
   HistoryResult[tuple[value: uint64, size: int]](status: HistoryError.None,
     completed: (uint64(parsed.value), int(parsed.consumed)))
 
-## Copy fixed identities only after their whole selected record/set extent was validated.
 proc fixed(input: openArray[byte], offset: int): array[32, byte] =
+  ## Copy fixed identities only after their whole selected record/set extent was validated.
   result = default(array[32, byte])
   # Fixed value results retain no pointer into the caller's input.
   for i in 0..<32: result[i] = input[offset+i]
 
-## Compare dictionary keys by octet order, never by their associated segment value.
 proc less(a, b: array[32, byte]): bool =
+  ## Compare dictionary keys by octet order, never by their associated segment value.
   # Equality is a duplicate key regardless of whether segment roots differ.
   for i in 0..<32:
     if a[i] < b[i]: return true # First smaller key octet establishes ascending order.
     elif a[i] > b[i]: return false # Descending keys have no canonical dictionary image.
   false
 
-## Enforce at most eight recent blocks plus the caller's independently stricter cardinality ceiling.
 proc blockCount(n: uint64, config: HistoryConfig): HistoryError =
+  ## Enforce at most eight recent blocks plus the caller's independently stricter cardinality ceiling.
   if uint64(config.cores) < 2: return HistoryError.InvalidConfig # JAM's core/validator configuration needs at least two cores.
   if n > 8: return HistoryError.InvalidCount # GP recent-history length is eight for both profiles.
   if n > uint64(config.blocks): return HistoryError.LimitExceeded # Caller may permit fewer retained records.
   HistoryError.None
 
-## Enforce per-record core cardinality, aggregate dictionary policy and typed storage bounds.
 proc packageCount(n: uint64, config: HistoryConfig, total: var uint64): HistoryError =
+  ## Enforce per-record core cardinality, aggregate dictionary policy and typed storage bounds.
   if n > uint64(config.cores): return HistoryError.InvalidCount # One record cannot report more packages than cores.
   if n > uint64(config.perBlock) or n > uint64(config.totalPackages)-total:
     return HistoryError.LimitExceeded # Aggregate counting uses subtraction before addition.
@@ -147,8 +152,8 @@ proc packageCount(n: uint64, config: HistoryConfig, total: var uint64): HistoryE
   total += n
   HistoryError.None
 
-## Prove complete history/dictionaries/belt without allocating any retained parent or child arrays.
 proc scan(input: openArray[byte], config: HistoryConfig): HistoryResult[Layout] =
+  ## Prove complete history/dictionaries/belt without allocating any retained parent or child arrays.
   if uint64(config.cores) < 2: return HistoryResult[Layout](
       status: HistoryError.InvalidConfig) # Configuration precedes framing.
   let n = count(input, 0)
@@ -257,15 +262,15 @@ proc decodeHistoryState*(input: openArray[byte], config: HistoryConfig): History
   HistoryResult[HistoryRead](status: HistoryError.None,
     completed: HistoryRead(snapshot: HistorySnapshot(data: data), consumed: layout.consumed))
 
-## Copy fields only into a newly allocated payload whose whole extent has already been checked.
 proc put(bytes: openArray[byte], output: var seq[byte], cursor: var int) =
+  ## Copy fields only into a newly allocated payload whose whole extent has already been checked.
   # Whole-source validation established every destination access.
   for b in bytes:
     output[cursor] = b
     inc cursor
 
-## Commit one canonical natural count without copying unused primitive encoder storage.
 proc putCount(n: int, output: var seq[byte], cursor: var int) =
+  ## Commit one canonical natural count without copying unused primitive encoder storage.
   let prefix = natural.encode(JamNatural(n))
   put(prefix.bytes.toOpenArray(0, prefix.len-1), output, cursor)
 

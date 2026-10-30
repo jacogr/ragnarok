@@ -26,14 +26,17 @@ type
 func error*[T](outcome: ComputedCompositionResult[T]): ComputedCompositionError =
   ## Inspect selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedCompositionResult[T]): T
     {.requires: outcome.status == ComputedCompositionError.None.} =
   ## Guard complete-success extraction under optimized compilation.
   outcome.completed
+
 func compositionFailure*[T](outcome: ComputedCompositionResult[T]): AccumulationCompletionResult
     {.requires: outcome.status == ComputedCompositionError.CompositionFailure.} =
   ## Retain the actual failed maintained phase and its guarded nested cause.
   outcome.compositionReason
+
 proc computedCompositionSource*(composed: ComposedComputedState): ComputedCompositionResult[
     FinalizedComputedAccumulation] =
   ## Share original computation, pending-report and actual stopped-execution authority.
@@ -42,6 +45,7 @@ proc computedCompositionSource*(composed: ComposedComputedState): ComputedCompos
       status: ComputedCompositionError.Uninitialized)
   ComputedCompositionResult[FinalizedComputedAccumulation](status: ComputedCompositionError.None,
       completed: data.source)
+
 proc computedCompositionPlan*(composed: ComposedComputedState): ComputedCompositionResult[
     PreparedAccumulationConsensus] =
   ## Share only the real fully composed state certificate, never a caller replacement map.
@@ -50,6 +54,7 @@ proc computedCompositionPlan*(composed: ComposedComputedState): ComputedComposit
       status: ComputedCompositionError.Uninitialized)
   ComputedCompositionResult[PreparedAccumulationConsensus](status: ComputedCompositionError.None,
       completed: data.plan)
+
 proc composeComputedState*(source: FinalizedComputedAccumulation,
     limits: AccumulationCompositionLimits): ComputedCompositionResult[ComposedComputedState] =
   ## Compose all maintained phases once from exact finalization provenance, without replaying guests or publishing partial state.

@@ -45,28 +45,33 @@ type
 func error*[T](outcome: ExportErasureResult[T]): ExportErasureError =
   ## Inspect the selected reason without exposing mutable result tags.
   outcome.status
+
 func value*[T](outcome: ExportErasureResult[T]): T
     {.requires: outcome.status == ExportErasureError.None.} =
   ## Extract only a complete checked success.
   outcome.completed
+
 proc exportErasureInfo*(owner: ExportErasure): ExportErasureResult[ExportErasureInfo] =
   ## Copy aggregate fixed facts without exposing retained encoded storage.
   let data = owner.data
   if data == nil: return ExportErasureResult[ExportErasureInfo](
       status: ExportErasureError.Uninitialized)
   ExportErasureResult[ExportErasureInfo](status: ExportErasureError.None, completed: data.info)
+
 proc exportErasureSource*(owner: ExportErasure): ExportErasureResult[BundleErasure] =
   ## Retain the exact original completed bundle encoding rather than accepting a replacement source.
   let data = owner.data
   if data == nil: return ExportErasureResult[BundleErasure](
       status: ExportErasureError.Uninitialized)
   ExportErasureResult[BundleErasure](status: ExportErasureError.None, completed: data.source)
+
 proc exportErasureCommitment*(owner: ExportErasure): ExportErasureResult[ExportCommitment] =
   ## Retain the tree computed from this same original executed identity.
   let data = owner.data
   if data == nil: return ExportErasureResult[ExportCommitment](
       status: ExportErasureError.Uninitialized)
   ExportErasureResult[ExportCommitment](status: ExportErasureError.None, completed: data.commitment)
+
 proc exportErasureChunk*(owner: ExportErasure, shard: ErasureShardIndex,
     row: ExportErasureIndex): ExportErasureResult[seq[byte]] =
   ## Copy a complete data/page chunk after checking both full-width coordinates before arithmetic.
@@ -80,6 +85,7 @@ proc exportErasureChunk*(owner: ExportErasure, shard: ErasureShardIndex,
   var copied = newSeq[byte](count)
   for position in 0..<count: copied[position] = data.encoded[first+position]
   ExportErasureResult[seq[byte]](status: ExportErasureError.None, completed: copied)
+
 proc encodeSegment(segment: FetchSegment, row, rows: int, geometry: ErasureGeometry,
     input: var seq[ErasureWord], encoded: var seq[byte], limits: ErasureWordLimits): bool =
   ## Transpose one original fixed segment through scalar encoding into the preflighted validator-major buffer.
@@ -97,6 +103,7 @@ proc encodeSegment(segment: FetchSegment, row, rows: int, geometry: ErasureGeome
       encoded[offset] = byte(word and 255)
       encoded[offset+1] = byte(word shr 8)
   true
+
 proc prepareExportErasure*(source: BundleErasure, limits: ExportErasureLimits): ExportErasureResult[
     ExportErasure] =
   ## Derive the original execution/tree and preflight complete coding before any hash or payload extraction.

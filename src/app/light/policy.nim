@@ -20,6 +20,7 @@ type LightRuntimePolicy* = object ## Resident retained knowledge and each incomi
   store*: LightPagedLimits
   query*: ProofQueryLimits
   ingestion*: LightProofImportLimits
+
 proc lightRuntimePolicy*(chain: StorageChainId, root: StateRoot,
     profile: HeaderConfig): LightRuntimePolicy =
   ## Caller-selected configured C/V/E geometry and independently trusted root never come from a partial mapping or native directory.

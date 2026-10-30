@@ -6,20 +6,31 @@ import std/assertions
 import ../[program, machine]
 
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}
+  ## Read the native CPU-time counter used to measure ARM64 JIT work.
+
 proc createArenaNative(): nil pointer {.cdecl, importc: "pvm_arm64_arena_create",
     header: "arm64_memory.h".}
+  ## Allocate one native executable arena, returning nil when allocation is unavailable.
+
 proc destroyArena(arena: nil pointer) {.cdecl, importc: "pvm_arm64_arena_destroy",
     header: "arm64_memory.h".}
+  ## Release the native arena and its executable-memory ownership.
+
 proc publishArena(arena: nil pointer, words: pointer,
     count: uint32): int32 {.cdecl, importc: "pvm_arm64_arena_publish", header: "arm64_memory.h".}
+  ## Publish the supplied instruction words through the native arena permission boundary.
+
 proc callArena(arena: nil pointer, offset: uint32,
     registers: pointer): cint {.cdecl, importc: "pvm_arm64_arena_call", header: "arm64_memory.h".}
+  ## Execute a published entry with a borrowed register file and return its native status.
 
 proc nextArena(arena: nil pointer, offset: uint32,
     registers: pointer): uint32 {.cdecl, importc: "pvm_arm64_arena_next", header: "arm64_memory.h".}
+  ## Execute an entry and return its next control-flow offset without retaining registers.
 
 proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer): uint32 {.cdecl,
     importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
+  ## Execute a published region with borrowed registers and region accounting state.
 
 type
   ArmEntryRecord = object ## Executable records bind code, operation count and successor; uncompiled headers may hold a bounded probe budget.
@@ -52,7 +63,11 @@ type
     unavailable: bool
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
+  ## Reject copying the exclusive native executable arena owner.
+
 proc `=dup`(source: ArenaOwner): ArenaOwner {.error.}
+  ## Reject duplication of the exclusive native executable arena owner.
+
 proc `=wasMoved`(owner: var ArenaOwner) {.nodestroy, inline.} =
   ## A moved native handle has no allocation left to release.
   owner.handle = nil

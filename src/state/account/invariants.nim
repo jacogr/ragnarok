@@ -22,13 +22,16 @@ type
       completed: T
     else:
       discard
+
 func error*[T](outcome: AccountInvariantResult[T]): AccountInvariantError =
   ## Read the immutable alternative without permitting caller retagging.
   outcome.status
+
 func value*[T](outcome: AccountInvariantResult[T]): T {.inline,
     requires: outcome.status == AccountInvariantError.None.} =
   ## Only all three same-owner predicates grant the targeted certificate.
   outcome.completed
+
 proc joinAccountInvariants*(footprints: CheckedAccountFootprints,
     content: CheckedPreimageContent, linkage: CheckedPreimageLinkage): AccountInvariantResult[
         CheckedAccountInvariants] =
@@ -53,6 +56,7 @@ proc joinAccountInvariants*(footprints: CheckedAccountFootprints,
     completed: CheckedAccountInvariants(source: footprintSource.value,
       info: AccountInvariantInfo(footprints: footprints.footprintInfo.value,
         content: content.contentInfo.value, linkage: linkage.linkageInfo.value)))
+
 proc accountInvariantInfo*(checked: CheckedAccountInvariants): AccountInvariantResult[
     AccountInvariantInfo] =
   ## Copy completed observations only from a genuine joined owner.
@@ -61,6 +65,7 @@ proc accountInvariantInfo*(checked: CheckedAccountInvariants): AccountInvariantR
         status: AccountInvariantError.Uninitialized) # Default has no retained provenance.
   AccountInvariantResult[AccountInvariantInfo](status: AccountInvariantError.None,
       completed: checked.info)
+
 proc accountInvariantInventory*(checked: CheckedAccountInvariants): AccountInvariantResult[
     StateInventory] =
   ## Retain the exact original complete logical inventory without adding root authority.

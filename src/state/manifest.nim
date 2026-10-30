@@ -34,10 +34,12 @@ type
 func error*[T](outcome: StateManifestResult[T]): StateManifestError =
   ## Inspect the result tag without exposing retagging or inactive fields.
   outcome.status
+
 func value*[T](outcome: StateManifestResult[T]): T {.inline,
     requires: outcome.status == StateManifestError.None.} =
   ## Return a complete owner or fixed observation only after successful selection.
   outcome.completed
+
 func compositionError*[T](outcome: StateManifestResult[T]): StateCompositionError {.inline,
     requires: outcome.status == StateManifestError.CompositionFailure.} =
   ## Read only the actual failed composition reason.
@@ -104,6 +106,7 @@ proc manifestSource*(manifest: ValidatedStateManifest): StateManifestResult[Stat
         status: StateManifestError.Uninitialized) # No source exists for a default witness.
   StateManifestResult[StateStoreSnapshot](status: StateManifestError.None,
     completed: data.globals.globalSource.value)
+
 proc manifestGlobals*(manifest: ValidatedStateManifest): StateManifestResult[ValidatedGlobalState] =
   ## Retain immutable typed globals without exposing private chapter storage.
   let data = manifest.data
@@ -112,6 +115,7 @@ proc manifestGlobals*(manifest: ValidatedStateManifest): StateManifestResult[Val
         status: StateManifestError.Uninitialized) # Defaults cannot manufacture global validation.
   StateManifestResult[ValidatedGlobalState](status: StateManifestError.None,
     completed: data.globals)
+
 proc manifestInfo*(manifest: ValidatedStateManifest): StateManifestResult[StateManifestInfo] =
   ## Copy validated service/count/byte observations, not caller-authored completeness claims.
   let data = manifest.data

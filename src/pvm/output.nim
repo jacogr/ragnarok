@@ -23,6 +23,7 @@ type
 func error*(r: OutputResult): OutputError =
   ## Read status without permitting result forgery or retagging.
   r.status
+
 func value*(r: OutputResult): seq[byte] {.requires: r.status == OutputError.None.} =
   ## Return an independently owned byte sequence only after selecting successful extraction.
   r.completed

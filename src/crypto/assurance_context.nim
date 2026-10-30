@@ -35,8 +35,8 @@ func value*[T](value: AssuranceContextResult[T]): T {.inline, requires: value.st
   ## Fixed outputs are copied only after selecting success; no caller can bypass the supported contract.
   value.completed
 
-# Validate all native bit storage before constructing the protocol's fixed-width transcript.
 proc canonicalBits(bits: AssuranceBits, cores: CoreCount): bool {.raises: [].} =
+  ## Validate all native bit storage before constructing the protocol's fixed-width transcript.
   let width = (int(cores)+7) div 8
   let remainder = int(cores) mod 8
   # High bits in a partial final octet refer to nonexistent cores.

@@ -30,17 +30,21 @@ type
       reason: AccountDepositError
     else:
       discard
+
 func error*[T](outcome: ServiceDepositResult[T]): ServiceDepositError =
   ## Inspect the immutable alternative.
   outcome.status
+
 func value*[T](outcome: ServiceDepositResult[T]): T {.inline,
     requires: outcome.status == ServiceDepositError.None.} =
   ## Only complete evidence-bound queries expose an economic observation.
   outcome.completed
+
 func arithmeticError*[T](outcome: ServiceDepositResult[T]): AccountDepositError {.inline,
     requires: outcome.status == ServiceDepositError.ArithmeticFailure.} =
   ## Inspect only a real unrepresentable threshold refusal.
   outcome.reason
+
 proc observeServiceDeposit*(footprints: CheckedAccountFootprints,
     directory: StateServiceDirectory, service: ServiceIndex,
     schedule: AccountDepositSchedule): ServiceDepositResult[ServiceDepositObservation] =
@@ -74,6 +78,7 @@ proc observeServiceDeposit*(footprints: CheckedAccountFootprints,
         protected: row.metadata.supervisorBalance, minimum: minimum.value,
         covered: coversAccountMinimum(row.metadata.balance, row.metadata.supervisorBalance,
             minimum.value))))
+
 proc serviceDepositInfo*(observation: ServiceDepositObservation): ServiceDepositResult[
     ServiceDepositInfo] =
   ## Copy a completed economic observation without exposing mutable construction authority.
@@ -82,6 +87,7 @@ proc serviceDepositInfo*(observation: ServiceDepositObservation): ServiceDeposit
         status: ServiceDepositError.Uninitialized) # Default carries no source.
   ServiceDepositResult[ServiceDepositInfo](status: ServiceDepositError.None,
       completed: observation.info)
+
 proc depositFootprints*(observation: ServiceDepositObservation): ServiceDepositResult[
     CheckedAccountFootprints] =
   ## Retain the original certified dependent-field owner.
@@ -90,6 +96,7 @@ proc depositFootprints*(observation: ServiceDepositObservation): ServiceDepositR
         status: ServiceDepositError.Uninitialized) # No default evidence.
   ServiceDepositResult[CheckedAccountFootprints](status: ServiceDepositError.None,
       completed: observation.footprints)
+
 proc depositDirectory*(observation: ServiceDepositObservation): ServiceDepositResult[
     StateServiceDirectory] =
   ## Retain the original same-inventory service lookup owner.

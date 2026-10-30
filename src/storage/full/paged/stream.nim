@@ -74,73 +74,93 @@ type
 func error*[T](outcome: FullPagedStreamResult[T]): FullPagedStreamError =
   ## Inspect only the selected outcome.
   outcome.status
+
 func value*[T](outcome: FullPagedStreamResult[T]): T {.inline,
     requires: outcome.status == FullPagedStreamError.None.} =
   ## Extract only a complete graph/lookup result.
   outcome.completed
+
 func codecError*[T](outcome: FullPagedStreamResult[T]): FullPagedError {.requires:
     outcome.status == FullPagedStreamError.CodecFailure.} =
   ## Preserve selected format/provider diagnostics without exposing inactive fields.
   outcome.cause
+
 func initialized*(checked: CheckedFullPagedArtifact): bool =
   ## Default checked metadata has no graph authority.
   checked.ready
+
 func header*(checked: CheckedFullPagedArtifact): FullPagedHeader {.requires: checked.ready.} =
   ## Return complete admitted scalar claims only.
   checked.header
+
 func manifest*(checked: CheckedFullPagedArtifact): FullPagedManifest {.requires: checked.ready.} =
   ## Native owners still supply immutable inode/pin/durability authority separately.
   checked.selected
+
 func fingerprint*(checked: CheckedFullPagedArtifact): FullPagedDigest {.requires: checked.ready.} =
   ## Bind exact canonical physical records independently of equal protocol roots or local page layout.
   checked.stream
+
 func limits*(checked: CheckedFullPagedArtifact): FullPagedStreamLimits {.requires: checked.ready.} =
   ## Return detached inherited scalar policies without permitting mutation of admitted authority.
   checked.policy
+
 func counts*(checked: CheckedFullPagedArtifact): FullPagedCounts {.requires: checked.ready.} =
   ## Copy passive actual counters from successful complete admission.
   checked.used
+
 func ioCalls*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
   ## Includes source and scratch reads, writes and extent checks.
   counts.io
+
 func hashes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
   ## Count local page/digest and canonical record hash operations.
   counts.hashes
+
 func visits*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
   ## Count complete-root physical graph visits, including shared records in separate roots.
   counts.visits
+
 func readBytes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
   ## Account every requested source and scratch octet before dispatch.
   counts.read
+
 func writeBytes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
   ## Account every scratch write before dispatch.
   counts.written
+
 func present*(lookup: FullPagedLookup): bool =
   ## A successful terminal miss is protocol absence in a completely admitted graph.
   lookup.present
+
 proc bytes*(lookup: FullPagedLookup): seq[byte] {.requires: lookup.present.} =
   ## Returned mutable value bytes are independently owned by the caller.
   result = newSeq[byte](lookup.payload.len)
   for index in 0..<lookup.payload.len: result[index] = lookup.payload[index] # Detach mutable output.
+
 proc fail(work: var Work, reason: FullPagedStreamError) =
   ## Preserve the first failure across recursive traversal and cleanup.
   if work.status == FullPagedStreamError.None: work.status = reason
+
 proc codec(work: var Work, reason: FullPagedError): bool =
   ## Only the first codec refusal selects its diagnostic.
   if reason != FullPagedError.None and work.status == FullPagedStreamError.None:
     work.status = FullPagedStreamError.CodecFailure
     work.cause = reason
   reason == FullPagedError.None and work.status == FullPagedStreamError.None
+
 func refused[T](work: Work): FullPagedStreamResult[T] =
   ## Failed operations contain only a reason and an optional selected codec cause.
   if work.status == FullPagedStreamError.CodecFailure:
     return FullPagedStreamResult[T](status: FullPagedStreamError.CodecFailure, cause: work.cause)
   FullPagedStreamResult[T](status: work.status)
+
 proc increment(used: var uint64, amount, maximum: uint64): bool =
   ## Prove additions before evaluating wrapping native integer arithmetic.
   if used > maximum or amount > maximum-used: return false
   used += amount
   true
+
 proc charge(work: var Work, channel: Counter, amount: uint64): bool =
   ## Quota refusal always occurs before callback dispatch or cryptography.
   if work.status != FullPagedStreamError.None: return false
@@ -153,6 +173,7 @@ proc charge(work: var Work, channel: Counter, amount: uint64): bool =
     of Counter.Write: increment(work.used.written, amount, uint64(limits.writeBytes))
   if not admitted: work.fail(FullPagedStreamError.LimitExceeded)
   admitted
+
 func initWork(limits: FullPagedStreamLimits): Work =
   ## Four admitted record/value transports plus fixed traversal/page scratch bound all resident work.
   result = Work(status: FullPagedStreamError.None, limits: limits, used: FullPagedCounts(ready: true))
@@ -162,15 +183,18 @@ func initWork(limits: FullPagedStreamLimits): Work =
     result.status = FullPagedStreamError.LimitExceeded
   elif uint64(limits.cachePages) > 1:
     result.status = FullPagedStreamError.UnsupportedPolicy
+
 func validateFullPagedContextSize*(size: uint64, limit: ByteLimit): FullPagedStreamError =
   ## Physical context presence selects V1/V2 explicitly, independently of total dataset and working quotas.
   if (size == 0) != (uint64(limit) == 0):
     return FullPagedStreamError.UnsupportedPolicy # No implicit format fallback or migration.
   if size > uint64(limit): return FullPagedStreamError.LimitExceeded # Subtraction-free independent size admission.
   FullPagedStreamError.None
+
 func validateFullPagedPolicy*(limits: FullPagedStreamLimits): FullPagedStreamError =
   ## Native callers can reject unsupported resident/cache policies before allocating disk workspace.
   initWork(limits).status
+
 proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work: var Work): bool =
   ## No buffer or callback escapes synchronous complete-window reads.
   let callback = io.read
@@ -181,6 +205,7 @@ proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work
       output.len)): return false
   if not callback(PagedOffset(offset), output): work.fail(FullPagedStreamError.IOFailure)
   work.status == FullPagedStreamError.None
+
 proc checkExtent(io: PagedInput, expected: uint64, work: var Work): bool =
   ## Real EOF and native held-version checks belong to the borrowed IO implementation.
   let callback = io.extent
@@ -192,6 +217,7 @@ proc checkExtent(io: PagedInput, expected: uint64, work: var Work): bool =
   if not callback(actual): work.fail(FullPagedStreamError.IOFailure)
   elif actual != expected: work.fail(FullPagedStreamError.ChangedInput)
   work.status == FullPagedStreamError.None
+
 proc writeScratch(scratch: FullPagedScratch, offset: uint64, input: openArray[byte],
     work: var Work): bool =
   ## Scratch writes cannot mutate the source; callbacks are trusted private-workspace operations.
@@ -203,6 +229,7 @@ proc writeScratch(scratch: FullPagedScratch, offset: uint64, input: openArray[by
       input.len)): return false
   if not callback(PagedOffset(offset), input): work.fail(FullPagedStreamError.IOFailure)
   work.status == FullPagedStreamError.None
+
 proc zero(scratch: FullPagedScratch, offset, size: uint64, work: var Work): bool =
   ## Fixed zero windows initialize and reset membership without dataset-sized resident bitmaps.
   var buffer = default(array[4096, byte])
@@ -213,6 +240,7 @@ proc zero(scratch: FullPagedScratch, offset, size: uint64, work: var Work): bool
     if not scratch.writeScratch(offset+cursor, buffer.toOpenArray(0, count-1), work): return false
     cursor += uint64(count)
   work.status == FullPagedStreamError.None
+
 proc page(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, ordinal: uint64,
     cache: var PageCache, work: var Work): bool =
   ## Authenticate one data page against captured full-format integrity before exposing any bytes.
@@ -247,6 +275,7 @@ proc page(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, 
   cache.ready = true
   cache.ordinal = ordinal
   true
+
 proc range(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, offset: uint64,
     output: var openArray[byte], cache: var PageCache, work: var Work): bool =
   ## Every requested extent remains within real data pages and can cross page boundaries safely.
@@ -264,6 +293,7 @@ proc range(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     for index in 0..<count: output[filled+index] = cache.bytes[within+index] # Bounded complete copy.
     filled += count
   true
+
 proc row(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, ordinal: uint64,
     cache: var PageCache, work: var Work): FullPagedRow =
   ## Ordinal bounds precede fixed-row address multiplication.
@@ -275,6 +305,7 @@ proc row(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, o
   let decoded = decodeFullPagedRow(raw, header.geometry)
   if not work.codec(decoded.error): return default(FullPagedRow)
   decoded.value
+
 proc position(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     digest: StateNodeHash, cache: var PageCache, work: var Work): uint64 =
   ## Disk binary search uses full physical addresses; count is the private missing sentinel.
@@ -290,6 +321,7 @@ proc position(io: PagedInput, header: FullPagedHeader, selected: FullPagedManife
     elif order > 0: stop = middle
     else: return middle
   header.geometry.entries
+
 proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Work): FullPagedDigest =
   ## Complete canonical record bytes extend a fixed-width chain in the exact sorted index order.
   result = default(FullPagedDigest)
@@ -306,6 +338,7 @@ proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Work): F
     discard work.codec(FullPagedError.BackendFailure)
     return
   result = FullPagedDigest(array[32, byte](hashed.value))
+
 proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     ordinal: uint64, cache: var PageCache, work: var Work,
     stream: var FullPagedDigest, bindStream: bool): TrieRecord =
@@ -328,11 +361,13 @@ proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest
   let decoded = decodeFullPagedRecord(raw, found.digest, work.limits.trie.perValue)
   if not work.codec(decoded.error): return default(TrieRecord)
   decoded.value
+
 proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     ordinal: uint64, cache: var PageCache, work: var Work): TrieRecord =
   ## Graph/path reads validate individual records without extending the complete stream fingerprint.
   var ignored = default(FullPagedDigest)
   io.record(header, selected, ordinal, cache, work, ignored, false)
+
 proc tree(io: PagedInput, shape: PagedGeometry, start, width: uint64, cursor: var uint64,
     work: var Work): FullPagedDigest =
   ## Fixed-depth postorder recursion checks every stored digest, including nonphysical padding leaves.
@@ -365,6 +400,7 @@ proc tree(io: PagedInput, shape: PagedGeometry, start, width: uint64, cursor: va
   if stored != array[32, byte](calculated): discard work.codec(FullPagedError.ChecksumMismatch)
   cursor += 32
   calculated
+
 proc graph(io: PagedInput, scratch: FullPagedScratch, header: FullPagedHeader,
     selected: FullPagedManifest, digest: StateNodeHash, depth: int, prefix: array[31, byte],
     counts: var GraphCounts, cache: var PageCache, work: var Work) =
@@ -417,6 +453,7 @@ proc graph(io: PagedInput, scratch: FullPagedScratch, header: FullPagedHeader,
     rightPrefix[depth div 8] = rightPrefix[depth div 8] or byte(128 shr (depth mod 8))
     io.graph(scratch, header, selected, current.right, depth+1, rightPrefix, counts, cache, work)
     if counts.entries-before < 2: work.fail(FullPagedStreamError.InvalidGraph)
+
 proc padding(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     first, stop: uint64, cache: var PageCache, work: var Work): bool =
   ## Canonical zero suffixes exclude hidden bytes outside index/payload framing even with valid page hashes.
@@ -432,6 +469,7 @@ proc padding(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifes
         return false
     cursor += stopInPage
   work.status == FullPagedStreamError.None
+
 proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullPagedHeader,
     selected: FullPagedManifest, limits: FullPagedStreamLimits): FullPagedStreamResult[
         CheckedFullPagedArtifact] =
@@ -515,6 +553,7 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
   FullPagedStreamResult[CheckedFullPagedArtifact](status: FullPagedStreamError.None,
     completed: CheckedFullPagedArtifact(ready: true, header: header, selected: selected,
       policy: limits, used: work.used, stream: stream))
+
 proc lookupFullPaged*(io: PagedInput, checked: CheckedFullPagedArtifact, root: StateRoot,
     key: StateKey): FullPagedStreamResult[FullPagedLookup] =
   ## Only an admitted retained root permits an owned lookup or authenticated protocol absence.
@@ -587,6 +626,7 @@ proc streamBudget(inherited, requested: FullPagedWorkLimits): FullPagedWorkLimit
     visits: ElementLimit(min(uint64(inherited.visits), uint64(requested.visits))),
     readBytes: ByteLimit(min(uint64(inherited.readBytes), uint64(requested.readBytes))),
     writeBytes: ByteLimit(min(uint64(inherited.writeBytes), uint64(requested.writeBytes))))
+
 proc entries(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
     digest: StateNodeHash, depth: int, prefix: array[31, byte], counts: var GraphCounts,
     visitor: FullPagedEntryVisitor, cache: var PageCache, work: var Work) =
@@ -637,6 +677,7 @@ proc entries(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifes
     io.entries(header, selected, current.right, depth+1, right, counts, visitor, cache, work)
     if work.status == FullPagedStreamError.None and counts.entries-before < 2:
       work.fail(FullPagedStreamError.InvalidGraph)
+
 proc streamFullPagedEntries*(io: PagedInput, checked: CheckedFullPagedArtifact,
     root: StateRoot, visitor: nil FullPagedEntryVisitor,
     budget: FullPagedWorkLimits): FullPagedStreamResult[FullPagedCounts] =
@@ -675,19 +716,24 @@ proc streamFullPagedEntries*(io: PagedInput, checked: CheckedFullPagedArtifact,
 func initialized*(context: FullPagedContext): bool =
   ## A default capture confers no authenticated opaque context authority.
   context.ready
+
 func manifest*(context: FullPagedContext): FullPagedManifest {.requires: context.ready.} =
   ## Bind detached context to its exact captured header/page-tree selection rather than a root-only match.
   context.selected
+
 proc bytes*(context: FullPagedContext): seq[byte] {.requires: context.ready.} =
   ## Return a detached mutable transport copy; private captured bytes remain immutable after native close.
   result = newSeq[byte](context.payload.len)
   for index in 0..<result.len: result[index] = context.payload[index] # Copy every octet without exposing backing.
+
 func byteLength*(context: FullPagedContext): int {.requires: context.ready.} =
   ## Exact successful retained bytes permit consumer preflight without transport allocation.
   context.payload.len
+
 func counts*(context: FullPagedContext): FullPagedCounts {.requires: context.ready.} =
   ## Report only complete successful source IO and authentication work.
   context.used
+
 proc readFullPagedContext*(io: PagedInput, checked: CheckedFullPagedArtifact,
     budget: FullPagedWorkLimits): FullPagedStreamResult[FullPagedContext] =
   ## Capture opaque V2 bytes privately after bounded authenticated reads; application interpretation/trust stays separate.

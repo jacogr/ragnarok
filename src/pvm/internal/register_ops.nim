@@ -10,39 +10,39 @@ func isRegisterOpcode*(opcode: byte): bool =
   ## Identify the complete register-only execution scope before gas charging or register evaluation.
   opcode in {20'u8, 51'u8, 100'u8..110'u8, 131'u8..161'u8, 190'u8..230'u8}
 
-# Sign-extend a low-width bit pattern without host signed overflow or implementation-defined shifts.
 func sext(value: uint64, bits: int): uint64 =
+  ## Sign-extend a low-width bit pattern without host signed overflow or implementation-defined shifts.
   let mask = high(uint64) shr (64 - bits)
   result = value and mask
   # Set only bits above the sign bit when the low-width value is negative.
   if (result and (1'u64 shl (bits - 1))) != 0: result = result or not mask
 
-# Biasing the sign bit turns two's-complement signed ordering into unsigned ordering.
 func lessSigned(a, b: uint64): bool =
+  ## Biasing the sign bit turns two's-complement signed ordering into unsigned ordering.
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
-# Arithmetic right shift uses explicit sign fill; the zero count never shifts by 64.
 func arithmeticRight(value, count: uint64): uint64 =
+  ## Arithmetic right shift uses explicit sign fill; the zero count never shifts by 64.
   let shift = int(count and 63)
   result = value shr shift
   # Only a nonzero shift of a negative bit pattern needs high one bits.
   if shift != 0 and (value shr 63) != 0: result = result or (high(uint64) shl (64 - shift))
 
-# Rotate a masked word right, with a modulo count on both legs to avoid full-width shifts.
 func rotateRight(value, count: uint64, bits: int): uint64 =
+  ## Rotate a masked word right, with a modulo count on both legs to avoid full-width shifts.
   let mask = high(uint64) shr (64 - bits)
   let shift = int(count and uint64(bits - 1))
   let word = value and mask
   (word shr shift) or ((word shl ((bits - shift) mod bits)) and mask)
 
-# Two's-complement magnitudes include MIN_INT as a representable unsigned value.
 func magnitude(value: uint64): uint64 =
+  ## Two's-complement magnitudes include MIN_INT as a representable unsigned value.
   # Positive patterns need no conversion; negatives use modular negation.
   if (value shr 63) == 0: value
   else: 0'u64 - value
 
-# Signed divide/remainder use unsigned magnitudes so MIN_INT / -1 never reaches host signed division.
 func signedDivision(a, b: uint64, remainder: bool): uint64 =
+  ## Signed divide/remainder use unsigned magnitudes so MIN_INT / -1 never reaches host signed division.
   # The GP explicitly defines division by zero and signed modulo by zero.
   if b == 0:
     return (if remainder: a else: high(uint64))
@@ -54,8 +54,8 @@ func signedDivision(a, b: uint64, remainder: bool): uint64 =
   if negative: answer = 0'u64 - answer
   answer
 
-# Compute the upper 64 bits of a 128-bit product using four bounded 32-bit limbs.
 func multiplyHigh(a, b: uint64): uint64 =
+  ## Compute the upper 64 bits of a 128-bit product using four bounded 32-bit limbs.
   let mask = 0xffffffff'u64
   let low = (a and mask) * (b and mask)
   let middle = (a shr 32) * (b and mask) + (low shr 32)

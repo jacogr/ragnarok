@@ -56,10 +56,12 @@ type
 func error*[T](outcome: RefinementBootstrapResult[T]): RefinementBootstrapError =
   ## Inspect a selected reason without writable tag access.
   outcome.status
+
 func value*[T](outcome: RefinementBootstrapResult[T]): T
     {.requires: outcome.status == RefinementBootstrapError.None.} =
   ## Extract only a complete selected value.
   outcome.completed
+
 proc bootstrapInfo*(prepared: PreparedRefinementBootstrap): RefinementBootstrapResult[
     RefinementBootstrapInfo] =
   ## Inspect BAD/BIG/Ready facts without exposing replaceable source handles.
@@ -68,6 +70,7 @@ proc bootstrapInfo*(prepared: PreparedRefinementBootstrap): RefinementBootstrapR
       status: RefinementBootstrapError.Uninitialized)
   RefinementBootstrapResult[RefinementBootstrapInfo](status: RefinementBootstrapError.None,
       completed: data.info)
+
 proc bootstrapMachine*(prepared: PreparedRefinementBootstrap): RefinementBootstrapResult[Machine] =
   ## Retain only the original initialized CPU; eligibility failures cannot fabricate an empty machine.
   let data = prepared.data
@@ -78,6 +81,7 @@ proc bootstrapMachine*(prepared: PreparedRefinementBootstrap): RefinementBootstr
       status: RefinementBootstrapError.NotReady)
   RefinementBootstrapResult[Machine](status: RefinementBootstrapError.None,
       completed: ready.machine)
+
 proc bootstrapArguments*(prepared: PreparedRefinementBootstrap): RefinementBootstrapResult[seq[byte]] =
   ## Return an independent argument copy, never a mutable view of the retained ready owner.
   let data = prepared.data
@@ -89,6 +93,7 @@ proc bootstrapArguments*(prepared: PreparedRefinementBootstrap): RefinementBoots
   var bytes = newSeq[byte](ready.arguments.len)
   for index in 0..<bytes.len: bytes[index] = ready.arguments[index] # Extraction cannot mutate future runs.
   RefinementBootstrapResult[seq[byte]](status: RefinementBootstrapError.None, completed: bytes)
+
 proc bootstrapPackageHash*(prepared: PreparedRefinementBootstrap): RefinementBootstrapResult[PackageHash] =
   ## Select only a ready bootstrap's actual canonical package hash; BAD/BIG have no fabricated zero hash.
   let data = prepared.data

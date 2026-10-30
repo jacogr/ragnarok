@@ -31,27 +31,34 @@ type
     case status: ManifestError
     of None: completed: T
     else: discard
+
 func error*[T](outcome: ManifestResult[T]): ManifestError =
   ## Read only the selected reason.
   outcome.status
+
 func value*[T](outcome: ManifestResult[T]): T {.inline, requires: outcome.status ==
     ManifestError.None.} =
   ## Extract exact bytes or metadata only after success.
   outcome.completed
+
 proc putNumber(output: var seq[byte], offset: int, number: uint64) =
   ## Callers prove the fixed output header before each E8 write.
   for index in 0..<8: output[offset+index] = byte((number shr (8*index)) and 255)
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Exact manifest width precedes every E8 read.
   result = 0
   for index in 0..<8: result = result or (uint64(input[offset+index]) shl (8*index))
+
 proc putHash(output: var seq[byte], offset: int, hash: array[32, byte]) =
   ## Copy a complete scalar identity inside the exact output extent.
   for index in 0..<32: output[offset+index] = hash[index]
+
 func readHash(input: openArray[byte], offset: int): array[32, byte] =
   ## Copy only a proved full scalar field.
   result = default(array[32, byte])
   for index in 0..<32: result[index] = input[offset+index]
+
 proc encodeManagedManifest*(chain: StorageChainId, schema: StorageSchema, epoch: ManagedEpoch,
     generation: RepositoryGeneration, root: StateRoot, snapshotChecksum: StorageChecksum,
     limit: ByteLimit): ManifestResult[ManifestEncoding] =
@@ -78,6 +85,7 @@ proc encodeManagedManifest*(chain: StorageChainId, schema: StorageSchema, epoch:
   putHash(output, output.len-32, checksum)
   ManifestResult[ManifestEncoding](status: ManifestError.None,
     completed: ManifestEncoding(bytes: output, checksum: StorageChecksum(checksum)))
+
 proc decodeManagedManifest*(input: openArray[byte], chain: StorageChainId, schema: StorageSchema,
     limit: ByteLimit): ManifestResult[ManagedManifest] =
   ## No unknown schema, trailing bytes or corrupt complete manifest authorizes older-file fallback.
@@ -109,6 +117,7 @@ proc decodeManagedManifest*(input: openArray[byte], chain: StorageChainId, schem
       root: StateRoot(readHash(input, base+49)), snapshotChecksum: StorageChecksum(readHash(input,
           base+81)),
       checksum: StorageChecksum(checksum)))
+
 proc encodeManagedJournalHeader*(checksum: StorageChecksum, limit: ByteLimit): ManifestResult[seq[byte]] =
   ## Bind one new journal to the exact selected manifest rather than a guessed filename generation.
   if uint64(limit) < uint64(ManagedJournalHeaderBytes):
@@ -117,6 +126,7 @@ proc encodeManagedJournalHeader*(checksum: StorageChecksum, limit: ByteLimit): M
   for index, character in JournalMagic: output[index] = byte(character)
   putHash(output, JournalMagic.len, array[32, byte](checksum))
   ManifestResult[seq[byte]](status: ManifestError.None, completed: output)
+
 proc validateManagedJournalHeader*(input: openArray[byte],
     checksum: StorageChecksum): ManifestError =
   ## Require exact header bytes before any following frame is interpreted.

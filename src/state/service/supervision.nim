@@ -25,13 +25,16 @@ type
       completed: T
     else:
       discard
+
 func error*[T](outcome: ServiceSupervisionResult[T]): ServiceSupervisionError =
   ## Inspect the immutable success/refusal alternative.
   outcome.status
+
 func value*[T](outcome: ServiceSupervisionResult[T]): T {.inline,
     requires: outcome.status == ServiceSupervisionError.None.} =
   ## Only a genuine complete-source selection exposes its retained observation.
   outcome.completed
+
 proc resolveServiceSupervision*(source: StateServiceDirectory,
     service: ServiceIndex): ServiceSupervisionResult[ServiceSupervision] =
   ## Two bounded binary lookups implement eq:effectivesupervisor without transitive delegation or payload hashing.
@@ -57,6 +60,7 @@ proc resolveServiceSupervision*(source: StateServiceDirectory,
       info.decision = SupervisionDecision.RecreatedNominee # Reused identity cannot inherit prior incarnation's authority.
   ServiceSupervisionResult[ServiceSupervision](status: ServiceSupervisionError.None,
     completed: ServiceSupervision(source: source, info: info))
+
 proc supervisionInfo*(selected: ServiceSupervision): ServiceSupervisionResult[
     ServiceSupervisionInfo] =
   ## Copy the completed decision while keeping all source-bearing construction private.
@@ -65,6 +69,7 @@ proc supervisionInfo*(selected: ServiceSupervision): ServiceSupervisionResult[
         status: ServiceSupervisionError.Uninitialized) # Default has no bound decision.
   ServiceSupervisionResult[ServiceSupervisionInfo](status: ServiceSupervisionError.None,
       completed: selected.info)
+
 proc supervisionDirectory*(selected: ServiceSupervision): ServiceSupervisionResult[
     StateServiceDirectory] =
   ## Retain the original complete directory rather than trusting copied identity observations.

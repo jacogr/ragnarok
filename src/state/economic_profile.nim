@@ -19,13 +19,16 @@ type
       completed: T
     else:
       discard
+
 func error*[T](outcome: EconomicProfileResult[T]): EconomicProfileError =
   ## Inspect the immutable selection alternative.
   outcome.status
+
 func value*[T](outcome: EconomicProfileResult[T]): T {.inline,
     requires: outcome.status == EconomicProfileError.None.} =
   ## Default/failed capture exposes no selected parameter or rate snapshot.
   outcome.completed
+
 func captureEconomicProfile*(parameters: Parameters): EconomicProfileResult[StateEconomicProfile] =
   ## Copy the existing valid fixed snapshot and its exact three deposit fields; never substitute defaults.
   if not parameters.valid:
@@ -36,12 +39,14 @@ func captureEconomicProfile*(parameters: Parameters): EconomicProfileResult[Stat
       schedule: AccountDepositSchedule(base: AccountBalance(parameters.get(depositPerAccount)),
         item: AccountBalance(parameters.get(depositPerItem)), octet: AccountBalance(parameters.get(
             depositPerByte)))))
+
 func economicParameters*(profile: StateEconomicProfile): EconomicProfileResult[Parameters] =
   ## Copy the exact originally selected parameter snapshot, retaining no caller byte buffer.
   if not profile.parameters.valid:
     return EconomicProfileResult[Parameters](status: EconomicProfileError.Uninitialized) # Default profiles are invalid.
   EconomicProfileResult[Parameters](status: EconomicProfileError.None,
       completed: profile.parameters)
+
 func economicSchedule*(profile: StateEconomicProfile): EconomicProfileResult[
     AccountDepositSchedule] =
   ## Copy the selected rates only from an initialized valid parameter profile.
@@ -50,6 +55,7 @@ func economicSchedule*(profile: StateEconomicProfile): EconomicProfileResult[
         status: EconomicProfileError.Uninitialized) # Default rates grant no selected configuration.
   EconomicProfileResult[AccountDepositSchedule](status: EconomicProfileError.None,
       completed: profile.schedule)
+
 proc sameEconomicProfile*(left, right: StateEconomicProfile): bool =
   ## Fixed-value parameter equality requires initialization and all fields, not just matching deposit rates.
   if not left.parameters.valid or not right.parameters.valid:

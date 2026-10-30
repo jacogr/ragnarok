@@ -12,8 +12,8 @@ import ../codec/header
 import ./safrole/authentication as safrole_authentication
 import ./store
 
-## Retain initialized/missing/resource distinctions when selecting immutable required state views.
 func stateError(reason: StateStoreError): SafroleAuthError =
+  ## Retain initialized/missing/resource distinctions when selecting immutable required state views.
   case reason
   of StateStoreError.Uninitialized: SafroleAuthError.Uninitialized # Default snapshots cannot provide an authenticated context.
   of StateStoreError.MissingKey: SafroleAuthError.MissingState # No implicit genesis entropy, slot or active keys.

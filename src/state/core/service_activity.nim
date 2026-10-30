@@ -37,6 +37,7 @@ type
 func error*[T](outcome: CoreServiceActivityResult[T]): CoreServiceActivityError =
   ## Inspect a read-only reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: CoreServiceActivityResult[T]): T {.inline,
     requires: outcome.status == CoreServiceActivityError.None.} =
   ## Extract only selected complete success.
@@ -76,30 +77,32 @@ proc projectedServiceAt*(projection: CoreServiceActivityProjection, index: Stati
   CoreServiceActivityResult[ServiceStatisticsEntry](status: CoreServiceActivityError.None,
     completed: data.services[int(uint64(index))])
 
-# All counts originate in validated owners or native borrowed extents; charge before adding.
 proc charge(total: var int, amount: int, limit: ElementLimit): bool =
+  ## All counts originate in validated owners or native borrowed extents; charge before adding.
   if uint64(amount) > uint64(limit)-uint64(total) or amount > high(int)-total: return false
   total += amount
   true
 
-# Wrapping compiler arithmetic requires explicit proof before every natural/gas aggregation.
 proc add(target: var ActivityNatural, amount: uint64): bool =
+  ## Wrapping compiler arithmetic requires explicit proof before every natural/gas aggregation.
   if amount > high(uint64)-uint64(target): return false
   target = ActivityNatural(uint64(target)+amount)
   true
+
 proc add(target: var ActivityGas, amount: uint64): bool =
+  ## Add an activity amount only when the unsigned sum fits, preserving the target on overflow.
   if amount > high(uint64)-uint64(target): return false
   target = ActivityGas(uint64(target)+amount)
   true
 
-# Dictionary order follows numeric service identity, independently of report arrival or wire byte order.
 func compareService(left, right: ServiceStatisticsEntry): int =
+  ## Dictionary order follows numeric service identity, independently of report arrival or wire byte order.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   0
 
-# S contains exactly its accumulation triple; unrelated per-block fields cannot silently become discarded old state.
 proc validAccumulation(row: ServiceActivity): bool =
+  ## S contains exactly its accumulation triple; unrelated per-block fields cannot silently become discarded old state.
   for measure in ServiceMeasure.ProvisionCount..ServiceMeasure.Exports:
     if uint64(row.counters[measure]) != 0: return false
   if uint64(row.refinementGas) != 0: return false

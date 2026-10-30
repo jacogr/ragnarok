@@ -37,24 +37,30 @@ type
 func error*(outcome: TraceCheckCommandOutcome): TraceCheckCommandError =
   ## Inspect the selected command completion stage.
   outcome.status
+
 func requestedBlocks*(outcome: TraceCheckCommandOutcome): int =
   ## Requested finite work is metadata, not an accepted-input or execution receipt.
   outcome.requested
+
 func checkedBlocks*(outcome: TraceCheckCommandOutcome): int =
   ## Count only complete actual STF/map agreement within this private offline run.
   outcome.checked
+
 func detail*(outcome: TraceCheckCommandOutcome): string =
   ## Return only bounded locally generated typed-stage diagnostics, without raw input or file contents.
   outcome.diagnostic
+
 func finalRoot*(outcome: TraceCheckCommandOutcome): StateRoot {.inline,
     requires: outcome.status == TraceCheckCommandError.None.} =
   ## A final root exists only after every requested trace was authentically executed and compared in full.
   outcome.root
+
 func refused(reason: TraceCheckCommandError, requested, checked: int,
     detail = ""): TraceCheckCommandOutcome =
   ## Keep partial scalar diagnostics separate from any installable state or successful final root.
   TraceCheckCommandOutcome(status: reason, requested: requested, checked: checked,
       diagnostic: detail)
+
 proc text(bytes: openArray[byte]): string =
   ## Copy one already bounded strict JSON input without converting or repairing payload bytes.
   result = newString(bytes.len)

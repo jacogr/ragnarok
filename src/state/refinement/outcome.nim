@@ -65,18 +65,22 @@ type
 func error*[T](outcome: RefinementInvocationResult[T]): RefinementInvocationError =
   ## Inspect the alternative without granting mutable discriminator access.
   outcome.status
+
 func value*[T](outcome: RefinementInvocationResult[T]): T
     {.requires: outcome.status == RefinementInvocationError.None.} =
   ## Retain only complete selected success under optimized runtime contracts.
   outcome.completed
+
 func bootstrapError*[T](outcome: RefinementInvocationResult[T]): RefinementBootstrapError
     {.requires: outcome.status == RefinementInvocationError.BootstrapFailure.} =
   ## Inspect only the original host-environment capture refusal.
   outcome.bootstrapReason
+
 func hostError*[T](outcome: RefinementInvocationResult[T]): RefinementDispatchError
     {.requires: outcome.status == RefinementInvocationError.HostFailure.} =
   ## Inspect only the private callback's exact local refusal.
   outcome.hostReason
+
 func executionError*[T](outcome: RefinementInvocationResult[T]): StepError
     {.requires: outcome.status == RefinementInvocationError.ExecutionFailure.} =
   ## Inspect only the engine's exact instruction or budget refusal.
@@ -90,6 +94,7 @@ proc refinementInfo*(invocation: RefinementInvocation): RefinementInvocationResu
       status: RefinementInvocationError.Uninitialized)
   RefinementInvocationResult[RefinementInvocationInfo](status: RefinementInvocationError.None,
       completed: data.info)
+
 proc refinementOutput*(invocation: RefinementInvocation): RefinementInvocationResult[seq[byte]] =
   ## Extract an independent byte copy only for Success, including genuine readable/unreadable empty output.
   let data = invocation.data
@@ -100,6 +105,7 @@ proc refinementOutput*(invocation: RefinementInvocation): RefinementInvocationRe
   var copied = newSeq[byte](data.bytes.len)
   for index in 0..<copied.len: copied[index] = data.bytes[index] # No writable alias to saved output escapes.
   RefinementInvocationResult[seq[byte]](status: RefinementInvocationError.None, completed: copied)
+
 proc refinementExports*(invocation: RefinementInvocation): RefinementInvocationResult[
     RefinementExports] =
   ## Retain the selected immutable sequence; work errors have a genuine initialized empty sequence.
@@ -108,6 +114,7 @@ proc refinementExports*(invocation: RefinementInvocation): RefinementInvocationR
       status: RefinementInvocationError.Uninitialized)
   RefinementInvocationResult[RefinementExports](status: RefinementInvocationError.None,
       completed: data.exports)
+
 proc refinementBootstrap*(invocation: RefinementInvocation): RefinementInvocationResult[
     PreparedRefinementBootstrap] =
   ## Retain the original source beside normalized results, independently of all caller handles.

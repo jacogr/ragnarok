@@ -45,12 +45,15 @@ type
 func ok*(value: MetadataResult): bool =
   ## Discriminators are read-only; callers must establish success before extraction.
   value.success
+
 func value*(value: MetadataResult): Metadata {.requires: value.success.} =
   ## Copy an immutable fixed-sized snapshot only after successful validation.
   value.snapshot
+
 func error*(value: MetadataResult): MetadataError {.requires: not value.success.} =
   ## Explain rejection without exposing default metadata as a success.
   value.reason
+
 func coreCount*(value: Metadata): uint16 =
   ## Return the validated number of cores needed for the fixed-size guarantee array.
   value.cores
@@ -68,21 +71,21 @@ proc metadata*(input: openArray[byte]): MetadataResult =
   for i in 0..<MetadataSize: snapshot.bytes[i] = input[i]
   MetadataResult(success: true, snapshot: snapshot)
 
-# Append a fixed-width little-endian integer; callers use protocol-defined widths only.
 proc fixed(output: var seq[byte], value: uint64, width: range[1..8]) =
+  ## Append a fixed-width little-endian integer; callers use protocol-defined widths only.
   # Mask before narrowing so checked builds cannot truncate an unchecked value.
   for i in 0..<width: output.add(byte((value shr (8 * i)) and 255))
 
-# Encode constant ASCII metadata with the existing canonical JAM natural codec.
 proc text(output: var seq[byte], value: string) =
+  ## Encode constant ASCII metadata with the existing canonical JAM natural codec.
   let length = encode(JamNatural(uint64(value.len)))
   # Only the natural's initialized prefix belongs on the wire.
   for i in 0..<length.len: output.add(length.bytes[i])
   # All implementation-owned strings below are ASCII, hence valid UTF-8.
   for character in value: output.add(byte(character))
 
-# Finish the reserved E4 prefix; internal producers are bounded to fewer than 2048 bytes.
 proc frame(output: var seq[byte]) =
+  ## Finish the reserved E4 prefix; internal producers are bounded to fewer than 2048 bytes.
   let size = uint32(output.len - 4)
   # Prefix length excludes its own four bytes, including on the registration message.
   for i in 0..<4: output[i] = byte((size shr (8 * i)) and 255)

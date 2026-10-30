@@ -44,10 +44,12 @@ type
 func error*[T](outcome: AccumulationAbsentResult[T]): AccumulationAbsentError =
   ## Inspect the reason without granting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationAbsentResult[T]): T {.inline,
     requires: outcome.status == AccumulationAbsentError.None.} =
   ## Extract only complete success under optimized checked contracts.
   outcome.completed
+
 proc finishAbsentAccumulation*(inputs: PreparedAccumulationInputs, index: InvocationServiceIndex,
     state: StateStoreSnapshot, slot: HeaderSlot): AccumulationAbsentResult[AbsentAccumulation] =
   ## Certify the first Psi_A branch before any amount arithmetic, code/preimage lookup, hashing or guest bootstrap.
@@ -69,6 +71,7 @@ proc finishAbsentAccumulation*(inputs: PreparedAccumulationInputs, index: Invoca
       info: AccumulationAbsentInfo(service: source.service, slot: slot, offeredGas: source.gas,
         gasUsed: Gas(0), incomingTransfers: source.transfers, operands: source.operands,
         modifiedAccounts: 0, transfers: 0, provisions: 0, hasYield: false))))
+
 proc absentInfo*(outcome: AbsentAccumulation): AccumulationAbsentResult[AccumulationAbsentInfo] =
   ## Copy exact input observations and actual zero/empty effects without inventing an account/code status.
   let data = outcome.data
@@ -76,6 +79,7 @@ proc absentInfo*(outcome: AbsentAccumulation): AccumulationAbsentResult[Accumula
       status: AccumulationAbsentError.Uninitialized) # No default zero-execution success.
   AccumulationAbsentResult[AccumulationAbsentInfo](status: AccumulationAbsentError.None,
       completed: data.info)
+
 proc absentInputs*(outcome: AbsentAccumulation): AccumulationAbsentResult[
     PreparedAccumulationInputs] =
   ## Retain exact prepared input ownership rather than equal-content substitution.
@@ -84,6 +88,7 @@ proc absentInputs*(outcome: AbsentAccumulation): AccumulationAbsentResult[
       status: AccumulationAbsentError.Uninitialized) # No fabricated input source.
   AccumulationAbsentResult[PreparedAccumulationInputs](status: AccumulationAbsentError.None,
       completed: data.inputs)
+
 proc absentIndex*(outcome: AbsentAccumulation): AccumulationAbsentResult[InvocationServiceIndex] =
   ## Copy the nominal ordinal bound to this certificate's own input owner.
   let data = outcome.data
@@ -91,6 +96,7 @@ proc absentIndex*(outcome: AbsentAccumulation): AccumulationAbsentResult[Invocat
       status: AccumulationAbsentError.Uninitialized) # No detached default ordinal.
   AccumulationAbsentResult[InvocationServiceIndex](status: AccumulationAbsentError.None,
       completed: data.index)
+
 proc absentState*(outcome: AbsentAccumulation): AccumulationAbsentResult[StateStoreSnapshot] =
   ## Retain the exact unchanged complete input state; no incoming pool is credited by this branch.
   let data = outcome.data
@@ -98,6 +104,7 @@ proc absentState*(outcome: AbsentAccumulation): AccumulationAbsentResult[StateSt
       status: AccumulationAbsentError.Uninitialized) # No default root or missing-account map.
   AccumulationAbsentResult[StateStoreSnapshot](status: AccumulationAbsentError.None,
       completed: data.state)
+
 proc finishBlockAbsentAccumulation*(round: BlockAccumulationRound,
     index: InvocationServiceIndex): AccumulationAbsentResult[BlockAbsentAccumulation] =
   ## Derive source state and slot from genuine admitted block authority, never caller replacements.
@@ -116,6 +123,7 @@ proc finishBlockAbsentAccumulation*(round: BlockAccumulationRound,
   AccumulationAbsentResult[BlockAbsentAccumulation](status: AccumulationAbsentError.None,
     completed: BlockAbsentAccumulation(data: BlockAbsentData(round: round,
         projection: projected.value)))
+
 proc absentBlockRound*(outcome: BlockAbsentAccumulation): AccumulationAbsentResult[
     BlockAccumulationRound] =
   ## Retain the genuine admitted initial round behind this no-execution proof.
@@ -124,6 +132,7 @@ proc absentBlockRound*(outcome: BlockAbsentAccumulation): AccumulationAbsentResu
       status: AccumulationAbsentError.Uninitialized) # No fabricated block provenance.
   AccumulationAbsentResult[BlockAccumulationRound](status: AccumulationAbsentError.None,
       completed: data.round)
+
 proc absentProjection*(outcome: BlockAbsentAccumulation): AccumulationAbsentResult[
     AbsentAccumulation] =
   ## Retain the pure zero-effect outcome while its block authority remains independently available.

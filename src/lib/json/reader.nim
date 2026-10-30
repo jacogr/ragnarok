@@ -18,9 +18,9 @@ type
   JsonContainer = object ## Private bounded parser stack frame tracks object key positions.
     index, children: int
 
-# Reject lexical extensions accepted by the pinned stdlib; structure and decoding belong to JsonParser.
-# This allocation-free pass does not parse values. Its input is already size-limited and valid UTF-8.
 proc strictLexemes(text: string): bool =
+  ## Reject lexical extensions accepted by the pinned stdlib; structure and decoding belong to JsonParser.
+  ## This allocation-free pass does not parse values. Its input is already size-limited and valid UTF-8.
   var quoted = false
   var escaped = false
   var previous = ' '
@@ -42,8 +42,8 @@ proc strictLexemes(text: string): bool =
       previous = c
   not quoted and not escaped
 
-# Validate a stdlib numeric lexeme without converting or narrowing the request ID.
 proc strictNumber(token: string): bool =
+  ## Validate a stdlib numeric lexeme without converting or narrowing the request ID.
   var i = 0
   if token.len > 0 and token[0] == '-': inc i # JSON permits only a leading minus.
   if i >= token.len: return false
@@ -64,10 +64,10 @@ proc strictNumber(token: string): bool =
     if i == begin: return false
   i == token.len
 
-# Adapt standard streaming events to owned dispatch values; failure discards all partial output.
-# The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
-# between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
 proc parseValues*(text: string, values: var seq[JsonToken], maxValues = 2048, maxDepth = 16): bool =
+  ## Adapt standard streaming events to owned dispatch values; failure discards all partial output.
+  ## The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
+  ## between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
   if not strictLexemes(text): return false
   var parser = default(JsonParser)
   parser.open(newStringStream(text), "RPC request")

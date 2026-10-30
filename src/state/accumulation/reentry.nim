@@ -137,10 +137,12 @@ type
 func error*[T](outcome: AccumulationReentryResult[T]): AccumulationReentryError =
   ## Read the selected reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationReentryResult[T]): T {.inline,
     requires: outcome.status == AccumulationReentryError.None.} =
   ## Retain complete selected success only.
   outcome.completed
+
 func partitionError*[T](outcome: AccumulationReentryResult[T]): TransferPartitionError {.inline,
     requires: outcome.status == AccumulationReentryError.PartitionFailure.} =
   ## Inspect only an actual current-state transfer-partition refusal.
@@ -150,14 +152,17 @@ func operandError*[T](outcome: AccumulationReentryResult[T]): AccumulationOperan
     requires: outcome.status == AccumulationReentryError.OperandFailure.} =
   ## Inspect only the actual selected-range refusal.
   outcome.operandReason
+
 func inputError*[T](outcome: AccumulationReentryResult[T]): AccumulationInputError {.inline,
     requires: outcome.status == AccumulationReentryError.InputFailure.} =
   ## Inspect only the actual service-input grouping refusal.
   outcome.inputReason
+
 func serviceError*[T](outcome: AccumulationReentryResult[T]): AccumulationServiceError {.inline,
     requires: outcome.status == AccumulationReentryError.ServiceFailure.} =
   ## Inspect only the actual service resolution refusal.
   outcome.serviceReason
+
 func batchFailure*[T](outcome: AccumulationReentryResult[T]): AccumulationBatchResult[
     StateStoreSnapshot] {.inline,
 
@@ -174,6 +179,7 @@ proc reentryInfo*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
         status: AccumulationReentryError.Uninitialized) # No fabricated empty/stopped plan.
   AccumulationReentryResult[AccumulationReentryInfo](status: AccumulationReentryError.None,
       completed: data.info)
+
 proc reentrySource*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     CompletedAccumulationContinuation] =
   ## Retain the original completed continuation root in constant time, independently of reentry depth.
@@ -183,6 +189,7 @@ proc reentrySource*(plan: PreparedAccumulationReentry): AccumulationReentryResul
         status: AccumulationReentryError.Uninitialized) # No substitute completion.
   AccumulationReentryResult[CompletedAccumulationContinuation](
       status: AccumulationReentryError.None, completed: data.source)
+
 proc reentryInputs*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     PreparedAccumulationInputs] =
   ## Retain only the newly selected transfer/report groups and their original queue range provenance.
@@ -192,6 +199,7 @@ proc reentryInputs*(plan: PreparedAccumulationReentry): AccumulationReentryResul
         status: AccumulationReentryError.Uninitialized) # No default initialized empty inputs.
   AccumulationReentryResult[PreparedAccumulationInputs](status: AccumulationReentryError.None,
       completed: data.inputs)
+
 proc reentryTransfers*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     PreparedAccumulationTransfers] =
   ## Retain the canonical transfers of the exact just-completed source, independently of this preparation's lifetime.
@@ -201,6 +209,7 @@ proc reentryTransfers*(plan: PreparedAccumulationReentry): AccumulationReentryRe
       AccumulationReentryError.Uninitialized) # A default reentry owns no selected outgoing collection.
   AccumulationReentryResult[PreparedAccumulationTransfers](status:
     AccumulationReentryError.None, completed: data.transfers)
+
 proc reentryState*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     StateStoreSnapshot] =
   ## Retain the actual complete successor after privately applying the just-completed later batch.
@@ -210,6 +219,7 @@ proc reentryState*(plan: PreparedAccumulationReentry): AccumulationReentryResult
         status: AccumulationReentryError.Uninitialized) # No partial or default map.
   AccumulationReentryResult[StateStoreSnapshot](status: AccumulationReentryError.None,
       completed: data.state)
+
 proc reentryPending*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     PreparedPendingTransfers] =
   ## Retain queued-old/new producer ownership and proven reservation arithmetic for this exact entry.
@@ -219,6 +229,7 @@ proc reentryPending*(plan: PreparedAccumulationReentry): AccumulationReentryResu
         status: AccumulationReentryError.Uninitialized) # No default pending source.
   AccumulationReentryResult[PreparedPendingTransfers](status: AccumulationReentryError.None,
       completed: data.pending)
+
 proc reentryTransferPartition*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     PreparedTransferPartition] =
   ## Retain the exact accepted inputs and held subsequence used for the following carry.
@@ -438,8 +449,8 @@ func batchFailure*[T](outcome: AccumulationReentryExecutionResult[T]):
   ## Inspect the actual refused parent result; its existing nested reason contracts remain enforced.
   outcome.failed
 
-# Canonical gas sequence ordering is numeric service order, independent of caller execution order.
 func compareUsage(left, right: AccumulationGasUsage): int =
+  ## Canonical gas sequence ordering is numeric service order, independent of caller execution order.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   0

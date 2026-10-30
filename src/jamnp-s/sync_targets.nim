@@ -32,25 +32,32 @@ type
 func stage*(progress: SyncTargetProgress): CurrentSyncStage =
   ## Failed/default evidence never becomes an implicit caught-up state.
   progress.status
+
 func fullReady*(progress: SyncTargetProgress): bool =
   ## Only a whole turn evaluated against actual canonical full-state ancestry can succeed.
   progress.status == CurrentSyncStage.CaughtUp
+
 func lightReady*(progress: SyncTargetProgress): bool =
   ## Full-state ancestry supplies no independent light-client trust authority.
   false
+
 func hasTarget*(progress: SyncTargetProgress): bool =
   ## A missing live source has no extractable target record.
   progress.known
+
 func target*(progress: SyncTargetProgress): AnnouncedBlock {.requires: progress.known.} =
   ## Maximal advertised slot is a download hint, never a finality or fork-choice decision.
   progress.selected
+
 func liveSources*(progress: SyncTargetProgress): int =
   ## Count only freshly sampled authenticated sources, independently of their validity as targets.
   progress.sources
+
 func stamp(head: BlockSnapshot): AnnouncedBlock =
   ## Retain copied hash/slot metadata without holding a canonical ARC graph between worker turns.
   AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.blockHash)),
     slot: HeaderSlot(head.slot))
+
 proc configure*(targets: var SyncTargets, view: ChainView, peers: seq[DownloadPeerId],
     ageMs, now: uint64): bool =
   ## Select an actual independent complete-state startup view before accepting any peer observations.
@@ -74,6 +81,7 @@ proc configure*(targets: var SyncTargets, view: ChainView, peers: seq[DownloadPe
   targets.configured = true
   targets.progress.status = CurrentSyncStage.Unknown
   true
+
 proc beginTurn*(targets: var SyncTargets, now: uint64): bool =
   ## Every configured source must be sampled again; unchanged snapshots never extend their timestamp.
   if not targets.configured or now < targets.now:
@@ -85,6 +93,7 @@ proc beginTurn*(targets: var SyncTargets, now: uint64): bool =
   targets.progress = SyncTargetProgress(status: CurrentSyncStage.Unknown)
   for index in 0..<targets.peers.len: targets.sources[index].sampled = false
   true
+
 proc observePeer*(targets: var SyncTargets, peer: DownloadPeerId,
     incarnation: uint64, snapshot: PeerAnnouncementSnapshot): bool =
   ## Only an available real stream snapshot can supply leaves, sequence and new-source provenance.
@@ -117,6 +126,7 @@ proc observePeer*(targets: var SyncTargets, peer: DownloadPeerId,
       targets.progress.selected = leaf
       targets.progress.known = true # A Final-only handshake is still an untrusted exact download hint.
   true
+
 proc fresh*(targets: SyncTargets, peer: DownloadPeerId): bool =
   ## Idle reconnect policy consumes only monotonic source metadata, never canonical graph aliases.
   for index, configured in targets.peers:
@@ -124,15 +134,18 @@ proc fresh*(targets: SyncTargets, peer: DownloadPeerId): bool =
       let source = targets.sources[index]
       return source.sampled and source.live and targets.now - source.seenAt < targets.ageMs
   false
+
 proc pending*(targets: var SyncTargets): SyncTargetProgress =
   ## Worker/input/publication ownership prevents readiness while preserving copied target diagnostics.
   targets.turnActive = false
   targets.progress.status = if targets.progress.sources == 0: CurrentSyncStage.Unknown
     else: CurrentSyncStage.CatchingUp
   targets.progress
+
 func progress*(targets: SyncTargets): SyncTargetProgress =
   ## Read only the last whole-turn observation; callers start a new turn before later participation.
   targets.progress
+
 proc recordInstalled*(targets: var SyncTargets, view: ChainView): bool =
   ## Advance only from an actual full canonical view; sparse slots still represent one validated child.
   targets.turnActive = false
@@ -149,6 +162,7 @@ proc recordInstalled*(targets: var SyncTargets, view: ChainView): bool =
     targets.local = head
   targets.progress.status = CurrentSyncStage.Unknown
   true
+
 proc evaluate*(targets: var SyncTargets, view: ChainView): SyncTargetProgress =
   ## Call only outside native canonical leases; the actual full view proves each old/current target.
   let active = targets.turnActive

@@ -47,25 +47,30 @@ type
 func error*[T](outcome: DisputesResult[T]): DisputesError =
   ## Observe a read-only reason without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: DisputesResult[T]): T {.inline,
     requires: outcome.status == DisputesError.None.} =
   ## Access a completed operation only after selecting success, including in optimized builds.
   outcome.completed
+
 proc disputeJudgments*(plan: DisputesPlan): DisputeStateSnapshot {.requires: plan.data != nil.} =
   ## Retain the immutable posterior report/offender sets without exporting mutable sequences.
   let data = plan.data
   assert data != nil # Retain the owner while copying its child handle.
   data.judgments
+
 proc disputeAssignments*(plan: DisputesPlan): AvailabilitySnapshot {.requires: plan.data != nil.} =
   ## Retain the complete assignment sequence after bad/wonky reports have been cleared.
   let data = plan.data
   assert data != nil # A default plan is not an empty assignment sequence.
   data.assignments
+
 proc newOffenderCount*(plan: DisputesPlan): int {.requires: plan.data != nil.} =
   ## Observe exact culprit-then-fault marker cardinality, preserving cross-section repeated keys.
   let data = plan.data
   assert data != nil # No fabricated empty marker for a failed/default owner.
   data.marker.len
+
 proc newOffenderAt*(plan: DisputesPlan, index: int): DisputesResult[OffenderKey] =
   ## Copy one marker identity with explicit ordinal validation and no detached backing span.
   let data = plan.data
@@ -74,22 +79,24 @@ proc newOffenderAt*(plan: DisputesPlan, index: int): DisputesResult[OffenderKey]
     return DisputesResult[OffenderKey](status: DisputesError.InvalidIndex) # Check before access.
   DisputesResult[OffenderKey](status: DisputesError.None, completed: data.marker[index])
 
-## Compare encoded identities lexicographically, independently of nominal report/key roles.
 proc compareIdentity[T](a, b: T): int =
+  ## Compare encoded identities lexicographically, independently of nominal report/key roles.
   let x = array[32, byte](a)
   let y = array[32, byte](b)
   for i in 0..<32:
     if x[i] < y[i]: return -1 # The first unequal octet decides canonical order.
     elif x[i] > y[i]: return 1 # Later identities sort after the selected prefix.
   0
-## Membership never conflates an equal report with a validator index or an unchecked byte span.
+
 proc contains[T](values: openArray[T], value: T): bool =
+  ## Membership never conflates an equal report with a validator index or an unchecked byte span.
   for item in values:
     if compareIdentity(item, value) == 0: return true # Identity equality, not object address.
   false
-## Charge a unique posterior set insertion before growing typed storage or the aggregate item count.
+
 proc includeIdentity[T](values: var seq[T], value: T, total: var uint64,
     config: DisputeStateConfig): bool =
+  ## Charge a unique posterior set insertion before growing typed storage or the aggregate item count.
   if contains(values, value): return true # Mathematical union preserves existing members once.
   if uint64(values.len) >= uint64(config.perSet) or total >= uint64(config.totalItems) or
       values.len >= high(int) div sizeof(T):
@@ -97,17 +104,19 @@ proc includeIdentity[T](values: var seq[T], value: T, total: var uint64,
   values.add(value)
   inc total
   true
-## Verify the exact ASCII domain followed by the raw report hash; no dollar byte, prehash or terminator.
+
 proc evidenceValid(key: OffenderKey, signature: DisputeSignature, target: DisputeHash,
     domain: string): bool =
+  ## Verify the exact ASCII domain followed by the raw report hash; no dollar byte, prehash or terminator.
   var message = newSeq[byte](domain.len+32)
   for i, ch in domain: message[i] = byte(ch) # Fixed protocol ASCII bytes.
   let hash = array[32, byte](target)
   for i in 0..<32: message[domain.len+i] = hash[i] # Full raw report identity.
   verify(EdPublicKey(array[32, byte](key)), EdSignature(array[64, byte](signature)), message)
-## Only active/previous roster identities not already punished may submit offense evidence.
+
 proc eligible(key: OffenderKey, active, previous: ValidatorStateSnapshot,
     punished: openArray[OffenderKey]): bool =
+  ## Only active/previous roster identities not already punished may submit offense evidence.
   if contains(punished, key): return false # Prior offenders cannot be newly reported again.
   for roster in [active, previous]:
     for i in 0..<validatorCount(roster).value:

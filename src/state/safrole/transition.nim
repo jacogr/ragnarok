@@ -58,6 +58,7 @@ type
 func error*(outcome: SafroleTransitionResult): SafroleTransitionError =
   ## Read the status without permitting retagging or access to unsuccessful payloads.
   outcome.status
+
 func value*(outcome: SafroleTransitionResult): SafroleTransition {.inline,
     requires: outcome.status == SafroleTransitionError.None.} =
   ## Extract complete success only; defaults/refusals cannot expose a working map or header.
@@ -98,8 +99,8 @@ func publicationError*(outcome: SafroleTransitionResult): StateStoreError {.inli
   ## Inspect the precise publication refusal only after selecting that failed substep.
   outcome.publicationReason
 
-## Re-encode an already bounded immutable C(4), retaining its complete pending/root/schedule/contest.
 proc chapterEntry(owner: SafroleStateSnapshot, policy: SafroleStateConfig): SafroleStateResult[StateEntry] =
+  ## Re-encode an already bounded immutable C(4), retaining its complete pending/root/schedule/contest.
   let info = safroleInfo(owner).value
   var source = SafroleState(pending: newSeq[StateValidator](info.validators), root: info.root,
     schedule: ticketSchedule(@[]), accumulator: newSeq[WinningTicket](info.accumulated))

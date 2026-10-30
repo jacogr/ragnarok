@@ -25,10 +25,12 @@ type
 func error*[T](outcome: ComputedGuaranteeResult[T]): ComputedGuaranteeError =
   ## Inspect the refusal without granting writable status access.
   outcome.status
+
 func value*[T](outcome: ComputedGuaranteeResult[T]): T
     {.requires: outcome.status == ComputedGuaranteeError.None.} =
   ## Optimized contracts guard every selected success extraction.
   outcome.completed
+
 proc computedGuaranteeReport*(transcript: ComputedGuaranteeTranscript): ComputedGuaranteeResult[
     ComputedWorkReport] =
   ## Share the exact original immutable report, including its execution and availability provenance.
@@ -37,6 +39,7 @@ proc computedGuaranteeReport*(transcript: ComputedGuaranteeTranscript): Computed
       status: ComputedGuaranteeError.Uninitialized)
   ComputedGuaranteeResult[ComputedWorkReport](status: ComputedGuaranteeError.None,
       completed: data.report)
+
 proc computedGuaranteeMessage*(transcript: ComputedGuaranteeTranscript): ComputedGuaranteeResult[
     GuaranteeMessage] =
   ## Copy fixed nominal domain/hash bytes; callers cannot mutate the retained transcript.
@@ -45,6 +48,7 @@ proc computedGuaranteeMessage*(transcript: ComputedGuaranteeTranscript): Compute
       status: ComputedGuaranteeError.Uninitialized)
   ComputedGuaranteeResult[GuaranteeMessage](status: ComputedGuaranteeError.None,
       completed: data.message)
+
 proc prepareComputedGuarantee*(report: ComputedWorkReport,
     limit: ByteLimit): ComputedGuaranteeResult[ComputedGuaranteeTranscript] =
   ## Preflight temporary wire plus retained message before copying or hashing the original report once.

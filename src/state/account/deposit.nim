@@ -17,13 +17,16 @@ type
       completed: AccountBalance
     else:
       discard
+
 func error*(outcome: AccountDepositResult): AccountDepositError =
   ## Inspect arithmetic success/refusal without exposing the discriminator.
   outcome.status
+
 func value*(outcome: AccountDepositResult): AccountBalance {.inline,
     requires: outcome.status == AccountDepositError.None.} =
   ## Only a representable mathematical threshold can be extracted.
   outcome.completed
+
 func calculateAccountMinimum*(footprint: AccountFootprint, gratis: AccountBalance,
     schedule: AccountDepositSchedule): AccountDepositResult =
   ## Compute max(0, base + item*items + octet*bytes - gratis) without premature product overflow.
@@ -49,6 +52,7 @@ func calculateAccountMinimum*(footprint: AccountFootprint, gratis: AccountBalanc
   cost(uint64(footprint.items), uint64(schedule.item))
   cost(uint64(footprint.bytes), uint64(schedule.octet))
   AccountDepositResult(status: AccountDepositError.None, completed: AccountBalance(minimum))
+
 func coversAccountMinimum*(liquid, protected, minimum: AccountBalance): bool =
   ## Compare both allowed balance pools with a representable threshold without forming an overflowing sum.
   uint64(liquid) >= uint64(minimum) or uint64(protected) >= uint64(minimum)-uint64(liquid)

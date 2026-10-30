@@ -29,25 +29,31 @@ type
       proofReason: StateProofError
     else:
       discard                  # Default and failed results retain only their reason.
+
 func error*[T](outcome: ProofViewResult[T]): ProofViewError =
   ## Inspect a reason without granting payload access.
   outcome.status
+
 func value*[T](outcome: ProofViewResult[T]): T {.inline, requires:
     outcome.status == ProofViewError.None.} =
   ## Require explicit successful selection before extracting immutable evidence.
   outcome.completed
+
 func valid*(view: ProofView): bool =
   ## A default collection has no root authority.
   view.data != nil
+
 func len*(view: ProofView): int =
   ## No entries are fabricated for an uninitialized owner.
   let data = view.data
   if data == nil: 0 else: data.entries.len
+
 proc root*(view: ProofView): StateRoot {.requires: view.data != nil.} =
   ## Return the exact independently selected root common to every retained witness.
   let data = view.data
   assert data != nil
   data.root
+
 func compareKey(left, right: StateKey): int =
   ## Fixed-key lexicographic order supports deterministic enumeration and exact lookup.
   let a = array[31, byte](left)
@@ -57,9 +63,11 @@ func compareKey(left, right: StateKey): int =
     if a[i] < b[i]: return -1
     if a[i] > b[i]: return 1
   0
+
 proc compare(left, right: VerifiedStateLookup): int =
   ## Adapt sorting without copying or decoding retained values.
   compareKey(left.key, right.key)
+
 proc captureProofView*(batch: VerifiedStateProofBatch, expectedRoot: StateRoot,
     limits: ProofViewLimits): ProofViewResult[ProofView] =
   ## Accept only genuinely verified evidence under the exact caller-supplied root.
@@ -88,6 +96,7 @@ proc captureProofView*(batch: VerifiedStateProofBatch, expectedRoot: StateRoot,
       return ProofViewResult[ProofView](status: ProofViewError.DuplicateKey)
   ProofViewResult[ProofView](status: ProofViewError.None,
     completed: ProofView(data: ViewData(root: expectedRoot, entries: entries)))
+
 proc lookupAt*(view: ProofView, index: int): ProofViewResult[VerifiedStateLookup] =
   ## Sorted ordinals stay bound to this exact retained partial owner.
   let data = view.data
@@ -214,6 +223,7 @@ func proofError*[T](outcome: ProofViewResult[T]): StateProofError {.requires:
     outcome.status == ProofViewError.ProofFailure.} =
   ## Preserve only an actual underlying proof refusal, never a default nested cause.
   outcome.proofReason
+
 proc encodeProofView*(view: ProofView, limits: ProofViewLimits, perProof: StateProofLimits,
     wireBytes: ByteLimit): ProofViewResult[seq[byte]] =
   ## Encode sorted partial evidence in local RPV1 framing; root trust remains outside the envelope.

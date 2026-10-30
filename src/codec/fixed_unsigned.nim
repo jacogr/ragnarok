@@ -36,21 +36,27 @@ type
 func ok*(value: FixedEncodeResult): bool =
   ## Read the encoding outcome without exposing a writable discriminator.
   value.success
+
 func ok*(value: FixedDecodeResult): bool =
   ## Read the decoding outcome; a default result remains an explicit failure.
   value.success
+
 func encoded*(value: FixedEncodeResult): EncodedFixed {.inline, requires: value.success.} =
   ## Return copied encoded storage only for a completed successful encoding.
   value.encodedValue
+
 func value*(value: FixedDecodeResult): FixedUnsigned {.inline, requires: value.success.} =
   ## Decode success owns its value; no default zero can escape a failed decode.
   value.decodedValue
+
 func consumed*(value: FixedDecodeResult): range[0..8] {.inline, requires: value.success.} =
   ## Only a complete decode may advance the caller's prefix cursor.
   value.byteConsumed
+
 func error*(value: FixedEncodeResult): FixedError {.inline, requires: not value.success.} =
   ## Encoding success has no failure reason; ask for it only after selecting failure.
   value.failureReason
+
 func error*(value: FixedDecodeResult): FixedError {.inline, requires: not value.success.} =
   ## Decoding success has no failure reason, even when it consumes zero bytes.
   value.failureReason

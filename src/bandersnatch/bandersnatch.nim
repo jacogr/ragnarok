@@ -9,47 +9,60 @@
 ## ring commitments through the maintained native ABI.
 
 const Header = "bridge.h"
-# Import a canonical nonzero scalar into one opaque native owner.
+
 proc keyNew(data: nil pointer, length: csize_t, output: ptr (
     nil pointer)): uint32 {.importc: "bs_key_new", header: Header, cdecl, raises: [], gcsafe.}
-# Import a JIP-5-compatible seed, explicitly separate from canonical scalar import.
+  ## Import a canonical nonzero scalar into one opaque native owner.
+
 proc keyFromSeed(data: nil pointer, length: csize_t, output: ptr (
     nil pointer)): uint32 {.importc: "bs_key_from_seed", header: Header, cdecl, raises: [], gcsafe.}
-# Last-owner release cleanses the retained scalar in Rust.
+  ## Import a JIP-5-compatible seed, explicitly separate from canonical scalar import.
+
 proc keyFree(handle: nil pointer) {.importc: "bs_key_free", header: Header, cdecl, raises: [], gcsafe.}
-# Copy public bytes from a live private scalar owner.
+  ## Last-owner release cleanses the retained scalar in Rust.
+
 proc nativePublic(handle, output: nil pointer): uint32 {.importc: "bs_public", header: Header,
     cdecl, raises: [], gcsafe.}
-# Produce a full 96-byte proof without retaining input or additional-data pointers.
+  ## Copy public bytes from a live private scalar owner.
+
 proc nativeSign(handle, data: nil pointer, length: csize_t, ad: nil pointer, adLen: csize_t,
     output: nil pointer): uint32 {.importc: "bs_sign", header: Header, cdecl, raises: [], gcsafe.}
-# Verified output bytes are committed only after public key/context/proof verification succeeds.
+  ## Produce a full 96-byte proof without retaining input or additional-data pointers.
+
 proc nativeVerify(key, signature: nil pointer, signatureLen: csize_t, data: nil pointer,
     length: csize_t, ad: nil pointer, adLen: csize_t,
         output: nil pointer): uint32 {.importc: "bs_verify", header: Header,
     cdecl, raises: [], gcsafe.}
-# Create immutable trusted-SRS parameters for a bounded ring capacity.
+  ## Verified output bytes are committed only after public key/context/proof verification succeeds.
+
 proc setupNew(size: csize_t, output: ptr (nil pointer)): uint32 {.importc: "bs_setup_new",
     header: Header, cdecl, raises: [], gcsafe.}
-# Destroy one native parameter owner; aliases must stop using released storage.
+  ## Create immutable trusted-SRS parameters for a bounded ring capacity.
+
 proc setupFree(handle: nil pointer) {.importc: "bs_setup_free", header: Header, cdecl, raises: [], gcsafe.}
-# Commit complete ordered canonical points into one 144-byte root.
+  ## Destroy one native parameter owner; aliases must stop using released storage.
+
 proc nativeCommit(handle, keys: nil pointer, length: csize_t,
     output: nil pointer): uint32 {.importc: "bs_commit", header: Header, cdecl, raises: [], gcsafe.}
-# Prove membership only for the actual in-range matching signing key.
+  ## Commit complete ordered canonical points into one 144-byte root.
+
 proc nativeRingSign(handle, key: nil pointer, index: csize_t, keys: nil pointer, keysLen: csize_t,
     data: nil pointer, length: csize_t, ad: nil pointer, adLen: csize_t,
     output: nil pointer): uint32 {.importc: "bs_ring_sign", header: Header, cdecl, raises: [], gcsafe.}
-# Verify root-bound proof with the selected ring domain and expose only a verified hash.
+  ## Prove membership only for the actual in-range matching signing key.
+
 proc nativeRingVerify(handle, root, signature: nil pointer, signatureLen: csize_t,
     data: nil pointer, length: csize_t, ad: nil pointer, adLen: csize_t,
     output: nil pointer): uint32 {.importc: "bs_ring_verify", header: Header, cdecl, raises: [], gcsafe.}
-# Validate canonical prime-subgroup encoding before copying a typed public key.
+  ## Verify root-bound proof with the selected ring domain and expose only a verified hash.
+
 proc nativeValidate(data: nil pointer, length: csize_t): uint32 {.importc: "bs_validate_public",
     header: Header, cdecl, raises: [], gcsafe.}
-# Export the pinned padding point for explicit native-language invalid-member substitution.
+  ## Validate canonical prime-subgroup encoding before copying a typed public key.
+
 proc nativePadding(output: nil pointer): uint32 {.importc: "bs_padding", header: Header, cdecl,
     raises: [], gcsafe.}
+  ## Export the pinned padding point for explicit native-language invalid-member substitution.
 
 type
   BsPublicKey* = distinct array[32, byte] ## Encoded public key, distinct from output hashes and other primitive keys.
@@ -99,6 +112,7 @@ proc `=wasMoved`(state: var NativeState) {.raises: [], gcsafe.} =
   state.handle = nil
 
 proc `=destroy`(state: NativeState) {.raises: [], gcsafe.} =
+  ## Release the native scalar or setup allocation exactly once, honoring prior explicit close.
   # Explicit close already releases its native allocation.
   if state.handle == nil: return
   case state.kind
@@ -107,8 +121,8 @@ proc `=destroy`(state: NativeState) {.raises: [], gcsafe.} =
   # Public parameter allocations are released through their original Rust allocator.
   of SetupKind: setupFree(state.handle)
 
-# Normalize immutable ABI reason codes without manufacturing success for unknown outcomes.
 proc error(code: uint32): BsError {.raises: [], gcsafe.} =
+  ## Normalize immutable ABI reason codes without manufacturing success for unknown outcomes.
   case code
   of 0: BsError.None # Only native success publishes output.
   of 1: BsError.InvalidLength # Width/capacity/resource checks failed.
@@ -118,20 +132,21 @@ proc error(code: uint32): BsError {.raises: [], gcsafe.} =
   of 6: BsError.BackendPanic # An unwind was contained inside Rust.
   else: BsError.BackendFailure # Includes unexpected ABI status codes.
 
-# Borrow an input address synchronously; empty slices intentionally have no element pointer.
 proc data(input: openArray[byte]): nil pointer {.raises: [], gcsafe.} =
+  ## Borrow an input address synchronously; empty slices intentionally have no element pointer.
   # Do not evaluate element zero for an empty context/additional-data buffer.
   if input.len == 0: return nil
   unsafeAddr input[0]
 
-# Select a live opaque key pointer without exposing it to callers.
 proc handle(key: BsKey): nil pointer {.raises: [], gcsafe.} =
+  ## Select a live opaque key pointer without exposing it to callers.
   # Default retained keys fail before any native dereference.
   let state = key.state
   if state == nil: return nil # A default key has no native allocation.
   state.handle
-# Select a live immutable ring parameter allocation; callers cannot forge native layouts.
+
 proc handle(setup: BsSetup): nil pointer {.raises: [], gcsafe.} =
+  ## Select a live immutable ring parameter allocation; callers cannot forge native layouts.
   # Default setups have no trusted SRS/domain.
   let state = setup.state
   if state == nil: return nil # A default setup has no native allocation.
@@ -173,6 +188,7 @@ proc close*(key: BsKey) {.raises: [], gcsafe.} =
   if state == nil or state.handle == nil: return # Defaults and already closed aliases have nothing to release.
   keyFree(state.handle)
   state.handle = nil
+
 proc close*(setup: BsSetup) {.raises: [], gcsafe.} =
   ## Close retained setup allocation; no alias may race close with an in-flight operation.
   # Clearing an absent/already closed retained owner is harmless.

@@ -75,14 +75,14 @@ const LargeSize = 1024 * 1024
 const LargeHash = [138'u8, 90, 122, 157, 195, 207, 32, 62, 211, 116, 176, 161, 238, 169,
   48, 96, 26, 210, 172, 191, 226, 180, 188, 98, 207, 131, 222, 78, 229, 54, 82, 139]
 
-# Native TLS verification borrows only the retained peer's expected key; no closure or async frame is captured.
 proc verifyPeer(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
+  ## Native TLS verification borrows only the retained peer's expected key; no closure or async frame is captured.
   let peer = cast[ptr Peer](user)
   cint(validPeer(cast[ptr byte](der), length, peer.expected))
 
-# Both stack owners remain alive through SSL teardown; callback memory is copied synchronously.
 proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
     port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
+  ## Both stack owners remain alive through SSL teardown; callback memory is copied synchronously.
   let peer = cast[ptr Peer](user)
   if event == HandshakeFailed:
     log(peer.logging, LogTarget.Network, LogLevel.Warn,
@@ -93,9 +93,9 @@ proc onHandshake(user: pointer, slot: cuint, event: cint, address: ptr ConstByte
   if exporter != nil: # Only explicitly configured server telemetry installs this callback.
     exporter[].observeIncoming(peer.incoming, slot, event, address, port, der, length)
 
-# Retain admission metadata and report only native closes observed before engine destruction.
 proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
+  ## Retain admission metadata and report only native closes observed before engine destruction.
   let peer = cast[ptr Peer](user)
   log(peer.logging, LogTarget.Network, LogLevel.Debug, "Peer event=" & $event & " slot=" & $slot)
   if event == PeerAccepted:
@@ -106,8 +106,8 @@ proc onPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   if exporter != nil: # Disabled runs install no observer or retained identity table entries.
     exporter[].observePeer(peer.incomingPeers, slot, event, der, length)
 
-# Settle each stream once; persistent listeners isolate rejected requests from endpoint failure.
 proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: [].} =
+  ## Settle each stream once; persistent listeners isolate rejected requests from endpoint failure.
   # Reset and close notifications may report the same terminal state more than once.
   if state.counted: return
   state.counted = true
@@ -142,12 +142,12 @@ proc finishStream(peer: ptr Peer, state: ptr StreamState, good: bool) {.raises: 
     # The one-shot rejection matrix fails the attempted application exchange.
     peer.failed = true
 
-# Legacy fixtures use connection role; mesh CE streams use their independently observed initiator.
 proc accepting(peer: ptr Peer, state: ptr StreamState): bool {.raises: [].} =
+  ## Legacy fixtures use connection role; mesh CE streams use their independently observed initiator.
   if peer.mesh: state.responder else: peer.server
 
-# Check incremental framing and fixture payloads; success requires one exact message followed by FIN.
 proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid: bool] {.raises: [].} =
+  ## Check incremental framing and fixture payloads; success requires one exact message followed by FIN.
   let maximum = if accepting(peer, state): 32 elif peer.integrated: WireCap elif peer.attack ==
       "soak": LargeSize else: 1024
   let boundary = inspectFrame(state.received.toOpenArray(0, state.receivedLength - 1),
@@ -209,8 +209,8 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
       if state.received[4 + i] != wanted: return (false, false) # Compare every byte of the preimage.
   (true, true)
 
-# Initialize bounded request/reply storage on a new native stream; no network length chooses an allocation.
 proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.raises: [].} =
+  ## Initialize bounded request/reply storage on a new native stream; no network length chooses an allocation.
   state[] = StreamState(handle: handle, started: getMonoTime(), attack: peer.attack)
   # Connection acceptors may open queries too; native stream IDs identify the actual requester.
   if peer.mesh: state.responder = not locallyOpened(peer.transport, handle)
@@ -274,8 +274,8 @@ proc newStream(peer: ptr Peer, state: ptr StreamState, handle: NativeStream) {.r
     wantRead(handle, 0)
   wantWrite(handle, 1)
 
-# Read all available stream bytes into stable bounded storage, preserving state across would-block events.
 proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
+  ## Read all available stream bytes into stable bounded storage, preserving state across would-block events.
   # A slow/cancelled reader deliberately withholds application consumption.
   if state.paused: return
   while true:
@@ -348,8 +348,8 @@ proc readStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
         finishStream(peer, state, true)
       return
 
-# Preserve unsent application bytes across partial writes and flow-control stalls; flush does not imply FIN.
 proc writeStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
+  ## Preserve unsent application bytes across partial writes and flow-control stalls; flush does not imply FIN.
   # Keep the same owned write buffer until every byte is accepted or the native stream closes.
   while state.sendOffset < state.sendLength:
     let remaining = state.sendLength - state.sendOffset
@@ -374,8 +374,8 @@ proc writeStream(peer: ptr Peer, state: ptr StreamState) {.raises: [].} =
     if accepting(peer, state): finishStream(peer, state,
         true) # Exact request and queued reply FIN complete server work.
 
-# Native callbacks borrow this peer synchronously; only native close releases application buffers.
 proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
+  ## Native callbacks borrow this peer synchronously; only native close releases application buffers.
   let peer = cast[ptr Peer](user)
   var state: nil ptr StreamState = nil # No callback slot has been resolved yet.
                                        # Resolve a currently retained native handle before accessing its application buffers.
@@ -430,8 +430,8 @@ proc onStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises:
   of 2: writeStream(peer, state) # Write readiness preserves partial-write offsets across callbacks.
   else: peer.failed = true # Undefined bridge events are explicit integration failures.
 
-# Stream-local lifecycle deadlines run on the same dispatcher thread as native transport timers.
 proc streamTick(peer: ptr Peer) {.raises: [].} =
+  ## Stream-local lifecycle deadlines run on the same dispatcher thread as native transport timers.
   # Only live, unsettled streams own deadline work; close callbacks may recycle slots synchronously.
   for index in 0..<peer.streams.len:
     # Resolve a stable slot by index; no mutable iterator temporary owns its ARC buffers.
@@ -462,8 +462,8 @@ proc streamTick(peer: ptr Peer) {.raises: [].} =
       state.paused = false
       wantRead(state.handle, 1)
 
-# Deliver completed proof decisions on the only I/O thread, resolving generations afresh after cancellation/reuse.
 proc offloadTick(peer: ptr Peer) =
+  ## Deliver completed proof decisions on the only I/O thread, resolving generations afresh after cancellation/reuse.
   tickPool(peer.pool)
   # At most four retained completions exist; no worker can grow this drain without bound.
   for index in 0..<4:
@@ -737,8 +737,8 @@ proc runPeer*(options: Options): bool {.raises.} =
     progress "proof rejected or timed out ", peer.completed, " ", peer.healthy, " ", peer.rejected,
         " ", peer.cancelled
 
-# Fuzz incremental framing and DER policy without creating a UDP endpoint or TLS engine.
 proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
+  ## Fuzz incremental framing and DER policy without creating a UDP endpoint or TLS engine.
   let data = if input.len > 0: unsafeAddr input[0] else: nil
   discard validPeer(data, csize_t(input.len), [])
   var peer = Peer(server: server)
@@ -802,8 +802,8 @@ proc peerSelfTest*() =
 
 ## Retained two-peer IPv6 lifecycle policy shares this module's private owners and callbacks.
 
-# Compare the full public-key byte strings lexicographically, then apply pinned JAMNP-S Required connectivity.
 proc preferred(local, remote: array[32, byte]): bool {.raises: [].} =
+  ## Compare the full public-key byte strings lexicographically, then apply pinned JAMNP-S Required connectivity.
   var less = false
   # The first unequal byte determines the ordering; the high bit is separately taken from byte 31.
   for index in 0..<32:
@@ -830,15 +830,15 @@ proc meshSelfTest*() =
   assert not preferred(a, b) # Exactly 128 changes the parity.
   progress "MESH_POLICY_OK"
 
-# Count live stream owners; a settled reply alone does not prove all native close callbacks have retired.
 proc liveMesh(peer: ptr Peer): int {.raises: [].} =
+  ## Count live stream owners; a settled reply alone does not prove all native close callbacks have retired.
   result = 0 # An empty peer has no live stream owners; every increment starts from a defined count.
   # A slot owns its buffers until its handle becomes nil in the final close callback.
   for state in peer.streams:
     if state.handle != NativeStream(nil): inc result
 
-# Prove eight pending owners contain four fully sent queries and four complete request prefixes without FIN.
 proc pendingMesh(peer: ptr Peer): bool {.raises: [].} =
+  ## Prove eight pending owners contain four fully sent queries and four complete request prefixes without FIN.
   var local, remote = 0
   # Ignore retired slots; every retained slot must still be unsettled and waiting for the missing peer/FIN.
   for state in peer.streams:
@@ -852,8 +852,8 @@ proc pendingMesh(peer: ptr Peer): bool {.raises: [].} =
       inc local
   local == 4 and remote == 4
 
-# Settle the current retained outgoing generation from cumulative native evidence, even on a failed poll.
 proc observeMeshDial(outgoing: var Peer) =
+  ## Settle the current retained outgoing generation from cumulative native evidence, even on a failed poll.
   let exporter = outgoing.telemetry
   if exporter == nil or not outgoing.meshDial.active: return # No exporter work for disabled or idle owners.
   if outgoing.meshDial.pending and authenticatedConnections(outgoing.transport) >
@@ -871,8 +871,8 @@ proc observeMeshDial(outgoing: var Peer) =
     outgoing.meshDial.pending = false
     outgoing.meshDial.authenticated = false
 
-# Sample one logical remote peer across both retained engines; duplicate arbitration must not double count it.
 proc observeMesh(incoming, outgoing: var Peer) =
+  ## Sample one logical remote peer across both retained engines; duplicate arbitration must not double count it.
   if incoming.telemetry == nil: return # Disabled mesh runs add no clock, encoding or socket work.
   observeMeshDial(outgoing)
   let connected = peerMetric(incoming.transport, 0) > 0 or
@@ -881,8 +881,8 @@ proc observeMesh(incoming, outgoing: var Peer) =
   if exporter != nil: # Re-establish the borrow after observing the other role's mutable owner.
     exporter[].observe(if connected: 1'u32 else: 0'u32)
 
-# Capture only actual dials; a suppressed preferred direction during fallback creates no attempt.
 proc dialMesh(outgoing: var Peer, port: uint16): bool =
+  ## Capture only actual dials; a suppressed preferred direction during fallback creates no attempt.
   let exporter = outgoing.telemetry
   if exporter != nil:
     # All prior native connections retire before a mesh round can reuse this fixed observation slot.

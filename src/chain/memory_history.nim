@@ -24,22 +24,27 @@ type
 func initialized*(history: MemoryHistory): bool =
   ## Defaults contain neither an implicit archive nor a fabricated genesis.
   history.head != nil
+
 func sameMemoryHistory*(left, right: MemoryHistory): bool =
   ## Publication joins only one exact immutable index version, including a matching disabled default.
   left.head == right.head
+
 func historyCursor*(history: MemoryHistory): HistoryCursor {.requires: history.initialized.} =
   ## Copy policy/ordinal facts without retaining or copying an archive-sized container.
   let head = history.head
   assert head != nil
   head.cursor
+
 func bit(key: array[32, byte], index: int): int {.requires: index >= 0 and index < 256.} =
   ## Big-endian bit order is local index ordering, independent of JAM trie encoding.
   int((key[index div 8] shr (7-index mod 8)) and 1)
+
 func branch(split: int, zero, one: HistoryNode): HistoryNode =
   ## Construct an immutable two-child node with exact ordinal bounds and no parent reference.
   let oldest = if zero.oldest < one.oldest: zero.oldest else: one.oldest
   let newest = if zero.newest > one.newest: zero.newest else: one.newest
   HistoryNode(split: split, zero: zero, one: one, oldest: oldest, newest: newest)
+
 func insertAt(node: HistoryNode, leaf: HistoryNode, split: int): HistoryNode =
   ## Insert above the first later split; each recursive branch consumes a strictly greater bit.
   if node.split >= split:
@@ -51,6 +56,7 @@ func insertAt(node: HistoryNode, leaf: HistoryNode, split: int): HistoryNode =
   if bit(leaf.key, node.split) == 0:
     return branch(node.split, insertAt(zero, leaf, split), one)
   branch(node.split, zero, insertAt(one, leaf, split))
+
 func insert(root: nil HistoryNode, saved: BlockSnapshotResult, ordinal: uint64): nil HistoryNode =
   ## Find the existing terminal key before allocating one leaf and the copied compressed path.
   let key = array[32, byte](saved.value.blockHash)
@@ -66,6 +72,7 @@ func insert(root: nil HistoryNode, saved: BlockSnapshotResult, ordinal: uint64):
     inc difference # Short-circuiting prevents a bit access beyond the full 32-byte identity.
   if difference == 256: return nil # A duplicate identity cannot overwrite a previously accepted snapshot.
   insertAt(root, leaf, difference)
+
 func trim(node: nil HistoryNode, first: uint64): nil HistoryNode =
   ## Drop old subtrees; ordinary bounded appends expire at most one ordinal and visit at most one full key path.
   if node == nil or node.newest < first: return nil
@@ -75,6 +82,7 @@ func trim(node: nil HistoryNode, first: uint64): nil HistoryNode =
   if zero == nil: return one # Collapsing empty branches preserves strictly increasing split order.
   if one == nil: return zero
   branch(node.split, zero, one)
+
 proc append*(history: MemoryHistory, saved: BlockSnapshotResult): HistoryResult[MemoryHistory] =
   ## Stage exact scalar/index replacements before canonical state/view publication.
   let head = history.head
@@ -93,6 +101,7 @@ proc append*(history: MemoryHistory, saved: BlockSnapshotResult): HistoryResult[
   if inserted == nil: return historyFailure[MemoryHistory](HistoryError.InvalidFormat)
   let retained = trim(inserted, uint64(next.firstOrdinal))
   historySuccess(MemoryHistory(head: MemoryHistoryData(cursor: next, root: retained)))
+
 proc newMemoryHistory*(saved: openArray[BlockSnapshotResult],
     policy: HistoryPolicy): HistoryResult[MemoryHistory] =
   ## Seed only available snapshots; neither archive nor a larger bounded policy invents missing earlier data.
@@ -104,6 +113,7 @@ proc newMemoryHistory*(saved: openArray[BlockSnapshotResult],
     if next.error != HistoryError.None: return historyFailure[MemoryHistory](next.error)
     working = next.value # Every failure retires the private construction prefix.
   historySuccess(working)
+
 proc withHistoryPolicy*(history: MemoryHistory, policy: HistoryPolicy): HistoryResult[
     MemoryHistory] =
   ## Policy shrink copies only affected branches; old readers retain their prior complete states and bodies.
@@ -115,6 +125,7 @@ proc withHistoryPolicy*(history: MemoryHistory, policy: HistoryPolicy): HistoryR
       history) # Reapplying the selected policy preserves exact owner identity.
   historySuccess(MemoryHistory(head: MemoryHistoryData(cursor: cursor.value,
     root: trim(head.root, uint64(cursor.value.firstOrdinal)))))
+
 func blockAt*(history: MemoryHistory, hash: BlockHash): BlockSnapshotResult =
   ## At most 256 branch decisions and one exact full-hash comparison; no archive-sized scan or cache.
   let head = history.head

@@ -95,17 +95,19 @@ type
 func error*[T](r: MachineResult[T]): MachineError =
   ## Status inspection cannot retag or forge a result.
   r.status
+
 func value*[T](r: MachineResult[T]): T {.inline, requires: r.status == MachineError.None.} =
   ## A successful result alone grants access to its copied payload.
   r.completed
+
 func faultPage*[T](r: MachineResult[T]): PageAddress {.inline, requires: r.status ==
     MachineError.Fault.} =
   ## A page address is meaningful only for a guest Fault, never for API failures or panic.
   r.failedPage
 
-# Propagate only a failure reason across payload types without leaking partial success state.
 func failure[T, U](r: MachineResult[U]): MachineResult[T] {.requires: r.status !=
     MachineError.None.} =
+  ## Propagate only a failure reason across payload types without leaking partial success state.
   # Fault is the sole failure with an associated reason parameter.
   if r.status == MachineError.Fault:
     return MachineResult[T](status: MachineError.Fault, failedPage: r.failedPage)
@@ -251,8 +253,8 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: owned, limit: limit)))
 
-# Locate the first stored page whose index is at least the requested ordinal.
 func lowerBound(data: MemoryData, index: uint32): int =
+  ## Locate the first stored page whose index is at least the requested ordinal.
   var first = 0
   var last = data.pages.len
   # Difference-based midpoint arithmetic avoids overflowing endpoint sums.
@@ -631,10 +633,10 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
-# Validate a natural host range and all permissions before copying any payload or page storage.
-# Fault is a diagnostic page here; the concrete host function decides its guest panic/result mapping.
 proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit, writing: bool): MachineResult[bool] =
+  ## Validate a natural host range and all permissions before copying any payload or page storage.
+  ## Fault is a diagnostic page here; the concrete host function decides its guest panic/result mapping.
   if memory.data == nil:
     # Empty ranges still require a genuine immutable owner.
     return MachineResult[bool](status: MachineError.InvalidOwner)

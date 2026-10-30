@@ -93,33 +93,38 @@ type
 func error*[T](outcome: AccumulationBatchResult[T]): AccumulationBatchError =
   ## Inspect the selected alternative without permitting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationBatchResult[T]): T {.inline,
     requires: outcome.status == AccumulationBatchError.None.} =
   ## Extract complete selected success under checked optimized contracts.
   outcome.completed
+
 func terminalError*[T](outcome: AccumulationBatchResult[
     T]): AccumulationTerminalProvisionError {.inline,
 
 requires: outcome.status == AccumulationBatchError.TerminalFailure.} =
   ## Inspect only an actual terminal adapter refusal.
   outcome.terminalReason
+
 func normalizationError*[T](outcome: AccumulationBatchResult[T]): AccumulationOutcomeError {.inline,
     requires: outcome.status == AccumulationBatchError.TerminalFailure and
       outcome.terminalReason == AccumulationTerminalProvisionError.NormalizationFailure.} =
   ## Inspect only the nested normalization alternative, preserving its specification gate.
   outcome.normalizationReason
+
 func provisionError*[T](outcome: AccumulationBatchResult[T]): AccumulationProvisionError {.inline,
     requires: outcome.status == AccumulationBatchError.TerminalFailure and
       outcome.terminalReason == AccumulationTerminalProvisionError.ProvisionFailure.} =
   ## Inspect only the nested union/fulfillment alternative.
   outcome.provisionReason
+
 func storeError*[T](outcome: AccumulationBatchResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationBatchError.StoreFailure.} =
   ## Inspect only a refused private account-write phase.
   outcome.storeReason
 
-# Translate reason-only terminal failure without retaining a parent success payload or candidate state.
 func terminalRefusal[T, U](failed: AccumulationTerminalProvisionResult[U]): AccumulationBatchResult[T] =
+  ## Translate reason-only terminal failure without retaining a parent success payload or candidate state.
   var normalized = AccumulationOutcomeError.Uninitialized
   var provided = AccumulationProvisionError.Uninitialized
   if failed.error == AccumulationTerminalProvisionError.NormalizationFailure:
@@ -129,14 +134,14 @@ func terminalRefusal[T, U](failed: AccumulationTerminalProvisionResult[U]): Accu
   AccumulationBatchResult[T](status: AccumulationBatchError.TerminalFailure,
     terminalReason: failed.error, normalizationReason: normalized, provisionReason: provided)
 
-# Sort numeric service IDs independently of execution order or little-endian key bytes.
 func compareService(left, right: ServiceIndex): int =
+  ## Sort numeric service IDs independently of execution order or little-endian key bytes.
   if uint32(left) < uint32(right): return -1 # Prove uniqueness before any union hashing.
   if uint32(left) > uint32(right): return 1
   0
 
-# Compare only fixed physical keys; caller execution order never chooses a conflicting winner.
 func compareAccountKey(left, right: StateKey): int =
+  ## Compare only fixed physical keys; caller execution order never chooses a conflicting winner.
   let a = array[31, byte](left)
   let b = array[31, byte](right)
   for index in 0..<31:
@@ -174,8 +179,8 @@ proc batchOutcomeAt*(plan: PreparedAccumulationBatch, index: AccumulationProvisi
   AccumulationBatchResult[AccumulationOutcome](status: AccumulationBatchError.None,
       completed: retained.value)
 
-# Numeric service order is independent of execution order or serialized key bytes.
 func compareTransferRow(left, right: BatchTransferRow): int =
+  ## Numeric service order is independent of execution order or serialized key bytes.
   if uint32(left.service) < uint32(right.service): return -1 # Emit the entire smaller service's selected sequence first.
   if uint32(left.service) > uint32(right.service): return 1
   0
@@ -213,8 +218,8 @@ proc prepareBatchAccumulationTransfers*(plan: PreparedAccumulationBatch,
   AccumulationBatchResult[PreparedAccumulationTransfers](status:
     AccumulationBatchError.None, completed: collected.value)
 
-# Inspect bounded immutable creation facts only after the caller has checked aggregate trace ceilings.
 proc hasCreatedAccount(context: AccumulationEffectContext, service: ServiceIndex): bool =
+  ## Inspect bounded immutable creation facts only after the caller has checked aggregate trace ceilings.
   for ordinal in 0..<context.effectCreatedAccountCount.value:
     # Exact service identity proves that a retained prior ID was genuinely recreated.
     let child = context.effectCreatedAccountAt(AccumulationCreatedAccountIndex(uint64(
@@ -222,8 +227,8 @@ proc hasCreatedAccount(context: AccumulationEffectContext, service: ServiceIndex
     if uint32(child.service) == uint32(service): return true
   false
 
-# An ignored prior-present creation must be paired with genuine selected ejection provenance.
 proc hasDeletedAccount(context: AccumulationEffectContext, service: ServiceIndex): bool =
+  ## An ignored prior-present creation must be paired with genuine selected ejection provenance.
   for ordinal in 0..<context.effectDeletedAccountCount.value:
     # A matching successful eject explains how registrar creation obtained the occupied prior ID.
     let target = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(uint64(
@@ -231,25 +236,25 @@ proc hasDeletedAccount(context: AccumulationEffectContext, service: ServiceIndex
     if uint32(target.service) == uint32(service): return true
   false
 
-# Look up privileges by original authority; skipped/absent services retain the initial roles.
 proc selectedPrivileges(selected: PreparedTerminalAccumulationProvisions,
     service: ServiceIndex, initial: PrivilegeSnapshot): PrivilegeSnapshot =
+  ## Look up privileges by original authority; skipped/absent services retain the initial roles.
   for index in 0..<selected.terminalProvisionInfo.value.provisions.contexts:
     let outcome = selected.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
     if uint32(outcome.outcomeInfo.value.service) == uint32(service):
       return outcome.outcomeContext.value.effectPrivileges.value # Terminal normalization already selected the exact checkpoint.
   initial
 
-# GP accpar R preserves the original owner's handoff unless the original manager changed the role.
 func selectedRole(original, manager, owner: ServiceIndex): ServiceIndex =
+  ## GP accpar R preserves the original owner's handoff unless the original manager changed the role.
   if uint32(manager) == uint32(original): owner
   else: manager # A changed manager choice wins independently of execution order.
 
-# Merge manager roles/allowances and original-assigner queues independently of staging publication.
 
 proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
         seq[StateWrite]] =
+  ## Merge manager roles/allowances and original-assigner queues independently of staging publication.
   template fail(reason: AccumulationBatchError) =
     ## Refuse without exposing a partial core prefix or any proposed global writes.
     return AccumulationBatchResult[seq[StateWrite]](status: reason)
@@ -336,10 +341,10 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
       StateWrite(key: encodedRoles.value.key, kind: StateWriteKind.Put,
           value: encodedRoles.value.value)])
 
-# Select only the original delegator's roster, independently of any manager handoff or execution order.
 proc stagingWrites(selected: PreparedTerminalAccumulationProvisions,
     initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
         seq[StateWrite]] =
+  ## Select only the original delegator's roster, independently of any manager handoff or execution order.
   template fail(reason: AccumulationBatchError) =
     ## Refuse without exposing a partial roster or proposed chapter write.
     return AccumulationBatchResult[seq[StateWrite]](status: reason)
@@ -386,11 +391,11 @@ proc stagingWrites(selected: PreparedTerminalAccumulationProvisions,
     completed: @[StateWrite(key: encoded.value.key, kind: StateWriteKind.Put,
         value: encoded.value.value)])
 
-# Shared preparation proves source ownership before retaining credits or normalizing genuine executions.
 proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
     executions: openArray[AccumulationDispatchResult], skipped: openArray[SkippedAccumulation],
     slot: HeaderSlot, limits: AccumulationBatchLimits, requireComplete: bool):
     AccumulationBatchResult[PreparedAccumulationBatch] =
+  ## Shared preparation proves source ownership before retaining credits or normalizing genuine executions.
   # Refuse without exposing partially retained service rows or encoded account writes.
   template fail(reason: AccumulationBatchError) =
     return AccumulationBatchResult[PreparedAccumulationBatch](status: reason)

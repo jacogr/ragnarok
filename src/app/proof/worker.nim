@@ -57,11 +57,14 @@ proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
 
 proc `=copy`*(destination: var StateProofWorker, source: StateProofWorker) {.error.}
   ## A native thread and its borrowed stack addresses have exactly one owner.
+
 proc `=dup`*(source: StateProofWorker): StateProofWorker {.error.}
   ## Composite owners must reject duplication explicitly.
+
 proc requireClosed(worker: StateProofWorker) {.requires: not worker.started.} =
   ## Destruction cannot silently abandon a thread borrowing host memory.
   discard
+
 proc `=destroy`*(worker: StateProofWorker) =
   ## Host cleanup joins explicitly while all borrowed inputs and aliases still exist.
   requireClosed(worker)
@@ -74,13 +77,16 @@ proc `=destroy`*(worker: StateProofWorker) =
 func error*(admission: ProofWorkerAdmission): ProofWorkerError =
   ## Observe admission without granting ticket authority.
   admission.status
+
 func value*(admission: ProofWorkerAdmission): ProofWorkerTicket {.inline,
     requires: admission.status == ProofWorkerError.None.} =
   ## Only admitted work grants a ticket.
   admission.ticket
+
 func kind*(completion: ProofWorkerCompletion): ProofWorkerCompletionKind =
   ## Observe default/cancelled results without extracting a response.
   completion.status
+
 func value*(completion: ProofWorkerCompletion): ProofQueryResult[ProofResponse] {.inline,
     requires: completion.status == ProofWorkerCompletionKind.Completed.} =
   ## The query's own guarded result retains all typed failures and finalized success.
@@ -91,6 +97,7 @@ func importedValue*(completion: ProofWorkerCompletion): LightImportResult[
         ProofWorkerCompletionKind.Imported.} =
   ## Only complete uncancelled ingestion exposes its genuinely verified checkpoint-bound batch.
   completion.ingestion
+
 proc execute(worker: ptr StateProofWorker) =
   ## All selected-state aliases and generation scratch retire before run publishes Done.
   case worker.operation
@@ -193,6 +200,7 @@ proc submit*(worker: var StateProofWorker, request: var LightProofImport): Proof
   signal(worker.changed)
   ProofWorkerAdmission(status: ProofWorkerError.None,
     ticket: ProofWorkerTicket(owner: worker.identity, generation: worker.next))
+
 func matches(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ## Called under the lock; generation zero and idle slots never authorize retirement.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==

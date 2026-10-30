@@ -38,27 +38,33 @@ type
       ordinal: InventoryServiceIndex
     else:
       discard
+
 func error*[T](outcome: EconomicsTableResult[T]): EconomicsTableError =
   ## Inspect the immutable selected alternative.
   outcome.status
+
 func value*[T](outcome: EconomicsTableResult[T]): T {.inline,
     requires: outcome.status == EconomicsTableError.None.} =
   ## Failed/default batches expose no completed source-bearing owner.
   outcome.completed
+
 func observationFailure*[T](outcome: EconomicsTableResult[T]): ServiceDepositResult[
     ServiceDepositObservation] {.inline,
 
 requires: outcome.status == EconomicsTableError.ObservationFailure.} =
   ## Preserve the genuinely failed row result, including guarded nested arithmetic reason.
   outcome.reason
+
 func failedService*[T](outcome: EconomicsTableResult[T]): ServiceIndex {.inline,
     requires: outcome.status == EconomicsTableError.ObservationFailure.} =
   ## Only an actual failed observation identifies an offending service.
   outcome.service
+
 func failedOrdinal*[T](outcome: EconomicsTableResult[T]): InventoryServiceIndex {.inline,
     requires: outcome.status == EconomicsTableError.ObservationFailure.} =
   ## Preserve the original inventory ordinal without granting a successful prefix.
   outcome.ordinal
+
 proc buildEconomicsTable*(footprints: CheckedAccountFootprints,
     directory: StateServiceDirectory, profile: StateEconomicProfile,
     limits: EconomicsTableLimits): EconomicsTableResult[StateEconomicsTable] =
@@ -103,6 +109,7 @@ proc buildEconomicsTable*(footprints: CheckedAccountFootprints,
     completed: StateEconomicsTable(data: EconomicsTableData(footprints: footprints,
       directory: directory,
       profile: profile, rows: rows, info: info)))
+
 proc economicTableInfo*(table: StateEconomicsTable): EconomicsTableResult[EconomicsTableInfo] =
   ## Copy or retain the original completed info without exposing mutable table storage.
   let data = table.data
@@ -110,6 +117,7 @@ proc economicTableInfo*(table: StateEconomicsTable): EconomicsTableResult[Econom
     return EconomicsTableResult[EconomicsTableInfo](
         status: EconomicsTableError.Uninitialized) # Default table has no completed source.
   EconomicsTableResult[EconomicsTableInfo](status: EconomicsTableError.None, completed: data.info)
+
 proc economicTableFootprints*(table: StateEconomicsTable): EconomicsTableResult[
     CheckedAccountFootprints] =
   ## Copy or retain the original completed footprints without exposing mutable table storage.
@@ -119,6 +127,7 @@ proc economicTableFootprints*(table: StateEconomicsTable): EconomicsTableResult[
         status: EconomicsTableError.Uninitialized) # Default table has no completed source.
   EconomicsTableResult[CheckedAccountFootprints](status: EconomicsTableError.None,
       completed: data.footprints)
+
 proc economicTableDirectory*(table: StateEconomicsTable): EconomicsTableResult[
     StateServiceDirectory] =
   ## Copy or retain the original completed directory without exposing mutable table storage.
@@ -128,6 +137,7 @@ proc economicTableDirectory*(table: StateEconomicsTable): EconomicsTableResult[
         status: EconomicsTableError.Uninitialized) # Default table has no completed source.
   EconomicsTableResult[StateServiceDirectory](status: EconomicsTableError.None,
       completed: data.directory)
+
 proc economicTableProfile*(table: StateEconomicsTable): EconomicsTableResult[StateEconomicProfile] =
   ## Copy or retain the original completed profile without exposing mutable table storage.
   let data = table.data
@@ -136,6 +146,7 @@ proc economicTableProfile*(table: StateEconomicsTable): EconomicsTableResult[Sta
         status: EconomicsTableError.Uninitialized) # Default table has no completed source.
   EconomicsTableResult[StateEconomicProfile](status: EconomicsTableError.None,
       completed: data.profile)
+
 proc economicTableAt*(table: StateEconomicsTable,
     ordinal: InventoryServiceIndex): EconomicsTableResult[ServiceDepositInfo] =
   ## Validate the complete unsigned original-order ordinal before narrowing to the retained fixed row.
@@ -147,6 +158,7 @@ proc economicTableAt*(table: StateEconomicsTable,
         status: EconomicsTableError.InvalidIndex) # No truncating coordinate conversion.
   EconomicsTableResult[ServiceDepositInfo](status: EconomicsTableError.None, completed: data.rows[
       int(uint64(ordinal))])
+
 proc economicsFor*(table: StateEconomicsTable, service: ServiceIndex): EconomicsTableResult[
     ServiceDepositInfo] =
   ## Bounded identity lookup selects the completed original-order observation or proves service absence.

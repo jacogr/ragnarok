@@ -63,8 +63,8 @@ func value*[T](outcome: StateStoreResult[T]): T {.inline,
   ## Extract a successful payload only; failed/default results have no readable payload.
   outcome.completed
 
-## Compare full serialized key identities in the same lexicographic/MSB order as the trie.
 func compareKey(left, right: StateKey): int =
+  ## Compare full serialized key identities in the same lexicographic/MSB order as the trie.
   let a = array[31, byte](left)
   let b = array[31, byte](right)
   # The first differing byte determines the complete fixed key's order.
@@ -73,20 +73,22 @@ func compareKey(left, right: StateKey): int =
     elif a[i] > b[i]: return 1 # Larger bytes follow smaller bytes.
   0
 
-## Adapt entry sorting without comparing or copying payloads in the comparator.
-proc compareEntry(left, right: StateEntry): int = compareKey(left.key, right.key)
+proc compareEntry(left, right: StateEntry): int =
+  ## Adapt entry sorting without comparing or copying payloads in the comparator.
+  compareKey(left.key, right.key)
 
-## Keep sorted writes attached to their original borrowed payload positions.
-proc compareWrite(left, right: WriteIndex): int = compareKey(left.key, right.key)
+proc compareWrite(left, right: WriteIndex): int =
+  ## Keep sorted writes attached to their original borrowed payload positions.
+  compareKey(left.key, right.key)
 
-## Deep-copy caller bytes; no later source mutation can affect a committed snapshot.
 proc copyBytes(source: openArray[byte]): seq[byte] =
+  ## Deep-copy caller bytes; no later source mutation can affect a committed snapshot.
   result = newSeq[byte](source.len)
   # Copy individual bytes rather than exporting or sharing caller-owned mutable backing storage.
   for i, octet in source: result[i] = octet
 
-## Translate the private incremental implementation's reasons without exposing its handles.
 func storeError(reason: TrieError): StateStoreError =
+  ## Translate the private incremental implementation's reasons without exposing its handles.
   case reason
   of TrieError.None: StateStoreError.None # A completed root is the only successful case.
   of TrieError.Uninitialized: StateStoreError.Uninitialized # Preserve default failure.

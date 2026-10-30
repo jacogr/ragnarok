@@ -34,26 +34,33 @@ type
 func error*[T](answer: ArtifactResult[T]): ArtifactError =
   ## Inspection never grants access to an unsuccessful payload.
   answer.status
+
 func value*[T](answer: ArtifactResult[T]): T {.requires: answer.status == ArtifactError.None.} =
   ## Only a successful result publishes its complete owned value.
   answer.completed
+
 func defaultArtifactLimits*(): ArtifactLimits =
   ## Convenience policy admits ordinary artifacts while bounding copied symbols and materialized pages.
   ArtifactLimits(bytes: 16777216, codeBytes: 4194304, symbols: 1024, pages: 8192)
+
 func valid*(artifact: Artifact): bool =
   ## Default handles never grant execution or memory authority.
   artifact.initialized
+
 func programOf*(artifact: Artifact): Program {.requires: artifact.initialized.} =
   ## Programs are immutable owners and safe to share with prepared engines.
   artifact.source
+
 func memoryOf*(artifact: Artifact): Memory {.requires: artifact.initialized.} =
   ## Initial memory remains immutable even when an execution produces successor pages.
   artifact.memory
+
 proc importSymbols*(artifact: Artifact): seq[string] {.requires: artifact.initialized.} =
   ## Copy the catalog; callers cannot replace retained symbol identities.
   result = newSeq[string](artifact.imports.len)
   for i, name in artifact.imports:
     result[i] = name # Strings have value semantics and retain no writable borrowed view.
+
 proc entry*(artifact: Artifact, name: string): ArtifactResult[CodeAddress] =
   ## Required named lookup distinguishes invalid handles and absent exports from address zero.
   if not artifact.initialized:

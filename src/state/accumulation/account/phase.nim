@@ -51,32 +51,38 @@ type
 func error*[T](outcome: AccumulationAccountPhaseResult[T]): AccumulationAccountPhaseError =
   ## Inspect the selected alternative without allowing mutation or retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationAccountPhaseResult[T]): T {.inline,
     requires: outcome.status == AccumulationAccountPhaseError.None.} =
   ## Extract only a complete selected owner under optimized checked contracts.
   outcome.completed
+
 func selectionFailure*[T](outcome: AccumulationAccountPhaseResult[
     T]): AccumulationAccountSelectionError {.inline,
 
 requires: outcome.status == AccumulationAccountPhaseError.SelectionFailure.} =
   ## Inspect the actual complete-prior selection refusal.
   outcome.selectionReason
+
 func creationFailure*[T](outcome: AccumulationAccountPhaseResult[
     T]): AccumulationCreationError {.inline,
 
 requires: outcome.status == AccumulationAccountPhaseError.CreationFailure.} =
   ## Inspect the actual nonannulled new-account union refusal.
   outcome.creationReason
+
 func writeFailure*[T](outcome: AccumulationAccountPhaseResult[
     T]): SelectedAccountWriteError {.inline,
 
 requires: outcome.status == AccumulationAccountPhaseError.WriteFailure.} =
   ## Inspect the actual physical-fact selection refusal.
   outcome.writeReason
+
 func storeFailure*[T](outcome: AccumulationAccountPhaseResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationAccountPhaseError.StoreFailure.} =
   ## Inspect the actual private-fork or atomic apply refusal.
   outcome.storeReason
+
 proc prepareAccumulationAccountPhase*(coverage: PreparedAccumulationCoverage,
     limits: AccumulationAccountPhaseLimits): AccumulationAccountPhaseResult[
         PreparedAccumulationAccountPhase] =

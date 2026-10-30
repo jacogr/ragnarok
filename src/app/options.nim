@@ -46,15 +46,19 @@ type Options* = object ## Validated service controls; command handlers validate 
 func retentionSpecified*(options: Options): bool =
   ## Only an explicit full-state startup request can override a persisted history policy.
   options.parsed and options.historyExplicit
+
 func retentionPolicy*(options: Options): HistoryPolicy =
   ## Failed/default options grant no configured historical policy.
   if options.parsed: options.history else: default(HistoryPolicy)
+
 func historicalHash*(options: Options): string =
   ## An empty hash means the validated offline query selected a local ordinal.
   if options.parsed: options.historyHash else: ""
+
 func historicalOrdinal*(options: Options): HistoryOrdinal =
   ## Zero means no ordinal selector; successful offline queries always select exactly one addressing domain.
   if options.parsed: options.historyNumber else: HistoryOrdinal(0)
+
 func historicalCheckpointPath*(options: Options): string =
   ## Only an explicit offline output path authorizes checkpoint publication.
   if options.parsed: options.historyOutput else: ""
@@ -70,12 +74,15 @@ func pvmBackend*(options: Options): PvmBackend =
 func pvmCodePath*(options: Options): string =
   ## Only a complete standalone parse exposes an artifact filename.
   if options.parsed: options.codePath else: ""
+
 func pvmEntry*(options: Options): string =
   ## The selected export is meaningful only for explicit standalone execution.
   if options.parsed: options.codeEntry else: ""
+
 func pvmGas*(options: Options): uint64 =
   ## Finite validated gas never derives from an untrusted artifact declaration.
   if options.parsed: options.codeGas else: 0
+
 func pvmSteps*(options: Options): uint64 =
   ## A separate instruction allowance bounds loops independently of gas.
   if options.parsed: options.codeSteps else: 0
@@ -83,12 +90,15 @@ func pvmSteps*(options: Options): uint64 =
 func nodeMode*(options: Options): NodeMode =
   ## Mode observation grants no startup authority when parsing failed.
   options.mode
+
 func lightMode*(options: Options): bool =
   ## Only successfully parsed explicit light activation selects partial-state ownership.
   options.parsed and options.mode == NodeMode.Light
+
 func lightTrustPath*(options: Options): string {.requires: options.lightMode.} =
   ## Independent current identity is an operator input, never inferred from a native directory.
   options.recoveryIdentity
+
 func lightHeaderPath*(options: Options): string {.requires: options.lightMode.} =
   ## Exact independently selected sealed-header bytes anchor light restart metadata.
   options.recoveryHeader
@@ -123,9 +133,11 @@ func discoverDownloadAncestors*(options: Options): int =
 func logicalDownloadEnabled*(options: Options): bool =
   ## Only a complete validated paired opt-in enables current logical CLI provisioning.
   options.parsed and options.logicalSource.len > 0
+
 proc logicalDownloadSourcePath*(options: Options): string =
   ## Copy only the explicit parsed declaration path; failed/default options expose no partial source.
   if options.parsed: options.logicalSource else: ""
+
 proc logicalDownloadPolicyPath*(options: Options): string =
   ## Complete separate resource-policy path is retained independently of the declaration file.
   if options.parsed: options.logicalPolicy else: ""
@@ -157,24 +169,31 @@ func traceObservationsPath*(options: Options): string =
 func diskStorage*(options: Options): bool =
   ## Only a validated explicit disk request enables durable backend startup.
   options.parsed and options.state and options.backend == StateStorage.Disk
+
 func managedStorage*(options: Options): bool =
   ## Only an explicitly selected managed disk layout enables managed startup or automatic reclamation.
   options.diskStorage and options.layout == StateDiskLayout.Managed
+
 func pagedStorage*(options: Options): bool =
   ## Explicit physical selection requires the disk backend; it never infers mode, migration or an existing directory schema.
   options.diskStorage and options.layout == StateDiskLayout.Paged
+
 func resumePagedStorage*(options: Options): bool =
   ## Only explicit paged disk startup can replay an independently prepared genesis/import or future publication target.
   options.pagedStorage and options.pagedResume
+
 func stateCompactionBytes*(options: Options): ByteLimit {.requires: options.managedStorage.} =
   ## Return the managed soft journal threshold; explicit zero disables automatic maintenance.
   options.compactBytes
+
 func stateMigration*(options: Options): bool =
   ## Only an explicit valid managed migration request grants source-file startup intent.
   options.managedStorage and options.migrateFrom.len > 0
+
 func stateMigrationSource*(options: Options): string {.requires: options.stateMigration.} =
   ## Return the explicitly selected legacy source path; destination remains the separately selected state database.
   options.migrateFrom
+
 func stateDatabase*(options: Options): string {.requires: options.diskStorage.} =
   ## Return the explicitly selected database path; no implicit location or overwrite is invented.
   options.database
@@ -190,16 +209,20 @@ func stateWriteBytes*(options: Options): ByteLimit {.requires: options.parsed an
 func recoveryEnabled*(options: Options): bool =
   ## Only a complete explicit external-checkpoint request selects recovery.
   options.parsed and options.recover
+
 func recoveryPath*(options: Options): string {.requires: options.parsed and options.recover.} =
   ## The checkpoint being imported is distinct from independently supplied trust paths.
   options.recoveryFile
+
 func recoveryTrustPath*(options: Options): string {.requires: options.parsed and options.recover.} =
   ## Select the operator's independent fixed identity file.
   options.recoveryIdentity
+
 func recoveryHeaderPath*(options: Options): string {.requires: options.parsed and
     options.recover.} =
   ## Select exact independently trusted sealed-header bytes.
   options.recoveryHeader
+
 func recoveryByteLimit*(options: Options): ByteLimit {.requires: options.parsed and
     options.recover.} =
   ## Preserve the full unsigned explicit checkpoint ceiling; zero is a valid refusal policy.
@@ -591,12 +614,15 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
 func loggingPolicy*(options: Options): LogPolicy =
   ## Validated filters are configuration, not a mutable process global.
   options.logging
+
 func logWriter*(options: Options): LogWriter =
   ## The application logger outlives the services and worker leases borrowing this handle.
   options.output
+
 proc attachLogWriter*(options: var Options, writer: LogWriter) {.requires: options.parsed.} =
   ## Only validated options receive an explicitly started application-owned sink.
   options.output = writer
+
 proc extractLoggingOptions*(arguments: seq[string], remaining: var seq[string],
     policy: var LogPolicy): bool =
   ## Dedicated command grammars consume the same unique logging option before their own parsing.
@@ -645,6 +671,7 @@ proc dataDirectory*(options: Options): string =
 func syncSourceAgeMs*(options: Options): uint64 =
   ## A validated continuous host alone consumes the independently configured freshness ceiling.
   if options.parsed: options.syncSourceAge else: 0
+
 func syncReconnectMs*(options: Options): uint64 =
   ## Connection replacement has its own finite delay, independent of import or freshness deadlines.
   if options.parsed: options.syncReconnect else: 0

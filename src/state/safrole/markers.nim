@@ -30,27 +30,30 @@ type
 func error*(outcome: SafroleMarkerResult): SafroleMarkerError =
   ## Inspect the reason without retagging the result.
   outcome.status
+
 func value*(outcome: SafroleMarkerResult): SafroleMarkers {.inline,
     requires: outcome.status == SafroleMarkerError.None.} =
   ## Extract both complete markers only after selecting successful derivation.
   outcome.completed
+
 func epochMarker*(markers: SafroleMarkers): OwnedEpochMarker =
   ## Return an immutable epoch owner; a default pair returns a default owner that codec access rejects.
   markers.epochValue
+
 func winnersMarker*(markers: SafroleMarkers): OwnedWinnersMarker =
   ## Return an immutable winners owner without exposing mutable tickets or detached coordinates.
   markers.winnersValue
 
-## Preserve policy/extent failures; other codec failures identify invalid exact serialized state.
 func stateError(reason: StateComponentError): SafroleMarkerError =
+  ## Preserve policy/extent failures; other codec failures identify invalid exact serialized state.
   case reason
   of StateComponentError.InvalidConfig: SafroleMarkerError.InvalidConfig # Invalid profile is a caller policy error.
   of StateComponentError.LimitExceeded: SafroleMarkerError.LimitExceeded # Preserve finite caller ceilings.
   of StateComponentError.LengthOverflow: SafroleMarkerError.LengthOverflow # Never narrow an unchecked extent.
   else: SafroleMarkerError.InvalidState # Malformed chapters cannot become absent markers.
 
-## Require unique increasing identifiers without sorting or dropping attempt bytes.
 proc canonical(owner: SafroleStateSnapshot, count: int): bool =
+  ## Require unique increasing identifiers without sorting or dropping attempt bytes.
   for i in 1..<count:
     let left = array[32, byte](accumulatedTicketAt(owner, SafroleStateIndex(uint64(i-1))).value.id)
     let right = array[32, byte](accumulatedTicketAt(owner, SafroleStateIndex(uint64(i))).value.id)

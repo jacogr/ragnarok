@@ -43,15 +43,18 @@ type
 func error*[T](outcome: AccumulationCreationResult[T]): AccumulationCreationError =
   ## Inspect the reason without granting result mutation.
   outcome.status
+
 func value*[T](outcome: AccumulationCreationResult[T]): T {.inline,
     requires: outcome.status == AccumulationCreationError.None.} =
   ## Extract only a complete selected success under optimized checked contracts.
   outcome.completed
+
 func compareRows(left, right: CreationRow): int =
   ## Unique protocol IDs sort numerically, independently of original arrival order.
   if uint32(left.entry.service) < uint32(right.entry.service): return -1 # Lower service first.
   if uint32(left.entry.service) > uint32(right.entry.service): return 1 # Higher service follows.
   0
+
 proc prepareAccumulationCreationUnion*(source: PreparedAccumulationAnnulment,
     limits: AccumulationCreationLimits): AccumulationCreationResult[
         PreparedAccumulationCreationUnion] =
@@ -136,6 +139,7 @@ proc creationUnionInfo*(plan: PreparedAccumulationCreationUnion): AccumulationCr
       status: AccumulationCreationError.Uninitialized) # No default empty union.
   AccumulationCreationResult[AccumulationCreationInfo](status: AccumulationCreationError.None,
       completed: data.info)
+
 proc creationUnionSource*(plan: PreparedAccumulationCreationUnion): AccumulationCreationResult[
     PreparedAccumulationAnnulment] =
   ## Retain the exact genuine cancellation/source proof.
@@ -144,6 +148,7 @@ proc creationUnionSource*(plan: PreparedAccumulationCreationUnion): Accumulation
       status: AccumulationCreationError.Uninitialized) # No substitute prior/outcomes.
   AccumulationCreationResult[PreparedAccumulationAnnulment](status: AccumulationCreationError.None,
       completed: data.source)
+
 proc checkedRow(plan: PreparedAccumulationCreationUnion,
     index: AccumulationCreationIndex): AccumulationCreationResult[CreationRow] =
   ## Private same-owner validation precedes full-width narrowing for every account accessor.
@@ -154,6 +159,7 @@ proc checkedRow(plan: PreparedAccumulationCreationUnion,
       status: AccumulationCreationError.InvalidIndex) # Upper bits cannot alias a valid account.
   AccumulationCreationResult[CreationRow](status: AccumulationCreationError.None,
       completed: data.rows[int(uint64(index))])
+
 proc createdAccountAt*(plan: PreparedAccumulationCreationUnion,
     index: AccumulationCreationIndex): AccumulationCreationResult[AccumulationCreationEntry] =
   ## Copy protocol account and original producer identities.
@@ -162,6 +168,7 @@ proc createdAccountAt*(plan: PreparedAccumulationCreationUnion,
       AccumulationCreationEntry](status: row.error) # Preserve same-owner refusal.
   AccumulationCreationResult[AccumulationCreationEntry](status: AccumulationCreationError.None,
       completed: row.value.entry)
+
 proc createdAccountMetadataAt*(plan: PreparedAccumulationCreationUnion,
     index: AccumulationCreationIndex): AccumulationCreationResult[ServiceMetadata] =
   ## Copy canonical metadata from the exact final producing map.
@@ -170,6 +177,7 @@ proc createdAccountMetadataAt*(plan: PreparedAccumulationCreationUnion,
       ServiceMetadata](status: row.error) # No inactive metadata extraction.
   AccumulationCreationResult[ServiceMetadata](status: AccumulationCreationError.None,
       completed: row.value.metadata)
+
 proc createdAccountSnapshotAt*(plan: PreparedAccumulationCreationUnion,
     index: AccumulationCreationIndex): AccumulationCreationResult[StateStoreSnapshot] =
   ## Retain the complete source snapshot scoped to this logical account; it is not a merged batch root.
@@ -178,6 +186,7 @@ proc createdAccountSnapshotAt*(plan: PreparedAccumulationCreationUnion,
       StateStoreSnapshot](status: row.error) # No fabricated final map.
   AccumulationCreationResult[StateStoreSnapshot](status: AccumulationCreationError.None,
       completed: row.value.accounts)
+
 proc createdAccountOutcomeAt*(plan: PreparedAccumulationCreationUnion,
     index: AccumulationCreationIndex): AccumulationCreationResult[AccumulationOutcome] =
   ## Retain the actual surviving original outcome that contributed this new account.

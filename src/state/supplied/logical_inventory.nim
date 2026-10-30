@@ -32,17 +32,21 @@ type
       inventoryReason: StateInventoryResult[StateInventory]
     else:
       discard # Defaults and failed admission contain no successful prefix.
+
 func error*[T](outcome: SuppliedLogicalResult[T]): SuppliedLogicalError =
   ## Observe selected immutable alternatives only.
   outcome.status
+
 func value*[T](outcome: SuppliedLogicalResult[T]): T {.inline, requires: outcome.status ==
     SuppliedLogicalError.None.} =
   ## Extract only initialized successful owners, fixed observations or detached copies.
   outcome.completed
+
 func inventoryFailure*[T](outcome: SuppliedLogicalResult[T]): StateInventoryResult[
     StateInventory] {.inline, requires: outcome.status == SuppliedLogicalError.InventoryFailure.} =
   ## Preserve original exact manifest/compact refusal without supplying an empty successful inventory.
   outcome.inventoryReason
+
 proc captureSuppliedLogicalInventory*(source: ValidatedStateManifest, services: openArray[
     StateService], limits: SuppliedLogicalLimits): SuppliedLogicalResult[SuppliedLogicalInventory] =
   ## Borrow stable complete declarations synchronously; admit every extra descriptor/key byte before hashing, allocation or copying.
@@ -96,6 +100,7 @@ proc captureSuppliedLogicalInventory*(source: ValidatedStateManifest, services: 
       info: SuppliedLogicalInfo(services: services.len, keys: uint64(limits.keys)-keys,
           rawKeyBytes: admittedRaw-raw, descriptorBytes: descriptors,
           retainedBytes: admittedBytes-available))))
+
 proc suppliedLogicalInfo*(source: SuppliedLogicalInventory): SuppliedLogicalResult[
     SuppliedLogicalInfo] =
   ## Copy fixed extra-retention accounting without exposing raw-key backing arrays.
@@ -104,6 +109,7 @@ proc suppliedLogicalInfo*(source: SuppliedLogicalInventory): SuppliedLogicalResu
     return SuppliedLogicalResult[SuppliedLogicalInfo](status: SuppliedLogicalError.Uninitialized)
   SuppliedLogicalResult[SuppliedLogicalInfo](status: SuppliedLogicalError.None,
       completed: data.info)
+
 proc suppliedInventory*(source: SuppliedLogicalInventory): SuppliedLogicalResult[StateInventory] =
   ## Retain the exact internally captured compact inventory and its original full snapshot identity.
   let data = source.data
@@ -111,6 +117,7 @@ proc suppliedInventory*(source: SuppliedLogicalInventory): SuppliedLogicalResult
     return SuppliedLogicalResult[StateInventory](status: SuppliedLogicalError.Uninitialized)
   SuppliedLogicalResult[StateInventory](status: SuppliedLogicalError.None,
       completed: data.inventory)
+
 proc copySuppliedStorageKey*(source: SuppliedLogicalInventory, service: InventoryServiceIndex,
     storage: InventoryStorageIndex, limit: ByteLimit): SuppliedLogicalResult[seq[byte]] =
   ## Validate nominal full-width ordinals and explicit copy extent before allocating a detached raw key, including present-empty keys.

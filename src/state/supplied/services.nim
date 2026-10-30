@@ -19,9 +19,11 @@ type
       completed: seq[StateService]
     else:
       discard # No partially reconstructed service array escapes refusal.
+
 func error*(outcome: SuppliedServicesResult): SuppliedServicesError =
   ## Observe immutable selection without retagging.
   outcome.status
+
 func value*(outcome: SuppliedServicesResult): seq[StateService] {.inline,
     requires: outcome.status == SuppliedServicesError.None.} =
   ## Return fully detached mutable declarations only after complete projection succeeds.
@@ -39,13 +41,16 @@ type
     case status: SuppliedServicesError
     of None: completed: T
     else: discard # Only complete admission grants a plan or ledger.
+
 func error*[T](outcome: SuppliedServicesPlanResult[T]): SuppliedServicesError =
   ## Preserve original source and quota categories for one-shot and staged projection.
   outcome.status
+
 func value*[T](outcome: SuppliedServicesPlanResult[T]): T {.inline, requires: outcome.status ==
     SuppliedServicesError.None.} =
   ## Extract only admitted immutable plans and copied observations.
   outcome.completed
+
 proc planSuppliedServices*(source: SuppliedLogicalInventory,
     limits: SuppliedServicesLimits): SuppliedServicesPlanResult[SuppliedServicesPlan] =
   ## Admit the entire exact output before any raw key or payload is copied.
@@ -91,6 +96,7 @@ proc planSuppliedServices*(source: SuppliedLogicalInventory,
     completed: SuppliedServicesPlan(initialized: true, source: source, limits: limits,
       info: SuppliedServicesInfo(services: count, facts: uint64(limits.facts)-facts,
           bytes: budget-available)))
+
 proc suppliedServicesPlanInfo*(plan: SuppliedServicesPlan): SuppliedServicesPlanResult[
     SuppliedServicesInfo] =
   ## Observe fixed whole-output accounting without exposing source or mutable policy storage.
@@ -98,6 +104,7 @@ proc suppliedServicesPlanInfo*(plan: SuppliedServicesPlan): SuppliedServicesPlan
       status: SuppliedServicesError.InvalidPlan)
   SuppliedServicesPlanResult[SuppliedServicesInfo](status: SuppliedServicesError.None,
       completed: plan.info)
+
 proc executeSuppliedServices*(plan: SuppliedServicesPlan): SuppliedServicesResult =
   ## Reconstruct detached declarations only from the frozen originally qualified source.
   if not plan.initialized: return SuppliedServicesResult(status: SuppliedServicesError.InvalidPlan)
@@ -126,6 +133,7 @@ proc executeSuppliedServices*(plan: SuppliedServicesPlan): SuppliedServicesResul
       output[i].requests[j] = inventory.inventoryRequestAt(service, InventoryRequestIndex(uint64(
           j))).value # Request history is a fixed immutable value, with no borrowed array.
   SuppliedServicesResult(status: SuppliedServicesError.None, completed: output)
+
 proc copySuppliedServices*(source: SuppliedLogicalInventory,
     limits: SuppliedServicesLimits): SuppliedServicesResult =
   ## Preserve one-shot behavior through the same whole-output admission and detached execution path.

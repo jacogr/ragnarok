@@ -55,6 +55,7 @@ type
 func error*[T](outcome: AuditResult[T]): AuditError =
   ## Observe a failure without exposing any partial result.
   outcome.status
+
 func value*[T](outcome: AuditResult[T]): T {.inline, requires: outcome.status == AuditError.None.} =
   ## Read an operation's complete validated payload only after success.
   outcome.completed
@@ -188,11 +189,13 @@ proc len*(batch: AnnouncementBatch): int =
   let data = batch.data
   if data == nil: return 0
   data.records.len
+
 proc len*(batch: JudgmentBatch): int =
   ## Report only complete retained records; a default owner has no storage.
   let data = batch.data
   if data == nil: return 0
   data.records.len
+
 proc announcementAt*(batch: AnnouncementBatch, index: int): AuditResult[AuditAnnouncement] =
   ## Return a detached fixed record; no mutable backing sequence is exported.
   let data = batch.data
@@ -200,6 +203,7 @@ proc announcementAt*(batch: AnnouncementBatch, index: int): AuditResult[AuditAnn
   if index < 0 or index >= data.records.len:
     return AuditResult[AuditAnnouncement](status: AuditError.InvalidIndex)
   AuditResult[AuditAnnouncement](status: AuditError.None, completed: data.records[index])
+
 proc judgmentAt*(batch: JudgmentBatch, index: int): AuditResult[AuditJudgment] =
   ## Bind lookup to the immutable batch and validate signed indices before access.
   let data = batch.data

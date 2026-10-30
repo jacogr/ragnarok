@@ -20,6 +20,7 @@ type BoundedFileResult* = object ## Only actual bounded EOF exposes owned bytes;
 func error*(outcome: BoundedFileResult): AtomicFileError =
   ## Observe only completion/refusal, without exposing unvalidated bytes.
   outcome.status
+
 func value*(outcome: BoundedFileResult): seq[byte] {.inline,
     requires: outcome.status == AtomicFileError.None.} =
   ## Caller-owned bytes are extractable only after complete EOF and descriptor retirement.
@@ -67,8 +68,10 @@ proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
 
 proc temporaryFile(path: cstring): cint {.importc: "mkstemp", cdecl, header: "<stdlib.h>".}
   ## Standard libc atomically creates a unique private 0600 file and fills the six-byte suffix.
+
 proc synchronize(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## File and directory durability use the actual OS syscall, with explicit failure propagation.
+
 proc replaceFile(source, destination: cstring): cint {.importc: "rename", cdecl,
     header: "<stdio.h>".}
   ## Same-directory replacement publishes one entire synced checkpoint atomically.
@@ -136,6 +139,7 @@ proc publishAtomicFile(path: string, bytes: openArray[byte],
 proc replaceAtomicFile*(path: string, bytes: openArray[byte], limit: ByteLimit): AtomicFileError =
   ## Atomically replace an explicitly authorized target after syncing complete bytes; preserve existing replacement semantics.
   publishAtomicFile(path, bytes, limit, true)
+
 proc createAtomicFile*(path: string, bytes: openArray[byte], limit: ByteLimit): AtomicFileError =
   ## Publish a new synced file without clobbering any existing file, directory or symlink; an occupied name returns Busy.
   publishAtomicFile(path, bytes, limit, false)

@@ -48,32 +48,38 @@ type
 func error*(outcome: BlockTransitionResult): BlockTransitionError =
   ## Observe the stage without granting safe-code access to its discriminator.
   outcome.status
+
 func value*(outcome: BlockTransitionResult): BlockTransition {.inline,
     requires: outcome.status == BlockTransitionError.None.} =
   ## Read complete success only after all staged work has been accepted.
   outcome.completed
+
 func blockTransitionProfile*(outcome: BlockTransitionResult): FrameConfig {.inline,
     requires: outcome.status == BlockTransitionError.None.} =
   ## Copy the profile from a completed coordinator result; callers cannot attach a different chain domain.
   outcome.completed.profile
+
 func admissionError*(outcome: BlockTransitionResult): BlockAdmissionError {.inline,
     requires: outcome.status == BlockTransitionError.AdmissionFailure.} =
   ## Inspect only an admission failure's cause.
   outcome.admissionReason
+
 func disputesError*(outcome: BlockTransitionResult): DisputesError {.inline,
     requires: outcome.status == BlockTransitionError.DisputesFailure.} =
   ## Inspect only a disputes failure's cause.
   outcome.disputesReason
+
 func safroleError*(outcome: BlockTransitionResult): SafroleTransitionResult {.inline,
     requires: outcome.status == BlockTransitionError.SafroleFailure.} =
   ## Inspect only a Safrole failure's selected typed stage result.
   outcome.safroleReason
 
-## Inspect only the selected availability failure; its nested refusal contains no update or available reports.
 func availabilityError*(outcome: BlockTransitionResult): AvailabilityTransitionResult[
     AvailabilityUpdate] {.inline,
 
-requires: outcome.status == BlockTransitionError.AvailabilityFailure.} = outcome.availabilityReason
+requires: outcome.status == BlockTransitionError.AvailabilityFailure.} =
+  ## Inspect only the selected availability failure; its nested refusal contains no update or available reports.
+  outcome.availabilityReason
 
 proc advanceState(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     admission: BlockAdmissionConfig, policy: DisputesConfig,
@@ -162,6 +168,7 @@ proc advanceBlockState*(state: var StateStore, candidate: OwnedBlock, parent: Ow
     safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =
   ## Canonical callers retain strict parent/state pairing through the shared complete transition.
   advanceState(state, candidate, parent, admission, policy, safrole, availability, false)
+
 proc advanceFuzzSeedState*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     admission: BlockAdmissionConfig, policy: DisputesConfig,
     safrole: SafroleTransitionConfig, availability: AvailabilityTransitionConfig): BlockTransitionResult =

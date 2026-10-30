@@ -62,85 +62,108 @@ type
     stopping, failed: bool
     receivedBytes, sentBytes: uint64 # Copied diagnostic totals never grant transport/protocol authority.
 
-# Nominal handle equality permits slot lookup without exposing transport internals.
 proc `==`*(left, right: NativeStream): bool {.borrow.}
-# Strict primitive DER extraction; the returned fields own their bounded bytes.
+  ## Nominal handle equality permits slot lookup without exposing transport internals.
+
 proc parseCert*(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.importc: "rq_parse_cert",
     header: CertHeader, cdecl, raises: [].}
-# Construct the shared native engine/TLS owner; strings are borrowed only during this call.
+  ## Strict primitive DER extraction; the returned fields own their bounded bytes.
+
 proc transportNew(soak, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
     verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new",
         header: BridgeHeader, cdecl, raises: [].}
-# Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
+  ## Construct the shared native engine/TLS owner; strings are borrowed only during this call.
+
 proc transportNew6(profile, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
     verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new_ipv6_profile",
         header: BridgeHeader, cdecl, raises: [].}
-# Inspect a live stream's initiator without retaining any connection pointer.
+  ## Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
+
 proc nativeLocal(engine: nil pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
     header: BridgeHeader, cdecl, raises: [].}
-# Dial one loopback peer through the retained native engine.
+  ## Inspect a live stream's initiator without retaining any connection pointer.
+
 proc nativeConnect(engine: nil pointer, port: uint16): cint {.importc: "rq_connect",
     header: BridgeHeader, cdecl, raises: [].}
-# Queue close while the socket still sends transport packets; callers then poll a short drain interval.
+  ## Dial one loopback peer through the retained native engine.
+
 proc nativeDisconnect(engine: nil pointer) {.importc: "rq_disconnect", header: BridgeHeader, cdecl,
     raises: [].}
-# Observe connection lifecycle without retaining a raw native connection pointer.
+  ## Queue close while the socket still sends transport packets; callers then poll a short drain interval.
+
 proc nativeMetric(engine: nil pointer, metric: cint): uint64 {.importc: "rq_peer_metric",
     header: BridgeHeader, cdecl, raises: [].}
-# Consume one borrowed complete UDP datagram synchronously.
+  ## Observe connection lifecycle without retaining a raw native connection pointer.
+
 proc packetIn(engine: nil pointer, bytes: ptr byte, length: csize_t,
     port: uint16): cint {.importc: "rq_packet_in", header: BridgeHeader, cdecl, raises: [].}
-# Progress LSQUIC callbacks and pending packet writes on the selector thread.
+  ## Consume one borrowed complete UDP datagram synchronously.
+
 proc process(engine: nil pointer) {.importc: "rq_process", header: BridgeHeader, cdecl, raises: [].}
-# Return the native relative timer deadline in microseconds.
+  ## Progress LSQUIC callbacks and pending packet writes on the selector thread.
+
 proc nextTick(engine: nil pointer): int64 {.importc: "rq_next_tick", header: BridgeHeader, cdecl,
     raises: [].}
-# Report pending/authenticated/rejected status independently of application success.
+  ## Return the native relative timer deadline in microseconds.
+
 proc nativeStatus(engine: nil pointer): cint {.importc: "rq_status", header: BridgeHeader, cdecl,
     raises: [].}
-# Destroy native state synchronously, delivering final stream closes while owners remain alive.
+  ## Report pending/authenticated/rejected status independently of application success.
+
 proc transportFree(engine: nil pointer) {.importc: "rq_transport_free", header: BridgeHeader, cdecl,
     raises: [].}
-# Create one bidirectional stream after authentication; application state is assigned by its open callback.
+  ## Destroy native state synchronously, delivering final stream closes while owners remain alive.
+
 proc nativeOpen(engine: nil pointer) {.importc: "rq_open_stream", header: BridgeHeader, cdecl,
     raises: [].}
-# Read accepted stream bytes; -2 is would-block, zero is FIN and other negative values are transport errors.
+  ## Create one bidirectional stream after authentication; application state is assigned by its open callback.
+
 proc streamRead*(stream: NativeStream, bytes: ptr byte,
     length: csize_t): int64 {.importc: "rq_stream_read", header: BridgeHeader, cdecl, raises: [].}
-# Write borrowed bytes synchronously; accepted bytes are copied into native transport storage.
+  ## Read accepted stream bytes; -2 is would-block, zero is FIN and other negative values are transport errors.
+
 proc streamWrite*(stream: NativeStream, bytes: ptr byte,
     length: csize_t): int64 {.importc: "rq_stream_write", header: BridgeHeader, cdecl, raises: [].}
-# Subscribe or unsubscribe to readable stream callbacks without creating an I/O task.
+  ## Write borrowed bytes synchronously; accepted bytes are copied into native transport storage.
+
 proc wantRead*(stream: NativeStream, want: cint) {.importc: "rq_stream_want_read",
     header: BridgeHeader, cdecl, raises: [].}
-# Subscribe only while an owned application write has unsent bytes.
+  ## Subscribe or unsubscribe to readable stream callbacks without creating an I/O task.
+
 proc wantWrite*(stream: NativeStream, want: cint) {.importc: "rq_stream_want_write",
     header: BridgeHeader, cdecl, raises: [].}
-# Flush accepted bytes independently of application FIN.
+  ## Subscribe only while an owned application write has unsent bytes.
+
 proc streamFlush*(stream: NativeStream): cint {.importc: "rq_stream_flush", header: BridgeHeader,
     cdecl, raises: [].}
-# Compare live stream owners synchronously, proving isolation across different connections without borrowing a connection handle.
+  ## Flush accepted bytes independently of application FIN.
+
 proc samePeer*(a, b: NativeStream): cint {.importc: "rq_stream_same_peer", header: BridgeHeader,
     cdecl, raises: [].}
-# Copy a live stream's IETF number; protocol admission and replacement remain Nim policy.
+  ## Compare live stream owners synchronously, proving isolation across different connections without borrowing a connection handle.
+
 proc streamId*(stream: NativeStream): NativeStreamId {.importc: "rq_stream_id",
     header: BridgeHeader, cdecl, raises: [].}
-# Half-close writing while keeping response reads available.
+  ## Copy a live stream's IETF number; protocol admission and replacement remain Nim policy.
+
 proc streamFin*(stream: NativeStream) {.importc: "rq_stream_fin", header: BridgeHeader, cdecl,
     raises: [].}
-# Finish validated reading explicitly; LSQUIC EOF alone does not retire its application read owner.
+  ## Half-close writing while keeping response reads available.
+
 proc readDone*(stream: NativeStream) {.importc: "rq_stream_read_done", header: BridgeHeader, cdecl,
     raises: [].}
-# Abort the affected stream; release its application buffers only when native close is delivered.
+  ## Finish validated reading explicitly; LSQUIC EOF alone does not retire its application read owner.
+
 proc streamAbort*(stream: NativeStream) {.importc: "rq_stream_abort", header: BridgeHeader, cdecl,
     raises: [].}
+  ## Abort the affected stream; release its application buffers only when native close is delivered.
 
 proc locallyOpened*(owner: Transport, stream: NativeStream): bool {.raises: [].} =
   ## Determine request/reply direction per stream, independently of QUIC connection direction.
   nativeLocal(owner.engine, stream) == 1
 
-# Invoke native-language identity policy without retaining a TLS-owned DER pointer.
 proc verifyForward(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
+  ## Invoke native-language identity policy without retaining a TLS-owned DER pointer.
   let owner = cast[ptr Transport](user)
   # Shutdown cannot start another identity-validation operation.
   if owner.stopping: return 0
@@ -149,16 +172,16 @@ proc verifyForward(user: pointer, der: ptr ConstByte, length: csize_t): cint {.c
   if verify == nil or peer == nil: return 0 # Default/retired owners have no identity operation.
   verify(peer, der, length)
 
-# Forward synchronous stream events while preserving the peer's distinct owner pointer.
 proc streamForward(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
+  ## Forward synchronous stream events while preserving the peer's distinct owner pointer.
   let owner = cast[ptr Transport](user)
   let callback = owner.stream
   let peer = owner.user
   if callback != nil and peer != nil: callback(peer, stream, event) # Only initialized peer owners receive events.
 
-# Send C-owned bytes synchronously through nonblocking UDP; no borrowed packet memory escapes this callback.
 proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, port: uint16): cint {.cdecl,
     raises: [].} =
+  ## Send C-owned bytes synchronously through nonblocking UDP; no borrowed packet memory escapes this callback.
   let owner = cast[ptr Transport](user)
   # Destruction callbacks cannot touch a retired endpoint or retain packet memory.
   if owner.stopping or not owner.socket.isOpen: return 0
@@ -266,8 +289,8 @@ proc authenticatedConnections*(owner: Transport): uint64 {.raises: [].} =
   ## Lifetime successful native handshakes; retained even if a connection closes in the same poll.
   peerMetric(owner, 4) # rq_peer_metric selector 4: completed authentication.
 
-# Drain at most 64 datagrams per ready socket so other endpoints and timers cannot starve.
 proc drain(owner: var Transport): bool =
+  ## Drain at most 64 datagrams per ready socket so other endpoints and timers cannot starve.
   # Bounded synchronous reads reuse storage until each native packet call returns.
   for packet in 0..<64:
     var port: uint16 = 0
@@ -340,13 +363,13 @@ let
   HandshakeFailed* {.importc: "RQ_HANDSHAKE_FAILED", header: BridgeHeader.}: cint
   HandshakeDropped* {.importc: "RQ_HANDSHAKE_DROPPED", header: BridgeHeader.}: cint
 
-# Enable before processing packets; native storage and callbacks remain valid through destruction.
 proc nativeObserve(engine: nil pointer, slots: cuint, callback: HandshakeCallback): cint {.
     importc: "rq_observe_handshakes", header: BridgeHeader, cdecl, raises: [].}
+  ## Enable before processing packets; native storage and callbacks remain valid through destruction.
 
-# Preserve the separate peer pointer while forwarding borrowed primitive observations.
 proc handshakeForward(user: pointer, slot: cuint, event: cint, address: ptr ConstByte,
     port: uint16, der: ptr ConstByte, length: csize_t) {.cdecl, raises: [].} =
+  ## Preserve the separate peer pointer while forwarding borrowed primitive observations.
   let owner = cast[ptr Transport](user)
   let callback = owner.handshake
   let peer = owner.user
@@ -367,13 +390,13 @@ let
   PeerAccepted* {.importc: "RQ_PEER_ACCEPTED", header: BridgeHeader.}: cint
   PeerClosed* {.importc: "RQ_PEER_CLOSED", header: BridgeHeader.}: cint
 
-# Install only before packet processing, preserving native slot-count agreement.
 proc nativeObservePeers(engine: nil pointer, slots: cuint, callback: PeerCallback): cint {.
     importc: "rq_observe_peers", header: BridgeHeader, cdecl, raises: [].}
+  ## Install only before packet processing, preserving native slot-count agreement.
 
-# Forward borrowed primitive observations while both transport and peer owners remain alive.
 proc peerForward(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
+  ## Forward borrowed primitive observations while both transport and peer owners remain alive.
   let owner = cast[ptr Transport](user)
   let callback = owner.peer
   let user = owner.user

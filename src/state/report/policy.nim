@@ -38,6 +38,7 @@ type
 func error*[T](outcome: ReportPolicyResult[T]): ReportPolicyError =
   ## Inspect status without permitting external retagging.
   outcome.status
+
 func value*[T](outcome: ReportPolicyResult[T]): T {.inline,
     requires: outcome.status == ReportPolicyError.None.} =
   ## Extract only selected success under the supported checked-build contract.

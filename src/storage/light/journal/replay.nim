@@ -42,51 +42,66 @@ type
     progress: LightJournalReplay
     delta: LightDeltaError
     selection: LightSelectionError
+
 func error*[T](outcome: LightReplayResult[T]): LightReplayError =
   ## Inspect the selected typed outer refusal alone.
   outcome.status
+
 func value*[T](outcome: LightReplayResult[T]): T {.inline,
     requires: outcome.status == LightReplayError.None.} =
   ## Only complete success grants replay or repair-plan authority.
   outcome.completed
+
 func deltaError*[T](outcome: LightReplayResult[T]): LightDeltaError {.requires:
     outcome.status == LightReplayError.InvalidDelta.} =
   ## Preserve only a selected frame refusal without a partial successor.
   outcome.deltaCause
+
 func selectionError*[T](outcome: LightReplayResult[T]): LightSelectionError {.requires:
     outcome.status == LightReplayError.InvalidSelection.} =
   ## Preserve only a selected anchor refusal.
   outcome.selectionCause
+
 func initialized*(replay: LightJournalReplay): bool =
   ## Default replay values safely report their absent publication authority.
   replay.ready
+
 func initialized*(plan: LightTailPlan): bool =
   ## Default plans grant no discard extent or retained prefix.
   plan.ready
+
 func snapshot*(replay: LightJournalReplay): PreparedLightSnapshot {.requires: replay.ready.} =
   ## Retain the authenticated prefix image independently of journal or planner lifetime.
   replay.image
+
 func sequence*(replay: LightJournalReplay): LightDeltaSequence {.requires: replay.ready.} =
   ## Return the checkpoint baseline plus the exact admitted frame sequence.
   replay.last
+
 func frameCount*(replay: LightJournalReplay): uint64 {.requires: replay.ready.} =
   ## Count only completely authenticated frames after the selected checkpoint.
   replay.count
+
 func byteLength*(replay: LightJournalReplay): int {.requires: replay.ready.} =
   ## Return the complete anchor and authenticated frame prefix extent.
   replay.extent
+
 func prefix*(plan: LightTailPlan): LightJournalReplay {.requires: plan.ready.} =
   ## Expose only the fully authenticated retained prefix, never the incomplete frame's candidate.
   plan.retained
+
 func totalBytes*(plan: LightTailPlan): int {.requires: plan.ready.} =
   ## Bind a future explicit repair to the complete originally inspected byte extent.
   plan.total
+
 func selectionChecksum*(plan: LightTailPlan): StorageChecksum {.requires: plan.ready.} =
   ## Revalidation must use the same exact selected manifest, not just an equal root.
   plan.selected
+
 func fail[T](reason: LightReplayError): LightReplayResult[T] =
   ## Failed results contain no completed replay or plan authority.
   LightReplayResult[T](status: reason)
+
 func refusal[T](scan: Scan): LightReplayResult[T] =
   ## Translate selected scratch causes without copying its retained progress into a failed public result.
   case scan.reason
@@ -95,17 +110,20 @@ func refusal[T](scan: Scan): LightReplayResult[T] =
   of LightReplayError.InvalidSelection:
     LightReplayResult[T](status: LightReplayError.InvalidSelection, selectionCause: scan.selection)
   else: fail[T](scan.reason)
+
 func number(input: openArray[byte], offset, width: int): uint64 {.requires:
     offset >= 0 and width >= 1 and width <= 8 and offset <= high(int)-width.} =
   ## Missing high bytes yield only a minimum possible value for partial-field bound checks.
   result = 0
   for index in 0..<width:
     if offset+index < input.len: result = result or (uint64(input[offset+index]) shl (8*index))
+
 func boundedProduct(count, unit, maximum: uint64): uint64 =
   ## Saturate a nonnegative shape bound before multiplication; no untrusted product can wrap.
   if unit == 0 or count == 0: return 0
   if count > maximum div unit: return maximum
   count*unit
+
 func payloadBounds(count, maximum, nodes, valueBytes: uint64): tuple[maximum, raw: uint64] =
   ## Unknown admits can distribute node counts and raw bytes independently within their per-edit ceilings.
   let nodeCount = boundedProduct(count, nodes, maximum div 64)
@@ -114,10 +132,12 @@ func payloadBounds(count, maximum, nodes, valueBytes: uint64): tuple[maximum, ra
   let raw = boundedProduct(count, rawLimit, maximum)
   let bound = if raw > maximum-nodeBytes: maximum else: nodeBytes+raw
   (maximum: bound, raw: raw)
+
 func possiblePayload(count, size, nodes, valueBytes: uint64): bool =
   ## Sum-of-edits payloads are unions of 64-byte node intervals extended by bounded raw-byte totals.
   let bounds = payloadBounds(count, size, nodes, valueBytes)
   bounds.maximum == size and (bounds.raw >= 63 or size mod 64 <= bounds.raw)
+
 proc completeNumber(input: openArray[byte], offset, width: int, lower, upper: uint64,
     selected: var uint64): bool {.requires:
     offset >= 0 and offset <= high(int)-8 and width >= 1 and width <= 8.} =
@@ -142,6 +162,7 @@ proc completeNumber(input: openArray[byte], offset, width: int, lower, upper: ui
   if steps > (upper-minimum) div stride: return false
   selected = minimum+steps*stride # The quotient check proves both multiplication and addition inside upper.
   true
+
 func keyCompletion(input: openArray[byte], offset, previous: int,
     following: uint64): bool {.requires:
     offset >= 0 and offset <= input.len and (previous < 0 or previous <= input.len-31).} =
@@ -171,6 +192,7 @@ func keyCompletion(input: openArray[byte], offset, previous: int,
   var tail = 0'u64
   for index in 23..<31: tail = (tail shl 8) or uint64(candidate[index])
   following <= high(uint64)-tail
+
 proc possibleAdmit(input: openArray[byte], offset: int, capacity, following,
     nodeLimit, valueLimit: uint64): bool {.requires:
     offset >= 0 and offset <= high(int)-42 and nodeLimit <= 249 and capacity <= uint64(high(int)).} =
@@ -200,6 +222,7 @@ proc possibleAdmit(input: openArray[byte], offset: int, capacity, following,
           raw += adjustment
       return true
   false
+
 proc partialShape(input: openArray[byte], image: PreparedLightSnapshot,
     limits: LightDeltaLimits): LightDeltaError =
   ## Missing bytes cannot excuse already impossible integer, payload, key-cardinality or checksum constraints.
@@ -265,6 +288,7 @@ proc partialShape(input: openArray[byte], image: PreparedLightSnapshot,
     for index in 0..<input.len-stop:
       if input[stop+index] != checksum[index]: return LightDeltaError.ChecksumMismatch
   LightDeltaError.None
+
 proc beginLightJournalReplay*(anchor: openArray[byte], manifest: LightJournalManifest,
     checkpoint: PreparedLightSnapshot, limits: LightReplayLimits): LightReplayResult[
         LightJournalReplay] =
@@ -286,6 +310,7 @@ proc beginLightJournalReplay*(anchor: openArray[byte], manifest: LightJournalMan
   LightReplayResult[LightJournalReplay](status: LightReplayError.None,
     completed: LightJournalReplay(
     ready: true, image: checkpoint, last: manifest.baseSequence, extent: LightJournalAnchorBytes))
+
 proc advanceLightJournalReplay*(before: LightJournalReplay, frame: openArray[byte],
     limits: LightReplayLimits): LightReplayResult[LightJournalReplay] =
   ## Authenticate one exact complete frame without retaining transport; failures expose no candidate and preserve the prior immutable prefix.
@@ -324,6 +349,7 @@ proc advanceLightJournalReplay*(before: LightJournalReplay, frame: openArray[byt
     completed: LightJournalReplay(
     ready: true, image: checked.value.snapshot, last: expected, count: before.count+1,
     extent: before.extent+frame.len))
+
 func scanFailure(outcome: LightReplayResult[LightJournalReplay]): Scan =
   ## Copy only the selected inner diagnostic; a failed result never exports its candidate prefix.
   case outcome.error
@@ -331,6 +357,7 @@ func scanFailure(outcome: LightReplayResult[LightJournalReplay]): Scan =
   of LightReplayError.InvalidSelection: Scan(reason: outcome.error,
       selection: outcome.selectionError)
   else: Scan(reason: outcome.error)
+
 proc scan(input: openArray[byte], manifest: LightJournalManifest, checkpoint: PreparedLightSnapshot,
     limits: LightReplayLimits): Scan =
   ## Whole-buffer and streaming consumers use the same anchor and exact-frame authentication steps.
@@ -361,6 +388,7 @@ proc scan(input: openArray[byte], manifest: LightJournalManifest, checkpoint: Pr
     if advanced.error != LightReplayError.None: return scanFailure(advanced)
     progress = advanced.value
   Scan(reason: LightReplayError.None, progress: progress)
+
 proc replayLightJournal*(input: openArray[byte], manifest: LightJournalManifest,
     checkpoint: PreparedLightSnapshot, limits: LightReplayLimits): LightReplayResult[
         LightJournalReplay] =
@@ -368,6 +396,7 @@ proc replayLightJournal*(input: openArray[byte], manifest: LightJournalManifest,
   let checked = scan(input, manifest, checkpoint, limits)
   if checked.reason != LightReplayError.None: return refusal[LightJournalReplay](checked)
   LightReplayResult[LightJournalReplay](status: LightReplayError.None, completed: checked.progress)
+
 proc planLightJournalTail*(input: openArray[byte], manifest: LightJournalManifest,
     checkpoint: PreparedLightSnapshot, limits: LightReplayLimits): LightReplayResult[
         LightTailPlan] =
@@ -381,6 +410,7 @@ proc planLightJournalTail*(input: openArray[byte], manifest: LightJournalManifes
   LightReplayResult[LightTailPlan](status: LightReplayError.None,
     completed: LightTailPlan(ready: true, retained: checked.progress, selected: manifest.checksum,
       transport: StorageChecksum(array[32, byte](hashed.value)), total: input.len))
+
 proc validateLightTailPlan*(input: openArray[byte], manifest: LightJournalManifest,
     plan: LightTailPlan): LightReplayError =
   ## A held-directory repair caller must revalidate exact current selection and complete bytes before any truncation.

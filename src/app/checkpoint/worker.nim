@@ -63,46 +63,58 @@ proc `=wasMoved`*(worker: var ApplicationCheckpointWorker) {.nodestroy, inline,
   `=wasMoved`(worker.prepared)
   `=wasMoved`(worker.writer)
   `=wasMoved`(worker.identity)
+
 proc `=copy`*(destination: var ApplicationCheckpointWorker,
     source: ApplicationCheckpointWorker) {.error.}
   ## Thread synchronization and the private writer's lock have one composite owner.
+
 proc `=dup`*(source: ApplicationCheckpointWorker): ApplicationCheckpointWorker {.error.}
   ## Actual ARC lowering must independently reject composite worker duplication.
+
 proc requireClosed(worker: ApplicationCheckpointWorker) {.requires: not worker.started.} =
   ## A live native thread cannot outlive its stable owner address or private writer.
   discard
+
 proc `=destroy`*(worker: ApplicationCheckpointWorker) =
   ## Explicit joined close ends every worker borrow before host-owned buffers and writer paths retire.
   requireClosed(worker)
   `=destroy`(worker.prepared)
   `=destroy`(worker.writer)
   `=destroy`(worker.identity)
+
 func error*(admission: ApplicationCheckpointAdmission): ApplicationCheckpointWorkerError =
   ## Observe refusal without granting access to an unowned staged slot.
   admission.status
+
 func value*(admission: ApplicationCheckpointAdmission): ApplicationCheckpointTicket {.inline,
     requires: admission.status == ApplicationCheckpointWorkerError.None.} =
   ## Only successful admission grants the host a ticket.
   admission.ticket
+
 func kind*(completion: ApplicationCheckpointCompletion): ApplicationCheckpointCompletionKind =
   ## Default and cancelled work remain distinct from an actual typed writer outcome.
   completion.status
+
 func value*(completion: ApplicationCheckpointCompletion): ApplicationCheckpointFileResult[
     ApplicationCheckpointIdentity] {.inline,
 
 requires: completion.status == ApplicationCheckpointCompletionKind.Completed.} =
   ## Callers must also check the returned writer outcome before extracting a committed head.
   completion.outcome
+
 func completion*(shutdown: ApplicationCheckpointShutdown): ApplicationCheckpointCompletion =
   ## Preserve a possibly committed operation even when native retirement separately fails.
   shutdown.finished
+
 func retirementError*(shutdown: ApplicationCheckpointShutdown): ApplicationCheckpointFileError =
   ## None confirms actual idempotent/native close; default shutdown reports Uninitialized.
   shutdown.retirement
+
 func operation*(completion: ApplicationCheckpointCompletion): ApplicationCheckpointOperation {.inline,
     requires: completion.status == ApplicationCheckpointCompletionKind.Completed.} =
   ## An actual verified file never masquerades as a durable publication receipt.
   completion.performed
+
 proc execute(worker: ptr ApplicationCheckpointWorker) =
   ## Native verification retires decoded graphs on this thread; publication borrows only host-owned detached bytes.
   case worker.request
@@ -110,6 +122,7 @@ proc execute(worker: ptr ApplicationCheckpointWorker) =
     worker.outcome = worker.writer.save(worker.prepared, worker.limit)
   of ApplicationCheckpointOperation.Verify:
     worker.outcome = worker.writer.verify(worker.expected, worker.verifyLimits, worker.limit)
+
 proc run(raw: pointer) =
   ## A condition-driven single thread performs only ordered writer I/O, with no canonical adoption or dispatcher callbacks.
   let worker = cast[ptr ApplicationCheckpointWorker](raw)
@@ -125,6 +138,7 @@ proc run(raw: pointer) =
     execute(worker)
     acquire(worker.lock)
     worker.phase = ApplicationCheckpointWorkerPhase.Done # No stack-local buffer/path alias remains active when the host can collect.
+
 proc start*(worker: var ApplicationCheckpointWorker,
     prefix: string): ApplicationCheckpointFileError {.raises.} =
   ## Startup acquires the private cooperative writer before starting one thread at the owner's final address.
@@ -154,12 +168,14 @@ proc start*(worker: var ApplicationCheckpointWorker,
     raise # Thread creation failure cannot leave an active writer or initialized synchronization resource.
   worker.started = true
   ApplicationCheckpointFileError.None
+
 proc phase*(worker: var ApplicationCheckpointWorker): ApplicationCheckpointWorkerPhase =
   ## Host polling reads scalar state only; it never accesses the worker's exclusive buffer or native writer paths.
   if not worker.started: return ApplicationCheckpointWorkerPhase.Idle
   acquire(worker.lock)
   result = worker.phase
   release(worker.lock)
+
 proc stage*(worker: var ApplicationCheckpointWorker, prepared: var PreparedApplicationCheckpoint,
     limit: ByteLimit): ApplicationCheckpointAdmission =
   ## Consume the caller's sole buffer only after every bounded admission check; staging itself performs no disk I/O.
@@ -186,6 +202,7 @@ proc stage*(worker: var ApplicationCheckpointWorker, prepared: var PreparedAppli
   worker.phase = ApplicationCheckpointWorkerPhase.Staged
   ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.None,
     ticket: ApplicationCheckpointTicket(owner: worker.identity, generation: worker.next))
+
 proc stageVerification*(worker: var ApplicationCheckpointWorker,
     expected: ApplicationCheckpointIdentity,
 
@@ -212,10 +229,12 @@ limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
   worker.phase = ApplicationCheckpointWorkerPhase.Staged
   ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.None,
     ticket: ApplicationCheckpointTicket(owner: worker.identity, generation: worker.next))
+
 func matches(worker: ApplicationCheckpointWorker, ticket: ApplicationCheckpointTicket): bool =
   ## Host-only identity comparison runs under the lock and grants no authority to idle or zero-generation tickets.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
       worker.next and worker.phase != ApplicationCheckpointWorkerPhase.Idle
+
 proc begin*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpointTicket): bool =
   ## The explicit staged-to-running transition permits host policy checks before any file I/O begins.
   if not worker.started: return false
@@ -226,6 +245,7 @@ proc begin*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpoi
   worker.phase = ApplicationCheckpointWorkerPhase.Running
   signal(worker.changed)
   true
+
 proc cancel*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpointTicket): bool =
   ## Only a matching staged-only request may become Cancelled; dispatched or completed publication remains observable.
   if not worker.started: return false
@@ -237,6 +257,7 @@ proc cancel*(worker: var ApplicationCheckpointWorker, ticket: ApplicationCheckpo
   worker.cancelled = true
   worker.phase = ApplicationCheckpointWorkerPhase.Done # Acknowledgement still owns the single capacity slot.
   true
+
 proc peek*(worker: var ApplicationCheckpointWorker,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Inspect only a matching Done outcome without releasing capacity or publishing a retry.
@@ -249,6 +270,7 @@ proc peek*(worker: var ApplicationCheckpointWorker,
     return ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Cancelled)
   ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
       performed: worker.request, outcome: worker.outcome)
+
 proc collect*(worker: var ApplicationCheckpointWorker,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
@@ -266,6 +288,7 @@ proc collect*(worker: var ApplicationCheckpointWorker,
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.prepared = default(PreparedApplicationCheckpoint)
   worker.phase = ApplicationCheckpointWorkerPhase.Idle
+
 proc close*(worker: var ApplicationCheckpointWorker): ApplicationCheckpointShutdown =
   ## Join before retiring the private buffer/writer; never label an already completed publication as cancelled.
   result = default(ApplicationCheckpointShutdown) # Initialize the whole aggregate before assigning its independent completion and retirement fields.

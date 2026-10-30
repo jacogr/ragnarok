@@ -33,20 +33,24 @@ type
 func error*[T](outcome: BlockGuestResult[T]): BlockGuestError =
   ## Inspect only the selected reason without allowing retagging.
   outcome.status
+
 func value*[T](outcome: BlockGuestResult[T]): T {.inline,
     requires: outcome.status == BlockGuestError.None.} =
   ## Extract the complete owner or projection only after success.
   outcome.completed
+
 func guestFailure*[T](outcome: BlockGuestResult[T]): AccumulationGuestResult {.inline,
     requires: outcome.status == BlockGuestError.GuestFailure.} =
   ## Retain the actual failed core result, never an earlier successful provider.
   outcome.failed
+
 proc guestRound*(guests: BlockAccumulationGuests): BlockGuestResult[BlockAccumulationRound] =
   ## Retain the exact admitted round; default handles cannot fabricate block authority.
   let data = guests.data
   if data == nil:
     return BlockGuestResult[BlockAccumulationRound](status: BlockGuestError.Uninitialized)
   BlockGuestResult[BlockAccumulationRound](status: BlockGuestError.None, completed: data.round)
+
 proc guestCoverage*(guests: BlockAccumulationGuests): BlockGuestResult[
     PreparedAccumulationCoverage] =
   ## Retain complete current providers without claiming atomic publication or history completion.
@@ -55,6 +59,7 @@ proc guestCoverage*(guests: BlockAccumulationGuests): BlockGuestResult[
     return BlockGuestResult[PreparedAccumulationCoverage](status: BlockGuestError.Uninitialized)
   BlockGuestResult[PreparedAccumulationCoverage](status: BlockGuestError.None,
       completed: data.coverage)
+
 proc runBlockAccumulationGuests*(round: BlockAccumulationRound, parameters: Parameters,
     limits: AccumulationGuestLimits): BlockGuestResult[BlockAccumulationGuests] =
   ## Derive state, slot and entropy from the genuine round; bind caller Parameters to the admitted profile before any guest work.

@@ -49,22 +49,27 @@ type
 func error*[T](outcome: AuthorizedRefinementResult[T]): AuthorizedRefinementError =
   ## Inspect the selected alternative without writable tag access.
   outcome.status
+
 func value*[T](outcome: AuthorizedRefinementResult[T]): T
     {.requires: outcome.status == AuthorizedRefinementError.None.} =
   ## Extract only complete bound authorization/refinement/digests.
   outcome.completed
+
 func authorizationKind*[T](outcome: AuthorizedRefinementResult[T]): WorkKind
     {.requires: outcome.status == AuthorizedRefinementError.AuthorizationRejected.} =
   ## Preserve the exact protocol authorization work error without an invented successful trace.
   outcome.authorizationReason
+
 func refinementError*[T](outcome: AuthorizedRefinementResult[T]): RefinementReportResult[RefinedPackage]
     {.requires: outcome.status == AuthorizedRefinementError.RefinementFailure.} =
   ## Preserve nested preparation/host/engine refusal detail without any earlier completed item prefix.
   outcome.refinementReason
+
 func digestError*[T](outcome: AuthorizedRefinementResult[T]): RefinementDigestError
     {.requires: outcome.status == AuthorizedRefinementError.DigestFailure.} =
   ## Inspect only the original final projection refusal.
   outcome.digestReason
+
 proc authorizedInfo*(prepared: AuthorizedRefinement): AuthorizedRefinementResult[
     AuthorizedRefinementInfo] =
   ## Copy aggregate facts from a complete matching owner.
@@ -73,6 +78,7 @@ proc authorizedInfo*(prepared: AuthorizedRefinement): AuthorizedRefinementResult
       status: AuthorizedRefinementError.Uninitialized)
   AuthorizedRefinementResult[AuthorizedRefinementInfo](status: AuthorizedRefinementError.None,
       completed: data.info)
+
 proc authorizedSource*(prepared: AuthorizedRefinement): AuthorizedRefinementResult[
     AuthorizationInvocation] =
   ## Retain the original completed authorization owner and its exact complete state/package/parameter provenance.
@@ -81,6 +87,7 @@ proc authorizedSource*(prepared: AuthorizedRefinement): AuthorizedRefinementResu
       status: AuthorizedRefinementError.Uninitialized)
   AuthorizedRefinementResult[AuthorizationInvocation](status: AuthorizedRefinementError.None,
       completed: data.authorization)
+
 proc authorizedDigests*(prepared: AuthorizedRefinement): AuthorizedRefinementResult[
     RefinementDigests] =
   ## Retain the matching immutable digest projection, which itself owns its ordered report/export selection.

@@ -28,21 +28,26 @@ type
     of KeyFailure: keyReason: RequestError
     of PlanFailure: planReason: ProofPlanError
     else: discard # Missing source/service and quota failures contain no key owner.
+
 func error*[T](outcome: LogicalServiceProofResult[T]): LogicalServiceProofError =
   ## Observe immutable selected stages only.
   outcome.status
+
 func value*[T](outcome: LogicalServiceProofResult[T]): T {.inline, requires: outcome.status ==
     LogicalServiceProofError.None.} =
   ## Extract only complete source-bound namespace selection or fixed observations.
   outcome.completed
+
 func requestError*[T](outcome: LogicalServiceProofResult[T]): RequestError {.inline,
     requires: outcome.status == LogicalServiceProofError.KeyFailure.} =
   ## Preserve the exact request-key derivation failure without a default physical key.
   outcome.keyReason
+
 func planError*[T](outcome: LogicalServiceProofResult[T]): ProofPlanError {.inline,
     requires: outcome.status == LogicalServiceProofError.PlanFailure.} =
   ## Preserve the generic immutable proof selector's actual refusal.
   outcome.planReason
+
 proc planLogicalServiceProof*(source: CurrentLogicalState, service: ServiceIndex,
     limits: LogicalServiceProofLimits): LogicalServiceProofResult[LogicalServiceProof] =
   ## Admit complete traversal and both temporary/retained arrays before deriving any request key or allocating selectors.
@@ -103,6 +108,7 @@ proc planLogicalServiceProof*(source: CurrentLogicalState, service: ServiceIndex
     completed: LogicalServiceProof(initialized: true, source: source, keys: plan.value,
       info: LogicalServiceProofInfo(service: service, keys: plan.value.len,
           requests: row.requests)))
+
 proc logicalServiceProofSource*(source: LogicalServiceProof): LogicalServiceProofResult[
     CurrentLogicalState] =
   ## Retain the exact original logical source for existing bounded query capture and managed submission.
@@ -110,6 +116,7 @@ proc logicalServiceProofSource*(source: LogicalServiceProof): LogicalServiceProo
       status: LogicalServiceProofError.InvalidLogical)
   LogicalServiceProofResult[CurrentLogicalState](status: LogicalServiceProofError.None,
       completed: source.source)
+
 proc logicalServiceProofKeys*(source: LogicalServiceProof): LogicalServiceProofResult[
     StateProofPlan] =
   ## Retain only this source-bound complete namespace selector; no mutable key array is exposed.
@@ -117,6 +124,7 @@ proc logicalServiceProofKeys*(source: LogicalServiceProof): LogicalServiceProofR
       status: LogicalServiceProofError.InvalidLogical)
   LogicalServiceProofResult[StateProofPlan](status: LogicalServiceProofError.None,
       completed: source.keys)
+
 proc logicalServiceProofInfo*(source: LogicalServiceProof): LogicalServiceProofResult[
     LogicalServiceProofInfo] =
   ## Copy fixed service/key/hash-work coverage without changing trust or provenance.

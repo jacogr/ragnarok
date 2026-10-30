@@ -39,6 +39,7 @@ type
 func error*(value: ServiceRequestResult): ServiceReadError =
   ## Inspect request lookup status without permitting result retagging.
   value.status
+
 func value*(value: ServiceRequestResult): RequestHistory {.requires: value.status ==
     ServiceReadError.None.} =
   ## Return a fixed independent history only after successful lookup and complete decoding.
@@ -47,13 +48,14 @@ func value*(value: ServiceRequestResult): RequestHistory {.requires: value.statu
 func error*(value: ServiceReadResult): ServiceReadError =
   ## Inspect the read reason without granting mutation or access to a failed payload.
   value.status
+
 func value*(value: ServiceReadResult): StateValue {.requires: value.status ==
     ServiceReadError.None.} =
   ## Extract only a successful immutable view; bytes() returns an independent copy.
   value.completed
 
-## Find one serialized entry and check its size before any value copy or Base64 allocation.
 proc read(view: Genesis, key: StateKey, limit: ByteLimit): ServiceReadResult =
+  ## Find one serialized entry and check its size before any value copy or Base64 allocation.
   let found = view.lookup(key)
   if found.error == StateStoreError.Uninitialized:
     return ServiceReadResult(status: ServiceReadError.Uninitialized) # Default genesis handles are typed failures.

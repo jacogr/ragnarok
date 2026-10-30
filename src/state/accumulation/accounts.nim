@@ -55,14 +55,17 @@ type
 func error*[T](outcome: AccumulationAccountResult[T]): AccumulationAccountError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: AccumulationAccountResult[T]): T {.inline,
     requires: outcome.status == AccumulationAccountError.None.} =
   ## Extract only selected complete success.
   outcome.completed
+
 func metadataError*[T](outcome: AccumulationAccountResult[T]): ServiceMetadataError {.inline,
     requires: outcome.status == AccumulationAccountError.MetadataFailure.} =
   ## Inspect only an actual selected metadata decoder failure.
   outcome.metadataReason
+
 func stateError*[T](outcome: AccumulationAccountResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationAccountError.StateFailure.} =
   ## Inspect only an actual private store refusal.
@@ -124,6 +127,7 @@ proc accumulationAccountInfo*(plan: PreparedAccumulationAccounts): AccumulationA
         status: AccumulationAccountError.Uninitialized) # Defaults have no observed progress.
   AccumulationAccountResult[AccumulationAccountInfo](status: AccumulationAccountError.None,
       completed: data.info)
+
 proc accumulationAccountSource*(plan: PreparedAccumulationAccounts): AccumulationAccountResult[
     PreparedAccumulationStatistics] =
   ## Retain the exact statistics and original finalization independently of the caller's source handles.
@@ -133,6 +137,7 @@ proc accumulationAccountSource*(plan: PreparedAccumulationAccounts): Accumulatio
         status: AccumulationAccountError.Uninitialized) # No synthesized statistics owner.
   AccumulationAccountResult[PreparedAccumulationStatistics](status: AccumulationAccountError.None,
       completed: data.source)
+
 proc accumulationAccountState*(plan: PreparedAccumulationAccounts): AccumulationAccountResult[
     StateStoreSnapshot] =
   ## Retain the complete private successor under the source store's inherited policy.

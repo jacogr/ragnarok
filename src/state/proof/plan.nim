@@ -22,6 +22,7 @@ type
 func error*[T](outcome: ProofPlanResult[T]): ProofPlanError =
   ## Observe construction/selection refusal without extracting a default payload.
   outcome.status
+
 func value*[T](outcome: ProofPlanResult[T]): T {.inline,
     requires: outcome.status == ProofPlanError.None.} =
   ## Select only complete immutable plans or copied fixed keys.
@@ -30,10 +31,12 @@ func value*[T](outcome: ProofPlanResult[T]): T {.inline,
 func valid*(plan: StateProofPlan): bool =
   ## Defaults cannot silently request an empty successful read.
   plan.data != nil
+
 func len*(plan: StateProofPlan): int =
   ## Inspect the exact retained query count without allocating key copies.
   let data = plan.data
   if data == nil: 0 else: data.keys.len
+
 proc keyAt*(plan: StateProofPlan, index: int): ProofPlanResult[StateKey] =
   ## Bind ordinal extraction to this immutable owner and reject negative/out-of-range positions.
   let data = plan.data
@@ -42,6 +45,7 @@ proc keyAt*(plan: StateProofPlan, index: int): ProofPlanResult[StateKey] =
   if index < 0 or index >= data.keys.len:
     return ProofPlanResult[StateKey](status: ProofPlanError.InvalidIndex)
   ProofPlanResult[StateKey](status: ProofPlanError.None, completed: data.keys[index])
+
 func comparePlanKey(left, right: StateKey): int =
   ## Canonical byte order matches partial-view enumeration independently of semantic selectors.
   let a = array[31, byte](left)
@@ -51,6 +55,7 @@ func comparePlanKey(left, right: StateKey): int =
     if a[i] < b[i]: return -1
     if a[i] > b[i]: return 1
   0
+
 proc captureStateProofPlan*(keys: openArray[StateKey], limit: ElementLimit): ProofPlanResult[
     StateProofPlan] =
   ## Bound native extents before allocation, copy and sort all selectors, then reject duplicate identities.

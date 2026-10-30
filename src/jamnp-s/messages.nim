@@ -38,21 +38,25 @@ type
     chargedBytes, startedMessages: uint64
     complete: bool
 
-# Mutable parser storage must never be shared by a copied enclosing stream owner.
 proc `=copy`*(destination: var MessageReader, source: MessageReader) {.error: "MessageReader owns partial input".}
-# Duplication has the same lifetime restriction as assignment.
+  ## Mutable parser storage must never be shared by a copied enclosing stream owner.
+
 proc `=dup`*(source: MessageReader): MessageReader {.error.}
+  ## Duplication has the same lifetime restriction as assignment.
 
 func error*[T](outcome: MessageResult[T]): MessageError =
   ## Inspect an operation without exposing its private payload.
   outcome.status
+
 func value*[T](outcome: MessageResult[T]): T {.inline, requires: outcome.status ==
     MessageError.None.} =
   ## Access only a successful result's complete value.
   outcome.completed
+
 func error*(reader: MessageReader): MessageError =
   ## Read parser lifecycle without granting access to a partial frame.
   reader.status
+
 func ready*(reader: MessageReader): bool =
   ## Only an active parser with all declared payload bytes has a message to transfer.
   reader.status == MessageError.None and reader.complete

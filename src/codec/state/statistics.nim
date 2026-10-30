@@ -75,40 +75,41 @@ type
 func error*[T](value: ActivityResult[T]): ActivityError =
   ## Failure reasons remain read-only and never authorize values or partial parser progress.
   value.status
+
 func value*[T](value: ActivityResult[T]): T {.inline, requires: value.status ==
     ActivityError.None.} =
   ## Public and private payloads require complete success under checked optimized builds too.
   value.completed
 
-## Validate both independent roster domains before core/count conversions or input access.
 proc validate(config: ActivityConfig): ActivityError =
+  ## Validate both independent roster domains before core/count conversions or input access.
   if not validConfig(AssuranceConfig(cores: config.cores, validators: config.current)) or
       not validConfig(AssuranceConfig(cores: config.cores, validators: config.previous)):
     return ActivityError.InvalidConfig # Preserve the existing 2..341 core and 3c validator profile domain.
   ActivityError.None
 
-## Select a configured roster population without requiring the previous roster to equal the current one.
 proc population(config: ActivityConfig, epoch: StatisticsEpoch): int =
+  ## Select a configured roster population without requiring the previous roster to equal the current one.
   if epoch == StatisticsEpoch.Current: int(uint64(
       config.current)) # Current roster fixes the first sequence count.
   else: int(uint64(config.previous)) # A resized epoch retains its older independent count.
 
-## Charge nonnegative parent bytes before arithmetic and before reads/allocation/commit.
 proc grow(cursor: var int, amount: int, config: ActivityConfig): ActivityError =
+  ## Charge nonnegative parent bytes before arithmetic and before reads/allocation/commit.
   if amount > high(int)-cursor: return ActivityError.LengthOverflow # Never overflow native extent arithmetic.
   cursor += amount
   if uint64(cursor) > uint64(config.maxBytes): return ActivityError.LimitExceeded # All count/scalar bytes share one budget.
   ActivityError.None
 
-## Bound service traversal and eventual typed storage before a hostile count can authorize allocation.
 proc serviceCount(count: uint64, config: ActivityConfig): ActivityError =
+  ## Bound service traversal and eventual typed storage before a hostile count can authorize allocation.
   if count > uint64(config.maxServices): return ActivityError.LimitExceeded # Caller item policy bounds dictionary work first.
   if count > uint64(high(int) div sizeof(ServiceStatisticsEntry)):
     return ActivityError.LengthOverflow # Typed fixed records must fit native addressing.
   ActivityError.None
 
-## Read a single canonical natural using a private cursor; failure never exports partial progress.
 proc readNatural(input: openArray[byte], cursor: var int, config: ActivityConfig): ActivityResult[uint64] =
+  ## Read a single canonical natural using a private cursor; failure never exports partial progress.
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
@@ -120,8 +121,8 @@ proc readNatural(input: openArray[byte], cursor: var int, config: ActivityConfig
       status: error) # Complete scalars still consume policy.
   ActivityResult[uint64](status: ActivityError.None, completed: uint64(parsed.value))
 
-## Read one E4 dictionary service key with parent policy and presence checked before access.
 proc readService(input: openArray[byte], cursor: var int, config: ActivityConfig): ActivityResult[uint32] =
+  ## Read one E4 dictionary service key with parent policy and presence checked before access.
   let start = cursor
   let error = grow(cursor, 4, config)
   if error != ActivityError.None: return ActivityResult[uint32](
@@ -133,9 +134,9 @@ proc readService(input: openArray[byte], cursor: var int, config: ActivityConfig
   for j in 0..<4: value = value or (uint32(input[start+j]) shl (j*8))
   ActivityResult[uint32](status: ActivityError.None, completed: value)
 
-## Fixed local tuples validate all natural children without heap allocation or externally reusable spans.
 proc readFields[N: static[int]](input: openArray[byte], cursor: var int,
     config: ActivityConfig): ActivityResult[array[N, uint64]] =
+  ## Fixed local tuples validate all natural children without heap allocation or externally reusable spans.
   var fields = default(array[N, uint64])
   # Tuple arity is a schema constant; no input count controls this local array size.
   for i in 0..<N:
@@ -145,8 +146,8 @@ proc readFields[N: static[int]](input: openArray[byte], cursor: var int,
     fields[i] = parsed.value
   ActivityResult[array[N, uint64]](status: ActivityError.None, completed: fields)
 
-## Preflight every component, including the last service field, before capturing any owner storage.
 proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout] =
+  ## Preflight every component, including the last service field, before capturing any owner storage.
   let valid = validate(config)
   if valid != ActivityError.None: return ActivityResult[Layout](
       status: valid) # Invalid profile cannot authorize reads.
@@ -194,15 +195,15 @@ proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout
   layout.consumed = cursor
   ActivityResult[Layout](status: ActivityError.None, completed: layout)
 
-## Convert a typed core record to the exact eight natural wire positions without exposing retained arrays.
 proc coreFields(value: CoreActivity): array[8, uint64] =
+  ## Convert a typed core record to the exact eight natural wire positions without exposing retained arrays.
   result = default(array[8, uint64])
   # Seven named non-gas counters precede the final gas statistic.
   for measure in low(CoreMeasure)..high(CoreMeasure): result[ord(measure)] = uint64(value.counters[measure])
   result[7] = uint64(value.gas)
 
-## Convert typed service fields to provision/refinement/import/extrinsic/export/accumulation wire order.
 proc serviceFields(value: ServiceActivity): array[11, uint64] =
+  ## Convert typed service fields to provision/refinement/import/extrinsic/export/accumulation wire order.
   [uint64(value.counters[ServiceMeasure.ProvisionCount]), uint64(value.counters[
       ServiceMeasure.ProvisionBytes]),
     uint64(value.counters[ServiceMeasure.RefinementCount]), uint64(value.refinementGas),
@@ -256,8 +257,8 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
   ActivityResult[ActivityRead](status: ActivityError.None,
     completed: ActivityRead(snapshot: ActivitySnapshot(data: data), consumed: layout.consumed))
 
-## Commit a measured canonical natural after whole-source validation and destination sizing.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
+  ## Commit a measured canonical natural after whole-source validation and destination sizing.
   let encoded = natural.encode(JamNatural(value))
   # Exact preflight size includes every natural prefix and payload octet.
   for i in 0..<encoded.len:

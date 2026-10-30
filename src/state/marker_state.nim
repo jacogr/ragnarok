@@ -13,8 +13,8 @@ import ../codec/header
 import ./safrole/markers as safrole_markers
 import ./store
 
-## Preserve absent/default/bounded state distinctions; lookup never hashes or mutates the map.
 func stateError(reason: StateStoreError): SafroleMarkerError =
+  ## Preserve absent/default/bounded state distinctions; lookup never hashes or mutates the map.
   case reason
   of StateStoreError.Uninitialized: SafroleMarkerError.Uninitialized # A default snapshot cannot authorize header validation.
   of StateStoreError.MissingKey: SafroleMarkerError.MissingState # Required state is never synthesized as genesis data.

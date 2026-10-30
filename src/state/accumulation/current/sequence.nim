@@ -99,22 +99,27 @@ type
 func error*[T](outcome: CurrentSequenceResult[T]): CurrentSequenceError =
   ## Inspect only the selected reason without granting mutation.
   outcome.status
+
 func value*[T](outcome: CurrentSequenceResult[T]): T {.inline,
     requires: outcome.status == CurrentSequenceError.None.} =
   ## Extract complete source-bound ownership only after success.
   outcome.completed
+
 func operandFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationOperandError {.inline,
     requires: outcome.status == CurrentSequenceError.OperandFailure.} =
   ## Preserve the actual selected-range capture refusal.
   outcome.operandReason
+
 func inputFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationInputError {.inline,
     requires: outcome.status == CurrentSequenceError.InputFailure.} =
   ## Preserve the actual report-only/final grouping refusal.
   outcome.inputReason
+
 func partitionFailure*[T](outcome: CurrentSequenceResult[T]): TransferPartitionError {.inline,
     requires: outcome.status == CurrentSequenceError.PartitionFailure.} =
   ## Preserve the actual selected-state transfer classification refusal.
   outcome.partitionReason
+
 proc startCurrentAccumulationSequence*(initial: PreparedCurrentAccumulationRound): CurrentSequenceResult[
     CurrentAccumulationSequence] =
   ## Capture exactly one completed authenticated initial round; pure/default phase owners cannot provide an anchor.
@@ -129,6 +134,7 @@ proc startCurrentAccumulationSequence*(initial: PreparedCurrentAccumulationRound
     processed: processed)
   CurrentSequenceResult[CurrentAccumulationSequence](status: CurrentSequenceError.None,
     completed: CurrentAccumulationSequence(data: SequenceData(initial: initial, facts: @[first])))
+
 proc currentSequenceInfo*(sequence: CurrentAccumulationSequence): CurrentSequenceResult[
     CurrentSequenceInfo] =
   ## Copy latest progress/budget without allowing a caller to replace historical rows or their source proofs.
@@ -140,6 +146,7 @@ proc currentSequenceInfo*(sequence: CurrentAccumulationSequence): CurrentSequenc
   CurrentSequenceResult[CurrentSequenceInfo](status: CurrentSequenceError.None,
     completed: CurrentSequenceInfo(entries: data.facts.len, pending: pending.transfers,
       processedReports: latest.processed, budget: pending.budget))
+
 proc currentSequenceInitial*(sequence: CurrentAccumulationSequence): CurrentSequenceResult[
     PreparedCurrentAccumulationRound] =
   ## Retain the genuine initial block/guest anchor independently of the caller's original handle lifetime.
@@ -149,6 +156,7 @@ proc currentSequenceInitial*(sequence: CurrentAccumulationSequence): CurrentSequ
         status: CurrentSequenceError.Uninitialized)
   CurrentSequenceResult[PreparedCurrentAccumulationRound](status: CurrentSequenceError.None,
       completed: data.initial)
+
 proc planCurrentAccumulationContinuation*(sequence: CurrentAccumulationSequence,
     limits: CurrentContinuationLimits): CurrentSequenceResult[PreparedCurrentContinuation] =
   ## Select the next affordable whole reports, partition pending transfers against latest selected state, and group only accepted inputs without free allowances.

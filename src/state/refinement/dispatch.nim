@@ -64,10 +64,12 @@ type
 func error*[T](outcome: RefinementDispatchResult[T]): RefinementDispatchError =
   ## Inspect the alternative without writable tag access.
   outcome.status
+
 func value*[T](outcome: RefinementDispatchResult[T]): T
     {.requires: outcome.status == RefinementDispatchError.None.} =
   ## Extract only a completely prepared or executed value.
   outcome.completed
+
 func executionError*[T](outcome: RefinementDispatchResult[T]): StepError
     {.requires: outcome.status == RefinementDispatchError.ExecutionFailure.} =
   ## Retain the engine's exact budget/instruction refusal without a fabricated guest outcome.
@@ -131,10 +133,10 @@ proc prepareRefinementExecution*(initial: Machine, state: StateStoreSnapshot,
           item))).value.workItemInfo.value.service,
       heap: heap, offset: offset)))
 
-# Consume an inner transition once, preserving its exact response/map pairing and local error reason.
 proc innerResponse(context: var DispatchContext, changed: InnerMachineResult[
     InnerMachineTransition]):
     HostResult[RefinementDispatchError] {.raises: [].} =
+  ## Consume an inner transition once, preserving its exact response/map pairing and local error reason.
   if changed.error == InnerMachineError.UnsupportedSource:
     return hostFailure(RefinementDispatchError.InvalidContext) # A resolved source must not require another adapter.
   if changed.error == InnerMachineError.ExecutionFailure:
@@ -148,9 +150,9 @@ proc innerResponse(context: var DispatchContext, changed: InnerMachineResult[
   hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
     else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
 
-# Resolve database mode only after the inner preflight has proved affordability and a free module handle.
 proc historicalCompilation(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[RefinementDispatchError] {.raises: [].} =
+  ## Resolve database mode only after the inner preflight has proved affordability and a free module handle.
   let requested = uint64(cpu.registers[9])
   let cost = 1862'u64+(requested div 1024)*366+((requested mod 1024)*366+1023) div 1024
   let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),

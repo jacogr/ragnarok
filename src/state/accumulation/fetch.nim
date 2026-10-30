@@ -26,6 +26,7 @@ type
 func error*(outcome: InvocationFetchResult): InvocationFetchError =
   ## Inspect the adapter's outcome without exposing writable result storage.
   outcome.status
+
 func value*(outcome: InvocationFetchResult): FetchContext {.inline,
     requires: outcome.status == InvocationFetchError.None.} =
   ## Retain the complete context independently of every preparation handle.
@@ -39,8 +40,8 @@ type FetchSelection = object
   index: InvocationServiceIndex
   service: PreparedAccumulationService
 
-## Retain one input after the caller has validated the selection and its complete input count.
 proc selectedInput(source: FetchSelection, index: InvocationInputIndex): InvocationInput =
+  ## Retain one input after the caller has validated the selection and its complete input count.
   if source.bound:
     # The prepared service owns the group identity; callers cannot substitute another ordinal.
     source.service.serviceInputAt(index).value
@@ -48,10 +49,10 @@ proc selectedInput(source: FetchSelection, index: InvocationInputIndex): Invocat
     # Explicit-plan preparation already proved this group and each index below its input count.
     source.inputs.invocationInputAt(source.index, index).value
 
-## Preflight and encode one immutable selected sequence using a single shared conversion path.
-## Callers validate the base and selection; temporary payload copies are bounded by the wire budget.
 proc captureSelection(context: FetchContext, source: FetchSelection, count: uint64,
     limits: FetchAccumulationLimits): InvocationFetchResult =
+  ## Preflight and encode one immutable selected sequence using a single shared conversion path.
+  ## Callers validate the base and selection; temporary payload copies are bounded by the wire budget.
   ## Refuse atomically without exposing a partially converted or encoded input list.
   template fail(reason: InvocationFetchError) =
     return InvocationFetchResult(status: reason)

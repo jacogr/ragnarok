@@ -32,13 +32,17 @@ type
     poisoned: bool
   LightJournalCache* = object ## Move-only explicit retirement authority; immutable readers retain no native lease.
     data: nil JournalOwner
+
 proc `=copy`*(destination: var LightJournalCache, source: LightJournalCache) {.error.}
   ## A composite cannot duplicate the sole directory and append retirement authority.
+
 proc `=dup`*(source: LightJournalCache): LightJournalCache {.error.}
   ## Reject hidden owner duplication during actual ARC lowering.
+
 proc requireClosed(owner: LightJournalCache) {.requires: owner.data == nil.} =
   ## Native retirement errors must be observed through explicit close.
   discard
+
 proc `=wasMoved`*(owner: var LightJournalCache) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(owner.data)
@@ -47,30 +51,37 @@ proc `=destroy`*(owner: LightJournalCache) =
   ## Moved-from nil owners are inert; destroying a live lease without close is misuse.
   requireClosed(owner)
   `=destroy`(owner.data)
+
 func error*[T](outcome: LightJournalResult[T]): FileError =
   ## Inspect refusal without granting a fresh successful payload.
   outcome.status
+
 func value*[T](outcome: LightJournalResult[T]): T {.inline,
     requires: outcome.status == FileError.None.} =
   ## Extract only confirmed immutable readers, scalar metadata or durability receipts.
   outcome.completed
+
 func opened*(owner: LightJournalCache): bool =
   ## Default and moved-from owners safely report their lifecycle.
   owner.data != nil
+
 func fail[T](reason: FileError): LightJournalResult[T] =
   ## Failed results retain no old reader as a successful fresh observation.
   LightJournalResult[T](status: reason)
+
 func lifecycle(data: nil JournalOwner): FileError =
   ## Every fresh operation refuses after uncertain IO until explicit close and strict reopen.
   if data == nil: FileError.Uninitialized
   elif data.poisoned: FileError.RecoveryRequired
   else: FileError.None
+
 proc retire(data: JournalOwner): FileError =
   ## Close append before directory, preserve the first refusal, and always attempt both native retirements.
   let journal = data.journal.close
   let directory = data.directory.close
   if journal != FileError.None and journal != FileError.Uninitialized: return journal
   directory
+
 proc close*(owner: var LightJournalCache): FileError =
   ## Disarm exactly once even when either native close refuses; retained readers remain independent.
   let data = owner.data
@@ -78,6 +89,7 @@ proc close*(owner: var LightJournalCache): FileError =
   let reason = retire(data)
   owner.data = nil
   reason
+
 func samePolicy(left, right: LightSnapshotLimits): bool =
   ## Preparation identity includes all inherited proof, image, cache and mutation ceilings.
   uint64(left.bytes) == uint64(right.bytes) and
@@ -86,11 +98,13 @@ func samePolicy(left, right: LightSnapshotLimits): bool =
     uint64(left.cache.valueBytes) == uint64(right.cache.valueBytes) and
     uint64(left.cache.proof.nodes) == uint64(right.cache.proof.nodes) and
     uint64(left.cache.proof.valueBytes) == uint64(right.cache.proof.valueBytes)
+
 func sameJournalPolicy(left, right: LightReplayLimits): bool =
   ## A prepared root request cannot silently adopt different replay/append capacities after close/reopen.
   uint64(left.bytes) == uint64(right.bytes) and uint64(left.frames) == uint64(right.frames) and
     uint64(left.frame.bytes) == uint64(right.frame.bytes) and uint64(left.frame.items) == uint64(
         right.frame.items)
+
 proc binding(image: PreparedLightSnapshot, config: LightJournalConfig): FileError =
   ## Opaque preparation cannot widen an owner's inherited policy or change its independent trust selection.
   if not image.initialized: return FileError.Uninitialized
@@ -98,6 +112,7 @@ proc binding(image: PreparedLightSnapshot, config: LightJournalConfig): FileErro
       array[32, byte](image.root) != array[32, byte](config.root): return FileError.WrongIdentity
   if not samePolicy(image.limits, config.snapshot): return FileError.InvalidBatch
   FileError.None
+
 func selectionReason(reason: LightSelectionError): FileError =
   ## Translate only selected schema refusals into the storage IO domain.
   case reason
@@ -107,6 +122,7 @@ func selectionReason(reason: LightSelectionError): FileError =
   of LightSelectionError.WrongChain, LightSelectionError.WrongRoot: FileError.WrongIdentity
   of LightSelectionError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidJournal
+
 func snapshotReason(reason: LightSnapshotError): FileError =
   ## A refused checkpoint never supplies a partially trusted starting image.
   case reason
@@ -115,6 +131,7 @@ func snapshotReason(reason: LightSnapshotError): FileError =
   of LightSnapshotError.LimitExceeded, LightSnapshotError.LengthOverflow: FileError.LimitExceeded
   of LightSnapshotError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidFrame
+
 func deltaReason(reason: LightDeltaError): FileError =
   ## Preserve policy/provider distinctions without granting failed proof or transition authority.
   case reason
@@ -125,6 +142,7 @@ func deltaReason(reason: LightDeltaError): FileError =
   of LightDeltaError.WrongBase, LightDeltaError.WrongSequence: FileError.StaleView
   of LightDeltaError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidBatch
+
 func replayReason(outcome: LightReplayResult[LightJournalReplay]): FileError =
   ## Strict open never salvages a corrupt or incomplete suffix or retries another epoch.
   case outcome.error
@@ -135,6 +153,7 @@ func replayReason(outcome: LightReplayResult[LightJournalReplay]): FileError =
   of LightReplayError.InvalidDelta: deltaReason(outcome.deltaError)
   of LightReplayError.WrongCheckpoint: FileError.WrongIdentity
   else: FileError.InvalidJournal
+
 proc readSelection(data: JournalOwner): LightJournalResult[LightJournalManifest] =
   ## CURRENT uses one distinct bounded manifest schema, with no old-image or full-state fallback.
   var loaded = readManagedFile(data.directory, ManagedFileKind.Current, ManagedEpoch(0), ByteLimit(LightJournalManifestBytes))
@@ -144,6 +163,7 @@ proc readSelection(data: JournalOwner): LightJournalResult[LightJournalManifest]
   let reason = selectionReason(decoded.error)
   if reason != FileError.None: return fail[LightJournalManifest](reason)
   LightJournalResult[LightJournalManifest](status: FileError.None, completed: decoded.value)
+
 proc readStreamedJournal(data: JournalOwner): FileError =
   ## Retire checkpoint extraction aliases before advancing frame-sized replay; publish only after final EOF revalidation.
   var progress = default(LightJournalReplay)
@@ -205,6 +225,7 @@ proc readStreamedJournal(data: JournalOwner): FileError =
   data.sequence = progress.sequence
   data.frames = progress.frameCount
   FileError.None
+
 proc openLightJournalCache*(owner: var LightJournalCache, path: string,
     config: LightJournalConfig): FileError =
   ## Hold the directory and selected append inode while verifying the exact checkpoint, anchor and entire bounded log.
@@ -221,6 +242,7 @@ proc openLightJournalCache*(owner: var LightJournalCache, path: string,
   if replayed != FileError.None: return replayed
   owner.data = data
   FileError.None
+
 proc initializeLightJournalCache*(owner: var LightJournalCache, path: string,
     config: LightJournalConfig, image: PreparedLightSnapshot): LightJournalResult[
         StorageDurability] =
@@ -258,6 +280,7 @@ proc initializeLightJournalCache*(owner: var LightJournalCache, path: string,
   owner.data = data
   LightJournalResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc preparedSnapshot*(owner: LightJournalCache): LightJournalResult[PreparedLightSnapshot] =
   ## Retain the confirmed proof image without a native lease or a new durability claim.
   let data = owner.data
@@ -265,11 +288,13 @@ proc preparedSnapshot*(owner: LightJournalCache): LightJournalResult[PreparedLig
   if reason != FileError.None: return fail[PreparedLightSnapshot](reason)
   assert data != nil
   LightJournalResult[PreparedLightSnapshot](status: FileError.None, completed: data.image)
+
 proc snapshot*(owner: LightJournalCache): LightJournalResult[LightStateCache] =
   ## Return an immutable read-only proof cache only while current ownership is confirmed.
   let selected = owner.preparedSnapshot
   if selected.error != FileError.None: return fail[LightStateCache](selected.error)
   LightJournalResult[LightStateCache](status: FileError.None, completed: selected.value.cache)
+
 proc sequence*(owner: LightJournalCache): LightJournalResult[LightDeltaSequence] =
   ## Fresh scalar metadata refuses when the durable selection is uncertain.
   let data = owner.data
@@ -277,6 +302,7 @@ proc sequence*(owner: LightJournalCache): LightJournalResult[LightDeltaSequence]
   if reason != FileError.None: return fail[LightDeltaSequence](reason)
   assert data != nil
   LightJournalResult[LightDeltaSequence](status: FileError.None, completed: data.sequence)
+
 proc epoch*(owner: LightJournalCache): LightJournalResult[ManagedEpoch] =
   ## Physical selection is independent of local proof-update sequence.
   let data = owner.data
@@ -284,6 +310,7 @@ proc epoch*(owner: LightJournalCache): LightJournalResult[ManagedEpoch] =
   if reason != FileError.None: return fail[ManagedEpoch](reason)
   assert data != nil
   LightJournalResult[ManagedEpoch](status: FileError.None, completed: data.selected.epoch)
+
 proc journalBytes*(owner: LightJournalCache): LightJournalResult[uint64] =
   ## Read confirmed append extent without reloading the journal or exporting its descriptor.
   let data = owner.data
@@ -293,6 +320,7 @@ proc journalBytes*(owner: LightJournalCache): LightJournalResult[uint64] =
   let observed = managedJournalBytes(data.journal)
   if observed.error != FileError.None: return fail[uint64](observed.error)
   LightJournalResult[uint64](status: FileError.None, completed: observed.value)
+
 proc append*(owner: var LightJournalCache, delta: PreparedLightDelta): LightJournalResult[
     StorageDurability] =
   ## Bound an opaque authenticated frame to the exact confirmed predecessor/policy, append and synchronize before publication.
@@ -322,6 +350,7 @@ proc append*(owner: var LightJournalCache, delta: PreparedLightDelta): LightJour
   inc data.frames
   LightJournalResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc update*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
     forgotten: openArray[StateKey]): LightJournalResult[StorageDurability] =
   ## Prepare one complete proof batch privately, then reuse the exact same sparse durable append publication path.
@@ -351,29 +380,35 @@ type
     policy: LightReplayLimits
   PreparedLightJournalBatch* = object ## Opaque prepared concatenation grants no durable publication receipt until its append barrier succeeds.
     data: nil BatchData
+
 func initialized*(batch: PreparedLightJournalBatch): bool =
   ## Default batches have no encoded-frame or successor authority.
   batch.data != nil
+
 proc frameCount*(batch: PreparedLightJournalBatch): uint64 {.requires: batch.data != nil.} =
   ## Report the exact nonempty number of authenticated consecutive update frames.
   let data = batch.data
   assert data != nil
   data.frames
+
 proc byteLength*(batch: PreparedLightJournalBatch): int {.requires: batch.data != nil.} =
   ## Report completed canonical transport extent without exporting mutable bytes.
   let data = batch.data
   assert data != nil
   data.encoded.len
+
 proc sequence*(batch: PreparedLightJournalBatch): LightDeltaSequence {.requires: batch.data != nil.} =
   ## Inspect the checked final global sequence, independent of physical epoch.
   let data = batch.data
   assert data != nil
   data.last
+
 proc snapshot*(batch: PreparedLightJournalBatch): PreparedLightSnapshot {.requires: batch.data != nil.} =
   ## Retain only the prepared immutable final candidate; it is not a durable-head receipt.
   let data = batch.data
   assert data != nil
   data.image
+
 proc prepareLightJournalBatch*(owner: LightJournalCache,
     edits: openArray[LightJournalEdit]): LightJournalResult[PreparedLightJournalBatch] =
   ## Authenticate consecutive updates privately within all inherited caps, retaining only final image and bounded aggregate frame bytes.
@@ -414,6 +449,7 @@ proc prepareLightJournalBatch*(owner: LightJournalCache,
       selected: data.selected.checksum, prior: data.image.checksum, epoch: data.selected.epoch,
       before: data.sequence, last: sequence, frames: count, priorFrames: data.frames,
       priorBytes: observed.value, policy: data.config.journal)))
+
 proc append*(owner: var LightJournalCache, batch: PreparedLightJournalBatch): LightJournalResult[
     StorageDurability] =
   ## Append a prepared consecutive group once and synchronize once before publishing its final image; uncertainty requires explicit prefix recovery.
@@ -457,13 +493,17 @@ type
     plan: LightTailPlan
   LightJournalRecovery* = object ## Move-only repair/retirement authority is distinct from a fresh writable journal owner.
     data: nil RecoveryOwner
+
 proc `=copy`*(destination: var LightJournalRecovery, source: LightJournalRecovery) {.error.}
   ## A repair lease has one native retirement authority.
+
 proc `=dup`*(source: LightJournalRecovery): LightJournalRecovery {.error.}
   ## Reject hidden duplication of a recovery handle during actual lowering.
+
 proc requireClosed(recovery: LightJournalRecovery) {.requires: recovery.data == nil.} =
   ## A caller must explicitly repair-transfer or close every held inspection.
   discard
+
 proc `=wasMoved`*(recovery: var LightJournalRecovery) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(recovery.data)
@@ -472,9 +512,11 @@ proc `=destroy`*(recovery: LightJournalRecovery) =
   ## Moved-from recovery values are inert; live native inspection cannot silently retire in destruction.
   requireClosed(recovery)
   `=destroy`(recovery.data)
+
 func opened*(recovery: LightJournalRecovery): bool =
   ## Default and transferred recovery handles safely report an absent lease.
   recovery.data != nil
+
 proc close*(recovery: var LightJournalRecovery): FileError =
   ## Retire append before directory and disarm the inspection even if native close fails.
   let data = recovery.data
@@ -482,6 +524,7 @@ proc close*(recovery: var LightJournalRecovery): FileError =
   let reason = retire(data.owner)
   recovery.data = nil
   reason
+
 proc plan*(recovery: LightJournalRecovery): LightJournalResult[LightTailPlan] =
   ## Retain only a checked immutable prefix plan; it grants no fresh writable owner or durability receipt.
   let data = recovery.data
@@ -489,6 +532,7 @@ proc plan*(recovery: LightJournalRecovery): LightJournalResult[LightTailPlan] =
   let reason = lifecycle(data.owner)
   if reason != FileError.None: return fail[LightTailPlan](reason)
   LightJournalResult[LightTailPlan](status: FileError.None, completed: data.plan)
+
 proc inspectLightJournalTail*(recovery: var LightJournalRecovery, path: string,
     config: LightJournalConfig): FileError =
   ## Hold the selected directory and journal inode while explicitly planning only a bounded structurally possible incomplete suffix.
@@ -524,6 +568,7 @@ proc inspectLightJournalTail*(recovery: var LightJournalRecovery, path: string,
     else: return FileError.InvalidJournal
   recovery.data = RecoveryOwner(owner: data, plan: planned.value)
   FileError.None
+
 proc readCheckedCheckpoint(data: JournalOwner): LightJournalResult[PreparedLightSnapshot] =
   ## Destructive operations recheck the selected checkpoint bytes, proof policy and exact trusted manifest checksum.
   var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
@@ -537,9 +582,11 @@ proc readCheckedCheckpoint(data: JournalOwner): LightJournalResult[PreparedLight
   if array[32, byte](restored.value.checksum) != array[32, byte](data.selected.snapshotChecksum):
     return fail[PreparedLightSnapshot](FileError.RecoveryMismatch)
   LightJournalResult[PreparedLightSnapshot](status: FileError.None, completed: restored.value)
+
 proc revalidateCheckpoint(data: JournalOwner): FileError =
   ## Repair needs the same strict checkpoint admission without retaining an additional image after this check.
   readCheckedCheckpoint(data).error
+
 proc repair*(recovery: var LightJournalRecovery, owner: var LightJournalCache): LightJournalResult[
     StorageDurability] =
   ## Revalidate current selection, held inode/extent and all original bytes, then truncate/sync exactly the authenticated prefix before transfer.
@@ -598,19 +645,23 @@ type
     epoch*: ManagedEpoch          ## The new checkpoint epoch is selected and its namespace barriers completed.
     sequence*: LightDeltaSequence ## Compaction preserves the global proof-update sequence.
     retirement*: FileError ## Old-handle retirement is separate from confirmed selection; non-None requires explicit close/reopen.
+
 func initialized*(prepared: PreparedLightCompaction): bool =
   ## Default plans safely report that they carry no candidate authority.
   prepared.data != nil
+
 proc epoch*(prepared: PreparedLightCompaction): ManagedEpoch {.requires: prepared.data != nil.} =
   ## Inspect the exact checked next physical epoch without exporting mutable plan backing.
   let data = prepared.data
   assert data != nil
   data.selected.epoch
+
 proc sequence*(prepared: PreparedLightCompaction): LightDeltaSequence {.requires: prepared.data != nil.} =
   ## Inspect the unchanged checkpoint baseline bound to this candidate.
   let data = prepared.data
   assert data != nil
   data.sequence
+
 proc prepareLightCompaction*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
     expectedSequence: LightDeltaSequence): LightJournalResult[PreparedLightCompaction] =
   ## Prepare exact checkpoint selection and anchor before IO, checking stale position and epoch exhaustion before arithmetic or hashes.
@@ -634,6 +685,7 @@ proc prepareLightCompaction*(owner: LightJournalCache, expectedEpoch: ManagedEpo
       selected: selected.value,
       anchor: anchor.value, prior: data.selected.checksum, priorEpoch: data.selected.epoch,
       sequence: data.sequence)))
+
 proc compact*(owner: var LightJournalCache, prepared: PreparedLightCompaction): LightJournalResult[
     LightCompactionReceipt] =
   ## Write/sync a new checkpoint and empty journal, atomically select them, then separately report retirement of the old append handle.
@@ -708,6 +760,7 @@ proc validateSelectedHead(data: JournalOwner): FileError =
       array[32, byte](replayed.value.snapshot.checksum) != array[32, byte](data.image.checksum):
     return FileError.RecoveryMismatch
   FileError.None
+
 proc cleanupRetiredEpoch*(owner: var LightJournalCache, epoch: ManagedEpoch): FileError =
   ## Explicitly remove only an earlier canonical pair after selected-head revalidation; retries synchronize even already absent names.
   let data = owner.data
@@ -725,6 +778,7 @@ proc cleanupRetiredEpoch*(owner: var LightJournalCache, epoch: ManagedEpoch): Fi
   let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, epoch)
   if checkpoint != FileError.None: return checkpoint
   data.directory.synchronize # A prior last-unlink barrier failure cannot become a false durable success merely because both names are now absent.
+
 proc discardPending*(owner: var LightJournalCache): FileError =
   ## Explicitly discard only fixed unselected CURRENT.next after exact selected-head revalidation, never adopting its payload.
   let data = owner.data
@@ -738,6 +792,7 @@ proc discardPending*(owner: var LightJournalCache): FileError =
   let removed = discardManagedPending(data.directory)
   if removed != FileError.None: return removed
   data.directory.synchronize
+
 proc discardUnselectedCompaction*(owner: var LightJournalCache,
     prepared: PreparedLightCompaction): FileError =
   ## Remove only the prepared immediate unselected epoch and matching partial staging after preflighting every possible candidate prefix.
@@ -793,29 +848,35 @@ type
     previousEpoch*, epoch*: ManagedEpoch ## Retired source files remain until explicit guarded reclamation.
     sequence*: LightDeltaSequence ## Root selection preserves the ordinary proof-update sequence.
     retirement*: FileError ## Non-None preserves confirmed selection but poisons fresh owner access until explicit retirement/reopen.
+
 func initialized*(prepared: PreparedLightRootAdvance): bool =
   ## Default plans safely report that they carry no publication candidate.
   prepared.data != nil
+
 proc epoch*(prepared: PreparedLightRootAdvance): ManagedEpoch {.requires: prepared.data != nil.} =
   ## Inspect only the exact checked destination physical epoch.
   let data = prepared.data
   assert data != nil
   data.selected.epoch
+
 proc sequence*(prepared: PreparedLightRootAdvance): LightDeltaSequence {.requires: prepared.data != nil.} =
   ## The new checkpoint baseline preserves the source's confirmed ordinary-update sequence.
   let data = prepared.data
   assert data != nil
   data.sequence
+
 proc root*(prepared: PreparedLightRootAdvance): StateRoot {.requires: prepared.data != nil.} =
   ## Return the explicit independently accepted destination root without granting provenance.
   let data = prepared.data
   assert data != nil
   data.image.root
+
 proc snapshot*(prepared: PreparedLightRootAdvance): PreparedLightSnapshot {.requires: prepared.data != nil.} =
   ## Retain only the immutable verified replacement knowledge, independently of any native owner.
   let data = prepared.data
   assert data != nil
   data.image
+
 proc rootAdvanceSource(data: JournalOwner, plan: RootAdvanceData, cleanup: bool): FileError =
   ## Exact publication requires the original head; cleanup may tolerate only later ordinary appends in that same physical selection.
   if uint64(data.selected.epoch) != uint64(plan.priorEpoch) or
@@ -836,6 +897,7 @@ proc rootAdvanceSource(data: JournalOwner, plan: RootAdvanceData, cleanup: bool)
     if uint64(data.sequence) != uint64(plan.sequence) or data.frames != plan.frames or
         extent.value != plan.bytes or not sameImage: return FileError.StaleView
   FileError.None
+
 proc prepareLightRootAdvance*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
     expectedSequence: LightDeltaSequence, destinationRoot: StateRoot,
     image: PreparedLightSnapshot): LightJournalResult[PreparedLightRootAdvance] =
@@ -872,6 +934,7 @@ proc prepareLightRootAdvance*(owner: LightJournalCache, expectedEpoch: ManagedEp
       priorImage: data.image.checksum,
       priorEpoch: data.selected.epoch, sequence: data.sequence, frames: data.frames,
       bytes: extent.value)))
+
 proc advanceRoot*(owner: var LightJournalCache, prepared: PreparedLightRootAdvance): LightJournalResult[
     LightRootAdvanceReceipt] =
   ## Synchronize replacement evidence/anchor before selecting the new root; only confirmed selection changes the owner's root binding.
@@ -924,6 +987,7 @@ proc advanceRoot*(owner: var LightJournalCache, prepared: PreparedLightRootAdvan
     completed: LightRootAdvanceReceipt(previousRoot: priorRoot, root: plan.image.root,
       previousEpoch: priorEpoch,
       epoch: plan.selected.epoch, sequence: data.sequence, retirement: retirement))
+
 proc discardUnselectedRootAdvance*(owner: var LightJournalCache,
     prepared: PreparedLightRootAdvance): FileError =
   ## Validate the selected source and all candidate prefixes before deleting only this plan's immediate unselected epoch.
@@ -992,6 +1056,7 @@ proc prepareLightRetainedUpdate*(owner: LightJournalCache, proofs: openArray[Lig
       selected: data.selected.checksum, prior: data.image.checksum, epoch: data.selected.epoch,
       before: data.sequence, last: delta.sequence, frames: 1, priorFrames: data.frames,
       priorBytes: observed.value, policy: data.config.journal)))
+
 proc admitRetained*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
     limits: LightRetentionLimits): LightJournalResult[StorageDurability] =
   ## Publish admission and chosen evictions in one synchronized append; uncertainty requires existing explicit strict reopen or tail repair.
@@ -1022,24 +1087,29 @@ type
     retired*: ElementLimit ## Completed canonical pair jobs, including synchronized already-absent retries.
     nextRetiredEpoch*: ManagedEpoch ## First unfinished requested job, or the exclusive end after complete retirement.
     retirement*, cleanup*: FileError ## Confirmed compaction retirement and later cleanup errors remain distinct from publication refusal.
+
 func initialized*(prepared: PreparedLightMaintenance): bool =
   ## Default plans safely report their missing source binding.
   prepared.data != nil
+
 proc compactionNeeded*(prepared: PreparedLightMaintenance): bool {.requires: prepared.data != nil.} =
   ## Inspect a completed threshold decision without granting an independent compaction candidate.
   let data = prepared.data
   assert data != nil
   data.compaction.initialized
+
 proc retiredCount*(prepared: PreparedLightMaintenance): ElementLimit {.requires: prepared.data != nil.} =
   ## Inspect the exact bounded number of canonical pair jobs, without scanning any directory.
   let data = prepared.data
   assert data != nil
   ElementLimit(data.retired)
+
 proc firstRetiredEpoch*(prepared: PreparedLightMaintenance): ManagedEpoch {.requires: prepared.data != nil.} =
   ## Inspect the explicit sweep cursor; a disabled sweep may retain zero.
   let data = prepared.data
   assert data != nil
   data.first
+
 proc prepareLightMaintenance*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
     expectedSequence: LightDeltaSequence, limits: LightMaintenanceLimits): LightJournalResult[
         PreparedLightMaintenance] =
@@ -1088,6 +1158,7 @@ proc prepareLightMaintenance*(owner: LightJournalCache, expectedEpoch: ManagedEp
       sequence: data.sequence, frames: data.frames, bytes: observed.value, first: ManagedEpoch(
           first),
       retired: count, compaction: compaction)))
+
 proc maintenanceSource(data: JournalOwner, plan: MaintenanceData): FileError =
   ## Any physical/image/ordinary-update/policy change stales a prepared sweep, including same-root return cycles.
   if not samePolicy(data.config.snapshot, plan.source.snapshot) or
@@ -1104,6 +1175,7 @@ proc maintenanceSource(data: JournalOwner, plan: MaintenanceData): FileError =
   if observed.error != FileError.None: return observed.error
   if observed.value != plan.bytes: return FileError.StaleView
   FileError.None
+
 proc maintain*(owner: var LightJournalCache, prepared: PreparedLightMaintenance): LightJournalResult[
     LightMaintenanceReceipt] =
   ## Confirm optional compaction before bounded retired-pair jobs; later cleanup failures return exact progress at the confirmed head.
@@ -1144,6 +1216,7 @@ proc maintain*(owner: var LightJournalCache, prepared: PreparedLightMaintenance)
     receipt.retired = ElementLimit(completed)
     receipt.nextRetiredEpoch = ManagedEpoch(cursor)
   LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
+
 proc discardUnselectedMaintenance*(owner: var LightJournalCache,
     prepared: PreparedLightMaintenance): FileError =
   ## Explicitly discard only a matching unselected maintenance compaction; source appends retain the existing cleanup-only tolerance.

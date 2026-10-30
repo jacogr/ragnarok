@@ -36,18 +36,22 @@ type
 func error*[T](outcome: ComputedRoundResult[T]): ComputedRoundError =
   ## Inspect selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedRoundResult[T]): T
     {.requires: outcome.status == ComputedRoundError.None.} =
   ## Guard complete-success extraction under optimized compilation.
   outcome.completed
+
 func queueError*[T](outcome: ComputedRoundResult[T]): AccumulationQueueError
     {.requires: outcome.status == ComputedRoundError.QueueFailure.} =
   ## Inspect only the genuine selected queue refusal.
   outcome.queueReason
+
 func roundError*[T](outcome: ComputedRoundResult[T]): AccumulationRoundError
     {.requires: outcome.status == ComputedRoundError.RoundFailure.} =
   ## Inspect only the genuine selected initial-round refusal.
   outcome.roundReason
+
 proc computedRoundSource*(round: ComputedAccumulationRound): ComputedRoundResult[
     ComputedReportSuccessor] =
   ## Retain all original computed reports and the matching pending-assignment successor.
@@ -56,6 +60,7 @@ proc computedRoundSource*(round: ComputedAccumulationRound): ComputedRoundResult
       status: ComputedRoundError.Uninitialized)
   ComputedRoundResult[ComputedReportSuccessor](status: ComputedRoundError.None,
       completed: data.source)
+
 proc computedRoundPlan*(round: ComputedAccumulationRound): ComputedRoundResult[
     BlockAccumulationRound] =
   ## Share the actual parent-bound initial plan, never detached invocation observations.
@@ -64,11 +69,13 @@ proc computedRoundPlan*(round: ComputedAccumulationRound): ComputedRoundResult[
       status: ComputedRoundError.Uninitialized)
   ComputedRoundResult[BlockAccumulationRound](status: ComputedRoundError.None,
       completed: data.round)
+
 proc computedRoundParameters*(round: ComputedAccumulationRound): ComputedRoundResult[Parameters] =
   ## Copy the exact original fixed parameter tuple for inspection without granting replacement authority.
   let data = round.data
   if data == nil: return ComputedRoundResult[Parameters](status: ComputedRoundError.Uninitialized)
   ComputedRoundResult[Parameters](status: ComputedRoundError.None, completed: data.parameters)
+
 proc prepareComputedRound*(source: ComputedReportSuccessor,
     config: ComputedRoundConfig): ComputedRoundResult[ComputedAccumulationRound] =
   ## Require original semantic gas before deriving the maintained queue and exact-parent privilege/input plan.

@@ -53,9 +53,11 @@ type
 func error*(value: WriteResult): ContainerError =
   ## Read a completed write's reason without exposing a writable discriminator.
   value.status
+
 func error*(value: BlobResult): ContainerError =
   ## Read a blob decode's reason; default construction remains Uninitialized.
   value.status
+
 func error*(value: SequenceResult): ContainerError =
   ## Read a sequence decode's reason without granting access to success data.
   value.status
@@ -63,25 +65,30 @@ func error*(value: SequenceResult): ContainerError =
 func written*(value: WriteResult): int {.inline, requires: value.status == ContainerError.None.} =
   ## Completed output size; Nimony proves success at the call or retains a runtime contract guard.
   value.byteWritten
+
 func offset*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
   ## Payload start in the original borrowed input; failed/default results cannot expose it.
   value.byteOffset
+
 func length*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
   ## Payload byte count; the precondition rejects attempts to use a failed decode as an empty blob.
   value.byteLength
+
 func consumed*(value: BlobResult): int {.inline, requires: value.status == ContainerError.None.} =
   ## Complete blob prefix extent; failures cannot advance a caller cursor.
   value.byteConsumed
+
 func count*(value: SequenceResult): int {.inline, requires: value.status == ContainerError.None.} =
   ## Number of copied sequence elements; caller storage is readable only after success.
   value.elementCount
+
 func consumed*(value: SequenceResult): int {.inline, requires: value.status ==
     ContainerError.None.} =
   ## Complete sequence prefix extent; failures expose no progress.
   value.byteConsumed
 
-# Check address-range intersection without adding a length to a possibly large pointer value.
 proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].} =
+  ## Check address-range intersection without adding a length to a possibly large pointer value.
   # Empty spans cannot alias; their pointers may also be nil and need not be inspected.
   if aLen == 0 or bLen == 0: return false
   let left = cast[uint](a)
@@ -92,8 +99,8 @@ proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].}
     # The same check applies with the later and earlier spans exchanged.
     left - right < uint(bLen)
 
-# Validate a canonical length prefix, limit and complete fixed-stride payload without multiplying first.
 proc readFrame(input: openArray[byte], stride: int, limit: uint64): FrameResult {.raises: [].} =
+  ## Validate a canonical length prefix, limit and complete fixed-stride payload without multiplying first.
   let prefix = natural.decode(input)
   # Preserve the distinction between incomplete and overlong natural length prefixes.
   if not prefix.ok:

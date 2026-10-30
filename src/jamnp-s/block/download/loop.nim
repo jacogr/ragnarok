@@ -50,12 +50,15 @@ type
 proc `=copy`*(destination: var BlockDownloadLoop, source: BlockDownloadLoop) {.
     error: "BlockDownloadLoop owns stable native callbacks and exclusive adoption".}
   ## Copying the aggregate would duplicate callback addresses and result-consumption authority.
+
 proc `=dup`*(source: BlockDownloadLoop): BlockDownloadLoop {.error.}
   ## Explicitly forbid composite duplication independently of nested owner hooks.
+
 proc requireClosed(dispatcher: BlockDownloadLoop) {.requires:
     dispatcher.status in [DownloadLoopStage.Uninitialized, DownloadLoopStage.Closed].} =
   ## Even an endpoint-free configured dispatcher must release its Services borrow explicitly.
   discard
+
 proc `=wasMoved`*(dispatcher: var BlockDownloadLoop) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(dispatcher.catalog)
@@ -88,18 +91,22 @@ proc `=destroy`*(dispatcher: BlockDownloadLoop) =
 func stage*(dispatcher: BlockDownloadLoop): DownloadLoopStage =
   ## Inspect progress without exposing native owners or mutable session state.
   dispatcher.status
+
 func sessionFailure*(dispatcher: BlockDownloadLoop): DownloadSessionFailure {.requires:
     dispatcher.status notin [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling].} =
   ## Retain the latest selected admission/reception/preparation refusal for diagnostics, including retries.
   dispatcher.refusal
+
 func completed*(dispatcher: BlockDownloadLoop): bool =
   ## A retained adoption refusal also counts as an observed result, never as successful adoption.
   dispatcher.hasCompletion
+
 func adoption*(dispatcher: BlockDownloadLoop): ApplicationChainResult[BlockSnapshot] {.
     requires: dispatcher.hasCompletion and dispatcher.status notin [DownloadLoopStage.Preparing,
         DownloadLoopStage.Cancelling].} =
   ## Copy only a real consumed Services result; its own success/failure guards remain authoritative.
   dispatcher.completion
+
 proc readyPeers*(dispatcher: BlockDownloadLoop): seq[DownloadPeerId] =
   ## Return copied authenticated identities without granting native callback access.
   dispatcher.catalog.readyPeers

@@ -30,51 +30,66 @@ type
     case status: LightSelectionError
     of None: completed: T
     else: discard
+
 func error*[T](outcome: LightSelectionResult[T]): LightSelectionError =
   ## Inspect a typed refusal without completed-data access.
   outcome.status
+
 func value*[T](outcome: LightSelectionResult[T]): T {.inline,
     requires: outcome.status == LightSelectionError.None.} =
   ## Extract only a complete checked selection or detached encoded bytes.
   outcome.completed
+
 func initialized*(manifest: LightJournalManifest): bool =
   ## Default scalar handles safely report their missing selection authority.
   manifest.ready
+
 func chainId*(manifest: LightJournalManifest): StorageChainId {.requires: manifest.ready.} =
   ## Return the independently selected chain identity by value.
   manifest.chain
+
 func root*(manifest: LightJournalManifest): StateRoot {.requires: manifest.ready.} =
   ## Return the complete trusted root; partial evidence never supplies it.
   manifest.stateRoot
+
 func epoch*(manifest: LightJournalManifest): ManagedEpoch {.requires: manifest.ready.} =
   ## Read the positive physical file epoch independently of update sequence.
   manifest.selectedEpoch
+
 func baseSequence*(manifest: LightJournalManifest): LightDeltaSequence {.requires: manifest.ready.} =
   ## Read the checkpoint's local sequence, including the initial zero baseline.
   manifest.baseline
+
 func snapshotChecksum*(manifest: LightJournalManifest): StorageChecksum {.requires: manifest.ready.} =
   ## Bind the selected checkpoint to one exact canonical light evidence image.
   manifest.imageChecksum
+
 func checksum*(manifest: LightJournalManifest): StorageChecksum {.requires: manifest.ready.} =
   ## Bind a journal anchor to this entire checked selection.
   manifest.integrity
+
 func refused[T](reason: LightSelectionError): LightSelectionResult[T] =
   ## Failure leaves the inactive success payload uninitialized.
   LightSelectionResult[T](status: reason)
+
 proc put(output: var seq[byte], offset: int, value: uint64) =
   ## Fixed preallocated widths prove every little-endian metadata write.
   for index in 0..<8: output[offset+index] = byte((value shr (8*index)) and 255)
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Exact manifest/header widths precede every numeric read.
   result = 0
   for index in 0..<8: result = result or (uint64(input[offset+index]) shl (8*index))
+
 proc putHash(output: var seq[byte], offset: int, value: array[32, byte]) =
   ## Fixed field extents precede scalar copies.
   for index in 0..<32: output[offset+index] = value[index]
+
 func hashAt(input: openArray[byte], offset: int): array[32, byte] =
   ## Fixed field extents precede scalar extraction.
   result = default(array[32, byte])
   for index in 0..<32: result[index] = input[offset+index]
+
 proc prefix(manifest: LightJournalManifest): seq[byte] =
   ## Serialize private metadata with a reserved footer; callers establish initialization before entry.
   result = newSeq[byte](LightJournalManifestBytes)
@@ -84,10 +99,12 @@ proc prefix(manifest: LightJournalManifest): seq[byte] =
   put(result, Magic.len+64, uint64(manifest.selectedEpoch))
   put(result, Magic.len+72, uint64(manifest.baseline))
   putHash(result, Magic.len+80, array[32, byte](manifest.imageChecksum))
+
 proc bytes*(manifest: LightJournalManifest): seq[byte] {.requires: manifest.ready.} =
   ## Return detached transport; mutations cannot alter the checked scalar selection.
   result = prefix(manifest)
   putHash(result, result.len-32, array[32, byte](manifest.integrity))
+
 proc prepareLightJournalManifest*(image: PreparedLightSnapshot, epoch: ManagedEpoch,
     baseline: LightDeltaSequence, limit: ByteLimit): LightSelectionResult[LightJournalManifest] =
   ## Construct only from an authenticated image and positive physical epoch; zero local sequence is valid.
@@ -103,6 +120,7 @@ proc prepareLightJournalManifest*(image: PreparedLightSnapshot, epoch: ManagedEp
       LightSelectionError.BackendFailure)
   manifest.integrity = StorageChecksum(array[32, byte](hashed.value))
   LightSelectionResult[LightJournalManifest](status: LightSelectionError.None, completed: manifest)
+
 proc decodeLightJournalManifest*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
     limit: ByteLimit): LightSelectionResult[LightJournalManifest] =
   ## Require one exact schema, caller identity, positive epoch and checksum with no fallback or trailing bytes.
@@ -129,6 +147,7 @@ proc decodeLightJournalManifest*(input: openArray[byte], chain: StorageChainId, 
     completed: LightJournalManifest(ready: true, chain: chain, stateRoot: root,
       selectedEpoch: ManagedEpoch(epoch), baseline: LightDeltaSequence(number(input, Magic.len+72)),
       imageChecksum: StorageChecksum(hashAt(input, Magic.len+80)), integrity: StorageChecksum(checksum)))
+
 proc encodeLightJournalAnchor*(manifest: LightJournalManifest,
     limit: ByteLimit): LightSelectionResult[seq[byte]] =
   ## Bind the new journal to the exact selected manifest and checkpoint sequence under its own checksum.
@@ -143,6 +162,7 @@ proc encodeLightJournalAnchor*(manifest: LightJournalManifest,
   if hashed.error != CryptoError.None: return refused[seq[byte]](LightSelectionError.BackendFailure)
   putHash(output, output.len-32, array[32, byte](hashed.value))
   LightSelectionResult[seq[byte]](status: LightSelectionError.None, completed: output)
+
 proc validateLightJournalAnchor*(input: openArray[byte], manifest: LightJournalManifest,
     limit: ByteLimit): LightSelectionError =
   ## Validate exactly one anchor before any following frame is interpreted; incomplete anchors are never repair authority.

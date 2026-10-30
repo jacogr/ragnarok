@@ -37,30 +37,37 @@ type
 func error*[T](outcome: ComputedChainResult[T]): ComputedChainError =
   ## Inspect selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedChainResult[T]): T {.requires: outcome.status ==
     ComputedChainError.None.} =
   ## Extract only a fully installed child receipt under optimized contracts.
   outcome.completed
+
 func stateError*[T](outcome: ComputedChainResult[T]): StateStoreError {.requires: outcome.status ==
     ComputedChainError.StateFailure.} =
   ## Inspect only a failed live-target lookup.
   outcome.stateReason
+
 func publicationFailure*[T](outcome: ComputedChainResult[T]): ComputedStatePublicationResult[
     PublishedComputedState] {.requires: outcome.status == ComputedChainError.PublicationFailure.} =
   ## Preserve the complete failed private publication and its selected nested cause.
   outcome.publicationReason
+
 func headerError*[T](outcome: ComputedChainResult[T]): HeaderError {.requires: outcome.status ==
     ComputedChainError.HeaderFailure.} =
   ## Inspect only failed actual-header metadata or canonical encoding.
   outcome.headerReason
+
 func captureError*[T](outcome: ComputedChainResult[T]): GenesisError {.requires: outcome.status ==
     ComputedChainError.CaptureFailure.} =
   ## Inspect only a failed structural child capture.
   outcome.captureReason
+
 func viewError*[T](outcome: ComputedChainResult[T]): ViewAdvanceError {.requires: outcome.status ==
     ComputedChainError.ViewFailure.} =
   ## Inspect only an actual direct-child append refusal.
   outcome.viewReason
+
 proc computedChainPublication*(advanced: AdvancedComputedChain): ComputedChainResult[
     PublishedComputedState] =
   ## Share original computed provenance and exact privately published map after caller handles retire.
@@ -69,12 +76,14 @@ proc computedChainPublication*(advanced: AdvancedComputedChain): ComputedChainRe
       status: ComputedChainError.Uninitialized)
   ComputedChainResult[PublishedComputedState](status: ComputedChainError.None,
       completed: data.publication)
+
 proc computedChainBlock*(advanced: AdvancedComputedChain): ComputedChainResult[BlockSnapshot] =
   ## Share the actual fully installed child, never a caller-supplied observation.
   let data = advanced.data
   if data == nil: return ComputedChainResult[BlockSnapshot](
       status: ComputedChainError.Uninitialized)
   ComputedChainResult[BlockSnapshot](status: ComputedChainError.None, completed: data.child)
+
 proc advanceComputedChain*(state: var StateStore, view: var ChainView,
     source: ComposedComputedState): ComputedChainResult[AdvancedComputedChain] =
   ## Check retained parents/domains, privately publish/capture/append, then replace both single-threaded handles without callbacks.

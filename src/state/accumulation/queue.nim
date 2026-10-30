@@ -53,21 +53,22 @@ type
 func error*[T](outcome: AccumulationQueueResult[T]): AccumulationQueueError =
   ## Inspect a reason without exposing writable variant state.
   outcome.status
+
 func value*[T](outcome: AccumulationQueueResult[T]): T {.inline,
     requires: outcome.status == AccumulationQueueError.None.} =
   ## Extract only a successful immutable handle or copied member.
   outcome.completed
 
-## Fixed octets order identities without exchanging their nominal hash domain.
 func compareHash(a, b: PackageHash): int =
+  ## Fixed octets order identities without exchanging their nominal hash domain.
   # Compare fixed identity bytes from most significant octet to least.
   for i in 0..<32:
     if a.bytes[i] < b.bytes[i]: return -1 # First smaller byte decides.
     if a.bytes[i] > b.bytes[i]: return 1 # First larger byte decides.
   0
 
-## Binary membership in a sorted scratch set; duplicates in the index are harmless union evidence.
 func contains(values: seq[PackageHash], key: PackageHash): bool =
+  ## Binary membership in a sorted scratch set; duplicates in the index are harmless union evidence.
   var low = 0
   var high = values.len
   # Halve the remaining ordered candidates without overflowing midpoint arithmetic.
@@ -79,9 +80,9 @@ func contains(values: seq[PackageHash], key: PackageHash): bool =
       high = middle # Preserve the first possible equal identity.
   low < values.len and compareHash(values[low], key) == 0
 
-## E preserves sequence order, drops satisfied packages and subtracts their hashes from dependencies.
-## Inputs and output are private bounded scratch; report owners stay shared and immutable.
 proc edit(rows: ReadyRow, hashes: seq[PackageHash]): ReadyRow =
+  ## E preserves sequence order, drops satisfied packages and subtracts their hashes from dependencies.
+  ## Inputs and output are private bounded scratch; report owners stay shared and immutable.
   result = @[]
   # Apply E to each original position so retained reports preserve their priority.
   for row in rows:

@@ -32,17 +32,21 @@ type
       previousReason: StateComponentError
     else:
       discard # No failed/default alternative carries a selected parent prefix.
+
 func error*[T](outcome: ParentProfileResult[T]): ParentProfileError =
   ## Observe the immutable selected stage only.
   outcome.status
+
 func value*[T](outcome: ParentProfileResult[T]): T {.inline, requires: outcome.status ==
     ParentProfileError.None.} =
   ## Extract only a complete initialized parent owner, fixed fact or admitted view copy.
   outcome.completed
+
 func previousError*[T](outcome: ParentProfileResult[T]): StateComponentError {.inline,
     requires: outcome.status == ParentProfileError.PreviousFailure.} =
   ## Preserve the original previous-roster decoder failure without a default successful roster.
   outcome.previousReason
+
 proc captureParentProfile*(view: ChainView, limits: ParentProfileLimits): ParentProfileResult[
     SelectedParentProfile] =
   ## Inspect original fixed observations and admit all view/index retention before any whole-view or C9 payload copy.
@@ -83,18 +87,21 @@ proc captureParentProfile*(view: ChainView, limits: ParentProfileLimits): Parent
   ParentProfileResult[SelectedParentProfile](status: ParentProfileError.None,
       completed: SelectedParentProfile(data: ParentProfileData(view: view, context: context,
       profile: profile, info: ParentProfileInfo(view: retention, previousBytes: extent))))
+
 proc parentProfileInfo*(source: SelectedParentProfile): ParentProfileResult[ParentProfileInfo] =
   ## Copy bounded retention/decode observations only from an initialized selected parent.
   let data = source.data
   if data == nil:
     return ParentProfileResult[ParentProfileInfo](status: ParentProfileError.Uninitialized)
   ParentProfileResult[ParentProfileInfo](status: ParentProfileError.None, completed: data.info)
+
 proc parentStateProfile*(source: SelectedParentProfile): ParentProfileResult[StateProfile] =
   ## Copy cardinalities derived from the same exact head and previous chapter.
   let data = source.data
   if data == nil:
     return ParentProfileResult[StateProfile](status: ParentProfileError.Uninitialized)
   ParentProfileResult[StateProfile](status: ParentProfileError.None, completed: data.profile)
+
 proc parentContext*(source: SelectedParentProfile): ParentProfileResult[BlockSnapshotContext] =
   ## Retain original fixed head/header/map/full-Parameters facts without copying its private indexes.
   let data = source.data
@@ -102,6 +109,7 @@ proc parentContext*(source: SelectedParentProfile): ParentProfileResult[BlockSna
     return ParentProfileResult[BlockSnapshotContext](status: ParentProfileError.Uninitialized)
   ParentProfileResult[BlockSnapshotContext](status: ParentProfileError.None,
       completed: data.context)
+
 proc copyParentView*(source: SelectedParentProfile, limit: ByteLimit): ParentProfileResult[ChainView] =
   ## Explicitly admit a complete detached view/index copy, preserving ordered history and presence/absence of finality.
   let data = source.data

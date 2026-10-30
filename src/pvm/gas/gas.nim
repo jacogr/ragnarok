@@ -42,15 +42,17 @@ type
 func error*(r: GasResult): GasError =
   ## Read status without exposing the variant tag to mutation.
   r.status
+
 func value*(r: GasResult): BlockGas {.requires: r.status == GasError.None.} =
   ## The caller must select success before extracting the copied block charge.
   r.completed
 
-# Convert an already saturated register identifier to its singleton dependency set.
-func bit(index: RegisterIndex): uint16 = 1'u16 shl int(byte(index))
+func bit(index: RegisterIndex): uint16 =
+  ## Convert an already saturated register identifier to its singleton dependency set.
+  1'u16 shl int(byte(index))
 
-# Derive all syntactically read/written registers, including conditional-move fallbacks.
 func profile(item: Instruction): Profile =
+  ## Derive all syntactically read/written registers, including conditional-move fallbacks.
   result = Profile(sources: 0, destinations: 0, cycles: 1, slots: 1,
     units: [1'i8, 0'i8, 0'i8, 0'i8, 0'i8])
   let a = bit(item.a)
@@ -205,8 +207,8 @@ func profile(item: Instruction): Profile =
     # Validated instructions exhaust the pinned opcode table.
     discard
 
-# Check memberwise resource availability without signed subtraction underflow.
 func fits(needed, available: Units): bool =
+  ## Check memberwise resource availability without signed subtraction underflow.
   result = true
   # Every resource kind must be simultaneously available.
   for i in 0..<5:

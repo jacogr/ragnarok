@@ -55,36 +55,37 @@ type
 func error*[T](value: PrivilegeResult[T]): PrivilegeError =
   ## A reason is read-only and never authorizes values or partial parsing progress.
   value.status
+
 func value*[T](value: PrivilegeResult[T]): T {.inline, requires: value.status ==
     PrivilegeError.None.} =
   ## Public payloads and internal scalar/layout proofs require success under optimized builds too.
   value.completed
 
-## Reject unsupported profiles before any field access or native count conversion.
 proc validate(config: PrivilegeConfig): PrivilegeError =
+  ## Reject unsupported profiles before any field access or native count conversion.
   if uint64(config.cores) < 2 or uint64(config.cores) > 341:
     return PrivilegeError.InvalidConfig # Match the existing tiny/full core-profile domain.
   if uint64(config.maxBytes) < 4*(uint64(config.cores)+3):
     return PrivilegeError.LimitExceeded # All fixed E4 roles consume parent budget even before the dictionary count.
   PrivilegeError.None
 
-## Charge a proved nonnegative byte extent before arithmetic or a subsequent read/write.
 proc grow(cursor: var int, amount: int, config: PrivilegeConfig): PrivilegeError =
+  ## Charge a proved nonnegative byte extent before arithmetic or a subsequent read/write.
   if amount > high(int)-cursor: return PrivilegeError.LengthOverflow # Check before native addition.
   cursor += amount
   if uint64(cursor) > uint64(config.maxBytes): return PrivilegeError.LimitExceeded # Count/key/value bytes share one budget.
   PrivilegeError.None
 
-## Bound announced dictionary work and native typed storage before traversing any pair.
 proc countError(count: uint64, config: PrivilegeConfig): PrivilegeError =
+  ## Bound announced dictionary work and native typed storage before traversing any pair.
   if count > uint64(config.maxAlways): return PrivilegeError.LimitExceeded # Caller policy precedes work/allocation.
   if count > uint64(high(int) div sizeof(AlwaysAccumulate)):
     return PrivilegeError.LengthOverflow # Typed storage must fit, not just minimal wire size.
   PrivilegeError.None
 
-## Read one canonical natural into a local fixed result; only success advances the private cursor.
 proc readNatural(input: openArray[byte], cursor: var int,
     config: PrivilegeConfig): PrivilegeResult[uint64] =
+  ## Read one canonical natural into a local fixed result; only success advances the private cursor.
   let parsed = natural.decode(input.toOpenArray(cursor, input.len-1))
   if not parsed.ok:
     if parsed.error == DecodeError.truncated:
@@ -96,22 +97,22 @@ proc readNatural(input: openArray[byte], cursor: var int,
       status: error) # Complete scalar still consumes policy.
   PrivilegeResult[uint64](status: PrivilegeError.None, completed: uint64(parsed.value))
 
-## Copy one prevalidated E4 service with explicit little-endian shifts, retaining no input coordinates.
 proc serviceAt(input: openArray[byte], offset: int): ServiceIndex =
+  ## Copy one prevalidated E4 service with explicit little-endian shifts, retaining no input coordinates.
   var value = 0'u32
   # Every caller has already proved all four bytes present.
   for j in 0..<4: value = value or (uint32(input[offset+j]) shl (j*8))
   ServiceIndex(value)
 
-## Copy one proved E8 gas allowance without alignment or host-endian assumptions.
 proc gasAt(input: openArray[byte], offset: int): PrivilegeGas =
+  ## Copy one proved E8 gas allowance without alignment or host-endian assumptions.
   var value = 0'u64
   # Whole-parent preflight proves all eight source bytes exist before capture.
   for j in 0..<8: value = value or (uint64(input[offset+j]) shl (j*8))
   PrivilegeGas(value)
 
-## Preflight the full parent without allocation; key order is numeric, never encoded-octet order.
 proc scan(input: openArray[byte], config: PrivilegeConfig): PrivilegeResult[Layout] =
+  ## Preflight the full parent without allocation; key order is numeric, never encoded-octet order.
   let valid = validate(config)
   if valid != PrivilegeError.None: return PrivilegeResult[Layout](
       status: valid) # Invalid policy precedes input work.
@@ -166,23 +167,23 @@ proc decodePrivilegeState*(input: openArray[byte], config: PrivilegeConfig): Pri
     completed: PrivilegeRead(snapshot: PrivilegeSnapshot(data: data),
         consumed: checked.value.consumed))
 
-## Commit a canonical natural after the whole source has passed sizing, order and byte-policy checks.
 proc putNatural(value: uint64, output: var seq[byte], cursor: var int) =
+  ## Commit a canonical natural after the whole source has passed sizing, order and byte-policy checks.
   let encoded = natural.encode(JamNatural(value))
   # The measured final destination already contains space for every canonical scalar byte.
   for i in 0..<encoded.len:
     output[cursor] = encoded.bytes[i]
     inc cursor
 
-## Commit an E4 service identifier for either a fixed role or a dictionary key.
 proc putService(value: ServiceIndex, output: var seq[byte], cursor: var int) =
+  ## Commit an E4 service identifier for either a fixed role or a dictionary key.
   # Fixed E4 retains leading zeroes and every high service-index octet.
   for j in 0..<4:
     output[cursor] = byte((uint32(value) shr (j*8)) and 255)
     inc cursor
 
-## Commit an E8 gas allowance only after complete parent extent and order validation.
 proc putGas(value: PrivilegeGas, output: var seq[byte], cursor: var int) =
+  ## Commit an E8 gas allowance only after complete parent extent and order validation.
   # Every high and low gas octet is retained, including zero padding and uint64 maximum.
   for j in 0..<8:
     output[cursor] = byte((uint64(value) shr (j*8)) and 255)
