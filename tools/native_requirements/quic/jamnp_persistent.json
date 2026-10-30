@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": [
+    "crypto",
+    "quic"
+  ],
+  "libraries": [
+    "crypto",
+    "quic"
+  ],
+  "observers": [],
+  "prepared": true,
+  "provider": "download_peers"
+}

@@ -6,7 +6,7 @@
 
 import std/assertions
 import ../quic/transport
-import ./[protocol, announcements, announcement_stream]
+import ./[protocol, announcements, announcement_stream, streams]
 import ../codec/header
 
 const MaxBlock = 65536 ## Empty Tiny blocks and variable epoch markers fit this explicit local ceiling.
@@ -85,6 +85,25 @@ proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cd
   let owner = cast[ptr DevnetNetwork](user)
   cint(validPeer(cast[ptr byte](der), length, owner.expected))
 
+proc selectPersistent(owner: ptr DevnetNetwork, stream: NativeStream): bool {.raises: [].} =
+  ## Reject stale UP0 arrivals before replacing any live route on this same authenticated connection.
+  let candidate = stream.streamId
+  if not persistentInitiator(candidate): return false
+  # Inspect every retained route first so slot ordering cannot revoke an older route for a rejected candidate.
+  for index in 0..<owner.responses.len:
+    let old = owner.responses[index].announcement.handle
+    if old != NativeStream(nil) and old != stream and
+        not owner.responses[index].announcement.failed and samePeer(old, stream) == 1:
+      if not preferPersistent(candidate, old.streamId): return false
+  # Revoke every older claim before resetting its native stream. Close retains ownership of its slot.
+  for index in 0..<owner.responses.len:
+    let old = owner.responses[index].announcement.handle
+    if old != NativeStream(nil) and old != stream and
+        not owner.responses[index].announcement.failed and samePeer(old, stream) == 1:
+      discard owner.responses[index].announcement.event(old, 4)
+      streamAbort(old)
+  true
+
 proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## One bounded native read/write per event preserves progress across all admitted connections.
   let owner = cast[ptr DevnetNetwork](user)
@@ -119,7 +138,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
         streamAbort(stream)
         return # FIN/errors before the stream kind cannot select a responder.
       if kind == 0:
-        if not owner.discovery:
+        if not owner.discovery or not selectPersistent(owner, stream):
           streamAbort(stream)
           return
         let bound = response.announcement.bindStream(stream, false, owner.localHandshake,

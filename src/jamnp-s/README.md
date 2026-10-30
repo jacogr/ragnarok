@@ -8,6 +8,7 @@ adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |
 | [`protocol.nim`](protocol.nim) | Pinned JAMNP-S peer identity, names and CE framing checks |
 | [`../quic/io.nim`](../quic/io.nim), [`../quic/transport.nim`](../quic/transport.nim) | Underlying POSIX readiness/UDP dispatch and native transport callbacks |
