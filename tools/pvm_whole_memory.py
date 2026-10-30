@@ -113,6 +113,63 @@ def summarize(runs):
     return result
 
 
+BUILD_VARIABLES=('PATH','CC','CXX','CFLAGS','CPPFLAGS','CXXFLAGS','LDFLAGS','NIMFLAGS','NIMPATH',
+    'SDKROOT','DEVELOPER_DIR','MACOSX_DEPLOYMENT_TARGET','CPATH','C_INCLUDE_PATH','CPLUS_INCLUDE_PATH',
+    'LIBRARY_PATH','DYLD_LIBRARY_PATH','LD_LIBRARY_PATH')
+
+
+def owned_inputs():
+    """Discover the full current owned source/configuration set, including new untracked consumed files."""
+    return sorted(set([*[p for p in (ROOT/'src').rglob('*') if p.is_file()],
+        *[p for p in (ROOT/'native/pvm_jit').rglob('*') if p.is_file()],
+        *sorted((ROOT/'tools').glob('*.py')),*sorted(ROOT.glob('tests/test_pvm_whole*.py')),
+        ROOT/'spec/pvm-whole-memory-experiment.md',
+        *[p for p in (ROOT/'tests/performance').rglob('pvm_whole*') if p.is_file()],
+        *[p for p in (ROOT/'tests/performance/pvm_whole_memory').rglob('*') if p.is_file()],
+        *[p for p in (ROOT/'tests/fixtures/pvm-pinky').rglob('*') if p.is_file()],
+        *[p for p in (ROOT/'tests/fixtures/pvm-sieve').rglob('*') if p.is_file()],
+        *[ROOT/'spec'/name for name in ('toolchain.json','polkavm-pins.json','bandersnatch-pins.json')],ROOT/'Makefile']))
+
+
+def dependency_inputs(compiler):
+    """Nightly source/identity discovery also rejects newly introduced non-Git dependency files."""
+    return sorted([compiler.parent.parent/'NIGHTLY.txt',
+        *[p for p in (compiler.parent.parent/'lib').rglob('*') if p.is_file()]])
+
+
+def identities_for(paths):
+    """Bind both the complete path set and actual bytes to the reviewed phase."""
+    return {str(p.relative_to(ROOT)):digest(p) for p in paths}
+
+
+def verify_reviewed_inputs(prior, correctness, owned, dependencies, compiler, clang, clang_version, build_environment):
+    """Reject same-HEAD dirty sources/dependencies/configuration before deriving or building any timed image."""
+    if identities_for(owned)!=prior.get('owned_sources'):raise ValueError('owned source/configuration differs from reviewed correctness')
+    if identities_for(dependencies)!=prior.get('dependency_sources'):raise ValueError('non-Git dependency source differs from reviewed correctness')
+    for key,path in (('compiler',compiler),('clang',clang)):
+        if str(path)!=prior[key]['path'] or digest(path)!=prior[key]['sha256']:raise ValueError('reviewed compiler identity changed')
+    if clang_version!=prior['clang']['version']['output']:raise ValueError('reviewed Clang/toolchain version changed')
+    if build_environment!=prior.get('build_environment'):raise ValueError('reviewed build configuration changed')
+    archive=Path(correctness)/'consumed-sources.tar.gz'
+    if digest(archive)!=prior['source_archive']['sha256']:raise ValueError('reviewed correctness source archive changed')
+    for name,wanted in prior['identities'].items():
+        if digest(ROOT/name)!=wanted:raise ValueError('reviewed source/input/image evidence changed: '+name)
+
+
+def verify_generated_projection(folder, correctness):
+    """Core/backing/header must be byte-identical; four drivers may differ only by the reviewed clock projection."""
+    correctness=Path(correctness)
+    for path in folder.iterdir():
+        if not path.is_file() or path.suffix not in ('.nim','.inc','.h'):continue
+        previous=correctness/path.name
+        current=path.read_text()
+        if path.name in ('pinky.nim','sieve.nim','baseline_pinky.nim','baseline_sieve.nim'):
+            current=current.replace('cpuNs()',"0'u64").replace('wallNs()',"0'u64")
+            needle='let inputCpuStart'
+            if current.count(needle)!=1:raise ValueError('clock projection anchor changed')
+            current=current.replace(needle,'echo "CORRECTNESS_ONLY_CLOCKS_DISABLED,1"\n'+needle,1)
+        if current!=previous.read_text():raise ValueError('unreviewed generated projection: '+path.name)
+
 def run(args):
     """Offline preprovisioned source-bound correctness first, independently cleared exact-head comparison second."""
     if platform.machine().lower() not in ('arm64','aarch64') or platform.system() not in ('Darwin','Linux'):
@@ -152,6 +209,9 @@ def run(args):
         after=resource.getrusage(resource.RUSAGE_CHILDREN)
         row['process_cpu_ns']=round(((after.ru_utime+after.ru_stime)-(before.ru_utime+before.ru_stime))*1e9)
         row['process_elapsed_ns']=time.monotonic_ns()-start
+        row['guest_environment']={name:env[name] for name in ('RAGNAROK_PVM_GUEST','RAGNAROK_PVM_SIEVE_INPUT',
+            'RAGNAROK_PVM_SIEVE_EXPECTED','RAGNAROK_PVM_SIEVE_SAMPLES','RAGNAROK_PVM_SIEVE_ASSERT_PROBE',
+            'RAGNAROK_PVM_FRAME_ADDRESS','RAGNAROK_PVM_FRAME_BYTES') if env and name in env}
         report['commands'].append(dict(name=name,**row));save()
         if required and row['exit_code']:raise RuntimeError(name+' failed: '+row['output'][-2000:])
         return row
@@ -164,7 +224,16 @@ def run(args):
         if json.loads((ROOT/'spec/polkavm-pins.json').read_text())['commit']!=report['upstream_pin']:raise ValueError('private experiment pin drift')
         for primitive in ('src/pvm/machine.nim','src/pvm/program.nim','src/codec/natural.nim'):
             if (ROOT/primitive).read_bytes()!=subprocess.check_output(['git','show',report['source_baseline']+':'+primitive],cwd=ROOT):raise ValueError('production primitive drift: '+primitive)
+        owned=owned_inputs();dependencies=dependency_inputs(compiler)
+        report['owned_sources']=identities_for(owned);report['dependency_sources']=identities_for(dependencies)
+        report['build_environment']={name:os.environ[name] for name in BUILD_VARIABLES if name in os.environ}
+        if args.compare:
+            verify_reviewed_inputs(prior,args.correctness,owned,dependencies,compiler,clang,
+                report['clang']['version']['output'],report['build_environment'])
+            if digest(folder/'independent-gate/correctness-consumed-sources.tar.gz')!=prior['source_archive']['sha256']:
+                raise ValueError('copied correctness source archive changed')
         paths=derive(folder,clocked=args.compare)
+        if args.compare:verify_generated_projection(folder,args.correctness)
         # Copy exact immutable reference oracles from the independently closed original cohorts.
         oracle_paths=[];report['oracles']={}
         for guest in GUESTS:
@@ -183,15 +252,14 @@ def run(args):
                     oracle_paths.append(destination/source.name)
             report['oracles'][guest]=dict(original_results_sha256=digest(target/'results.json'),source_archive_sha256=digest(target/'consumed-sources.tar.gz'),upstream_pin=original['fixture']['polkavm_commit'])
             if report['oracles'][guest]['upstream_pin']!=report['upstream_pin']:raise ValueError('upgraded pin cannot reinterpret old evidence')
-        source_paths=[*[p for p in (ROOT/'src').rglob('*') if p.is_file()],
-            *[p for p in (ROOT/'native/pvm_jit').rglob('*') if p.is_file()],
-            *sorted((ROOT/'tools').glob('*.py')),*sorted(ROOT.glob('tests/test_pvm_whole*.py')),ROOT/'spec/pvm-whole-memory-experiment.md',*[p for p in (ROOT/'tests/performance').rglob('pvm_whole*') if p.is_file()],
-            *[p for p in (ROOT/'tests/performance/pvm_whole_memory').rglob('*') if p.is_file()],
-            *[p for p in (ROOT/'tests/fixtures/pvm-pinky').rglob('*') if p.is_file()],
-            *[p for p in (ROOT/'tests/fixtures/pvm-sieve').rglob('*') if p.is_file()],
-            *[ROOT/'spec'/name for name in ('toolchain.json','polkavm-pins.json','bandersnatch-pins.json')],ROOT/'Makefile',
-            compiler.parent.parent/'NIGHTLY.txt',*[p for p in (compiler.parent.parent/'lib').rglob('*') if p.is_file()],
+        if args.compare:
+            for path in oracle_paths:
+                if path.read_bytes()!=(Path(args.correctness)/path.relative_to(folder)).read_bytes():
+                    raise ValueError('oracle differs from independently reviewed correctness: '+str(path))
+        source_paths=[*owned,*dependencies,
             *[p for p in folder.iterdir() if p.is_file() and p.suffix in ('.nim','.inc','.h')],*oracle_paths,*gate_paths]
+        if identities_for(owned)!=report['owned_sources'] or identities_for(dependencies)!=report['dependency_sources']:
+            raise ValueError('source/dependency changed during derivation')
         identities={p:digest(p) for p in source_paths};report['source_maps']={str(p.relative_to(ROOT)):sha for p,sha in identities.items()}
         archive=folder/'consumed-sources.tar.gz'
         with tarfile.open(archive,'w:gz') as tar:
@@ -237,12 +305,15 @@ def run(args):
                 report['controls'].append(row)
                 if guest=='pinky':
                     env=environment(guest,1);good=Path(env['RAGNAROK_PVM_FRAME_BYTES']).read_bytes();bad=folder/'tampered-frame.bin'
-                    bad.write_bytes(bytes([good[0]^1])+good[1:]);env['RAGNAROK_PVM_FRAME_BYTES']=str(bad)
+                    bad.write_bytes(bytes([good[0]^1])+good[1:]);identities[bad]=digest(bad);env['RAGNAROK_PVM_FRAME_BYTES']=str(bad)
                     row=command([images[arm,guest]],'reject-frame-'+arm,env,False)
                     if row['exit_code']==0 or 'Pinky rendered frame byte' not in row['output']:raise ValueError('inactive exact frame comparison')
                     report['controls'].append(row)
         def seal():
             """All sources, images and immutable oracles stay fixed through controls and every process."""
+            if subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()!=revision:raise ValueError('source revision changed')
+            if identities_for(owned_inputs())!=report['owned_sources'] or identities_for(dependency_inputs(compiler))!=report['dependency_sources']:
+                raise ValueError('owned/dependency input set changed')
             if any(digest(p)!=sha for p,sha in identities.items()):raise ValueError('source/input/image drift')
             if digest(compiler)!=report['compiler']['sha256'] or digest(clang)!=report['clang']['sha256']:raise ValueError('compiler identity drift')
         seal();report['identities']={str(p.relative_to(ROOT)):sha for p,sha in identities.items()};save()

@@ -69,7 +69,11 @@ unique directory retains pre-build consumed sources, projected sources, actual i
 compiler/input/oracle identities and the final seal even on failure.
 
 The exact committed source and source-bound actual correctness report require independent review
-before timing. Its receipt binds `revision`, `source_correctness_gate: passed`, and
+before timing. The gate rechecks complete owned-source/configuration and non-Git dependency path sets
+and hashes, compiler identity/version and build configuration against that reviewed manifest before
+derivation/build. Generated backing/emitter/header bytes must be identical; only the explicit guest
+clock projection may change in four drivers. The consumed correctness archive is hash-checked before
+and after copying. Per-process/final seals reject new files or source changes. Its receipt binds `revision`, `source_correctness_gate: passed`, and
 `correctness_results_sha256`. After that gate:
 
 ```sh

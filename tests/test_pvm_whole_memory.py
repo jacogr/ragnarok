@@ -6,6 +6,7 @@ import sys
 import hashlib
 import tempfile
 import unittest
+from unittest import mock
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 import pvm_whole_memory as h
 from pvm_whole_memory_projection import derive
@@ -72,6 +73,50 @@ class WholeMemoryTests(unittest.TestCase):
             section=native[native.index('    writer*: nil pointer'):native.index('  LoadCallback')]
             self.assertTrue(all(not line.strip() or line.startswith('    ') and not line.startswith('     ')
                                 for line in section.splitlines()))
+
+    def test_same_head_dirty_template_refuses_before_build(self):
+        """Uncommitted consumed-byte changes cannot reuse an exact-HEAD correctness receipt."""
+        with tempfile.TemporaryDirectory(prefix='pvm-whole-gate-test-',dir=h.ROOT/'build') as temporary:
+            root=Path(temporary);template=root/'lease.nim.inc';library=root/'library.nim'
+            compiler=root/'nimony';clang=root/'clang';correctness=root/'correctness';correctness.mkdir()
+            archive=correctness/'consumed-sources.tar.gz'
+            for path,text in ((template,'reviewed lease'),(library,'reviewed dependency'),
+                              (compiler,'reviewed compiler'),(clang,'reviewed clang'),(archive,'reviewed archive')):
+                path.write_text(text)
+            with mock.patch.object(h,'ROOT',root):
+                prior=dict(revision='same-head',owned_sources=h.identities_for([template]),
+                    dependency_sources=h.identities_for([library]),build_environment={},
+                    compiler=dict(path=str(compiler),sha256=h.digest(compiler)),
+                    clang=dict(path=str(clang),sha256=h.digest(clang),version=dict(output='version')),
+                    source_archive=dict(sha256=h.digest(archive)),identities=h.identities_for([template,library,archive]))
+                arguments=(prior,correctness,[template],[library],compiler,clang,'version',{})
+                h.verify_reviewed_inputs(*arguments)
+                template.write_text('unreviewed lease, same HEAD')
+                with self.assertRaisesRegex(ValueError,'owned source/configuration'):
+                    h.verify_reviewed_inputs(*arguments)
+                    self.fail('unreviewed source reached the build boundary')
+                self.assertEqual(prior['revision'],'same-head')
+                template.write_text('reviewed lease')
+                added=root/'new-template.nim.inc';added.write_text('new consumed source')
+                with self.assertRaisesRegex(ValueError,'owned source/configuration'):
+                    h.verify_reviewed_inputs(prior,correctness,[template,added],[library],compiler,clang,'version',{})
+                library.write_text('unreviewed non-Git dependency')
+                with self.assertRaisesRegex(ValueError,'non-Git dependency'):
+                    h.verify_reviewed_inputs(*arguments)
+                library.write_text('reviewed dependency')
+                archive.write_text('changed correctness archive')
+                with self.assertRaisesRegex(ValueError,'source archive'):
+                    h.verify_reviewed_inputs(*arguments)
+
+    def test_clocked_projection_may_change_only_reviewed_timers(self):
+        """No extra memory lowering or template edit can hide in the correctness-to-timing regeneration."""
+        with tempfile.TemporaryDirectory(prefix='pvm-whole-off-',dir=h.ROOT/'build') as off, \
+             tempfile.TemporaryDirectory(prefix='pvm-whole-on-',dir=h.ROOT/'build') as on:
+            derive(Path(off),clocked=False);derive(Path(on),clocked=True)
+            h.verify_generated_projection(Path(on),Path(off))
+            path=Path(on)/'fast_image.nim';path.write_text(path.read_text()+'\n# unreviewed change\n')
+            with self.assertRaisesRegex(ValueError,'unreviewed generated projection'):
+                h.verify_generated_projection(Path(on),Path(off))
 
     def test_projection_revokes_both_writer_stores_and_every_snapshot(self):
         """Source-only generation keeps backing private, includes live alias probes, and defaults clocks off."""
