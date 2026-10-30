@@ -105,6 +105,9 @@ def run():
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
                  ROOT/'tests/unit/codec/test_pvm_stream_all_opcodes.nim',
                  ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim',
+                 ROOT/'tests/unit/state/test_pvm_arm_region_refusal.nim',
+                 ROOT/'tests/unit/state/test_pvm_arm_region_refusal.output',
+                 ROOT/'tools/native_requirements/state/pvm_arm_region_refusal.json',
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]

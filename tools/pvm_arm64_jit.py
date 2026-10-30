@@ -76,6 +76,8 @@ def qualify(checks, compiler, *, native=True):
     for name,source,defines in (
         ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit'] if native else []),
         ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
+        ('region-refusal','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefusalReceipt']),
+        ('region-refusal-forced','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefuse','pvmArm64JitRefusalReceipt']),
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
         ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
@@ -83,6 +85,20 @@ def qualify(checks, compiler, *, native=True):
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        if name.startswith('region-refusal'):
+            # Require actual native coverage for all three ownership orders, not a silent checked-only pass.
+            records=[line.split(',')[1:] for line in checked['output'].splitlines()
+                     if line.startswith('ARM_REGION_REFUSAL_NATIVE,')]
+            if len(records)!=3 or any(len(row)!=6 or any(not value.isascii() or not value.isdecimal()
+                    for value in row) for row in records):
+                raise ValueError('Missing ARM candidate-local ownership receipts')
+            records=[list(map(int,row)) for row in records]
+            if [row[:2] for row in records]!=[[0,0],[0,1],[1,1]]:
+                raise ValueError('Changed ARM candidate-local ownership orders')
+            positive=native and name=='region-refusal'
+            if any(not (row[3]>row[2] and row[4]>row[3] and row[5]>0) if positive else any(row[2:])
+                   for row in records):
+                raise ValueError('Missing ARM candidate-local publication/execution')
         if name.startswith('witness'):
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
                 expected = count if native and name == 'witness' else 0

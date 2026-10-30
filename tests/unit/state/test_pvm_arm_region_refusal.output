@@ -1,0 +1,5 @@
+ARM_REGION_LOCAL_SHAPES,true
+ARM_REGION_REFUSAL_CASE,false,false,true
+ARM_REGION_REFUSAL_CASE,false,true,true
+ARM_REGION_REFUSAL_CASE,true,true,true
+PASS fresh and both same-owner orders / independent CPU RAM gas attempts / immutable snapshots / bounded probes
