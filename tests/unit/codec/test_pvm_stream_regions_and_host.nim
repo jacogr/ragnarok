@@ -162,3 +162,90 @@ runFlat(repairing, 5)
 same(repairing, wantedRepair, images)
 assert uint64(repairing.info.gas) == uint64(paid.gas)
 echo "PASS early fault budget refund / restored barrier / repaired memory without double charge"
+
+proc checkpointStore(address: uint64, value: uint64, wide: bool = false): seq[byte] =
+  ## Literal absolute stores keep the expected page bytes independent of production execution.
+  result = @[if wide: 31'u8 else: 30'u8, 4'u8]
+  immediate(result, address)
+  immediate(result, value)
+
+proc expectPages(memory: Memory, expected: openArray[PageImage]) =
+  ## Compare every byte and permission, including untouched pages and retained earlier snapshots.
+  assert uint32(memoryPageCount(memory).value) == uint32(expected.len)
+  for image in expected:
+    let actual = pageImage(memory, image.index).value
+    assert uint32(actual.index) == uint32(image.index) and actual.access == image.access and
+        actual.bytes == image.bytes
+
+proc checkpointEpoch(dense: bool) =
+  ## Unchanged, repeated, reversed, cross-word and dense writes survive observation, resume and reset.
+  var initial = newSeq[PageImage](257)
+  for page in 0..<initial.len:
+    # The final isolated page exercises the highest bitmap word without allocating guest address holes.
+    initial[page] = PageImage(index: PageIndex(if page == 256: 1048575'u32 else: uint32(16+page)),
+      access: PageAccess.ReadWrite)
+  var expected = newSeq[PageImage](initial.len)
+  for page in 0..<initial.len: expected[page] = initial[page]
+  var parts = @[@[10'u8]]
+  let count = if dense: 256 else: 1
+  for descending in 0..<count:
+    # Reverse visit order must still publish strictly sorted replacement pages.
+    let page = count-descending-1
+    parts.add(checkpointStore(uint64(16+page)*4096, 91))
+    expected[page].bytes[0] = 91
+  parts.add(checkpointStore(0xfffff000'u64, 73))
+  expected[256].bytes[0] = 73
+  parts.add(checkpointStore(262143, 0x1234, true))
+  expected[47].bytes[4095] = 0x34
+  expected[48].bytes[0] = 0x12
+  parts.add(checkpointStore(65537, 42))
+  parts.add(checkpointStore(65537, 0))
+  parts.add(@[10'u8])
+  parts.add(checkpointStore(65536, 17))
+  parts.add(@[10'u8])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  let prepared = newFlatPlan(program, GasCycleLimit(100000))
+  let input = MachineInfo(gas: MachineGas(100000))
+  var current = newFlatFrame(prepared, initial, input)
+  runFlat(current, 1000)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let untouched = observeFlatHostMemory(current)
+  expectPages(untouched, initial)
+  let gas = current.info.gas
+  let registers = current.info.registers
+  assert resumeFlatHostMemory(current, untouched, gas, registers) == StepError.None
+  runFlat(current, 1000)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let first = observeFlatHostMemory(current)
+  expectPages(first, expected)
+  expectPages(observeFlatHostMemory(current), expected)
+  expectPages(untouched, initial)
+  assert resumeFlatHostMemory(current, first, gas, registers) == StepError.None
+  runFlat(current, 1000)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let second = observeFlatHostMemory(current)
+  expectPages(first, expected)
+  expected[0].bytes[0] = 17
+  expectPages(second, expected)
+  # Reset before accepting the second response must restore the first committed checkpoint.
+  resetFlatFrame(current, input)
+  expected[0].bytes[0] = 91
+  expectPages(flatMemorySnapshot(current), expected)
+  var later = newSeq[PageImage](expected.len)
+  for page in 0..<expected.len: later[page] = expected[page]
+  later[0].bytes[0] = 17
+  expectPages(second, later)
+  runFlat(current, 1000)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let reset = observeFlatHostMemory(current)
+  let resetGas = current.info.gas
+  let resetRegisters = current.info.registers
+  assert resumeFlatHostMemory(current, reset, resetGas, resetRegisters) == StepError.None
+  runFlat(current, 1000)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  expectPages(observeFlatHostMemory(current), expected)
+
+checkpointEpoch(false)
+checkpointEpoch(true)
+echo "PASS dirty checkpoint epochs / sparse-dense-reversed writes / repeated observations / reset isolation"

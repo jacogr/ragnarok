@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
-import std/assertions
+import std/[algorithm, assertions]
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
@@ -90,6 +90,7 @@ type
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
     dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.
+    dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
     pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
@@ -393,6 +394,8 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.inline.}
   let before = f.dirtyPages[word]
   if (before and mask) == 0:
     # A dirty epoch needs one bit transition per page, even when the guest rewrites it repeatedly.
+    assert f.dirtyIndices.len < f.sourceImages.len
+    f.dirtyIndices.add(uint32(first))
     f.dirtyPages[word] = before or mask
   when W > 1:
     # A scalar can span at most two pages; rejected cross-page stores never reach this helper.
@@ -404,11 +407,16 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.inline.}
       let lastBefore = f.dirtyPages[lastWord]
       if (lastBefore and lastMask) == 0:
         # The checked scalar may touch a second page in the same bitmap word or the following word.
+        assert f.dirtyIndices.len < f.sourceImages.len
+        f.dirtyIndices.add(uint32(last))
         f.dirtyPages[lastWord] = lastBefore or lastMask
 
 proc flatClearDirty(f: var FlatFrame) =
   ## A successful host checkpoint or input reset makes private bytes equal their immutable base again.
-  for word in 0..<f.dirtyPages.len: f.dirtyPages[word] = 0
+  for page in f.dirtyIndices:
+    # Several pages can share a word; repeated clearing is harmless and bounded by written pages.
+    f.dirtyPages[int(page shr 6)] = 0
+  f.dirtyIndices.setLen(0)
 
 func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   ## Captured maps contain only 32-bit-addressable pages; unknown bitmap shapes retain full publication.
@@ -1393,6 +1401,7 @@ proc buildFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineI
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
     dirtyPages: (if images.len == 0: @[] else: newSeq[uint64](16384)),
+    dirtyIndices: newSeqOfCap[uint32](images.len),
         info: info, reason: oracle.StepError.None,
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
@@ -2384,47 +2393,68 @@ proc runFlatSingle*(f: var FlatFrame) =
     let handler = f.handlers[int(offset)]
     offset = handler(f, offset)
 
+proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
+  ## Copy one genuinely dirty page; writing its original bytes back does not create a replacement.
+  let original = f.sourceImages[page]
+  if original.access == PageAccess.ReadWrite:
+    # Guest writes cannot change RO/inaccessible pages; only writable pages need current-byte comparison.
+    var image = original
+    let address = uint64(uint32(image.index))*4096
+    var copied = false
+    if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
+      # The entire page belongs to this retained private region; stack temporary and heap bytes are disjoint.
+      let offset = int(address-f.stackBase)
+      copyMem(addr image.bytes[0], unsafeAddr f.stack[offset], 4096)
+      copied = true
+    elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+      let offset = int(address-f.rwBase)
+      copyMem(addr image.bytes[0], unsafeAddr f.rw[offset], 4096)
+      copied = true
+    else:
+      # Fragmented captured writable regions retain the same full-span proof before a copy.
+      for slot in 0..<f.extra.len:
+        let region {.cursor.} = f.extra[slot]
+        if region.access == PageAccess.ReadWrite and address >= region.first and
+            address-region.first+4096 <= uint64(region.bytes.len):
+          let offset = int(address-region.first)
+          copyMem(addr image.bytes[0], unsafeAddr region.bytes[offset], 4096)
+          copied = true
+          break
+    if not copied:
+      # Preserve the original checked observer fallback if a future region representation needs it.
+      for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
+    if image.bytes != original.bytes:
+      # Collect only changed writable pages in the already sorted source order; all costs stay inside publication.
+      changes.add(image)
+
 proc flatPublishMemory(f: FlatFrame, keepChanges: bool): FlatPublication =
-  ## Reuse genuine immutable source pages; changed writable pages publish copied bytes, never private buffer aliases.
+  ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
   result = FlatPublication(memory: f.sourceMemory, changed: @[])
-  if f.sourceImages.len == 0:
-    # A genuine frame always owns a valid source root; keep an empty posterior's exact local ceiling.
+  if f.dirtyIndices.len == 0:
+    # An untouched epoch has exactly its existing immutable bytes, permissions and local ceiling.
     return
   var changes: seq[PageImage] = @[]
-  for page in 0..<f.sourceImages.len:
-    # Read only metadata before the filter, avoiding even a temporary page copy for clean pages.
-    if not flatDirty(f, f.sourceImages[page].index): continue
-    let original = f.sourceImages[page]
-    if original.access == PageAccess.ReadWrite:
-      # Guest writes cannot change RO/inaccessible pages; only writable pages need current-byte comparison.
-      var image = original
-      let address = uint64(uint32(image.index))*4096
-      var copied = false
-      if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
-        # The entire page belongs to this retained private region; stack temporary and heap bytes are disjoint.
-        let offset = int(address-f.stackBase)
-        copyMem(addr image.bytes[0], unsafeAddr f.stack[offset], 4096)
-        copied = true
-      elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
-        let offset = int(address-f.rwBase)
-        copyMem(addr image.bytes[0], unsafeAddr f.rw[offset], 4096)
-        copied = true
-      else:
-        # Fragmented captured writable regions retain the same full-span proof before a copy.
-        for slot in 0..<f.extra.len:
-          let region {.cursor.} = f.extra[slot]
-          if region.access == PageAccess.ReadWrite and address >= region.first and
-              address-region.first+4096 <= uint64(region.bytes.len):
-            let offset = int(address-region.first)
-            copyMem(addr image.bytes[0], unsafeAddr region.bytes[offset], 4096)
-            copied = true
-            break
-      if not copied:
-        # Preserve the original checked observer fallback if a future region representation needs it.
-        for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
-      if image.bytes != original.bytes:
-        # Collect only changed writable pages in the already sorted source order; all costs stay inside publication.
-        changes.add(image)
+  if f.dirtyIndices.len < f.sourceImages.len div 8:
+    # Sparse writes sort only their copied ordinals; publication never mutates the epoch's membership.
+    var indices = newSeq[uint32](f.dirtyIndices.len)
+    for index in 0..<indices.len: indices[index] = f.dirtyIndices[index]
+    indices.sort()
+    var start = 0
+    for index in indices:
+      # A successful store proves membership; binary search skips the untouched portion of a large map.
+      var low = start
+      var high = f.sourceImages.len
+      while low < high:
+        let middle = low+(high-low) div 2
+        if uint32(f.sourceImages[middle].index) < index: low = middle+1
+        else: high = middle
+      assert low < f.sourceImages.len and uint32(f.sourceImages[low].index) == index
+      flatCollectPage(f, low, changes)
+      start = low+1
+  else:
+    # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
+    for page in 0..<f.sourceImages.len:
+      if flatDirty(f, f.sourceImages[page].index): flatCollectPage(f, page, changes)
   if changes.len > 0:
     # The checked batch shares untouched owners and clones the root vector exactly once for this observation.
     let updated = withReplacedPages(f.sourceMemory, changes)
