@@ -293,6 +293,10 @@ type
       foreign: ForeignOwner
   PreparedProgram* = object ## Copies share one source-bound cache identity; synchronous same-owner reentry is refused.
     data: nil PreparedData
+  PreparedCacheData = ref object ## One explicitly owned worker slot retains at most one successful prepared identity.
+    owner: PreparedProgram
+  PreparedProgramCache* = object ## Reference identity permits synchronous worker sharing; concurrent use remains forbidden.
+    data: nil PreparedCacheData
   PreparedCompilationInfo* = object ## Copied complete source-entry partition; lazy and foreign owners remain zero/unsealed.
     sealed*: bool
     sourceEntries*: uint64       ## Every genuine instruction PC, including interior and folded-noop entries.
@@ -958,6 +962,53 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   let prepared = newPreparedProgram(code.value, defaultPreparedLimits(cycles), selected)
   if prepared.error != PreparationError.None: return StepResult(status: preparationFailure(
       prepared.error))
+  executeWithHost(source, context, handler, steps, calls, prepared.value)
+
+proc newPreparedProgramCache*(): PreparedProgramCache =
+  ## Create one empty slot; no source, native mapping or invocation state is allocated until successful admission.
+  PreparedProgramCache(data: PreparedCacheData())
+
+func samePreparedLimits(a, b: PreparedLimits): bool =
+  ## Every resource ceiling and the gas-analysis policy bind the cache key, not just its backend/source.
+  uint64(a.cycles) == uint64(b.cycles) and
+    uint64(a.resources.codeBytes) == uint64(b.resources.codeBytes) and
+    uint64(a.resources.facts) == uint64(b.resources.facts) and
+    uint64(a.resources.jumps) == uint64(b.resources.jumps) and
+    uint32(a.resources.pages) == uint32(b.resources.pages) and
+    uint64(a.resources.nodes) == uint64(b.resources.nodes) and
+    uint64(a.resources.preparation) == uint64(b.resources.preparation)
+
+proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits: PreparedLimits,
+    selected: PvmBackend): PreparationResult[PreparedProgram] =
+  ## Reuse exact source/policy; replace one idle successful owner atomically, leaving failed admissions retryable.
+  let slot = cache.data
+  if slot == nil: return newPreparedProgram(source, limits, selected)
+  let current = slot.owner.data
+  if current != nil:
+    if current.busy: return PreparationResult[PreparedProgram](status: PreparationError.Busy)
+    if current.source == source and current.selected == selected and samePreparedLimits(
+        current.limits, limits):
+      return PreparationResult[PreparedProgram](status: PreparationError.None,
+          completed: slot.owner)
+  let admitted = newPreparedProgram(source, limits, selected)
+  if admitted.error == PreparationError.None:
+    slot.owner = admitted.value # Retire only the prior code cache; immutable machines retain their own source snapshots.
+  admitted
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend, cache: PreparedProgramCache): HostExecutionResult[Reason] =
+  ## An explicit worker slot owns preparation only; the existing leased engine owns every callback and invocation effect.
+  let code = programOf(source)
+  if code.error != MachineError.None: return executionResult[Reason](StepResult(
+      status: StepError.InvalidMachine))
+  let prepared = cachedPreparedProgram(cache, code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error == PreparationError.Busy:
+    return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
+  if prepared.error != PreparationError.None:
+    return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
   executeWithHost(source, context, handler, steps, calls, prepared.value)
 
 proc backendAvailability*(selected: PvmBackend): StepError =
