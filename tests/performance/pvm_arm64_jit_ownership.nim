@@ -3,7 +3,9 @@
 ## Local lowering witness: exclusive frame/stream owners can move but cannot be duplicated for a later read.
 import std/[assertions, syncio]
 import ../../src/pvm/internal/handler_stream
-import ../../src/pvm/[program, gas, machine]
+import ../../src/pvm/program
+import ../../src/pvm/gas/gas
+import ../../src/pvm/machine
 
 when defined(pvmArm64JitFrameOwner):
   proc consume(owner: sink FlatFrame): int =

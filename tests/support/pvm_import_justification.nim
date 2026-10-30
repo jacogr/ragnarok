@@ -6,7 +6,7 @@
 import "../../src/state/import/justification" as import_justification
 import ../../src/codec/bounded
 import ../../src/codec/work/report as work_report
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 
 proc importLimits*(): ImportJustificationLimits =
   ## Admit the full twelve-sibling GP domain with separately bounded copying and hash preimages.

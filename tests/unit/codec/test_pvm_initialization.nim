@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_initialization_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, initialize, gas, step]
+import ../../../src/pvm/[program, machine, initialize]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 # Fixed-width fixture encoding is independent of the initializer's decoder.

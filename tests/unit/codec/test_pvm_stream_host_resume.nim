@@ -3,7 +3,9 @@
 ## Paid host continuations reuse admitted bodies without suffix growth, repricing or target-prelink side effects.
 import std/[assertions, syncio]
 import ../../../src/codec/natural
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 import ../../../src/pvm/internal/handler_stream
 
 proc require(ok: bool, stage: string) =

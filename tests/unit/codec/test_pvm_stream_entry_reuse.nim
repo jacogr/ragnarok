@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Reordered source entries retain previously admitted headers under exact node and work ceilings.
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 
 proc checkEntry(source: Program, memory: Memory, prepared: PreparedProgram, pc: uint64) =
   ## A fresh input shares only the prepared source/cache; literal trap behavior is not another engine's output.

@@ -1,6 +1,6 @@
 # Bounded reusable block gas plans
 
-`src/pvm/gas_plan.nim` offers optional immutable whole-program prices for repeated execution of
+`src/pvm/gas/plan.nim` offers optional immutable whole-program prices for repeated execution of
 one captured `Program`. This is an implementation policy over the existing Gray Paper pipeline
 model and approved wrapped branch-target interpretation; it changes neither guest gas nor program
 admission, instruction semantics, exception precedence, serialization or dependency pins. The

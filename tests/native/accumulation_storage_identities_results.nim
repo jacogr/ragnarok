@@ -12,7 +12,9 @@ import ../../src/chain/parameters
 import ../../src/codec/bounded
 import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     requests as state_requests]
-import ../../src/pvm/[machine, step, gas, host_fetch]
+import ../../src/pvm/[machine, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend failure leaves original effect and raw fact ownership unchanged.
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}

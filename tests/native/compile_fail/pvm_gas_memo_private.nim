@@ -3,6 +3,6 @@
 
 ## Opaque source/policy-bound lazy prices and selected-result payloads cannot be forged or inspected through raw fields.
 # @@Verification={"group": "privacy", "expected": "data"}
-import ../../../src/pvm/gas_memo
+import ../../../src/pvm/gas/memo as gas_memo
 let held = default(GasMemo)
 discard held.data

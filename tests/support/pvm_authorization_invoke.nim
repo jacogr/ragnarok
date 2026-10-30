@@ -10,7 +10,11 @@ import ../../src/codec/[bounded, natural, composite]
 import ../../src/codec/work/[package as work_package, report as work_report, digest as work_digest]
 import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
     requests as state_requests, trie as state_trie]
-import ../../src/pvm/[machine, program, initialize, gas, step, host_fetch, output]
+import ../../src/pvm/[machine, program, initialize]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/output
 import ../../src/chain/parameters
 import ../../src/crypto/primitives
 

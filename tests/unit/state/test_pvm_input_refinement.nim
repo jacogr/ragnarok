@@ -18,7 +18,7 @@ import ../../../src/state/refinement/[digest as refinement_digest, report as ref
 import ../../../src/state/store
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/work/[package as work_package, report as work_report]
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/chain/parameters
 import ../../../src/crypto/primitives
 import ../../support/[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome,

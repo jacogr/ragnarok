@@ -5,7 +5,9 @@
 ## Positive controls validate the selected reasons before each forbidden accessor is attempted.
 
 import std/[assertions, cmdline]
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 
 type
   # A caller-local enum proves that the host loop requires no dependency on concrete host modules.

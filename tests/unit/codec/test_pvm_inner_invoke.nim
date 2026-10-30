@@ -5,7 +5,8 @@
 ## Original raw guests verify all invoke exits, exact reservation/refund and immutable resumable machine state.
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[inner_machines, machine, program, step, gas]
+import ../../../src/pvm/[inner_machines, machine, program, step]
+import ../../../src/pvm/gas/gas
 import ../../support/[pvm_inner_lifecycle, pvm_inner_pages, pvm_inner_invoke, arc_evidence]
 
 proc run(map: InnerMachines, memory = invokeMemory(), args = invokeArgs(), credit = 10000'u64):

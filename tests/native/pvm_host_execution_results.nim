@@ -5,7 +5,9 @@
 ## The command-line selector chooses one failure before attempting forbidden value extraction.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 
 # Trusted handler records invocation and optionally returns an invalid default reply.
 proc reply(context: var int, stopped: StepOutcome): HostResponse {.raises: [].} =

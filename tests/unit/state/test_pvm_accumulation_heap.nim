@@ -14,7 +14,9 @@ import ../../../src/state/store
 import ../../../src/codec/[bounded, composite, header, c2_records]
 import ../../../src/codec/state/[safrole as state_safrole, accounts as state_accounts,
     layout as state_layout, trie as state_trie]
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../../src/pvm/[initialize, machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
   accumulation_batch_context, accumulation_provision_integration, arc_evidence]
 

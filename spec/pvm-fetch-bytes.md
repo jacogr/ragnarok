@@ -1,6 +1,6 @@
 # Present entropy and trace fetch
 
-Scope: `host_fetch.nim` implements the present-value branches of host identifier 2,
+Scope: `src/pvm/host/fetch.nim` implements the present-value branches of host identifier 2,
 selector 1 (32-byte entropy) and selector 2 (authorizer trace, including an empty trace).
 Normative source: Gray Paper 0.8.0 gitlink
 `07f041dabd073f9018b418e9ee72e79dd2185401`, `text/pvm_invocations.tex`, General Functions,

@@ -3,7 +3,8 @@
 
 ## Same-source forced interpretation, native policy, warm reuse/hosts and cross-policy cache refusal.
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, step, gas]
+import ../../../src/pvm/[program, machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/handler_stream
 
 type Context = object ## Callbacks only observe copied snapshots and retain no invocation addresses.

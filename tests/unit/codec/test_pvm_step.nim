@@ -7,7 +7,9 @@
 # @@Verification={"arc": "pvm_step_arc_release"}
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers, gas, gas_plan, step]
+import ../../../src/pvm/[program, machine, registers]
+import ../../../src/pvm/gas/[gas, plan as gas_plan]
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 # Read independently serialized little-endian fixture integers after checking their enclosing extent.

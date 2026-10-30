@@ -6,7 +6,7 @@
 import std/assertions
 import ../../src/codec/bounded
 import ../../src/codec/work/[package as work_package, report as work_report]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/state/computed/[report as computed_report, guarantee as computed_guarantee]
 import ../../src/state/availability/specifier as availability_specifier
 import "../../src/state/export/erasure" as export_erasure

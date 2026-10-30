@@ -5,7 +5,7 @@
 
 # @@Verification={"group": "nominal", "expected": "got: uint64 but wanted: FetchPackageLimit"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 
 # Test-only holder isolates nominal budget assignment from callback/procedure overload checking.
 type Input = object

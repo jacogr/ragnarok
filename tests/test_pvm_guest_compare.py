@@ -3,6 +3,7 @@
 
 """Reject incomplete revision comparisons, stale aggregates and changed snapshot identities."""
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -528,6 +529,96 @@ class GuestComparisonTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     inputs.prepare_inputs(checks, root/'build', CASES[:-1])
             checks.command.assert_not_called()
+
+
+class SnapshotImportLayoutTests(unittest.TestCase):
+    """Archived sources retain their own layout; only generated import coordinates may differ."""
+    def modules(self, root, nested):
+        """Give every requested module one distinct inert file; no source is compiled or executed."""
+        for old, new in compare.PVM_MODULE_LOCATIONS.items():
+            p = root/((new if nested else old)+'.nim')
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text('# inert module '+old+'\n')
+
+    def test_matching_layout_preserves_every_driver_byte(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for nested, declaration in ((False, 'gas, gas_plan, gas_memo'),
+                                         (True, 'gas/gas, gas/plan as gas_plan, gas/memo as gas_memo')):
+                pvm = root/str(nested)
+                self.modules(pvm, nested)
+                source = 'import ../src/pvm/['+declaration+']\nlet unchanged = "gas_plan"\n'
+                self.assertEqual(compare.snapshot_imports(source, pvm), source)
+
+    def test_archive_flat_imports_preserve_namespaces_and_body(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pvm = Path(directory)
+            self.modules(pvm, False)
+            body = 'let path = "../src/pvm/gas/plan"\n# import ../src/pvm/host/fetch\n'
+            source = ('import ../src/pvm/gas/[gas, plan as gas_plan,\n'
+                      '    memo as gas_memo]\n'
+                      'import ../src/pvm/host/[fetch as host_fetch, gas as host_gas,\n'
+                      '    heap as host_heap, log as host_log]\n'+body)
+            expected = ('import ../src/pvm/gas as gas\n'
+                        'import ../src/pvm/gas_plan as gas_plan\n'
+                        'import ../src/pvm/gas_memo as gas_memo\n'
+                        'import ../src/pvm/host_fetch as host_fetch\n'
+                        'import ../src/pvm/host_gas as host_gas\n'
+                        'import ../src/pvm/host_heap as host_heap\n'
+                        'import ../src/pvm/host_log as host_log\n'+body)
+            self.assertEqual(compare.snapshot_imports(source, pvm), expected)
+            self.assertEqual(compare.snapshot_imports(expected, pvm), expected)
+
+    def test_flat_driver_can_target_current_nested_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pvm = Path(directory)
+            self.modules(pvm, True)
+            source = 'import ../../src/pvm/[gas, gas_plan, host_gas]\ndiscard\n'
+            expected = ('import ../../src/pvm/gas/gas as gas\n'
+                        'import ../../src/pvm/gas/plan as gas_plan\n'
+                        'import ../../src/pvm/host/gas as host_gas\ndiscard\n')
+            self.assertEqual(compare.snapshot_imports(source, pvm, '../../src/pvm/'), expected)
+
+    def test_missing_ambiguous_and_foreign_modules_refuse(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pvm = Path(directory)/'pvm'
+            pvm.mkdir()
+            source = 'import ../src/pvm/gas/gas\n'
+            with self.assertRaisesRegex(ValueError, 'missing or ambiguous'):
+                compare.snapshot_imports(source, pvm)
+            self.modules(pvm, True)
+            (pvm/'gas.nim').write_text('# ambiguous module\n')
+            with self.assertRaisesRegex(ValueError, 'missing or ambiguous'):
+                compare.snapshot_imports(source, pvm)
+            (pvm/'gas.nim').unlink()
+            outside = Path(directory)/'foreign.nim'
+            outside.write_text('# foreign module\n')
+            (pvm/'gas.nim').symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, 'foreign'):
+                compare.snapshot_imports(source, pvm)
+
+    def test_snapshot_seals_actual_generated_imports_without_mutating_driver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            names = ['src/codec/natural.nim', 'src/pvm/gas.nim',
+                     'src/pvm/gas_plan.nim', 'src/pvm/gas_memo.nim']
+            tree = ''.join('100644 blob '+'a'*40+'\t'+name+'\0' for name in names).encode()
+            source = b'import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]\ndiscard\n'
+            driver = {name: (source if name.endswith('.nim') else b'header\n') for name in compare.DRIVER}
+            preserved = dict(driver)
+            target = root/'build/snapshot'
+            with patch.object(compare, 'ROOT', root), patch.object(compare, 'git',
+                    side_effect=[tree, *[b'# inert original module\n' for _ in names]]):
+                hashes = compare.snapshot(target, 'a'*40, driver)
+            self.assertEqual(driver, preserved)
+            for name, data in driver.items():
+                actual = (target/name).read_bytes()
+                if name.endswith('.nim'):
+                    self.assertIn(b'import ../../src/pvm/gas_plan as gas_plan\n', actual)
+                    self.assertTrue(actual.endswith(b'discard\n'))
+                else:
+                    self.assertEqual(actual, data)
+                self.assertEqual(hashes[name], hashlib.sha256(actual).hexdigest())
 
 
 if __name__ == '__main__':

@@ -5,7 +5,9 @@
 
 import std/[assertions, syncio, os, strutils]
 import ../../../src/lib/logging
-import ../../../src/pvm/[machine, program, step, gas, host_log]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/log as host_log
 
 proc collect(lines: var seq[string], line: string) {.raises: [].} =
   ## Retain each complete record so invalid reads cannot hide a partial sink invocation.

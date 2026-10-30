@@ -3,7 +3,8 @@
 
 ## Standalone artifact file IO and bounded host-free execution; caller owns diagnostics and process lifetime.
 import ./options
-import ../pvm/[artifact, machine, step, gas]
+import ../pvm/[artifact, machine, step]
+import ../pvm/gas/gas
 
 proc runPvmCode*(options: Options, diagnostic: var string): bool =
   ## Execute exactly one export with no inferred host imports, listeners or implicit backend substitution.

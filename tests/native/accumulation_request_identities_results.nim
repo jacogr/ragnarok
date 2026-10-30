@@ -14,7 +14,9 @@ import ../../src/codec/state/[accounts as state_accounts, layout as state_layout
     requests as state_requests, service_values as state_service_values, trie as state_trie]
 import ../../src/codec/header
 import ../../src/chain/parameters
-import ../../src/pvm/[machine, step, gas, host_fetch]
+import ../../src/pvm/[machine, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/crypto/primitives
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend refusal cannot publish prepared request identities.

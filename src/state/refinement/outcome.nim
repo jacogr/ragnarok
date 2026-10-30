@@ -6,7 +6,11 @@
 
 import ../../lib/logging
 
-import ../../pvm/[machine, step, gas, output, refinement_exports, host_fetch, inner_machines]
+import ../../pvm/[machine, step]
+import ../../pvm/gas/gas
+import ../../pvm/[output, refinement_exports]
+import ../../pvm/host/fetch as host_fetch
+import ../../pvm/inner_machines
 import ../../codec/composite
 import ../../codec/work/[digest as work_digest, report as work_report]
 import ./[bootstrap as refinement_bootstrap, dispatch as refinement_dispatch]

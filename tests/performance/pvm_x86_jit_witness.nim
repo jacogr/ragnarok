@@ -3,7 +3,10 @@
 ## Native x86 scalar/alias equivalence, every source prefix and honest OS-refusal witnesses.
 import std/[assertions, syncio]
 import ../../src/codec/natural
-import ../../src/pvm/[program, machine, gas, step, registers, gas_plan, gas_memo]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/[step, registers]
+import ../../src/pvm/gas/[plan as gas_plan, memo as gas_memo]
 import ../../src/pvm/internal/[handler_stream, x86_jit]
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =

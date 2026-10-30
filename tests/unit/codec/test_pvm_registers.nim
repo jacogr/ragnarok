@@ -7,7 +7,9 @@
 ## interface.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine, registers]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 import ../../../src/pvm/internal/register_ops
 
 # Decode a fixed little-endian fixture word; the fixture shape is checked before any access.

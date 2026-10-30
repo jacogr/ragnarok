@@ -5,7 +5,9 @@
 ## Each command selects one refusal and attempts its forbidden success payload.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 let code = decodeProgram([0'u8, 0, 4, 10, 0, 50, 0, 5], CodeAddress(0),
   ProgramByteLimit(8), JumpCountLimit(0)).value
 let memory = captureMemory([], PageLimit(0)).value

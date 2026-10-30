@@ -6,7 +6,11 @@
 import std/[assertions, cmdline]
 import ../../src/state/refinement/dispatch as refinement_dispatch
 import ../../src/state/store
-import ../../src/pvm/[machine, gas, step, host_fetch, refinement_exports]
+import ../../src/pvm/machine
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/refinement_exports
 import ../../src/chain/parameters
 import ../../src/codec/work/package as work_package
 

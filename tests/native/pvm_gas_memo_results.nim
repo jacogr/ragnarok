@@ -3,7 +3,8 @@
 
 ## Failed/default memo values grant no selectable payload; successful mode checks genuine lazy facts and copied children.
 import std/[assertions, cmdline, syncio]
-import ../../src/pvm/[program, gas, gas_memo]
+import ../../src/pvm/program
+import ../../src/pvm/gas/[gas, memo as gas_memo]
 let mode = paramStr(1)
 let owner = decodeProgram([0'u8, 0, 2, 0, 0, 3], CodeAddress(0), ProgramByteLimit(32),
     JumpCountLimit(0)).value

@@ -4,7 +4,9 @@
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))

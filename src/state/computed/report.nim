@@ -6,7 +6,7 @@
 import ../../codec/[bounded, composite]
 import ../../codec/work/[digest as work_digest, report as work_report]
 import ../../chain/parameters
-import ../../pvm/host_fetch
+import ../../pvm/host/fetch as host_fetch
 import ../availability/specifier as availability_specifier
 import "../export/erasure" as export_erasure
 import ../bundle_erasure

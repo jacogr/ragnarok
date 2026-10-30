@@ -14,7 +14,9 @@ import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
     effects as accumulation_effects, context as accumulation_context,
     machine as accumulation_machine, invocation as accumulation_invocation]
 import ../../../src/state/store
-import ../../../src/pvm/[machine, program, step, gas, host_fetch]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
 # Inject refusal only after authentic account/guest preparation.

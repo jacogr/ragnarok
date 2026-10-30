@@ -19,7 +19,7 @@ import statistics
 from native_checks import NativeChecks, ROOT
 from setup_nimony import installed, cache_directory
 from pvm_guest_inputs import prepare_inputs, digest
-from pvm_guest_compare import unchanged, revision
+from pvm_guest_compare import unchanged, revision, snapshot_imports
 from pvm_interpreter_compare import parse_candidate
 
 BUILD = ROOT/'build/tests/pvm-arm64-jit'
@@ -184,7 +184,8 @@ def main():
             shutil.copytree(ROOT/'native/pvm_jit',canonical/'native/pvm_jit')
         driver=canonical/'benchmarks/kernel.nim'
         driver.parent.mkdir()
-        driver.write_text(DRIVER.read_text().replace('../../src/','../src/'))
+        driver.write_text(snapshot_imports(DRIVER.read_text().replace('../../src/','../src/'),
+                                           canonical/'src/pvm'))
         report['sources'][mode]={str(path.relative_to(canonical)):digest(path)
             for path in sorted(canonical.rglob('*')) if path.is_file()}
         pair = []

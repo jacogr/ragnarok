@@ -5,7 +5,9 @@
 ## Chooses an outcome through argv, then deliberately requests an unavailable payload.
 
 import std/cmdline
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
 
 let selection = paramStr(1)
 var outcome = default(StepOutcome)

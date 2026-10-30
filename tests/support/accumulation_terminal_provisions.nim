@@ -7,7 +7,10 @@
 import ../../src/state/accumulation/[dispatch as accumulation_dispatch,
     provisions as accumulation_provisions]
 import ../../src/state/store
-import ../../src/pvm/[machine, program, gas, step, host_fetch]
+import ../../src/pvm/[machine, program]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/state/[accounts as state_accounts, trie as state_trie]
 import ./[pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision,

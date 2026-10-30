@@ -7,7 +7,11 @@
 # @@Verification={"arc": "pvm_host_gas_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step, host_gas, output]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/gas as host_gas
+import ../../../src/pvm/output
 import ../../support/arc_evidence
 
 # A prepaid prefix followed by ecalli and dynamic halt gives a nonzero host PC independent of charging.

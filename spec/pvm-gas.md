@@ -2,7 +2,7 @@
 
 ## Scope and source
 
-`src/pvm/gas.nim` implements Gray Paper **0.8.0**, commit
+`src/pvm/gas/gas.nim` implements Gray Paper **0.8.0**, commit
 `07f041dabd073f9018b418e9ee72e79dd2185401`, `text/pvm.tex` sections
 “Gas Cost Model” and “Gas Cost Tables”, including `gascostforblock`, the four
 pipeline transitions and all 139 opcode profiles. `spec/pins.json` retains the

@@ -6,7 +6,10 @@
 import std/cmdline
 import ../../src/state/accumulation/[machine as accumulation_machine,
     dispatch as accumulation_dispatch]
-import ../../src/pvm/[machine, host_fetch, step, gas]
+import ../../src/pvm/machine
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/step
+import ../../src/pvm/gas/gas
 import ../support/pvm_accumulation_context
 var outcome = executeAccumulationMachine(default(PreparedAccumulationMachine), pvmParameters(),
   default(FetchAccumulationLimits), MemoryByteLimit(0), ExecutionStepLimit(0), HostCallLimit(0),

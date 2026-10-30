@@ -7,7 +7,10 @@
 import std/[assertions, syncio]
 import ../../../src/state/refinement/dispatch as refinement_dispatch
 import ../../../src/state/store
-import ../../../src/pvm/[machine, program, step, gas, host_fetch, refinement_exports, inner_machines]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[refinement_exports, inner_machines]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/state/[accounts as state_accounts, trie as state_trie,

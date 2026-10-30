@@ -14,7 +14,8 @@ import ../../../src/codec/work/[digest as work_digest, report as work_report]
 import ../../../src/codec/[report_owned, c2_records]
 import ../../../src/codec/state/[workqueues as state_workqueues, privileges as state_privileges]
 import ../../../src/codec/header
-import ../../../src/pvm/[host_fetch, machine, step]
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[machine, step]
 import ../../support/arc_evidence
 
 ## Independent local caps cover the complete selected service, not all groups in the source plan.

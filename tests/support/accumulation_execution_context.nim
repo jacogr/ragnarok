@@ -20,7 +20,9 @@ import ../../src/codec/state/[accounts as state_accounts, service_values as stat
     history as state_history]
 import ../../src/codec/c2_records
 import ../../src/crypto/primitives
-import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../src/pvm/[initialize, machine, program, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 import ./[report_context, report_admission_context, pvm_accumulation_context,
   accumulation_provision_integration]
 

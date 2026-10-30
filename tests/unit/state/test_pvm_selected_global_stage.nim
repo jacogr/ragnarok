@@ -8,7 +8,8 @@ import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[layout as state_layout, authorization as state_authorization,
     privileges as state_privileges, safrole as state_safrole]
 import ../../../src/codec/c2_records
-import ../../../src/pvm/[machine, step, gas]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/global/[stage as accumulation_global_stage,
     roles as accumulation_global_roles]
 import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage

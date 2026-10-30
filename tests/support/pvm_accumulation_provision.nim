@@ -14,7 +14,10 @@ import ../../src/codec/state/[accounts as state_accounts, requests as state_requ
     safrole as state_safrole, privileges as state_privileges, layout as state_layout,
     trie as state_trie]
 import ../../src/crypto/primitives
-import ../../src/pvm/[initialize, machine, program, host_fetch, step, gas]
+import ../../src/pvm/[initialize, machine, program]
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/step
+import ../../src/pvm/gas/gas
 import ./pvm_accumulation_context
 
 type

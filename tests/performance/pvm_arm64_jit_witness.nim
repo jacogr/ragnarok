@@ -3,7 +3,10 @@
 ## Local JIT alias/overflow and reservation witness against the engine's bounded single-step adapter.
 import std/[assertions, syncio]
 import ../../src/codec/natural
-import ../../src/pvm/[program, machine, gas, step, registers, gas_plan, gas_memo]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/[step, registers]
+import ../../src/pvm/gas/[plan as gas_plan, memo as gas_memo]
 when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
 import ../../src/pvm/internal/handler_stream

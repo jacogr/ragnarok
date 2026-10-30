@@ -10,7 +10,10 @@ import std/[assertions, syncio]
 import ../../../src/codec/work/package as work_package
 import ../../../src/codec/bounded
 import ../../../src/codec/work/digest as work_digest
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
 # Three distinct payloads include an empty middle item, separate from token and configuration.

@@ -6,7 +6,8 @@
 import std/cmdline
 import ../../src/state/accumulation/[fetch as accumulation_fetch, machine as accumulation_machine]
 import ../../src/chain/parameters
-import ../../src/pvm/[initialize, program, machine, host_fetch]
+import ../../src/pvm/[initialize, program, machine]
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/codec/[bounded, c2_records]
 import ../support/pvm_accumulation_context
 let prepared = initializeAccumulationMachine(pvmBootstrap(pvmEnvelope()),

@@ -6,7 +6,9 @@
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/codec/natural
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Frame test-owned instruction bytes with the independent public compact-natural codec.

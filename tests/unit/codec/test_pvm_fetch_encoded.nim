@@ -10,7 +10,10 @@ import std/[assertions, syncio]
 import ../../../src/codec/work/[package as work_package, report as work_report,
     digest as work_digest]
 import ../../../src/codec/[composite, bounded]
-import ../../../src/pvm/[program, machine, gas, step, host_fetch]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
 # Independent C.2 layout: two items, compact two-byte blob lengths and nonempty manifests.

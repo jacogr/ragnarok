@@ -3,7 +3,8 @@
 
 ## Full-container boundary, immutable ownership and bounded standalone CLI witnesses.
 import std/[assertions, syncio, strutils, tempfiles, paths, files]
-import ../../../src/pvm/[artifact, program, machine, step, gas]
+import ../../../src/pvm/[artifact, program, machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/codec/natural
 import ../../../src/app/[options, pvm_command]
 import ../../../src/app/cli/help as cli_help

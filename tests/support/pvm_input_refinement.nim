@@ -10,7 +10,7 @@ import "../../src/state/import/justification" as import_justification
 import ../../src/state/[extrinsic_inputs, store]
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/work/[package as work_package, report as work_report]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/chain/parameters
 import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_results,
   pvm_import_inputs, pvm_import_vectors, pvm_extrinsic_inputs, pvm_refinement_outcome]

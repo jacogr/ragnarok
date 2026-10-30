@@ -9,7 +9,10 @@ import ../../src/state/accumulation/[dispatch as accumulation_dispatch,
     outcome as accumulation_outcome, transfers as accumulation_transfers]
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/state/accounts as state_accounts
-import ../../src/pvm/[machine, program, gas, step, host_fetch]
+import ../../src/pvm/[machine, program]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/step
+import ../../src/pvm/host/fetch as host_fetch
 import ./[pvm_accumulation_context, pvm_accumulation_program]
 
 type

@@ -8,7 +8,8 @@ import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[outputs as state_outputs, layout as state_layout,
     trie as state_trie]
-import ../../../src/pvm/[machine, step, gas]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/current/round as accumulation_current_round
 import ../../../src/state/accumulation/round as accumulation_round
 import "../../../src/state/accumulation/block/guests" as accumulation_block_guests

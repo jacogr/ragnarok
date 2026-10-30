@@ -6,6 +6,8 @@
 
 # @@Verification={"group": "privacy", "expected": "exit"}
 
-import ../../../src/pvm/[machine, gas, step]
+import ../../../src/pvm/machine
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 var outcome = default(StepOutcome)
 outcome.exit = StepExit.Fault

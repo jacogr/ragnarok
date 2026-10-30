@@ -5,7 +5,7 @@
 
 import std/cmdline
 import ../../src/codec/[c2_records, bounded]
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 var limits = FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(154),

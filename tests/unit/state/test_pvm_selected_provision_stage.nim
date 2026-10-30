@@ -8,7 +8,8 @@ import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     service_values as state_service_values]
 import ../../../src/crypto/primitives
-import ../../../src/pvm/[machine, step, gas]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/provision/stage as accumulation_provision_stage
 import ../../../src/state/accumulation/provisions as accumulation_provisions
 import ../../../src/state/accumulation/account/stage as accumulation_account_stage

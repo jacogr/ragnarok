@@ -4,7 +4,8 @@
 ## GP 0.8.0 refinement hosts 9..14 own immutable inner-machine lifecycle, memory and bounded raw invocation.
 ## Exposes bounded capture, copied inspection and atomic lifecycle/page/transfer/invocation transitions.
 
-import ./[machine, program, step, gas]
+import ./[machine, program, step]
+import ./gas/gas
 
 type
   InnerMachineId* = distinct uint64 ## Full guest register domain; identifiers outside 0..62 are absent.

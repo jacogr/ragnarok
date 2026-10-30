@@ -5,7 +5,10 @@
 ## Literal export bytes, host ordering, immutable forks and generic host execution verify Omega_E.
 
 import std/[assertions, syncio]
-import ../../../src/pvm/[refinement_exports, host_fetch, machine, program, step, gas]
+import ../../../src/pvm/refinement_exports
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/codec/bounded
 import ../../../src/codec/work/digest as work_digest
 import ../../support/arc_evidence

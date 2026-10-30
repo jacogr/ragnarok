@@ -6,5 +6,7 @@
 
 # @@Verification={"group": "nominal", "expected": "[2] expected: GasCycleLimit but got: uint64", "early": ["stepMemory(", "[2] expected: GasCycleLimit but got: uint64"]}
 
-import ../../../src/pvm/[machine, gas, step]
+import ../../../src/pvm/machine
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 discard stepMemory(default(Machine), 0'u64)

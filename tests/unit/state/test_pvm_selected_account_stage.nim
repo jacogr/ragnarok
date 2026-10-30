@@ -5,7 +5,8 @@
 ## Genuine current creation and complete prior inventory apply selected account writes atomically on a private fork.
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
-import ../../../src/pvm/[machine, step, gas]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values]

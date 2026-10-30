@@ -3,7 +3,8 @@
 
 ## Original literal inner blobs and bounded lifecycle fixtures shared by unit and strict misuse probes.
 
-import ../../src/pvm/[inner_machines, machine, program, step, gas]
+import ../../src/pvm/[inner_machines, machine, program, step]
+import ../../src/pvm/gas/gas
 
 proc innerLimits*(): InnerMachineLimits =
   ## Independent local budgets permit the protocol's whole 63-slot map with tiny original programs.

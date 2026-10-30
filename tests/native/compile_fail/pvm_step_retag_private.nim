@@ -6,6 +6,8 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/pvm/[machine, gas, step]
+import ../../../src/pvm/machine
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 var r = default(StepResult)
 r.status = StepError.None

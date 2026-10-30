@@ -13,7 +13,8 @@ import ../../../src/state/accumulation/[machine as accumulation_machine,
 import ../../../src/state/store
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
-import ../../../src/pvm/[machine, program, step, gas]
+import ../../../src/pvm/[machine, program, step]
+import ../../../src/pvm/gas/gas
 import ../../support/[pvm_accumulation_provision, arc_evidence]
 
 ## Refuse payload hashing after genuine initialization, or the following canonical namespace hash.

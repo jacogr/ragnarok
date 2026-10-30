@@ -6,7 +6,7 @@
 
 import std/[assertions, syncio]
 import ../../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/work/[package as work_package, digest as work_digest]
 import ../../support/[pvm_work_digests, pvm_report_results, pvm_refinement_outcome, arc_evidence]

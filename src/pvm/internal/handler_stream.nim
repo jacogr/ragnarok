@@ -3,7 +3,8 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
 import std/assertions
-import ../[program, machine, gas, gas_plan, gas_memo]
+import ../[program, machine]
+import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):

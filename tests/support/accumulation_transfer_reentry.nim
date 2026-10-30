@@ -25,7 +25,9 @@ import ../../src/state/accumulation/[inputs as accumulation_inputs, service as a
     outputs as accumulation_outputs, finalization as accumulation_finalization,
     statistics as accumulation_statistics]
 import ../../src/state/store
-import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../src/pvm/[initialize, machine, program, step]
+import ../../src/pvm/gas/gas
+import ../../src/pvm/host/fetch as host_fetch
 import ../../src/crypto/primitives
 import ./[accumulation_execution_context, accumulation_reentry_context,
   pvm_accumulation_context, pvm_accumulation_program, report_context,

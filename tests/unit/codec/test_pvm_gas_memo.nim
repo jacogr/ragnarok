@@ -4,7 +4,9 @@
 ## Independent gas prices, complete execution parity, policy ownership, host replies and paid retries.
 # @@Verification={"arc": "pvm_gas_memo_arc_release"}
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, memo as gas_memo]
+import ../../../src/pvm/step
 import ../../support/arc_evidence
 
 proc limits(): GasMemoLimits =

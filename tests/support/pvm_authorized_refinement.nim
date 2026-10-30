@@ -13,7 +13,7 @@ import ../../src/codec/work/[package as work_package, digest as work_digest, rep
 import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
     requests as state_requests, trie as state_trie]
 import ../../src/chain/parameters
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 import ./[pvm_authorization_invoke, pvm_report_results, pvm_work_digests]
 
 type

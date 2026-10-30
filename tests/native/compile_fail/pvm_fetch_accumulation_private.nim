@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "accumulationData"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 let context = default(FetchContext)
 discard context.accumulationData

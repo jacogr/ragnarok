@@ -4,7 +4,9 @@
 ## Replay independent scalar memory equations, permission edges and original-register aliases.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 
 proc word(data: string, at, width: int): uint64 =
   ## Decode fixed little-endian test fields only after their enclosing extent is validated.

@@ -5,7 +5,8 @@
 
 import std/cmdline
 import ../../src/chain/parameters
-import ../../src/pvm/[host_fetch, machine]
+import ../../src/pvm/host/fetch as host_fetch
+import ../../src/pvm/machine
 
 # Return a default snapshot through a runtime call for the encoder precondition probe.
 proc missing(): Parameters = default(Parameters)

@@ -4,7 +4,7 @@
 ## Isolated external-input capture failures must reject success-payload extraction.
 
 import std/cmdline
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 case paramStr(1)

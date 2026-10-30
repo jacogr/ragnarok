@@ -11,7 +11,7 @@ import ../../../src/state/bundle_erasure
 import ../../../src/state/erasure/words as erasure_words
 import ../../../src/codec/bounded
 import ../../../src/codec/work/report as work_report
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/crypto/primitives
 import ../../support/[pvm_export_erasure, pvm_export_erasure_vectors, arc_evidence]
 

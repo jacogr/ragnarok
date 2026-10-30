@@ -8,7 +8,8 @@ import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, report_owned, assurances]
 import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
-import ../../../src/pvm/[initialize, machine, step, gas]
+import ../../../src/pvm/[initialize, machine, step]
+import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/[runner as accumulation_runner,
     execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
     batch as accumulation_batch, dispatch as accumulation_dispatch,

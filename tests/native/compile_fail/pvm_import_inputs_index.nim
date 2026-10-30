@@ -7,5 +7,5 @@
 
 import "../../../src/state/import/inputs" as import_inputs
 import ../../../src/codec/work/package as work_package
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 discard importInput(default(VerifiedImportInputs), FetchItemIndex(0), ImportIndex(0))

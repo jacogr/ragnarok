@@ -6,8 +6,10 @@
 
 import ../../lib/logging
 
-import ../../pvm/[machine, program, step, gas, host_gas, host_log, host_heap, host_fetch,
-    refinement_exports, inner_machines]
+import ../../pvm/[machine, program, step]
+import ../../pvm/gas/gas
+import ../../pvm/host/[gas as host_gas, log as host_log, heap as host_heap, fetch as host_fetch]
+import ../../pvm/[refinement_exports, inner_machines]
 import ../../codec/[bounded, composite]
 import ../../codec/state/service_values as state_service_values
 import ../../codec/work/[package as work_package, digest as work_digest]

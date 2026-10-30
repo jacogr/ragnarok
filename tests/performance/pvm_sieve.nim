@@ -3,7 +3,8 @@
 
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
-import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo]
+import ../../src/pvm/[program, machine]
+import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 import ../../src/pvm/step as reference
 
 type GuestKind {.pure.} = enum ## One immutable process selection binds the frozen guest to an independent expected result.

@@ -6,7 +6,7 @@
 ## Neither path executes a service or certifies a block.
 
 import ../../codec/[bounded, natural, c2_records, composite]
-import ../../pvm/host_fetch
+import ../../pvm/host/fetch as host_fetch
 import ../../chain/parameters
 import ./[inputs as accumulation_inputs, service as accumulation_service,
     invocation as accumulation_invocation, machine as accumulation_machine]

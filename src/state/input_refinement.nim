@@ -6,7 +6,7 @@
 
 import ../codec/[bounded, composite]
 import ../codec/work/[package as work_package, report as work_report]
-import ../pvm/host_fetch
+import ../pvm/host/fetch as host_fetch
 import ../chain/parameters
 import ./store
 import "./import/inputs" as import_inputs

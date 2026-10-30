@@ -4,7 +4,9 @@
 ## Complete three-register destination-byte matrix preserves raw GP and explicit JAM values/prices.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/step
 
 proc word(data: string, at: int): uint64 =
   ## Read one fixed u64 only after its enclosing complete corpus extent has been checked.

@@ -20,7 +20,9 @@ import ../../../src/codec/work/digest as work_digest
 import ../../../src/codec/state/[workqueues as state_workqueues, safrole as state_safrole,
     layout as state_layout]
 import ../../../src/codec/c2_records
-import ../../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
+import ../../../src/pvm/[initialize, machine, program, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[accumulation_execution_context, accumulation_batch_context,
   pvm_accumulation_context, report_context, arc_evidence]
 

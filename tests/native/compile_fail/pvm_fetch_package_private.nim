@@ -5,6 +5,6 @@
 
 # @@Verification={"group": "privacy", "expected": "packageData"}
 
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 let context = default(FetchContext)
 discard context.packageData

@@ -6,7 +6,7 @@
 import std/cmdline
 import ../../src/codec/work/package as work_package
 import ../../src/codec/bounded
-import ../../src/pvm/host_fetch
+import ../../src/pvm/host/fetch as host_fetch
 let base = captureFetchContext(FetchPresence.Absent, FetchEntropy(default(array[32, byte])),
   FetchPresence.Absent, [], FetchTraceLimit(0)).value
 case paramStr(1)

@@ -4,7 +4,9 @@
 ## Replay independent control paths, entered-block prices, invalid successors and complete CPU prefixes through every policy.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 
 proc word(data: string, at, width: int): uint64 =
   ## Read fixed little-endian fixture fields after their caller proves the complete record extent.

@@ -10,7 +10,10 @@ import ../../../src/state/refinement/[outcome as refinement_outcome,
     dispatch as refinement_dispatch]
 import ../../../src/state/accumulation/[dispatch as accumulation_dispatch,
     machine as accumulation_machine]
-import ../../../src/pvm/[machine, step, gas, host_fetch, refinement_exports, inner_machines]
+import ../../../src/pvm/[machine, step]
+import ../../../src/pvm/gas/gas
+import ../../../src/pvm/host/fetch as host_fetch
+import ../../../src/pvm/[refinement_exports, inner_machines]
 import ../../../src/codec/[bounded, c2_records]
 import ../../../src/codec/work/[report as work_report, digest as work_digest]
 import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome,

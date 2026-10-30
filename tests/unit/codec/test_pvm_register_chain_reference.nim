@@ -4,7 +4,9 @@
 ## Replay dependent arithmetic checkpoints through charged host continuations and every block shortage.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/[program, machine]
+import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
+import ../../../src/pvm/step
 
 type
   Refusal = enum ## Fallible callbacks use an independent local refusal domain; successful witnesses select only genuine responses.

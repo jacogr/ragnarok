@@ -11,7 +11,7 @@ import ../../../src/state/authorized_refinement
 import ../../../src/state/refinement/[digest as refinement_digest, report as refinement_report]
 import ../../../src/codec/[bounded, composite, natural]
 import ../../../src/codec/work/report as work_report
-import ../../../src/pvm/host_fetch
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/crypto/primitives
 import ../../support/[pvm_export_commitment, pvm_export_vectors, pvm_report_results,
     pvm_refinement_outcome, arc_evidence]

@@ -8,7 +8,8 @@ import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[trie as state_trie, outputs as state_outputs]
-import ../../../src/pvm/[step, host_fetch]
+import ../../../src/pvm/step
+import ../../../src/pvm/host/fetch as host_fetch
 import ../../../src/state/accumulation/[driver as accumulation_driver,
     runner as accumulation_runner, later_runner as accumulation_later_runner,
     execution as accumulation_execution, round as accumulation_round,
