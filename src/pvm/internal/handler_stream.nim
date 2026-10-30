@@ -1804,6 +1804,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     flatArmRunNext[true](f, offset)
 
+  proc flatArmCheckedTail(f: var FlatFrame, offset: uint32): uint32 =
+    ## A checked prefix keeps its original fault and memory effects, then enters an already validated native suffix.
+    flatReserve(f, offset)
+    let next = offset+1
+    let selected = f.handlers[int(next)]
+    let destination = selected(f, next)
+    if f.barrier == flatStop and destination == offset+3 and
+        int(destination) < f.handlers.len and
+        f.handlers[int(destination)] == flatArmBranch:
+      return flatArmBranch(f, destination)
+    destination
+
   proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
     ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
     flatReserve(f, offset)
@@ -1950,6 +1962,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         else:
           # A priced or already-connected owner keeps the established worker immediately.
           f.handlers[int(header)] = flatArmWhole
+    # One checked pair may cover two source nodes before this positively promoted native suffix.
+    # A complete ordinary header is the only entry that can make the direct tail call.
+    if offset > 2:
+      let header = offset-3
+      let plain: FlatHandler = flatCharge
+      if f.handlers[int(header)] == plain and f.sites[int(header)] == f.sites[int(header+1)] and
+          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y and
+          f.handlers[int(header+1)] != f.plan.facts[int(f.sites[int(header+1)])].handler:
+        f.handlers[int(header)] = flatArmCheckedTail
     true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
