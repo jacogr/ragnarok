@@ -384,7 +384,15 @@ proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.i
       # Other host byte orders retain the original portable little-endian equation.
       for i in 0..<W: bytes[at+i] = byte((value shr (8*i)) and 255'u64)
 
-proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.inline.} =
+proc flatRememberPage(f: var FlatFrame, page: int) {.noinline.} =
+  ## A first write records one admitted page; keep sequence bookkeeping outside repeated-store code.
+  assert f.dirtyIndices.len < f.sourceImages.len
+  f.dirtyIndices.add(uint32(page))
+  let word = page shr 6
+  assert word < f.dirtyPages.len
+  f.dirtyPages[word] = f.dirtyPages[word] or (1'u64 shl (page and 63))
+
+proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.alwaysInline.} =
   ## Mark only after complete store preflight; no allocation or guest-visible state changes occur here.
   assert address <= uint64(high(uint32))-uint64(W-1)
   let first = int(address shr 12)
@@ -394,9 +402,7 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.inline.}
   let before = f.dirtyPages[word]
   if (before and mask) == 0:
     # A dirty epoch needs one bit transition per page, even when the guest rewrites it repeatedly.
-    assert f.dirtyIndices.len < f.sourceImages.len
-    f.dirtyIndices.add(uint32(first))
-    f.dirtyPages[word] = before or mask
+    flatRememberPage(f, first)
   when W > 1:
     # A scalar can span at most two pages; rejected cross-page stores never reach this helper.
     let last = int((address+uint64(W-1)) shr 12)
@@ -407,9 +413,7 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.inline.}
       let lastBefore = f.dirtyPages[lastWord]
       if (lastBefore and lastMask) == 0:
         # The checked scalar may touch a second page in the same bitmap word or the following word.
-        assert f.dirtyIndices.len < f.sourceImages.len
-        f.dirtyIndices.add(uint32(last))
-        f.dirtyPages[lastWord] = lastBefore or lastMask
+        flatRememberPage(f, last)
 
 proc flatClearDirty(f: var FlatFrame) =
   ## A successful host checkpoint or input reset makes private bytes equal their immutable base again.

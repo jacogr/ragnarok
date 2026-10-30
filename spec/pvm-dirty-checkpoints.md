@@ -42,3 +42,18 @@ Baseline production is `4a29188758026f062e2b970b96df2665d8764d4e`. Native valida
 baseline/candidate measurements run in CI; results are pending. No throughput improvement is
 claimed from source complexity alone. In particular, allocation/setup cost and dense-store
 throughput must be checked alongside host-heavy execution before accepting the optimization.
+
+## First measured revision
+
+Revision `0933eec54ca04a5fa46fe8084630d98122d3271a` passed full unit CI41095409256 and native ARM
+qualification/comparison/profile CI41095408168. Local checked ARM tests and a matched focused
+checkpoint harness showed15–20x lower CPU time for unchanged checkpoints and about2x for one
+dirty page in a256-page map. Dense checkpoint differences were inconclusive.
+
+The full ARM cohort nevertheless rejected that revision for general acceptance: minimal, memset,
+pinky and DOOM tick slowed, while DOOM initialization improved. The reused minimal profile grew
+from86,443,825 to93,744,245 simulated instructions; native fragment/call/operation counts were
+identical. `flatMarkStore` appeared as a separate hot function with10,200,358 instructions, where
+its former small body had been inlined. The correction keeps the bitmap test always inline and
+moves unique-page sequence bookkeeping to a cold first-write helper. This revised source requires
+its own matching measurement; the focused checkpoint gains do not establish application benefit.
