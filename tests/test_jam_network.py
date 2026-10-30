@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from harness_fixtures import make_plan
+from workflow_fixtures import event_context, family_section, commands, artifact_paths
 from unittest.mock import patch
 from types import SimpleNamespace
 import check_jam_network as network
@@ -137,15 +139,12 @@ class NetworkReadiness(unittest.TestCase):
     def test_matrix_keeps_target_and_testnet_separate(self):
         """The Fuzz aggregate requires its independent Network child; E2E/Testnet keeps its own runner."""
         workflow = (ROOT/'.github/workflows/ci.yml').read_text()
-        self.assertIn('{"name":"JAM Network","group":"jam-network"}',workflow)
-        for index in range(1,4):
-            # The dedicated network task must preserve every independently scheduled upstream JAM partition.
-            self.assertIn('{"name":"JAM ('+str(index)+'/3)","group":"jam-interface","shard":"'+str(index)+'/3"}',workflow)
-        self.assertIn("if: matrix.family.group == 'jam-network'",workflow)
-        self.assertIn('run: make check-jam-network',workflow)
-        self.assertIn('jam-network-${{ github.run_attempt }}',workflow)
-        self.assertIn('build/tests/jam-network/*.json',workflow)
-        self.assertIn('check-jam-network: setup check-inventory',(ROOT/'Makefile').read_text())
+        section=family_section(workflow,'pvm-fuzz','jam-network',context=event_context())
+        self.assertIn('make check-jam-network',commands(section))
+        self.assertNotIn('make check-jam-fuzzer-interface',commands(section))
+        self.assertNotIn('make check-e2e',commands(section))
+        self.assertIn('build/tests/jam-network/*.json',artifact_paths(section))
+        self.assertIn('tools/check_jam_network.py',make_plan('check-jam-network',skip=('setup','check-inventory')))
 
     def test_container_uses_environment_only_ordinary_binary(self):
         """The preset image inherits the normal binary entry point with no required flags or external policy assets."""

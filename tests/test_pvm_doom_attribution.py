@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import sys
 import unittest
+from harness_fixtures import make_plan
 import tempfile
 from unittest.mock import patch
 from copy import deepcopy
@@ -115,7 +116,7 @@ class DoomAttributionTests(unittest.TestCase):
         section=next(section for section in sections if 'make bench-pvm-doom' in commands(section))
         self.assertIn('make bench-pvm-doom',commands(section))
         self.assertFalse(any('valgrind' in command for command in commands(section)))
-        make=(ROOT/'Makefile').read_text().split('bench-pvm-doom: setup\n')[1].split('\n\n')[0]
+        make=make_plan('bench-pvm-doom', skip=('setup',))
         self.assertIn('--timings-only --warmup 1320',make)
         self.assertIn('cargo fetch --locked',make)
 

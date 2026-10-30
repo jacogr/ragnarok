@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from harness_fixtures import make_plan
 from unittest.mock import patch
 import pvm_memory_benchmark as benchmark
 from dependencies import ROOT
@@ -76,6 +77,5 @@ class MemoryBenchmarkTests(unittest.TestCase):
 
     def test_make_owned_opt_in(self):
         """Host API timings remain separate from normal verification and backend benchmark selection."""
-        make=(ROOT/'Makefile').read_text()
-        self.assertIn('bench-pvm-memory: setup\n\t$(PYTHON) tools/pvm_memory_benchmark.py',make)
-        self.assertNotIn('bench-pvm-memory',make.split('check: ',1)[1].splitlines()[0])
+        self.assertIn('tools/pvm_memory_benchmark.py',make_plan('bench-pvm-memory', skip=('setup',)))
+        self.assertNotIn('tools/pvm_memory_benchmark.py',make_plan('check'))

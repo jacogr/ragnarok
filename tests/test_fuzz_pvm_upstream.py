@@ -5,7 +5,8 @@
 import hashlib
 import unittest
 from unittest.mock import patch
-from harness_fixtures import temporary_folder
+from harness_fixtures import temporary_folder, make_plan
+from workflow_fixtures import event_context, selected_families, family_section, commands, artifact_paths
 import fuzz_pvm_upstream as fuzz
 
 
@@ -50,14 +51,22 @@ class UpstreamFuzzToolTests(unittest.TestCase):
 
     def test_ci_separates_upstream_and_native_verdicts(self):
         """All Linux targets and the bridge run in their own job, retaining raw failures even after failure."""
-        text = (fuzz.ROOT/'.github/workflows/ci.yml').read_text().split('  pvm-fuzz:\n')[1]
-        for required in ["inputs.suite == 'fuzz-pvm'", "inputs.suite == 'fuzz'", "github.event.label.name == 'ci:fuzz'", "inputs.suite == 'full'", 'runs-on: *ubuntu-x86-version',
-                         'run: make fuzz-pvm-upstream', 'if: always()', 'build/pvm-upstream-fuzz/artifacts/']:
-            self.assertIn(required, text)
-        self.assertNotIn('continue-on-error', text)
-        make = (fuzz.ROOT/'Makefile').read_text()
-        self.assertIn('fuzz-pvm-upstream: toolchain rust-tools upstream-fuzz-tools check-inventory', make)
-        self.assertIn('rustup toolchain install '+fuzz.NIGHTLY+' --profile minimal', make)
+        text = (fuzz.ROOT/'.github/workflows/ci.yml').read_text()
+        for event in (event_context(), event_context('workflow_dispatch',suite='fuzz-pvm'),
+                      event_context('workflow_dispatch',suite='fuzz'),
+                      event_context('pull_request','labeled','ci:fuzz'),
+                      event_context('workflow_dispatch',suite='full')):
+            with self.subTest(event=event):
+                section=family_section(text,'pvm-fuzz','pvm',context=event)
+                self.assertIn('make fuzz-pvm-upstream',commands(section))
+                self.assertIn('build/pvm-upstream-fuzz/artifacts/',artifact_paths(section))
+                self.assertFalse(section.get('continue-on-error',False))
+                self.assertFalse(any(step.get('continue-on-error',False) for step in section['steps']))
+        self.assertFalse(selected_families(text,'pvm-fuzz',event_context('pull_request','synchronize')))
+        plan=make_plan('fuzz-pvm-upstream')
+        install='rustup toolchain install '+fuzz.NIGHTLY+' --profile minimal'
+        self.assertIn(install,plan)
+        self.assertLess(plan.index(install),plan.index('tools/fuzz_pvm_upstream.py'))
 
     def test_reducer_retains_same_profile_assertion_and_original_bytes(self):
         """Reduction is capped, preserves native assertion identity and emits replayable retained bytes."""

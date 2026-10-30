@@ -4,6 +4,9 @@
 """Reject partial/tampered paired DOOM measurements and unintended CI execution."""
 import copy
 import unittest
+from harness_fixtures import make_plan
+from test_nimony_ci import scheduled_targets
+from workflow_fixtures import event_context
 from unittest.mock import patch
 import pvm_doom_compare as compare
 from pvm_doom_attribution import timing_samples
@@ -65,5 +68,7 @@ class DoomCompareTests(unittest.TestCase):
     def test_revision_experiment_is_not_a_ci_job(self):
         """Historical comparison remains a Make tool rather than an extra skipped CI check."""
         text=(compare.ROOT/'.github/workflows/ci.yml').read_text()
-        self.assertNotIn('  compare-doom:\n',text)
-        self.assertIn('tools/pvm_doom_compare.py',(compare.ROOT/'Makefile').read_text())
+        for event in (event_context(),event_context('workflow_dispatch',suite='full')):
+            # A differently named job must not silently add this revision experiment either.
+            self.assertNotIn('compare-pvm-doom',scheduled_targets(text,event))
+        self.assertIn('tools/pvm_doom_compare.py',make_plan('compare-pvm-doom',skip=('check-pvm-doom',)))

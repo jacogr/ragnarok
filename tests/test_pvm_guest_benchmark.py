@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from harness_fixtures import make_plan
 from unittest.mock import patch
 
 from dependencies import ROOT
@@ -245,9 +246,8 @@ class GuestPackTests(unittest.TestCase):
 
     def test_opt_in_make_scope(self):
         """Normal setup provisions interpreter hosts only; full correctness does not acquire benchmark work."""
-        make = (ROOT/'Makefile').read_text()
-        target = make.split('bench-pvm-guests: setup\n', 1)[1].split('\n\n', 1)[0]
+        target = make_plan('bench-pvm-guests', skip=('setup',))
         self.assertIn('cargo fetch --locked', target)
         self.assertIn('tools/pvm_guest_benchmark.py', target)
         self.assertNotIn('nightly-2025', target)
-        self.assertNotIn('bench-pvm-guests', make.split('check: ', 1)[1].splitlines()[0])
+        self.assertNotIn('tools/pvm_guest_benchmark.py', make_plan('check'))

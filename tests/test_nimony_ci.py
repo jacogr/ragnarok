@@ -14,7 +14,7 @@ import sys
 import subprocess
 import tarfile
 import unittest
-from harness_fixtures import temporary_folder
+from harness_fixtures import temporary_folder, make_plan
 import threading
 from unittest.mock import patch
 from workflow_fixtures import event_context, expression, job_section, selected_families, family_section, job_condition, workflow, selected_steps, commands, artifact_paths
@@ -276,14 +276,12 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Local and CI entry points must retain native runtime, every-source audit and all independent Python harnesses.
     def test_supported_command_plan(self):
-        command = ['make', '--no-print-directory', '-n']
-        runtime = subprocess.check_output(command+['check-unit'], cwd=ROOT, text=True)
-        module_plan = subprocess.check_output(command+['check-modules'], cwd=ROOT, text=True)
+        runtime = make_plan('check-unit')
+        module_plan = make_plan('check-modules')
         self.assertIn('tools/test_runtime.py', runtime)
-        corpus = subprocess.check_output(command+['check-corpus'], cwd=ROOT, text=True)
+        corpus = make_plan('check-corpus')
         self.assertEqual(corpus.count('tools/test_runtime.py'), 1)
-        self.assertIn('UNIT_SCOPE := corpus', (ROOT/'Makefile').read_text())
-        summary = subprocess.check_output(command+['summary-unit', 'UNIT_SCOPE=corpus'], cwd=ROOT, text=True)
+        summary = make_plan('summary-unit', 'UNIT_SCOPE=corpus')
         self.assertIn('build/tests/corpus/results.json', summary)
         self.assertIn('tools/setup_submodules.py', runtime)
         self.assertIn('cargo fetch --locked', runtime)
@@ -291,19 +289,19 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('tools/test_modules.py', module_plan)
         self.assertNotIn('cargo fetch', module_plan)
         self.assertNotIn('tools/test.py', runtime+module_plan)
-        python_plan = subprocess.check_output(command+['check-python'], cwd=ROOT, text=True)
+        python_plan = make_plan('check-python')
         self.assertIn('tools/test_python.py', python_plan)
         self.assertNotIn('setup_nimony.py', python_plan)
         self.assertNotIn('cargo', python_plan)
         self.assertNotIn('tools/test_e2e.py', runtime)
-        complete = subprocess.check_output(command+['check'], cwd=ROOT, text=True)
+        complete = make_plan('check')
         for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)
         self.assertEqual(complete.count('tools/check_jam_fuzzer_interface.py'), 1)
         self.assertEqual(complete.count('tools/test_runtime.py'), 2)
         self.assertEqual(complete.count('--group failures'), 1)
-        failures = subprocess.check_output(command+['check-failures'], cwd=ROOT, text=True)
+        failures = make_plan('check-failures')
         self.assertIn('--group failures', failures)
         self.assertNotIn('--group failures', runtime)
 
