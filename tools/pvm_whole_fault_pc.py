@@ -28,8 +28,8 @@ ARMS=('baseline','fast')
 GUESTS=('pinky','sieve')
 ORACLES={'pinky':'build/pvm-whole-pinky-cee9f9d7-1793342825258719000',
          'sieve':'build/pvm-whole-sieve-2b2fd70c-1793341170418977000'}
-EXPECTED={'pinky':dict(total=[4934271,3132606],instructions=10576,baseline=416152,fast=416152,limit=1),
-          'sieve':dict(total=[11272390,4203132],instructions=38590,baseline=1697128,fast=1697128,limit=10000000)}
+EXPECTED={'pinky':dict(total=[4934271,3132606],instructions=10576,baseline=416152,limit=1),
+          'sieve':dict(total=[11272390,4203132],instructions=38590,baseline=1697128,limit=10000000)}
 
 
 def digest(path):

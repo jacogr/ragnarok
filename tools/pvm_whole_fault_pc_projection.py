@@ -42,7 +42,7 @@ def derive(folder, *, clocked=False):
         for arm,text in (('baseline',baseline),('fast',variant)):
             # Static memory sites disclose the exact twelve-byte/site code-footprint reduction separately from timing.
             marker='let compileCpuElapsed = cpuNs()-compileCpu' if clocked else "let compileCpuElapsed = 0'u64-compileCpu"
-            shape='var memorySites = 0\'u64\nfor opcode in 0..<256:\n  if opcode in {30..33, 52..62, 70..73, 120..130}: memorySites += image.opcodes[opcode]\n'
+            shape='var memorySites = 0\'u64\nfor opcode in 0..<256:\n  if byte(opcode) in {30'u8..33, 52..62, 70..73, 120..130}: memorySites += image.opcodes[opcode]\n'
             shape+=f'assert image.codeBytes'+(' + memorySites*12' if arm=='fast' else '')+f' == {baseline_size}\n'
             shape+='echo "WHOLE_BRIDGE_SHAPE,", memorySites, ",", image.codeBytes, ",", '+str(baseline_size)+'\n'
             text=once(text,marker,marker+'\n'+shape)
