@@ -27,7 +27,9 @@ cohorts are not rerun or overwritten by this diagnostic.
 
 ## One structural variant
 
-The private projection textually consumes the production `machine.nim` implementation. It adds
+The private projection uses readable licensed source fragments and single exact replacement anchors;
+a generated-text regression binds the emitter, backing and C ABI to the executed prototype, including
+Nim indentation. The private projection textually consumes the production `machine.nim` implementation. It adds
 one saturating writer revocation generation and invalidates it before **both** public writer
 store overloads and **every** `snapshotMemory`, including failed stores and unchanged publication
 through a copied alias. Existing permission/span checks, COW/dirty preparation and payload code

@@ -3,6 +3,7 @@
 """Inert exact-work, immutable-matrix and revocation-projection guards for one private memory experiment."""
 from pathlib import Path
 import sys
+import hashlib
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
@@ -55,6 +56,22 @@ class WholeMemoryTests(unittest.TestCase):
         summary=h.summarize(rows);self.assertEqual(len(summary),4)
         self.assertEqual(summary[0]['arms']['fast']['calls'][0]['cpu_ns']['samples'],10)
         with self.assertRaises(ValueError):h.summarize(rows[:-1])
+
+    def test_generated_text_matches_the_executed_prototype(self):
+        """Promotion must preserve exact emitter/backing/ABI bytes, including Nim indentation inside literals."""
+        with tempfile.TemporaryDirectory(prefix='pvm-whole-text-test-',dir=h.ROOT/'build') as temporary:
+            folder=Path(temporary);derive(folder)
+            native=(folder/'fast_image.nim').read_text()
+            first=native.index('proc emitMemory(');past=native.index('\nproc enter(',first)
+            self.assertEqual(hashlib.sha256(native[first:past].encode()).hexdigest(),
+                '92f9db1a5e317399c8598d0f02229cbefd92cfdd4b81c96b9108c711beb00080')
+            self.assertEqual(hashlib.sha256((folder/'private_machine.nim.inc').read_bytes()).hexdigest(),
+                '70ff4b7f68f28aa54b3f9708626b6880e7312531daae1f986e1f6923396430f5')
+            self.assertEqual(hashlib.sha256((folder/'pvm_whole_image.h').read_bytes()).hexdigest(),
+                '88092d62e11d81810e0fd00e820dac900475f7b230dd862549d4fd76f406770b')
+            section=native[native.index('    writer*: nil pointer'):native.index('  LoadCallback')]
+            self.assertTrue(all(not line.strip() or line.startswith('    ') and not line.startswith('     ')
+                                for line in section.splitlines()))
 
     def test_projection_revokes_both_writer_stores_and_every_snapshot(self):
         """Source-only generation keeps backing private, includes live alias probes, and defaults clocks off."""
