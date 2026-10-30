@@ -1751,7 +1751,8 @@ for layout in 0..<3:
         inc checkedTailCases
 echo "ARM_CHECKED_TAIL_CONTROL_CASES,", checkedTailCases
 
-let dirtyLoopProgram = owner([@[198'u8, 0x12, 1], @[120'u8, 0x02, 0],
+# Copy the rising r1 value through the prefix into store r2; the published bytes must vary.
+let dirtyLoopProgram = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
     @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
     @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 let dirtyLoopPlan = newFlatPlan(dirtyLoopProgram, GasCycleLimit(100000))
@@ -1760,12 +1761,17 @@ let dirtyLoopPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite
 var dirtyLoopRegisters = default(RegisterFile)
 dirtyLoopRegisters[0] = RegisterValue(65536)
 dirtyLoopRegisters[1] = RegisterValue(0x1234)
+dirtyLoopRegisters[2] = RegisterValue(0xa5) # Poison the store value until the prefix publishes each new byte.
 dirtyLoopRegisters[3] = RegisterValue(65552)
 let dirtyLoopInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
     registers: dirtyLoopRegisters)
 var dirtyLoopFrame = newFlatFrame(dirtyLoopPlan, [dirtyLoopPage], dirtyLoopInfo)
 for warm in 0..<6:
   verifyControl(dirtyLoopFrame, dirtyLoopProgram, dirtyLoopInfo, 100, [dirtyLoopPage])
+let warmMemory = pageImage(flatMemorySnapshot(dirtyLoopFrame), PageIndex(16))
+assert warmMemory.error == MachineError.None
+assert warmMemory.value.bytes[0] == 0x34 and warmMemory.value.bytes[1] == 0x35 and
+    warmMemory.value.bytes[15] == 0x43
 when defined(pvmArm64Jit):
   let native = flatArmDirtyLoopStatistics(dirtyLoopFrame)
   when defined(pvmArm64JitRefuse):
@@ -1783,18 +1789,29 @@ assert replaceFlatMemoryChecked(dirtyLoopFrame, crossingPages, crossingInfo) == 
 when defined(pvmArm64Jit):
   let beforeCrossing = flatArmDirtyLoopStatistics(dirtyLoopFrame)
 verifyControl(dirtyLoopFrame, dirtyLoopProgram, crossingInfo, 100, crossingPages)
+let crossedFirst = pageImage(flatMemorySnapshot(dirtyLoopFrame), PageIndex(16))
+let crossedSecond = pageImage(flatMemorySnapshot(dirtyLoopFrame), PageIndex(17))
+assert crossedFirst.error == MachineError.None and crossedSecond.error == MachineError.None
+assert crossedFirst.value.bytes[4090] == 0x34 and crossedFirst.value.bytes[4095] == 0x39
+assert crossedSecond.value.bytes[0] == 0x3a and crossedSecond.value.bytes[9] == 0x43
 when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
   let afterCrossing = flatArmDirtyLoopStatistics(dirtyLoopFrame)
   assert afterCrossing[1] > beforeCrossing[1]
   assert afterCrossing[2] >= beforeCrossing[2]+2 # Each fresh writable page first-touch declines.
 
-let aliasLoopProgram = owner([@[198'u8, 0x00, 0], @[120'u8, 0x02, 0],
+# Identity prefix keeps the store base valid for six complete sixteen-store calls despite aliasing.
+let aliasLoopProgram = owner([@[198'u8, 0x40, 0], @[120'u8, 0x02, 0],
     @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
     @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 let aliasLoopPlan = newFlatPlan(aliasLoopProgram, GasCycleLimit(100000))
 var aliasLoopFrame = newFlatFrame(aliasLoopPlan, [dirtyLoopPage], dirtyLoopInfo)
 for warm in 0..<6:
   verifyControl(aliasLoopFrame, aliasLoopProgram, dirtyLoopInfo, 100, [dirtyLoopPage])
+# Six complete sixteen-store runs exceed the hot threshold.
+assert aliasLoopFrame.info.registers[0] == RegisterValue(65552)
+let aliasMemory = pageImage(flatMemorySnapshot(aliasLoopFrame), PageIndex(16))
+assert aliasMemory.error == MachineError.None
+assert aliasMemory.value.bytes[0] == 0xa5 and aliasMemory.value.bytes[15] == 0xa5
 when defined(pvmArm64Jit):
   assert flatArmDirtyLoopStatistics(aliasLoopFrame) == default(array[3, uint64])
 echo "ARM_DIRTY_LOOP_ALIAS_REFUSAL,1"
