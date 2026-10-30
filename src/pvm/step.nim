@@ -295,8 +295,12 @@ type
     data: nil PreparedData
   PreparedCacheData = ref object ## One explicitly owned worker slot retains at most one successful prepared identity.
     owner: PreparedProgram
+    preparations, hits: uint64 # Copied cumulative worker diagnostics never affect guest admission or results.
   PreparedProgramCache* = object ## Reference identity permits synchronous worker sharing; concurrent use remains forbidden.
     data: nil PreparedCacheData
+  PreparedCacheInfo* = object ## Bounded occupancy plus actual cache activity, distinct from timing or allocator counts.
+    preparations*, hits*: uint64
+    prepared*: PreparedInfo
   PreparedCompilationInfo* = object ## Copied complete source-entry partition; lazy and foreign owners remain zero/unsealed.
     sealed*: bool
     sourceEntries*: uint64       ## Every genuine instruction PC, including interior and folded-noop entries.
@@ -968,11 +972,16 @@ proc newPreparedProgramCache*(): PreparedProgramCache =
   ## Create one empty slot; no source, native mapping or invocation state is allocated until successful admission.
   PreparedProgramCache(data: PreparedCacheData())
 
-proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedInfo] =
-  ## Copy bounded occupancy for worker admission/diagnostics without exposing its cached executable handle.
+proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedCacheInfo] =
+  ## Copy bounded occupancy/activity without exposing a cached handle or fabricating zero work from a busy owner.
   let slot = cache.data
-  if slot == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
-  preparedInfo(slot.owner)
+  if slot == nil: return PreparationResult[PreparedCacheInfo](
+      status: PreparationError.InvalidProgram)
+  let observed = preparedInfo(slot.owner)
+  if observed.error != PreparationError.None:
+    return PreparationResult[PreparedCacheInfo](status: observed.error)
+  PreparationResult[PreparedCacheInfo](status: PreparationError.None, completed: PreparedCacheInfo(
+      preparations: slot.preparations, hits: slot.hits, prepared: observed.value))
 
 func samePreparedLimits(a, b: PreparedLimits): bool =
   ## Every resource ceiling and the gas-analysis policy bind the cache key, not just its backend/source.
@@ -994,8 +1003,10 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
     if current.busy: return PreparationResult[PreparedProgram](status: PreparationError.Busy)
     if current.source == source and current.selected == selected and samePreparedLimits(
         current.limits, limits):
+      inc slot.hits # Modular diagnostic counters are independent of every execution/resource decision.
       return PreparationResult[PreparedProgram](status: PreparationError.None,
           completed: slot.owner)
+  inc slot.preparations
   let admitted = newPreparedProgram(source, limits, selected)
   if admitted.error == PreparationError.None:
     slot.owner = admitted.value # Retire only the prior code cache; immutable machines retain their own source snapshots.

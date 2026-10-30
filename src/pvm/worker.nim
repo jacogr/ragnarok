@@ -22,10 +22,11 @@ func initialized*(worker: ExecutionWorker): bool =
   ## A default worker selects ordinary one-shot behavior; explicit creation enables retained code lifetimes.
   worker.data != nil
 
-proc workerInfo*(worker: ExecutionWorker): PreparationResult[PreparedInfo] =
+proc workerInfo*(worker: ExecutionWorker): PreparationResult[PreparedCacheInfo] =
   ## Inspect actual retained preparation occupancy; an unprepared/busy worker cannot fabricate zero activity.
   let data = worker.data
-  if data == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
+  if data == nil: return PreparationResult[PreparedCacheInfo](
+      status: PreparationError.InvalidProgram)
   preparedCacheInfo(data.prepared)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
