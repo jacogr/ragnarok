@@ -65,7 +65,7 @@ proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
   newFlatPlan(source, GasCycleLimit(100000))
 
-proc same(actual: FlatFrame, expected: StepResult) =
+proc same(actual: FlatFrame, expected: StepResult, sourcePages: openArray[PageImage]) =
   ## Failed local runs expose no successful comparison state; every genuine exit checks all selected metadata and mapped bytes.
   assert actual.reason == expected.error
   if expected.error == StepError.None:
@@ -83,7 +83,7 @@ proc same(actual: FlatFrame, expected: StepResult) =
         let ai = a.value
         let bi = b.value
         assert ai.access == bi.access and ai.bytes == bi.bytes
-  checkFlatSource(actual)
+  checkFlatSource(actual, sourcePages)
 
 proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
   ## A fresh and reused handler stream see the same original registers and private input reset on each call.
@@ -95,7 +95,7 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
   for repeat in 0..<2:
     resetFlatFrame(frame, info)
     runFlat(frame, steps)
-    same(frame, expected)
+    same(frame, expected, pages)
     sameCpu(machineInfo(input).value, info)
 
 proc immediate(bytes: var seq[byte], value: uint64) =
@@ -177,7 +177,7 @@ for epoch in 0..<64:
   sameMemory(first, firstMemory)
   sameMemory(escaped, firstMemory)
   sameMemory(untouched, initialMemory)
-  checkFlatSource(frame)
+  checkFlatSource(frame, images)
 images[0].access = PageAccess.ReadOnly
 let remapped = captureMemory(images, PageLimit(2)).value
 replaceFlatMemory(frame, images, info)
@@ -212,7 +212,7 @@ let reuseTwo = stepOnce(reuseOne.value.machine, GasCycleLimit(100000))
 assert reuseTwo.error == StepError.None and reuseTwo.value.exit == StepExit.Continued
 sameCpu(reuseFrame.info, machineInfo(reuseTwo.value.machine).value)
 sameMemory(flatMemorySnapshot(reuseFrame), memoryOf(reuseTwo.value.machine).value)
-checkFlatSource(reuseFrame)
+checkFlatSource(reuseFrame, reuseImages)
 echo "PASS minimal active-stream quota / partial-resume-reset / independent two-instruction state"
 
 # Descending first-dirty order, duplicate stores and a cross-word page pair must publish sorted complete changes.
@@ -272,7 +272,7 @@ for epoch in 0..<2:
     directorySame(flatMemorySnapshot(directoryFrame), memoryOf(completed.value.machine).value)
     directorySame(heldPrefix, memoryOf(wanted).value)
     directorySame(directorySourceMemory, memoryOf(directorySource).value)
-    checkFlatSource(directoryFrame)
+    checkFlatSource(directoryFrame, directoryImages)
     inc directoryCases
 assert directoryCases == 14
 echo "PASS active-stream publication /14prefix-epochs / reverse order / duplicate stores / cross-word and top pages / repeated observations / retained snapshots"
@@ -312,7 +312,7 @@ proc cachedStreamPrefixes(program: Program, source: Machine, images: openArray[P
       sameCpu(active.info, machineInfo(done.value.machine).value)
       directorySame(flatMemorySnapshot(active), memoryOf(done.value.machine).value)
       directorySame(held, memoryOf(expected[budget]).value)
-      checkFlatSource(active)
+      checkFlatSource(active, images)
       inc result
 
 var foldedStreamCases = 0

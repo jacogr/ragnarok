@@ -613,7 +613,7 @@ for pattern in [0'u8, 17, 128, 255]:
           assert uint64(frame.info.gasDeficit) == uint64(wanted.gasDeficit), "deficit"
           assert frame.info.blockCharged == wanted.blockCharged, "charged"
           for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot], "register"
-          checkFlatSource(frame)
+          checkFlatSource(frame, [])
           inc cases
         when defined(pvmArm64Jit):
           let observed = flatArmStatistics(frame)
@@ -646,7 +646,7 @@ restoreFlatStream(second, stream)
 runFlat(second, 100)
 echo "TRANSFER,", second.exit, ",", second.reason
 assert second.exit == StepExit.Panic and second.reason == StepError.None
-checkFlatSource(second)
+checkFlatSource(second, [])
 when defined(pvmArm64Jit):
   let transferred = flatArmStatistics(second)
   echo "TRANSFER_STATS,", transferred[0], ",", transferred[1]
@@ -998,7 +998,7 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   assert frame.info.gas == wanted.gas and frame.info.gasDeficit == wanted.gasDeficit
   assert frame.info.blockCharged == wanted.blockCharged
   for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot]
-  checkFlatSource(frame)
+  checkFlatSource(frame, images)
   if images.len != 0:
     # The independent single-step machine owns expected store effects; every original input snapshot stays immutable.
     let published = flatMemorySnapshot(frame)
@@ -1344,7 +1344,7 @@ for pattern in [0'u8, 17, 128, 255]:
         bounded.blockCharged = paid
         verifyControl(frame, program, bounded, budget)
         inc registerBoundaryCases
-  checkFlatSource(frame)
+  checkFlatSource(frame, [])
 echo "ARM_REGISTER_BOUNDARIES,", registerBoundaryCases
 
 # Three independently decoded charged shapes form a closed loop; each untaken arm exits through a real panic block.
@@ -1410,7 +1410,7 @@ for start in [0'u64, 11, 24]:
     verifyControl(fresh, regionProgram, info, 1000)
     when defined(pvmArm64Jit): assert flatArmRegionStatistics(fresh) == before
     inc regionCases
-  checkFlatSource(fresh)
+  checkFlatSource(fresh, [])
 echo "ARM_REGION_CASES,", regionCases
 
 var controlCases = 0

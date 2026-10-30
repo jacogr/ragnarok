@@ -65,7 +65,7 @@ proc same(frame: FlatFrame, wanted: StepResult, images: openArray[PageImage]) =
       let a = pageImage(memory, images[i].index).value
       let b = pageImage(memoryOf(value.machine).value, images[i].index).value
       assert a.access == b.access and a.bytes == b.bytes
-  checkFlatSource(frame)
+  checkFlatSource(frame, images)
 
 proc immediate(bytes: var seq[byte], value: uint64) =
   for shift in 0..<4: bytes.add(byte((value shr (shift*8)) and 255))

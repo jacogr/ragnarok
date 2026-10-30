@@ -65,7 +65,7 @@ proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
   newFlatPlan(source, GasCycleLimit(100000))
 
-proc same(actual: FlatFrame, expected: StepResult) =
+proc same(actual: FlatFrame, expected: StepResult, sourcePages: openArray[PageImage]) =
   ## Failed local runs expose no successful comparison state; every genuine exit checks all selected metadata and mapped bytes.
   assert actual.reason == expected.error
   if expected.error == StepError.None:
@@ -83,7 +83,7 @@ proc same(actual: FlatFrame, expected: StepResult) =
         let ai = a.value
         let bi = b.value
         assert ai.access == bi.access and ai.bytes == bi.bytes
-  checkFlatSource(actual)
+  checkFlatSource(actual, sourcePages)
 
 proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
   ## A fresh and reused handler stream see the same original registers and private input reset on each call.
@@ -95,7 +95,7 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
   for repeat in 0..<2:
     resetFlatFrame(frame, info)
     runFlat(frame, steps)
-    same(frame, expected)
+    same(frame, expected, pages)
     sameCpu(machineInfo(input).value, info)
 
 proc immediate(bytes: var seq[byte], value: uint64) =
@@ -136,10 +136,12 @@ proc countAttempts(source: Machine, budget, cycles: uint64): uint64 =
 proc accounting(source: Machine, plan: FlatPlan, budget, cycles: uint64, frame: var FlatFrame) =
   ## Compare complete observable outcomes and the independent unused budget, never a duplicated suffix formula.
   let info = machineInfo(source).value
+  let baseline = memoryOf(source).value
+  let sourcePages = [pageImage(baseline, PageIndex(16)).value, pageImage(baseline, PageIndex(17)).value]
   resetFlatFrame(frame, info)
   runFlat(frame, budget)
   let expected = execute(source, ExecutionStepLimit(budget), GasCycleLimit(cycles))
-  same(frame, expected)
+  same(frame, expected, sourcePages)
   if expected.error == StepError.None or expected.error == StepError.StepLimitExceeded:
     let used = countAttempts(source, budget, cycles)
     assert used <= budget

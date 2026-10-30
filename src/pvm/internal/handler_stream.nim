@@ -72,7 +72,7 @@ type
     sites: seq[uint32]
     compiledForPc: seq[uint32]
     sourceMemory: Memory
-    sourceImages: seq[PageImage]
+    sourcePages: seq[PageDescription]
     roBase, rwBase, stackBase: uint64
     ro, rw, stack: seq[byte]
     extra: seq[FlatRegion]
@@ -85,7 +85,6 @@ type
     savedHandler: nil FlatHandler
     dynamicOffsets: array[256, uint64] # Full positive ordinal tag plus stable offset; no invocation state is retained.
     hostSnapshot: Memory
-    hostChanges: seq[PageImage]
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
@@ -111,11 +110,6 @@ type
 
 
 
-
-type FlatPublication = object
-  ## One owned immutable observation and the copied writable pages that differ from its source base.
-  memory: Memory
-  changed: seq[PageImage]
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
@@ -386,7 +380,7 @@ proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.i
 
 proc flatRememberPage(f: var FlatFrame, page: int) {.noinline.} =
   ## A first write records one admitted page; keep sequence bookkeeping outside repeated-store code.
-  assert f.dirtyIndices.len < f.sourceImages.len
+  assert f.dirtyIndices.len < f.sourcePages.len
   f.dirtyIndices.add(uint32(page))
   let word = page shr 6
   assert word < f.dirtyPages.len
@@ -1350,37 +1344,44 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     flatX86Prepare(f, origin)
   origin
 
+proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
+    output: var openArray[byte]) =
+  ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
+  let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
+  assert copied.error == MachineError.None
+  assert copied.value.index == expected.index and copied.value.access == expected.access
+
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
   flatClearDirty(f)
   f.hostReady = false
   f.hostSnapshot = default(Memory)
-  f.hostChanges = @[]
   f.info = info
   f.reason = oracle.StepError.None
   f.exit = oracle.StepExit.Continued
   f.faultPage = PageAddress(0)
   f.hostCall = oracle.HostCallId(0)
-  for page in 0..<f.sourceImages.len:
-    let image = f.sourceImages[page]
+  let memory = f.sourceMemory
+  for page in 0..<f.sourcePages.len:
+    let image = f.sourcePages[page]
     if image.access == PageAccess.Inaccessible: continue
     let address = uint64(uint32(image.index))*4096
     if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
       let offset = int(address-f.stackBase)
-      copyMem(addr f.stack[offset], unsafeAddr image.bytes[0], 4096)
+      flatCopySourcePage(memory, page, image, f.stack.toOpenArray(offset, offset+4095))
     elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
       let offset = int(address-f.rwBase)
-      copyMem(addr f.rw[offset], unsafeAddr image.bytes[0], 4096)
+      flatCopySourcePage(memory, page, image, f.rw.toOpenArray(offset, offset+4095))
     elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
       let offset = int(address-f.roBase)
-      copyMem(addr f.ro[offset], unsafeAddr image.bytes[0], 4096)
+      flatCopySourcePage(memory, page, image, f.ro.toOpenArray(offset, offset+4095))
     else:
       var found = false
       for i in 0..<f.extra.len:
         let region {.cursor.} = f.extra[i]
         if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
           let offset = int(address-region.first)
-          copyMem(addr region.bytes[offset], unsafeAddr image.bytes[0], 4096)
+          flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
           found = true
           break
       assert found
@@ -1394,14 +1395,14 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
-proc buildFlatFrame(plan: FlatPlan, images: var seq[PageImage], info: MachineInfo,
+proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
     memory: Memory): FlatFrame =
-  ## Consume private admitted images after constructing resident regions; caller storage never enters this helper.
+  ## Consume copied mapping metadata and read immutable page bytes directly into private resident regions.
   assert plan != nil
   # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
-  assert images.len <= high(int) div sizeof(PageImage)
+  assert images.len <= high(int) div sizeof(PageDescription)
   result = FlatFrame(plan: plan, preparationFailure: FlatError.None, preparationUsed: 0,
-      hostSnapshot: default(Memory), hostChanges: @[], hostReady: false,
+      hostSnapshot: default(Memory), hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
     dirtyPages: (if images.len == 0: @[] else: newSeq[uint64](16384)),
@@ -1410,7 +1411,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageImage], info: MachineInf
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory, sourceImages: @[],
+    compiledForPc: @[], sourceMemory: memory, sourcePages: @[],
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
         stack: @[], extra: @[],
     remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
@@ -1446,11 +1447,11 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageImage], info: MachineInf
       # The complete private extent is allocated once; each proven page copies exactly its original bytes.
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
-      copyMem(addr region.bytes[offset], unsafeAddr images[page].bytes[0], 4096)
+      flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
     regions.add(region)
     first = after
-  # Every input page, including inaccessible/empty mappings, remains owned without a second image-array copy.
-  result.sourceImages = move(images)
+  # Compact metadata covers every input page; immutable source memory remains the only baseline byte owner.
+  result.sourcePages = move(images)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
@@ -1485,10 +1486,9 @@ proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: Machi
   let memory = captureMemory(images, plan.limits.pages)
   if memory.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
-  var retained = newSeq[PageImage](images.len)
-  for page in 0..<images.len:
-    # Public borrowed inputs stay unchanged; only this private array is transferred into the frame.
-    retained[page] = images[page]
+  var layout = memoryLayout(memory.value)
+  assert layout.error == MachineError.None
+  var retained = machine.takeValue(layout)
   FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory.value))
 
 proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
@@ -2307,7 +2307,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   f.hostReady = false
   f.hostSnapshot = default(Memory)
-  f.hostChanges = @[]
   f.remaining = limit
   f.reason = oracle.StepError.None
   f.exit = oracle.StepExit.Continued
@@ -2400,7 +2399,9 @@ proc runFlatSingle*(f: var FlatFrame) =
 
 proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
   ## Copy one genuinely dirty page; writing its original bytes back does not create a replacement.
-  let original = f.sourceImages[page]
+  let description = f.sourcePages[page]
+  var original = PageImage(index: description.index, access: description.access)
+  flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
   if original.access == PageAccess.ReadWrite:
     # Guest writes cannot change RO/inaccessible pages; only writable pages need current-byte comparison.
     var image = original
@@ -2432,14 +2433,14 @@ proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
       # Collect only changed writable pages in the already sorted source order; all costs stay inside publication.
       changes.add(image)
 
-proc flatPublishMemory(f: FlatFrame, keepChanges: bool): FlatPublication =
+proc flatPublishMemory(f: FlatFrame): Memory =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
-  result = FlatPublication(memory: f.sourceMemory, changed: @[])
+  result = f.sourceMemory
   if f.dirtyIndices.len == 0:
     # An untouched epoch has exactly its existing immutable bytes, permissions and local ceiling.
     return
   var changes: seq[PageImage] = @[]
-  if f.dirtyIndices.len < f.sourceImages.len div 8:
+  if f.dirtyIndices.len < f.sourcePages.len div 8:
     # Sparse writes sort only their copied ordinals; publication never mutates the epoch's membership.
     var indices = newSeq[uint32](f.dirtyIndices.len)
     for index in 0..<indices.len: indices[index] = f.dirtyIndices[index]
@@ -2448,35 +2449,32 @@ proc flatPublishMemory(f: FlatFrame, keepChanges: bool): FlatPublication =
     for index in indices:
       # A successful store proves membership; binary search skips the untouched portion of a large map.
       var low = start
-      var high = f.sourceImages.len
+      var high = f.sourcePages.len
       while low < high:
         let middle = low+(high-low) div 2
-        if uint32(f.sourceImages[middle].index) < index: low = middle+1
+        if uint32(f.sourcePages[middle].index) < index: low = middle+1
         else: high = middle
-      assert low < f.sourceImages.len and uint32(f.sourceImages[low].index) == index
+      assert low < f.sourcePages.len and uint32(f.sourcePages[low].index) == index
       flatCollectPage(f, low, changes)
       start = low+1
   else:
     # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
-    for page in 0..<f.sourceImages.len:
-      if flatDirty(f, f.sourceImages[page].index): flatCollectPage(f, page, changes)
+    for page in 0..<f.sourcePages.len:
+      if flatDirty(f, f.sourcePages[page].index): flatCollectPage(f, page, changes)
   if changes.len > 0:
     # The checked batch shares untouched owners and clones the root vector exactly once for this observation.
     let updated = withReplacedPages(f.sourceMemory, changes)
     assert updated.error == MachineError.None
-    result.memory = updated.value
-    if keepChanges: result.changed = move(changes)
+    result = updated.value
 
 proc flatMemorySnapshot*(f: FlatFrame): Memory =
   ## A complete independently owned observation; no mutable resident buffer alias escapes.
-  flatPublishMemory(f, false).memory
+  flatPublishMemory(f)
 
 proc observeFlatHostMemory*(f: var FlatFrame): Memory =
   ## Bind one genuine stopped host PC to a copied immutable snapshot, retained independently by callers.
   assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
-  var published = flatPublishMemory(f, true)
-  f.hostSnapshot = published.memory
-  f.hostChanges = move(published.changed)
+  f.hostSnapshot = flatPublishMemory(f)
   f.hostSnapshotPc = f.info.pc
   f.hostReady = true
   f.hostSnapshot
@@ -2485,26 +2483,29 @@ func flatNodes*(f: FlatFrame): int =
   ## A copied observation reports stream size without exposing mutable cache arrays.
   f.handlers.len
 
-proc checkFlatSource*(f: FlatFrame) =
-  ## Every original mapped byte and permission remains immutable despite private execution and reset.
-  for i in 0..<f.sourceImages.len:
-    let image = pageImage(f.sourceMemory, f.sourceImages[i].index)
-    assert image.error == MachineError.None
-    let original = image.value
-    assert original.access == f.sourceImages[i].access and original.bytes == f.sourceImages[i].bytes
+proc checkFlatSource*(f: FlatFrame, expected: openArray[PageImage]) =
+  ## An independently captured caller witness checks every immutable baseline byte outside execution.
+  assert expected.len == f.sourcePages.len
+  for slot in 0..<expected.len:
+    # The witness belongs to the caller, never to production frame storage or its resident buffers.
+    let description = f.sourcePages[slot]
+    assert description.index == expected[slot].index and description.access == expected[slot].access
+    let original = pageImage(f.sourceMemory, description.index)
+    assert original.error == MachineError.None and original.value.bytes == expected[slot].bytes
 
 proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
-  ## Compare private current bytes and unchanged source images outside execution, without publishing another memory representation.
-  assert expected.len == offset+f.sourceImages.len*4096
-  for page in 0..<f.sourceImages.len:
-    let original = f.sourceImages[page]
-    let source = pageImage(f.sourceMemory, original.index)
+  ## Compare all current bytes and permissions against the independent complete reference outside clocks.
+  assert expected.len == offset+f.sourcePages.len*4096
+  for page in 0..<f.sourcePages.len:
+    let description = f.sourcePages[page]
+    let source = pageImage(f.sourceMemory, description.index)
     assert source.error == MachineError.None
     let image = source.value
-    assert image.access == original.access and image.bytes == original.bytes
+    assert image.access == description.access
     for at in 0..<4096:
-      let current = if original.access == PageAccess.Inaccessible: original.bytes[at]
-        else: flatByte(f, uint64(uint32(original.index))*4096+uint64(at))
+      # Inaccessible bytes have no resident region and remain solely in their immutable source page.
+      let current = if description.access == PageAccess.Inaccessible: image.bytes[at]
+        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at))
       assert current == byte(expected[offset+page*4096+at])
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -2574,21 +2575,6 @@ proc flatHostPage(f: var FlatFrame, image: PageImage, apply: bool): bool =
       return true
   false
 
-proc flatRefreshImages(f: var FlatFrame, changes: openArray[PageImage]) =
-  ## Advance only copied changed checkpoint pages after a successful response, preserving reset semantics.
-  var slot = 0
-  for i in 0..<changes.len:
-    # Sorted checkpoint changes may skip thousands of clean pages; narrow only the remaining source suffix.
-    var low = slot
-    var high = f.sourceImages.len
-    while low < high:
-      let middle = low+(high-low) div 2
-      if uint32(f.sourceImages[middle].index) < uint32(changes[i].index): low = middle+1
-      else: high = middle
-    slot = low
-    assert slot < f.sourceImages.len and f.sourceImages[slot].index == changes[i].index
-    f.sourceImages[slot] = changes[i]
-
 proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
     registers: RegisterFile): oracle.StepError =
   ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
@@ -2620,9 +2606,6 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       for i in 0..<changes.len:
         let applied = flatHostPage(f, changes[i], true)
         assert applied
-      var guestChanges = move(f.hostChanges)
-      flatRefreshImages(f, guestChanges)
-      flatRefreshImages(f, changes)
       f.sourceMemory = posterior
       flatClearDirty(f)
       f.info = info
@@ -2790,10 +2773,10 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
   if count.error != MachineError.None: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
   if uint32(count.value) > uint32(plan.limits.pages):
     return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
-  var images = memoryImages(memory)
-  if images.error != MachineError.None: return FlatResult[FlatFrame](
+  var layout = memoryLayout(memory)
+  if layout.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
-  var retained = machine.takeValue(images)
+  var retained = machine.takeValue(layout)
   FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
 
 proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.StepError =

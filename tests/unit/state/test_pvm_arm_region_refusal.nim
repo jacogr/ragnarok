@@ -79,7 +79,7 @@ proc verify(frame: FlatFrame, expected: MachineInfo, remaining: uint64, limited:
   else:
     require(frame.reason == StepError.None and frame.exit == StepExit.Panic, "literal-small-trap-exit")
   require(uint64(frame.faultPage) == 0, "no-invented-fault")
-  checkFlatSource(frame)
+  checkFlatSource(frame, [image()])
   let captured = memoryImages(flatMemorySnapshot(frame))
   require(captured.error == MachineError.None, "full-memory-observation")
   let pages = captured.value

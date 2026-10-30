@@ -65,7 +65,7 @@ proc same(frame: FlatFrame, wanted: StepResult, images: openArray[PageImage]) =
       let a = pageImage(memory, images[i].index).value
       let b = pageImage(memoryOf(value.machine).value, images[i].index).value
       assert a.access == b.access and a.bytes == b.bytes
-  checkFlatSource(frame)
+  checkFlatSource(frame, images)
 
 var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
   PageImage(index: PageIndex(17), access: PageAccess.ReadOnly),
