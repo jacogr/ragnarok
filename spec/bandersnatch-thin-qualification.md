@@ -125,3 +125,7 @@ Passing these vectors is neither an independent cryptographic audit nor full
 current-pin JAM STF parity. The current stage-vector and complete-state work
 continues after this primitive migration; historical trace metadata alone does
 not block independently authored current-schema end-to-end validation.
+
+The subsequent [ark-vrf 0.6.1 update](ark-vrf-security-upgrade.md) advances the
+implementation dependency for its ring-batch security fix without changing this
+Draft 35/v1 qualification or adopting the later reference ring-domain policy.

@@ -9,10 +9,10 @@
   "sources": {
     "ark-vrf-jam": {
       "repository": "davxy/ark-vrf",
-      "commit": "dfb696dfb92425009af80dbbb403e647f6c9e3e4",
-      "tree_sha256": "0a9a403c22e8cbd17a22af0a24f187eaf62ed9860816da3da30772f3478fe8d3",
+      "commit": "cf1dbbb260ec3e7ea88eac68148f05d5cbd587ac",
+      "tree_sha256": "cf0966e16a6d271737755fc2eae353f93160d6e0dcd66202a30f506fc92fdcc9",
       "path": "vendor/ark-vrf",
-      "tag": "v0.6.0"
+      "tag": "v0.6.1"
     },
     "spec-jam": {
       "repository": "davxy/bandersnatch-vrf-spec",
@@ -43,7 +43,7 @@
     "sha256": "1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d",
     "provenance": "Specification public SRS derived from the Zcash Powers of Tau ceremony; 6145 G1 and 2 G2 points; no insecure seed-generated setup."
   },
-  "cargo_lock_sha256": "45b3c6eec149d04649243caaec739c6fdc2b259f4fa7146f2f0748b939f12848",
+  "cargo_lock_sha256": "56c77a8c3ab198f840358cbf600cd08f1a4d8f46795990b8de678932c99f4082",
   "official_jam": {
     "repository": "jam-conformance/jam-test-vectors",
     "commit": "d7b73e396d2f872fcfca37cbbb7d7869675d34d6",
@@ -73,7 +73,7 @@
     "reference_tag": "draft-35",
     "reference_commit": "122f52fb63c6e8eb887aa7416f869aba5075519b",
     "reference_challenge_bytes": 16,
-    "reference_implementation_version": "0.6.0",
+    "reference_implementation_version": "0.6.1",
     "vector_generator_version": "0.5.3",
     "vector_generator_commit": "9ec593e98b69395e97680330e75b5235b48121f4",
     "reason": "Draft35 Thin v1 passes independent complete mathematical vectors, native Thin/ring/current JAM vectors, authored contextual/Safrole consumers and canonical/domain refusals. Literal RFC padding equivalence and published complete signed-trace parity are separately not claimed.",

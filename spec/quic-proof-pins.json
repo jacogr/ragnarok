@@ -1,10 +1,10 @@
 {
   "schema": 2,
-  "networking_commit": "439c45aad135dc654b3de6f56d7d694fd02b7aa8",
+  "networking_commit": "aa0e2b8498c0b1bc1725af2903704d701c6577ab",
   "networking_source": {
     "path": "vendor/jam-np",
     "source_sha256": {
-      "simple.md": "7dc30407d19c11cc07e6c3d386fe4869b7ef2baadc5ffb47b8e69bccf7f2d4f3"
+      "simple.md": "c8c875fde31ddc90e08cc0ff280c0f9d7c306be35f85e82358540e1fa76d854c"
     }
   },
   "alpn_version": 1,

@@ -3,12 +3,14 @@
 The adopted Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` cites
 **Draft 35**. The [qualification matrix](bandersnatch-thin-qualification.md)
 resolves its suite, transcripts, encodings and exact references. Production uses
-pristine ark-vrf 0.6.0 `dfb696dfb92425009af80dbbb403e647f6c9e3e4`, its
+pristine ark-vrf 0.6.1 `cf1dbbb260ec3e7ea88eac68148f05d5cbd587ac`, its
 `bandersnatch` **v1** suite, and specification Draft 35
 `122f52fb63c6e8eb887aa7416f869aba5075519b`. Draft 35 identifies vector generator
 0.5.3 `9ec593e98b69395e97680330e75b5235b48121f4`. The chosen newer implementation
 retains that executable profile while improving canonical decoding and API safety;
 it was selected against vectors, not its version number.
+The [0.6.1 security qualification](ark-vrf-security-upgrade.md) records the later
+ring-batch verifier fix and the unchanged individual-proof ABI/profile.
 
 ## Maintained ABI and policy
 
@@ -54,7 +56,7 @@ Requested capacity, actual rounded capacity and member index are checked separat
 no backend index wrapping or member truncation is accepted by the ABI.
 
 The lock moves arkworks 0.5 to 0.6, ark-transcript 0.0.3 to 0.0.6, ring-proof
-0.0.6 to 0.0.10 and their required closure. Both primitive manifests record the
+0.0.6 to 0.0.11 and their required closure. Both primitive manifests record the
 same reviewed lock hash. Enabled ark-vrf features remain explicit `std`,
 `bandersnatch`, `ring`, `secret-split`. Default `RingSetup::from_pcs_params`
 constructs a blinded context; neither `new_without_blinding` nor insecure setup

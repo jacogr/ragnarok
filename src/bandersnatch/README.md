@@ -3,7 +3,7 @@
 [Source guide](../README.md) · [Crypto guide](../../docs/crypto.md)
 
 [`bandersnatch.nim`](bandersnatch.nim) is the typed Nim interface to the current Draft 35
-ark-vrf 0.6.0 Thin VRF and RingVRF profile. It owns scalar-key and setup handles, validates
+ark-vrf 0.6.1 Thin VRF and RingVRF profile. It owns scalar-key and setup handles, validates
 fixed encodings, and exposes public-key derivation, signing, verification and ring commitments.
 Calls borrow input synchronously; copied outputs and explicit owner lifetimes stay visible to Nim.
 

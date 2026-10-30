@@ -8,8 +8,8 @@
   "previous_quorum": 683,
   "parent_boundary_quorum": 683,
   "nonnull_wrong_quorum": 677,
-  "population_fixture_sha256": "86fd92794c070d60d43beaa57e599c6cde9e31be563b6a59e3064a2be5929e5b",
-  "verdict_fixture_sha256": "5775d3ec60e6ae02970cbb07cfe3f62433e338c05d99c4b79ce4d35ba025f464",
+  "population_fixture_sha256": "29450549b84e6a352d101588ec1b55665f7cd4df969afd7fe25a10d02f05fb9e",
+  "verdict_fixture_sha256": "056742fa84ee10cdd7cbba0070427a6ed63aea75f7434edd40514fe384de6e35",
   "successor_roots": [
     [
       "61995e1ad265eec7472bf74c03a74a23c972d825b5a308450f34f0434fded4eb",
