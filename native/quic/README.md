@@ -1,6 +1,6 @@
 # QUIC transport and certificate C bridges
 
-[Native bridges](../README.md) · [Nim networking](../../src/quic/README.md)
+[Native bridges](../README.md) · [Nim networking](../../src/jamnp-s/README.md)
 
 These interfaces adapt pinned LSQUIC/BoringSSL operations without moving JAM networking policy
 out of Nim.

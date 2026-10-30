@@ -5,7 +5,7 @@
 ## owners until native close. No operation prepares a block or dereferences a retained receiver address.
 
 import std/assertions
-import ../../transport
+import ../../../quic/transport
 import "../../../app/block/download" as block_download
 import ../../../codec/bounded
 

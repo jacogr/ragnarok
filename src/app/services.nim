@@ -68,7 +68,8 @@ import ../storage/full/paged/store as full_paged_store
 import ../storage/history/index as history_index
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
-import ../quic/[transport, protocol]
+import ../quic/transport
+import "../jamnp-s/protocol"
 import ../rpc/[server, protocol, proof_requests]
 import ../chain/[parameters, genesis]
 import ../ui/server

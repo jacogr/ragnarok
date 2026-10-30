@@ -23,9 +23,11 @@ import "../state/block/transition" as block_transition
 import ../state/safrole/transition as safrole_transition
 import ../bandersnatch/bandersnatch
 import ../crypto/[primitives, validator_keys]
-import ../quic/[devnet, protocol, announcements]
-import "../quic/current/block/download/peers" as current_block_download_peers
-import ../quic/sync_targets
+import "../jamnp-s/devnet"
+import "../jamnp-s/protocol"
+import "../jamnp-s/announcements"
+import "../jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../jamnp-s/sync_targets"
 import ../lib/atomic/file as atomic_file
 
 proc number(text: string, maximum: uint64, output: var uint64): bool =

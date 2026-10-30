@@ -5,7 +5,7 @@
 # @@Verification={"group": "nominal", "expected": "expected: CurrentBlockDownload but got: BlockDownload", "early": ["bindStream", "[2] expected: CurrentBlockDownload but got: BlockDownload"]}
 import "../../../src/app/block/download" as block_download
 import "../../../src/app/current/block/download" as current_block_download
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../../src/quic/transport
 var route = default(CurrentDownloadStream)
 var legacy = default(BlockDownload)

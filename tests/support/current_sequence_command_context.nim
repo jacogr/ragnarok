@@ -8,7 +8,7 @@ import ../../src/chain/genesis
 import ../../src/app/current/download/[command as current_download_command,
     policy as current_download_policy]
 import ../../src/app/options
-import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
 import ./[current_consecutive_context, current_application_context,
   current_download_command_context,
   current_services_disk_samples, block_download_transport]

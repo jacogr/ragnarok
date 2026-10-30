@@ -3,7 +3,7 @@
 
 ## A scheduler clock cannot implicitly choose the dispatcher's native/adoption deadline domain.
 # @@Verification={"group": "nominal", "expected": "DownloadLoopTick", "early": ["tick", "[2] expected: DownloadLoopTick but got: DownloadScheduleTick"]}
-import "../../../src/quic/block/download/loop" as block_download_loop
+import "../../../src/jamnp-s/block/download/loop" as block_download_loop
 import ../../../src/app/download/schedule as download_schedule
 var dispatcher = default(BlockDownloadLoop)
 discard dispatcher.tick(DownloadScheduleTick(1))

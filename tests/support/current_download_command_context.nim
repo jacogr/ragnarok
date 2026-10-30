@@ -9,8 +9,8 @@ import ../../src/app/current/download/[command as current_download_command,
 import "../../src/app/current/block/input" as current_block_input
 import ../../src/app/download/schedule as download_schedule
 import ../../src/app/options
-import "../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/bounded
 import ../../src/crypto/primitives

@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/quic/offload
+import "../../src/jamnp-s/offload"
 
 # Exercise one rejected completion read per child process, after retiring any worker-created native owners.
 proc main() {.raises.} =

@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "hasCompletion"}
 
-import ../../../src/quic/offload
+import "../../../src/jamnp-s/offload"
 discard OffloadPollResult(hasCompletion: true)

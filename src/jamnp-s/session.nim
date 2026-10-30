@@ -9,7 +9,7 @@
 
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
 import ../lib/[logging, stop_signal]
-import ./transport
+import ../quic/transport
 import ./protocol
 import ./integration
 import ./offload

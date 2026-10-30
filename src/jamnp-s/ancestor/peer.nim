@@ -4,7 +4,8 @@
 ## One pinned outgoing ancestor request owns its native endpoint, receiver and callback binding.
 ## Nonblocking host ticks authenticate, transfer and retire the stream before exposing producer decoding.
 import std/assertions
-import ../[transport, protocol]
+import ../../quic/transport
+import ../protocol
 import ./stream as ancestor_stream
 import ../../app/ancestor/[response as ancestor_response, receiver as ancestor_receiver]
 import ../../codec/[bounded, block_codec]

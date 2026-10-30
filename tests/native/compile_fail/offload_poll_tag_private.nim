@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "hasCompletion"}
 
-import ../../../src/quic/offload
+import "../../../src/jamnp-s/offload"
 let polled = default(OffloadPollResult)
 discard polled.hasCompletion

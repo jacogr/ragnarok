@@ -3,7 +3,7 @@
 
 ## One explicit broader input policy covers all independently authored allowance/incarnation/foreign-effect CLI cases.
 import ./[current_consecutive_download_context, current_stf_guest_limits, pvm_accumulation_provision]
-import "../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
 import ../../src/codec/[bounded, composite]
 proc traceCheckTestPolicy*(): CurrentDownloadLoopLimits =
   ## Retain the supported current policy format; offline execution consumes its candidate limits without creating peers or callbacks.

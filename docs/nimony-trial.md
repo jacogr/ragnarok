@@ -1927,7 +1927,7 @@ schema + four static contracts), plus three language probes and the separately r
 No new full proof corpus is counted for these ownership/import checks. Formatting covers **810 Nim
 files**; the functional report records **900 matching source/test/configuration hashes**. Ten
 CI-helper tests pass. The all-source semantic audit advances to **39/43**: Bandersnatch and its dependent
-`src/quic/offload.nim` now pass with the optional offload body disabled. Four QUIC modules remain;
+`src/jamnp-s/offload.nim` now pass with the optional offload body disabled. Four QUIC modules remain;
 offload-enabled compilation and runtime/lifecycle parity are still unverified.
 
 All results remain local macOS ARM64, checked ARC/Clang LTO on the pristine pinned Nimony nightly.
@@ -2062,7 +2062,7 @@ parity, the parked M1 namespace question and documented crypto policy gates reta
 
 ## Forty-first bounded increment: shared identity and frame validation
 
-`src/quic/protocol.nim` now owns the existing pinned JAMNP-S key-derived SAN formula, copied DER
+`src/jamnp-s/protocol.nim` now owns the existing pinned JAMNP-S key-derived SAN formula, copied DER
 identity checks, E4 length admission and structural CE 143 frame boundaries. The peer imports that
 module and delegates structural validation before its existing content-key, fixture and integration
 checks. Those application checks remain in the peer; a structurally complete frame alone does not
@@ -2131,7 +2131,7 @@ exchange, whole-peer selftest, service/mesh/resilience/offload parity or Linux e
 
 ## Forty-second bounded increment: CE digest integration ownership
 
-`src/quic/integration.nim` now passes both its enabled crypto-linked path and its disabled typed
+`src/jamnp-s/integration.nim` now passes both its enabled crypto-linked path and its disabled typed
 refusal path. This preserves the existing CE 143 test workload: capture one complete Gray Paper
 0.8.0 C.2 work digest, overwrite borrowed receive bytes, serialize the retained codec owner, then
 bind those bytes to the requested Blake2b-256 key. It introduces no normative relationship between
@@ -2339,7 +2339,7 @@ CI-only change; no new Linux execution or full runtime-suite result is claimed.
 
 ## Forty-fifth bounded increment: standalone sessions and retained IPv6 mesh
 
-`src/quic/peer.nim` is now the thin CLI; `src/quic/session.nim` owns the private peer/stream state,
+`src/quic/peer.nim` is now the thin CLI; `src/jamnp-s/session.nim` owns the private peer/stream state,
 identity callbacks, framing, single/service sessions and retained mesh coordination. The former
 `mesh.nim` include fragment was moved with `git mv` and combined with the peer implementation.
 This preserves stack-stable native callback owners and keeps all stream buffers and handles

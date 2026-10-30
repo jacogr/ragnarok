@@ -8,7 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio]
-import ../../../src/quic/integration
+import "../../../src/jamnp-s/integration"
 assert not IntegrationEnabled
 let key = preimageKey([1'u8, 2, 3])
 assert key.error == IntegrationError.Crypto

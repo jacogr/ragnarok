@@ -16,10 +16,11 @@ import ./schedule as download_schedule
 import ../../codec/[bounded, header]
 import ../../state/report/anchors as report_anchors
 import ../../chain/[genesis, provider]
-import "../../quic/block/download/loop" as block_download_loop
-import "../../quic/block/download/session" as block_download_session
-import "../../quic/block/download/peers" as block_download_peers
-import ../../quic/ancestor/[peer as ancestor_peer, stream as ancestor_stream]
+import "../../jamnp-s/block/download/loop" as block_download_loop
+import "../../jamnp-s/block/download/session" as block_download_session
+import "../../jamnp-s/block/download/peers" as block_download_peers
+import "../../jamnp-s/ancestor/peer" as ancestor_peer
+import "../../jamnp-s/ancestor/stream" as ancestor_stream
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
