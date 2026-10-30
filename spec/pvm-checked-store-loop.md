@@ -83,5 +83,48 @@ in a native-enabled build with explicit interpretation and resolved-stream trans
 store-suppression mutation fails the independent complete-page assertion as intended.
 
 Ignored local receipts live under `build/pvm-checked-store-loop/{doom,micros,selected,final}`.
-Inventory and pinned formatting checks pass. Exact-head Linux ARM paired interpretation/native
-qualification is pending; local evidence does not establish Linux performance or x86 results.
+Inventory and scoped pinned formatting checks pass. The Linux qualification below assesses
+the final runtime independently of these exploratory local measurements.
+
+## Linux ARM qualification
+
+Focused [ARM replay 41138997683](https://github.com/jacogr/ragnarok/actions/runs/41138997683)
+passes measured runtime `acb1e76490de42e51fd5703fe5b69c682b87a9e6` against merged parent
+`53fe8b20d291656143e3f4d7101bd90fe816f1ef`. The independent root audit checks 20 fresh
+ARC/Clang/ThinLTO builds, 84 primary processes, 138 intended controls, 2575 role/source hashes
+and 519 native source hashes, including exact paired baseline/current interpreter images.
+The 60 additional fresh-process replays cover baseline/current JIT only; paired interpretation
+has two primary process orders and is not included in that replay schedule.
+
+Raw CPU milliseconds, forward / reverse:
+
+| Policy / DOOM phase | Parent | Candidate | Candidate / parent | Candidate / PolkaVM interpreted |
+| --- | ---: | ---: | ---: | ---: |
+| Interpreter init | 444.515312 / 439.903668 | 442.384092 / 436.113064 | 0.995206 / 0.991383 | 0.703811 / 0.693606 |
+| JIT init | 239.784192 / 233.319932 | 233.083084 / 233.557876 | 0.972054 / 1.001020 | 0.370823 / 0.371457 |
+| Interpreter tick | 45.865416 / 45.557656 | 40.447876 / 40.053340 | 0.881882 / 0.879179 | 1.009111 / 0.999556 |
+| JIT tick | 31.808008 / 31.612460 | 32.053648 / 31.788288 | 1.007723 / 1.005562 | 0.799688 / 0.793297 |
+
+Linux interpreted DOOM tick is 11.8–12.1% lower, with init 0.5–0.9% lower. This is smaller
+than the exploratory macOS gain. Interpreted minimal is 2.4–3.0% higher, long sieve 1.0–1.3%
+higher and Pinky 0.5–0.9% higher in the paired primary processes.
+
+**Native DOOM tick has a repeatable cost.** All six JIT replay pairs are slower; the ratio
+of process-role medians is 1.010315 (31.728386→32.055672ms). The six paired ratios are
+1.0080,1.0141,1.0054,1.0079,1.0128,1.0108. Native execution activity is unchanged, which
+does not establish unchanged CPU performance. JIT micro replay ratios are 1.001761 minimal,
+1.001284 Pinky and1.004635 long sieve. JIT init has mixed process ordering/spread, with role
+medians 239.420024→234.256280ms (ratio 0.978432); no uniform init benefit is established.
+
+The proposal retains this bounded tradeoff: a substantial interpreted application win with
+explicit native application and interpreted micro costs. It does not establish a universal
+speedup, x86 results or full-block throughput. Future changes must measure both policies.
+
+Official artifact 13018768055 ZIP SHA-256:
+`a3059fc1ded62be3a2518d5d68e240572fbf75e557b44c8c360f1fd51808ecc2`.
+Application report SHA-256:
+`01d863d52cb4b04ec2b727e554c9419c5d2d80523497f7b582b4cb9f26ac463c`.
+Native report SHA-256:
+`2d47a19a49b2fc8f6c49caf4b344b91bb7c831aba336f8938d2483099492e608`.
+Ignored independent audit: `build/pvm-checked-store-loop/ci-arm/audit/result.json`.
+Later evidence-only documentation commits reuse the identical runtime and driver source.
