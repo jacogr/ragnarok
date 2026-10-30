@@ -25,14 +25,14 @@ class CreditFixtureTests(unittest.TestCase):
             self.assertEqual(first['fixture_sha256'], hashlib.sha256(raw).hexdigest())
             self.assertEqual(len(raw.splitlines()), 38)
 
-    # The advanced pinned tiny/full source supplies 227738 -> 227838; retain the literal 100-unit credit projection.
+    # The advanced pinned tiny/full source supplies 229035 -> 229135; retain the literal 100-unit credit projection.
     def test_published_balance_projection(self):
         for line in published():
             fields = line.split()
             self.assertEqual(fields[1], '1')
             before, after = bytes.fromhex(fields[2]), bytes.fromhex(fields[3])
-            self.assertEqual(int.from_bytes(before[41:49], 'little'), 227738)
-            self.assertEqual(int.from_bytes(after[41:49], 'little'), 227838)
+            self.assertEqual(int.from_bytes(before[41:49], 'little'), 229035)
+            self.assertEqual(int.from_bytes(after[41:49], 'little'), 229135)
             self.assertEqual(before[:41]+before[49:], after[:41]+after[49:])
             self.assertEqual(fields[6], '100')
 

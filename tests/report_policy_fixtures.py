@@ -13,7 +13,7 @@ from guarantees_oracle import wire
 from report_oracle import from_json, encode as report_wire
 from validator_rotation_fixtures import roster
 from state_authorization_oracle import wire as pool_wire
-from state_accounts_oracle import wire as account_wire
+from state_accounts_oracle import wire as account_wire, published_source
 from history_transition_fixtures import state_bytes
 from disputes_transition_fixtures import assignments
 
@@ -58,10 +58,7 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
             for account in state['accounts']:
                 # Metadata fields remain in their exact fixed wire order and retain source service identity.
                 value = account['data']['service']
-                assert value['version'] == 0
-                source = (bytes.fromhex(value['code_hash'][2:]),
-                    (value['balance'], 0, *(value[k] for k in ('min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset'))),
-                    (*tuple(value[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')), 0, 0))
+                source = published_source(value)
                 accounts.append(str(account['id'])+':'+account_wire(source).hex())
             auth = pool_wire(0, [b''.join(bytes.fromhex(v[2:]) for v in row) for row in state['auth_pools']])
             expected = case['output'].get('err', 'ok')
@@ -78,7 +75,7 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
     path = folder/(filename+'.txt')
     path.write_text('\n'.join(['pool '+value for value in pools]+rows)+'\n')
     evidence = dict(cases=len(rows), sources=sources, vector_commit=pins['commit'],
-                    projection='release-account-metadata-to-current-zero-supervisor-fields',
+                    projection='published-GP539-account-metadata',
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/(filename+'.json')).write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence

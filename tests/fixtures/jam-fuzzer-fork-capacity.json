@@ -2,7 +2,7 @@
   "chains": 3,
   "expected_sha256": "6adf6e51e8fd89978d34c1167a45592ac100418b7c2ce76e59967596dd0391b5",
   "fork_capacity": 8,
-  "full_guests_sha256": "90f8b323d085afe5569534437efe72de12142d605c6befd29b584c8e4cb3e634",
+  "full_guests_sha256": "943df30c670b975e86cc1a1e2400d32b9815e187b2b42dbf2214c5b2d2e23dac",
   "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
   "sibling_imports": 27,
   "successor_checkpoint_sha256": [

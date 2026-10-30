@@ -75,22 +75,35 @@ def blob(path):
     return json.loads(raw)
 
 
-# JSON service fields map directly, without computing or repairing footprint/deposit/chronology relationships.
+# Published junior-service metadata owns all fields; no zero-field migration is applied.
+def published_source(value):
+    """Retain the complete GP539 service record in the independent fixed-wire tuple."""
+    fields={'version','code_hash','supervisor','supervisor_creation_slot','balance',
+            'supervisor_balance','min_item_gas','min_memo_gas','bytes','deposit_offset',
+            'items','creation_slot','last_accumulation_slot','parent_service'}
+    assert set(value)==fields and value['version']==0
+    source=(bytes.fromhex(value['code_hash'][2:]),
+            tuple(value[k] for k in ('balance','supervisor_balance','min_item_gas',
+                                     'min_memo_gas','bytes','deposit_offset')),
+            tuple(value[k] for k in ('items','creation_slot','last_accumulation_slot',
+                                     'parent_service','supervisor','supervisor_creation_slot')))
+    assert len(source[0])==32
+    return source
+
+
+# Both populations retain every published service field in both transition phases.
 def published_json():
     result=[]
-    fields={'version','code_hash','balance','min_item_gas','min_memo_gas','bytes','deposit_offset','items','creation_slot','last_accumulation_slot','parent_service'}
     for chain in ('tiny','full'):
-        for name in ('always_accumulate-1','bless_from_non_manager-2'):
+        for name in ('always_accumulate-1','bless_from_non_manager-2',
+                     'deferred_transfer_to_junior_is_delivered-1',
+                     'service_reads_transfers_before_work_digests-1',
+                     'supervisor_modification_discards_junior_results-1',
+                     'supervisor_modification_discards_junior_results_control-1'):
             path=f'stf/accumulate/{chain}/{name}.json';data=blob(path)
             for phase in ('pre_state','post_state'):
                 for account in data[phase]['accounts']:
-                    service=account['id'];value=account['data']['service']
-                    assert set(value)==fields and value['version']==0
-                    # Derive the unreleased schema from historical release fields with explicit zero supervisor fields.
-                    source=(bytes.fromhex(value['code_hash'][2:]),(value['balance'],0,value['min_item_gas'],value['min_memo_gas'],value['bytes'],value['deposit_offset']),
-                        tuple(value[k] for k in ('items','creation_slot','last_accumulation_slot','parent_service'))+(0,0))
-                    assert len(source[0])==32
-                    result.append((service,source))
+                    result.append((account['id'],published_source(account['data']['service'])))
     return result
 
 
