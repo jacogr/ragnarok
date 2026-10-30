@@ -21,15 +21,21 @@ sections do not describe the current implementation.
   pure headers can share native charging/dispatch, and one validated two/three-block register loop
   keeps registers resident across guarded internal edges. One unsigned indirect64-bit load family
   guards invocation-owned readable regions in native code before its pure arithmetic suffix.
-  Other memory operations, hosts and eligibility/resource refusals retain the checked engine.
+  A separate [guarded dirty-store self-loop](pvm-arm-dirty-loop.md) admits only the proven
+  `198/120/149/149/171` shape after positive branch resolution. Other memory operations,
+  hosts and eligibility/resource refusals retain the checked engine.
 - Exact-plan prepared owners retain exclusive code/cache ownership across public calls. Native
   bodies borrow only the current thirteen-register file and, for connected execution, a fresh
   bounded scalar gas/budget/count context. Guarded load leaves additionally borrow the current
   frame's three read-region descriptors; compiled code retains no guest-memory/invocation pointer.
-  Whole-block gas and source guards precede each connected block; partial/paid/error handling,
+  The guarded dirty-store loop also borrows fresh writable descriptors and an already-dirty
+  bitmap view for one call, without retaining either pointer. Whole-block gas and source guards
+  precede each connected block; partial/paid/error handling,
   fault/exit PCs, source snapshots and ordered host transitions keep their existing workers.
 - Immutable arenas remain one MiB with at most 1,024 publications, including one reserved
-  connected publication. The 262,144-node JIT coordinate-map bound is a local resource refusal,
+  connected publication; the separate dirty-store loop uses the ordinary 1,023-fragment
+  ceiling so the connected publication retains its reserved slot. The 262,144-node JIT
+  coordinate-map bound is a local resource refusal,
   not a whole-program input-size limit. Original checked arena-offset validation stays in calls;
   the publication-sealed alternative was measured and rejected.
 - Only connected bodies shorten arithmetic/comparison constants; ordinary fragment layout and

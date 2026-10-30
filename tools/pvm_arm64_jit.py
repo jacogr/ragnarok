@@ -61,6 +61,30 @@ def parse(output, guest, native, control=False):
     return dict(execution=parse_candidate('\n'.join(lines)+'\n',guest), native=receipt, control=control_receipt)
 
 
+def dirty_loop_witness(output, mode):
+    """Require full checked boundaries and an activated owner before crediting native loop coverage."""
+    if mode not in ('native', 'refused', 'interpreted'):
+        raise ValueError('Unknown dirty-loop witness mode')
+    lines = output.splitlines()
+    if lines.count('ARM_DIRTY_LOOP_CONTROL_CASES,840') != 1 or \
+            lines.count('ARM_DIRTY_LOOP_ALIAS_REFUSAL,1') != 1:
+        raise ValueError('Missing guarded dirty-loop boundary or alias controls')
+    owner_count = lines.count('ARM_DIRTY_LOOP_OWNER,1')
+    if owner_count != (0 if mode == 'interpreted' else 1):
+        raise ValueError('Missing active dirty-loop owner lifetime witness')
+    loops = [line.split(',') for line in lines if line.startswith('ARM_DIRTY_LOOP,')]
+    if mode != 'native':
+        if loops: raise ValueError('Checked or refused execution entered dirty-loop code')
+        return None
+    if len(loops) != 1 or len(loops[0]) != 4 or any(not value.isascii() or
+            not value.isdecimal() or int(value) >= 2**63 for value in loops[0][1:]):
+        raise ValueError('Missing active dirty-loop call/block/decline receipt')
+    calls, blocks, declines = map(int, loops[0][1:])
+    if calls == 0 or blocks <= calls or declines == 0 or declines > calls:
+        raise ValueError('Guarded dirty-loop did not retain resident execution')
+    return dict(calls=calls, blocks=blocks, declines=declines)
+
+
 def qualify(checks, compiler, *, native=True):
     """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
     rows = []
@@ -74,8 +98,10 @@ def qualify(checks, compiler, *, native=True):
         raise ValueError('Executable storage controls failed')
     rows.append(memory)
     for name,source,defines in (
-        ('witness','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit'] if native else []),
-        ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',['pvmArm64Jit','pvmArm64JitRefuse']),
+        ('witness','tests/performance/pvm_arm64_jit_witness.nim',
+            ['pvmArm64Jit','pvmArmDirtyLoopOwnerReceipt'] if native else []),
+        ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',
+            ['pvmArm64Jit','pvmArm64JitRefuse','pvmArmDirtyLoopOwnerReceipt']),
         ('region-refusal','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefusalReceipt']),
         ('region-refusal-forced','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefuse','pvmArm64JitRefusalReceipt']),
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
@@ -116,6 +142,9 @@ def qualify(checks, compiler, *, native=True):
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
                 raise ValueError('Missing complete one-block region boundary witness')
+            # The CLI result carries only genuine native coverage, not inferred source-shape visits.
+            mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
+            checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
         if native and name == 'witness':
             # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
             matches = [line for line in checked['output'].splitlines()

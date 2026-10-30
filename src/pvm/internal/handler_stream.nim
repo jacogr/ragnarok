@@ -1830,6 +1830,88 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return flatArmBranch(f, destination)
     destination
 
+  func flatArmDirtyShape(f: FlatFrame, header: uint32): bool =
+    ## One sealed five-op source block; neither admission nor code emission depends on a guest PC.
+    if int(header)+6 >= f.handlers.len or f.pricingKind != 0: return false
+    let start = f.sites[int(header)]
+    if f.sites[int(header+1)] != start or f.arguments[int(header)].y != 5: return false
+    for step in 2..5:
+      if f.sites[int(header)+step] != start+uint32(step-1): return false
+    if f.sites[int(header+6)] != start+5: return false
+    if f.handlers[int(header+3)] != flatArmBranch: return false
+    let prefix = f.plan.facts[int(f.sites[int(header+1)])]
+    let store = f.plan.facts[int(f.sites[int(header+2)])]
+    if prefix.opcode != 198 or store.opcode != 120 or
+        prefix.args.slots.destinationIndex == store.args.slots.bIndex: return false
+    if f.plan.facts[int(f.sites[int(header+3)])].opcode != 149 or
+        f.plan.facts[int(f.sites[int(header+4)])].opcode != 149 or
+        f.plan.facts[int(f.sites[int(header+5)])].opcode != 171: return false
+    let branch = f.arguments[int(header+5)]
+    let yes = uint32(branch.x shr 32)
+    let no = branch.y
+    (yes == header and no != header) or (no == header and yes != header)
+
+  proc flatArmDirtyLoop(f: var FlatFrame, offset: uint32): uint32 =
+    ## Every failed native guard returns the unstarted charged header with prior whole blocks published.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let charge = f.arguments[int(offset)]
+    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
+        not armDirtyLoopChargeMatches(jit, offset, charge.y, charge.x):
+      return flatArmCheckedTail(f, offset)
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64]
+    let destination = callArmDirtyLoop(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+    f.info.gas = MachineGas(state[0])
+    f.remaining = state[1]
+    f.info.blockCharged = false
+    assert int(destination) < f.handlers.len
+    if int(destination) >= f.handlers.len:
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if destination == offset: return flatArmCheckedTail(f, offset)
+    destination
+
+  proc flatArmDirtyProbeTail(f: var FlatFrame, offset: uint32): uint32 =
+    ## Only a genuinely completed self-loop contributes to the bounded admission threshold.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if armDirtyLoopStatus(jit) != 0:
+      f.handlers[int(offset)] = flatArmCheckedTail
+      return flatArmCheckedTail(f, offset)
+    let destination = flatArmCheckedTail(f, offset)
+    if f.barrier != flatStop or f.info.blockCharged: return destination
+    let branch = f.arguments[int(offset+5)]
+    if destination != offset and destination != uint32(branch.x shr 32) and
+        destination != branch.y: return destination
+    let probe = armDirtyLoopObserve(jit, offset, destination == offset)
+    if probe == 0: return destination
+    if probe == 2:
+      f.handlers[int(offset)] = flatArmCheckedTail
+      return destination
+    if not flatArmDirtyShape(f, offset):
+      f.handlers[int(offset)] = flatArmCheckedTail
+      return destination
+    let before = armClock()
+    var native = newArmRegionBody()
+    let prefix = f.plan.facts[int(f.sites[int(offset+1)])]
+    let store = f.plan.facts[int(f.sites[int(offset+2)])]
+    emitArmOperation(native, prefix.opcode, prefix.args.slots, prefix.args.x)
+    emitArmDirtyRegionByteStore(native, store.args.slots.aIndex)
+    for step in 3..4:
+      let fact = f.plan.facts[int(f.sites[int(offset)+step])]
+      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+    emitArmBranch(native, 171, branch.slots, flatSext32(uint32(branch.x and 0xffffffff'u64)),
+        uint32(branch.x shr 32), branch.y)
+    let charge = f.arguments[int(offset)]
+    let item = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
+        yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+    let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
+        uint32(store.args.x and 0xffffffff'u64))
+    jit.compilationNs+=armClock()-before
+    f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
+    destination
+
   proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
     ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
     flatReserve(f, offset)
@@ -1985,6 +2067,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y and
           f.handlers[int(header+1)] != f.plan.facts[int(f.sites[int(header+1)])].handler:
         f.handlers[int(header)] = flatArmCheckedTail
+        if flatArmDirtyShape(f, header): f.handlers[int(header)] = flatArmDirtyProbeTail
     true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
@@ -2103,6 +2186,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: default(array[2, uint64])
     else: armRegionStatistics(jit)
+
+  proc flatArmDirtyLoopStatistics*(f: FlatFrame): array[3, uint64] =
+    let jit = f.armJit
+    if jit == nil: default(array[3, uint64])
+    else: armDirtyLoopStatistics(jit)
 
   proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
     ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.

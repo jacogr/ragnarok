@@ -1751,6 +1751,105 @@ for layout in 0..<3:
         inc checkedTailCases
 echo "ARM_CHECKED_TAIL_CONTROL_CASES,", checkedTailCases
 
+let dirtyLoopProgram = owner([@[198'u8, 0x12, 1], @[120'u8, 0x02, 0],
+    @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
+    @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+let dirtyLoopPlan = newFlatPlan(dirtyLoopProgram, GasCycleLimit(100000))
+let dirtyLoopPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+var dirtyLoopRegisters = default(RegisterFile)
+dirtyLoopRegisters[0] = RegisterValue(65536)
+dirtyLoopRegisters[1] = RegisterValue(0x1234)
+dirtyLoopRegisters[3] = RegisterValue(65552)
+let dirtyLoopInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: dirtyLoopRegisters)
+var dirtyLoopFrame = newFlatFrame(dirtyLoopPlan, [dirtyLoopPage], dirtyLoopInfo)
+for warm in 0..<6:
+  verifyControl(dirtyLoopFrame, dirtyLoopProgram, dirtyLoopInfo, 100, [dirtyLoopPage])
+when defined(pvmArm64Jit):
+  let native = flatArmDirtyLoopStatistics(dirtyLoopFrame)
+  when defined(pvmArm64JitRefuse):
+    assert native == default(array[3, uint64])
+  else:
+    assert native[0] > 0 and native[1] > native[0] and native[2] > 0
+    echo "ARM_DIRTY_LOOP,", native[0], ",", native[1], ",", native[2]
+var nextLoopPage = dirtyLoopPage
+nextLoopPage.index = PageIndex(17)
+let crossingPages = [dirtyLoopPage, nextLoopPage]
+var crossingInfo = dirtyLoopInfo
+crossingInfo.registers[0] = RegisterValue(69626)
+crossingInfo.registers[3] = RegisterValue(69642)
+assert replaceFlatMemoryChecked(dirtyLoopFrame, crossingPages, crossingInfo) == FlatError.None
+when defined(pvmArm64Jit):
+  let beforeCrossing = flatArmDirtyLoopStatistics(dirtyLoopFrame)
+verifyControl(dirtyLoopFrame, dirtyLoopProgram, crossingInfo, 100, crossingPages)
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let afterCrossing = flatArmDirtyLoopStatistics(dirtyLoopFrame)
+  assert afterCrossing[1] > beforeCrossing[1]
+  assert afterCrossing[2] >= beforeCrossing[2]+2 # Each fresh writable page first-touch declines.
+
+let aliasLoopProgram = owner([@[198'u8, 0x00, 0], @[120'u8, 0x02, 0],
+    @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
+    @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+let aliasLoopPlan = newFlatPlan(aliasLoopProgram, GasCycleLimit(100000))
+var aliasLoopFrame = newFlatFrame(aliasLoopPlan, [dirtyLoopPage], dirtyLoopInfo)
+for warm in 0..<6:
+  verifyControl(aliasLoopFrame, aliasLoopProgram, dirtyLoopInfo, 100, [dirtyLoopPage])
+when defined(pvmArm64Jit):
+  assert flatArmDirtyLoopStatistics(aliasLoopFrame) == default(array[3, uint64])
+echo "ARM_DIRTY_LOOP_ALIAS_REFUSAL,1"
+when defined(pvmArm64Jit) and defined(pvmArmDirtyLoopOwnerReceipt):
+  let destroyedBefore = armDirtyLoopArenaDestroyed()
+  block:
+    var ownerFrame = newFlatFrame(dirtyLoopPlan, [dirtyLoopPage], dirtyLoopInfo)
+    for warm in 0..<6:
+      verifyControl(ownerFrame, dirtyLoopProgram, dirtyLoopInfo, 100, [dirtyLoopPage])
+    when not defined(pvmArm64JitRefuse):
+      assert flatArmDirtyLoopStatistics(ownerFrame)[1] > 0
+    var active = takeFlatStream(ownerFrame)
+    let activeNodes = streamNodes(active)
+    var foreign = newFlatFrame(newFlatPlan(dirtyLoopProgram, GasCycleLimit(100000)),
+        crossingPages, crossingInfo)
+    restoreFlatStream(foreign, active)
+    runFlat(foreign, 100)
+    assert foreign.reason == StepError.InvalidPreparedProgram
+    assert streamNodes(active) == activeNodes
+    var fresh = newFlatFrame(dirtyLoopPlan, crossingPages, crossingInfo)
+    restoreFlatStream(fresh, active)
+    when not defined(pvmArm64JitRefuse):
+      let beforeMoveCall = flatArmDirtyLoopStatistics(fresh)
+    verifyControl(fresh, dirtyLoopProgram, crossingInfo, 100, crossingPages)
+    when not defined(pvmArm64JitRefuse):
+      let afterMoveCall = flatArmDirtyLoopStatistics(fresh)
+      assert afterMoveCall[0] > beforeMoveCall[0]
+      assert afterMoveCall[1] > beforeMoveCall[1]
+  when defined(pvmArm64JitRefuse):
+    assert armDirtyLoopArenaDestroyed() == destroyedBefore
+  else:
+    assert armDirtyLoopArenaDestroyed() == destroyedBefore+1
+  echo "ARM_DIRTY_LOOP_OWNER,1"
+var dirtyLoopCases = 0
+for layout in 0..<4:
+  var pages: seq[PageImage] = @[]
+  if layout < 2:
+    var page = dirtyLoopPage
+    if layout == 1: page.access = PageAccess.ReadOnly
+    pages.add(page)
+  assert replaceFlatMemoryChecked(dirtyLoopFrame, pages, dirtyLoopInfo) == FlatError.None
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 4, 5, 100, 1000, high(uint64)]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 79, 80, 81, 100,
+          high(uint64)]:
+        var input = dirtyLoopInfo
+        if layout == 3:
+          input.registers[0] = RegisterValue(65535)
+          input.registers[3] = RegisterValue(65551)
+        input.gas = MachineGas(gas)
+        input.blockCharged = paid
+        verifyControl(dirtyLoopFrame, dirtyLoopProgram, input, budget, pages)
+        inc dirtyLoopCases
+echo "ARM_DIRTY_LOOP_CONTROL_CASES,", dirtyLoopCases
+
 
 var secondStoreControls = 0
 let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],
