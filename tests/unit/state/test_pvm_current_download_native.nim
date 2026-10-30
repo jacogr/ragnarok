@@ -11,9 +11,9 @@ import ../../../src/app/current/handoff as current_handoff
 import ../../../src/app/[candidate, preparation_worker]
 import ../../../src/app/download/schedule as download_schedule
 import ../../../src/app/chain
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
-import "../../../src/quic/current/block/download/session" as current_block_download_session
-import "../../../src/quic/current/block/download/peers" as current_block_download_peers
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/current/block/download/session" as current_block_download_session
+import "../../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
 import ../../../src/quic/transport
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]

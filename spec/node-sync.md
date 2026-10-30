@@ -51,9 +51,9 @@ rules as continuous catch-up. Finite command completion alone still grants no sy
 
 ## Peer-discovery increment
 
-`quic/announcements.nim` bounds UP0 messages, canonical GP compact leaf counts, complete sealed
+`jamnp-s/announcements.nim` bounds UP0 messages, canonical GP compact leaf counts, complete sealed
 headers, exact Blake2b header hashes and E4 message framing. Same-slot competing leaves remain
-separate claims. `quic/announcement_stream.nim` routes a persistent UP0 stream independently of
+separate claims. `jamnp-s/announcement_stream.nim` routes a persistent UP0 stream independently of
 CE128; callbacks only copy bounded bytes, while the host decodes/hashes at most one completed
 message per peer/poll. Output contains detached encoded bytes rather than canonical ARC aliases,
 so native polling can continue during an existing exclusive preparation lease.
@@ -81,7 +81,7 @@ Nimony; native Linux CI remains a separate verdict.
 
 ## Continuous full-state host
 
-`quic/current/sync.nim` keeps `Services` and the existing dispatcher at fixed addresses until
+`jamnp-s/current/sync.nim` keeps `Services` and the existing dispatcher at fixed addresses until
 explicit joined close. `sync-current` uses the same explicit endpoint/current-download-policy and
 full-state startup controls as `download-current`, runs until SIGINT/SIGTERM, and refuses a finite
 `--download-blocks` total. No whole-run block count or duration is reserved. `--net-timeout-ms`
@@ -153,7 +153,7 @@ startup anchor; the scalar getter retains no canonical map/header ownership duri
 
 ## Tiny participation enforcement
 
-`quic/sync_targets.nim` owns the shared scalar evidence state. Both normal catch-up and Tiny
+`jamnp-s/sync_targets.nim` owns the shared scalar evidence state. Both normal catch-up and Tiny
 sample each configured native source anew on every decision turn. Only a real authenticated
 stream message or incarnation changes freshness; only an actual canonical full `ChainView`
 satisfies a target. Readiness payloads are private and read-only. A regressed clock, an incomplete

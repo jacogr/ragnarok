@@ -3,7 +3,7 @@
 
 ## Independent UP0 body/framing witnesses preserve peer claims without granting chain trust.
 import std/[assertions, syncio]
-import ../../../src/quic/announcements
+import "../../../src/jamnp-s/announcements"
 import ../../../src/codec/[bounded, header]
 
 proc `&`(a, b: seq[byte]): seq[byte] =

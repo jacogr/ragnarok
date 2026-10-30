@@ -5,7 +5,7 @@
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
-import "../../quic/block/download/loop" as block_download_loop
+import "../../jamnp-s/block/download/loop" as block_download_loop
 
 const
   DownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.

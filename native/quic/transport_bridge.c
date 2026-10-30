@@ -421,6 +421,9 @@ uint64_t rq_peer_metric(rq_transport *t, int metric) {
 /* Compare the owning connections of two live stream handles; retain no connection pointer after this call. */
 int rq_stream_same_peer(void *a, void *b) { return lsquic_stream_conn(a) == lsquic_stream_conn(b); }
 
+/* Return the copied IETF stream number without retaining or exposing its owning connection. */
+uint64_t rq_stream_id(void *stream) { return lsquic_stream_id(stream); }
+
 /* Retain a single-peer IPv6 engine across reconnects; role is fixed by LSQUIC, policy stays native. */
 rq_transport *rq_transport_new_ipv6(int server, uint16_t port, const char *cert, const char *key,
  const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {

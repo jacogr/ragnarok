@@ -10,8 +10,8 @@ import std/posix/posix
 import ../../../src/app/download/[policy as download_policy, command as download_command]
 import ../../../src/app/[options, services]
 import "../../../src/app/block/download" as block_download
-import "../../../src/quic/block/download/loop" as block_download_loop
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import "../../../src/app/block/input" as block_input
 import ../../../src/app/download/schedule as download_schedule
 import ../../../src/codec/[bounded, block_codec, report_owned, header]

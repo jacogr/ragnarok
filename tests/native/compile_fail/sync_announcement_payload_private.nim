@@ -3,6 +3,6 @@
 
 ## A default or rejected handshake cannot expose a partial decoded payload.
 # @@Verification={"group": "privacy", "expected": "completed"}
-import ../../../src/quic/announcements
+import "../../../src/jamnp-s/announcements"
 let outcome = default(AnnouncementResult[AnnouncementHandshake])
 discard outcome.completed

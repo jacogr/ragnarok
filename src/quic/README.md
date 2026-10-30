@@ -1,32 +1,12 @@
-# QUIC networking and peer dispatch
+# QUIC transport
 
-[Source guide](../README.md) · [Networking guide](../../docs/networking.md)
+[Source guide](../README.md) · [Networking design](../../docs/design/quic.md)
 
-This folder owns Nim networking policy and bounded nonblocking scheduling over the maintained
-[LSQUIC C bridge](../../native/quic/README.md). Peer identity, protocol framing and application
-adoption remain explicit Nim decisions.
+This folder owns the nonblocking transport beneath JAMNP-S. [`io.nim`](io.nim) provides
+POSIX UDP readiness and bounded polling. [`transport.nim`](transport.nim) owns the narrow
+LSQUIC/TLS bridge, callback lifetimes, UDP endpoints and primitive certificate observations.
+The maintained native bridge lives in [`native/quic/`](../../native/quic/README.md).
 
-| Modules | Responsibility |
-| --- | --- |
-| [`protocol.nim`](protocol.nim) | Pinned JAMNP-S peer identity, names and CE framing checks |
-| [`io.nim`](io.nim), [`transport.nim`](transport.nim) | POSIX readiness/UDP dispatch, transport callbacks and deadlines |
-| [`session.nim`](session.nim) | Retained peer/mesh sessions and private stream owners |
-| [`integration.nim`](integration.nim) | CE 143 proof workloads over complete C.2 digest captures |
-| [`offload.nim`](offload.nim) | Fixed two-worker proof queue with owned inputs, bounded capacity and explicit completion/cancellation |
-| `ancestor/stream.nim`, `ancestor/peer.nim` | Bounded descending CE 128 context, explicit TLS pins and stream/connection retirement before header decoding |
-| `block_download_*` | CE 128 stream reception, pinned outgoing peers, attempt/session ownership and the one-child download dispatcher |
-
-Callbacks borrow stable owners only during the documented lifetime; teardown retires callbacks
-before descriptors and enclosing services disappear. Block reception, private preparation and
-deferred adoption run as separate stages. Networking does not infer execution or finality from
-successful authentication or receipt of bytes.
-
-The [networking guide](../../docs/networking.md) covers commands, certificates, fixtures and
-verification. The [download-stream](../../spec/application-download-stream.md) and
-[download-loop](../../spec/application-download-loop.md) contracts describe application handoffs;
-[application services](../app/README.md) own optional RPC, UI, telemetry and canonical state.
-
-The child download dispatcher can pause for certified missing report context after
-worker collection and graceful peer connection retirement. Resumption preserves
-the original attempt, prepared block and deadline; successive children reconnect
-only the same configured pins. See [the on-demand contract](../../spec/state-ancestor-context.md).
+JAM peer identities, ALPN use, message framing, stream semantics, sessions and download
+coordination live in [`src/jamnp-s/`](../jamnp-s/README.md). Native callbacks borrow stable
+owners synchronously; endpoints retire callbacks before closing foreign resources.

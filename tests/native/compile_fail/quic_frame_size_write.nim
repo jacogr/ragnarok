@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "size"}
 
-import ../../../src/quic/protocol
+import "../../../src/jamnp-s/protocol"
 var result = default(FrameResult)
 result.size = 0

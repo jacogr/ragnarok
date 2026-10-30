@@ -5,8 +5,8 @@
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/download/command as download_command
-import "../../../src/quic/block/download/loop" as block_download_loop
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, header, report_owned]
 import ../../../src/chain/genesis
 import ../../support/[application_download_chain, application_download_command_context,

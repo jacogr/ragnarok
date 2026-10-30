@@ -3,6 +3,6 @@
 
 ## Callers cannot extract a retained peer view from a default or retired source snapshot.
 # @@Verification={"group": "privacy", "expected": "captured"}
-import ../../../src/quic/announcement_stream
+import "../../../src/jamnp-s/announcement_stream"
 let observation = default(PeerAnnouncementSnapshot)
 discard observation.captured

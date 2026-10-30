@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "ready"}
 
-import ../../../src/quic/offload
+import "../../../src/jamnp-s/offload"
 var result = default(OffloadPollResult)
 result.ready = true

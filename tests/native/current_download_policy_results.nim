@@ -5,8 +5,8 @@
 
 import std/[cmdline, assertions]
 import ../../src/app/current/download/policy as current_download_policy
-import "../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../src/app/download/schedule as download_schedule
 import ../../src/codec/bounded
 

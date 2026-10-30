@@ -56,6 +56,8 @@ void rq_stream_abort(void *);
 int rq_stream_flush(void *s);
 /* Compare peer ownership only while both native streams live; no connection handle escapes. */
 int rq_stream_same_peer(void *, void *);
+/* Copy the IETF stream ID while its native handle is live; interpretation stays in Nim. */
+uint64_t rq_stream_id(void *);
 /* IPv6 loopback proof engine retains socket/TLS/engine ownership across sequential reconnects. */
 rq_transport *rq_transport_new_ipv6(int server, uint16_t port, const char *cert, const char *key,
  const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);

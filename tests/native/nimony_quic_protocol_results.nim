@@ -8,7 +8,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/quic/protocol
+import "../../src/jamnp-s/protocol"
 
 # One process observes one rejected read so an earlier failure cannot hide a later accessor.
 proc main() {.raises.} =

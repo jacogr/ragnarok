@@ -5,7 +5,7 @@
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
-import "../../../quic/current/block/download/loop" as current_block_download_loop
+import "../../../jamnp-s/current/block/download/loop" as current_block_download_loop
 import ../logical/startup as current_logical_startup
 import ../../candidate
 import ../../../codec/bounded

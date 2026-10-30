@@ -7,7 +7,7 @@ import std/posix/posix
 import ../../../src/app/[services, options]
 import ../../../src/app/download/schedule as download_schedule
 import ../../../src/app/proof/worker as proof_worker
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
 import ../../../src/codec/report_owned
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store

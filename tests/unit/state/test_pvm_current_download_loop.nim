@@ -12,9 +12,9 @@ import ../../../src/app/download/schedule as download_schedule
 import ../../../src/app/preparation_worker
 import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/app/chain
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../../src/quic/current/block/download/peers" as current_block_download_peers
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/trie as state_trie

@@ -7,9 +7,9 @@
 
 import std/[assertions, syncio, envvars]
 import std/posix/posix
-import "../../../src/quic/block/download/peers" as block_download_peers
-import "../../../src/quic/block/download/session" as block_download_session
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/peers" as block_download_peers
+import "../../../src/jamnp-s/block/download/session" as block_download_session
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../../src/app/download/schedule as download_schedule
 import "../../../src/app/block/download" as block_download
 import "../../../src/app/block/input" as block_input

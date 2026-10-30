@@ -1,0 +1,13 @@
+{
+  "environment": "RAGNAROK_JAMNP_AUDIT_FIXTURE",
+  "files": {
+    "jamnp-audit/announcements.bin": "0ae8fe59a209cf949ef7f2f93e2dcc716adca6c579f871e45d60d490e66cc2bc",
+    "jamnp-audit/initial.bin": "229fed5a8eb4fe27e933ee28973a4d37513e556a7a4a24dafa045572ef91bfc2",
+    "jamnp-audit/judgments.bin": "71d5f3c58d25dc702b6e4eca69d935f43291b464010599898b44e06f7ec64464",
+    "jamnp-audit/later.bin": "0369ed4658406e38ac5149effb12050413c289303fe36392893409a9b09d891c",
+    "jamnp-audit/negative2.bin": "225d17bfa7aa1621c0e6a1c88d32e3a65937f3d8e8252d9e87d73019551848d6",
+    "jamnp-audit/negative3.bin": "f5f5736671f436768384d6ffb23d9dbbe2694b12b7dfa5ee1f8adbf675310aec",
+    "jamnp-audit/positive.bin": "5b43871e5440ab0ae4725f01ba604586c50267d8eb50e7bcb03dafc9a7abc91b"
+  },
+  "target": "jamnp-audit"
+}

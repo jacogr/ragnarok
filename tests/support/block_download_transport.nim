@@ -9,9 +9,10 @@ import "../../src/app/block/download" as block_download
 import ../../src/app/download/schedule as download_schedule
 import ../../src/app/services
 import ../../src/state/accumulation/completion as accumulation_completion
-import ../../src/quic/[transport, protocol]
-import "../../src/quic/block/download/stream" as block_download_stream
-import "../../src/quic/block/download/session" as block_download_session
+import ../../src/quic/transport
+import "../../src/jamnp-s/protocol"
+import "../../src/jamnp-s/block/download/stream" as block_download_stream
+import "../../src/jamnp-s/block/download/session" as block_download_session
 
 type
   DownloadTransferMode* = enum ## Each fixture mode changes only server wire/lifecycle behavior.
