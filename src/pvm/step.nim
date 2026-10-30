@@ -968,6 +968,12 @@ proc newPreparedProgramCache*(): PreparedProgramCache =
   ## Create one empty slot; no source, native mapping or invocation state is allocated until successful admission.
   PreparedProgramCache(data: PreparedCacheData())
 
+proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedInfo] =
+  ## Copy bounded occupancy for worker admission/diagnostics without exposing its cached executable handle.
+  let slot = cache.data
+  if slot == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
+  preparedInfo(slot.owner)
+
 func samePreparedLimits(a, b: PreparedLimits): bool =
   ## Every resource ceiling and the gas-analysis policy bind the cache key, not just its backend/source.
   uint64(a.cycles) == uint64(b.cycles) and

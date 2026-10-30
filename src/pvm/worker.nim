@@ -22,6 +22,12 @@ func initialized*(worker: ExecutionWorker): bool =
   ## A default worker selects ordinary one-shot behavior; explicit creation enables retained code lifetimes.
   worker.data != nil
 
+proc workerInfo*(worker: ExecutionWorker): PreparationResult[PreparedInfo] =
+  ## Inspect actual retained preparation occupancy; an unprepared/busy worker cannot fabricate zero activity.
+  let data = worker.data
+  if data == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
+  preparedCacheInfo(data.prepared)
+
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits, worker: ExecutionWorker): InitializationResult =
   ## Recheck all envelope, allocation and entry rules while sharing only exact JAM code and identical parse policies.
