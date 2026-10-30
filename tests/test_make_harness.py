@@ -247,7 +247,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('check_jam_network', 'setup_jam_minifuzz', 'check_jam_fuzzer_interface', 'setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('check_jam_network', 'setup_jam_minifuzz', 'check_jam_fuzzer_interface', 'setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'prepare_failures', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):

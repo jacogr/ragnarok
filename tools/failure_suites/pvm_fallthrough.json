@@ -24,5 +24,6 @@
       "name": "pvm-fallthrough-invalid"
     }
   ],
-  "source": "tests/native/pvm_fallthrough_results.nim"
+  "source": "tests/native/pvm_fallthrough_results.nim",
+  "bundle": "pvm-core"
 }

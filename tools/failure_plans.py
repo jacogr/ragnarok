@@ -7,6 +7,7 @@ Exposes FAILURE_PLANS, derived FAILURE_COUNTS, SPECIAL_CASES and driver_modes. E
 never come from observed successful results; normal case metadata remains in existing family files.
 """
 from failure_checks import FAILURE_SUITES
+from failure_bundles import build_units
 from ci_shards import shuffled
 from failure_drivers import SPECIAL_DRIVERS, driver_modes, check_driver_modes
 from failure_controls import CONTROLS
@@ -39,12 +40,14 @@ def failure_partition(shard=None, seed=None):
     index, count = shard
     if seed is not None:
         # Specialized controls form one dependent bundle whose owning shard also changes each run.
-        work = shuffled([*FAILURE_SUITES, None], seed, 'failures')[index-1::count]
-        families = set(work)-{None}
+        units = build_units(FAILURE_SUITES)
+        work = shuffled([*units, None], seed, 'failures')[index-1::count]
+        families = {family for key in work if key is not None for family in units[key]}
         specialized = None in work
     else:
-        # Existing unseeded local reproductions retain their historical partition assignment.
-        families = set(tuple(FAILURE_SUITES)[index-1::count])
+        # Keep compatible build units together for unseeded standalone partitions too.
+        units = build_units(FAILURE_SUITES)
+        families = {family for key in list(units)[index-1::count] for family in units[key]}
         specialized = index == count
     plans = {family: cases for family, cases in FAILURE_PLANS.items()
              if family in families or (specialized and family in SPECIAL_CASES)}
@@ -58,13 +61,15 @@ def parse_failure_shard(value):
     return shard
 
 
-# Ordinary shards prepare only declared native dependencies; the specialized owner retains full setup.
+# All partitions prepare the union of their declared ordinary and specialized native providers.
 def failure_libraries(shard=None, seed=None):
     plans, specialized = failure_partition(shard, seed)
-    if specialized:
-        return None
     required = set()
+    if specialized:
+        required.update(library for control in CONTROLS.controls.values() for library in control.libraries)
     for family in plans:
+        if family not in FAILURE_SUITES:
+            continue # Specialized controls declare dependencies at their registration sites.
         # Ordered linking remains in the family; preparation needs only the union of its provider names.
         suite = FAILURE_SUITES[family]
         required.update(suite.get('native_libraries', ()))

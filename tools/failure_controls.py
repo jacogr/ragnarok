@@ -41,6 +41,8 @@ class FailureControl:
     cases: tuple
     fields: tuple
     source: Path | None
+    libraries: tuple = ()
+    setup_sources: tuple = ()
 
     # Preserve each family's identity shape without a central family-name conditional.
     def identities(self):
@@ -57,13 +59,18 @@ class SpecializedControls:
         self.controls = {}
 
     # A typed driver uses a source-based planner; language/resource controls declare their cases locally.
-    def case(self, *, order, plan, driver=False, fields=('member', 'origin')):
+    def case(self, *, order, plan, driver=False, fields=('member', 'origin'), libraries=(), sources=()):
         """Register one callable and validate its ordered expected identities before execution."""
         if (type(order) is not int or order < 1 or type(driver) is not bool or not callable(plan)
                 or not isinstance(fields, tuple) or not fields
                 or any(not isinstance(field, str) or re.fullmatch(r'[a-z][a-z0-9_]*', field) is None
                        for field in fields) or len(fields) != len(set(fields))):
             raise ValueError('Invalid specialized failure metadata')
+
+        if (not isinstance(libraries, tuple) or not set(libraries) <=
+                {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'}
+                or not isinstance(sources, tuple) or any(not (ROOT/p).is_file() for p in sources)):
+            raise ValueError('Invalid specialized preparation requirements')
 
         # Callable names supply family IDs rather than a parallel handler-name list.
         def register(function):
@@ -80,7 +87,8 @@ class SpecializedControls:
             if (not isinstance(cases, (tuple, list)) or not cases
                     or any(not isinstance(row, (tuple, list)) or len(row) < len(fields) for row in cases)):
                 raise ValueError('Invalid specialized failure case plan: '+name)
-            control = FailureControl(name, order, function, tuple(cases), fields, source)
+            control = FailureControl(name, order, function, tuple(cases), fields, source, libraries,
+                                     (source,) if source is not None else tuple(ROOT/p for p in sources))
             identities = control.identities()
             if any(identity in identities[:index] for index, identity in enumerate(identities)):
                 raise ValueError('Duplicate specialized failure identity: '+name)
@@ -125,7 +133,7 @@ CONTROLS = SpecializedControls(SPECIAL_DRIVERS)
 
 
 # Preserve the original store build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=10, plan=lambda: ([(member, origin, 'outcome.status == None')
+@CONTROLS.case(order=10, libraries=('crypto',), sources=('tests/native/state_store_results.nim',), plan=lambda: ([(member, origin, 'outcome.status == None')
     for member in ('store', 'snapshot', 'lookup') for origin in ('default', 'error')]
     +[('fork', 'default', 'outcome.status == None'),
       ('metadata', 'default', 'not snapshot.data == nil'),
@@ -155,7 +163,7 @@ def run_store(context, control):
 
 
 # Preserve the original bandersnatch build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=20, plan=default_error_cases, driver=True)
+@CONTROLS.case(order=20, libraries=('bandersnatch_observer', 'bandersnatch'), plan=default_error_cases, driver=True)
 def run_bandersnatch(context, control):
     compiler, report = context.compiler, context.report
     build, command = context.build, context.command
@@ -176,7 +184,7 @@ def run_bandersnatch(context, control):
 
 
 # Preserve the original offload build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=30, plan=lambda: [(enabled, origin) for enabled in (False, True) for origin in ('default', 'empty')], fields=('enabled', 'origin'))
+@CONTROLS.case(order=30, libraries=('bandersnatch',), sources=('tests/native/nimony_offload_results.nim',), plan=lambda: [(enabled, origin) for enabled in (False, True) for origin in ('default', 'empty')], fields=('enabled', 'origin'))
 def run_offload(context, control):
     compiler, report = context.compiler, context.report
     build, command = context.build, context.command
@@ -205,7 +213,7 @@ def run_offload(context, control):
 
 
 # Preserve the original runtime build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=40, plan=lambda: [('assertion', 'trial assertion sentinel', 1), ('bounds', '[AssertionDefect]', 1),
+@CONTROLS.case(order=40, sources=('tests/native/nimony_runtime_guards.nim',), plan=lambda: [('assertion', 'trial assertion sentinel', 1), ('bounds', '[AssertionDefect]', 1),
                   ('wrapping', '-9223372036854775808', 0)], fields=('name',))
 def run_runtime(context, control):
     compiler, report = context.compiler, context.report
@@ -223,7 +231,7 @@ def run_runtime(context, control):
 
 
 # Preserve the original availability build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=50, plan=availability_cases, driver=True)
+@CONTROLS.case(order=50, libraries=('crypto',), plan=availability_cases, driver=True)
 def run_availability(context, control):
     compiler, report = context.compiler, context.report
     build, command = context.build, context.command
@@ -243,7 +251,7 @@ def run_availability(context, control):
 
 
 # Preserve the original workqueues build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=60, plan=default_error_cases, driver=True)
+@CONTROLS.case(order=60, libraries=('crypto',), plan=default_error_cases, driver=True)
 def run_workqueues(context, control):
     compiler, report = context.compiler, context.report
     build, command = context.build, context.command
@@ -263,7 +271,7 @@ def run_workqueues(context, control):
 
 
 # Preserve the original composition build profile, positive controls and per-process failure predicates.
-@CONTROLS.case(order=70, plan=default_error_cases, driver=True)
+@CONTROLS.case(order=70, libraries=('observer',), plan=default_error_cases, driver=True)
 def run_composition(context, control):
     compiler, report = context.compiler, context.report
     build, command = context.build, context.command
@@ -282,5 +290,38 @@ def run_composition(context, control):
                           origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
 
 
-# Reject a source added without a handler, or a handler whose source was deleted, during preflight.
+# Keep three minimal documented compiler mechanisms and the premise-checked result boundary small.
+@CONTROLS.case(order=80, driver=True, fields=('profile', 'mode'),
+               plan=lambda source: [(profile, mode) for profile in ('checked', 'production')
+                                    for mode in driver_modes(source)])
+def run_production_regressions(context, control):
+    """Run the same isolated witnesses under checked builds and the shipped ARC/Clang/ThinLTO profile."""
+    enumeration = []
+    for profile in ('checked', 'production'):
+        compiled, binary = context.build(context.compiler, control.source,
+            'contract-compiler-'+profile, lto=profile == 'production')
+        context.report['contract_compiler_'+profile+'_build'] = compiled
+        if compiled['exit_code'] != 0:
+            continue # A compilation failure cannot substitute for any runtime rejection or positive control.
+        def command(arguments, name):
+            """Give each profile independent logs without changing process arguments."""
+            return context.command(arguments, 'qualified-'+profile+'-'+name)
+        receipt = {}
+        check_driver_modes(command, binary, control.name, receipt)
+        enumeration.append(receipt['probe_cases'][control.name])
+        for expected_profile, mode in control.cases:
+            if expected_profile != profile:
+                continue
+            if mode.startswith('step-'):
+                probe_failure(command, context.report[control.name], [binary, mode],
+                    mode, 'r.status == None', 'production-qualified '+mode, profile=profile, mode=mode)
+            else:
+                checked = command([binary, mode], mode)
+                accepted = checked['exit_code'] == 0 and checked['output'].strip() == 'CONTRACT_COMPILER_OK '+mode
+                context.report[control.name].append(dict(profile=profile, mode=mode, passed=accepted, run=checked))
+                announce(profile+' '+mode, accepted)
+    context.report.setdefault('probe_cases', {})[control.name] = dict(
+        passed=len(enumeration) == 2 and all(row['passed'] for row in enumeration), checks=enumeration)
+
+# Every typed fixture must have exactly one registered handler, including profile qualification.
 CONTROLS.validate_drivers()

@@ -48,5 +48,6 @@
       "diagnostic": "r.status == None",
       "description": "PVM gas result selection at an unmarked operand start"
     }
-  ]
+  ],
+  "bundle": "pvm-core"
 }

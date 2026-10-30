@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from native_checks import ROOT, announce
 from verification_inventory import unique_object
+from failure_bundles import build_units, bundle_source
 
 
 # Expand shared labels and argument fields without evaluating code from inventory data.
@@ -40,7 +41,10 @@ def check_fields(value, allowed, required, context):
 def validate_suite(group, suite, root=ROOT):
     check_fields(suite, {'source', 'build_name', 'crypto_library', 'native_libraries', 'quic_library',
                         'defines', 'name_template', 'description_template', 'diagnostic',
-                        'argument_fields', 'cases'}, {'source', 'build_name', 'cases'}, group)
+                        'argument_fields', 'cases', 'bundle'}, {'source', 'build_name', 'cases'}, group)
+    if 'bundle' in suite and (not isinstance(suite['bundle'], str)
+                              or re.fullmatch(r'[a-z][a-z0-9_-]*', suite['bundle']) is None):
+        raise ValueError('Invalid Contract bundle in '+group)
     for field in ('name_template', 'description_template', 'diagnostic'):
         # Optional defaults must be meaningful strings even when current cases override them.
         if field in suite and (not isinstance(suite[field], str) or not suite[field].strip()):
@@ -91,6 +95,8 @@ def validate_suite(group, suite, root=ROOT):
                            for key in ('name', 'description', 'diagnostic'))):
             raise ValueError('Invalid arguments or diagnostics in '+context)
         expanded.append(details)
+    if suite.get('bundle') and any(len(case['arguments']) != 1 for case in expanded):
+        raise ValueError('Contract bundle requires one runtime selection argument: '+group)
     names = [suite['build_name'], *(case['name'] for case in expanded)]
     if not all(isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_-]+', name) for name in names):
         # Names become log/cache filenames and must remain unambiguous single path components.
@@ -119,6 +125,7 @@ def load_suites(path, root=ROOT):
             raise ValueError('Duplicate failure log name in '+group)
         logs.update(names)
         suites[group] = suite
+    build_units(suites) # Reject incompatible ABI/feature profiles before native setup.
     return suites
 
 
@@ -141,7 +148,7 @@ def probe_failure(command, rows, arguments, name, diagnostic, description, *, en
 
 
 # Compile one fixed suite using its existing library profile, then run each case in data-file order.
-def run_failure_suite(compiler, report, libraries, build, command, group):
+def run_failure_suite(compiler, report, libraries, build, command, group, *, prepared=None):
     suite = FAILURE_SUITES[group]
     options = {}
     if suite.get('quic_library') is not None:
@@ -154,7 +161,14 @@ def run_failure_suite(compiler, report, libraries, build, command, group):
         # Integration probes retain their explicitly enabled compilation profile.
         options['defines'] = tuple(suite['defines'])
     crypto = libraries[suite['crypto_library']] if suite.get('crypto_library') is not None else None
-    compiled, binary = build(compiler, ROOT/suite['source'], suite['build_name'], crypto, **options)
+    if prepared is None:
+        compiled, binary = build(compiler, ROOT/suite['source'], suite['build_name'], crypto, **options)
+        route = []
+    else:
+        compiled, binary, reused = prepared
+        compiled = dict(compiled, shared_build=suite['bundle'], reused=reused,
+                        elapsed_seconds=0 if reused else compiled.get('elapsed_seconds', 0))
+        route = [group]
     report[group+'_build'] = compiled
     if compiled['exit_code'] != 0:
         # Failed builds must never execute a stale binary or manufacture passing probe rows.
@@ -162,17 +176,39 @@ def run_failure_suite(compiler, report, libraries, build, command, group):
     for case in suite['cases']:
         # Every attempted access remains a separate process with its exact command, diagnostic and log name.
         case = case_details(suite, case)
-        probe_failure(command, report[group], [binary, *case['arguments']], case['name'],
+        probe_failure(command, report[group], [binary, *case['arguments'], *route], case['name'],
                       case['diagnostic'], case['description'], **case['identity'])
 
 
 # Ordinary families are independent; discovery schedules each exactly once in stable lexical order.
-def run_failure_suites(compiler, report, libraries, build, command, groups=None):
+def run_failure_suites(compiler, report, libraries, build, command, groups=None, folder=None):
     """Run the selected validated families without a second list of scheduler calls."""
     selected = tuple(FAILURE_SUITES) if groups is None else tuple(groups)
     if len(selected) != len(set(selected)) or not set(selected) <= set(FAILURE_SUITES):
         # A malformed partition cannot repeat a family or execute an unregistered probe.
         raise ValueError('Invalid runtime failure family selection')
+    cached = {}
+    units = build_units(FAILURE_SUITES)
     for group in selected:
-        # Each family retains its declared build inputs, probe order and strict diagnostic predicate.
-        run_failure_suite(compiler, report, libraries, build, command, group)
+        suite = FAILURE_SUITES[group]
+        if 'bundle' not in suite:
+            run_failure_suite(compiler, report, libraries, build, command, group)
+            continue
+        name = suite['bundle']
+        reused = name in cached
+        if not reused:
+            members = units[('bundle', name)]
+            source = bundle_source(folder or ROOT/'build/tests/failures', name, members, FAILURE_SUITES)
+            # Bundle validation has established identical profiles; retain every original linking option.
+            options = {}
+            if suite.get('quic_library'): options['quic_library'] = libraries[suite['quic_library']]
+            if suite.get('native_libraries'):
+                options['native_libraries'] = tuple(libraries[n] for n in suite['native_libraries'])
+            if 'defines' in suite: options['defines'] = tuple(suite['defines'])
+            crypto = libraries[suite['crypto_library']] if suite.get('crypto_library') else None
+            # Explicit module imports retain the original source-directory cache identity.
+            cached[name] = build(compiler, source, 'failure-bundle-'+name, crypto,
+                                 profile_directory=(ROOT/suite['source']).parent, **options)
+        compiled, binary = cached[name]
+        run_failure_suite(compiler, report, libraries, build, command, group,
+                          prepared=(compiled, binary, reused))

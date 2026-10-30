@@ -12,6 +12,7 @@ import os
 import hashlib
 import json
 import platform
+import time
 from pathlib import Path
 from contextlib import nullcontext
 import sys
@@ -143,15 +144,35 @@ def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
 def run_failures(compiler, report, libraries, availability_fixture, composition_fixture, shard=None, seed=None):
+    timings = report.setdefault('timings', {})
+    def measured_build(*arguments, **options):
+        """Accumulate actual compiler invocations, including selected additional profiles."""
+        compiled, binary = build(*arguments, **options)
+        timings['build_seconds'] = timings.get('build_seconds', 0)+compiled.get('elapsed_seconds', 0)
+        timings['executable_builds'] = timings.get('executable_builds', 0)+1
+        return compiled, binary
+    def measured_command(*arguments, **options):
+        """Keep child timing separate from compilation without changing its process boundary."""
+        observed = command(*arguments, **options)
+        timings['probe_seconds'] = timings.get('probe_seconds', 0)+observed.get('elapsed_seconds', 0)
+        timings['child_invocations'] = timings.get('child_invocations', 0)+1
+        return observed
     plans, specialized = failure_partition(shard, seed)
     groups = tuple(family for family in plans if family in FAILURE_SUITES)
+    # Optional measurements use private cold caches and do not replace any scheduled probe.
+    if os.environ.get('FAILURE_MEASURE_BUNDLES') == '1':
+        from failure_bundles import build_units
+        from measure_failure_bundles import measure
+        for (kind, name), members in build_units(FAILURE_SUITES).items():
+            if kind == 'bundle' and set(members) <= set(groups):
+                report['bundle_measurement'] = measure(compiler, BUILD/'bundle-measurement', libraries, members)
     # Discovered families keep their ordered probes, independent binaries and exact diagnostic predicates.
-    run_failure_suites(compiler, report, libraries, build, command, groups=groups)
+    run_failure_suites(compiler, report, libraries, measured_build, measured_command, groups=groups, folder=BUILD)
     if not specialized:
         # Specialized controls and their native resource setup execute once, in the selected partition.
         return
     from failure_controls import CONTROLS, FailureContext
-    context = FailureContext(compiler, report, libraries, build, command, BUILD,
+    context = FailureContext(compiler, report, libraries, measured_build, measured_command, BUILD,
                              availability_fixture, composition_fixture)
     CONTROLS.run(context)
 
@@ -239,6 +260,7 @@ def main():
     sources = runtime_sources()
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(set(sources))}
+    preparation_started = time.monotonic()
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
     sys.path.insert(0, str(ROOT/'tests'))
     selected_suites = None
@@ -251,7 +273,7 @@ def main():
         required = {library for name in selected_suites for library in NATIVE_REQUIREMENTS[name]['libraries']}
         libraries, quic_fixtures, native_evidence = prepare_libraries(
             BUILD, required=None if needs_corpora else required)
-    elif args.group == 'failures' and args.failure_shard is not None:
+    elif args.group == 'failures':
         # Ordinary partitions avoid preparing unrelated transport and Rust resources.
         libraries, quic_fixtures, native_evidence = prepare_libraries(
             BUILD, required=failure_libraries(args.failure_shard, args.shard_seed))
@@ -259,9 +281,17 @@ def main():
         # Complete local runs preserve the established aggregate preparation path.
         libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)
     report.update(native_evidence)
+    if args.group == 'failures':
+        report['timings'] = dict(native_preparation_seconds=time.monotonic()-preparation_started)
+        receipt = ROOT/'build/ci/failure-setup.json'
+        if receipt.is_file():
+            setup = json.loads(receipt.read_text())
+            if setup['failure_shard'] == (list(args.failure_shard) if args.failure_shard else None) and setup['seed'] == args.shard_seed:
+                report['setup'] = setup
+    fixture_started = time.monotonic()
     integration_wires = integration_reload = None
-    if (args.group == 'unit' and needs_corpora) or (args.group == 'failures' and specialized):
-        # Only independent corpora/failure verification need unconditional CE preparation.
+    if args.group == 'unit' and needs_corpora:
+        # Only independent corpora consume CE fixtures; Contract controls prepare their own inputs.
         integration_wires, integration_reload, report['integration_fixtures'] = prepare_integration(BUILD)
     availability_fixture = composition_fixture = None
     if (args.group == 'unit' and args.unit_scope != 'corpus') or (args.group == 'failures' and specialized):
@@ -301,6 +331,7 @@ def main():
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.
+        report['timings']['fixture_preparation_seconds'] = time.monotonic()-fixture_started
         run_failures(compiler, report, libraries, availability_fixture, composition_fixture,
                      args.failure_shard, args.shard_seed)
         step_passed = failures_passed(report)

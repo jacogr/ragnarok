@@ -69,7 +69,11 @@ check-docker: docker-build
 	done 2>&1 | tee build/ci/docker-smoke.log
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-info
+setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-info bandersnatch-fetch
+
+# Share the unchanged pinned/offline Cargo fetch with dependency-scoped Contract setup.
+.PHONY: bandersnatch-fetch
+bandersnatch-fetch: rust-tools sources
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
 
 # Refresh source/release metadata even when all native dependencies are already provisioned.
@@ -297,7 +301,12 @@ fuzz-pvm-upstream: toolchain rust-tools upstream-fuzz-tools check-inventory
 	$(PYTHON) tools/fuzz_pvm_upstream.py
 
 # Runtime contract/crash probes retain strict diagnostics without delaying ordinary unit/corpus checks.
-check-failures: setup
+# Contract setup retains generated assets only when the selected fixtures import their consumer.
+.PHONY: failure-setup
+failure-setup:
+	$(PYTHON) tools/prepare_failures.py --make "$(MAKE)"
+
+check-failures: failure-setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
 
 # Compiler rejection checks retain their own logs/caches and do not execute the unit/corpus workload.

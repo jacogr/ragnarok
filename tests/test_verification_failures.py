@@ -57,14 +57,17 @@ class VerificationFailures(unittest.TestCase):
             self.assertEqual(len(names), len(set(names)))
             self.assertEqual(set(names), set(test_runtime.FAILURE_PLANS))
             self.assertEqual(sum(specialized for _, specialized in partitions), 1)
-            sizes = [len(set(plans).intersection(FAILURE_SUITES)) for plans, _ in partitions]
+            sizes = [len({('bundle', FAILURE_SUITES[n]['bundle']) if FAILURE_SUITES[n].get('bundle')
+                          else ('family', n) for n in plans if n in FAILURE_SUITES})
+                     for plans, _ in partitions]
             self.assertLessEqual(max(sizes)-min(sizes), 1)
             for index, (plans, specialized) in enumerate(partitions, 1):
                 # Controls and real native providers remain attached to the scope that consumes them.
                 self.assertEqual(bool(set(plans).intersection(SPECIAL_CASES)), index == count)
                 required = failure_libraries((index, count))
                 if specialized:
-                    self.assertIsNone(required)
+                    self.assertTrue({'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer'} <= required)
+                    self.assertNotIn('polkavm', required)
                 else:
                     for family in plans:
                         suite = FAILURE_SUITES[family]
@@ -94,7 +97,8 @@ class VerificationFailures(unittest.TestCase):
             self.assertEqual(len(names), len(set(names)))
             self.assertEqual(set(names), set(test_runtime.FAILURE_PLANS))
             self.assertEqual(sum(specialized for _, specialized in partitions), 1)
-            sizes = [len(set(plans).intersection(FAILURE_SUITES))+int(specialized)
+            sizes = [len({('bundle', FAILURE_SUITES[n]['bundle']) if FAILURE_SUITES[n].get('bundle')
+                          else ('family', n) for n in plans if n in FAILURE_SUITES})+int(specialized)
                      for plans, specialized in partitions]
             self.assertLessEqual(max(sizes)-min(sizes), 1)
             for index, (plans, specialized) in enumerate(partitions, 1):
@@ -104,7 +108,8 @@ class VerificationFailures(unittest.TestCase):
                               **{key: [dict(identity, passed=True) for identity in cases]
                                  for key, cases in plans.items()})
                 if specialized:
-                    self.assertIsNone(required)
+                    self.assertTrue({'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer'} <= required)
+                    self.assertNotIn('polkavm', required)
                     report.update(store_controls=dict(passed=True),
                                   probe_cases={name: dict(passed=True) for name in test_runtime.SPECIAL_DRIVERS})
                 else:
