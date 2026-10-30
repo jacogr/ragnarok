@@ -39,7 +39,7 @@ exact prices/cycles against the original on50 smaller cases across32-entry windo
 then evaluates the long literal source with all following bytes available for branch pricing.
 No oracle prices are supplied to production execution.
 
-Additional controls cover local shape/span/terminal declines, exactly eight probe visits,
+Additional controls cover local shape/span/terminal/generated-word declines, exactly eight probe visits,
 stable exhausted negative compilation, real publication-count/physical-byte exhaustion and
 ordinary entries surviving global refusal. The test-only native receipt define records genuine
 per-order region calls/blocks and ordinary native calls; missing/reordered/zero native receipts
@@ -53,7 +53,13 @@ ARM comparison job and complete `make check-pvm-native` gate without requesting 
 timing, profiling or calibration. Other modes/defaults and the60-minute limit are unchanged.
 The two regression executables and complete logs are retained even when qualification fails.
 
-Status: source-traced; baseline native reproduction required before a production fix. A baseline
-failure must identify candidate-local availability after a fresh-owner native positive, both
-ownership orders and literal full-state checks. Source feasibility alone is not reproduction or
-performance evidence. A concrete PR and exact-head CI evidence are required before final review.
+Baseline native reproduction: run41051261233 at `dcbd1ce59ff3c48ef874101bd7e6c870237844fb`,
+with production sources byte-identical to5dace. Fresh owner executes2region calls/10blocks;
+rejected-large then small executes0regions despite138ordinary native calls; small-first preserves
+coverage, increasing2to5region calls/28blocks. Both orders and all literal state/storage/probe
+controls pass before the intended candidate-local availability assertion. The focused manual mode
+selects only native correctness; the ordinary PR Smoke remains a separate required gate.
+
+The fix moves only the sticky-refusal assignment to the genuine publication boundary, matching
+existing x86 policy. Fixed exact-head native confirmation and focused PR review remain pending.
+This establishes an optimization-coverage defect, not a wrong guest result or a measured speedup.

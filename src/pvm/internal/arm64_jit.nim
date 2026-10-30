@@ -563,7 +563,7 @@ proc armRegionEdge(words: var seq[uint32], fixes: var seq[ArmRegionFixup], targe
   words.add(0)
 
 func armRegionStatus*(jit: ArmJit): uint8 =
-  ## Zero allows one compile attempt, one is refused, and two denotes an immutable published region.
+  ## Zero permits bounded candidate probes, one is owner-wide refusal, and two is an immutable published region.
   jit.region.status
 
 func armRegionCount*(jit: ArmJit): range[2..3] =
@@ -597,7 +597,6 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     count: range[2..3] = 3): bool =
   ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
   assert jit.region.status == 0
-  jit.region.status = 1 # Any refusal remains interpreted and avoids repeated compilation attempts.
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
@@ -696,6 +695,8 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     words[fix.at] = if fix.condition < 16:
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
+  # Shape/span/image negatives stay local under existing header probes; only owner-wide storage failure is sticky.
+  jit.region.status = 1
   if not publishArmEntry(jit, blocks[0].header, 0, 0, words, true): return false
   for index in 0..<count:
     # The source owner retains only scalar proof facts and executable offsets, never invocation addresses.

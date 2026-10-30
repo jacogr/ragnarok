@@ -164,14 +164,25 @@ proc smallBlocks(): array[3, ArmRegionBlock] =
 proc controls(): bool =
   ## Candidate shape/span failures stay local; unsupported storage and genuine global exhaustion stay sticky.
   result = true
-  for shape in 0..<3:
+  for shape in 0..<4:
     let jit = newArmJit()
     discard armEntry(jit, 0, 16)
     var blocks = smallBlocks()
     case shape
     of 0: blocks[0].span = 1
     of 1: blocks[0].span = 4096
-    else: blocks[0].body = default(ArmBlock)
+    of 2: blocks[0].body = default(ArmBlock)
+    else:
+      # A candidate may fit its source-span ceiling yet exceed the unchanged generated-word ceiling.
+      let program = owner()
+      let add = instructionRegisters(instruction(program, CodeAddress(SmallPc)))
+      let branch = instructionRegisters(instruction(program, CodeAddress(SmallPc+3)))
+      var body = newArmRegionBody()
+      for operation in 0..<1100: emitArmOperation(body, 149, add, 1)
+      emitArmBranch(body, 172, branch, 0, 8, 8)
+      blocks[0].span = 1101
+      blocks[0].operations = 1101
+      blocks[0].body = move(body)
     require(not publishArmRegion(jit, blocks, 2), "candidate-local-decline")
     result = result and armRegionStatus(jit) == 0
     require(jit.fragments == 0 and jit.codeBytes == 0, "candidate-no-storage-mutation")
