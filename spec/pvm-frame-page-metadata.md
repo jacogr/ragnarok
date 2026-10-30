@@ -76,6 +76,9 @@ used as a passed setup receipt.
 Private reproducibility receipts and full raw controls are under
 `build/pvm-page-metadata/{measure,doom}`, with complete native witness receipts in
 `build/pvm-page-metadata/qualification.json`. Candidate production source is frozen at
-`411213a23223c5568b4d38047cca592b0dadc689`; subsequent evidence prose is source-equivalent.
+`411213a23223c5568b4d38047cca592b0dadc689`. Subsequent changes add evidence prose and
+restore the diagnostic source observer's explicit actual-permission comparison against the
+independent witness; execution paths are unchanged. Final focused CI qualifies that corrected
+observer together with the complete native witnesses.
 Focused Linux ARM comparison remains required. Broad CI is reserved for the final integration
 boundary after local and focused qualification.

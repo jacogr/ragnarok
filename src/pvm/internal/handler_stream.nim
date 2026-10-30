@@ -2491,7 +2491,9 @@ proc checkFlatSource*(f: FlatFrame, expected: openArray[PageImage]) =
     let description = f.sourcePages[slot]
     assert description.index == expected[slot].index and description.access == expected[slot].access
     let original = pageImage(f.sourceMemory, description.index)
-    assert original.error == MachineError.None and original.value.bytes == expected[slot].bytes
+    assert original.error == MachineError.None and original.value.access == expected[
+        slot].access and
+      original.value.bytes == expected[slot].bytes
 
 proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
   ## Compare all current bytes and permissions against the independent complete reference outside clocks.
