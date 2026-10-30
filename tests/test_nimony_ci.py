@@ -440,7 +440,7 @@ class NimonyCISafeguards(unittest.TestCase):
         values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', section).group(1)+']')
         partitions = [parse_failure_shard(value) for value in values]
         count = partitions[0][1]
-        self.assertEqual(count, 6)
+        self.assertEqual(count, 5)
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         self.assertIn('FAILURE_SHARD: ${{ matrix.shard }}', section)
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', section)

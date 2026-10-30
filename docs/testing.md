@@ -75,7 +75,7 @@ gh pr edit <number> --remove-label ci:full
 gh pr edit <number> --add-label ci:full
 ```
 
-Unit and Contract use 16 and 6 shards respectively. Each run shuffles discovered work with its
+Unit and Contract use 16 and 5 shards respectively. Each run shuffles discovered work with its
 shared GitHub run ID, without historical timing weights or maintained assignments. Unit batches
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for
