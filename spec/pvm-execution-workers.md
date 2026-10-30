@@ -45,3 +45,25 @@ This prerequisite alone does not claim application reuse or measured speedup. Co
 must retain workers across actual application loops and measure complete invocation cost,
 preparation work and immutable observations using independent expected state/host controls. Native
 compilation, execution and measurements remain CI-only.
+
+## Actual application worker scopes
+
+Package refinement retains one explicit worker across independently authenticated item bootstraps
+and host execution. Current and block accumulation retain one worker across the actual service
+batch. The accumulation driver retains one worker across continuation and every bounded reentry;
+the same optional worker travels through initialization and dispatch. A different adjacent service
+or a code upgrade replaces the single slot rather than growing a catalogue. Original state,
+package, block, invocation arguments, effects and outputs retain their existing provenance owners.
+Workers are local execution scratch and never become state-publication certificates.
+
+The authorization path is currently one-shot, so it does not retain a worker without an actual
+caller lifetime. No authorization semantics or broad state architecture changes are included.
+
+`pvm_worker_application` creates separate real authenticated refinement and accumulation inputs
+with identical code and different initial RAM. It proves exact Program identity reuse, actual
+single preparation plus cache hits, literal distinct outputs, earlier output/input immutability,
+changed code/cycle-policy replacement, local attempt refusal, and requested/actual backend facts.
+Supported ARM64 builds require positive native work across reused JIT calls; forced interpretation
+requires zero native activity. Existing complete-state, gas, host-event, publication/provenance and
+continuation/driver suites remain independent semantic controls. Measurements are pending and
+these source/behavior witnesses alone are not evidence of application throughput improvement.

@@ -4,6 +4,8 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
+import ../../pvm/worker
+
 import ../../lib/logging
 
 import ../../pvm/[machine, program, step]
@@ -270,7 +272,8 @@ proc dispatchHostCall(context: var DispatchContext, stopped: StepOutcome): HostR
 proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: MemoryByteLimit,
     exportLimits: ExportLimits, steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits),
-        logging: LogWriter = default(LogWriter), backend: PvmBackend = PvmBackend.Jit):
+        logging: LogWriter = default(LogWriter), backend: PvmBackend = PvmBackend.Jit,
+            worker: ExecutionWorker = default(ExecutionWorker)):
     RefinementDispatchResult[RefinementOutcome] =
   ## Replay the original immutable CPU with fresh exports; refuse atomically without exposing callback progress.
   let data = prepared.data
@@ -282,7 +285,8 @@ proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: Memory
   var context = DispatchContext(logger: logging, source: data, exports: empty, copyLimit: copyLimit,
       exportLimits: exportLimits, machines: captureInnerMachines(nested),
           programCopyLimit: inner.program, innerFailure: StepError.Uninitialized)
-  let evaluated = executeWithHost(data.machine, context, dispatchHostCall, steps, calls, cycles, backend)
+  let evaluated = executeWithHost(data.machine, context, dispatchHostCall, steps, calls, cycles,
+      backend, worker)
   case evaluated.error
   of HostExecutionError.None:
     let selected = evaluated.value

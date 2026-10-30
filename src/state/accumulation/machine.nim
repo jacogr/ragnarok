@@ -5,6 +5,8 @@
 ## Exposes bounded initialization, retained bootstrap/machine access and guarded typed failures.
 ## Initialization performs no guest execution, host mutation or state publication.
 
+import ../../pvm/worker
+
 import ../../pvm/[initialize, machine, program]
 import ./[invocation as accumulation_invocation, service as accumulation_service]
 
@@ -83,7 +85,8 @@ func envelopeHeapBounds(code: openArray[byte]): AccumulationHeapBounds =
     past: PageIndex(uint32((0xfefd0000'u64-stackZones*65536) div 4096)))
 
 proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
-    limits: InitializationLimits): AccumulationMachineResult[PreparedAccumulationMachine] =
+    limits: InitializationLimits, worker: ExecutionWorker = default(
+        ExecutionWorker)): AccumulationMachineResult[PreparedAccumulationMachine] =
   ## Use the bootstrap's own code, compact arguments and declared gas at the fixed accumulation PC 5.
   ## Bound the complete code copy before extraction; the standard initializer bounds program and pages.
   ## The bootstrap has already enforced code eligibility. Malformed envelopes/programs remain typed local
@@ -103,7 +106,7 @@ proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
     fail(AccumulationMachineError.InvalidInvocation) # Only the bootstrap's original eligible code is usable.
   let arguments = bootstrap.bootstrapArguments.value
   let initialized = initializeMachine(code.value, arguments, CodeAddress(5),
-    MachineGas(uint64(info.gas)), limits)
+    MachineGas(uint64(info.gas)), limits, worker)
   case initialized.error
   of InitializationError.None:
     # Keep the original bootstrap beside the complete immutable CPU without introducing back-references.

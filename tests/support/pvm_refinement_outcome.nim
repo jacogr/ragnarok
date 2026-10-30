@@ -8,7 +8,7 @@ import std/assertions
 import ../../src/state/refinement/[bootstrap as refinement_bootstrap, outcome as refinement_outcome,
     dispatch as refinement_dispatch]
 import ../../src/state/store
-import ../../src/pvm/[machine, program, initialize]
+import ../../src/pvm/[machine, program, initialize, worker]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/step
 import ../../src/pvm/host/fetch as host_fetch
@@ -50,7 +50,8 @@ proc refinementLimits*(): RefinementInvocationLimits =
     output: OutputByteLimit(512))
 proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     missing = false, oversized = false, pages = 3'u32,
-    writable: seq[byte] = @[21'u8, 22, 23]): PreparedRefinementBootstrap =
+    writable: seq[byte] = @[21'u8, 22, 23], worker: ExecutionWorker = default(
+        ExecutionWorker)): PreparedRefinementBootstrap =
   ## Build one original standard envelope with distinguishable RO/RW prefixes and genuine code commitments.
   ## Sources die before extraction; the bootstrap owns complete state/package/code/arguments independently.
   var code: seq[byte] = @[]
@@ -110,7 +111,7 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
         arguments: ByteLimit(64),
       initialization: InitializationLimits(envelope: InitializationByteLimit(512),
           program: ProgramByteLimit(256),
-        jumps: JumpCountLimit(0), pages: PageLimit(pages)))).value
+        jumps: JumpCountLimit(0), pages: PageLimit(pages))), worker).value
 proc refinementPrice*(bootstrap: PreparedRefinementBootstrap): uint64 =
   ## Reuse the separately verified gas component for block pricing; host prices/normalization expectations are literal.
   let cpu = bootstrap.bootstrapMachine.value

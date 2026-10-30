@@ -4,6 +4,8 @@
 ## Execute an opaque refinement bootstrap and publish only its normalized result, capped gas and exports.
 ## Source binding is internal; local preparation/host/engine refusals never become protocol work errors.
 
+import ../../pvm/worker
+
 import ../../lib/logging
 
 import ../../pvm/[machine, step]
@@ -139,7 +141,8 @@ proc complete(bootstrap: PreparedRefinementBootstrap, source: RefinementBootstra
     completed: RefinementInvocation(data: data))
 
 proc runRefinementInvocation*(bootstrap: PreparedRefinementBootstrap, trace: openArray[byte],
-    inputs: RefinementInputs, offset: ExportOffset, limits: RefinementInvocationLimits):
+    inputs: RefinementInputs, offset: ExportOffset, limits: RefinementInvocationLimits,
+        worker: ExecutionWorker = default(ExecutionWorker)):
     RefinementInvocationResult[RefinementInvocation] =
   ## Run the original immutable CPU and host environment synchronously, then apply only Psi_M/Psi_R result rules.
   ## Borrowed trace/input descriptions stay stable until return; failures discard every scratch owner.
@@ -164,7 +167,7 @@ proc runRefinementInvocation*(bootstrap: PreparedRefinementBootstrap, trace: ope
       bootstrapReason: captured.error) # Preserve local capture/input policy details without a protocol result.
   let evaluated = executeRefinement(captured.value, limits.copy, limits.exports,
     limits.steps, limits.calls, limits.cycles, limits.inner, limits.logging,
-    backend = limits.backend)
+    backend = limits.backend, worker = worker)
   case evaluated.error
   of RefinementDispatchError.None:
     discard # Only a completed guest exit has terminal gas and an export selection to normalize.

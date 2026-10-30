@@ -4,6 +4,8 @@
 ## Resolve refinement code commitments and build exact package-bound arguments and entry-zero CPU.
 ## Ready owners supply their own CPU/state/package/heap to host capture; block/input authentication is separate.
 
+import ../../pvm/worker
+
 import ../../codec/[bounded, natural, composite]
 import ../../codec/work/[package as work_package, digest as work_digest, report as work_report]
 import ../../codec/state/service_values as state_service_values
@@ -107,7 +109,8 @@ proc bootstrapPackageHash*(prepared: PreparedRefinementBootstrap): RefinementBoo
 
 proc prepareRefinementBootstrap*(state: StateStoreSnapshot, package: OwnedWorkPackage,
     item: FetchItemIndex, core: CoreIndex, parameters: Parameters,
-    limits: RefinementBootstrapLimits): RefinementBootstrapResult[PreparedRefinementBootstrap] =
+    limits: RefinementBootstrapLimits, worker: ExecutionWorker = default(
+        ExecutionWorker)): RefinementBootstrapResult[PreparedRefinementBootstrap] =
   ## Validate selection and historical code before allocating arguments or materializing a CPU.
   template fail(reason: RefinementBootstrapError) =
     return RefinementBootstrapResult[PreparedRefinementBootstrap](status: reason)
@@ -192,7 +195,7 @@ proc prepareRefinementBootstrap*(state: StateStoreSnapshot, package: OwnedWorkPa
   for index in 0..<codeBytes: envelope[index] = raw[
       start+index] # Copy only the authenticated suffix after metadata.
   let initialized = initializeMachine(envelope, arguments, CodeAddress(0), facts.gas,
-      limits.initialization)
+      limits.initialization, worker)
   case initialized.error
   of InitializationError.None:
     discard # Only a complete executable initializer can authorize Ready machine extraction.

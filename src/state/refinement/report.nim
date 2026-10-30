@@ -4,6 +4,8 @@
 ## Execute original package items in order and apply GP I's shared blob/export result rules.
 ## Immutable results retain provenance; authorization, availability and state publication are separate.
 
+import ../../pvm/worker
+
 import ../../codec/[bounded, composite]
 import ../../codec/work/[package as work_package, digest as work_digest, report as work_report]
 import ../../chain/parameters
@@ -178,6 +180,7 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
   var savedTrace = newSeq[byte](trace.len)
   for index in 0..<trace.len: savedTrace[index] = trace[
       index] # Isolate future extraction from borrowed caller storage.
+  let worker = newExecutionWorker() # One package worker retains code across its independently initialized items.
   var items = newSeqOfCap[RefinedWorkItem](count)
   var offset = 0'u64
   var blobs = uint64(trace.len)
@@ -185,12 +188,12 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
     let source = package.workItemAt(index).value
     let declaration = source.workItemInfo.value
     let bootstrap = prepareRefinementBootstrap(state, package, FetchItemIndex(uint64(index)), core,
-        parameters, limits.bootstrap)
+        parameters, limits.bootstrap, worker)
     if bootstrap.error != RefinementBootstrapError.None:
       return RefinementReportResult[RefinedPackage](status: RefinementReportError.BootstrapFailure,
         bootstrapReason: bootstrap.error) # Discard the entire private prefix on late preparation failure.
     let invoked = runRefinementInvocation(bootstrap.value, trace, inputs, ExportOffset(offset),
-        limits.invocation)
+        limits.invocation, worker)
     if invoked.error != RefinementInvocationError.None:
       return RefinementReportResult[RefinedPackage](status: RefinementReportError.InvocationFailure,
         invocationReason: invoked) # Preserve exact nested reasons without any partial report owner.

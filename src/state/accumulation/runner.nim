@@ -4,6 +4,8 @@
 ## Execute independent source-bound initial-round services and certify one complete supported batch.
 ## Exposes explicit local ceilings and guarded completion/reasons; never mutates a caller store.
 
+import ../../pvm/worker
+
 import ../../lib/logging
 
 import ../../chain/parameters
@@ -107,7 +109,8 @@ func completionFailure*(outcome: AccumulationRunnerResult):
   outcome.completionReason
 
 proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters,
-    limits: AccumulationRunnerLimits): AccumulationRunnerResult =
+    limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
+        ExecutionWorker)): AccumulationRunnerResult =
   ## Resolve every source service, execute ready code and complete once; source state/slot/entropy cannot be replaced.
   ## Each independent service starts at the admitted parent. All successful intermediates remain local until completion.
   let queue = round.roundBlockQueue
@@ -128,6 +131,7 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
       count > high(int) div sizeof(AccumulationDispatchResult) or
       count > high(int) div sizeof(SkippedAccumulation):
     return AccumulationRunnerResult(status: AccumulationRunnerError.LimitExceeded) # Prove extents before allocation/work.
+  let activeWorker = if worker.initialized: worker else: newExecutionWorker() # Share code only over the actual round-service lifetime.
   var executions: seq[AccumulationDispatchResult] = @[]
   var skipped: seq[SkippedAccumulation] = @[]
   # Canonical input-service enumeration also bounds guest work by the checked complete count.
@@ -156,14 +160,15 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
         return AccumulationRunnerResult(status: AccumulationRunnerError.ContextFailure,
           contextReason: initial.error) # Bind the dispatch policy to the authenticated profile before execution.
       let machine = initializeAccumulationMachine(invocation.value.bootstrapProjection.value,
-        limits.initialization)
+        limits.initialization, activeWorker)
       if machine.error != AccumulationMachineError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.MachineFailure,
           machineReason: machine.error) # Malformed envelopes remain local setup refusals.
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts, logging = limits.logging, backend = limits.backend)
+        limits.deletedAccounts, logging = limits.logging, backend = limits.backend,
+        worker = activeWorker)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.DispatchFailure,
           dispatchReason: executed) # Preserve StepError; prior successes die locally.
