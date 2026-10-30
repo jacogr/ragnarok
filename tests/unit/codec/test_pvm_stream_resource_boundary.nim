@@ -264,7 +264,7 @@ assert flatPreparationUnits(hostFrame) == hostWork and flatNodes(hostFrame) == h
 assert flatHostStats(hostFrame)[1] == 1
 assert pageImage(replacementObservation, PageIndex(16)).value.bytes[0] == 77
 assert pageImage(flatMemorySnapshot(hostFrame), PageIndex(17)).value.bytes == images[1].bytes
-checkFlatSource(hostFrame)
+checkFlatSource(hostFrame, [images[1]])
 let invalidMemory = default(Memory)
 assert memoryPageCount(invalidMemory).error == MachineError.InvalidOwner
 assert uint32(memoryPageCount(observation).value) == 1

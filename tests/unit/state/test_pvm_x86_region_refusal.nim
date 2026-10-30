@@ -193,7 +193,7 @@ proc verify(frame: FlatFrame, checked: FlatFrame) =
   require(frame.reason == checked.reason and frame.exit == checked.exit, "source-complete-exit")
   require(frame.info == checked.info and frame.remaining == checked.remaining, "source-complete-cpu-attempts")
   require(preparationError(frame) == FlatError.None, "source-preparation-success")
-  checkFlatSource(frame)
+  checkFlatSource(frame, [])
 
 proc sourceOrder(smallFirst: bool) =
   ## Both guest orders preserve native coverage and exact outcomes, and repeated invalid pairs exhaust their probe work.

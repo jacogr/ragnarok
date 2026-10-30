@@ -306,8 +306,8 @@ for depth in [3, 4, 5, 16, 63, 64, 65, 129]:
         runFlat(native, uint64(budget))
         assert native.reason == plain.reason and native.exit == plain.exit
         assert native.remaining == plain.remaining
-        checkFlatSource(native)
-        checkFlatSource(plain)
+        checkFlatSource(native, [])
+        checkFlatSource(plain, [])
         assert native.info.pc == plain.info.pc and native.info.gas == plain.info.gas
         assert native.info.registers == plain.info.registers
         assert native.info.blockCharged == plain.info.blockCharged
@@ -429,8 +429,8 @@ for initial in [0'u64, 5, 31]:
         assert branchFrame.info.gasDeficit == interpretedFrame.info.gasDeficit
         assert branchFrame.info.blockCharged == interpretedFrame.info.blockCharged
         assert branchFrame.info.registers == interpretedFrame.info.registers
-        checkFlatSource(branchFrame)
-        checkFlatSource(interpretedFrame)
+        checkFlatSource(branchFrame, [])
+        checkFlatSource(interpretedFrame, [])
         inc branchPrefixCases
 stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
 
@@ -478,8 +478,8 @@ for paired in [false, true]:
           assert nativeFrame.info.gasDeficit == checkedFrame.info.gasDeficit
           assert nativeFrame.info.blockCharged == checkedFrame.info.blockCharged
           assert nativeFrame.info.registers == checkedFrame.info.registers
-          checkFlatSource(nativeFrame)
-          checkFlatSource(checkedFrame)
+          checkFlatSource(nativeFrame, [])
+          checkFlatSource(checkedFrame, [])
           inc regionCases
 stdout.writeLine("X86_REGION_PREFIX_CASES," & $regionCases)
 
@@ -698,7 +698,7 @@ proc verifyThreeControl(frame: var FlatFrame, program: Program, info: MachineInf
       echo "THREE_REGISTER,", uint64(info.pc), ",", budget, ",", slot, ",", uint64(
           wanted.value.registers[slot]), ",", uint64(frame.info.registers[slot])
   assert frame.info.registers == wanted.value.registers
-  checkFlatSource(frame)
+  checkFlatSource(frame, [])
 
 # The established three exact source shapes form one closed round, with real panic blocks on every untaken arm.
 let threeProgram = owner([@[131'u8, 0, 1], @[88'u8, 0x10, 31, 8, 0, 0, 0], @[0'u8],

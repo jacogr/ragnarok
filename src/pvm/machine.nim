@@ -33,6 +33,10 @@ type
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
+  MemoryPageSlot* = distinct uint32 ## Position within the supplied immutable owner's sorted mapping, separate from a physical page ordinal.
+  PageDescription* = object ## Copied mapping metadata grants no mutable page storage or guest access permission.
+    index*: PageIndex
+    access*: PageAccess
   MachineError* {.pure.} = enum ## Local API failures are distinct from guest panic/fault, with retained historical error identifiers.
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
     InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
@@ -322,6 +326,33 @@ proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   var images = newSeqOfCap[PageImage](data.pages.len)
   for i in 0..<data.pages.len: images.add(imageFromPage(data.pages[i]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
+
+proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
+  ## Copy sorted mapping metadata without extracting page bytes; a default owner refuses before allocation.
+  let data = memory.data
+  if data == nil:
+    return MachineResult[seq[PageDescription]](status: MachineError.InvalidOwner)
+  var pages = newSeq[PageDescription](data.pages.len)
+  for slot in 0..<pages.len:
+    # The immutable owner's validated order and permissions remain authoritative for every copied description.
+    pages[slot] = PageDescription(index: data.pages[slot].index, access: data.pages[slot].access)
+  MachineResult[seq[PageDescription]](status: MachineError.None, completed: pages)
+
+proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
+    output: var openArray[byte]): MachineResult[PageDescription] =
+  ## Copy one captured page directly into caller-owned storage, including retained inaccessible bytes.
+  ## Owner, position and exact output length are checked before writing; failures leave output untouched.
+  let data = memory.data
+  if data == nil:
+    return MachineResult[PageDescription](status: MachineError.InvalidOwner)
+  if uint64(slot) >= uint64(data.pages.len) or output.len != 4096:
+    return MachineResult[PageDescription](status: MachineError.InvalidRange)
+  let page {.cursor.} = data.pages[int(uint32(slot))]
+  for chunk in 0..<8:
+    # Each fixed512-byte immutable chunk copies into a disjoint proven portion of the complete output page.
+    copyMem(addr output[chunk*512], unsafeAddr page.chunks[chunk].bytes[0], 512)
+  MachineResult[PageDescription](status: MachineError.None,
+    completed: PageDescription(index: page.index, access: page.access))
 
 proc pageIndices*(memory: Memory): MachineResult[seq[PageIndex]] =
   ## Copy only retained sorted page identities; sparse holes and snapshot storage remain private.

@@ -72,6 +72,28 @@ proc captureCycle() =
     for index in 0..<4096: images[side].bytes[index] = byteAt(side*4096+index)
   assert captureMemory(images, PageLimit(2)).error == MachineError.LimitExceeded
   let captured = captureMemory(images, PageLimit(3)).value
+  let layout = memoryLayout(captured).value
+  assert layout.len == images.len
+  var output = newSeq[byte](4096)
+  for slot in 0..<layout.len:
+    # Positional copies preserve all bytes/access tags, including low inaccessible and highest physical pages.
+    let copiedPage = copyMemoryPage(captured, MemoryPageSlot(uint32(slot)), output)
+    assert copiedPage.error == MachineError.None
+    assert uint32(copiedPage.value.index) == uint32(images[slot].index)
+    assert copiedPage.value.access == images[slot].access
+    assert uint32(layout[slot].index) == uint32(images[slot].index)
+    assert layout[slot].access == images[slot].access
+    for offset in 0..<output.len: assert output[offset] == byteAt(slot*4096+offset)
+  for offset in 0..<output.len: output[offset] = 77
+  assert copyMemoryPage(captured, MemoryPageSlot(3), output).error == MachineError.InvalidRange
+  assert copyMemoryPage(default(Memory), MemoryPageSlot(0), output).error ==
+      MachineError.InvalidOwner
+  assert memoryLayout(default(Memory)).error == MachineError.InvalidOwner
+  assert copyMemoryPage(captured, MemoryPageSlot(0), output.toOpenArray(0, 4094)).error ==
+      MachineError.InvalidRange
+  for offset in 0..<output.len:
+    # Every rejected request is atomic with respect to the caller's output buffer.
+    assert output[offset] == 77
   var observation = memoryImages(captured)
   assert observation.error == MachineError.None
   let copied = observation.value
