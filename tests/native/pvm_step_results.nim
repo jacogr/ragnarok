@@ -4,7 +4,7 @@
 ## Negative runtime fixture for local stepping-result success preconditions.
 ## The executable selects a failure by command-line argument and attempts forbidden result access.
 
-import std/[cmdline, assertions]
+import std/[cmdline, assertions, syncio]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/step

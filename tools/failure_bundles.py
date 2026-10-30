@@ -39,7 +39,7 @@ def bundle_source(folder, name, members, suites):
     lines = ['# Copyright (c) 2026 Ragnarök contributors',
              '# SPDX-License-Identifier: MIT OR Apache-2.0',
              '## Generated Contract dispatcher; each invocation selects exactly one family.',
-             'import std/cmdline']
+             'import std/[cmdline, syncio]']
     for index, family in enumerate(members):
         relative = os.path.relpath(ROOT/suites[family]['source'], folder).removesuffix('.nim')
         lines.append('import '+json.dumps(relative)+' as fixture'+str(index))
