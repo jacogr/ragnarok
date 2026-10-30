@@ -75,7 +75,7 @@ used as a passed setup receipt.
 
 Private reproducibility receipts and full raw controls are under
 `build/pvm-page-metadata/{measure,doom}`, with complete native witness receipts in
-`build/pvm-page-metadata/qualification.json`. Candidate production source is frozen at
+`build/pvm-page-metadata/qualification.json`. Initial local execution measurements use
 `411213a23223c5568b4d38047cca592b0dadc689`. Subsequent changes add evidence prose and
 restore the diagnostic source observer's explicit actual-permission comparison against the
 independent witness; execution paths are unchanged. Final focused CI qualifies that corrected
@@ -86,5 +86,36 @@ reference checker and its original-source checker remain separate obligations. T
 exact driver passes local archived-parent/native/forced-refusal builds, thirteen complete
 CPU/RAM/source samples per role and assertion-negative controls. Positive native coverage and
 zero refused coverage are checked; no timing claim uses these compatibility runs.
-Focused Linux ARM comparison remains required. Broad CI is reserved for the final integration
-boundary after local and focused qualification.
+Linux ARM qualification now passes at exact corrected source
+`ebc676d4122c411a83fd72539e4cee6b3e96787b`:
+[run41115417527](https://github.com/jacogr/ragnarok/actions/runs/41115417527).
+Official artifact13006627563 has verified ZIP SHA-256
+`2634f04180f4582146bf47c89cc04a4e12bbb9afa836b6b814c0db93b510be3b`.
+The application report SHA-256 is
+`831f999beedb8c74ecd6d1160ffdc7cfefa856af6c14234e62496ed57dcd2fde`.
+
+Independent local audit reparses16 checked ARC/Clang/ThinLTO builds,70 primary processes,
+60 fresh-process replays and115 intended controls (35 positive,35 assertions,35 state,
+10 events). All2060 application source identities and519 native source identities match the
+exact Git revisions; fresh equal-image/current-policy controls and native/move-only ownership
+qualification pass. These receipts are separate from the earlier local matrix/DOOM cohort.
+
+Linux ARM median CPU milliseconds, forward/reverse:
+
+| Phase | Parent JIT | Page metadata JIT | PolkaVM interpreted | Our JIT / PolkaVM interpreted |
+| --- | --- | --- | --- | --- |
+| DOOM init |257.504 /245.297 |245.236 /239.803 |627.689 /628.453 |0.391 /0.382 |
+| DOOM tick |39.520 /39.461 |37.710 /37.528 |40.072 /40.083 |0.941 /0.936 |
+
+Six fresh processes per role confirm median init249.234→238.931 ms (4.1% lower) and
+tick39.511→37.531 ms (5.0% lower). Dense memset improves4.4%; short sieve improves2.8–3.2%.
+Primary minimal/pinky timings show small increases, while replay medians are only0.14%/0.18%
+higher; long sieve changes direction, with a0.20% higher replay median. No material microguest
+regression is established. Explicit interpreter CPU is445.903 /445.545 ms init and
+45.789 /45.674 ms tick, with ratios0.710 /0.709 and1.143 /1.139; it has no paired prior
+interpreter role in this cohort, so no interpreter speedup claim follows.
+
+Full official archive, raw reports and audit are retained under
+`build/pvm-page-metadata/ci-arm`. Subsequent evidence-only changes leave source/build drivers
+identical to the qualified head. Final integration coverage is assessed from this diff and the
+focused receipts before approval; no duplicate broad run is implied.
