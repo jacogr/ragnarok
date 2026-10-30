@@ -9,8 +9,9 @@ No guest address, program identity or benchmark name selects this transformation
 The normative behavior remains the pinned Gray Paper and the approved
 [memory ordering](pvm-polkavm-memory-order.md) exception. Opcode 171 is the full-width `!=`
 branch. No protocol interpretation, dependency pin, public API, frame field or native ABI changes.
-This extends [checked store loops](pvm-checked-store-loop.md); native-enabled plans, complete
-price plans, lazy memos and nonmatching dataflows retain their existing seam.
+This extends [checked store loops](pvm-checked-store-loop.md) in both checked interpretation and
+the optional ARM64 native emitter. Complete price plans, lazy memos and nonmatching dataflows
+retain their established path. x86 native lowering remains future work.
 
 ## Source proof and runtime admission
 
@@ -43,6 +44,33 @@ partial groups retain every original addressable source node and worker.
 Only sealed code coordinates persist in the exclusive stream. No word, register, writable
 pointer or invocation snapshot is cached. Reset, accepted host epochs, published observations
 and stream transfer continue through the existing ownership/publication boundaries.
+
+## ARM64 native execution
+
+The native dirty-loop emitter uses the same sealed role/stride/true-arm proof. Its additional
+word path requires twenty attempts and four affordable block prices on an unpaid native entry,
+a nonwrapping full-width base+4 no greater than the unchanged bound, and shift modulo 32=0.
+The effective four-byte span must be aligned, within a fresh captured writable/stack descriptor,
+and entirely on one already-dirty physical page. It never marks a clean page. Every declined
+word guard restores borrowed gas/attempt/context registers and enters the established native
+byte loop before any current-group mutation; first touch still reaches the original checked store.
+
+Success emits one little-endian `STR Wsource`, the exact final byte/address/shift register
+projection, four original prices, twenty source attempts and four completed source blocks. The
+fourth original `!=` condition still selects the genuine exit or the next group. Guest registers
+and software accounting are published through the existing eight-word call context. Previously
+reserved context word 3 counts native word groups; descriptor/bitmap pointers remain borrowed
+only for that one call. No guest word or invocation pointer is retained by the executable owner.
+Existing fragment limits, reserved connected-region slot, arena move/destruction and W^X lifecycle
+remain unchanged. Apple-reserved X18 is not used.
+
+The maintained ARM witness adds 698 original gas/partial/fault/bound/shift cases and 110 actual
+alias declines, including a positive aligned word group before a later readonly/missing-page
+fault. Native word/owner/boundary/alias receipts are mandatory in both synthetic positive fixture
+families. Missing, duplicate, malformed or refused-native activity cannot qualify; production
+guards remain strict. Normal and forced-refusal witnesses plus the revised checked suite pass
+locally on the combined source. An earlier private word-store suppression mutation independently
+proves the new native path affects published bytes rather than only a coverage counter.
 
 ## Verification and local assessment
 
@@ -77,3 +105,16 @@ The ~18% local interpreted tick gain is relative to the measured parent worker, 
 to earlier separately measured results. Six affected Make/Hastur suites, final native-enabled interpretation and the intended
 missing-bulk-store mutation pass on the production source, retaining the entire scalar corpus.
 Exact-head Linux ARM assessment remains pending. Evidence: `build/pvm-checked-word-loop/{proof,doom,micros}`.
+
+## Private native composition evidence
+
+The partner's separately admitted native prototype was composed onto checked layer 59dfedfd.
+Five order-rotated public DOOM tick candidate/parent CPU ratios are .91229,.91655,.91279,.91149
+and .91263 (median .91263). Init has zero word groups and mixed ratios, median 1.0021. A direct
+DOOM observation records 255728 native groups, separately from timing. Three paired micro controls
+show preliminary upward costs 1.68% minimal100000 and 1.02% long sieve; Pinky ratio .9960, with zero
+word groups and unchanged native code/call counts in those micro guests. These are local macOS
+ARM prototype results, not a final production/Linux or combined additive claim. The final cohort
+must measure both public policies against one explicit latest-master baseline after all source
+and test changes. Native evidence is preserved in the partner's ignored
+`build/ci/arm-word-batch-prototype` directory.

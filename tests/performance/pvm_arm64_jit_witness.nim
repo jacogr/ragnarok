@@ -1892,6 +1892,103 @@ when defined(pvmArm64Jit):
     else:
       assert groups > 0, "native word store did not execute after the first touch"
     echo "ARM_WORD_GROUPS,", groups
+    var controls = 0
+    for paid in [false, true]:
+      # Every original boundary remains observable around the four-block/20-attempt native group.
+      for gas in [0'u64, 4, 5, 14, 15, 19, 20, 21, 1000, high(uint64)]:
+        # Include prepaid entry and both sides of one and four original charges.
+        for budget in [0'u64, 1, 4, 5, 19, 20, 21, 39, 40, 41, 79, 80, 81, 100, high(uint64)]:
+          var input = info
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          verifyControl(frame, program, input, budget, [page])
+          inc controls
+      for budget in 0'u64..83'u64:
+        # Sweep all interior source coordinates across sixteen iterations, not just bulk-entry boundaries.
+        var input = info
+        input.blockCharged = paid
+        verifyControl(frame, program, input, budget, [page])
+        inc controls
+    var next = page
+    next.index = PageIndex(17)
+    var crossing = info
+    crossing.registers[0] = RegisterValue(69626)
+    crossing.registers[3] = RegisterValue(69642)
+    for layout in 0..<3:
+      # Mixed/missing second pages retain the preceding scalar byte stores before the precise fault.
+      var pages = @[page]
+      if layout != 2:
+        # Two fully writable pages may still decline native batching conservatively at alignment boundaries.
+        var last = next
+        if layout == 1: last.access = PageAccess.ReadOnly
+        pages.add(last)
+      assert replaceFlatMemoryChecked(frame, pages, crossing) == FlatError.None
+      for paid in [false, true]:
+        # The native wrapper declines prepaid prefixes without losing their already charged continuation.
+        for gas in [19'u64, 20, 21, 1000]:
+          # Affordability and memory refusal must select the same original next attempted instruction.
+          for budget in [19'u64, 20, 21, 29, 30, 31, 100]:
+            var input = crossing
+            input.blockCharged = paid
+            input.gas = MachineGas(gas)
+            verifyControl(frame, program, input, budget, pages)
+            inc controls
+    var aligned = crossing
+    aligned.registers[0] = RegisterValue(69624)
+    aligned.registers[3] = RegisterValue(69640)
+    for layout in 0..<3:
+      # This aligned entry executes a real word group before reaching the next page's first-touch or fault boundary.
+      var pages = @[page]
+      if layout != 2:
+        # Retain both the all-writable case and a later RO refusal after an earlier committed aggregate.
+        var last = next
+        if layout == 1: last.access = PageAccess.ReadOnly
+        pages.add(last)
+      assert replaceFlatMemoryChecked(frame, pages, aligned) == FlatError.None
+      for paid in [false, true]:
+        # Paid entry still reaches a later native aggregate after its original checked prefix.
+        var input = aligned
+        input.blockCharged = paid
+        let beforeGroups = flatArmDirtyWordGroups(frame)
+        verifyControl(frame, program, input, 100, pages)
+        when defined(pvmArm64JitRefuse):
+          assert flatArmDirtyWordGroups(frame) == 0
+        else:
+          assert flatArmDirtyWordGroups(frame) > beforeGroups
+        inc controls
+    assert replaceFlatMemoryChecked(frame, [page], info) == FlatError.None
+    for value in [0'u64, 0x80000000'u64, 0xffffffff'u64, 0xdeadbeef'u64, high(uint64)]:
+      # Low-word truncation and sign-extended prefix values must preserve four literal stored bytes.
+      for shift in [0'u64, 1'u64, 8'u64, 24'u64, 32'u64, 0xffffffffffffffe0'u64]:
+        # Aligned high counters wrap normally; nonaligned entries retain the byte loop.
+        var input = info
+        input.registers[1] = RegisterValue(value)
+        input.registers[4] = RegisterValue(shift)
+        verifyControl(frame, program, input, 100, [page])
+        inc controls
+    for length in [0'u64, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17]:
+      # Opcode171 is !=, so even an equal/past bound must preserve its do-while byte prefix.
+      for upper in [0'u64, 0x100000000'u64]:
+        # Branch arithmetic retains full-width address bits independently of effective memory masking.
+        var input = info
+        input.registers[0] = RegisterValue(65536+upper)
+        input.registers[3] = RegisterValue(65536+upper+length)
+        verifyControl(frame, program, input, 100, [page])
+        inc controls
+    var behind = info
+    behind.registers[3] = RegisterValue(65535)
+    verifyControl(frame, program, behind, 100, [page])
+    inc controls
+    var top = page
+    top.index = PageIndex(1048575)
+    var highInfo = info
+    highInfo.registers[0] = RegisterValue(high(uint64)-16)
+    highInfo.registers[3] = RegisterValue(high(uint64))
+    assert replaceFlatMemoryChecked(frame, [top], highInfo) == FlatError.None
+    verifyControl(frame, program, highInfo, 100, [top])
+    inc controls
+    assert controls == 698
+    echo "ARM_WORD_CONTROL_CASES,", controls
     when defined(pvmArmDirtyLoopOwnerReceipt):
       var moved = takeFlatStream(frame)
       var successor = newFlatFrame(plan, [page], info)
@@ -1910,6 +2007,45 @@ when defined(pvmArm64Jit):
     else:
       assert armDirtyLoopArenaDestroyed() == wordOwnerBefore+1,
           "native word owner teardown mismatch"
+
+
+  var wordAliases = 0
+  for destination in [0, 1, 3, 4]:
+    # Prefix/store dependence is intact, but an overwritten live role must prohibit the native word projection.
+    let program = owner([@[198'u8, 0x41, byte(destination)], @[120'u8, byte(destination), 0],
+        @[149'u8, 0x00, 1], @[149'u8, 0x44, 8],
+        @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    var info = dirtyLoopInfo
+    info.registers[1] = RegisterValue(if destination == 0: 65536 else: 0x12345678)
+    var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [dirtyLoopPage], info)
+    for warm in 0..<6:
+      # Existing positive branch/cache state cannot authorize aliasing dataflow on a later invocation.
+      verifyControl(frame, program, info, 100, [dirtyLoopPage])
+    for budget in 0'u64..21'u64:
+      # Partial original nodes still preserve the source ordering when the wider path declines.
+      verifyControl(frame, program, info, budget, [dirtyLoopPage])
+      inc wordAliases
+    assert flatArmDirtyWordGroups(frame) == 0
+  block:
+    # Address/data aliasing changes the next extracted byte across a carry within a prospective word.
+    let program = owner([@[198'u8, 0x40, 2], @[120'u8, 0x02, 0], @[149'u8, 0x00, 1],
+        @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    var info = dirtyLoopInfo
+    info.registers[0] = RegisterValue(65791)
+    info.registers[3] = RegisterValue(65807)
+    var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [dirtyLoopPage], info)
+    for warm in 0..<6:
+      # Real byte-native work may run; the unsafe aggregate must remain unadmitted.
+      verifyControl(frame, program, info, 100, [dirtyLoopPage])
+    let bytes = pageImage(flatMemorySnapshot(frame), PageIndex(16)).value.bytes
+    assert bytes[255] == 0xff and bytes[256] == 1
+    for budget in 0'u64..21'u64:
+      # Every partial boundary around the prospective aggregate is compared to single-step execution.
+      verifyControl(frame, program, info, budget, [dirtyLoopPage])
+      inc wordAliases
+    assert flatArmDirtyWordGroups(frame) == 0
+  assert wordAliases == 110
+  echo "ARM_WORD_ALIAS_CASES,", wordAliases
 
 
 var secondStoreControls = 0

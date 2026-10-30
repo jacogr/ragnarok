@@ -72,6 +72,12 @@ def dirty_loop_witness(output, mode):
     owner_count = lines.count('ARM_DIRTY_LOOP_OWNER,1')
     if owner_count != (0 if mode == 'interpreted' else 1):
         raise ValueError('Missing active dirty-loop owner lifetime witness')
+    word_controls = lines.count('ARM_WORD_CONTROL_CASES,698')
+    if word_controls != (0 if mode == 'interpreted' else 1):
+        raise ValueError('Missing native word-loop boundary witness')
+    word_aliases = lines.count('ARM_WORD_ALIAS_CASES,110')
+    if word_aliases != (0 if mode == 'interpreted' else 1):
+        raise ValueError('Missing native word-loop alias witness')
     word_owner = lines.count('ARM_WORD_OWNER,1')
     if word_owner != (0 if mode == 'interpreted' else 1):
         raise ValueError('Missing native word-loop owner lifetime witness')

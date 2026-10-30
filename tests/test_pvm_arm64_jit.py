@@ -82,7 +82,7 @@ class Arm64JitReportTests(unittest.TestCase):
         boundaries = 'ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
         owner = 'ARM_DIRTY_LOOP_OWNER,1\n'
         active = 'ARM_DIRTY_LOOP,3,25,1\n'
-        word_owner = 'ARM_WORD_OWNER,1\n'
+        word_owner = 'ARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n'
         groups = 'ARM_WORD_GROUPS,5\n'
         native = boundaries+owner+word_owner+groups+active
         refused = boundaries+owner+word_owner+'ARM_WORD_GROUPS,0\n'
@@ -102,12 +102,16 @@ class Arm64JitReportTests(unittest.TestCase):
     def test_word_loop_receipts_are_mode_specific(self):
         """A missing store, duplicated group count or refused native path cannot qualify."""
         base = ('ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
-                'ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_DIRTY_LOOP,3,25,1\n'
+                'ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\nARM_DIRTY_LOOP,3,25,1\n'
                 'ARM_WORD_GROUPS,5\n')
+        for marker in ('ARM_WORD_OWNER,1\n', 'ARM_WORD_CONTROL_CASES,698\n',
+                       'ARM_WORD_ALIAS_CASES,110\n'):
+            for output in (base.replace(marker, ''), base+marker):
+                with self.subTest(marker=marker), self.assertRaises(ValueError):
+                    dirty_loop_witness(output, 'native')
         for output in (base.replace('ARM_WORD_GROUPS,5\n', ''),
                        base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,0\n'),
                        base+'ARM_WORD_GROUPS,5\n',
-                       base.replace('ARM_WORD_OWNER,1\n', ''),
                        base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,-1\n')):
             with self.subTest(output=output[-55:]), self.assertRaises(ValueError):
                 dirty_loop_witness(output, 'native')

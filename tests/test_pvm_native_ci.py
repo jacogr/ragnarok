@@ -111,7 +111,7 @@ class QualificationTests(unittest.TestCase):
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
-            ('ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\n' if native or refused else '') +
+            ('ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n' if native or refused else '') +
             ('ARM_WORD_GROUPS,5\nARM_DIRTY_LOOP,2,16,1\n' if native else
              'ARM_WORD_GROUPS,0\n' if refused else '') +
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
@@ -204,6 +204,8 @@ class QualificationTests(unittest.TestCase):
             ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
             ('ARM_DIRTY_LOOP_OWNER',1,'dirty-loop owner'),
             ('ARM_WORD_OWNER',1,'word-loop owner'),
+            ('ARM_WORD_CONTROL_CASES',698,'word-loop boundary'),
+            ('ARM_WORD_ALIAS_CASES',110,'word-loop alias'),
             ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
         )
         complete = self.witness_receipt(True)

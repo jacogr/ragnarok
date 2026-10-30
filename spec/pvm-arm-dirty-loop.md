@@ -112,3 +112,8 @@ long sieve 1.0102 and minimal-100000 1.0168. Those last two are preliminary upwa
 for Linux qualification, not accepted as neutral. The minimal-1000 timings were too short
 and noisy for a verdict. Local logs and source identities are retained under ignored
 `build/ci/arm-word-batch-prototype/`; exact-head Linux ARM qualification remains pending.
+
+The combined word-loop qualification retains a maintained698-case gas/partial/fault/shift/bound
+matrix and110 role-alias declines in the actual ARM performance witness, not only its ignored
+initial proof. An aligned cross-page case requires a real committed native word group before
+a later byte fault. See [the shared projection proof](pvm-checked-word-loop.md).
