@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_EPOCH_CAPACITY",
   "files": {
-    "jam-fuzzer-full-epoch-capacity.json": "151a4f7b986515d98fc2c2ea43b90c3471c255d2526b1f59ee465fd7968deae5"
+    "jam-fuzzer-full-epoch-capacity.json": "4d779ace24055ed0900095e79b42c08abdfb6175430e81e4f757f19fcab526c2"
   },
   "target": "jam-fuzzer-full-epoch-capacity.json"
 }

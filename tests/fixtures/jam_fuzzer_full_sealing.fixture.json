@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_SEALING",
   "files": {
-    "jam-fuzzer-full-sealing.json": "0b94868201b92685aa1909ced750634c6546e01c36595a20d2b935fb08fc5d69"
+    "jam-fuzzer-full-sealing.json": "890f511e7a737459e338321953eb701cc3ff2b27270dddb8180934885f954f85"
   },
   "target": "jam-fuzzer-full-sealing.json"
 }

@@ -8,7 +8,7 @@ prepare emits test transport only: it neither executes bootstrap-service command
 import hashlib
 import json
 import random
-from state_accounts_oracle import key, wire
+from state_accounts_oracle import key, wire, published_source
 from state_layout_oracle import chapter_key
 from state_service_values_oracle import blob
 from state_trie_oracle import tree
@@ -28,8 +28,8 @@ def row(name, service, source, amounts, expected_balance):
 # Published commands expose a literal transfer amount and recipient; retain only their balance projection.
 def published():
     result = []
-    # Both release populations carry the same liquid-credit scenario. Embed their balance
-    # projection into current metadata with explicit zero supervisor fields; these roots are derived.
+    # Both published populations carry the same liquid-credit scenario. Preserve all supervisor
+    # fields while deriving embedding roots for the isolated balance projection.
     for chain in ('tiny', 'full'):
         data = blob(f'stf/accumulate/{chain}/transfer_for_live_service-1.json')
         command = bytes.fromhex(data['input']['reports'][0]['results'][0]['result']['ok'][2:])
@@ -39,9 +39,7 @@ def published():
         original = next(a['data']['service'] for a in data['pre_state']['accounts'] if a['id'] == service)
         final = next(a['data']['service'] for a in data['post_state']['accounts'] if a['id'] == service)
         assert service == 1 and amount == 100 and final['balance'] == original['balance']+amount
-        source = (bytes.fromhex(original['code_hash'][2:]),
-                  (original['balance'], 0, *(original[k] for k in ('min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset'))),
-                  (*tuple(original[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')), 0, 0))
+        source = published_source(original)
         result.append(row(chain, service, source, [amount], final['balance']))
     return result
 

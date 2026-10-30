@@ -4,8 +4,8 @@
   "transitions": 15,
   "accepted": 12,
   "refused": 3,
-  "pending_fixture_sha256": "6818f55df98dc04c8a8c4c8e4743195743f629ff4563e69db61bafaf16b6d57d",
-  "full_guests_sha256": "90f8b323d085afe5569534437efe72de12142d605c6befd29b584c8e4cb3e634",
+  "pending_fixture_sha256": "629456142b7dd417d5e9b53f63138b868e6e0c9a30d38fc87c21be4e671d66e9",
+  "full_guests_sha256": "943df30c670b975e86cc1a1e2400d32b9815e187b2b42dbf2214c5b2d2e23dac",
   "successor_roots": [
     [
       "67c772f75c4376f73dbe3491505518fa2ec3556ee2ce217016863d954b0eef77",

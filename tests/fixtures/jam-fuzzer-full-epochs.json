@@ -1,9 +1,9 @@
 {
   "chains": 2,
   "expected_sha256": "550f3015223f30eb6f8035740ace8d5c02fc070da74724518e463e07cb0e60fc",
-  "full_guests_sha256": "90f8b323d085afe5569534437efe72de12142d605c6befd29b584c8e4cb3e634",
+  "full_guests_sha256": "943df30c670b975e86cc1a1e2400d32b9815e187b2b42dbf2214c5b2d2e23dac",
   "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
-  "ring_input_sha256": "33125cab3429496201bf3e4ce3056332cc61821c7294c0dc49d1ef8afa17e77c",
+  "ring_input_sha256": "7ea1500e398c0e76e4f2c91794b8c5c1531be585c3f5719dae64a7c66cc4cbbf",
   "slots": [
     [
       2,

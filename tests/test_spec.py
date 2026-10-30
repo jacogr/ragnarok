@@ -52,7 +52,7 @@ class SpecificationTests(unittest.TestCase):
         self.assertEqual(entry['protocol_version'], '0.8.0')
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
-        self.assertEqual(entry['commit'], '23061ae1f9b51171c01387e7dde0f15794c98e24')
+        self.assertEqual(entry['commit'], 'd7b73e396d2f872fcfca37cbbb7d7869675d34d6')
         self.assertEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])
         # Hash every consumed fixture and the upstream changelog, not merely the JSON representation.
         for path, digest in entry['files'].items():
