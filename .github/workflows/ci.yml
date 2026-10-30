@@ -919,6 +919,8 @@ jobs:
     steps:
       - *checkout
       - *python
+      - name: Fetch the exact frozen landed source
+        run: git fetch --no-tags --depth=1 origin 4a29188758026f062e2b970b96df2665d8764d4e
       - name: Provision pinned build dependencies
         run: make setup
       - name: Verify discovered source contracts
