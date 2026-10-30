@@ -276,3 +276,160 @@ assert pageImage(observed, PageIndex(16)).value.bytes[0] == 0x34, "old host obse
 assert pageImage(posterior, PageIndex(16)).value.bytes[0] == 0xee, "accepted host posterior changed"
 checkFlatSource(hostFrame, posteriorImages)
 echo "CHECKED_STORE_LOOP_CASES,", count
+
+block:
+  # Keep the original scalar-loop corpus above; this second dataflow can additionally project four stores into one word.
+  let wordProgram = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0], @[149'u8, 0x00, 1],
+    @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+  let wordPlan = checkedPlan(wordProgram)
+  var wordInfo = info
+  wordInfo.registers[1] = RegisterValue(0x12345678)
+  var words = newFlatFrame(wordPlan, [page], wordInfo)
+  for warm in 0..<6:
+    # First-use branch resolution and later complete word batches must have identical source-visible effects.
+    verifyControl(words, wordProgram, wordInfo, 100, [page])
+  let originalWords = flatMemorySnapshot(words)
+  let literal = pageImage(originalWords, PageIndex(16)).value.bytes
+  assert literal[0] == 0x78 and literal[1] == 0x56 and literal[2] == 0x34 and literal[3] == 0x12
+  assert literal[12] == 0x78 and literal[15] == 0x12
+  assert words.info.registers[1] == wordInfo.registers[1]
+  assert words.info.registers[2] == RegisterValue(0x12) and words.info.registers[4] ==
+      RegisterValue(128)
+  for paid in [false, true]:
+    # Bracket a complete four-block charge, a prepaid first block and the next batch's remaining quota.
+    for gas in [0'u64, 14, 15, 19, 20, 21, 79, 80, 1000, high(uint64)]:
+      # The original path must still stop inside the four-block group when any one source attempt is unaffordable.
+      for budget in [0'u64, 1, 4, 5, 19, 20, 21, 39, 40, 41, 79, 80, 81, high(uint64)]:
+        var input = wordInfo
+        input.blockCharged = paid
+        input.gas = MachineGas(gas)
+        verifyControl(words, wordProgram, input, budget, [page])
+    for budget in 0'u64..83'u64:
+      # Every source coordinate remains observable, including partial tails after one or more complete batches.
+      var input = wordInfo
+      input.blockCharged = paid
+      verifyControl(words, wordProgram, input, budget, [page])
+  for value in [0'u64, 0x80000000'u64, 0xffffffff'u64, 0xdeadbeef'u64, high(uint64)]:
+    # High source bits and sign-extended intermediate byte registers cannot change the final low-word projection.
+    for shift in [0'u64, 1'u64, 8'u64, 24'u64, 32'u64, 0xffffffffffffffe0'u64]:
+      # Nonaligned shifts decline; an aligned high counter may wrap exactly as four original +8 mutations do.
+      var input = wordInfo
+      input.registers[1] = RegisterValue(value)
+      input.registers[4] = RegisterValue(shift)
+      verifyControl(words, wordProgram, input, 100, [page])
+  for length in [0'u64, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17]:
+    # Opcode171 is !=: a zero/past bound still executes its byte prefix and may continue to the attempt limit.
+    for upper in [0'u64, 0x100000000'u64]:
+      # Effective memory addresses wrap to32 bits while full-width address/bound registers retain their high bits.
+      var input = wordInfo
+      input.registers[0] = RegisterValue(65536+upper)
+      input.registers[3] = RegisterValue(65536+upper+length)
+      verifyControl(words, wordProgram, input, 100, [page])
+  for destination in [0, 1, 3, 4]:
+    # Prefix-to-store dependence remains intact; only the additional live-role alias prevents word admission.
+    let alias = owner([@[198'u8, 0x41, byte(destination)], @[120'u8, byte(destination), 0],
+      @[149'u8, 0x00, 1], @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    var input = wordInfo
+    if destination == 0:
+      # Admit one initial address-prefix store before a later shifted address enters the protected range.
+      input.registers[1] = RegisterValue(65536)
+    var actual = newFlatFrame(checkedPlan(alias), [page], input)
+    for warm in 0..<6:
+      # A previously cached branch must not let a later invalid alias projection bypass the scalar path.
+      verifyControl(actual, alias, input, 100, [page])
+    for budget in 0'u64..21'u64:
+      # Partial aliases preserve the exact operand order around both the old and new batch boundary.
+      verifyControl(actual, alias, input, budget, [page])
+  let addressData = owner([@[198'u8, 0x40, 2], @[120'u8, 0x02, 0], @[149'u8, 0x00, 1],
+    @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+  var addressInfo = wordInfo
+  addressInfo.registers[0] = RegisterValue(65791)
+  addressInfo.registers[3] = RegisterValue(65807)
+  var addressFrame = newFlatFrame(checkedPlan(addressData), [page], addressInfo)
+  for warm in 0..<6:
+    # An address/data alias changes the next extracted byte across a carry inside the proposed word.
+    verifyControl(addressFrame, addressData, addressInfo, 100, [page])
+  let carried = pageImage(flatMemorySnapshot(addressFrame), PageIndex(16)).value.bytes
+  assert carried[255] == 0xff and carried[256] == 1
+  for budget in 0'u64..21'u64:
+    # The alias must keep its bytewise source state when the budget reaches a potential bulk entry.
+    verifyControl(addressFrame, addressData, addressInfo, budget, [page])
+  var wordCrossing = wordInfo
+  wordCrossing.registers[0] = RegisterValue(69626)
+  wordCrossing.registers[3] = RegisterValue(69642)
+  for readonly in [false, true]:
+    # A valid two-page word may collapse; a later read-only page must expose the preceding byte prefix before refusal.
+    var last = page
+    last.index = PageIndex(17)
+    if readonly:
+      # The first six bytes remain writable even though a later byte of the next group faults.
+      last.access = PageAccess.ReadOnly
+    assert replaceFlatMemoryChecked(words, [page, last], wordCrossing) == FlatError.None
+    for paid in [false, true]:
+      # Preserve the first paid block while later batches encounter either gas or the page boundary.
+      for gas in [19'u64, 20, 21, 1000]:
+        # Full and partial affordable groups must agree on which source attempt reaches the permission boundary.
+        for budget in [19'u64, 20, 21, 29, 30, 31, 100]:
+          var input = wordCrossing
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          verifyControl(words, wordProgram, input, budget, [page, last])
+  assert replaceFlatMemoryChecked(words, [page], wordCrossing) == FlatError.None
+  verifyControl(words, wordProgram, wordCrossing, 100, [page])
+  assert words.exit == StepExit.Fault and uint64(words.info.pc) == 3
+  let partial = pageImage(flatMemorySnapshot(words), PageIndex(16)).value.bytes
+  assert partial[4090] == 0x78 and partial[4095] == 0x56
+  var top = page
+  top.index = PageIndex(1048575)
+  var highInfo = wordInfo
+  highInfo.registers[0] = RegisterValue(high(uint64)-16)
+  highInfo.registers[3] = RegisterValue(high(uint64))
+  assert replaceFlatMemoryChecked(words, [top], highInfo) == FlatError.None
+  verifyControl(words, wordProgram, highInfo, 100, [top])
+  for immediate in [3'u8, 253'u8]:
+    # Encoded positive/negative store offsets affect memory only, preserving the full-width branch register.
+    let adjusted = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, immediate], @[149'u8, 0x00, 1],
+      @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    var input = wordInfo
+    if immediate == 253:
+      # Start three bytes above the mapped base so the negative effective address is valid.
+      input.registers[0] = RegisterValue(65539)
+      input.registers[3] = RegisterValue(65555)
+    var actual = newFlatFrame(checkedPlan(adjusted), [page], input)
+    for warm in 0..<6:
+      # Each reset validates the new offset through both the cold and subsequently cached word workers.
+      verifyControl(actual, adjusted, input, 100, [page])
+  var code = takeFlatStream(words)
+  var nextWordPage = page
+  nextWordPage.index = PageIndex(17)
+  var nextWordInfo = wordCrossing
+  nextWordInfo.registers[1] = RegisterValue(0xdeadbeef)
+  var newWords = newFlatFrame(wordPlan, [page, nextWordPage], nextWordInfo)
+  restoreFlatStream(newWords, code)
+  verifyControl(newWords, wordProgram, nextWordInfo, 100, [page, nextWordPage])
+  let nextFirst = pageImage(flatMemorySnapshot(newWords), PageIndex(16)).value.bytes
+  let nextLast = pageImage(flatMemorySnapshot(newWords), PageIndex(17)).value.bytes
+  assert nextFirst[4090] == 0xef and nextFirst[4095] == 0xbe and nextLast[0] == 0xad and nextLast[
+      9] == 0xde
+  assert pageImage(originalWords, PageIndex(16)).value.bytes[0] == 0x78
+  let hostedWord = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0], @[149'u8, 0x00, 1],
+    @[149'u8, 0x44, 8], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[10'u8, 7],
+    @[40'u8, 0xec, 0xff, 0xff, 0xff]])
+  var wordHost = newFlatFrame(checkedPlan(hostedWord), [page], wordInfo)
+  verifyControl(wordHost, hostedWord, wordInfo, 100, [page])
+  let oldWordObservation = observeFlatHostMemory(wordHost)
+  let wordPosterior = writeBytes(oldWordObservation, MemoryAddress(65536), [0xee'u8],
+      MemoryByteLimit(1)).value
+  let wordPosteriorImages = memoryImages(wordPosterior).value
+  var hostRegisters = wordHost.info.registers
+  hostRegisters[0] = RegisterValue(65536)
+  hostRegisters[1] = RegisterValue(0x1284)
+  assert resumeFlatHostMemory(wordHost, wordPosterior, MachineGas(100000), hostRegisters) == StepError.None
+  let resumedWordInfo = wordHost.info
+  verifyControl(wordHost, hostedWord, resumedWordInfo, 100, wordPosteriorImages)
+  let hostWords = pageImage(flatMemorySnapshot(wordHost), PageIndex(16)).value.bytes
+  assert hostWords[0] == 0x84 and hostWords[1] == 0x12 and hostWords[15] == 0
+  assert pageImage(oldWordObservation, PageIndex(16)).value.bytes[0] == 0x78
+  assert pageImage(wordPosterior, PageIndex(16)).value.bytes[0] == 0xee
+  checkFlatSource(wordHost, wordPosteriorImages)
+  echo "CHECKED_WORD_LOOP_OK"
